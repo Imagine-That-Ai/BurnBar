@@ -295,8 +295,8 @@ def _entropy_labels(text: str) -> list[str]:
     return labels
 
 
-def project_root(project_path: str | None = None) -> Path:
-    raw = (project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH") or os.getcwd()).strip()
+def project_root(project_path: str | Path | None = None) -> Path:
+    raw = str(project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH") or os.getcwd()).strip()
     root = Path(raw).expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f"project_path must point to an existing directory: {root}")
@@ -364,6 +364,23 @@ def has_project_rows(conn: sqlite3.Connection, project_id: str) -> bool:
     return False
 
 
+def _adopted_project_id(conn: sqlite3.Connection, path_hash: str, canonical_path: str) -> str | None:
+    """The project a member explicitly adopted for this folder, if any.
+
+    `memory_engine.store.map_project` — reachable only through `adopt_project`,
+    which refuses without a confirmation — writes `project_map:<path hash>` and
+    `project_map:<canonical path>`. That key is the adoption; everything else in
+    this table is bookkeeping.
+    """
+    if "engine_meta" not in table_names(conn):
+        return None
+    row = conn.execute(
+        "SELECT value FROM engine_meta WHERE key = ? OR key = ? LIMIT 1",
+        (f"project_map:{path_hash}", f"project_map:{canonical_path}"),
+    ).fetchone()
+    return str(row[0]) if row is not None else None
+
+
 def resolve_project_id(conn: sqlite3.Connection, root: Path) -> str:
     ensure_schema(conn)
     resolved = root.resolve()
@@ -374,15 +391,29 @@ def resolve_project_id(conn: sqlite3.Connection, root: Path) -> str:
     preferred_project_id = project_id_for_fingerprint(fingerprint, legacy_project_id)
     ts = now_iso()
 
-    existing = conn.execute(
-        "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
-        (fingerprint,),
-    ).fetchone()
     alias = conn.execute(
         "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
         (path_hash,),
     ).fetchone()
-    if existing:
+    existing = conn.execute(
+        "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
+        (fingerprint,),
+    ).fetchone()
+    # An ADOPTION outranks the git identity, and nothing else does. The engine's
+    # `adopt_project` writes `project_map:<path hash>` under an explicit
+    # confirmation, and that key is the only evidence here that a member chose
+    # this folder's project — without it the daemon and the engine would
+    # disagree about which project a folder is the moment one was adopted.
+    #
+    # An alias row alone proves nothing: this function records one automatically
+    # for every folder it ever sees. Letting a bare alias beat the fingerprint
+    # made two checkouts of the same repository resolve to different ids
+    # whenever one of them had been seen before, and left a folder that moved
+    # pinned to a stale id instead of re-deriving from git.
+    adopted = _adopted_project_id(conn, path_hash, canonical_path)
+    if adopted:
+        project_id = adopted
+    elif existing:
         project_id = str(existing[0])
     elif alias:
         project_id = str(alias[0])
@@ -391,26 +422,37 @@ def resolve_project_id(conn: sqlite3.Connection, root: Path) -> str:
     else:
         project_id = preferred_project_id
 
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO pcm_projects
-            (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (project_id, 2, fingerprint, resolved.name, canonical_path, ts, ts),
-    )
-    conn.execute(
-        """
-        UPDATE pcm_projects
-        SET identity_version = 2,
-            identity_fingerprint = ?,
-            project_name = ?,
-            primary_path = ?,
-            updated_at = ?
-        WHERE project_id = ?
-        """,
-        (fingerprint, resolved.name, canonical_path, ts, project_id),
-    )
+    can_update_fingerprint = existing is None or str(existing[0]) == project_id
+    if can_update_fingerprint:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO pcm_projects
+                (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (project_id, 2, fingerprint, resolved.name, canonical_path, ts, ts),
+        )
+        conn.execute(
+            """
+            UPDATE pcm_projects
+            SET identity_version = 2,
+                identity_fingerprint = ?,
+                project_name = ?,
+                primary_path = ?,
+                updated_at = ?
+            WHERE project_id = ?
+            """,
+            (fingerprint, resolved.name, canonical_path, ts, project_id),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE pcm_projects
+            SET updated_at = ?
+            WHERE project_id = ?
+            """,
+            (ts, project_id),
+        )
     conn.execute(
         """
         INSERT INTO pcm_project_aliases

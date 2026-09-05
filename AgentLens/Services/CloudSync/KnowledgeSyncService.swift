@@ -565,6 +565,55 @@ struct MemoryCloudFactPayload: Codable {
     /// The ENGINE's scope (`project` | `personal`, from `agent_memories.scope`),
     /// the other half of the convergence key. Nil for a chat memory.
     let engineScope: String?
+
+    /// Optional lineage advice: the body_hash of the revision this update replaces.
+    let previousBodyHash: String?
+    /// The writing device, for lineage attribution on the receiving side.
+    ///
+    /// This is the account's INSTALLATION-scoped device id (`AccountManager
+    /// .deviceId`, the same value every other CloudSync writer stamps) — never a
+    /// hardware UUID, serial or MAC address. A hardware identifier would link
+    /// the same Mac across two accounts through documents neither account can
+    /// read, which is exactly the correlation blind sync exists to prevent.
+    let writerDevice: String?
+
+    init(
+        schemaVersion: Int,
+        memoryID: MemoryID,
+        text: String,
+        kind: MemoryKind,
+        scope: MemoryScope,
+        confidence: Double,
+        citations: [MemoryCitation],
+        validFrom: Date,
+        updatedAt: Date,
+        validTo: Date? = nil,
+        supersededBy: MemoryID? = nil,
+        tags: [String]? = nil,
+        bodyHash: String? = nil,
+        projectID: String? = nil,
+        engineScope: String? = nil,
+        previousBodyHash: String? = nil,
+        writerDevice: String? = nil
+    ) {
+        self.schemaVersion = schemaVersion
+        self.memoryID = memoryID
+        self.text = text
+        self.kind = kind
+        self.scope = scope
+        self.confidence = confidence
+        self.citations = citations
+        self.validFrom = validFrom
+        self.updatedAt = updatedAt
+        self.validTo = validTo
+        self.supersededBy = supersededBy
+        self.tags = tags
+        self.bodyHash = bodyHash
+        self.projectID = projectID
+        self.engineScope = engineScope
+        self.previousBodyHash = previousBodyHash
+        self.writerDevice = writerDevice
+    }
 }
 
 final class MemoryCloudSyncService: Sendable {
@@ -580,7 +629,17 @@ final class MemoryCloudSyncService: Sendable {
     }
 
     @discardableResult
-    func syncApprovedMemories(uid: String, vaultKey: Data, now: Date = Date()) async throws -> MemoryCloudSyncResult {
+    /// - Parameter writerDevice: the id of the device sealing these payloads,
+    ///   for lineage attribution on the receiving side. It rides INSIDE the
+    ///   ciphertext and is never logged, never put on the outer document and
+    ///   never read back by the pull path. Nil when the caller has no device
+    ///   identity to name (the direct-invocation tests).
+    func syncApprovedMemories(
+        uid: String,
+        vaultKey: Data,
+        now: Date = Date(),
+        writerDevice: String? = nil
+    ) async throws -> MemoryCloudSyncResult {
         let candidates = try await store.cloudSyncCandidateChatMemories(userID: uid)
         let eligible = try await store.cloudSyncEligibleChatMemories(userID: uid)
         let userDocument = firestoreGateway.collection("users").document(uid)
@@ -616,7 +675,15 @@ final class MemoryCloudSyncService: Sendable {
                 tags: attributes?.tags,
                 bodyHash: attributes?.bodyHash,
                 projectID: attributes?.projectID,
-                engineScope: attributes?.engineScope
+                engineScope: attributes?.engineScope,
+                // `previousBodyHash` is deliberately absent from this call.
+                // The engine mirror this row came from records the CURRENT
+                // body hash (`memoryCloudFactAttributes`) and exposes no
+                // predecessor, so the Mac writer has nothing truthful to put
+                // here; sending the current hash would claim a lineage link
+                // that is not one. It stays nil until the engine exposes the
+                // predecessor hash — see the PR body's follow-up note.
+                writerDevice: writerDevice
             )
             // CONDITIONAL, not unconditional. Every cycle re-uploads the whole
             // eligible set, and `merge: true` with no comparison meant a device
@@ -722,6 +789,7 @@ final class MemoryCloudSyncService: Sendable {
     ///   memory resolves to one document on every device.
     /// - Parameters tags/bodyHash/projectID/engineScope: the mirrored row's
     ///   convergence metadata (§5). Absent for a chat memory, which has none of it.
+    /// - Parameters previousBodyHash/writerDevice: optional lineage metadata at v2.
     static func encodeMemoryFact(
         memory: Memory,
         body: String,
@@ -732,7 +800,9 @@ final class MemoryCloudSyncService: Sendable {
         tags: [String]? = nil,
         bodyHash: String? = nil,
         projectID: String? = nil,
-        engineScope: String? = nil
+        engineScope: String? = nil,
+        previousBodyHash: String? = nil,
+        writerDevice: String? = nil
     ) throws -> (docID: String, data: [String: Any]) {
         let identity = documentIdentity ?? memory.id
         let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(identity)", keyData: vaultKey)
@@ -753,7 +823,9 @@ final class MemoryCloudSyncService: Sendable {
             tags: tags?.isEmpty == true ? nil : tags,
             bodyHash: bodyHash?.isEmpty == true ? nil : bodyHash,
             projectID: projectID?.isEmpty == true ? nil : projectID,
-            engineScope: engineScope?.isEmpty == true ? nil : engineScope
+            engineScope: engineScope?.isEmpty == true ? nil : engineScope,
+            previousBodyHash: previousBodyHash?.isEmpty == true ? nil : previousBodyHash,
+            writerDevice: writerDevice?.isEmpty == true ? nil : writerDevice
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

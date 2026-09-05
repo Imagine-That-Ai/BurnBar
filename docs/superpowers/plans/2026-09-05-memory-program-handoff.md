@@ -11,7 +11,7 @@ below means only *"this packet is mechanical and fully specified enough that a m
 could execute it"* — it is not a recommendation to override the router. The operator makes
 that call knowingly. When in doubt, a `SPARK-OK` packet routes to Grok build.
 
-Route counts: **8 SPARK-OK · 9 ROUTE: Codex · 11 ROUTE: Grok build** (28 packets).
+Route counts: **8 SPARK-OK · 11 ROUTE: Codex · 12 ROUTE: Grok build** (31 packets; P29–P31 added by the 2026-09-05 cleanup addendum at the end).
 
 ---
 
@@ -827,3 +827,39 @@ P6 → P7 → P8 (Slice 1) → P9 → P10 → P11 (Slice 2) → P12 → P13 → 
 P16 → P17 → P18 → P19 (Slice 4) → P20 → P21 → P22 → P23 (Slice 5) → P24 → P25 → P26 →
 P27 (Slice 6). Slice 6's P24–P26 may run in parallel with Slice 3; P27 may not start
 before P11.
+
+---
+
+# Addendum (2026-09-05, after the first implementation pass) — packets added by the cleanup
+
+## P29 — daemon read RPCs for the engine's memory surfaces · **ROUTE: Codex**
+
+- **Why:** the app talks only to the daemon, and the daemon has no RPC for the engine's `timeline`, `doctor` report, `memory_analytics` counters, or per-row gate verdicts. Four app surfaces were built against MCP-tool shapes the app can never call and are parked on `wip/memory-app-views-awaiting-daemon-rpcs` until this lands.
+- **Files:** `OpenBurnBarCore/Sources/OpenBurnBarProjectCodeContracts/BurnBarProjectCodeContracts.swift` (new request/response records — the leaf is at ~943/1000 lines, so argue for a second leaf file if needed), `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarDaemonServer+RPC*.swift` (register `daemon.memory.timeline`, `daemon.memory.doctor`, `daemon.memory.analytics`; preflight registration), the daemon's courier to the engine (the CLI courier pattern from #2499), `tools/openburnbar-mcp/memory_engine/_read.py` (nothing new — the daemon calls the same engine functions the MCP tools call).
+- **Contract (engine's real shape, do not invent another):** timeline → `{status: ok|not_found|refused, code?, memoryID, revisions: [{seq, event, actor, ts, before, after, meta, writerDevice}], lastHelpedAt, lastHelpedSource: recall_serve|history}`; doctor → the JSON `burnbar_memory_doctor` returns; analytics → the JSON `burnbar_memory_analytics` returns.
+- **Tests to add:** daemon `BurnBarDaemonServerTests.testTimelineRPCForwardsTheEngineShapeVerbatim`, `testDoctorRPCIsReadOnly`, `testAnalyticsRPCIsProjectScoped`; preflight registration pins.
+- **Acceptance:** an app client can fetch all three for a project id; a refused timeline carries no revisions; RPCs are read-only (no `memory_write` permit needed).
+- **Do not touch:** the engine's response shapes; the Kernel `Memory` struct.
+
+## P30 — mount the parked app surfaces · **ROUTE: Grok build** (after P29)
+
+- **Files:** restore from `wip/memory-app-views-awaiting-daemon-rpcs`: `AgentLens/Views/Memory/MemoryTimelineModel.swift` + `View`, `ProjectMemoryHitRow.swift`, `AgentLens/Views/Settings/ProjectMemoryHealthCard.swift`, the inbox gate plumbing, and their tests; adapt the timeline model to the engine's real field names (`ts`, `meta`, `code`) — the parked file's doc comment records them.
+- **Change:** timeline opens from a review-inbox row ("History"); the health card mounts in the memory section of Settings with a placeholder until P29's analytics answer; the hit row mounts wherever the app first renders daemon memory hits (today: nowhere — if that is still true, keep the hit row parked and say so).
+- **Tests:** the parked tests, adapted; `SettingsManifestCoverageTests` if a settings row is added (manifest entry + `visibleAnchorIDs`).
+- **Acceptance:** each mounted view renders from a live daemon RPC in a fixture-driven test; no view ships unmounted.
+
+## P31 — daemon `project adopt` RPC for `pcm_projects` · **ROUTE: Codex** (after P29)
+
+- **Why:** P8's daemon fix makes a folder's recorded mapping outrank its git fingerprint on every path (the security fix: a `git init` can no longer silently re-scope a mapped folder's memories). The cost is that a folder first written with a provisional (path-derived) id and later given a git root has no route back to its git project: the engine has `burnbar_project_adopt` (explicit `confirm=True`), the daemon has nothing. Today the daemon logs `project_identity_provisional_split` once per process and exposes the provisional state on the project record.
+- **Files:** `OpenBurnBarCore/Sources/OpenBurnBarProjectCodeContracts/BurnBarProjectCodeContracts.swift` (adopt request/response), `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+ProjectIdentity.swift` (the adopt operation: re-key `pcm_projects` and dependent rows under one transaction, record the alias), `BurnBarDaemonServer+RPC*.swift` + preflight registration (a `memory_write`-class permit; CLI courier peer allowed), `OpenBurnBarCLI.swift` (`project adopt <id> [--yes]`, TTY confirmation otherwise, prints what it would join first).
+- **Tests to add:** `testAdoptRefusesWithoutConfirmation`, `testAdoptRekeysEveryDependentRowInOneTransaction`, `testAdoptRecordsAnAliasSoOldIdsStillResolve`, `testAProvisionalFolderThatAdoptsItsGitProjectStopsWarning`; preflight registration pin.
+- **Acceptance:** adoption requires an explicit confirmation on every path; after adoption the folder's memories resolve under the git project's id and the old id still resolves through the alias; no automatic adoption from a dotfile or from fingerprint match.
+- **Do not touch:** the alias-first resolution order; the engine's `burnbar_project_adopt`.
+# Addendum (2026-09-05, after the app-surfaces build)
+
+## P32 — `daemon.memory.analytics` must resolve project identity read-only · **ROUTE: Grok build**
+
+- **Why:** the RPC handler resolves `projectRoot` through the writing `resolveProjectIdentity` (`BurnBarProjectCodeMemoryStore+ProjectIdentity.swift`), so a read RPC can INSERT `pcm_projects`/`pcm_project_aliases` rows (and a nil root resolves to the daemon's working directory). The app health card avoids it by only ever passing recorded roots; the daemon should not rely on callers for that.
+- **Files:** `OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonServer+RPCMemory.swift` (use `readOnlyProjectIdentity`; refuse `nil`/unknown roots with a typed error instead of synthesising), tests in `BurnBarProjectCodeMemoryStoreTests`.
+- **Tests:** `testAnalyticsForAnUnknownRootWritesNothing`, `testAnalyticsRefusesANilRoot`.
+- **Acceptance:** a `daemon.memory.analytics` call never changes `pcm_projects`; unknown/nil root → error, not a phantom project.

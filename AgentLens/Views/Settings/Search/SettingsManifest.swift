@@ -353,6 +353,16 @@ enum SettingsManifest {
             keywords: ["memory", "pro", "cloud models", "openrouter", "vercel", "anthropic", "openai", "claude code", "codex", "retention", "daily cap", "blind"],
             helpText: "Pro. Off by default. Providers you consent to receive redacted memory text directly from this Mac; BurnBar never receives your memory data."
         ),
+        SettingsItem(
+            id: "general.indexing.memoryHealth",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemoryHealth,
+            title: "Memory Health",
+            subtitle: "Per-project memory counters, audit-chain integrity, sync ages and the checks this Mac can run itself",
+            keywords: ["memory", "health", "audit", "chain", "integrity", "counters", "analytics", "sync", "watermark", "marker", "pending review", "doctor", "diagnostics"],
+            helpText: "Counters come from the local daemon; the checks are run on this Mac. Engine doctor findings are not measured here."
+        ),
 
         // MARK: General → Session summaries
 
@@ -1043,6 +1053,7 @@ enum SettingsManifest {
         SettingsAnchor.indexingMemory,
         SettingsAnchor.indexingMemoryDeviceSync,
         SettingsAnchor.indexingMemoryCloudModels,
+        SettingsAnchor.indexingMemoryHealth,
         SettingsAnchor.summariesAuto,
         SettingsAnchor.aiInboxOverview,
         SettingsAnchor.aiInboxEnable,

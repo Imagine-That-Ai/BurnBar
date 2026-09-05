@@ -362,7 +362,10 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
             let result = try await syncService.syncApprovedMemories(
                 uid: uid,
                 vaultKey: resolvedKey.keyData,
-                now: syncStartedAt
+                now: syncStartedAt,
+                // Sealed lineage attribution (P4). The installation-scoped
+                // device id, inside the ciphertext only.
+                writerDevice: gate.deviceId
             )
             state.withLock {
                 $0.lastSyncDate = self.now()

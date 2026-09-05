@@ -227,16 +227,40 @@ class GateDecision:
     vault_body: str | None  # verbatim body stored in the vault (retain only)
     labels: list[str]
     reason: str | None = None
+    # Which gate produced this decision, and what it decided — carried so a
+    # reviewer sees *why* a row was held rather than only that it was. Naming a
+    # decision never changes one: `action` remains the only thing the write path
+    # reads (B10).
+    gate: str | None = None
+    verdict: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.verdict is None:
+            self.verdict = self.action
+        if self.gate is None and self.sensitivity in ("secret", "pii"):
+            self.gate = self.sensitivity
 
 
 def apply_gate(text: str, *, secret_policy: str, pii_policy: str, retain_allowed: bool) -> GateDecision:
     findings = scan_text(text, pii_policy=pii_policy)
     labels = findings.secret_labels + findings.pii_labels
     if not findings.corpus_available:
-        return GateDecision("reject", "none", text, None, labels, "secret scanner corpus unavailable; failing closed")
+        return GateDecision(
+            "reject",
+            "none",
+            text,
+            None,
+            labels,
+            "secret scanner corpus unavailable; failing closed",
+            gate="secret",
+            verdict="reject",
+        )
     if findings.has_secret:
+        labels_str = ", ".join(labels)
         if secret_policy == "reject":  # noqa: S105 — policy selector, not a credential
-            return GateDecision("reject", "secret", "", None, labels, "secret policy is reject")
+            return GateDecision(
+                "reject", "secret", "", None, labels, "secret policy is reject", gate="secret", verdict="reject"
+            )
         if secret_policy == "retain":  # noqa: S105 — policy selector, not a credential
             if not retain_allowed:
                 return GateDecision(
@@ -246,6 +270,8 @@ def apply_gate(text: str, *, secret_policy: str, pii_policy: str, retain_allowed
                     None,
                     labels,
                     "secret policy is retain but the memory_secret_retain capability is disabled",
+                    gate="secret",
+                    verdict="reject",
                 )
             body = findings.redacted_text
             if findings.unlocalizable_labels:
@@ -254,7 +280,16 @@ def apply_gate(text: str, *, secret_policy: str, pii_policy: str, retain_allowed
                 body = (
                     "[REDACTED:" + ", ".join(findings.unlocalizable_labels) + "] secret-bearing memory; body withheld"
                 )
-            return GateDecision("retain", "secret", body, text, labels)
+            return GateDecision(
+                "retain",
+                "secret",
+                body,
+                text,
+                labels,
+                f"secret retained in vault: {labels_str}",
+                gate="secret",
+                verdict="retain",
+            )
         if findings.unlocalizable_labels:
             return GateDecision(
                 "reject",
@@ -263,14 +298,37 @@ def apply_gate(text: str, *, secret_policy: str, pii_policy: str, retain_allowed
                 None,
                 labels,
                 "secret detected in a joined or continued form that cannot be redacted in place; rephrase without the secret",
+                gate="secret",
+                verdict="reject",
             )
-        return GateDecision("redact", "redacted", findings.redacted_text, None, labels)
+        return GateDecision(
+            "redact",
+            "redacted",
+            findings.redacted_text,
+            None,
+            labels,
+            f"secret redacted: {labels_str}",
+            gate="secret",
+            verdict="redact",
+        )
     if findings.has_pii:
+        labels_str = ", ".join(labels)
         if pii_policy == "reject":
-            return GateDecision("reject", "pii", "", None, labels, "pii policy is reject")
+            return GateDecision("reject", "pii", "", None, labels, "pii policy is reject", gate="pii", verdict="reject")
         if pii_policy == "redact" or any(label in ALWAYS_REDACT_PII_LABELS for label in findings.pii_labels):
-            return GateDecision("redact", "pii", findings.redacted_text, None, labels)
-        return GateDecision("keep", "pii", text, None, labels)
+            return GateDecision(
+                "redact",
+                "pii",
+                findings.redacted_text,
+                None,
+                labels,
+                f"pii redacted: {labels_str}",
+                gate="pii",
+                verdict="redact",
+            )
+        return GateDecision("keep", "pii", text, None, labels, f"pii kept: {labels_str}", gate="pii", verdict="keep")
+    # Nothing fired: `gate` stays None, and `verdict` mirrors `action` like every
+    # other branch.
     return GateDecision("keep", "none", text, None, [])
 
 
@@ -408,6 +466,17 @@ class AuxGate:
     reject_reason: str | None = None
     reject_code: str | None = None
     source_kind: str | None = None
+    gate: str | None = None
+    verdict: str | None = None
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.reason is None:
+            self.reason = self.reject_reason
+        if self.verdict is None and self.reject_reason:
+            self.verdict = "reject"
+        if self.gate is None and (self.reject_reason or self.labels):
+            self.gate = "auxiliary_field"
 
 
 def _gate_string(
@@ -533,3 +602,98 @@ def auxiliary_injection_labels(
 ) -> list[str]:
     """Find injection sentinels in every caller-controlled auxiliary string."""
     return injection_labels("\n".join(_aux_strings(tags, entities, metadata, source_ref)))
+
+
+def diagnose_firing_gate(
+    text: str = "",
+    *,
+    tags: Sequence[str] = (),
+    entities: Sequence[str] = (),
+    metadata: dict[str, Any] | None = None,
+    source_ref: str | None = None,
+    source_kind: str | None = None,
+) -> dict[str, Any]:
+    """Identify which gate fired on a memory or review inbox item, and why.
+
+    Detects:
+    1. Secret shapes in text.
+    2. Prompt injection sentinels in body text.
+    3. Auxiliary field issues (injections, overflows, or secrets in tags/entities/metadata/source_ref).
+
+    Returns a dict:
+        {"gate": str | None, "verdict": str | None, "reason": str | None}
+    """
+    # 1. Check secret shape in text
+    findings = scan_text(text)
+    if findings.has_secret:
+        labels_str = ", ".join(findings.secret_labels)
+        return {
+            "gate": "secret",
+            "verdict": "quarantined",
+            "reason": f"secret shape detected: {labels_str}",
+        }
+
+    # 2. Check prompt injection sentinel in body text
+    body_sentinels = injection_labels(text)
+    if body_sentinels:
+        sentinels_str = ", ".join(body_sentinels)
+        return {
+            "gate": "prompt_injection",
+            "verdict": "quarantined",
+            "reason": f"injection sentinel detected: {sentinels_str}",
+        }
+
+    # 3. Check auxiliary fields
+    overflow = aux_input_overflow(
+        tags=tags,
+        entities=entities,
+        metadata=metadata,
+        source_ref=source_ref,
+        source_kind=source_kind,
+    )
+    if overflow:
+        return {
+            "gate": "auxiliary_field",
+            "verdict": "quarantined",
+            "reason": f"auxiliary field overflow: {overflow}",
+        }
+
+    # Check injection in specific auxiliary fields to identify exactly which aux field fired
+    fields_to_check: list[tuple[str, str]] = [
+        ("tags", "\n".join(tags)),
+        ("entities", "\n".join(entities)),
+        ("metadata", json.dumps(metadata, ensure_ascii=False) if metadata else ""),
+        ("source_ref", source_ref or ""),
+    ]
+    for field_name, field_val in fields_to_check:
+        if field_val:
+            sentinels = injection_labels(field_val)
+            if sentinels:
+                return {
+                    "gate": "auxiliary_field",
+                    "verdict": "quarantined",
+                    "reason": f"auxiliary field {field_name} contains injection sentinel: {', '.join(sentinels)}",
+                }
+
+    # Check secrets in aux fields
+    aux_gate = gate_aux_fields(
+        tags=tags,
+        entities=entities,
+        metadata=metadata,
+        source_ref=source_ref,
+        source_kind=source_kind,
+        secret_policy="reject",
+        pii_policy="keep",
+    )
+    if aux_gate.labels:
+        return {
+            "gate": "auxiliary_field",
+            "verdict": "quarantined",
+            "reason": f"auxiliary field contains secret: {', '.join(aux_gate.labels)}",
+        }
+
+    return {
+        "gate": None,
+        "verdict": None,
+        "reason": None,
+    }

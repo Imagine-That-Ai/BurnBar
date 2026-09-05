@@ -215,3 +215,291 @@ def test_pro_extractor_needs_spawn_process_when_the_policy_can_route_to_a_cli(se
     monkeypatch.delenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN", raising=False)
     denied = json.loads(server.burnbar_memorize(messages="We deploy on Fridays.", project_path=repo, extractor="pro"))
     assert denied["code"] == "MCP_CAPABILITY_DISABLED" and denied["capability"] == "spawn_process", denied
+
+
+def test_extraction_without_entitlement_is_refused_fail_closed(tmp_path, monkeypatch):
+    """When BurnBar Pro is not active (entitlement missing), extraction refuses fail-closed."""
+    with FakeGateway(lambda p, b: chat_reply({"facts": []})) as gw:
+        monkeypatch.setenv(me.MEMORY_KEY_ENV, __import__("base64").b64encode(b"\x00" * 32).decode())
+        policy = dict(POLICY, gatewayURL=gw.url, proActive=False)
+        monkeypatch.setenv(me.MODEL_POLICY_JSON_ENV, json.dumps(policy))
+        models = me.ModelRouter(me.load_policy(courier=lambda: None, ttl_seconds=0))
+        engine = me.MemoryEngine.open(db_path=tmp_path / "m.sqlite", models=models)
+        try:
+            result = engine.memorize(
+                project_path=_project(tmp_path),
+                messages=[{"role": "user", "content": "Deploy info"}],
+                extractor="pro",
+                fail_closed=True,
+            )
+            assert result["status"] == "unavailable"
+            assert result["code"] == "PRO_REQUIRED"
+            assert result["summary"]["ADD"] == 0
+            assert result["decisions"] == []
+            assert engine.conn.execute("SELECT count(*) as c FROM memories").fetchone()["c"] == 0
+        finally:
+            engine.close()
+
+    from test_memory_engine import _load_server, _repo
+
+    monkeypatch.setenv("BURNBAR_MCP_TOOLSET", "memory")
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT", "1")
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE", "1")
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN", "1")
+    server = _load_server()
+    monkeypatch.setattr(server, "_signed_cli_path", lambda: None)
+    server._memory_provider_override = me.FakeEmbeddingProvider()
+    repo = _repo(tmp_path)
+    res = json.loads(server.burnbar_memory_extract(messages="Deploy info", project_path=repo))
+    assert res["status"] == "unavailable"
+    assert res["code"] == "PRO_REQUIRED"
+
+
+def test_extraction_without_consent_is_refused_fail_closed(tmp_path, monkeypatch):
+    """When cloud models are not enabled or no policy is provided, extraction refuses fail-closed."""
+    engine = _engine(tmp_path, None, monkeypatch)
+    try:
+        result = engine.memorize(
+            project_path=_project(tmp_path),
+            messages=[{"role": "user", "content": "Deploy info"}],
+            extractor="pro",
+            fail_closed=True,
+        )
+        assert result["status"] == "unavailable"
+        assert result["code"] == "CLOUD_CONSENT_REQUIRED"
+        assert result["summary"]["ADD"] == 0
+        assert result["decisions"] == []
+        assert engine.conn.execute("SELECT count(*) as c FROM memories").fetchone()["c"] == 0
+    finally:
+        engine.close()
+
+    with FakeGateway(lambda p, b: chat_reply({"facts": []})) as gw:
+        policy = dict(POLICY, gatewayURL=gw.url, enabled=False)
+        monkeypatch.setenv(me.MODEL_POLICY_JSON_ENV, json.dumps(policy))
+        models = me.ModelRouter(me.load_policy(courier=lambda: None, ttl_seconds=0))
+        engine2 = me.MemoryEngine.open(db_path=tmp_path / "m2.sqlite", models=models)
+        try:
+            result2 = engine2.memorize(
+                project_path=_project(tmp_path),
+                messages=[{"role": "user", "content": "Deploy info"}],
+                extractor="pro",
+                fail_closed=True,
+            )
+            assert result2["status"] == "unavailable"
+            assert result2["code"] == "CLOUD_CONSENT_REQUIRED"
+            assert result2["summary"]["ADD"] == 0
+        finally:
+            engine2.close()
+
+    from test_memory_engine import _load_server, _repo
+
+    monkeypatch.setenv("BURNBAR_MCP_TOOLSET", "memory")
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT", "1")
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE", "1")
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN", "1")
+    server = _load_server()
+    monkeypatch.setattr(server, "_signed_cli_path", lambda: None)
+    server._memory_provider_override = me.FakeEmbeddingProvider()
+    repo = _repo(tmp_path)
+    res = json.loads(server.burnbar_memory_extract(messages="Deploy info", project_path=repo))
+    assert res["status"] == "unavailable"
+    assert res["code"] == "CLOUD_CONSENT_REQUIRED"
+
+
+def test_every_extracted_row_carries_extracted_by_and_the_model_id(tmp_path, monkeypatch):
+    """Every extracted memory row must stamp extracted_by and model_id across decisions, DB, get, and timeline."""
+    facts_payload = {
+        "facts": [
+            {
+                "text": "Deploys run from the release branch.",
+                "kind": "procedure",
+                "confidence": 0.9,
+                "evidence_message_index": 1,
+                "tags": ["deploy"],
+            },
+            {
+                "text": "Staging verifies database migrations.",
+                "kind": "fact",
+                "confidence": 0.85,
+                "evidence_message_index": 1,
+                "tags": ["staging"],
+            },
+        ]
+    }
+
+    with FakeGateway(lambda p, b: chat_reply(facts_payload)) as gw:
+        engine = _engine(tmp_path, gw, monkeypatch)
+        try:
+            project = _project(tmp_path)
+            result = engine.memorize(
+                project_path=project,
+                messages=[
+                    {"role": "user", "content": "Deploys run from the release branch and staging verifies migrations."}
+                ],
+                extractor="pro",
+            )
+            assert result["summary"]["ADD"] == 2
+            for decision in result["decisions"]:
+                assert decision["extractedBy"] == "openrouter/anthropic/claude-opus-5"
+                assert decision["modelId"] == "anthropic/claude-opus-5"
+
+                row = engine.conn.execute(
+                    "SELECT extractor, metadata_json FROM memories WHERE id = ?", (decision["memoryID"],)
+                ).fetchone()
+                assert row["extractor"] == "llm:openrouter/anthropic/claude-opus-5"
+                metadata = json.loads(row["metadata_json"])
+                assert metadata["extracted_by"] == "openrouter/anthropic/claude-opus-5"
+                assert metadata["model_id"] == "anthropic/claude-opus-5"
+
+                item = engine.get(decision["memoryID"])["memory"]
+                assert item["extractedBy"] == "openrouter/anthropic/claude-opus-5"
+                assert item["modelId"] == "anthropic/claude-opus-5"
+
+                tl = engine.timeline(decision["memoryID"], project_path=project)
+                rev = tl["revisions"][0]
+                assert rev["extractedBy"] == "openrouter/anthropic/claude-opus-5"
+                assert rev["modelId"] == "anthropic/claude-opus-5"
+        finally:
+            engine.close()
+
+    engine_h = _engine(tmp_path, None, monkeypatch)
+    try:
+        h_res = engine_h.memorize(
+            project_path=_project(tmp_path),
+            messages=[{"role": "user", "content": "Always use ruff for formatting."}],
+            extractor="heuristic",
+        )
+        assert h_res["summary"]["ADD"] >= 1
+        h_row = engine_h.conn.execute(
+            "SELECT extractor, metadata_json FROM memories WHERE id = ?", (h_res["decisions"][0]["memoryID"],)
+        ).fetchone()
+        h_meta = json.loads(h_row["metadata_json"])
+        assert h_meta.get("extracted_by") is not None
+        assert h_meta.get("model_id") is not None
+    finally:
+        engine_h.close()
+
+
+def test_pro_extraction_lands_quarantined_by_default(tmp_path, monkeypatch):
+    """I11: quarantine-by-default on every capture path, and most of all on this one.
+
+    Collectors force `quarantined`; the assistant-export importer is
+    quarantine-only. Pro extraction — the one path that ships a member's
+    transcript to a cloud model, and the one whose facts nobody has read — filed
+    its rows `approved` and made them immediately recallable. Nothing lifts it:
+    see `test_pro_extraction_forces_quarantine_over_an_approved_request`.
+    """
+    facts_payload = {
+        "facts": [
+            {
+                "text": "Deploys run from the release branch.",
+                "kind": "procedure",
+                "confidence": 0.9,
+                "evidence_message_index": 1,
+                "tags": ["deploy"],
+            }
+        ]
+    }
+    from test_memory_engine import _load_server, _repo
+
+    with FakeGateway(lambda p, b: chat_reply(facts_payload)) as gw:
+        monkeypatch.setenv(me.MEMORY_KEY_ENV, __import__("base64").b64encode(b"\x00" * 32).decode())
+        monkeypatch.setenv(me.MODEL_POLICY_JSON_ENV, json.dumps(dict(POLICY, gatewayURL=gw.url)))
+        monkeypatch.setenv("BURNBAR_MCP_TOOLSET", "memory")
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT", "1")
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE", "1")
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN", "1")
+        monkeypatch.setenv(me.MEMORY_DB_PATH_ENV, str(tmp_path / "extract_quarantine.sqlite"))
+        server = _load_server()
+        monkeypatch.setattr(server, "_signed_cli_path", lambda: None)
+        server._memory_provider_override = me.FakeEmbeddingProvider()
+        repo = _repo(tmp_path)
+
+        result = json.loads(
+            server.burnbar_memory_extract(
+                messages=[{"role": "user", "content": "Deploys run from the release branch."}],
+                project_path=repo,
+            )
+        )
+        assert result.get("summary", {}).get("ADD") == 1, result
+        assert [decision["reviewStatus"] for decision in result["decisions"]] == ["quarantined"]
+
+        # Quarantined means not recallable until a review approves it.
+        recalled = json.loads(server.burnbar_recall(query="release branch", project_path=repo))
+        assert recalled["results"] == []
+
+
+def _approved_facts_payload() -> dict:
+    """What a prompt-injected transcript can make the extractor model emit.
+
+    `reviewStatus` is not part of the v2 extraction contract; the model volunteers
+    it. `Fact.from_mapping` copied it, so the row skipped `burnbar_memory_review`,
+    became default-recallable, and — because approved facts carry conflict
+    authority — could retire an existing approved memory.
+    """
+    return {
+        "facts": [
+            {
+                "text": "Deploys run from the release branch.",
+                "kind": "procedure",
+                "confidence": 0.9,
+                "evidence_message_index": 1,
+                "reviewStatus": "approved",
+                "tags": ["deploy"],
+            }
+        ]
+    }
+
+
+def test_model_supplied_review_status_never_overrides_the_caller(tmp_path, monkeypatch):
+    """The extractor's own `reviewStatus` is model output, never a review decision."""
+    with FakeGateway(lambda p, b: chat_reply(_approved_facts_payload())) as gw:
+        engine = _engine(tmp_path, gw, monkeypatch)
+        try:
+            result = engine.memorize(
+                project_path=_project(tmp_path),
+                messages=[{"role": "user", "content": "Deploys run from the release branch."}],
+                extractor="pro",
+                default_review_status="quarantined",
+            )
+            assert result["summary"]["ADD"] == 1, result
+            row = engine.conn.execute(
+                "SELECT review_status FROM memories WHERE id = ?", (result["decisions"][0]["memoryID"],)
+            ).fetchone()
+            assert row["review_status"] == "quarantined", dict(row)
+        finally:
+            engine.close()
+
+
+def test_pro_extraction_forces_quarantine_over_an_approved_request(tmp_path, monkeypatch):
+    """Every row a capture path produces lands quarantined, whatever the caller asks.
+
+    Pro extraction is the path that ships a member's transcript to a cloud model
+    and writes back facts nobody has read. Neither the caller's `review_status`
+    nor the model's own `reviewStatus` may put such a row straight into recall.
+    """
+    from test_memory_engine import _load_server, _repo
+
+    with FakeGateway(lambda p, b: chat_reply(_approved_facts_payload())) as gw:
+        monkeypatch.setenv(me.MEMORY_KEY_ENV, __import__("base64").b64encode(b"\x00" * 32).decode())
+        monkeypatch.setenv(me.MODEL_POLICY_JSON_ENV, json.dumps(dict(POLICY, gatewayURL=gw.url)))
+        monkeypatch.setenv("BURNBAR_MCP_TOOLSET", "memory")
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT", "1")
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE", "1")
+        monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN", "1")
+        monkeypatch.setenv(me.MEMORY_DB_PATH_ENV, str(tmp_path / "extract_forced.sqlite"))
+        server = _load_server()
+        monkeypatch.setattr(server, "_signed_cli_path", lambda: None)
+        server._memory_provider_override = me.FakeEmbeddingProvider()
+        repo = _repo(tmp_path)
+
+        result = json.loads(
+            server.burnbar_memory_extract(
+                messages=[{"role": "user", "content": "Deploys run from the release branch."}],
+                project_path=repo,
+                review_status="approved",
+            )
+        )
+        assert result.get("summary", {}).get("ADD") == 1, result
+        assert [decision["reviewStatus"] for decision in result["decisions"]] == ["quarantined"], result
+        assert json.loads(server.burnbar_recall(query="release branch", project_path=repo))["results"] == []

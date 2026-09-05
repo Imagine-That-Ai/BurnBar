@@ -1775,4 +1775,261 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             "an unauthenticated ordering key must not be able to name any instant it likes"
         )
     }
+
+    // MARK: - P4 / A1(ii): optional sealed lineage members at v2
+
+    /// The lineage advice rides INSIDE the ciphertext. Encoding it must not move
+    /// the payload version and must not add a plaintext envelope key: the
+    /// `firestore.rules` `hasOnly` allowlist bounds the envelope, not its contents.
+    func test_payload_encodes_previous_body_hash_and_writer_device_at_version_two() throws {
+        let fixture = try makeFixture(uid: "p4-encode", vaultKeyByte: 91)
+        let engineID = "mem_4444444444444444444444444444cccc"
+        let memory = Memory(
+            id: "local-p4",
+            sourceKind: .agent,
+            kind: .fact,
+            scope: MemoryScope(userID: fixture.uid, appID: "p4-app"),
+            confidence: 0.9,
+            bodyRedacted: "ref",
+            reviewStatus: .approved,
+            citations: [],
+            validFrom: Self.base,
+            createdAt: Self.base,
+            updatedAt: Self.base
+        )
+        let encoded = try MemoryCloudSyncService.encodeMemoryFact(
+            memory: memory,
+            body: "Release trains leave on Tuesday.",
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base,
+            documentIdentity: engineID,
+            bodyHash: "hash-new",
+            projectID: "proj_1f2e3d4c5b6a79880123456789abcdef",
+            engineScope: "project",
+            previousBodyHash: "hash-old",
+            writerDevice: "device-a"
+        )
+
+        let aad = try CloudVaultAADContext(
+            uid: fixture.uid,
+            collection: "memory_facts",
+            docID: encoded.docID,
+            field: "sealedMemory"
+        )
+        let envelope = try XCTUnwrap(CloudVaultCrypto.decodeBlobEnvelope(from: encoded.data["sealedMemory"]))
+        let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: fixture.vaultKey, aadContext: aad)
+
+        let payload = try decodePayload(String(decoding: plaintext, as: UTF8.self))
+        XCTAssertEqual(payload.schemaVersion, 2, "new sealed members are optional at v2; the version never moves")
+        XCTAssertEqual(MemoryCloudFactPayload.currentSchemaVersion, 2)
+        XCTAssertEqual(payload.previousBodyHash, "hash-old")
+        XCTAssertEqual(payload.writerDevice, "device-a")
+
+        // The plaintext envelope is unchanged. Asserting the WHOLE key set, not
+        // the absence of the two fields someone happened to be thinking about:
+        // this is the set `firestore.rules`' `validMemoryFactKeys()` allowlist
+        // bounds (`firestore.rules`, `match /users/{userId}/memory_facts/…`,
+        // whose `hasOnly` list additionally permits `vaultGeneration` and
+        // `rewrapJobId`, which only the rewrap job writes). Any NEW plaintext
+        // field fails here on the day it is added, whatever it is called.
+        XCTAssertEqual(
+            Set(encoded.data.keys),
+            [
+                "uid",
+                "docID",
+                "schemaVersion",
+                "sourceKind",
+                "kind",
+                "reviewStatus",
+                "sealedMemory",
+                "sourceRefHmacs",
+                "citationCount",
+                "validFrom",
+                "updatedAt",
+                "replicatedAt"
+            ],
+            "a new plaintext envelope key needs a firestore.rules change and a review, not a default"
+        )
+        XCTAssertEqual(encoded.data["schemaVersion"] as? Int, 1, "the ENVELOPE version is separate and stays 1")
+    }
+
+    /// I3: the writer's device id is populated in production, not just encodable.
+    /// It rides INSIDE the ciphertext (never on the outer document, never in a
+    /// log line), and `previousBodyHash` stays nil because the mirror exposes no
+    /// predecessor hash today.
+    func test_an_uploaded_fact_carries_the_writing_device_inside_the_ciphertext() async throws {
+        let device = try makeFixture(uid: "p4-writer", vaultKeyByte: 93)
+        let engineID = "mem_5555555555555555555555555555dddd"
+        let now = Self.base
+
+        try await seedMirroredMemory(
+            device,
+            id: "mem-local-writer",
+            engineID: engineID,
+            body: "Ship the sealed lineage fields.",
+            bodyHash: "hash-writer",
+            projectID: "proj_1f2e3d4c5b6a79880123456789abcdef",
+            engineScope: "project",
+            now: now
+        )
+
+        let upload = try await MemoryCloudSyncService(store: device.store, firestoreGateway: device.gateway)
+            .syncApprovedMemories(
+                uid: device.uid,
+                vaultKey: device.vaultKey,
+                now: now,
+                writerDevice: "device-installation-7f3a"
+            )
+        XCTAssertEqual(upload.uploaded, 1)
+
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(engineID)", keyData: device.vaultKey)
+        let document = try XCTUnwrap(device.gateway.documentData(at: "\(device.factsPath)/\(docID)"))
+        let aad = try CloudVaultAADContext(
+            uid: device.uid,
+            collection: "memory_facts",
+            docID: docID,
+            field: "sealedMemory"
+        )
+        let envelope = try XCTUnwrap(CloudVaultCrypto.decodeBlobEnvelope(from: document["sealedMemory"]))
+        let payload = try decodePayload(
+            String(decoding: try CloudVaultCrypto.openBlob(envelope, keyData: device.vaultKey, aadContext: aad), as: UTF8.self)
+        )
+
+        XCTAssertEqual(payload.writerDevice, "device-installation-7f3a")
+        XCTAssertNil(
+            payload.previousBodyHash,
+            "the Mac writer has no predecessor hash to send; the mirror does not expose one"
+        )
+        // Sealed, not observable: the outer document gained no key for it, and
+        // the value appears nowhere in the plaintext half of the document.
+        XCTAssertFalse(Set(document.keys).contains("writerDevice"))
+        XCTAssertFalse(
+            document.filter { $0.key != "sealedMemory" }
+                .description
+                .contains("device-installation-7f3a")
+        )
+    }
+
+    /// M1: forward tolerance, pushed through the lane that actually admits a
+    /// document. The unknown member survives the ceiling check, the AAD binding
+    /// and the plaintext allowlist and reaches the inbox intact — which decoding
+    /// the fixture in isolation cannot show, because `JSONDecoder` drops unknown
+    /// keys either way.
+    func test_a_v2_document_with_an_unknown_member_merges_through_the_pull_service() async throws {
+        let device = try makeFixture(uid: "p4-forward", vaultKeyByte: 95)
+        let url = try XCTUnwrap(
+            Bundle(for: MemoryCloudFactFixtureMarker.self)
+                .url(forResource: "v2-with-unknown-member", withExtension: "json"),
+            "AgentLensTests/Fixtures/MemoryCloudFact/v2-with-unknown-member.json must be bundled; "
+                + "add it under AgentLensTests/Fixtures and re-run xcodegen"
+        )
+        // The fixture's own instants are fixed text; the pull is bounded below by
+        // a 90-day watermark floor, so the document is restamped to the suite's
+        // base instant. Every other member, `futureField` included, is the
+        // committed fixture byte for byte.
+        var fixtureObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        )
+        let stamp = ISO8601DateFormatter().string(from: Self.base)
+        fixtureObject["validFrom"] = stamp
+        fixtureObject["updatedAt"] = stamp
+        XCTAssertEqual(fixtureObject["futureField"] as? String, "x", "the fixture is the point of this test")
+        let plaintext = try JSONSerialization.data(withJSONObject: fixtureObject, options: [.sortedKeys])
+
+        let engineID = try XCTUnwrap(fixtureObject["memoryID"] as? String)
+        let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(engineID)", keyData: device.vaultKey)
+        let aad = try CloudVaultAADContext(
+            uid: device.uid,
+            collection: "memory_facts",
+            docID: docID,
+            field: "sealedMemory"
+        )
+        let sealed = try CloudVaultCrypto.sealBlob(plaintext, keyData: device.vaultKey, aadContext: aad)
+        device.gateway.setDocumentData(
+            [
+                "uid": device.uid,
+                "docID": docID,
+                "schemaVersion": 1,
+                "sourceKind": MemorySourceKind.agent.rawValue,
+                "kind": MemoryKind.fact.rawValue,
+                "reviewStatus": MemoryReviewStatus.approved.rawValue,
+                "sealedMemory": try CloudVaultCrypto.firestoreDictionary(sealed),
+                "sourceRefHmacs": [String](),
+                "citationCount": 0,
+                "validFrom": Self.base,
+                "updatedAt": Self.base,
+                "replicatedAt": Self.base
+            ],
+            at: "\(device.factsPath)/\(docID)"
+        )
+
+        let result = try await device.pull.pullRemoteFacts(uid: device.uid, vaultKey: device.vaultKey)
+        XCTAssertEqual(result, MemoryCloudPullResult(applied: 1, unchanged: 0, rejected: 0))
+
+        let rows = try await inboxRows(device)
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(row.engineMemoryID, engineID)
+        XCTAssertTrue(
+            row.payloadJSON.contains("futureField"),
+            "the parked plaintext is the document's, so the engine sees the member this build ignores"
+        )
+        let payload = try decodePayload(row.payloadJSON)
+        XCTAssertEqual(payload.schemaVersion, 2)
+        XCTAssertEqual(payload.projectID, "proj_burnbar")
+        XCTAssertEqual(payload.engineScope, "project")
+        XCTAssertEqual(
+            MemoryCloudFactPayload.currentSchemaVersion,
+            2,
+            "an unknown member is tolerated by decoding, NOT by raising the ceiling"
+        )
+    }
+
+    /// An older client seals a payload without either member. The reader opens it.
+    func test_a_payload_omitting_the_new_fields_still_decodes() throws {
+        let payload = try decodePayload(#"""
+        {
+          "schemaVersion": 2,
+          "memoryID": "mem_00112233445566778899aabbccddeeff",
+          "text": "Release trains leave on Tuesday.",
+          "kind": "fact",
+          "scope": { "userID": "usr_test", "appID": "openburnbar" },
+          "confidence": 0.9,
+          "citations": [],
+          "validFrom": "2026-09-05T00:00:00Z",
+          "updatedAt": "2026-09-05T00:00:00Z"
+        }
+        """#)
+
+        XCTAssertEqual(payload.schemaVersion, 2)
+        XCTAssertNil(payload.previousBodyHash)
+        XCTAssertNil(payload.writerDevice)
+    }
+
+    /// Forward tolerance (A1(i)): a v2 payload carrying a member this build has
+    /// never heard of opens anyway, and the reader's ceiling stays at 2 — so a
+    /// future field is additive rather than a fleet-wide park.
+    func test_a_v2_payload_with_an_unknown_member_still_decodes() throws {
+        let url = try XCTUnwrap(
+            Bundle(for: MemoryCloudFactFixtureMarker.self)
+                .url(forResource: "v2-with-unknown-member", withExtension: "json"),
+            "AgentLensTests/Fixtures/MemoryCloudFact/v2-with-unknown-member.json must be bundled; "
+                + "add it under AgentLensTests/Fixtures and re-run xcodegen"
+        )
+        let payload = try decodePayload(String(contentsOf: url, encoding: .utf8))
+
+        XCTAssertEqual(payload.schemaVersion, 2)
+        XCTAssertEqual(payload.memoryID, "mem_00112233445566778899aabbccddeeff")
+        XCTAssertEqual(payload.projectID, "proj_burnbar")
+        XCTAssertEqual(payload.engineScope, "project")
+        XCTAssertEqual(
+            MemoryCloudFactPayload.currentSchemaVersion,
+            2,
+            "an unknown member is tolerated by decoding, NOT by raising the ceiling"
+        )
+    }
 }
+
+/// Marker so `Bundle(for:)` resolves the `OpenBurnBarTests` resource bundle, where
+/// `AgentLensTests/Fixtures/MemoryCloudFact` is copied by the resources build phase.
+private final class MemoryCloudFactFixtureMarker {}

@@ -38,6 +38,13 @@ def sha256_hex(data: bytes | str) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def canonical_body_hash(body: str) -> str:
+    # NOTE: The daemon-mirror hash (server.py:2075, server.py:2172, _admin.py:420 -> engine_meta key
+    # daemon_mirror:<id>) is a different, non-lowered hash in a different namespace and must never
+    # be folded into this helper.
+    return sha256_hex(body.lower())
+
+
 def _json_dumps(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
@@ -49,6 +56,23 @@ def _json_loads(value: Any, default: Any) -> Any:
         return json.loads(value)
     except (TypeError, ValueError):
         return default
+
+
+def _receipt_payload(raw: Any) -> dict[str, Any] | None:
+    """The parsed payload of an inbox entry, or None when it is not a JSON object."""
+    if not isinstance(raw, dict):
+        return None
+    payload = raw.get("payload")
+    if not isinstance(payload, dict):
+        payload = _json_loads(raw.get("payloadJSON") or raw.get("payload_json"), None)
+    return payload if isinstance(payload, dict) else None
+
+
+def _convergence_key(project_id: str, scope: str, body_hash: str) -> str:
+    """§5's convergence identity `(project_id, scope, body_hash)`, as one
+    point-lookup key. Both the forget receipt and the convergence ledger are
+    keyed by it."""
+    return sha256_hex(f"{project_id}|{scope}|{body_hash}")[:32]
 
 
 def _truthy(value: str | None) -> bool:
@@ -157,3 +181,16 @@ def _normalize_expiration(expires_at: str | None) -> str | None:
     if parsed is None:
         raise ValueError("expiresAt must be a valid ISO-8601 timestamp")
     return text
+
+
+def fail_closed_refusal(status: str, code: str, reason: str | None, project_id: str, root: Any) -> dict[str, Any]:
+    from .store import project_payload
+
+    return {
+        "status": status,
+        "code": code,
+        "reason": reason,
+        "summary": {event: 0 for event in ("ADD", "UPDATE", "NONE", "DELETE", "REJECT")},
+        "decisions": [],
+        **project_payload(project_id, root),
+    }

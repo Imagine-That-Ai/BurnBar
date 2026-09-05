@@ -962,3 +962,147 @@ def test_mirror_marks_engine_rows_as_syncable_agent_facts(server_env: Path, monk
     ):
         assert server._memory_mirror_remember(skipped, "/tmp/fixture")["status"] == "skipped"
     assert len(sent) == before, "secret, quarantined and expiring rows never reach the daemon"
+
+
+def test_all_body_hash_write_paths_agree_on_mixed_case(tmp_path: Path) -> None:
+    """P2 / A0: write, update, and remote-merge paths must compute the same body_hash on mixed-case text."""
+    engine = _engine(tmp_path)
+    repo = _repo(tmp_path, "canonical-repo")
+    project_id, _ = me.store.resolve_project(engine.conn, repo)
+    body_text = "Deploy From Release Branch On Fridays."
+    expected_hash = me.canonical_body_hash(body_text)
+
+    # 1. Write path: remember()
+    repo_write = _repo(tmp_path, "repo-write")
+    res_write = engine.remember(
+        body_text,
+        project_path=repo_write,
+        kind="decision",
+        scope="project",
+    )
+    assert res_write["status"] == "ok"
+    write_id = res_write["memoryID"]
+    row_write = engine.conn.execute("SELECT body_hash FROM memories WHERE id = ?", (write_id,)).fetchone()
+    assert row_write is not None
+    assert row_write["body_hash"] == expected_hash
+
+    # 2. Update path: update()
+    repo_update = _repo(tmp_path, "repo-update")
+    res_seed = engine.remember(
+        "Initial body before update.",
+        project_path=repo_update,
+        kind="decision",
+        scope="project",
+    )
+    update_id = res_seed["memoryID"]
+    res_update = engine.update(update_id, text=body_text)
+    assert res_update.get("status") == "ok"
+    row_update = engine.conn.execute("SELECT body_hash FROM memories WHERE id = ?", (update_id,)).fetchone()
+    assert row_update is not None
+    assert row_update["body_hash"] == expected_hash
+
+    # 3. Merge path: merge_remote()
+    repo_merge = _repo(tmp_path, "repo-merge")
+    project_id_merge, _ = me.store.resolve_project(engine.conn, repo_merge)
+    merge_id = "mem_00112233445566778899aabbccddeeff"
+    doc = {
+        "docID": "doc_canonical_1",
+        "userID": "usr_test",
+        "engineMemoryID": merge_id,
+        "payloadJSON": json.dumps(
+            {
+                "schemaVersion": 2,
+                "memoryID": merge_id,
+                "text": body_text,
+                "kind": "decision",
+                "scope": {"userID": "usr_test", "appID": "openburnbar"},
+                "confidence": 0.9,
+                "citations": [],
+                "validFrom": "2026-09-05T00:00:00Z",
+                "updatedAt": "2026-09-05T00:00:00Z",
+                "validTo": None,
+                "supersededBy": None,
+                "tags": [],
+                "bodyHash": None,
+                "projectID": project_id_merge,
+                "engineScope": "project",
+            }
+        ),
+        "remoteUpdatedAt": "2026-09-05T00:00:00Z",
+    }
+    res_merge = engine.merge_remote([doc])
+    assert res_merge["applied"] == 1
+    row_merge = engine.conn.execute("SELECT body_hash FROM memories WHERE id = ?", (merge_id,)).fetchone()
+    assert row_merge is not None
+    assert row_merge["body_hash"] == expected_hash
+
+    # All three paths produced byte-identical canonical body hashes
+    assert row_write["body_hash"] == row_update["body_hash"] == row_merge["body_hash"] == expected_hash
+
+
+def test_canonical_body_hash_is_not_the_daemon_mirror_hash(tmp_path: Path) -> None:
+    """P2 / A0: canonical_body_hash is lowered; daemon_mirror hash is non-lowered in a distinct namespace."""
+    mixed_text = "MixedCaseTextWithSymbols!123"
+    assert me.canonical_body_hash(mixed_text) != me.sha256_hex(mixed_text)
+    assert me.canonical_body_hash(mixed_text) == me.sha256_hex(mixed_text.lower())
+
+    engine = _engine(tmp_path)
+    engine.record_daemon_mirror(
+        "mem_mixed_1",
+        "legacy_mixed_1",
+        body_hash=me.sha256_hex(mixed_text),
+        project_path=str(tmp_path),
+    )
+    mirror_hash = engine.daemon_mirror_body_hash("mem_mixed_1")
+    assert mirror_hash == me.sha256_hex(mixed_text)
+    assert mirror_hash != me.canonical_body_hash(mixed_text)
+
+
+def test_recall_why_reports_the_fusion_it_actually_used(tmp_path: Path) -> None:
+    """B9 / P13: `why` is a readout of the ranking, not a second opinion about it.
+
+    The daemon's ranker and the app's explanation line both quote these numbers,
+    so they have to be the ones the engine ranked on. This recomputes the fused
+    score from the components `why` reports, using the weights in
+    `constants.py`, and asserts it reproduces the score the recall returned — so
+    a changed weight, a changed `RRF_K`, or a `why` that reports something other
+    than what was scored all fail here rather than shipping a plausible-looking
+    explanation of a different ranking.
+    """
+    engine = _engine(tmp_path)
+    repo = _repo(tmp_path, "why-repo")
+    for text in (
+        "The deploy pipeline publishes container images to the internal registry.",
+        "Container images are signed before the registry accepts them.",
+        "Standups are at 09:30 on weekdays.",
+    ):
+        assert engine.remember(text, project_path=repo, kind="fact")["status"] == "ok"
+
+    result = engine.recall("container registry images", project_path=repo, limit=10)
+    assert result["results"], "the fixture query must match something"
+
+    for hit in result["results"]:
+        why = hit["why"]
+        assert set(why) == {
+            "lexicalRank",
+            "bm25",
+            "semanticRank",
+            "cosine",
+            "salience",
+            "recency",
+            "rerankScore",
+            "reranker",
+        }
+        lexical_rank, semantic_rank = why["lexicalRank"], why["semanticRank"]
+        assert lexical_rank is not None or semantic_rank is not None
+        semantic_active = any(item["why"]["semanticRank"] for item in result["results"])
+        lexical_weight = me.RRF_LEXICAL_WEIGHT if semantic_active else 1.0
+        fusion = (lexical_weight / (me.RRF_K + lexical_rank) if lexical_rank else 0.0) + (
+            me.RRF_SEMANTIC_WEIGHT / (me.RRF_K + semantic_rank) if semantic_rank else 0.0
+        )
+        fusion /= (lexical_weight + (me.RRF_SEMANTIC_WEIGHT if semantic_active else 0.0)) / (me.RRF_K + 1)
+        expected = fusion * (0.6 + 0.4 * why["salience"]) * why["recency"]
+        assert hit["score"] == pytest.approx(expected, rel=1e-3), hit["memoryID"]
+
+    scores = [hit["score"] for hit in result["results"]]
+    assert scores == sorted(scores, reverse=True), "results are returned in fused-score order"
