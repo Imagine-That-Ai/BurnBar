@@ -431,7 +431,7 @@ CREATE UNIQUE INDEX agent_memory_bodies_engine_idx ON agent_memory_bodies(engine
 -- Memory MCP engine drains unapplied rows through the daemon and stamps
 -- applied_at; a re-pulled document with the same remote_updated_at is a no-op.
 CREATE TABLE agent_memory_inbox (
-  doc_id            TEXT NOT NULL PRIMARY KEY,  -- pensieveSlugHmac("memory-fact:<engine id>")
+  doc_id            TEXT PRIMARY KEY,           -- pensieveSlugHmac("memory-fact:<engine id>")
   user_id           TEXT NOT NULL,
   engine_memory_id  TEXT NOT NULL,
   payload_json      TEXT NOT NULL,

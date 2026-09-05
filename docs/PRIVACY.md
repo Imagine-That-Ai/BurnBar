@@ -94,6 +94,8 @@ Every field in a stored `memory_facts` document is on the server's own allowlist
 
 Turning the feature off stops all replication; deleting a memory writes a forget receipt that carries only opaque hashes and a coarse reason. This lane requires an active paid entitlement and is off by default.
 
+**What a hard forget leaves behind, and why.** Deleting a memory destroys its body, its vectors, its history, its relations and its citations. What survives, on this Mac only, is a *receipt*: the memory's id plus a SHA-256 hash of the text you deleted, kept in the memory engine's own metadata. It exists so that syncing cannot undo your decision — your other devices still hold that memory and keep offering it back, and the only way to recognise the thing you deleted, once its text is gone, is to compare hashes of it. Being honest about what that costs: the hash is unsalted, so it is a durable equality oracle. It cannot be turned back into your text, but anyone with local access to this store *and* an exact guess at what the memory said could confirm the guess. It has no expiry today, it never leaves this Mac, and it is never backed up or replicated. Deleting the memory store file itself is what removes it.
+
 ### Optional Diagnostics (opt-in only)
 
 If you enable crash reporting or diagnostics, anonymized crash reports may be sent to Sentry. This is disabled by default.
