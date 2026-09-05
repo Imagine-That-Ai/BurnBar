@@ -62,7 +62,11 @@ struct ReceiptDrawerView: View {
                 contentSplitView
             }
         }
-        .frame(minWidth: 780, minHeight: 560)
+        // No hard minimum here: `OpenBurnBarWindowManager` already applies
+        // `.frame(minWidth: 840, minHeight: 600)` at both window call sites, and as
+        // a dashboard section this view must compress like every sibling route
+        // rather than overflow the 1040x650 dashboard window minimum.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(drawerBackground)
         .task {
             await reloadReceipts()
