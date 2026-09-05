@@ -33,6 +33,29 @@ struct CloudVaultRotationRewrapWorker {
         )
     ]
 
+    /// The domains whose documents the rewrap pass re-seals, in the order it
+    /// walks them. Named rather than inlined so the set is greppable and
+    /// testable: the collections that get rewrapped are the ones a rotation must
+    /// not strand, and "which collections are those" was previously answerable
+    /// only by reading the registry and this filter together.
+    ///
+    /// `users/{uid}/memory_facts` is in it through the `pensieve` domain
+    /// (`document_envelopes`), which is what carries Memory Blind Sync's sealed
+    /// memories across a vault-key rotation: `rewrapCollection` opens every
+    /// `[String: Any]` field under the AAD naming its own collection, document
+    /// and field name, so `sealedMemory` is re-sealed under
+    /// `(uid, "memory_facts", docID, "sealedMemory")` — exactly the AAD
+    /// `MemoryCloudPullService.verify` requires — and stamped with the new
+    /// `vaultGeneration` / `rewrapJobId`. Spec §6.
+    static var documentRewrapDomains: [DataDomain] {
+        DataDomains.all.filter { $0.cloudVaultRewrapStrategy?.hasPrefix("document") == true }
+    }
+
+    /// Every `users/{uid}/…` collection `documentRewrapDomains` covers.
+    static var documentRewrapCollectionIDs: [String] {
+        documentRewrapDomains.flatMap(\.firestorePaths)
+    }
+
     var batchLimit: Int = 50
     var firestore: Firestore = .firestore()
     var encryptedCloudClient: SessionLogEncryptedCloudClient = FirebaseSessionLogEncryptedCloudClient()
@@ -58,7 +81,7 @@ struct CloudVaultRotationRewrapWorker {
         var rewrapped = 0
         var changed = 0
 
-        for domain in DataDomains.all where domain.cloudVaultRewrapStrategy?.hasPrefix("document") == true {
+        for domain in Self.documentRewrapDomains {
             if domain.cloudVaultRewrapStrategy == "document_and_storage_envelopes" {
                 try await checkpoint(
                     jobRef: jobRef,

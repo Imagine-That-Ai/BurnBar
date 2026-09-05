@@ -76,6 +76,7 @@ public sealed partial class WindowsSqlCipherProvisioner
         "v63_standing_orders",
         "v64_token_usage_start_time_index",
         "v65_memory_quarantine_bodies",
+        "v66_agent_memory_bodies",
         CurrentMigrationEndpoint,
     };
 

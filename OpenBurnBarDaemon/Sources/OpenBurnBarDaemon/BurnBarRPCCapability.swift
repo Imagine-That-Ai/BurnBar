@@ -170,9 +170,12 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         // `memoryModelPolicy` mints a 15-minute gateway bearer that can spend
         // under the member's consented providers: agency, not a store read, so
         // read-only and run-client peers never get it (cliSupport is method-scoped).
-        case .memoryRemember, .memoryReviewStatus, .memoryForget, .memoryModelPolicy:
+        // `memorySyncInboxAck` stamps `applied_at` on inbox rows, so it is a
+        // write even though it merges nothing itself.
+        case .memoryRemember, .memoryReviewStatus, .memoryForget, .memoryModelPolicy,
+             .memorySyncInboxAck:
             return .memoryWrite
-        case .memoryRecall, .memoryAuditTrail, .memoryAnalytics:
+        case .memoryRecall, .memoryAuditTrail, .memoryAnalytics, .memorySyncInboxList:
             return .memoryRead
         case .codeIndexProject, .codeWatchProject:
             return .codeWrite
@@ -245,12 +248,17 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
     public static let cliSupport = methodScoped([
         .health,
         // The signed CLI courier the Python MCP uses on signed installs
-        // (`openburnbar-cli search-sql|memory-remember|memory-forget`).
-        // `BurnBarCLISocketClient` implements all three.
+        // (`openburnbar-cli search-sql|memory-remember|memory-forget|
+        // memory-model-policy|memory-sync-inbox-list|memory-sync-inbox-ack`).
+        // `BurnBarCLISocketClient` implements every entry below.
         .searchSQL,
         .memoryRemember,
         .memoryForget,
         .memoryModelPolicy,
+        // Memory Blind Sync PR-2: the engine drains the verified remote facts the
+        // app parked and acknowledges what it merged, over the same courier.
+        .memorySyncInboxList,
+        .memorySyncInboxAck,
         .controllerSummary,
         .questionsList,
         .followupsList,

@@ -118,4 +118,4 @@ Two coherent PRs, per the CHEAP_FAST standing rule.
 | Project | `xcodegen generate --spec project.yml` then `scripts/ci/verify-xcodegen-pbxproj-drift.py` |
 | Ratchets, secrets | `scripts/debt/check-*`; `gitleaks detect --log-opts=origin/main..HEAD` |
 
-Rollback: every task is a plain revert; the only schema change is one additive engine table.
+Rollback: every APP task is a plain revert (ciphertext nothing reads, inbox rows nothing drains). The **engine** task is not: it bumps `ENGINE_SCHEMA_VERSION` 1 → 2, and the shipped v1 engine refuses a store stamped newer at open, so reverting it fails every memory operation rather than degrading. **The Python half of this PR is roll-forward-only, and the PR body must name it.** The v2 engine makes the *next* bump revertable — an additive-only newer schema now opens with a warning instead of being refused (spec §9). The only SQLite change is one additive engine table (`sync_state`) plus the app's additive `v67_agent_memory_inbox`.

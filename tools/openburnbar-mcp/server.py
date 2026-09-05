@@ -29,6 +29,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
@@ -370,9 +371,9 @@ def _signed_cli_path() -> str | None:
     return None
 
 
-def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
+def _signed_cli_read(command: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     """
-    Run one read-only query through the signed CLI. Returns None when no signed
+    Run one daemon read through the signed CLI. Returns None when no signed
     binary is present, so the caller can fall back to the direct socket (which
     is what dev builds, where the peer gate is off, actually want).
     """
@@ -381,7 +382,7 @@ def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
     try:
         completed = subprocess.run(
-            [cli, "search-sql"],
+            [cli, command],
             input=json.dumps(payload).encode("utf-8"),
             capture_output=True,
             timeout=20,
@@ -398,9 +399,17 @@ def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
     return decoded if isinstance(decoded, dict) else None
 
 
+def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """One read-only query through the signed CLI; None when there is no courier."""
+    return _signed_cli_read("search-sql", payload)
+
+
 _SIGNED_MEMORY_COMMANDS = {
     "daemon.memory.remember": "memory-remember",
     "daemon.memory.forget": "memory-forget",
+    # Blind sync: marking an inbox document merged is a write, so it travels the
+    # same trusted-courier path a remember does.
+    "daemon.memory.sync.inbox.ack": "memory-sync-inbox-ack",
 }
 
 
@@ -3076,6 +3085,147 @@ def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: st
     return json.dumps(result, indent=2, default=str)
 
 
+# --- Memory Blind Sync: the pull half of
+# docs/superpowers/specs/2026-09-03-memory-blind-sync-design.md ---------------
+#
+# Task 4 verifies each sealed `memory_facts` document, opens it with the vault
+# key the app holds, and parks the plaintext in the control plane's
+# `agent_memory_inbox`. The engine never sees that key: it drains the inbox
+# through the daemon, merges under §5, and acknowledges only what it finished
+# with. The daemon rejects this Python process as a peer on signed installs, so
+# both halves go through the trusted CLI courier there and fall back to the
+# direct socket on dev builds, exactly as the search and remember paths do.
+
+
+def _memory_sync_inbox_list(project_id: str | None, limit: int) -> dict[str, Any]:
+    """The unmerged documents the daemon is holding for this device.
+
+    `projectID` rides along for the daemon's audit trace only: an engine memory
+    id is globally unique and carries no project, so the inbox is member-scoped
+    and the result is deliberately NOT narrowed by it.
+    """
+    params = {"projectID": project_id, "limit": max(1, min(int(limit), 1_000))}
+    result = _signed_cli_read("memory-sync-inbox-list", params)
+    if result is None:
+        try:
+            result = pcm.call_daemon("daemon.memory.sync.inbox.list", params, timeout_seconds=15.0)
+        except Exception as exc:  # noqa: BLE001 — every failure is one structured status
+            reason = str(exc)
+            return {
+                "status": "unavailable",
+                "code": "DAEMON_PEER_REJECTED" if "code-signature" in reason else "DAEMON_UNREACHABLE",
+                "reason": reason[:300],
+            }
+    entries = result.get("entries")
+    if not isinstance(entries, list):
+        return {"status": "unavailable", "code": "INVALID_INBOX_RESPONSE", "reason": "no entries in the daemon reply"}
+    return {"status": "ok", "entries": [item for item in entries if isinstance(item, dict)]}
+
+
+_MEMORY_SYNC_DECISION_BODY_FIELDS = ("text", "tags", "entities")
+
+
+def _memory_wrap_sync_decision(decision: dict[str, Any]) -> dict[str, Any]:
+    """One merge decision: ids, counts and labels — never another device's body.
+
+    The engine no longer puts `text`/`tags`/`entities` on a decision (the inbox
+    is account-wide, so they could belong to another project); this strips them
+    defensively should any path reintroduce one, and fences the remaining
+    free-text field (`reason`) as untrusted.
+    """
+    wrapped = {key: value for key, value in decision.items() if key not in _MEMORY_SYNC_DECISION_BODY_FIELDS}
+    record_id = str(decision.get("memoryID") or decision.get("docID") or "unknown")
+    if "reason" in wrapped:
+        wrapped["reason"] = _memory_wrap_auxiliary(
+            wrapped["reason"], source_tool="burnbar_memory_sync_pull", record_id=record_id, field="reason"
+        )
+    return wrapped
+
+
+def _memory_sync_inbox_ack(doc_ids: Sequence[str]) -> dict[str, Any]:
+    """Mark the documents the merge finished with. Idempotent on the daemon side."""
+    if not doc_ids:
+        return {"status": "ok", "acknowledged": 0}
+    authority = _memory_write_authority("daemon.memory.sync.inbox.ack", {"docIDs": list(doc_ids)})
+    if authority.get("mode") != "daemon":
+        return {
+            "status": "unavailable",
+            "code": str(authority.get("code") or "DAEMON_WRITE_REQUIRED"),
+            "reason": str(authority.get("reason") or "")[:300],
+            "acknowledged": 0,
+        }
+    result = authority.get("result") or {}
+    return {"status": "ok", "acknowledged": int(result.get("acknowledged") or 0)}
+
+
+@mcp.tool()
+def burnbar_memory_sync_pull(project_path: str | None = None, limit: int = 200) -> str:
+    """
+    Merge this member's memories from their other devices into the local engine store.
+
+    Drains the daemon's blind-sync inbox — sealed `memory_facts` documents the
+    app already verified and opened — and folds them in under last-writer-wins
+    on `updatedAt`, converging on `(project_id, scope, body_hash)`. Every row
+    passes the same gate a `burnbar_remember` does, a memory this device forgot
+    is never revived, and a supersede whose target has not arrived is parked for
+    the next pull rather than dropped. Only the documents the merge finished
+    with are acknowledged.
+
+    The counts: `applied` rows landed, `reinforced` folded into a row that
+    already held the same fact, `unchanged` were already applied or lost
+    last-writer-wins, `refused` will never be merged (a failed gate, a forgotten
+    memory, a document that can never be keyed) and are acknowledged so they
+    stop being offered, and `parked` are the ones this pull could not finish
+    with — an unarrived supersede target, a payload sealed by a newer engine —
+    which the next pull is offered again.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_memory_sync_pull", "memory"):
+        return limited
+    if denied := _capability_denial("burnbar_memory_sync_pull", "memory_write"):
+        return denied
+    empty = {
+        "status": "ok",
+        "applied": 0,
+        "reinforced": 0,
+        "parked": 0,
+        "refused": 0,
+        "unchanged": 0,
+        "acked": 0,
+        "watermark": {},
+        "decisions": [],
+    }
+    with _memory_engine() as engine:
+        try:
+            project_id: str | None = me.resolve_project(engine.conn, project_path)[0]
+        except ValueError:
+            project_id = None
+        listed = _memory_sync_inbox_list(project_id, limit)
+        if listed.get("status") != "ok":
+            return json.dumps(listed, indent=2, default=str)
+        entries = listed["entries"]
+        if not entries:
+            return json.dumps(empty, indent=2, default=str)
+        merged = engine.merge_remote(entries)
+    acknowledged = _memory_sync_inbox_ack(merged["ackDocIDs"])
+    payload = {
+        "status": "ok",
+        "applied": merged["applied"],
+        "reinforced": merged["reinforced"],
+        "parked": merged["parked"],
+        "refused": merged["refused"],
+        "unchanged": merged["unchanged"],
+        "acked": acknowledged.get("acknowledged", 0),
+        "watermark": merged["watermark"],
+        # Remote bodies are content this device did not write and no local user
+        # approved. Every one leaves the tool wrapped — unlike a local write
+        # decision, where an approved body is the caller's own text coming back.
+        "decisions": [_memory_wrap_sync_decision(decision) for decision in merged["decisions"]],
+    }
+    if acknowledged.get("status") != "ok":
+        payload["ackFailure"] = {"code": acknowledged.get("code"), "reason": acknowledged.get("reason")}
+    return json.dumps(payload, indent=2, default=str)
+
+
 @mcp.tool()
 def burnbar_memory_reindex(project_path: str | None = None, all_projects: bool = False) -> str:
     """Embed every active memory missing a vector for the current embedding model version and purge stale-version vectors."""
@@ -5321,6 +5471,7 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_memory_export",
         "burnbar_memory_import",
         "burnbar_memory_reindex",
+        "burnbar_memory_sync_pull",
         "burnbar_memory_doctor",
         "burnbar_audit_trail",
         "burnbar_memory_analytics",

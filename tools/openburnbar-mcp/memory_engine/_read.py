@@ -928,6 +928,14 @@ class _ReadPath:
                 memory_id,
             ),
         )
+        # The member's edit is a writer like any other, so it keys its new body
+        # to this row in the convergence ledger. This is the entry that lets a
+        # device which authored and then edited a fact entirely locally still
+        # recognise another device's copy of the body it moved on from, instead
+        # of storing it as a second active row. Recorded unconditionally: a
+        # scope change re-keys the same body, and re-recording an unchanged one
+        # is idempotent. See `_sync.py::_record_convergence_identity`.
+        self._record_convergence_identity(existing.project_id, new_scope, body_hash, memory_id)
         if changes.get("body"):
             self.conn.execute("DELETE FROM memory_relations WHERE memory_id = ?", (memory_id,))
             for subject, predicate, obj in extract_relations(body_after):
@@ -1059,6 +1067,11 @@ class _ReadPath:
         }
 
     def _purge(self, memory_id: str, rowid: int, *, preserve_daemon_mirror: bool = False) -> None:
+        # A hard forget is this device's decision, and blind sync must not undo
+        # it: record the receipt before the row is gone, keyed both by id and by
+        # the `(project_id, scope, body_hash)` identity a remote copy converges
+        # on, so the same fact cannot come back under another engine's id.
+        self._record_forget_receipt(memory_id)
         self.conn.execute("DELETE FROM memory_vectors WHERE memory_rowid = ?", (rowid,))
         self.conn.execute("DELETE FROM memory_history WHERE memory_id = ?", (memory_id,))
         self.conn.execute("DELETE FROM memory_relations WHERE memory_id = ?", (memory_id,))
@@ -1068,6 +1081,18 @@ class _ReadPath:
         # A replay receipt that points at this memory must not claim it still exists.
         self.conn.execute("DELETE FROM memory_ingest WHERE decisions_json LIKE ?", (f'%"memoryID":"{memory_id}"%',))
         self.conn.execute("UPDATE memories SET superseded_by = NULL WHERE superseded_by = ?", (memory_id,))
+        # A foreign engine id that folded into this row now points at nothing, and
+        # neither the row's applied-remote mark nor the convergence ledger entries
+        # that key a body to it can outlive the row they describe.
+        self.conn.execute(
+            "DELETE FROM engine_meta WHERE key LIKE 'memory_alias:%' AND value = ?",
+            (memory_id,),
+        )
+        self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (f"sync_mark:{memory_id}",))
+        self.conn.execute(
+            "DELETE FROM engine_meta WHERE key LIKE 'sync_identity:%' AND value = ?",
+            (memory_id,),
+        )
         self.conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
 
     def forget_all(

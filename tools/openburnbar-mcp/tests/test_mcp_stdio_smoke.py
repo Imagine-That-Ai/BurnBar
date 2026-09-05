@@ -122,6 +122,7 @@ def test_memory_toolset_over_stdio(tmp_path: Path) -> None:
             "burnbar_forget",
             "burnbar_memory_doctor",
             "burnbar_memory_ask",
+            "burnbar_memory_sync_pull",
         } <= names
         # The toolset filter applied at startup is exactly the server's declared memory toolset.
         assert names == set(_load_server().MEMORY_TOOLSET)
@@ -158,6 +159,11 @@ def test_memory_toolset_over_stdio(tmp_path: Path) -> None:
         assert client.call("burnbar_memory_get", {"memory_id": stored["memoryID"]})["status"] == "not_found"
         trail = client.call("burnbar_audit_trail", {"project_path": repo})
         assert trail["chain"]["ok"] is True
+        # Blind sync: no daemon is reachable in this fixture, so the pull tool
+        # must say so as a structured status rather than raising through the
+        # protocol. That it answers at all is what pins its registration.
+        pull = client.call("burnbar_memory_sync_pull", {"project_path": repo})
+        assert pull["status"] == "unavailable" and pull["code"] == "DAEMON_UNREACHABLE"
     finally:
         client.close()
     assert client.proc.returncode == 0

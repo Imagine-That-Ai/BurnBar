@@ -26,6 +26,7 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_forget` / `burnbar_forget_all` | **Write** hard deletes with label-only audit; bulk delete needs `confirm="DELETE"` plus the `selection_token` from the preview |
 | `burnbar_audit_trail` / `burnbar_memory_analytics` | Label-only audit hash chain with verification; store statistics (counts by kind/scope/sensitivity, embedding coverage, vault entries, policy) |
 | `burnbar_memory_entities` / `_relations` / `_export` / `_import` / `_reindex` | Entities, relations, JSON export/import, re-embed for the active model version |
+| `burnbar_memory_sync_pull` | **Write** Memory Blind Sync: merge this member's memories from their other devices — last-writer-wins on `updatedAt`, convergence on `(project_id, scope, body_hash)`, the same gate a `burnbar_remember` passes, and a forgotten memory is never revived |
 | `burnbar_index_project` | **Write** local Project Code Memory index through the daemon write path |
 | `burnbar_search_code` | Search indexed local project code with untrusted snippet wrappers |
 | `burnbar_code_context_pack` | Build token-budgeted context from indexed code |
@@ -45,6 +46,8 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_inbox_plans_get` | Read one Founder Plan in full: steps, grades, mission/follow-up links |
 
 Memories are also collected automatically: the Claude Code `SessionEnd` hook `tools/openburnbar-mcp/hooks/claude-code-session-end.sh` memorizes each session transcript through `burnbar_memorize` (same gate, encryption, and audit; `OPENBURNBAR_MEMORY_SESSION_HOOK=off` disables it). See the README section "Automatic collection from Claude Code sessions".
+
+If this member syncs memories across devices, call `burnbar_memory_sync_pull` ONCE near the start of a session in a synced project, before your first `burnbar_recall`. It merges what their other Macs learned into this store; without it, those memories are parked and invisible to recall here. It is idempotent and returns immediately when nothing is pending, and it is a no-op when device sync is off. The opt-in `SessionStart` hook `tools/openburnbar-mcp/hooks/claude-code-session-start.sh` does the same thing automatically when `OPENBURNBAR_MEMORY_SYNC_HOOK=on`; if you can see that it ran, do not call the tool again.
 
 ## Setup
 

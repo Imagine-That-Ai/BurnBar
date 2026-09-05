@@ -179,6 +179,48 @@ extension ControlPlaneStore {
         }
     }
 
+    /// Convergence metadata a mirrored memory's sealed payload carries (§5 of the
+    /// blind-sync design): the row's tags, the engine's body hash, and the engine's
+    /// own `(project_id, scope)` — the three parts of `UNIQUE(project_id, scope,
+    /// body_hash)`, which folds a fact learned independently on two devices into
+    /// one row on arrival. The payload's `scope` field is the app's `MemoryScope`
+    /// and names no engine project, so the identity has to travel separately.
+    struct MemoryCloudFactAttributes: Equatable, Sendable {
+        let tags: [String]
+        let bodyHash: String?
+        let projectID: String?
+        let engineScope: String?
+    }
+
+    func memoryCloudFactAttributes(id: MemoryID) async throws -> MemoryCloudFactAttributes {
+        try await dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: "SELECT tags_json, project_id, scope FROM agent_memories WHERE id = ?",
+                arguments: [id]
+            )
+            let tagsJSON: String? = row?["tags_json"]
+            let projectID: String? = row?["project_id"]
+            let engineScope: String? = row?["scope"]
+            let bodyHash = try String.fetchOne(
+                db,
+                sql: "SELECT body_hash FROM agent_memory_bodies WHERE memory_id = ?",
+                arguments: [id]
+            )
+            var tags: [String] = []
+            if let tagsJSON, let data = tagsJSON.data(using: .utf8) {
+                // try?-ok(a malformed tags blob degrades to no tags; it must not fail the memory's upload)
+                tags = (try? JSONDecoder().decode([String].self, from: data)) ?? []
+            }
+            return MemoryCloudFactAttributes(
+                tags: tags,
+                bodyHash: (bodyHash?.isEmpty == false) ? bodyHash : nil,
+                projectID: (projectID?.isEmpty == false) ? projectID : nil,
+                engineScope: (engineScope?.isEmpty == false) ? engineScope : nil
+            )
+        }
+    }
+
     func openChatMemoryBody(id: MemoryID) async throws -> String? {
         let snapshotSlug = Self.memorySnapshotSlug(id)
         return try await dbQueue.read { db in

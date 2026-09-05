@@ -74,7 +74,14 @@ final class BurnBarCLITests: XCTestCase {
     /// must pass under every canonical name.
     func testStartupPreflightAllowsTheSignedCourierCommands() {
         for executable in ["/tmp/OpenBurnBarCLI", "/tmp/openburnbar-cli", "/tmp/burnbar", "/tmp/openburnbar"] {
-            for command in ["search-sql", "memory-remember", "memory-forget", "memory-model-policy"] {
+            for command in [
+                "search-sql",
+                "memory-remember",
+                "memory-forget",
+                "memory-model-policy",
+                "memory-sync-inbox-list",
+                "memory-sync-inbox-ack"
+            ] {
                 XCTAssertNil(
                     BurnBarCLIRunner.startupPreflightResult(arguments: [command], invokedExecutablePath: executable),
                     "\(command) must pass preflight under \(executable)"
@@ -370,6 +377,43 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertEqual(object["auditHash"] as? String, "audit-forget")
     }
 
+    /// Memory Blind Sync, engine side. On a signed install the Python memory
+    /// engine cannot dial the daemon socket, so the drain has to travel through
+    /// this courier — the same route as `search-sql` and `memory-remember`.
+    func testMemorySyncInboxListReadsJSONAndReturnsTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runMemorySyncInboxList(input: Data(#"{"projectID":"proj_fixture","limit":10}"#.utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+        let entries = try XCTUnwrap(object["entries"] as? [[String: Any]])
+
+        XCTAssertEqual(entries.first?["docID"] as? String, "doc-fixture")
+        XCTAssertEqual(
+            entries.first?["userID"] as? String,
+            "member-fixture",
+            "the account a parked fact belongs to travels so the engine can audit it"
+        )
+        XCTAssertEqual(entries.first?["engineMemoryID"] as? String, "mem_fixture")
+        XCTAssertEqual(entries.first?["payloadJSON"] as? String, #"{"text":"pulled fact"}"#)
+    }
+
+    func testMemorySyncInboxAckReadsJSONAndReturnsTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runMemorySyncInboxAck(input: Data(#"{"docIDs":["doc-a","doc-b"]}"#.utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+
+        XCTAssertEqual(object["acknowledged"] as? Int, 2)
+        XCTAssertEqual(object["traceID"] as? String, "trace-inbox-ack")
+    }
+
+    /// Malformed input is refused by the courier before the socket is opened, so
+    /// a broken caller gets a usage error rather than an `unauthorized` from the
+    /// daemon.
+    func testMemorySyncInboxCommandsRejectMalformedInput() {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        XCTAssertThrowsError(try runner.runMemorySyncInboxList(input: Data("not json".utf8)))
+        XCTAssertThrowsError(try runner.runMemorySyncInboxAck(input: Data(#"{"docIDs":"not-an-array"}"#.utf8)))
+    }
+
     func testChatQueryCommandsEmitStableJSON() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let threads = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try runner.run(arguments: ["chat", "threads", "--query", "release", "--limit", "7"]).utf8)) as? [String: Any])
@@ -561,6 +605,29 @@ struct FakeCLIClient: BurnBarCLIClient {
             membershipUpdatedAt: "2026-09-01T00:00:00Z",
             code: nil
         )
+    }
+
+    func memorySyncInboxList(
+        _ request: BurnBarMemorySyncInboxListRequest
+    ) throws -> BurnBarMemorySyncInboxListResponse {
+        BurnBarMemorySyncInboxListResponse(
+            traceID: "trace-inbox-list",
+            entries: Array([
+                BurnBarMemorySyncInboxEntry(
+                    docID: "doc-fixture",
+                    userID: "member-fixture",
+                    engineMemoryID: "mem_fixture",
+                    payloadJSON: #"{"text":"pulled fact"}"#,
+                    remoteUpdatedAt: "2026-09-04T00:00:01.000Z"
+                )
+            ].prefix(max(0, request.limit)))
+        )
+    }
+
+    func memorySyncInboxAck(
+        _ request: BurnBarMemorySyncInboxAckRequest
+    ) throws -> BurnBarMemorySyncInboxAckResponse {
+        BurnBarMemorySyncInboxAckResponse(traceID: "trace-inbox-ack", acknowledged: request.docIDs.count)
     }
 
     func memoryRemember(_ request: BurnBarProjectMemoryRememberRequest) throws -> BurnBarProjectMemoryRememberResponse {

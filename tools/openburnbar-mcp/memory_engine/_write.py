@@ -620,6 +620,11 @@ class _WritePath:
                 quarantine_labels=reinforce_injection,
                 reactivate=_is_expired(exact["expires_at"], now),
             )
+            # This row holds this body: say so in the convergence ledger, so a
+            # later local edit that moves the body on cannot leave another
+            # device's copy of it keyed to nothing here. See
+            # `_sync.py::_record_convergence_identity`.
+            self._record_convergence_identity(project_id, scope, body_hash, str(exact["id"]))
             if gate.action == "retain" and gate.vault_body is not None:
                 # Different secrets redact to the same body: keep the vault current.
                 changed = self._rotate_vault(str(exact["id"]), project_id, gate)
@@ -839,6 +844,14 @@ class _WritePath:
                 ),
             )
             rowid = int(self.conn.execute("SELECT rowid FROM memories WHERE id = ?", (memory_id,)).fetchone()["rowid"])
+        # §5's convergence identity, recorded by the LOCAL writer as well as by
+        # the merge. The live `UNIQUE(project_id, scope, body_hash)` lookup only
+        # answers while this row still holds this body, and a later local edit
+        # moves it on; without this entry another device's independently-learned
+        # copy of the superseded body would key to nothing here and land as a
+        # second active row, while every device that received the same two
+        # revisions by merge folded it into one.
+        self._record_convergence_identity(project_id, scope, body_hash, memory_id)
         if vector is not None:
             self.conn.execute(
                 "INSERT INTO memory_vectors (memory_rowid, embedding_version, dimension, vector) VALUES (?, ?, ?, ?)",
@@ -1102,12 +1115,20 @@ class _WritePath:
         labels: Sequence[str] = (),
         quarantine_labels: Sequence[str] = (),
         reactivate: bool = False,
+        stamp_updated_at: bool = True,
     ) -> dict[str, Any]:
         """Merge a duplicate into `memory_id`.
 
         `incoming_body` is the *gated* body of the duplicate; it is recorded in
         the encrypted history column, never in plaintext meta. `reactivate`
         clears an expired row's expiry (to the incoming fact's, if any).
+
+        `stamp_updated_at=False` is the blind-sync merge: `updated_at` is the
+        row's last *writer* mark, and a duplicate arriving from another device is
+        not a writer on this one. Stamping this device's wall clock there would
+        make the row look newer than every remote revision authored before the
+        merge ran, and the genuinely newer edit would then lose last-writer-wins
+        for ever.
         """
         row = self._get_row(memory_id)
         if row is None:
@@ -1127,20 +1148,28 @@ class _WritePath:
         else:
             review_status = existing.review_status
         sensitivity = "secret" if fact.sensitivity == "secret" else existing.sensitivity
-        self.conn.execute(
-            "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, salience = ?, review_status = ?, sensitivity = ?, updated_at = ? WHERE id = ?",
-            (
-                _json_dumps(merged_tags),
-                _json_dumps(merged_entities),
-                confidence,
-                access,
-                self.compute_salience(existing.kind, confidence, access),
-                review_status,
-                sensitivity,
-                ts,
-                memory_id,
-            ),
-        )
+        columns: list[Any] = [
+            _json_dumps(merged_tags),
+            _json_dumps(merged_entities),
+            confidence,
+            access,
+            self.compute_salience(existing.kind, confidence, access),
+            review_status,
+            sensitivity,
+        ]
+        if stamp_updated_at:
+            columns.append(ts)
+            self.conn.execute(
+                "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, "
+                "salience = ?, review_status = ?, sensitivity = ?, updated_at = ? WHERE id = ?",
+                (*columns, memory_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, "
+                "salience = ?, review_status = ?, sensitivity = ? WHERE id = ?",
+                (*columns, memory_id),
+            )
         if reactivate:
             self.conn.execute("UPDATE memories SET expires_at = ? WHERE id = ?", (fact.expires_at, memory_id))
         meta = {"reason": reason, "incomingHash": sha256_hex(incoming_body.lower())[:16], "labels": sorted(set(labels))}
@@ -1267,7 +1296,14 @@ class _WritePath:
             found.update(str(row["id"]) for row in self.conn.execute(missing_sql, chunk).fetchall())
         return [item for item in wanted if item not in found]
 
-    def _retire(self, memory_id: str, *, reason: str, replacement: str | None) -> bool:
+    def _retire(self, memory_id: str, *, reason: str, replacement: str | None, remote_at: str | None = None) -> bool:
+        """Close a row out. `remote_at` is the blind-sync merge: the retirement
+        instant comes from the remote revision that caused it, and `updated_at` —
+        the row's last *writer* mark, which last-writer-wins reads — is left
+        alone, because a merge is not a local write. Stamping this device's clock
+        there would make every remote revision authored before the merge ran look
+        stale for ever.
+        """
         row = self._get_row(memory_id)
         if row is None or row["valid_to"] is not None:
             return False
@@ -1281,11 +1317,17 @@ class _WritePath:
                 {"reason": reason, "replacement": replacement},
             )
             return False
-        ts = now_iso()
-        self.conn.execute(
-            "UPDATE memories SET valid_to = ?, superseded_by = ?, updated_at = ? WHERE id = ?",
-            (ts, replacement, ts, memory_id),
-        )
+        if remote_at is None:
+            ts = now_iso()
+            self.conn.execute(
+                "UPDATE memories SET valid_to = ?, superseded_by = ?, updated_at = ? WHERE id = ?",
+                (ts, replacement, ts, memory_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE memories SET valid_to = ?, superseded_by = ? WHERE id = ?",
+                (remote_at, replacement, memory_id),
+            )
         self._history(
             memory_id, str(row["project_id"]), "retired", None, None, {"reason": reason, "replacement": replacement}
         )

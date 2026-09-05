@@ -10,6 +10,14 @@ final class ControlPlaneStore: Sendable {
     static let chatMemoryAuthorityWritesEnabledByDefault = true
 
     let dbQueue: any DatabaseWriter
+    /// Monotonic count of memory device-sync consent WITHDRAWALS on this store.
+    /// Bumped inside the same database transaction as every withdrawal
+    /// (`ControlPlaneStore+MemorySyncInbox.swift`) and read by
+    /// `MemoryDeviceSyncInboxGuard` BEFORE it captures the scope it is about to
+    /// enforce, so a publish whose scope predates a withdrawal is refused
+    /// instead of republishing a departed member's consent. Process-local on
+    /// purpose: the daemon never publishes, and no enforcement outlives the app.
+    let memoryDeviceSyncGeneration = Locked<UInt64>(0)
 
     init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue

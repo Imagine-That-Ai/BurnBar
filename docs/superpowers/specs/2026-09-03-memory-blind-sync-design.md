@@ -97,4 +97,10 @@ No fourth switch. The existing "Back up approved memories" opt-in (`MemorySettin
 
 ## 9. Rollback
 
-Additive throughout: one mirror field, one body snapshot, one pull service, one engine merge path, one settings sub-toggle, two widened rule fields, one collection added to the rewrap set. Reverting the app half leaves ciphertext nothing reads; reverting the engine half leaves rows nothing drains. No migration destroys data.
+Additive throughout: one mirror field, one body snapshot, one pull service, one engine merge path, one settings sub-toggle, two widened rule fields, one collection added to the rewrap set. No migration destroys data.
+
+**The app half is a plain revert.** Reverting it leaves ciphertext nothing reads and inbox rows nothing drains.
+
+**The Python half of THIS bump is roll-forward-only.** `ENGINE_SCHEMA_VERSION` goes 1 → 2, and the v1 engine's version gate refuses any store stamped newer *at open* — so reverting the engine half does not degrade a store that has already run v2, it fails every memory operation on it. That check lives in the shipped v1 engine and cannot be changed retroactively; the only recovery is to roll forward again, or to point `OPENBURNBAR_MEMORY_DB_PATH` at a different store. **This is a named risk of PR 2 and belongs in its PR body.**
+
+The v2 engine closes it for every future bump: a store stamped newer than the running engine now opens with a warning when the newer schema only ADDED tables and columns (everything this engine reads is still present), and is refused only when something it reads is gone (`memory_engine/store.py::ensure_schema`, `_newer_store_is_additive_only`; `tests/test_store_migrations.py::test_open_tolerates_a_newer_store_whose_extra_objects_are_additive`). A tolerated store keeps its own newer stamp, so the newer engine takes it back unharmed. A future bump that REMOVES a table or column is therefore still not revertable and must say so.

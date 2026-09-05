@@ -34,6 +34,13 @@ struct PrivacyIndexingSettingsView: View {
     @State private var openAIKeySaved = false
     @State private var reembedStatusMessage: String?
     @State private var reembedErrorMessage: String?
+    /// Live Data Vault entitlement (Pro Max or Ultra), the same gate the
+    /// cloud-models section unlocks against. Feeds `memoryDeviceSyncEntitlementSatisfied`
+    /// so the device-sync row's presentation gate never needs its own Firebase
+    /// dependency.
+    @ObservedObject private var deviceSyncEntitlement = MacCloudEntitlementStore.shared
+    @State private var showDeviceSyncUnlockSheet = false
+    private static let deviceSyncGatedFeature = GatedFeature.gatedFeature(.dataVault)
 
     /// Opt-in analytics consent toggle. Reads/writes the shared tri-state consent
     /// store and notifies the recorder so the Amplitude SDK starts on grant and
@@ -138,6 +145,8 @@ struct PrivacyIndexingSettingsView: View {
                         subtitle: "Off by default. When on, only memories you approve are replicated to your cloud vault, end-to-end sealed. Declining keeps every memory on this Mac.",
                         isOn: $settingsManager.memoryApprovedCloudBackupOptIn
                     )
+
+                    deviceSyncRow
 
                     MemoryCloudModelsSection(settingsManager: settingsManager)
 
@@ -466,6 +475,10 @@ struct PrivacyIndexingSettingsView: View {
                 refreshHealth()
                 refreshEmbeddingLineage()
             }
+            refreshDeviceSyncEntitlement()
+        }
+        .onChange(of: deviceSyncEntitlement.cloudTier) { _, _ in
+            refreshDeviceSyncEntitlement()
         }
         .onChange(of: settingsManager.conversationIndexingEnabled) { _, newValue in
             Analytics.shared.track(.settingsChanged, [
@@ -772,6 +785,128 @@ struct PrivacyIndexingSettingsView: View {
                 settingsManager.chatThreadContentCloudBackupConsentShown = true
             }
         )
+    }
+
+    /// Pushes the live Data Vault tier into the settings coordinator's
+    /// non-persisted entitlement snapshot. Idempotent — safe from `.onAppear`
+    /// and every `.onChange(of: deviceSyncEntitlement.cloudTier)` firing.
+    /// `MemoryCloudSyncDomain` refreshes the same lever on every sync cycle, so
+    /// the pull's gate does not depend on this view having appeared.
+    private func refreshDeviceSyncEntitlement() {
+        deviceSyncEntitlement.start()
+        settingsManager.memoryDeviceSyncEntitlementSatisfied = deviceSyncIsUnlocked
+    }
+
+    /// The live Data Vault entitlement, resolved exactly the way
+    /// `MemoryCloudModelsSection` resolves it for its own veil.
+    private var deviceSyncIsUnlocked: Bool {
+        deviceSyncEntitlement.cloudTier.satisfies(Self.deviceSyncGatedFeature.requiredTier)
+    }
+
+    /// "Sync memories to my other devices". Below the Data Vault tier the row
+    /// sits behind `LockedFeatureVeil` with a real unlock path, mirroring
+    /// `MemoryCloudModelsSection` — a member who cannot use the feature is shown
+    /// what it is and how to get it, not a dead grey switch. The other two
+    /// levers (the backup opt-in and the fleet ceiling) keep the plain disabled
+    /// + explanatory-subtitle treatment, because those the member can resolve
+    /// on this same screen or not at all.
+    @ViewBuilder
+    private var deviceSyncRow: some View {
+        Group {
+            if deviceSyncIsUnlocked {
+                deviceSyncToggle
+            } else {
+                LockedFeatureVeil(
+                    headline: "Sync memories to my other devices",
+                    detail: "Pro. Approved memories your other signed-in devices backed up are pulled down onto this Mac, end-to-end sealed. BurnBar never sees them.",
+                    ctaLabel: "See Pro",
+                    icon: "arrow.triangle.2.circlepath",
+                    action: { showDeviceSyncUnlockSheet = true },
+                    background: { deviceSyncToggle.disabled(true) }
+                )
+            }
+        }
+        .settingsAnchor(SettingsAnchor.indexingMemoryDeviceSync)
+        .sheet(isPresented: $showDeviceSyncUnlockSheet) {
+            FeatureUnlockSheet(feature: Self.deviceSyncGatedFeature)
+        }
+    }
+
+    /// The switch itself — off by default, and reading off whenever the
+    /// effective gate is closed (sub-toggle off, backup opt-in off, the fleet
+    /// ceiling closed, or no Data Vault entitlement) regardless of what the raw
+    /// sub-toggle is persisted as, so a greyed-out switch never appears to
+    /// silently be on.
+    private var deviceSyncToggle: some View {
+        SettingsToggle(
+            title: "Sync memories to my other devices",
+            subtitle: deviceSyncSubtitle,
+            isOn: deviceSyncBinding
+        )
+        .disabled(!settingsManager.memoryDeviceSyncRowUnlocked)
+    }
+
+    private var deviceSyncSubtitle: String {
+        // The fleet ceiling FIRST. `memoryApprovedCloudBackupEnabled` folds the
+        // Remote Config ceiling into the user opt-in, so a fleet kill switch
+        // used to render as "Turn on 'Back up approved memories' first" while
+        // that toggle visibly read ON — telling the member to do something they
+        // had already done and that would not have helped.
+        if !settingsManager.memoryExtractionRemoteConfigEnabled {
+            return "Temporarily unavailable — memory sync is paused for all OpenBurnBar users. Nothing you can change on this Mac affects it; it comes back on its own."
+        }
+        if !settingsManager.memoryApprovedCloudBackupEnabled {
+            return "Turn on \"Back up approved memories\" first. Off by default — pulls your approved memories back down from your other signed-in devices too."
+        }
+        if !settingsManager.memoryDeviceSyncEntitlementSatisfied {
+            return "Requires the Data Vault plan (Pro Max or Ultra). Off by default — pulls your approved memories back down from your other signed-in devices too."
+        }
+        return "Off by default. When on, approved memories your other signed-in devices backed up are pulled down and merged into this Mac's memory too."
+    }
+
+    private var deviceSyncBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.memoryDeviceSyncRowEnabled },
+            set: { isOn in
+                settingsManager.memoryDeviceSyncOptIn = isOn
+                enforceDeviceSyncInboxScope()
+            }
+        )
+    }
+
+    /// Applies the member's decision to the inbox at once, rather than on the
+    /// next sync tick. Turning device sync OFF withdraws consent for facts that
+    /// are already parked and not yet merged, so those go now and the daemon's
+    /// consent marker is withdrawn with them — a member who flips the switch off
+    /// and immediately runs an agent must not have a pending drain land anyway.
+    /// `MemoryCloudSyncDomain` enforces the same scope every cycle; this is the
+    /// immediacy the switch itself promises.
+    private func enforceDeviceSyncInboxScope() {
+        guard let store = runtimeContext?.chatMemoryStore else { return }
+        // Generation BEFORE scope — see `MemoryDeviceSyncInboxGuard.observeGeneration`.
+        let observedGeneration = MemoryDeviceSyncInboxGuard.observeGeneration(store: store)
+        // The SAME computation `MemoryCloudSyncDomain.gateSnapshot()` uses, by
+        // construction. Built here from `memoryDeviceSyncEnabled` alone, this
+        // path published a fresh daemon consent marker for a member whose
+        // ACCOUNT-wide cloud sync was off — pending remote facts could then
+        // drain into the engine until the next refresh tick withdrew it.
+        let scope = MemoryDeviceSyncScope.current(account: accountManager, settings: settingsManager)
+        Task {
+            do {
+                try await MemoryDeviceSyncInboxGuard.enforce(
+                    scope: scope,
+                    observedGeneration: observedGeneration,
+                    store: store
+                )
+            } catch {
+                // The next sync tick enforces the same scope, so a failure here
+                // delays the purge rather than losing it.
+                AppLogger.sync.error(
+                    "memory_device_sync_toggle_inbox_guard_failed",
+                    metadata: ["error_type": String(describing: type(of: error))]
+                )
+            }
+        }
     }
 
     // MARK: - Helper Views

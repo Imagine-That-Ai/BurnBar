@@ -1,0 +1,1150 @@
+import FirebaseFirestore
+import Foundation
+import OpenBurnBarKernel
+
+// MARK: - Memory cloud PULL (Memory Blind Sync PR-2)
+//
+// The read-back half of `MemoryCloudSyncService.syncApprovedMemories`. That
+// service seals approved memory facts into `users/{uid}/memory_facts`; this one
+// reads the same collection above a durable watermark, opens each envelope with
+// the member's vault key, REFUSES anything that does not verify, and parks the
+// plaintext in the `agent_memory_inbox` landing zone for the Memory MCP engine
+// to merge under §5 of the design.
+//
+// Two properties this file exists to hold:
+//
+//   1. **Nothing unverified is ever stored.** A document is admitted only if its
+//      envelope opens under the AAD naming THIS document id (so a blob moved
+//      between slots by a hostile backend fails), its keyed plaintext HMAC
+//      matches (`CloudVaultCrypto.openBlob` enforces this), its field set stays
+//      inside the `firestore.rules` allowlist (so a plaintext `text` field
+//      injected server-side is refused rather than read), the id sealed inside
+//      matches the id the document was keyed on, and the unauthenticated outer
+//      `updatedAt` — the ordering, watermark and idempotence key — matches the
+//      one the verified payload carries.
+//
+//   2. **The watermark never skips a document.** Rejections are counted, but the
+//      watermark stops BEFORE the first one — so a document that fails today
+//      because of a transient key state is re-examined on the next cycle instead
+//      of being silently lost. Later documents are still parked (upserts are
+//      idempotent), they just do not move the cursor.
+
+struct MemoryCloudPullResult: Equatable, Sendable {
+    /// Documents opened, verified, and newly parked (or replaced with a newer
+    /// revision) in the inbox.
+    let applied: Int
+    /// Verified documents whose revision the inbox already held — the property
+    /// that makes re-applying a whole batch free.
+    let unchanged: Int
+    /// Documents refused by verification. Never parked, never merged, and the
+    /// watermark does not advance past them.
+    let rejected: Int
+    /// Unmerged inbox rows belonging to a DIFFERENT account, dropped before this
+    /// pull wrote anything. See `purgeUnappliedRemoteMemoryFacts(otherThanUserID:)`.
+    let purgedOtherAccount: Int
+    /// Documents that verified but can never merge, so they are counted and
+    /// dropped rather than parked. See `MemoryCloudPullRejection.projectIdentityMissing`.
+    let skipped: Int
+    /// Stale unmerged rows the retention sweep dropped this cycle.
+    let sweptStale: Int
+    /// The subset of `rejected` whose reason is PERMANENT and whose instant is
+    /// verified, so the cursor moved past them instead of freezing. See
+    /// `MemoryCloudPullRejection.isPermanent`.
+    let rejectedPermanent: Int
+    /// Pages this cycle read. One is the ordinary case; more means the device is
+    /// catching up, and hitting `maxPagesPerCycle` means it will carry on next
+    /// cycle.
+    let pagesRead: Int
+    /// Forget receipts parked for the engine this cycle — the retirements a
+    /// device that already merged a fact would otherwise never hear about.
+    let receiptsApplied: Int
+    /// Receipt documents refused by verification. Never parked; the receipt
+    /// cursor freezes in front of them.
+    let receiptsRejected: Int
+    /// Receipts this cycle parked with — or retro-fitted to carry — the PLAIN
+    /// engine id rather than the opaque HMAC the cloud document names. The
+    /// engine holds no key material, so an unresolved receipt is a terminal
+    /// no-op there; this counts the retirements that can actually be applied.
+    let receiptsResolved: Int
+
+    init(
+        applied: Int,
+        unchanged: Int,
+        rejected: Int,
+        purgedOtherAccount: Int = 0,
+        skipped: Int = 0,
+        sweptStale: Int = 0,
+        rejectedPermanent: Int = 0,
+        pagesRead: Int = 1,
+        receiptsApplied: Int = 0,
+        receiptsRejected: Int = 0,
+        receiptsResolved: Int = 0
+    ) {
+        self.applied = applied
+        self.unchanged = unchanged
+        self.rejected = rejected
+        self.purgedOtherAccount = purgedOtherAccount
+        self.skipped = skipped
+        self.sweptStale = sweptStale
+        self.rejectedPermanent = rejectedPermanent
+        self.pagesRead = pagesRead
+        self.receiptsApplied = receiptsApplied
+        self.receiptsRejected = receiptsRejected
+        self.receiptsResolved = receiptsResolved
+    }
+}
+
+/// Why a remote memory-fact document was refused. Surfaced as a log dimension
+/// only: the reason must never reach a model path or a UI string that a hostile
+/// document could therefore steer.
+enum MemoryCloudPullRejection: String, Sendable {
+    /// A field outside the `firestore.rules` `memory_facts` allowlist — including
+    /// a plaintext `text`, `body`, or `citations` the rules forbid on write.
+    case disallowedField = "disallowed_field"
+    /// `sealedMemory` missing or not a blob envelope.
+    case malformedEnvelope = "malformed_envelope"
+    /// The envelope did not open: wrong key, tampered ciphertext/tag, or an AAD
+    /// that names a different uid / collection / document / field.
+    case sealedOpenFailed = "sealed_open_failed"
+    /// The opened bytes are not a memory-fact payload this build understands.
+    case malformedPayload = "malformed_payload"
+    /// The id sealed inside does not derive the id the document is keyed on, so
+    /// the document and its contents disagree about which memory this is.
+    case identityMismatch = "identity_mismatch"
+    /// No usable `updatedAt`, so the row could not be ordered or watermarked.
+    case missingUpdatedAt = "missing_updated_at"
+    /// The unauthenticated outer `updatedAt` disagrees with the verified copy the
+    /// sealed payload carries. The outer field is what orders the page, moves the
+    /// watermark and decides idempotence, and it sits outside the AAD — a backend
+    /// that rewrites it could skip the cursor past a document or make a stale
+    /// revision win. Binding it to the sealed copy closes that.
+    case updatedAtMismatch = "updated_at_mismatch"
+    /// The envelope claims a payload schema this build cannot read. Forward
+    /// compatibility, not an attack: a newer device sealed it.
+    case unsupportedSchema = "unsupported_schema"
+    /// The verified payload carries no engine `projectID`, so the engine can
+    /// never key it for §5's `(project_id, scope, body_hash)` convergence and
+    /// would refuse it as terminal on every drain. Chat memories carry none by
+    /// construction, and `users/{uid}/memory_facts` has been accumulating them
+    /// since before PR 1 — so parking them would write a second plaintext copy
+    /// of the member's WHOLE chat corpus into the inbox and leave it there for
+    /// ever on any install where the engine never runs. This is the one refusal
+    /// that is benign and permanent, so it neither parks nor freezes the cursor.
+    case projectIdentityMissing = "project_identity_missing"
+
+    /// Whether a later cycle re-reading this document could ever reach a
+    /// different verdict.
+    ///
+    /// This is the difference between a document that FREEZES the cursor in
+    /// front of itself — so it is re-examined for ever — and one the cursor
+    /// moves past. Before it, every refusal froze, so a single permanently
+    /// invalid document in the first page pinned the cursor below itself on
+    /// every cycle for ever.
+    ///
+    /// A permanent refusal only moves the cursor when its instant is VERIFIED
+    /// (the envelope opened and its sealed `updatedAt` matched the outer one).
+    /// That condition is not a detail: the outer field is unauthenticated, and
+    /// advancing the cursor to an instant a hostile backend chose would skip
+    /// every document below it. No verified instant ⇒ freeze, whatever the
+    /// reason says.
+    var isPermanent: Bool {
+        switch self {
+        case .disallowedField:
+            // The document's own key set is outside the rules allowlist. Only a
+            // rewrite changes that, and a rewrite is a new revision.
+            return true
+        case .identityMismatch:
+            // The id sealed inside does not derive the id the document is keyed
+            // on. Both halves are authenticated, so this pair can never agree.
+            return true
+        case .malformedEnvelope, .sealedOpenFailed:
+            // A key state this device may not be in yet (a rotation in flight,
+            // a wrapper it has not fetched), or a backend that stops tampering.
+            return false
+        case .malformedPayload, .unsupportedSchema:
+            // A NEWER device sealed it. An app update cures this WITHOUT
+            // touching the document, so advancing past it would lose a memory
+            // that a later build could have read.
+            return false
+        case .missingUpdatedAt, .updatedAtMismatch:
+            // There is no instant to trust: `missingUpdatedAt` has none at all,
+            // and `updatedAtMismatch` means the only one on offer is the
+            // unauthenticated field a backend may have chosen. Freezing is the
+            // whole point of those two.
+            return false
+        case .projectIdentityMissing:
+            // Handled as `unmergeable` rather than a rejection: it is decided on
+            // authenticated data and already advances the cursor.
+            return true
+        }
+    }
+}
+
+/// The pull half, behind a seam.
+///
+/// A seam, not an abstraction for its own sake: the domain runs the push and
+/// then the pull inside one `sync()` call, so "what does a cycle report when the
+/// PULL fails but the push did not" is unreachable from outside without one —
+/// and that case is precisely the one that used to report `outcome: "success"`
+/// on every cycle for ever.
+protocol MemoryCloudPulling: Sendable {
+    @discardableResult
+    func pullRemoteFacts(uid: String, vaultKey: Data, since: Date?, now: Date) async throws -> MemoryCloudPullResult
+}
+
+final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
+    /// Exactly the keys `firestore.rules` permits on a `memory_facts` document.
+    /// Any other key means the document is not one this client wrote, so it is
+    /// refused rather than parsed. Kept in lockstep with `validMemoryFactKeys()`
+    /// in `firestore.rules`.
+    static let allowedDocumentFields: Set<String> = [
+        "uid",
+        "docID",
+        "schemaVersion",
+        "sourceKind",
+        "kind",
+        "reviewStatus",
+        "sealedMemory",
+        "sourceRefHmacs",
+        "citationCount",
+        "validFrom",
+        "updatedAt",
+        "replicatedAt",
+        "vaultGeneration",
+        "rewrapJobId"
+    ]
+
+    /// How far BELOW the stored cursor each cycle re-reads.
+    ///
+    /// `updatedAt` is authored by whichever device wrote the document, so one
+    /// upload from a Mac whose clock runs fast drags this collection-wide cursor
+    /// past writes that have not happened yet. Correctly-timed devices then
+    /// publish documents below the cursor, and the strictly-greater filter never
+    /// asks for them again — not even after every clock agrees. Fifteen minutes
+    /// is a generous bound on ordinary NTP drift and on the skew a laptop picks
+    /// up sleeping through a timezone change; it is a MITIGATION, not a fix, and
+    /// a device whose clock is wrong by more than this can still hide writes.
+    /// The fix is a server-authored ingestion timestamp as the transport cursor;
+    /// it needs a rules change and a Windows codec and is tracked separately.
+    ///
+    /// It costs nothing but re-reads: the upsert is keyed on
+    /// `(doc_id, remote_updated_at)`, so a document that comes back unchanged is
+    /// a no-op counted as `unchanged`.
+    static let clockSkewRescanWindow: TimeInterval = 15 * 60
+
+    /// The most pages ONE cycle reads before leaving the rest to the next one.
+    ///
+    /// The cycle pages until the collection is exhausted so a tie group larger
+    /// than `pageLimit` cannot be cut in half. That loop needs a bound, or a
+    /// device coming back to a very large store would hold the sync cycle for
+    /// as long as it took to read all of it. 25 x 200 = 5,000 documents a cycle,
+    /// and the durable cursor means the next cycle resumes where this one
+    /// stopped.
+    static let maxPagesPerCycle = 25
+
+    private let store: ControlPlaneStore
+    private let firestoreGateway: CloudSyncFirestoreGateway
+    private let watermarkStore: RemoteSyncWatermarkStore
+    private let pageLimit: Int
+
+    init(
+        store: ControlPlaneStore,
+        firestoreGateway: CloudSyncFirestoreGateway = CloudSyncFirestoreLiveGateway(),
+        pageLimit: Int = 200
+    ) {
+        self.store = store
+        self.firestoreGateway = firestoreGateway
+        self.watermarkStore = RemoteSyncWatermarkStore(dbQueue: store.dbQueue)
+        self.pageLimit = max(1, pageLimit)
+    }
+
+    /// Reads `users/{uid}/memory_facts` on the composite `(updatedAt, documentID)`
+    /// cursor above the stored watermark, verifies each document, and parks what
+    /// survives.
+    ///
+    /// Three properties this loop holds that a single `updatedAt > watermark`
+    /// page did not:
+    ///
+    ///   1. **A tie group larger than a page is fully consumed.** `updatedAt` is
+    ///      not unique — a batch of memories extracted from one message shares an
+    ///      instant — and a page filled entirely by one instant used to force the
+    ///      cursor onto that instant, so the strictly-greater filter skipped
+    ///      every tied document that did not fit, permanently. Ordering by
+    ///      `(updatedAt, documentID)` and resuming with `start(after:)` says
+    ///      exactly where to continue inside a tie.
+    ///   2. **A refusal no longer pins the later pages.** The durable cursor
+    ///      still stops in front of a refusal that might cure, but the cycle
+    ///      keeps reading and parking the pages after it — and a PERMANENT
+    ///      refusal with a verified instant does not even hold the cursor.
+    ///   3. **A device with a fast clock cannot hide later writes.** Each cycle
+    ///      re-scans `clockSkewRescanWindow` below the cursor
+    ///      (`MemoryCloudPullService.clockSkewRescanWindow`).
+    ///
+    /// - Parameter since: overrides the durable watermark, EXACTLY (no skew
+    ///   re-scan is applied to it — the caller has already chosen its floor).
+    ///   Used by tests and by a deliberate re-scan; production passes nil.
+    @discardableResult
+    func pullRemoteFacts(
+        uid: String,
+        vaultKey: Data,
+        since: Date? = nil,
+        now: Date = Date()
+    ) async throws -> MemoryCloudPullResult {
+        let queryFloor: Date
+        if let since {
+            queryFloor = since
+        } else {
+            let watermark = try await watermarkStore.fetchWatermarkOrDefault(
+                accountUid: uid,
+                collectionKind: .memoryFacts
+            )
+            // The skew re-scan. `updatedAt` is authored by whichever device wrote
+            // the document, so one upload from a Mac whose clock runs fast drags
+            // this collection-wide cursor past writes that have not happened yet;
+            // correctly-timed devices then publish documents BELOW the cursor
+            // which a strictly-greater filter never asks for again, even after
+            // every clock agrees. Re-reading a bounded window below the cursor
+            // costs one page of already-parked documents (the upsert is keyed on
+            // `(doc_id, remote_updated_at)`, so re-reading is free) and bounds
+            // that loss to the window. The principled fix is a server-authored
+            // ingestion timestamp (`FieldValue.serverTimestamp()`) as the
+            // transport cursor, with the sealed `updatedAt` kept for per-memory
+            // LWW; that needs a rules change and a Windows codec and is recorded
+            // as follow-up, not smuggled in here.
+            queryFloor = watermark.addingTimeInterval(-Self.clockSkewRescanWindow)
+        }
+
+        // Account switch. The daemon has no Firebase identity and the engine has
+        // no uid, so the app is the only party that knows which member is signed
+        // in — user scoping on the inbox is therefore owned here. Unmerged rows
+        // written under a previous account would otherwise survive indefinitely
+        // and be handed to the engine on its next drain, mixing another member's
+        // facts into this one's memory. Merged rows are left alone: the engine
+        // already has them, and the retention sweep owns their disposal.
+        let purgedOtherAccount = try await store.purgeUnappliedRemoteMemoryFacts(otherThanUserID: uid)
+        if purgedOtherAccount > 0 {
+            AppLogger.sync.error(
+                "memory_cloud_pull_purged_other_account_inbox_rows",
+                metadata: ["count": String(purgedOtherAccount)]
+            )
+        }
+
+        let factCollection = firestoreGateway
+            .collection("users")
+            .document(uid)
+            .collection("memory_facts")
+
+        let transaction = AtomicRemoteSyncTransaction(
+            dbQueue: store.dbQueue,
+            watermarkStore: watermarkStore,
+            accountUid: uid,
+            collectionKind: .memoryFacts
+        )
+
+        var applied = 0
+        var unchanged = 0
+        var rejected = 0
+        var rejectedPermanent = 0
+        var skipped = 0
+        // Forget receipts already parked under an opaque HMAC that a fact landing
+        // in THIS cycle taught this device to name. See
+        // `ControlPlaneStore.resolveParkedForgetReceipts`.
+        var receiptsResolved = 0
+        // Set by the first refusal that must be re-examined. Later documents are
+        // still parked — the upsert is idempotent, so parking them early costs
+        // nothing — but the cursor stops before the refused document so the next
+        // cycle re-reads it.
+        var watermarkFrozen = false
+        // The refused document's own instant, when it has one. `updatedAt` is not
+        // unique, so an ACCEPTED predecessor sharing that instant must not lift
+        // the cursor to it either: the query filter is strictly `>`, so a cursor
+        // sitting exactly on the refused document's instant would never read it
+        // again. Nil while nothing has been refused; nil AFTER a refusal only when
+        // that document had no usable `updatedAt` at all, in which case the cursor
+        // cannot move at all this cycle.
+        var rejectionFloor: Date?
+        // Timestamps eligible to move the cursor, decided only after every page
+        // is known (see `watermarkCeiling`).
+        var eligibleStamps: [Date] = []
+        // The composite page cursor, within this cycle only.
+        var pageCursor: (updatedAt: Date, docID: String)?
+        var pagesRead = 0
+        var exhaustedCollection = false
+
+        do {
+            while pagesRead < Self.maxPagesPerCycle {
+                var query: CloudSyncQueryGateway = factCollection
+                    .whereField("updatedAt", isGreaterThan: queryFloor)
+                    .order(by: "updatedAt", descending: false)
+                    .orderByDocumentID(descending: false)
+                if let pageCursor {
+                    query = query.start(afterOrderedValues: [pageCursor.updatedAt, pageCursor.docID])
+                }
+                let snapshot = try await query.limit(to: pageLimit).getDocuments()
+                pagesRead += 1
+                let documents = snapshot.documents
+                if documents.isEmpty {
+                    exhaustedCollection = true
+                    break
+                }
+
+                for document in documents {
+                    let data = document.data()
+                    let verified: VerifiedFact
+                    switch Self.verify(document: document.documentID, data: data, uid: uid, vaultKey: vaultKey) {
+                    case .success(let value):
+                        verified = value
+                    case .failure(let reason, let verifiedInstant):
+                        rejected += 1
+                        // A PERMANENT refusal carrying a verified instant moves
+                        // the cursor past itself: re-examining it can never reach
+                        // a different verdict, and freezing there meant one bad
+                        // document pinned the cursor below itself for ever.
+                        // Everything else — and anything without an instant a
+                        // backend could not have chosen — still freezes.
+                        let advances = reason.isPermanent && verifiedInstant != nil
+                        if advances {
+                            rejectedPermanent += 1
+                        }
+                        if !advances, !watermarkFrozen {
+                            watermarkFrozen = true
+                            // Read only for the cursor bound; nothing from a
+                            // refused document is ever stored or handed on.
+                            rejectionFloor = Self.firestoreDate(data["updatedAt"])
+                        }
+                        if advances, !watermarkFrozen, let verifiedInstant {
+                            eligibleStamps.append(verifiedInstant)
+                        }
+                        // The doc id is an opaque per-user HMAC, so logging it is
+                        // safe and it is the only way to tell one document failing
+                        // every cycle from a hundred failing once.
+                        AppLogger.sync.error(
+                            "memory_cloud_pull_document_rejected",
+                            metadata: [
+                                "reason": reason.rawValue,
+                                "doc_id": document.documentID,
+                                "permanent": String(advances)
+                            ]
+                        )
+                        continue
+                    case .unmergeable(let reason, let verifiedInstant):
+                        skipped += 1
+                        AppLogger.sync.error(
+                            "memory_cloud_pull_document_skipped",
+                            metadata: ["reason": reason.rawValue, "doc_id": document.documentID]
+                        )
+                        // The cursor moves past it — nothing is parked, nothing is
+                        // frozen — so the pull reaches the agent memories that come
+                        // after the member's chat corpus.
+                        if !watermarkFrozen {
+                            eligibleStamps.append(verifiedInstant)
+                        }
+                        continue
+                    }
+
+                    // The identity a fact-level forget receipt for THIS memory
+                    // carries. Handing it to the upsert lets the same
+                    // transaction retro-fit a receipt that arrived before its
+                    // fact — the ordering the two independent cursors make
+                    // ordinary — with the plain engine id the engine needs.
+                    let receiptHmac = try CloudVaultCrypto.pensieveSlugHmac(
+                        "memory-id:\(verified.payload.memoryID)",
+                        keyData: vaultKey
+                    )
+                    let result = try await store.upsertRemoteMemoryFact(
+                        docID: document.documentID,
+                        userID: uid,
+                        engineMemoryID: verified.payload.memoryID,
+                        payloadJSON: verified.payloadJSON,
+                        remoteUpdatedAt: verified.remoteUpdatedAt,
+                        resolvingReceiptHmac: receiptHmac,
+                        now: now
+                    )
+                    receiptsResolved += result.resolvedReceipts
+                    switch result.outcome {
+                    case .inserted, .replaced:
+                        applied += 1
+                    case .unchanged:
+                        unchanged += 1
+                    }
+                    if !watermarkFrozen {
+                        eligibleStamps.append(verified.remoteUpdatedAt)
+                    }
+                }
+
+                if documents.count < pageLimit {
+                    exhaustedCollection = true
+                    break
+                }
+                // Resume strictly after this page's last document. A document
+                // whose outer `updatedAt` is unreadable cannot anchor a cursor,
+                // so the cycle stops rather than looping on the same page.
+                guard let last = documents.last,
+                      let lastStamp = Self.firestoreDate(last.data()["updatedAt"]) else {
+                    AppLogger.sync.error("memory_cloud_pull_page_cursor_unreadable")
+                    break
+                }
+                pageCursor = (lastStamp, last.documentID)
+            }
+        } catch {
+            // A store failure must not leave the cursor past rows that never
+            // landed; the next cycle re-reads from the previous watermark.
+            transaction.rollback()
+            throw error
+        }
+        if pagesRead >= Self.maxPagesPerCycle && !exhaustedCollection {
+            // Not an error: a device catching up on a large store finishes on the
+            // next cycle. Logged because an unbroken run of it means the cycle
+            // budget is too small for this member's collection.
+            AppLogger.sync.error(
+                "memory_cloud_pull_page_budget_exhausted",
+                metadata: ["pages": String(pagesRead)]
+            )
+        }
+
+        // A refusal caps the cursor STRICTLY BELOW the refused document's instant,
+        // which drops an accepted predecessor that tied with it. If the refused
+        // document had no readable instant, nothing this cycle can move the cursor.
+        var eligible = eligibleStamps
+        if watermarkFrozen {
+            eligible = rejectionFloor.map { floor in eligibleStamps.filter { $0 < floor } } ?? []
+        }
+        // The tie guard only exists for the LAST instant this cycle actually
+        // reached. A frozen cursor already stops inside the run, below a refusal,
+        // and an exhausted collection has no cut-off tie group at all.
+        let stoppedShort = !exhaustedCollection && !watermarkFrozen
+        if let ceiling = Self.watermarkCeiling(eligibleStamps: eligible, pageWasFull: stoppedShort) {
+            for stamp in eligible where stamp <= ceiling {
+                transaction.recordProcessedItem(remoteUpdatedAt: stamp)
+            }
+        }
+        try await transaction.commit()
+        // The deletion half of convergence, on its own cursor. Deliberately
+        // AFTER the facts: a retirement that arrives in the same cycle as the
+        // revision it retires should be parked after it, so a partial drain
+        // applies them in that order too. See `pullForgetReceipts`.
+        let receipts = try await pullForgetReceipts(uid: uid, vaultKey: vaultKey, now: now)
+        if receipts.applied > 0 || receipts.rejected > 0 {
+            AppLogger.sync.info(
+                "memory_cloud_pull_receipts",
+                metadata: [
+                    "applied": String(receipts.applied),
+                    "unchanged": String(receipts.unchanged),
+                    "rejected": String(receipts.rejected),
+                    // A receipt this device could not resolve is one the engine
+                    // can only ack as unresolved, so the gap between these two
+                    // is the retirements that will never be applied here.
+                    "resolved": String(receipts.resolved),
+                    "resolved_late": String(receiptsResolved)
+                ]
+            )
+        }
+        // The other half of the merged-row sweep the daemon already runs: an
+        // unmerged row waits for an engine that may never run, so it needs a
+        // bound too. Last, so a row this cycle just parked is never swept by it.
+        let sweptStale = try await store.pruneStaleUnappliedRemoteMemoryFacts(now: now)
+        if sweptStale > 0 {
+            AppLogger.sync.error(
+                "memory_cloud_pull_swept_stale_unmerged_rows",
+                metadata: ["count": String(sweptStale)]
+            )
+        }
+        return MemoryCloudPullResult(
+            applied: applied,
+            unchanged: unchanged,
+            rejected: rejected,
+            purgedOtherAccount: purgedOtherAccount,
+            skipped: skipped,
+            sweptStale: sweptStale,
+            rejectedPermanent: rejectedPermanent,
+            pagesRead: pagesRead,
+            receiptsApplied: receipts.applied,
+            receiptsRejected: receipts.rejected,
+            receiptsResolved: receiptsResolved + receipts.resolved
+        )
+    }
+
+    /// How far the cursor may move given what this CYCLE contained.
+    ///
+    /// `updatedAt` is NOT unique: a batch of memories extracted from one message
+    /// shares an instant. A full page can therefore cut such a group in half, and
+    /// advancing to that instant — the query filter is strictly `>` — would skip
+    /// the rest of the group for ever. So on a full page the cursor stops at the
+    /// last instant BELOW the page's maximum and the next cycle re-reads the whole
+    /// group; the upsert is idempotent, so re-reading costs nothing.
+    ///
+    /// The one case that cannot be resolved this way is a full page whose every
+    /// document shares a single instant: refusing to advance would re-read the
+    /// same page for ever, so the cursor moves and the event is logged. Raising
+    /// `pageLimit` above the largest same-instant group is the mitigation.
+    static func watermarkCeiling(eligibleStamps: [Date], pageWasFull: Bool) -> Date? {
+        guard let maximum = eligibleStamps.max() else { return nil }
+        guard pageWasFull else { return maximum }
+        if let belowMaximum = eligibleStamps.filter({ $0 < maximum }).max() {
+            return belowMaximum
+        }
+        AppLogger.sync.error(
+            "memory_cloud_pull_tie_group_exceeds_page",
+            metadata: ["tie_group_size": String(eligibleStamps.count)]
+        )
+        return maximum
+    }
+
+    // MARK: - Verification
+
+    private struct VerifiedFact {
+        let payload: MemoryCloudFactPayload
+        let payloadJSON: String
+        let remoteUpdatedAt: Date
+    }
+
+    private enum VerificationOutcome {
+        case success(VerifiedFact)
+        /// Refused. `verifiedInstant` is the sealed `updatedAt` when the
+        /// envelope opened AND the outer field matched it — i.e. an instant a
+        /// backend could not have chosen. The cursor may move past a PERMANENT
+        /// refusal that carries one (`MemoryCloudPullRejection.isPermanent`);
+        /// everything else freezes the cursor in front of itself so a later
+        /// cycle re-examines it.
+        case failure(MemoryCloudPullRejection, verifiedInstant: Date?)
+        /// Refused for good, and the cursor moves past it: the document opened
+        /// and its AUTHENTICATED contents say it can never merge. Freezing here
+        /// would stall the whole pull behind the member's own chat corpus for
+        /// ever. Safe because the decision is made on data inside the AEAD — a
+        /// backend cannot strip a field to make a document skippable.
+        case unmergeable(MemoryCloudPullRejection, verifiedInstant: Date)
+    }
+
+    /// Pure, side-effect-free admission check. Everything a hostile or corrupted
+    /// document could carry is decided here, before any write.
+    ///
+    /// ORDER MATTERS, and it is not the order the checks were written in. The
+    /// AUTHENTICATED half runs first — open the envelope, decode the payload,
+    /// bind the outer ordering key to the sealed one — so that every refusal
+    /// after that point carries an instant a backend could not have chosen.
+    /// That instant is what lets a permanently invalid document advance the
+    /// cursor instead of pinning it below itself on every cycle for ever
+    /// (`MemoryCloudPullRejection.isPermanent`). The allowlist check still
+    /// refuses the document WHOLE and nothing from it is ever stored; it simply
+    /// no longer short-circuits before there is an instant to trust. Attempting
+    /// an AEAD open on a document that also carries a forbidden plaintext field
+    /// costs one decryption against the member's own key and reveals nothing.
+    private static func verify(
+        document documentID: String,
+        data: [String: Any],
+        uid: String,
+        vaultKey: Data
+    ) -> VerificationOutcome {
+        guard let envelope = CloudVaultCrypto.decodeBlobEnvelope(from: data["sealedMemory"]) else {
+            return .failure(.malformedEnvelope, verifiedInstant: nil)
+        }
+        // The AAD names THIS document. A blob relocated to another slot, or one
+        // whose stored AAD names a different doc id, fails to open here.
+        let aad: CloudVaultAADContext
+        do {
+            aad = try CloudVaultAADContext(
+                uid: uid,
+                collection: "memory_facts",
+                docID: documentID,
+                field: "sealedMemory"
+            )
+        } catch {
+            // The context refuses ids this document could never legitimately
+            // carry, so a throw here IS the admission decision, not a lost error.
+            return .failure(.sealedOpenFailed, verifiedInstant: nil)
+        }
+        // `openBlob` verifies the AEAD tag AND the keyed plaintext HMAC the
+        // envelope carries, so a tampered ciphertext or a swapped plaintext both
+        // land here as a throw.
+        let plaintext: Data
+        do {
+            plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey, aadContext: aad)
+        } catch {
+            return .failure(.sealedOpenFailed, verifiedInstant: nil)
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let payload: MemoryCloudFactPayload
+        do {
+            payload = try decoder.decode(MemoryCloudFactPayload.self, from: plaintext)
+        } catch {
+            return .failure(.malformedPayload, verifiedInstant: nil)
+        }
+        guard payload.schemaVersion >= 1,
+              payload.schemaVersion <= MemoryCloudFactPayload.currentSchemaVersion else {
+            return .failure(.unsupportedSchema, verifiedInstant: nil)
+        }
+        guard let remoteUpdatedAt = firestoreDate(data["updatedAt"]) else {
+            return .failure(.missingUpdatedAt, verifiedInstant: nil)
+        }
+        // The outer `updatedAt` is the ordering, watermark and idempotence key,
+        // and it lives OUTSIDE the AAD and the sealed box — a hostile backend can
+        // rewrite it at will, skipping the cursor past a document it wants unread
+        // or making a stale revision beat a newer one. The verified payload
+        // already carries the same instant, so requiring the two to agree binds
+        // the key to authenticated data. No new cryptography: this is a
+        // comparison of a field we already open against one we already read.
+        guard sameSealedInstant(remoteUpdatedAt, payload.updatedAt) else {
+            return .failure(.updatedAtMismatch, verifiedInstant: nil)
+        }
+        // From here down the instant is trustworthy, so a refusal may carry it.
+        //
+        // A key outside the rules allowlist means this document was not written
+        // by a first-party client. It is refused WHOLE — nothing from it is read
+        // or stored — but the cursor may now move past it, because a document
+        // whose key set the rules forbid can only become admissible by being
+        // rewritten, and a rewrite is a new revision.
+        guard Set(data.keys).isSubset(of: allowedDocumentFields) else {
+            return .failure(.disallowedField, verifiedInstant: remoteUpdatedAt)
+        }
+        // The sealed id must derive the id the document is keyed on. Without
+        // this, a document could name one memory on the outside and carry another
+        // on the inside, and the engine would merge the wrong fact.
+        let expectedDocID: String
+        do {
+            expectedDocID = try CloudVaultCrypto.pensieveSlugHmac(
+                "memory-fact:\(payload.memoryID)",
+                keyData: vaultKey
+            )
+        } catch {
+            // The id could not be derived at all, so it cannot match: the
+            // document and its sealed contents disagree about which memory
+            // this is, which is exactly `identityMismatch`.
+            return .failure(.identityMismatch, verifiedInstant: remoteUpdatedAt)
+        }
+        guard expectedDocID == documentID else {
+            return .failure(.identityMismatch, verifiedInstant: remoteUpdatedAt)
+        }
+        guard let payloadJSON = String(data: plaintext, encoding: .utf8) else {
+            return .failure(.malformedPayload, verifiedInstant: nil)
+        }
+        // Authenticated, so this is a fact about the document rather than a
+        // field a backend could have removed: a payload with no engine project
+        // id cannot be keyed for convergence and never will be. Refuse it
+        // WITHOUT parking — the engine would only refuse it as terminal on
+        // every drain, and until an agent happened to run the engine the row
+        // would sit in the inbox as a second plaintext copy of a chat memory.
+        guard let projectID = payload.projectID, !projectID.isEmpty else {
+            return .unmergeable(.projectIdentityMissing, verifiedInstant: remoteUpdatedAt)
+        }
+        return .success(VerifiedFact(
+            payload: payload,
+            payloadJSON: payloadJSON,
+            remoteUpdatedAt: remoteUpdatedAt
+        ))
+    }
+
+    /// Whether the outer `updatedAt` and the sealed one name the same instant.
+    ///
+    /// The sealed copy travelled through ISO-8601, which carries whole seconds;
+    /// the outer copy arrives as a Firestore `Timestamp` with nanosecond
+    /// precision. Sub-second disagreement is therefore the envelope's own lossy
+    /// encoding, not a difference — everything the envelope could ever have
+    /// carried must match exactly, which is what this window means. A backend
+    /// editing the ordering key is bounded to under a second of the value the
+    /// member's own device signed, rather than being free to name any instant.
+    private static func sameSealedInstant(_ outer: Date, _ sealed: Date) -> Bool {
+        abs(outer.timeIntervalSince(sealed)) < 1
+    }
+
+    /// Firestore hands dates back as `Timestamp`; the in-memory fake keeps the
+    /// `Date` it was written with. Both must resolve or the watermark cannot move.
+    private static func firestoreDate(_ value: Any?) -> Date? {
+        if let timestamp = value as? Timestamp { return timestamp.dateValue() }
+        return OpenBurnBarDatabase.parseDateValue(value)
+    }
+}
+
+// MARK: - Forget receipts (Memory Blind Sync PR-2, Codex A)
+//
+// The deletion half of convergence. `cloudSyncCandidateChatMemories` excludes
+// every row with `validTo != nil`, so a RETIRED revision is never uploaded:
+// when memory A is superseded or forgotten, its `memory_facts` document is
+// DELETED and a `memory_forget_receipts` document is written in its place. The
+// pull read only `memory_facts`, so a device that had already merged A kept it
+// active for ever — the supersede edge on B never arrived, and neither did the
+// deletion.
+//
+// Publishing the retired body instead would undo the point of the design: a
+// forget must not put the forgotten text back on the wire. So this pulls the
+// receipt channel, which is what the design made it for.
+//
+// A receipt is NOT a sealed envelope, unlike a fact: it is a plaintext document
+// of opaque keyed HMACs (`firestore.rules` bounds it to exactly the keys below),
+// because that is what makes it blind — a receipt names a memory only to a
+// device holding the member's own vault key, and reveals nothing to the backend
+// beyond "something was forgotten". Verification is therefore structural rather
+// than cryptographic, and the checks below are the client-side mirror of the
+// `memory_forget_receipts` rule, key for key.
+
+/// Why a remote forget-receipt document was refused. A log dimension only —
+/// never a model path, never a UI string.
+enum MemoryCloudReceiptRejection: String, Sendable {
+    /// A key outside the `firestore.rules` `memory_forget_receipts` allowlist,
+    /// including any of the plaintext fields the rules forbid outright.
+    case disallowedField = "receipt_disallowed_field"
+    /// `uid` or `receiptID` does not name this member / this document, so the
+    /// receipt and the slot it sits in disagree about what it is.
+    case identityMismatch = "receipt_identity_mismatch"
+    /// The HMAC/reason shape is not one of the two the rules permit (a
+    /// source-level receipt or a fact-level one), or a field is malformed.
+    case malformedReceipt = "receipt_malformed"
+    /// A schema this build does not read. Forward compatibility, not an attack.
+    case unsupportedSchema = "receipt_unsupported_schema"
+    /// No usable `replicatedAt`, or one stamped implausibly far in the future —
+    /// the ordering key of this channel is unauthenticated by construction, so
+    /// it is bounded by real time rather than trusted outright.
+    case unusableReplicatedAt = "receipt_unusable_replicated_at"
+}
+
+extension MemoryCloudPullService {
+    /// Exactly the keys `firestore.rules` permits on a `memory_forget_receipts`
+    /// document. Kept in lockstep with `validMemoryForgetReceiptKeys()`.
+    static let allowedReceiptFields: Set<String> = [
+        "uid",
+        "receiptID",
+        "schemaVersion",
+        "memoryIdHmac",
+        "sourceRefHmac",
+        "sourceRefHmacs",
+        "reason",
+        "createdAt",
+        "replicatedAt"
+    ]
+
+    /// The coarse reasons the rules allow. A receipt naming anything else was
+    /// not written by a first-party client.
+    static let allowedReceiptReasons: Set<String> = [
+        "user_delete",
+        "review_status_quarantined",
+        "review_status_rejected",
+        "clear_history",
+        "gc_30d",
+        "unknown"
+    ]
+
+    /// The receipt payload schema this build reads.
+    static let currentReceiptSchemaVersion = 1
+
+    /// The discriminator the parked row carries so the engine can tell a
+    /// retirement from a fact WITHOUT the daemon having to understand either.
+    ///
+    /// It rides inside `payload_json`, which the daemon passes through
+    /// verbatim, because `agent_memory_inbox` has no kind column and this wave
+    /// adds no migration. `BurnBarMemorySyncInboxEntry.entryKind` mirrors it on
+    /// the wire for readers that would rather not look inside the payload.
+    /// A payload with no `entryKind` is a fact — every fact payload ever parked
+    /// predates this key, so absence has to mean "fact" and does.
+    static let forgetReceiptEntryKind = "memory_forget_receipt"
+
+    /// A verified receipt, in the shape the inbox parks it.
+    struct VerifiedReceipt {
+        let receiptID: String
+        /// The identity the receipt names: the fact-level `memoryIdHmac` when
+        /// there is one, else the source-level `sourceRefHmac`. Both are keyed
+        /// HMACs under the member's own vault key, so the engine can match them
+        /// against the rows it holds and nobody else can.
+        let identityHmac: String
+        let payloadJSON: String
+        let replicatedAt: Date
+    }
+
+    enum ReceiptVerificationOutcome {
+        case success(VerifiedReceipt)
+        case failure(MemoryCloudReceiptRejection)
+    }
+
+    /// Pure, side-effect-free admission check for one receipt document — the
+    /// client-side mirror of the `memory_forget_receipts` rule.
+    static func verifyReceipt(
+        document documentID: String,
+        data: [String: Any],
+        uid: String,
+        now: Date
+    ) -> ReceiptVerificationOutcome {
+        guard Set(data.keys).isSubset(of: allowedReceiptFields) else {
+            return .failure(.disallowedField)
+        }
+        guard let documentUID = data["uid"] as? String, documentUID == uid else {
+            return .failure(.identityMismatch)
+        }
+        guard let receiptID = data["receiptID"] as? String, receiptID == documentID else {
+            return .failure(.identityMismatch)
+        }
+        guard let schemaVersion = (data["schemaVersion"] as? NSNumber)?.intValue,
+              schemaVersion >= 1,
+              schemaVersion <= currentReceiptSchemaVersion else {
+            return .failure(.unsupportedSchema)
+        }
+        guard let reason = data["reason"] as? String, allowedReceiptReasons.contains(reason) else {
+            return .failure(.malformedReceipt)
+        }
+        let memoryIdHmac = data["memoryIdHmac"] as? String
+        let sourceRefHmac = data["sourceRefHmac"] as? String
+        let sourceRefHmacs = data["sourceRefHmacs"] as? [String]
+        // Exactly the two shapes the rules permit, and no mixing: a fact-level
+        // receipt (a memory id HMAC plus the source refs it cited) or a
+        // source-level one (a single source ref HMAC).
+        let identityHmac: String
+        if let memoryIdHmac {
+            guard sourceRefHmac == nil, isOpaqueHmac(memoryIdHmac) else { return .failure(.malformedReceipt) }
+            guard (sourceRefHmacs ?? []).allSatisfy(isOpaqueHmac) else { return .failure(.malformedReceipt) }
+            identityHmac = memoryIdHmac
+        } else if let sourceRefHmac {
+            guard sourceRefHmacs == nil, isOpaqueHmac(sourceRefHmac) else { return .failure(.malformedReceipt) }
+            identityHmac = sourceRefHmac
+        } else {
+            return .failure(.malformedReceipt)
+        }
+        guard let replicatedAt = firestoreDate(data["replicatedAt"]) else {
+            return .failure(.unusableReplicatedAt)
+        }
+        // This channel's ordering key is unauthenticated by construction — a
+        // receipt is deliberately not a sealed envelope — so a backend could
+        // stamp one in the year 3000 and carry the cursor past every real
+        // retirement behind it. Bounding it by real time is what stops that; the
+        // tolerance is the same skew window the fact channel re-scans.
+        guard replicatedAt <= now.addingTimeInterval(clockSkewRescanWindow) else {
+            return .failure(.unusableReplicatedAt)
+        }
+        let createdAt = firestoreDate(data["createdAt"]) ?? replicatedAt
+        let parked = ParkedForgetReceipt(
+            entryKind: forgetReceiptEntryKind,
+            schemaVersion: schemaVersion,
+            receiptID: receiptID,
+            reason: reason,
+            memoryIdHmac: memoryIdHmac,
+            sourceRefHmac: sourceRefHmac,
+            sourceRefHmacs: sourceRefHmacs,
+            createdAt: createdAt,
+            replicatedAt: replicatedAt
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let payloadJSON: String
+        do {
+            payloadJSON = String(decoding: try encoder.encode(parked), as: UTF8.self)
+        } catch {
+            // Unreachable for a fixed `Codable` of strings and dates, but this is
+            // the admission path: a receipt that cannot be written down is one
+            // the engine must never be handed.
+            return .failure(.malformedReceipt)
+        }
+        return .success(VerifiedReceipt(
+            receiptID: receiptID,
+            identityHmac: identityHmac,
+            payloadJSON: payloadJSON,
+            replicatedAt: replicatedAt
+        ))
+    }
+
+    /// The exact JSON the engine receives. Documented for the Python lane in
+    /// `.superpowers/sdd/2026-09-03-memory-blind-sync/receipt-entry-shape.md`;
+    /// every field is either an opaque keyed HMAC or a coarse enum, so the
+    /// parked row carries no more plaintext than the cloud document did.
+    struct ParkedForgetReceipt: Codable {
+        let entryKind: String
+        let schemaVersion: Int
+        let receiptID: String
+        let reason: String
+        let memoryIdHmac: String?
+        let sourceRefHmac: String?
+        let sourceRefHmacs: [String]?
+        let createdAt: Date
+        let replicatedAt: Date
+    }
+
+    private static func isOpaqueHmac(_ value: String) -> Bool {
+        value.count == 64 && value.allSatisfy { $0.isHexDigit && !$0.isUppercase }
+    }
+
+    /// Inverts `pensieveSlugHmac("memory-id:<engine id>")` for the ids this
+    /// device knows, by hashing every candidate under the member's own vault key.
+    ///
+    /// This is the whole reason the app has to be the one to resolve a receipt.
+    /// The engine that drains the inbox holds NO key material — that is the
+    /// point of blind sync — so it cannot map an opaque HMAC to anything and
+    /// `_apply_remote_receipt` acks an unresolved one as a terminal no-op. The
+    /// app holds the vault key, so it can do the mapping once and park the plain
+    /// id the engine can act on.
+    ///
+    /// Candidates that are themselves opaque HMACs are dropped: those are the
+    /// parked RECEIPT rows sharing the inbox with the facts, and hashing an HMAC
+    /// can only ever match nothing.
+    static func engineMemoryIDsByReceiptHmac(
+        store: ControlPlaneStore,
+        uid: String,
+        vaultKey: Data
+    ) async throws -> [String: String] {
+        var resolution: [String: String] = [:]
+        for engineMemoryID in try await store.fetchResolvableEngineMemoryIDs(userID: uid)
+        where !engineMemoryID.isEmpty && !isOpaqueHmac(engineMemoryID) {
+            let hmac = try CloudVaultCrypto.pensieveSlugHmac("memory-id:\(engineMemoryID)", keyData: vaultKey)
+            resolution[hmac] = engineMemoryID
+        }
+        return resolution
+    }
+
+    /// Pages `users/{uid}/memory_forget_receipts` on its own cursor and parks
+    /// every receipt that verifies, so a device that already merged a fact
+    /// learns it was retired.
+    ///
+    /// Refused receipts FREEZE this cursor rather than advancing past
+    /// themselves, unlike the fact channel: a receipt carries no authenticated
+    /// instant at all, so there is no trustworthy stamp to advance to. The cost
+    /// is re-reading a small collection each cycle while a malformed receipt
+    /// exists; the alternative would let an unauthenticated field skip real
+    /// retirements.
+    func pullForgetReceipts(uid: String, vaultKey: Data, now: Date) async throws -> MemoryCloudReceiptPullResult {
+        // Built ONCE per cycle, not per receipt: `pensieveSlugHmac` is keyed and
+        // one-way, so the only way to invert it is to hash every candidate. The
+        // candidate set is every engine id this device knows — thousands at the
+        // very most — and the receipt collection is usually far smaller than it.
+        let resolution = try await Self.engineMemoryIDsByReceiptHmac(
+            store: store,
+            uid: uid,
+            vaultKey: vaultKey
+        )
+        let watermark = try await watermarkStore.fetchWatermarkOrDefault(
+            accountUid: uid,
+            collectionKind: .memoryForgetReceipts
+        )
+        let queryFloor = watermark.addingTimeInterval(-Self.clockSkewRescanWindow)
+        let receiptCollection = firestoreGateway
+            .collection("users")
+            .document(uid)
+            .collection("memory_forget_receipts")
+        let transaction = AtomicRemoteSyncTransaction(
+            dbQueue: store.dbQueue,
+            watermarkStore: watermarkStore,
+            accountUid: uid,
+            collectionKind: .memoryForgetReceipts
+        )
+
+        var applied = 0
+        var unchanged = 0
+        var rejected = 0
+        var resolved = 0
+        var frozen = false
+        var rejectionFloor: Date?
+        var eligibleStamps: [Date] = []
+        var pageCursor: (replicatedAt: Date, docID: String)?
+        var pagesRead = 0
+        var exhausted = false
+
+        do {
+            while pagesRead < Self.maxPagesPerCycle {
+                var query: CloudSyncQueryGateway = receiptCollection
+                    .whereField("replicatedAt", isGreaterThan: queryFloor)
+                    .order(by: "replicatedAt", descending: false)
+                    .orderByDocumentID(descending: false)
+                if let pageCursor {
+                    query = query.start(afterOrderedValues: [pageCursor.replicatedAt, pageCursor.docID])
+                }
+                let snapshot = try await query.limit(to: pageLimit).getDocuments()
+                pagesRead += 1
+                let documents = snapshot.documents
+                if documents.isEmpty {
+                    exhausted = true
+                    break
+                }
+                for document in documents {
+                    let data = document.data()
+                    switch Self.verifyReceipt(document: document.documentID, data: data, uid: uid, now: now) {
+                    case .failure(let reason):
+                        rejected += 1
+                        if !frozen {
+                            frozen = true
+                            rejectionFloor = Self.firestoreDate(data["replicatedAt"])
+                        }
+                        AppLogger.sync.error(
+                            "memory_cloud_pull_receipt_rejected",
+                            metadata: ["reason": reason.rawValue, "doc_id": document.documentID]
+                        )
+                        continue
+                    case .success(let receipt):
+                        // The whole point of the resolution map: park the PLAIN
+                        // engine id when this device can name it, because the
+                        // engine holds no key and can act on nothing else.
+                        let engineMemoryID = resolution[receipt.identityHmac]
+                        let result = try await store.upsertRemoteMemoryFact(
+                            docID: receipt.receiptID,
+                            userID: uid,
+                            engineMemoryID: engineMemoryID ?? receipt.identityHmac,
+                            payloadJSON: receipt.payloadJSON,
+                            remoteUpdatedAt: receipt.replicatedAt,
+                            // Names THIS row too, for the case an earlier cycle
+                            // parked it opaque and nothing about the document has
+                            // changed since. The payload upsert is then a no-op,
+                            // but the identity this device can NOW resolve still
+                            // has to land — otherwise a receipt that arrived
+                            // before the device knew the memory stays unactionable
+                            // for ever. When nothing resolved, the id and the
+                            // HMAC are the same value and the rewrite is a no-op.
+                            resolvingReceiptHmac: receipt.identityHmac,
+                            now: now
+                        )
+                        switch result.outcome {
+                        case .inserted, .replaced:
+                            applied += 1
+                            if engineMemoryID != nil {
+                                resolved += 1
+                            }
+                        case .unchanged:
+                            unchanged += 1
+                            resolved += result.resolvedReceipts
+                        }
+                        if !frozen {
+                            eligibleStamps.append(receipt.replicatedAt)
+                        }
+                    }
+                }
+                if documents.count < pageLimit {
+                    exhausted = true
+                    break
+                }
+                guard let last = documents.last,
+                      let lastStamp = Self.firestoreDate(last.data()["replicatedAt"]) else {
+                    AppLogger.sync.error("memory_cloud_pull_receipt_page_cursor_unreadable")
+                    break
+                }
+                pageCursor = (lastStamp, last.documentID)
+            }
+        } catch {
+            transaction.rollback()
+            throw error
+        }
+
+        var eligible = eligibleStamps
+        if frozen {
+            eligible = rejectionFloor.map { floor in eligibleStamps.filter { $0 < floor } } ?? []
+        }
+        let stoppedShort = !exhausted && !frozen
+        if let ceiling = Self.watermarkCeiling(eligibleStamps: eligible, pageWasFull: stoppedShort) {
+            for stamp in eligible where stamp <= ceiling {
+                transaction.recordProcessedItem(remoteUpdatedAt: stamp)
+            }
+        }
+        try await transaction.commit()
+        return MemoryCloudReceiptPullResult(
+            applied: applied,
+            unchanged: unchanged,
+            rejected: rejected,
+            resolved: resolved
+        )
+    }
+}
+
+/// What one cycle's receipt channel did.
+struct MemoryCloudReceiptPullResult: Equatable, Sendable {
+    let applied: Int
+    let unchanged: Int
+    let rejected: Int
+    /// How many receipts this cycle ended up carrying a plain engine id this
+    /// device resolved from their opaque HMAC — parked that way, or rewritten in
+    /// place when an earlier cycle had parked them opaque. The rest are receipts
+    /// for memories this device has never held (or source-level ones), which stay
+    /// opaque and which the engine can only acknowledge as unresolved.
+    let resolved: Int
+}

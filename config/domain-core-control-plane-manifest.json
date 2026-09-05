@@ -16,7 +16,7 @@
     ".github/workflows/linux-release.yml": ["b83dbc4b5c9f3555","a2944d648a9e7bb3","f15a386703d40656","5c34bb437d0e593b"],
     ".github/workflows/openburnbar-release-windows.yml": ["5bcb196ef883a999","61497ddea6cdd3a8","faa69b7e3447122d","79e2e8a448ed7c56"],
     ".github/workflows/release.yml": ["ae3d459c28383197","9edbd3850cee8ae5","58046ea2acc8d09f","25407a5ba6ee30c4"],
-    "OpenBurnBarCore/Package.swift": ["d550bf56c24e816a","921430725b49dca2","bcab4cfafdc2019f","5e5539496d377c85"],
+    "OpenBurnBarCore/Package.swift": ["986150cef437d9df","30b6eb43f3b6bbde","d1d951ed80c2f1b9","e79348bc37af81a3"],
     "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift": ["1791459f936e0cff","25ef90eff252d1a5","f9aee34bafd4cf16","c1831a2d1a5ba04e"],
     "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift": ["f03ca7157e414ed0","907eaa78dde972de","fe14d622f9d9bcb0","0019366765a362df"],
     "android/build.gradle.kts": ["d058bbaec5ba0a4c","b9c67e0f8c9ed2d5","e8968b0ae175e555","afb43d26a7e08b41"],

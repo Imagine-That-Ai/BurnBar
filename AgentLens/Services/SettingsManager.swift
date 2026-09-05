@@ -939,6 +939,62 @@ final class SettingsManager {
         memory.approvedCloudBackupEnabled && memory.remoteConfigExtractionEnabled
     }
 
+    /// Raw user opt-in to the PULL half of memory sync — reading the member's own
+    /// sealed facts back down onto this device (default OFF — Memory Blind Sync
+    /// PR-2). Persisted toggle only; the scheduler consults
+    /// `memoryDeviceSyncEnabled`, which folds this under the backup gate.
+    var memoryDeviceSyncOptIn: Bool {
+        get { memory.deviceSyncEnabled }
+        set { memory.deviceSyncEnabled = newValue }
+    }
+
+    /// The EFFECTIVE gate for the pull half (`MemoryDeviceSyncGate`): the
+    /// device-sync sub-toggle AND the backup opt-in AND the live Data Vault
+    /// entitlement AND the Remote Config fleet ceiling. Default OFF. Turning
+    /// cloud backup off stops downloads too — a member who revokes memory
+    /// egress does not keep an active memory sync channel — and a lapsed or
+    /// not-yet-resolved entitlement closes it as well.
+    ///
+    /// The entitlement lever is here, and not merely on the row, because
+    /// `firestore.rules` gates `memory_facts` **writes** on
+    /// `hasActiveDataVaultEntitlement(userId)` while **reads** are granted by
+    /// the per-user namespace rule with no entitlement check. This client gate
+    /// is what keeps an unentitled install from issuing a live `memory_facts`
+    /// read at all.
+    var memoryDeviceSyncEnabled: Bool {
+        MemoryDeviceSyncGate.isEnabled(
+            deviceSyncOptIn: memory.deviceSyncEnabled,
+            backupOptIn: memory.approvedCloudBackupEnabled,
+            entitlementSatisfied: memory.deviceSyncEntitlementSatisfied,
+            remoteConfigEnabled: memory.remoteConfigExtractionEnabled
+        )
+    }
+
+    /// Live Data Vault entitlement check for the device-sync gate (default
+    /// OFF — fail closed, not persisted). Refreshed from
+    /// `MacCloudEntitlementStore` by the Privacy & Indexing view as the
+    /// member's resolved tier changes, and by `MemoryCloudSyncDomain` on every
+    /// sync cycle so the pull's gate never depends on Settings having been
+    /// opened. See `MemorySettings.deviceSyncEntitlementSatisfied`.
+    var memoryDeviceSyncEntitlementSatisfied: Bool {
+        get { memory.deviceSyncEntitlementSatisfied }
+        set { memory.deviceSyncEntitlementSatisfied = newValue }
+    }
+
+    /// Whether the device-sync row can be interacted with at all: the backup
+    /// gate (opt-in AND fleet ceiling) AND the Data Vault entitlement.
+    /// Deliberately excludes the sub-toggle itself — a member who has satisfied
+    /// every other lever must still be free to flip the sub-toggle on or off.
+    var memoryDeviceSyncRowUnlocked: Bool {
+        memoryApprovedCloudBackupEnabled && memory.deviceSyncEntitlementSatisfied
+    }
+
+    /// What the "Sync memories to my other devices" row displays. Identical to
+    /// `memoryDeviceSyncEnabled` by construction: the row shows exactly the
+    /// gate the pull obeys, so a greyed-out switch never reads "on" and an
+    /// on-looking switch never corresponds to a dormant channel.
+    var memoryDeviceSyncRowEnabled: Bool { memoryDeviceSyncEnabled }
+
     // MARK: Memory Pro cloud models (opt-in, blind)
 
     /// Raw user opt-in to cloud / big models for memory (default OFF). The

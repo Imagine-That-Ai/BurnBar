@@ -47,10 +47,51 @@ enum RemoteSyncCollectionKind: String, CaseIterable {
     case usage = "usage"
     case conversations = "conversations"
     case chatThreads = "chat_threads"
+    /// Memory Blind Sync: the member's own sealed memory facts, pulled back down
+    /// above this watermark by `MemoryCloudPullService`.
+    case memoryFacts = "memory_facts"
+    /// Memory Blind Sync: the forget receipts that retire a fact on the devices
+    /// that already merged it.
+    ///
+    /// Its OWN cursor, not the facts one, because the two collections are
+    /// ordered by different fields written at different moments — a receipt
+    /// carries `replicatedAt`, a fact `updatedAt` — and a shared cursor would
+    /// let either channel skip the other's documents.
+    case memoryForgetReceipts = "memory_forget_receipts"
 
     /// All collection kinds for iteration.
     static var allCases: [RemoteSyncCollectionKind] {
-        [.usage, .conversations, .chatThreads]
+        [.usage, .conversations, .chatThreads, .memoryFacts, .memoryForgetReceipts]
+    }
+
+    /// How far back a FIRST sync of this collection reaches when no watermark
+    /// exists yet.
+    ///
+    /// The conversation-shaped collections keep the 90-day cutoff
+    /// `CloudSyncService` has always used: a transcript is an event, it belongs
+    /// to the moment it happened, and old ones are not worth a cold backfill.
+    ///
+    /// **Memory facts are not events.** A memory's `updatedAt` is when it was
+    /// last *touched*, not when it stopped being true — a stable preference
+    /// learned two years ago and never edited since is still the memory the
+    /// member most wants on their new Mac. A 90-day floor silently delivered a
+    /// new device only the memories that happened to have been edited recently,
+    /// which is the opposite of the feature's headline promise, and it did so
+    /// without a single error. So the first sync of `memory_facts` reaches back
+    /// past any plausible store, and every later sync is bounded by the durable
+    /// watermark exactly as before.
+    ///
+    /// `memory_forget_receipts` shares that floor for the same reason from the
+    /// other side: a receipt says "this fact is gone", and a device that merged
+    /// the fact years ago still needs the retirement. Receipts are tiny and
+    /// applying one twice is a no-op, so a full first pass is cheap.
+    var firstSyncFloor: Date {
+        switch self {
+        case .usage, .conversations, .chatThreads:
+            return Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        case .memoryFacts, .memoryForgetReceipts:
+            return Date(timeIntervalSince1970: 0)
+        }
     }
 }
 
@@ -92,14 +133,15 @@ final class RemoteSyncWatermarkStore: Sendable {
         }
     }
 
-    /// Fetches the watermark value for a collection, or a default cutoff date if none exists.
-    /// The default is 90 days ago (matches CloudSyncService cutoff).
+    /// Fetches the watermark value for a collection, or that collection's own
+    /// first-sync floor when none exists yet (`RemoteSyncCollectionKind.firstSyncFloor`
+    /// — 90 days for the conversation-shaped collections, the epoch for memory
+    /// facts, which are state rather than events).
     func fetchWatermarkOrDefault(accountUid: String, collectionKind: RemoteSyncCollectionKind) async throws -> Date {
         if let watermark = try await fetchWatermark(accountUid: accountUid, collectionKind: collectionKind) {
             return watermark.lastProcessedRemoteUpdateAt ?? watermark.lastSyncedAt
         }
-        // Default cutoff: 90 days ago
-        return Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
+        return collectionKind.firstSyncFloor
     }
 
     // MARK: - Write

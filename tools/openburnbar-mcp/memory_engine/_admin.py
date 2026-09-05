@@ -9,7 +9,14 @@ from collections.abc import Sequence
 from typing import Any
 
 from . import gate
-from ._util import _aux_strings, _ingest_decision, _json_dumps, _json_loads, now_iso, sha256_hex
+from ._util import (
+    _aux_strings,
+    _ingest_decision,
+    _json_dumps,
+    _json_loads,
+    now_iso,
+    sha256_hex,
+)
 from .constants import (
     DEFAULT_EMBEDDING_MODEL,
     EMBEDDING_PROVIDER_ENV,

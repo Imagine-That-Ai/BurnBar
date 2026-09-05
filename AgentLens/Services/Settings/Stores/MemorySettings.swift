@@ -36,6 +36,36 @@ final class MemorySettings {
         didSet { persistence.set(approvedCloudBackupEnabled, forKey: "memoryApprovedCloudBackupEnabled") }
     }
 
+    /// Opt-in SUB-toggle of `approvedCloudBackupEnabled` (default OFF — Memory
+    /// Blind Sync PR-2): also read the member's own sealed facts back DOWN onto
+    /// this device. Backing memory up is not the same consent as syncing it
+    /// across devices, so the pull half needs its own switch and defaults off
+    /// even for a member who already opted into backup. `MemoryCloudSyncDomain`
+    /// ANDs it under the backup gate, so turning backup off stops both halves and
+    /// this switch alone can never start a download.
+    var deviceSyncEnabled: Bool = false {
+        didSet { persistence.set(deviceSyncEnabled, forKey: "memoryDeviceSyncEnabled") }
+    }
+
+    /// Live Data Vault entitlement check (Pro Max or Ultra — the same tier
+    /// `GatedFeature.dataVault` requires), the fourth lever of the device-sync
+    /// gate (default OFF — fail closed). Not user-settable and not persisted:
+    /// it is refreshed from `MacCloudEntitlementStore` as the member's resolved
+    /// tier changes — by the Privacy & Indexing view for presentation, and by
+    /// `MemoryCloudSyncDomain.gateSnapshot()` on every sync cycle so the pull
+    /// never depends on the member having opened Settings.
+    ///
+    /// This lever is **load-bearing for the network**, not decoration.
+    /// `firestore.rules` gates `memory_facts` *writes* on
+    /// `hasActiveDataVaultEntitlement(userId)`; *reads* are granted by the
+    /// per-user namespace rule (`match /users/{userId}/{collectionId}/{documentId}`,
+    /// which lists `memory_facts` in its read allowlist) and carry no
+    /// entitlement check at all. Without this lever a member whose entitlement
+    /// lapsed, with both toggles still persisted true, would keep issuing live
+    /// Firestore reads the server would happily answer. Unresolved ⇒ false, so
+    /// the pull stays closed until the tier actually resolves.
+    var deviceSyncEntitlementSatisfied: Bool = false
+
     /// Firebase Remote Config `memory_extraction_enabled` (default true). Not
     /// user-settable; the fleet kill switch sets this false to halt extraction
     /// instantly. Fetch transport errors preserve extraction only when the
@@ -273,6 +303,9 @@ final class MemorySettings {
         if persistence.objectExists(forKey: "memoryApprovedCloudBackupEnabled") {
             self.approvedCloudBackupEnabled = persistence.bool(forKey: "memoryApprovedCloudBackupEnabled")
         }
+        if persistence.objectExists(forKey: "memoryDeviceSyncEnabled") {
+            self.deviceSyncEnabled = persistence.bool(forKey: "memoryDeviceSyncEnabled")
+        }
         // Load `consentShown` before `consentGranted` so the granted-didSet's
         // implicit `consentShown = true` never races a stale persisted value.
         if persistence.objectExists(forKey: "memoryConsentShown") {
@@ -440,6 +473,39 @@ enum MemoryCloudModelsGate {
         remoteConfigEnabled: Bool
     ) -> Bool {
         consentGranted && cloudModelsEnabled && remoteConfigEnabled
+    }
+}
+
+// MARK: - Memory device-sync gate (Memory Blind Sync PR-2)
+
+/// Pure gate for "Sync memories to my other devices": the pull runs, and the
+/// row reads ON, only when the sub-toggle **and** the backup opt-in **and** the
+/// Data Vault entitlement **and** the fleet Remote Config ceiling all allow.
+/// Any lever off -> no download and the row reads off (fail-closed). Kept pure
+/// so the gate logic is testable without Firebase, `MacCloudEntitlementStore`,
+/// or a `SettingsManager`.
+///
+/// This is the EFFECTIVE gate, shared by both callers:
+/// `SettingsManager.memoryDeviceSyncEnabled` (what `MemoryCloudSyncDomain`
+/// consults before issuing a single `memory_facts` read) and
+/// `SettingsManager.memoryDeviceSyncRowEnabled` (what the Settings row shows)
+/// are the same computation over the same levers, so the row can never read
+/// "on" while the network is closed, or the reverse.
+///
+/// The entitlement lever is load-bearing for the network. `firestore.rules`
+/// gates `memory_facts` **writes** on `hasActiveDataVaultEntitlement(userId)`;
+/// **reads** are granted by the per-user namespace rule, which lists
+/// `memory_facts` in its read allowlist and applies no entitlement check. The
+/// client gate is therefore the only thing standing between a lapsed
+/// entitlement and a live Firestore read.
+enum MemoryDeviceSyncGate {
+    static func isEnabled(
+        deviceSyncOptIn: Bool,
+        backupOptIn: Bool,
+        entitlementSatisfied: Bool,
+        remoteConfigEnabled: Bool
+    ) -> Bool {
+        deviceSyncOptIn && backupOptIn && entitlementSatisfied && remoteConfigEnabled
     }
 }
 

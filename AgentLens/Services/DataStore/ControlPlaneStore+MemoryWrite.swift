@@ -225,6 +225,12 @@ extension ControlPlaneStore {
         for record in records where try await deleteChatMemoryAuthorityRecord(id: record.id, now: now) {
             deleted += 1
         }
+        // "Reset memory" must leave nothing readable behind. The blind-sync
+        // inbox holds an opened plaintext copy of every fact pulled down from
+        // the member's other devices, merged or not, and no other delete path
+        // touches it — so a reset that skipped it would empty the surface the
+        // member can see while leaving the copy they cannot.
+        try await purgeAllRemoteMemoryFacts()
         return deleted
     }
 

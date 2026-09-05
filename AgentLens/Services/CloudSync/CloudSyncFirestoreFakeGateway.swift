@@ -76,9 +76,17 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
         store.documentData(at: path)
     }
 
-    /// Direct access to all documents under a collection path.
+    /// Direct access to all documents under a collection path. Inspection only —
+    /// it does not count as a gateway read (see `queryCount(under:)`).
     func documents(under collectionPath: String) -> [String: [String: Any]] {
         store.documents(under: collectionPath)
+    }
+
+    /// How many queries actually resolved against `collectionPath` through the
+    /// gateway. Lets a test assert a closed gate performed ZERO reads rather
+    /// than only that it produced no visible effect.
+    func queryCount(under collectionPath: String) -> Int {
+        store.queriedCollectionPaths.filter { $0 == collectionPath }.count
     }
 
     /// Write a document directly (bypassing gateway) to simulate remote changes.
@@ -169,6 +177,20 @@ private final class CloudSyncFirestoreFakeGatewayState: Sendable {
 private final class FakeDocumentStore: Sendable {
     private let box = OSAllocatedUnfairLock<[String: [String: Any]]>(uncheckedState: [:])
     private let aggregateSumErrorBox = OSAllocatedUnfairLock<Error?>(uncheckedState: nil)
+    private let queriedCollectionPathsBox = OSAllocatedUnfairLock<[String]>(uncheckedState: [])
+
+    /// Every collection path a query actually resolved through the gateway, in
+    /// order. Recorded at snapshot construction — the single funnel every
+    /// `getDocuments()` / `aggregateSum` goes through — so a test can assert a
+    /// gate produced ZERO reads, not merely zero visible effects. Direct
+    /// test-side inspection (`documents(under:)` on the gateway) does not record.
+    var queriedCollectionPaths: [String] {
+        queriedCollectionPathsBox.withLockUnchecked { $0 }
+    }
+
+    func recordQuery(at collectionPath: String) {
+        queriedCollectionPathsBox.withLockUnchecked { $0.append(collectionPath) }
+    }
 
     /// Aggregate-only failure injection (see `CloudSyncFirestoreFakeGateway.aggregateSumError`).
     var aggregateSumError: Error? {
@@ -260,7 +282,8 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
             store: store,
             collectionPath: path,
             predicates: [.whereFieldIsGreaterThan(field, value)],
-            sort: nil,
+            sorts: [],
+            startAfter: nil,
             limit: nil,
             nextError: nextError
         )
@@ -271,7 +294,8 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
             store: store,
             collectionPath: path,
             predicates: [.whereFieldIsEqualTo(field, value)],
-            sort: nil,
+            sorts: [],
+            startAfter: nil,
             limit: nil,
             nextError: nextError
         )
@@ -282,7 +306,8 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
             store: store,
             collectionPath: path,
             predicates: [.whereDocumentIDIsGreaterThan(value)],
-            sort: nil,
+            sorts: [],
+            startAfter: nil,
             limit: nil,
             nextError: nextError
         )
@@ -293,7 +318,8 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
             store: store,
             collectionPath: path,
             predicates: [.whereDocumentIDIsLessThan(value)],
-            sort: nil,
+            sorts: [],
+            startAfter: nil,
             limit: nil,
             nextError: nextError
         )
@@ -304,7 +330,8 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
             store: store,
             collectionPath: path,
             predicates: [],
-            sort: SortDescriptor(field: nil, descending: descending),
+            sorts: [SortDescriptor(field: nil, descending: descending)],
+            startAfter: nil,
             limit: nil,
             nextError: nextError
         )
@@ -315,7 +342,8 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
             store: store,
             collectionPath: path,
             predicates: [],
-            sort: SortDescriptor(field: field, descending: descending),
+            sorts: [SortDescriptor(field: field, descending: descending)],
+            startAfter: nil,
             limit: nil,
             nextError: nextError
         )
@@ -326,7 +354,8 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
             store: store,
             collectionPath: path,
             predicates: [],
-            sort: nil,
+            sorts: [],
+            startAfter: nil,
             limit: limit,
             nextError: nextError
         )
@@ -338,7 +367,8 @@ private final class CloudSyncCollectionFakeGateway: CloudSyncCollectionGateway, 
             store: store,
             collectionPath: path,
             predicates: [],
-            sort: nil,
+            sorts: [],
+            startAfter: nil,
             limit: nil
         )
     }
@@ -384,11 +414,18 @@ private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway, Send
 
 // MARK: - Fake Query Gateway
 
-private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
+// AUDIT(@unchecked Sendable): `startAfter` carries Firestore's untyped `Any`
+// cursor values; the array is immutable after init and confined to the in-memory
+// fake gateway. sendable-allowlist: firestore-any-test-fake
+private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, @unchecked Sendable {
     private let store: FakeDocumentStore
     private let collectionPath: String
     private let predicates: [QueryPredicate]
-    private let sort: SortDescriptor?
+    /// Firestore CHAINS `order(by:)` calls; so does this. A single slot silently
+    /// dropped the primary sort when a secondary one was added, which is exactly
+    /// what a composite `(updatedAt, documentID)` cursor needs.
+    private let sorts: [SortDescriptor]
+    private let startAfter: [Any]?
     private let limit: Int?
     private let nextError: @Sendable () -> Error?
 
@@ -396,16 +433,30 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
         store: FakeDocumentStore,
         collectionPath: String,
         predicates: [QueryPredicate],
-        sort: SortDescriptor?,
+        sorts: [SortDescriptor],
+        startAfter: [Any]?,
         limit: Int?,
         nextError: @escaping @Sendable () -> Error?
     ) {
         self.store = store
         self.collectionPath = collectionPath
         self.predicates = predicates
-        self.sort = sort
+        self.sorts = sorts
+        self.startAfter = startAfter
         self.limit = limit
         self.nextError = nextError
+    }
+
+    func start(afterOrderedValues values: [Any]) -> CloudSyncQueryGateway {
+        CloudSyncQueryFakeGateway(
+            store: store,
+            collectionPath: collectionPath,
+            predicates: predicates,
+            sorts: sorts,
+            startAfter: values,
+            limit: limit,
+            nextError: nextError
+        )
     }
 
     func whereField(_ field: String, isGreaterThan value: Any) -> CloudSyncQueryGateway {
@@ -415,7 +466,8 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             store: store,
             collectionPath: collectionPath,
             predicates: newPredicates,
-            sort: sort,
+            sorts: sorts,
+            startAfter: startAfter,
             limit: limit,
             nextError: nextError
         )
@@ -428,7 +480,8 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             store: store,
             collectionPath: collectionPath,
             predicates: newPredicates,
-            sort: sort,
+            sorts: sorts,
+            startAfter: startAfter,
             limit: limit,
             nextError: nextError
         )
@@ -441,7 +494,8 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             store: store,
             collectionPath: collectionPath,
             predicates: newPredicates,
-            sort: sort,
+            sorts: sorts,
+            startAfter: startAfter,
             limit: limit,
             nextError: nextError
         )
@@ -454,7 +508,8 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             store: store,
             collectionPath: collectionPath,
             predicates: newPredicates,
-            sort: sort,
+            sorts: sorts,
+            startAfter: startAfter,
             limit: limit,
             nextError: nextError
         )
@@ -465,7 +520,8 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             store: store,
             collectionPath: collectionPath,
             predicates: predicates,
-            sort: SortDescriptor(field: nil, descending: descending),
+            sorts: sorts + [SortDescriptor(field: nil, descending: descending)],
+            startAfter: startAfter,
             limit: limit,
             nextError: nextError
         )
@@ -476,7 +532,8 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             store: store,
             collectionPath: collectionPath,
             predicates: predicates,
-            sort: SortDescriptor(field: field, descending: descending),
+            sorts: sorts + [SortDescriptor(field: field, descending: descending)],
+            startAfter: startAfter,
             limit: limit,
             nextError: nextError
         )
@@ -487,7 +544,8 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             store: store,
             collectionPath: collectionPath,
             predicates: predicates,
-            sort: sort,
+            sorts: sorts,
+            startAfter: startAfter,
             limit: limit,
             nextError: nextError
         )
@@ -499,7 +557,8 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             store: store,
             collectionPath: collectionPath,
             predicates: predicates,
-            sort: sort,
+            sorts: sorts,
+            startAfter: startAfter,
             limit: limit
         )
     }
@@ -513,7 +572,8 @@ private final class CloudSyncQueryFakeGateway: CloudSyncQueryGateway, Sendable {
             store: store,
             collectionPath: collectionPath,
             predicates: predicates,
-            sort: sort,
+            sorts: sorts,
+            startAfter: startAfter,
             limit: limit
         )
         return snapshot.documents.reduce(into: 0.0) { total, document in
@@ -533,9 +593,11 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
         store: FakeDocumentStore,
         collectionPath: String,
         predicates: [QueryPredicate],
-        sort: SortDescriptor?,
+        sorts: [SortDescriptor],
+        startAfter: [Any]?,
         limit: Int?
     ) {
+        store.recordQuery(at: collectionPath)
         var docs = store.documents(under: collectionPath)
             .map { path, data in (path, data) }
 
@@ -546,16 +608,22 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
             }
         }
 
-        // Apply sort
-        if let sort {
+        // Apply sorts, in the order they were chained (Firestore's semantics).
+        if !sorts.isEmpty {
             docs.sort { lhs, rhs in
-                let comparison: Int
-                if let field = sort.field {
-                    comparison = FakeQueryEngine.compare(lhs: lhs.1, rhs: rhs.1, field: field)
-                } else {
-                    comparison = lhs.0.lastPathComponent.compare(rhs.0.lastPathComponent).rawValue
-                }
-                return sort.descending ? comparison > 0 : comparison < 0
+                FakeQueryEngine.compareOrdered(lhs: lhs, rhs: rhs, sorts: sorts) < 0
+            }
+        }
+
+        // Apply the composite cursor: keep only what sorts strictly AFTER it.
+        if let startAfter, !sorts.isEmpty {
+            docs = docs.filter { path, data in
+                FakeQueryEngine.compareToCursor(
+                    documentID: path.lastPathComponent,
+                    data: data,
+                    cursor: startAfter,
+                    sorts: sorts
+                ) > 0
             }
         }
 
@@ -746,6 +814,46 @@ private struct SortDescriptor {
 }
 
 private enum FakeQueryEngine {
+    /// Compares two documents across a CHAIN of sort descriptors, as Firestore
+    /// does: the first descriptor that separates them decides.
+    static func compareOrdered(
+        lhs: (String, [String: Any]),
+        rhs: (String, [String: Any]),
+        sorts: [SortDescriptor]
+    ) -> Int {
+        for sort in sorts {
+            let comparison: Int
+            if let field = sort.field {
+                comparison = compare(lhs: lhs.1, rhs: rhs.1, field: field)
+            } else {
+                comparison = lhs.0.lastPathComponent.compare(rhs.0.lastPathComponent).rawValue
+            }
+            guard comparison != 0 else { continue }
+            return sort.descending ? -comparison : comparison
+        }
+        return 0
+    }
+
+    /// Compares one document against a `start(after:)` cursor's ordered values,
+    /// position by position. A nil sort field means the document id, so the
+    /// cursor value at that position is compared against the id.
+    static func compareToCursor(
+        documentID: String,
+        data: [String: Any],
+        cursor: [Any],
+        sorts: [SortDescriptor]
+    ) -> Int {
+        for (index, sort) in sorts.enumerated() {
+            guard index < cursor.count else { break }
+            let documentValue: Any? = sort.field.map { data[$0] } ?? documentID
+            guard let documentValue else { return -1 }
+            let comparison = compare(lhs: documentValue, rhs: cursor[index])
+            guard comparison != 0 else { continue }
+            return sort.descending ? -comparison : comparison
+        }
+        return 0
+    }
+
     static func compare(lhs: [String: Any], rhs: [String: Any], field: String) -> Int {
         guard let l = lhs[field], let r = rhs[field] else { return 0 }
         return compare(lhs: l, rhs: r)

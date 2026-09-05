@@ -496,9 +496,40 @@ struct MemoryCloudSyncResult: Equatable, Sendable {
     let skipped: Int
     let forgetReceipts: Int
     let cloudFactsDeleted: Int
+    /// Documents this device declined to write because the cloud already held a
+    /// revision at or after the local one. See the conditional write in
+    /// `syncApprovedMemories`: without it, a device holding an older mirror
+    /// silently overwrote a newer sibling's ciphertext every cycle.
+    let skippedStaleRevision: Int
+
+    init(
+        uploaded: Int,
+        skipped: Int,
+        forgetReceipts: Int,
+        cloudFactsDeleted: Int,
+        skippedStaleRevision: Int = 0
+    ) {
+        self.uploaded = uploaded
+        self.skipped = skipped
+        self.forgetReceipts = forgetReceipts
+        self.cloudFactsDeleted = cloudFactsDeleted
+        self.skippedStaleRevision = skippedStaleRevision
+    }
 }
 
-private struct MemoryCloudFactPayload: Codable {
+/// The plaintext a `memory_facts` document seals. Everything the pull half needs
+/// to merge a fact travels here, INSIDE `sealedMemory`, so widening it never
+/// touches `firestore.rules` (whose `hasOnly` key allowlist bounds the envelope,
+/// not its contents) and never widens what the backend can observe.
+///
+/// **Schema version 2** (Memory Blind Sync PR-2) adds the supersede/retire and
+/// convergence fields §5 of the design needs. Every one of them is optional, so a
+/// v1 payload sealed by a device that has not updated yet still decodes — the
+/// pull service must never reject a member's own older document.
+struct MemoryCloudFactPayload: Codable {
+    /// Bumped only when a new field lands; readers accept every version <= this.
+    static let currentSchemaVersion = 2
+
     let schemaVersion: Int
     let memoryID: MemoryID
     let text: String
@@ -508,6 +539,32 @@ private struct MemoryCloudFactPayload: Codable {
     let citations: [MemoryCitation]
     let validFrom: Date
     let updatedAt: Date
+
+    // MARK: v2
+
+    /// Retirement instant. A retired fact converges like any other update (§5),
+    /// so this is a plain field rather than a separate message.
+    let validTo: Date?
+    /// The engine id that replaced this fact. Engine ids are globally unique, so
+    /// a supersede chain resolves on any device. `supersedes_json` deliberately
+    /// does NOT travel: it is the inverse of this edge and would duplicate it.
+    let supersededBy: MemoryID?
+    /// The mirrored row's tags, so a merged fact keeps its local classification.
+    let tags: [String]?
+    /// The engine's body hash, which `UNIQUE(project_id, scope, body_hash)` uses
+    /// to fold a fact learned independently on two devices into one row (§5).
+    let bodyHash: String?
+    /// The ENGINE's project id (`agent_memories.project_id`). `scope` above is
+    /// the app's `MemoryScope`, which carries no engine project, yet §5 converges
+    /// on `(project_id, scope, body_hash)` — so the identity has to travel or the
+    /// receiving engine cannot key the row it is merging. Derived from the git
+    /// origin and root commit, so it is the same id on every device that has the
+    /// repository. Nil for a chat memory, which belongs to no engine project; the
+    /// engine parks such a row rather than guessing an owner.
+    let projectID: String?
+    /// The ENGINE's scope (`project` | `personal`, from `agent_memories.scope`),
+    /// the other half of the convergence key. Nil for a chat memory.
+    let engineScope: String?
 }
 
 final class MemoryCloudSyncService: Sendable {
@@ -531,6 +588,7 @@ final class MemoryCloudSyncService: Sendable {
         let receiptCollection = userDocument.collection("memory_forget_receipts")
 
         var uploaded = 0
+        var skippedStaleRevision = 0
         for memory in eligible {
             // Chat memories keep their body in the app's snapshot table; memories the
             // Memory MCP engine mirrored keep theirs in `agent_memory_bodies`, and key
@@ -545,16 +603,52 @@ final class MemoryCloudSyncService: Sendable {
             guard let body = resolvedBody, body.isEmpty == false else { continue }
             let identity = isAgent ? try await store.engineMemoryID(for: memory.id) : nil
             if isAgent, identity == nil { continue }
+            // Convergence metadata (§5) rides inside the sealed payload. Only a
+            // mirrored row has it; a chat memory has neither tags nor a body hash.
+            let attributes = isAgent ? try await store.memoryCloudFactAttributes(id: memory.id) : nil
             let encoded = try Self.encodeMemoryFact(
                 memory: memory,
                 body: body,
                 uid: uid,
                 vaultKey: vaultKey,
                 now: now,
-                documentIdentity: identity
+                documentIdentity: identity,
+                tags: attributes?.tags,
+                bodyHash: attributes?.bodyHash,
+                projectID: attributes?.projectID,
+                engineScope: attributes?.engineScope
             )
-            try await factCollection.document(encoded.docID).setData(encoded.data, merge: true)
+            // CONDITIONAL, not unconditional. Every cycle re-uploads the whole
+            // eligible set, and `merge: true` with no comparison meant a device
+            // holding an older mirror of a memory overwrote a newer sibling's
+            // ciphertext with its stale payload — before the pull in the same
+            // cycle could ever observe the winning revision. Push-before-pull
+            // ordering does not save it: B's push happens first, so A's newer
+            // revision is already gone by the time B reads.
+            //
+            // The outer `updatedAt` is the same instant the payload seals (the
+            // pull binds the two, `MemoryCloudPullRejection.updatedAtMismatch`),
+            // so comparing it here compares the same value the engine's LWW
+            // would. Equal instants SKIP: two devices at the same instant with
+            // different bodies converge in the engine, and re-writing buys
+            // nothing. A read is also cheaper than the write it usually avoids.
+            let document = factCollection.document(encoded.docID)
+            let existingUpdatedAt = Self.cloudRevisionInstant(try await document.getData())
+            if let existingUpdatedAt, existingUpdatedAt >= memory.updatedAt {
+                skippedStaleRevision += 1
+                continue
+            }
+            try await document.setData(encoded.data, merge: true)
             uploaded += 1
+        }
+        if skippedStaleRevision > 0 {
+            // Once per cycle, not once per document: a device that has been
+            // offline comes back with a whole batch of stale revisions, and the
+            // interesting number is how many, not which.
+            AppLogger.sync.info(
+                "memory_cloud_push_skipped_stale_revisions",
+                metadata: ["count": String(skippedStaleRevision)]
+            )
         }
 
         var forgetReceipts = 0
@@ -617,7 +711,8 @@ final class MemoryCloudSyncService: Sendable {
             uploaded: uploaded,
             skipped: max(0, candidates.count - eligible.count),
             forgetReceipts: forgetReceipts,
-            cloudFactsDeleted: deletedFacts
+            cloudFactsDeleted: deletedFacts,
+            skippedStaleRevision: skippedStaleRevision
         )
     }
 
@@ -625,18 +720,24 @@ final class MemoryCloudSyncService: Sendable {
     ///   payload key on. Nil keeps the local memory id, which is right for chat
     ///   memories; engine-mirrored memories pass the engine's own id so the same
     ///   memory resolves to one document on every device.
+    /// - Parameters tags/bodyHash/projectID/engineScope: the mirrored row's
+    ///   convergence metadata (§5). Absent for a chat memory, which has none of it.
     static func encodeMemoryFact(
         memory: Memory,
         body: String,
         uid: String,
         vaultKey: Data,
         now: Date,
-        documentIdentity: String? = nil
+        documentIdentity: String? = nil,
+        tags: [String]? = nil,
+        bodyHash: String? = nil,
+        projectID: String? = nil,
+        engineScope: String? = nil
     ) throws -> (docID: String, data: [String: Any]) {
         let identity = documentIdentity ?? memory.id
         let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(identity)", keyData: vaultKey)
         let payload = MemoryCloudFactPayload(
-            schemaVersion: 1,
+            schemaVersion: MemoryCloudFactPayload.currentSchemaVersion,
             // The sealed id matches the id the document is keyed on, so a device
             // that opens this envelope can address the same memory it named.
             memoryID: identity,
@@ -646,7 +747,13 @@ final class MemoryCloudSyncService: Sendable {
             confidence: memory.confidence,
             citations: memory.citations,
             validFrom: memory.validFrom,
-            updatedAt: memory.updatedAt
+            updatedAt: memory.updatedAt,
+            validTo: memory.validTo,
+            supersededBy: memory.supersededBy,
+            tags: tags?.isEmpty == true ? nil : tags,
+            bodyHash: bodyHash?.isEmpty == true ? nil : bodyHash,
+            projectID: projectID?.isEmpty == true ? nil : projectID,
+            engineScope: engineScope?.isEmpty == true ? nil : engineScope
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -753,6 +860,24 @@ final class MemoryCloudSyncService: Sendable {
         )
     }
 
+    /// The `updatedAt` of a `memory_facts` document already in the cloud, or nil
+    /// when there is no document (or it carries no readable instant — which the
+    /// pull would refuse anyway, so treating it as "no revision" lets this
+    /// device replace it).
+    ///
+    /// Firestore hands dates back as `Timestamp`; the in-memory fake keeps the
+    /// `Date` it was written with. Both must resolve, exactly as in
+    /// `MemoryCloudPullService.firestoreDate`.
+    private static func cloudRevisionInstant(_ data: [String: Any]?) -> Date? {
+        guard let value = data?["updatedAt"] else { return nil }
+        if let timestamp = value as? Timestamp { return timestamp.dateValue() }
+        return OpenBurnBarDatabase.parseDateValue(value)
+    }
+
+    /// Forget receipts are deliberately NOT conditional. A receipt is terminal —
+    /// it says "this fact is gone", and there is no later revision it could be
+    /// stale against — so the read would cost one operation per receipt to
+    /// discover that the write is always correct.
     private static func sourceRefHmac(
         threadLogicalID: String,
         messageID: String?,

@@ -335,6 +335,51 @@ public struct BurnBarCLIRunner {
         }
     }
 
+    /// `memory-sync-inbox-list`: stdin JSON `BurnBarMemorySyncInboxListRequest`
+    /// -> stdout JSON `BurnBarMemorySyncInboxListResponse`.
+    ///
+    /// Memory Blind Sync, engine side. The app's pull lane opens the member's own
+    /// sealed `memory_facts` documents and parks the plaintext; the Python memory
+    /// engine holds no keys and no network and reaches those rows only here. It
+    /// cannot dial the control socket itself — production admits only first-party
+    /// signed peers and a virtualenv `python` can never carry that identity — so
+    /// the drain travels through this signed courier, exactly like `search-sql`.
+    public func runMemorySyncInboxList(input: Data) throws -> String {
+        let request: BurnBarMemorySyncInboxListRequest
+        do {
+            request = try JSONDecoder().decode(BurnBarMemorySyncInboxListRequest.self, from: input)
+        } catch {
+            throw BurnBarCLIError.missingArgument(
+                "memory-sync-inbox-list input must be a JSON object (optional `projectID`, `limit`)"
+            )
+        }
+        do {
+            return try Self.jsonString(client.memorySyncInboxList(request))
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
+    /// `memory-sync-inbox-ack`: stdin JSON `BurnBarMemorySyncInboxAckRequest`
+    /// -> stdout JSON `BurnBarMemorySyncInboxAckResponse`. Stamps `applied_at` on
+    /// the doc ids the engine merged; idempotent, so a partial drain is safe to
+    /// retry.
+    public func runMemorySyncInboxAck(input: Data) throws -> String {
+        let request: BurnBarMemorySyncInboxAckRequest
+        do {
+            request = try JSONDecoder().decode(BurnBarMemorySyncInboxAckRequest.self, from: input)
+        } catch {
+            throw BurnBarCLIError.missingArgument(
+                "memory-sync-inbox-ack input must be a JSON object with a `docIDs` array of strings"
+            )
+        }
+        do {
+            return try Self.jsonString(client.memorySyncInboxAck(request))
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
     /// `memory-model-policy`: no input -> stdout JSON `BurnBarMemoryModelPolicyResponse`
     /// (Memory Pro: what the memory engine may use, plus a scoped gateway token).
     public func runMemoryModelPolicy() throws -> String {
@@ -1068,6 +1113,8 @@ public struct BurnBarCLIRunner {
         "search-sql",
         "memory-remember",
         "memory-forget",
+        "memory-sync-inbox-list",
+        "memory-sync-inbox-ack",
         "memory-model-policy",
         "privacy-rpc",
         "install-shell-shims"
