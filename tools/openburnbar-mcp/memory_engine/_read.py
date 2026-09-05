@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -25,6 +26,7 @@ from ._util import (
     now_iso,
     raw_tags,
     sha256_hex,
+    canonical_body_hash,
 )
 from .constants import (
     ANSWER_TOKEN_BUDGET_DEFAULT,
@@ -41,6 +43,7 @@ from .constants import (
     KINDS,
     MAX_BODY_CHARS,
     MEMORY_SCOPES,
+    REMOTE_MEMORY_ID_RE,
     REVIEW_STATUSES,
     RRF_K,
     RRF_LEXICAL_WEIGHT,
@@ -62,9 +65,10 @@ class _ReadPath:
 
     def recall(
         self,
-        query: str,
+        query: str = "",
         *,
         project_path: str | None,
+        memory_id: str | None = None,
         limit: int = 20,
         scope: str = "all",
         kinds: Sequence[str] | None = None,
@@ -85,8 +89,16 @@ class _ReadPath:
         rerank: bool | None = None,
         rerank_top_k: int = RERANK_TOP_K_DEFAULT,
     ) -> dict[str, Any]:
+        target_memory_id = self._alias_target(memory_id) or memory_id if memory_id else None
         project_id, root = resolve_project(self.conn, project_path)
         if filters:
+            # A filter naming a folded id means the row it folded into, exactly as
+            # `get` and `forget` read it.
+            filter_id = filters.get("memoryID")
+            if isinstance(filter_id, str):
+                resolved = self._alias_target(filter_id)
+                if resolved:
+                    filters = {**filters, "memoryID": resolved}
             invalid_filter = _invalid_filter_reason(filters)
             if invalid_filter:
                 return {
@@ -141,6 +153,8 @@ class _ReadPath:
         scope_norm = (scope or "all").strip().lower()
 
         def allowed(memory: ActiveMemory) -> bool:
+            if target_memory_id and memory.id != target_memory_id:
+                return False
             if not include_cross_project and memory.project_id != project_id and memory.scope != "personal":
                 return False
             if scope_norm != "all" and memory.scope != scope_norm:
@@ -206,6 +220,20 @@ class _ReadPath:
                 semantic_rank[memory_id] = index + 1
                 semantic_score[memory_id] = score
 
+        # A query that *is* a memory id the store folded away asks for one row by
+        # name, not for a ranking. Answer it by name. The shape check keeps this
+        # out of the way of every real query: prose never matches
+        # `REMOTE_MEMORY_ID_RE`, so no ordinary recall pays for the lookup and no
+        # weight in the fusion below changes for one.
+        alias_query_target = (
+            self._alias_target(query_text) if query_text and REMOTE_MEMORY_ID_RE.match(query_text) else None
+        )
+        if alias_query_target and any(memory.id == alias_query_target for memory in eligible):
+            lexical_rank[alias_query_target] = 1
+            lexical_score[alias_query_target] = 100.0
+            semantic_rank[alias_query_target] = 1
+            semantic_score[alias_query_target] = 1.0
+
         results: list[tuple[float, ActiveMemory, dict[str, Any]]] = []
         for memory in eligible:
             lr, sr = lexical_rank.get(memory.id), semantic_rank.get(memory.id)
@@ -241,8 +269,30 @@ class _ReadPath:
             results, rerank_status = self._rerank(query_text, results, rerank_top_k)
         top = results[:lim]
 
-        if reinforce and top:
-            self._reinforce_recall_ids([memory.id for _, memory, _ in top])
+        if top:
+            # `memory.recall_serve` is what makes "last helped" answerable
+            # (`timeline()`): without it the only evidence a memory was ever used
+            # is a write event, which is the wrong question. Label-only, like
+            # every audit row — no body, no tags.
+            #
+            # A read that cannot take the write lock still has to return its
+            # results: another process holding the store must not turn a recall
+            # into an error, so the bookkeeping is best-effort and the answer is
+            # not.
+            try:
+                for _, memory, _ in top:
+                    audit_event(
+                        self.conn,
+                        action="memory.recall_serve",
+                        project_id=project_id,
+                        subject_id=memory.id,
+                        actor=self.config.actor,
+                    )
+                if reinforce:
+                    self._reinforce_recall_ids([memory.id for _, memory, _ in top])
+                self._commit()
+            except sqlite3.OperationalError:
+                self.conn.rollback()
 
         output = []
         for score, memory, extra in top:
@@ -554,20 +604,23 @@ class _ReadPath:
     # ----- CRUD ---------------------------------------------------------
 
     def get(self, memory_id: str, *, include_secrets: bool = False, include_history: bool = False) -> dict[str, Any]:
-        row = self._get_row(memory_id)
+        target_id = self._alias_target(memory_id) or memory_id
+        row = self._get_row(target_id)
         if row is None:
             return {"status": "not_found", "memoryID": memory_id}
         memory = self._row_to_memory(row, with_vector=False)
         if memory is None:
             return {"status": "unavailable", "code": "UNDECRYPTABLE", "memoryID": memory_id, "keyID": row["key_id"]}
         payload = {"status": "ok", "memory": memory.public()}
+        if target_id != memory_id:
+            payload["aliasedFrom"] = memory_id
         if memory.sensitivity == "secret":
             payload["memory"]["secretText"] = (
                 self._open_vault(memory.id, memory.project_id) if include_secrets else None
             )
             payload["memory"]["secretAvailable"] = True
         if include_history:
-            payload["history"] = self.history(memory_id)["events"]
+            payload["history"] = self.history(target_id)["events"]
         return payload
 
     def list(
@@ -821,7 +874,7 @@ class _ReadPath:
             sensitivity = gate.sensitivity
             labels = sorted(set(labels + gate.labels))
             changes["body"] = True
-        body_hash = sha256_hex(body_after.lower())
+        body_hash = canonical_body_hash(body_after)
         updated_vector = None
         if changes.get("body") and self.provider.available:
             updated_vector = self.provider.embed([body_after])[0]
@@ -1042,18 +1095,25 @@ class _ReadPath:
         return {"status": "ok", "memoryID": memory_id, "reviewStatus": normalized}
 
     def forget(self, memory_id: str, *, project_path: str | None = None) -> dict[str, Any]:
+        target_id = self._alias_target(memory_id) or memory_id
         row = self.conn.execute(
-            "SELECT rowid, id, project_id, immutable FROM memories WHERE id = ?", (memory_id,)
+            "SELECT rowid, id, project_id, immutable FROM memories WHERE id = ?", (target_id,)
         ).fetchone()
         if row is None:
             return {"status": "not_found", "memoryID": memory_id}
         project_id = str(row["project_id"])
-        self._purge(memory_id, int(row["rowid"]), preserve_daemon_mirror=True)
+        canonical_id = str(row["id"])
+        self._purge(canonical_id, int(row["rowid"]), preserve_daemon_mirror=True)
+        if target_id != memory_id:
+            folded_row = self.conn.execute("SELECT rowid FROM memories WHERE id = ?", (memory_id,)).fetchone()
+            if folded_row is not None:
+                self._purge(memory_id, int(folded_row["rowid"]), preserve_daemon_mirror=True)
+            self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (f"memory_alias:{memory_id}",))
         audit_event(
             self.conn,
             action="memory.forget",
             project_id=project_id,
-            subject_id=memory_id,
+            subject_id=canonical_id,
             labels=["local hard delete", "vault purged", "history purged", "vectors purged"],
             actor=self.config.actor,
         )
@@ -1061,7 +1121,7 @@ class _ReadPath:
         self._invalidate_cache()
         return {
             "status": "ok",
-            "memoryID": memory_id,
+            "memoryID": canonical_id,
             "projectID": project_id,
             "purged": ["memory", "vector", "history", "relations", "vault"],
         }
@@ -1188,6 +1248,95 @@ class _ReadPath:
                 }
             )
         return {"status": "ok", "memoryID": memory_id, "events": events}
+
+    def timeline(
+        self,
+        memory_id: str,
+        *,
+        project_path: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Project-scoped memory timeline with device attribution and last-helped ordering."""
+        project_id, root = resolve_project(self.conn, project_path)
+        target_id = self._alias_target(memory_id) or memory_id
+        row = self.conn.execute("SELECT id, project_id, scope FROM memories WHERE id = ?", (target_id,)).fetchone()
+        if row is None:
+            return {"status": "not_found", "memoryID": memory_id, **project_payload(project_id, root)}
+        if str(row["project_id"]) != project_id and str(row["scope"]) != "personal":
+            # B8: project-scoped read API refuses a foreign memory ID without returning body or meta.
+            return {
+                "status": "refused",
+                "code": "FOREIGN_PROJECT",
+                "memoryID": memory_id,
+                **project_payload(project_id, root),
+            }
+
+        # Last helped, in order:
+        # 1. Latest audit recall-serve event
+        # 2. Latest history event
+        audit_row = self.conn.execute(
+            "SELECT ts FROM memory_audit WHERE subject_id = ? AND action = 'memory.recall_serve' ORDER BY seq DESC LIMIT 1",
+            (target_id,),
+        ).fetchone()
+        if audit_row is not None:
+            last_helped = str(audit_row["ts"])
+            last_helped_source = "recall_serve"
+        else:
+            hist_row = self.conn.execute(
+                "SELECT ts FROM memory_history WHERE memory_id = ? ORDER BY seq DESC LIMIT 1",
+                (target_id,),
+            ).fetchone()
+            if hist_row is not None:
+                last_helped = str(hist_row["ts"])
+                last_helped_source = "history"
+            else:
+                last_helped = None
+                last_helped_source = None
+
+        history_rows = self.conn.execute(
+            "SELECT * FROM memory_history WHERE memory_id = ? ORDER BY seq ASC LIMIT ?",
+            (target_id, max(1, min(int(limit), 500))),
+        ).fetchall()
+
+        revisions = []
+        for hrow in history_rows:
+            aad = f"{target_id}|{hrow['project_id']}|history"
+            before = (
+                self.keyring.open(hrow["before_cipher"], hrow["before_nonce"], aad) if hrow["before_cipher"] else None
+            )
+            after = self.keyring.open(hrow["after_cipher"], hrow["after_nonce"], aad) if hrow["after_cipher"] else None
+            meta = _json_loads(hrow["meta_json"], {})
+            writer_device = (
+                meta.get("writerDevice") or meta.get("writer_device") or meta.get("deviceId") or meta.get("device_id")
+            )
+            extracted_by = meta.get("extracted_by") or meta.get("extractedBy")
+            model_id = meta.get("model_id") or meta.get("modelId")
+            revisions.append(
+                {
+                    "seq": int(hrow["seq"]),
+                    "event": str(hrow["event"]),
+                    "actor": str(hrow["actor"]),
+                    "ts": str(hrow["ts"]),
+                    "before": before,
+                    "after": after,
+                    "meta": meta,
+                    "writerDevice": writer_device,
+                    "extractedBy": extracted_by,
+                    "modelId": model_id,
+                }
+            )
+
+        payload: dict[str, Any] = {
+            "status": "ok",
+            "memoryID": target_id,
+            "revisions": revisions,
+            "lastHelpedAt": last_helped,
+            "lastHelpedSource": last_helped_source,
+            **project_payload(project_id, root),
+        }
+        if target_id != memory_id:
+            payload["aliasedFrom"] = memory_id
+        return payload
 
     def entities(
         self, *, project_path: str | None, limit: int = 100, include_cross_project: bool = False

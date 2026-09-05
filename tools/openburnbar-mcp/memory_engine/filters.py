@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 def _resolve_field(memory: ActiveMemory, key: str) -> Any:
     direct = {
+        "memoryID": memory.id,
         "kind": memory.kind,
         "scope": memory.scope,
         "confidence": memory.confidence,
@@ -49,6 +50,7 @@ def _resolve_field(memory: ActiveMemory, key: str) -> Any:
 
 
 _FILTER_SQL_FIELDS: dict[str, tuple[str, str]] = {
+    "memoryID": ("m.id", "text"),
     "kind": ("m.kind", "text"),
     "scope": ("m.scope", "text"),
     "confidence": ("m.confidence", "number"),

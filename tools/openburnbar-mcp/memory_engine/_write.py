@@ -26,6 +26,8 @@ from ._util import (
     now_iso,
     raw_tags,
     sha256_hex,
+    canonical_body_hash,
+    fail_closed_refusal,
 )
 from .judge import JudgeDecision, llm_judge
 from .providers import ModelRouter, ModelUnavailable
@@ -114,6 +116,8 @@ class _WritePath:
         default_tags: Sequence[str] | None = None,
         metadata: dict[str, Any] | None = None,
         force: bool = False,
+        default_review_status: str | None = None,
+        fail_closed: bool = False,
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
         # The batch-wide auxiliary input the caller controls. Per-fact aux from
@@ -150,6 +154,7 @@ class _WritePath:
                 "defaultScope": default_scope,
                 "defaultTags": normalize_tags(default_tags),
                 "metadata": metadata or {},
+                "defaultReviewStatus": default_review_status,
                 "secretPolicy": self.config.secret_policy,
                 "piiPolicy": self.config.pii_policy,
                 "retainAllowed": self.config.retain_allowed,
@@ -207,6 +212,10 @@ class _WritePath:
                     render_transcript(normalized_messages), pii_policy=self.config.pii_policy
                 )
                 if safe_transcript is None:
+                    if fail_closed:
+                        return fail_closed_refusal(
+                            "rejected", "TRANSCRIPT_GATE_REJECTED", transcript_gate.get("reason"), project_id, root
+                        )
                     extraction_error = f"{extractor_name}: {transcript_gate.get('reason')}"
                     extractor_name = "heuristic"
                     extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
@@ -214,6 +223,8 @@ class _WritePath:
                     try:
                         extracted = extractor_fn_resolved(safe_transcript, max_facts)
                     except ModelUnavailable as exc:
+                        if fail_closed:
+                            return fail_closed_refusal("unavailable", exc.code, exc.reason, project_id, root)
                         extraction_error = f"{extractor_name}: {exc.code}: {exc.reason}"
                         extraction_outcome = {
                             "purpose": "memory-extract",
@@ -225,25 +236,32 @@ class _WritePath:
                         extractor_name = "heuristic"
                         extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
                     except Exception as exc:  # noqa: BLE001 — degrade to the heuristic path, report the reason
+                        if fail_closed:
+                            return fail_closed_refusal("unavailable", "EXTRACTION_FAILED", str(exc), project_id, root)
                         extraction_error = f"{extractor_name}: {exc}"
                         extractor_name = "heuristic"
                         extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
                     else:
                         provenance = getattr(extractor_fn_resolved, "provenance", None)
                         if isinstance(provenance, dict):
+                            model_id = str(provenance.get("model") or provenance.get("label") or "")
+                            extracted_by = str(provenance.get("label") or provenance.get("provider") or model_id)
                             extraction_outcome = {
                                 "purpose": "memory-extract",
                                 "applied": True,
                                 "code": None,
-                                "model": provenance.get("label"),
+                                "model": model_id,
                                 "provider": provenance.get("provider"),
+                                "label": extracted_by,
                                 "droppedUngrounded": int(provenance.get("droppedUngrounded") or 0),
                             }
-                            extractor_name = f"llm:{provenance.get('label')}"
+                            extractor_name = f"llm:{extracted_by}"
                             gate_hash = sha256_hex(safe_transcript)[:16]
                             for fact in extracted:
                                 fact.metadata = {
                                     **fact.metadata,
+                                    "extracted_by": extracted_by,
+                                    "model_id": model_id,
                                     "extractPromptVersion": provenance.get("promptVersion"),
                                     "transcriptGateHash": gate_hash,
                                     "modelLatencyMs": int(provenance.get("latencyMs") or 0),
@@ -254,6 +272,10 @@ class _WritePath:
 
         decisions: list[dict[str, Any]] = []
         for fact in extracted:
+            # Every row says what produced it, heuristic or model alike: an
+            # unlabelled row is one a reviewer cannot weigh (C15).
+            fact.metadata.setdefault("extracted_by", extractor_name)
+            fact.metadata.setdefault("model_id", extractor_name)
             if default_tags:
                 # Raw until `_commit_fact` gates them; see `raw_tags`.
                 fact.tags = raw_tags(list(fact.tags) + list(default_tags))
@@ -263,6 +285,8 @@ class _WritePath:
                 fact.metadata = merged
             if default_scope and not fact.scope:
                 fact.scope = default_scope
+            if default_review_status and not fact.review_status:
+                fact.review_status = default_review_status
             fact.source_ref = _merged_source_ref(source_ref, fact.source_ref)
             decision = self._commit_fact(
                 project_id=project_id,
@@ -541,7 +565,7 @@ class _WritePath:
             review_status = "rejected"  # an imported review decision is preserved
         else:
             review_status = "approved"
-        body_hash = sha256_hex(body.lower())
+        body_hash = canonical_body_hash(body)
         ts = now_iso()
         now = datetime.now(UTC)
         entities = list(dict.fromkeys(list(fact.entities) + extract_entities(body)))[:16]
@@ -876,6 +900,16 @@ class _WritePath:
                 "UPDATE memories SET supersedes_json = ? WHERE id = ?",
                 (_json_dumps(retired_supersede_targets), memory_id),
             )
+        hist_meta = {
+            "supersedes": retired_supersede_targets,
+            "previouslySupersededBy": (retired["superseded_by"] if retired is not None else None),
+            "decidedBy": decided_by,
+            "rationale": rationale,
+        }
+        # Attribution the timeline reads back: who wrote it, and what extracted it.
+        for key in ("writerDevice", "writer_device", "deviceId", "device_id", "extracted_by", "model_id"):
+            if metadata.get(key) is not None:
+                hist_meta[key] = metadata[key]
         self._history(
             memory_id,
             project_id,
@@ -884,12 +918,7 @@ class _WritePath:
             else ("created" if not retired_supersede_targets else "created_superseding"),
             None,
             body,
-            {
-                "supersedes": retired_supersede_targets,
-                "previouslySupersededBy": (retired["superseded_by"] if retired is not None else None),
-                "decidedBy": decided_by,
-                "rationale": rationale,
-            },
+            hist_meta,
         )
         if gate.action == "redact":
             audit_event(
@@ -949,6 +978,10 @@ class _WritePath:
             "decidedBy": decided_by,
             "rationale": rationale,
         }
+        if metadata.get("extracted_by"):
+            decision["extractedBy"] = metadata["extracted_by"]
+        if metadata.get("model_id"):
+            decision["modelId"] = metadata["model_id"]
         if self._judge_outcome is not None:
             decision["judge"] = self._judge_outcome
         if reactivated_id:
@@ -1358,3 +1391,92 @@ class _WritePath:
                 _json_dumps(meta),
             ),
         )
+
+    def fold(
+        self,
+        folded_id: str,
+        canonical_id: str | None = None,
+        *,
+        into: str | None = None,
+        reason: str = "folded",
+    ) -> dict[str, Any]:
+        """Fold a memory id into a canonical row.
+
+        Writes `memory_alias:<folded_id>` to engine_meta, retires `folded_id`
+        if present in memories, and records a memory_history entry.
+        """
+        target = canonical_id or into
+        if not target or not folded_id:
+            return {"status": "error", "reason": "missing_ids"}
+        if folded_id == target:
+            return {"status": "ok", "event": "NONE", "reason": "self_fold_no_op", "memoryID": target}
+
+        resolved_target = self._alias_target(target) or target
+        target_row = self.conn.execute(
+            "SELECT rowid, id, project_id, valid_to FROM memories WHERE id = ?", (resolved_target,)
+        ).fetchone()
+        if target_row is None:
+            return {"status": "not_found", "memoryID": resolved_target}
+
+        existing_alias = self._alias_target(folded_id)
+        if existing_alias == resolved_target:
+            return {
+                "status": "ok",
+                "event": "NONE",
+                "reason": "already_folded",
+                "memoryID": resolved_target,
+                "foldedID": folded_id,
+            }
+
+        self._record_memory_alias(folded_id, resolved_target)
+
+        folded_row = self.conn.execute(
+            "SELECT rowid, id, project_id, valid_to, metadata_json, tags_json FROM memories WHERE id = ?", (folded_id,)
+        ).fetchone()
+        if folded_row is not None and folded_row["valid_to"] is None:
+            meta = _json_loads(folded_row["metadata_json"], {})
+            meta["foldedInto"] = resolved_target
+            tags = normalize_tags(list(_json_loads(folded_row["tags_json"], [])) + ["folded"])
+            self.conn.execute(
+                "UPDATE memories SET metadata_json = ?, tags_json = ? WHERE id = ?",
+                (_json_dumps(meta), _json_dumps(tags), folded_id),
+            )
+            self._retire(folded_id, reason=reason, replacement=resolved_target)
+
+        target_proj = str(target_row["project_id"])
+        self._history(
+            resolved_target,
+            target_proj,
+            "fold_absorbed",
+            None,
+            None,
+            {"foldedID": folded_id, "reason": reason},
+        )
+        if folded_row is not None:
+            self._history(
+                folded_id,
+                str(folded_row["project_id"]),
+                "folded",
+                None,
+                None,
+                {"canonicalID": resolved_target, "reason": reason},
+            )
+
+        if folded_row is not None:
+            inv = self.conn.execute("SELECT supersedes_json FROM memories WHERE id = ?", (resolved_target,)).fetchone()
+            if inv is not None:
+                supersedes = sorted({*_json_loads(inv["supersedes_json"], []), folded_id})
+                self.conn.execute(
+                    "UPDATE memories SET supersedes_json = ? WHERE id = ?",
+                    (_json_dumps(supersedes), resolved_target),
+                )
+
+        self._commit()
+        self._invalidate_cache()
+        return {
+            "status": "ok",
+            "event": "FOLD",
+            "canonicalID": resolved_target,
+            "foldedID": folded_id,
+            "reason": reason,
+        }

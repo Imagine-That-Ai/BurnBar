@@ -31,7 +31,7 @@ from .crypto import KeyRing, secure_store_files
 from .providers import ModelRouter
 from .embeddings import EmbeddingProvider, decode_vector, embedding_provider
 from .gate import auxiliary_injection_labels
-from .store import default_db_path, open_store, resolve_project
+from .store import adopt_project, default_db_path, open_store, resolve_project
 from .text import tokenize
 
 
@@ -95,6 +95,14 @@ class ActiveMemory:
     recall_tokens: list[str] = field(default_factory=list)
     vector: list[float] | None = None
 
+    @property
+    def extracted_by(self) -> str | None:
+        return self.metadata.get("extracted_by") or self.metadata.get("extractedBy")
+
+    @property
+    def model_id(self) -> str | None:
+        return self.metadata.get("model_id") or self.metadata.get("modelId")
+
     def public(self, include_body: bool = True) -> dict[str, Any]:
         payload = {
             "memoryID": self.id,
@@ -122,6 +130,10 @@ class ActiveMemory:
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
         }
+        if self.extracted_by:
+            payload["extractedBy"] = self.extracted_by
+        if self.model_id:
+            payload["modelId"] = self.model_id
         if include_body:
             payload["body"] = self.body
         return payload
@@ -228,6 +240,20 @@ class MemoryEngine(_WritePath, _ReadPath, _Maintenance, _BlindSync):
             ),
         )
         self._commit()
+
+    def resolve_project(self, project_path: str | Path | None = None) -> tuple[str, Path]:
+        """Resolve the project identity for a path."""
+        return resolve_project(self.conn, str(project_path) if project_path is not None else None)
+
+    def adopt_project(
+        self,
+        project_path: str | Path | None = None,
+        project_id: str | None = None,
+        *,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        """Explicitly adopt a project ID for a folder path."""
+        return adopt_project(self.conn, project_path, project_id, confirmed=confirmed)
 
     def pending_daemon_mirror_ids(self, project_path: str | None) -> list[str]:
         """Return durable mirror tombstones owned by one canonical project path."""
