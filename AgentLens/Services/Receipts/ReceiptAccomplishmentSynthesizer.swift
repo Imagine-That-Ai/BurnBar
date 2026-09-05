@@ -150,7 +150,21 @@ struct ReceiptAccomplishmentSynthesizer: Sendable {
     private func runGitCommand(_ args: [String], at path: String) -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["-C", path] + args
+        process.arguments = [
+            "-c", "core.fsmonitor=false",
+            "-c", "core.hooksPath=/dev/null",
+            "-c", "credential.helper=",
+            "-C", path
+        ] + args
+
+        var environment = ProcessInfo.processInfo.environment.filter { entry in
+            !entry.key.hasPrefix("GIT_")
+        }
+        environment["GIT_ASKPASS"] = "/usr/bin/false"
+        environment["GIT_OPTIONAL_LOCKS"] = "0"
+        environment["GIT_TERMINAL_PROMPT"] = "0"
+        environment["SSH_ASKPASS"] = "/usr/bin/false"
+        process.environment = environment
 
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -158,7 +172,14 @@ struct ReceiptAccomplishmentSynthesizer: Sendable {
 
         do {
             try process.run()
-            process.waitUntilExit()
+            let deadline = Date().addingTimeInterval(3.0)
+            while process.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+            if process.isRunning {
+                process.terminate()
+                return ""
+            }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             return String(data: data, encoding: .utf8) ?? ""
         } catch {
