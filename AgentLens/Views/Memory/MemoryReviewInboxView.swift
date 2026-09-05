@@ -410,6 +410,8 @@ struct MemoryReviewRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
+                scanCallout
+
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     MemoryCitationChipView(citations: item.memory.citations, onJumpToLocal: nil)
                     Spacer(minLength: 0)
@@ -477,6 +479,74 @@ struct MemoryReviewRow: View {
         .overlay(
             Capsule(style: .continuous)
                 .strokeBorder(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    /// Names what a LOCAL re-scan of this body concluded — never a stored
+    /// verdict. Nothing in this app can record "which gate quarantined this
+    /// row": app-side gates drop candidates, and `quarantined` is simply where
+    /// every new memory waits. So the default line says exactly that, a scan
+    /// hit is labelled as a scan, and a scan that could not run says it did not.
+    @ViewBuilder
+    private var scanCallout: some View {
+        switch item.gateState {
+        case .noGateFired:
+            calloutRow(
+                icon: "tray",
+                tint: DesignSystem.Colors.textMuted,
+                title: "Held for review — no gate fired. Every new memory waits here.",
+                detail: nil
+            )
+        case .scanned(let gate, let reason):
+            calloutRow(
+                icon: "shield.lefthalf.filled",
+                tint: DesignSystem.Colors.amber,
+                title: "Scanner flags: \(gate)",
+                detail: reason
+            )
+        case .scannerUnavailable:
+            calloutRow(
+                icon: "exclamationmark.shield",
+                tint: DesignSystem.Colors.textMuted,
+                title: "Scanner unavailable — this row was not re-checked",
+                detail: nil
+            )
+        }
+    }
+
+    private func calloutRow(icon: String, tint: Color, title: String, detail: String?) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(tint)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(tint)
+
+                if let detail {
+                    Text(detail)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.xs)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(tint.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .strokeBorder(tint.opacity(0.25), lineWidth: 0.5)
         )
     }
 
