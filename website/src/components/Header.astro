@@ -9,6 +9,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
    Footer keeps the flat list; header groups for scan. */
 const PRODUCT_DROPDOWN = [
   { href: "/product", label: "Overview" },
+  { href: "/memory", label: "Memory MCP" },
   { href: "/platforms", label: "Platforms" },
   { href: "/providers", label: "Providers" },
   { href: "/benefits", label: "Why it matters" }
@@ -39,6 +40,7 @@ const HEADER_NAV: NavItem[] = [
 ];
 const MOBILE_NAV = [
   { href: "/product", label: "Product" },
+  { href: "/memory", label: "Memory MCP" },
   { href: "/router", label: "Router" },
   { href: "/bench", label: "Bench" },
   { href: "/floo", label: "Floo" },
