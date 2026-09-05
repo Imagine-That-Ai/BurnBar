@@ -9,11 +9,32 @@ Verifies:
 
 from __future__ import annotations
 
+import json
 import subprocess
+import sys
 from pathlib import Path
 
-import memory_engine as me
-from memory_engine._util import _json_dumps, now_iso
+import pytest
+
+_HERE = Path(__file__).resolve().parent
+if str(_HERE.parent) not in sys.path:
+    sys.path.insert(0, str(_HERE.parent))
+
+import memory_engine as me  # noqa: E402
+from memory_engine._util import _json_dumps, now_iso  # noqa: E402
+
+
+class _NoopContext:
+    """Hand the tools an engine the test owns, without closing it on exit."""
+
+    def __init__(self, engine: me.MemoryEngine) -> None:
+        self._engine = engine
+
+    def __enter__(self) -> me.MemoryEngine:
+        return self._engine
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
 
 
 def _init_git(path: Path) -> None:
@@ -168,17 +189,21 @@ def test_apply_leaves_a_clean_re_run(tmp_path: Path) -> None:
         (project_id,),
     )
 
-    # PARKED_SUPERSEDES: aged past the retention window, target never arrived.
-    payload = {
-        "memoryID": "mem_parked_clean_0000000000000001",
-        "supersededBy": "mem_missing_target_clean_0000001",
-    }
+    # PARKED_SUPERSEDES: the engine's own note, aged past the retention window
+    # with a timestamp the doctor can actually read. The inbox is the daemon's
+    # table and is never pruned from here — see
+    # `test_apply_never_deletes_an_unapplied_inbox_row`.
     engine.conn.execute(
-        """
-        INSERT INTO agent_memory_inbox (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
-        VALUES ('doc_parked_clean', 'user_clean', 'mem_parked_clean_0000000000000001', ?, '2026-07-01T10:00:00Z', '2026-07-01T10:00:00Z', NULL)
-        """,
-        (_json_dumps(payload),),
+        "INSERT INTO engine_meta (key, value) VALUES ('parked_supersede:mem_parked_clean_0000000000000001', ?)",
+        (
+            _json_dumps(
+                {
+                    "memoryID": "mem_parked_clean_0000000000000001",
+                    "targetID": "mem_missing_target_clean_0000001",
+                    "reportedAt": "2026-07-01T10:00:00Z",
+                }
+            ),
+        ),
     )
     engine.conn.commit()
 
@@ -237,10 +262,47 @@ def test_apply_never_deletes_a_finding_it_cannot_repair(tmp_path: Path) -> None:
         "INSERT INTO engine_meta (key, value) VALUES ('unresolved_gap:mem_gap_bound_0000000000000001', ?)",
         (_json_dumps({"memoryID": "mem_gap_bound_0000000000000001", "expectedHash": "exphashbound1234"}),),
     )
+    # A parked supersede with NO usable timestamp — the shape `parked_supersedes()`
+    # produces routinely, because it builds `reportedAt` as
+    # `str(val.get("reportedAt") or val.get("ts") or "")` and `_parse_iso("")` is
+    # None. Nothing here proves the row cleared the retention window, so it is
+    # reported, exactly as the orphan loop already does.
+    engine.conn.execute(
+        "INSERT INTO engine_meta (key, value) VALUES ('parked_supersede:mem_parked_undated_00000001', ?)",
+        (_json_dumps({"memoryID": "mem_parked_undated_00000001", "targetID": "mem_absent_target_0000000001"}),),
+    )
+    # An orphan body with no usable timestamp either.
+    engine.conn.execute(
+        """
+        INSERT INTO agent_memory_bodies (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+        VALUES ('daemon_orphan_undated', ?, 'mem_orphan_undated_0000000000001', 'Orphan body text', 'hash_undated', '', '')
+        """,
+        (project_id,),
+    )
+    # An UNAPPLIED, app-owned inbox document. Deleting it loses the document
+    # permanently and without acknowledgement — the same class of harm as
+    # rewinding `remote_sync_watermarks`. The daemon owns this table.
+    engine.conn.execute(
+        """
+        INSERT INTO agent_memory_inbox (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+        VALUES ('doc_live_bound', 'user_bound', 'mem_live_bound_00000000000000001', ?, '', '', NULL)
+        """,
+        (
+            _json_dumps(
+                {"memoryID": "mem_live_bound_00000000000000001", "supersededBy": "mem_absent_target_0000000001"}
+            ),
+        ),
+    )
     engine.conn.commit()
 
     reported = {finding["code"] for finding in engine.doctor(project_path=repo)["findings"]}
-    assert reported == {"STRANDED_TRANSPORT_WATERMARK", "RECEIPT_COVERAGE_GAP", "UNRESOLVED_GAP"}
+    assert reported == {
+        "STRANDED_TRANSPORT_WATERMARK",
+        "RECEIPT_COVERAGE_GAP",
+        "UNRESOLVED_GAP",
+        "PARKED_SUPERSEDES",
+        "ORPHAN_MEMORY_BODIES",
+    }
 
     applied = engine.doctor(project_path=repo, apply=True, grace_period_seconds=0.0, parked_retention_days=0)
     assert applied["apply"] == {"applied": True, "prunedOrphans": 0, "prunedSupersedes": 0}
@@ -255,6 +317,72 @@ def test_apply_never_deletes_a_finding_it_cannot_repair(tmp_path: Path) -> None:
         "2026-08-10T10:00:00Z",
     )
     assert len(engine.unresolved_gaps()) == 1
+    assert (
+        engine.conn.execute(
+            "SELECT COUNT(*) FROM engine_meta WHERE key = 'parked_supersede:mem_parked_undated_00000001'"
+        ).fetchone()[0]
+        == 1
+    )
+    assert engine.conn.execute("SELECT COUNT(*) FROM agent_memory_bodies").fetchone()[0] == 1
+    engine.close()
+
+
+def test_apply_never_deletes_an_unapplied_inbox_row(tmp_path: Path) -> None:
+    """C3 / A7: `agent_memory_inbox` is the daemon's table, and the doctor never writes it.
+
+    An unapplied inbox document is a document the engine has not yet been told
+    to acknowledge — a lineage-held revision sits exactly like this by design.
+    Deleting it loses a member's memory permanently and without acknowledgement.
+    The doctor reports it; the daemon drains it.
+    """
+    repo = str(tmp_path / "repo")
+    _init_git(Path(repo))
+    engine = me.MemoryEngine.open(tmp_path / "doctor_inbox_bound.sqlite", provider=me.FakeEmbeddingProvider())
+    me.resolve_project(engine.conn, repo)
+    _setup_tables(engine)
+
+    # Aged well past any retention window, and with a real timestamp: the only
+    # thing keeping it alive is that the doctor does not own this table.
+    engine.conn.execute(
+        """
+        INSERT INTO agent_memory_inbox (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+        VALUES ('doc_inbox_aged', 'user_inbox', 'mem_inbox_aged_00000000000000001', ?, '2020-01-01T00:00:00Z', '2020-01-01T00:00:00Z', NULL)
+        """,
+        (_json_dumps({"memoryID": "mem_inbox_aged_00000000000000001", "supersededBy": "mem_never_arrives_000000001"}),),
+    )
+    engine.conn.commit()
+
+    applied = engine.doctor(project_path=repo, apply=True, grace_period_seconds=0.0, parked_retention_days=0)
+    assert applied["apply"]["prunedSupersedes"] == 0
+    assert engine.conn.execute("SELECT COUNT(*) FROM agent_memory_inbox").fetchone()[0] == 1
+    assert {finding["code"] for finding in engine.doctor(project_path=repo)["findings"]} == {"PARKED_SUPERSEDES"}
+    engine.close()
+
+
+def test_a_parked_supersede_with_no_timestamp_is_reported_not_pruned(tmp_path: Path) -> None:
+    """C3 / A7: no provable age, no delete — the rule the orphan loop already followed.
+
+    `parked_supersedes()` builds its timestamps as `str(x or y or "")`, so a
+    missing one is `""` and `_parse_iso("")` is None. Falling through on that
+    means the retention window is not enforced at all on this path: the row is
+    pruned at zero age under the DEFAULT 30-day retention.
+    """
+    repo = str(tmp_path / "repo")
+    _init_git(Path(repo))
+    engine = me.MemoryEngine.open(tmp_path / "doctor_undated.sqlite", provider=me.FakeEmbeddingProvider())
+    me.resolve_project(engine.conn, repo)
+    _setup_tables(engine)
+    engine.conn.execute(
+        "INSERT INTO engine_meta (key, value) VALUES ('parked_supersede:mem_undated_00000000000000001', ?)",
+        (_json_dumps({"memoryID": "mem_undated_00000000000000001", "targetID": "mem_never_arrives_000000001"}),),
+    )
+    engine.conn.commit()
+
+    # The default retention window, untouched: the row is zero seconds old.
+    applied = engine.doctor(project_path=repo, apply=True)
+    assert applied["apply"] == {"applied": True, "prunedOrphans": 0, "prunedSupersedes": 0}
+    assert len(engine.parked_supersedes()) == 1
+    assert {finding["code"] for finding in engine.doctor(project_path=repo)["findings"]} == {"PARKED_SUPERSEDES"}
     engine.close()
 
 
@@ -329,3 +457,77 @@ def test_a_stranded_transport_watermark_with_a_healthy_engine_watermark_is_repor
     assert "user_stranded" in detail
     assert "ahead of engine applied watermark" in detail
     engine.close()
+
+
+def test_doctor_apply_is_refused_without_memory_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """C2 / A7: `apply=True` deletes rows, so it is gated like every other mutating tool.
+
+    `LOCAL_MCP_DEFAULT_PROFILE` is `read_only`. Without a gate, an agent that
+    has been granted nothing at all could destroy store rows by passing one
+    boolean — while `burnbar_memory_review`, `burnbar_memory_import`,
+    `burnbar_memory_reindex` and `burnbar_project_adopt` all demand
+    `memory_write` first. The report-only half stays readable, because reading
+    the doctor is how a member finds out something is wrong.
+    """
+    import server
+
+    repo = str(tmp_path / "repo")
+    _init_git(Path(repo))
+    engine = me.MemoryEngine.open(tmp_path / "doctor_gate.sqlite", provider=me.FakeEmbeddingProvider())
+    project_id, _ = me.resolve_project(engine.conn, repo)
+    _setup_tables(engine)
+    monkeypatch.setattr(server, "_memory_engine", lambda: _NoopContext(engine))
+    monkeypatch.setenv("OPENBURNBAR_ACTIVE_PROJECT_PATH", repo)
+
+    # An aged orphan `apply` would otherwise be free to prune.
+    engine.conn.execute(
+        """
+        INSERT INTO agent_memory_bodies (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+        VALUES ('daemon_orphan_gate', ?, 'mem_orphan_gate_00000000000000001', 'Orphan body text', 'hash_orphan_gate',
+                '2026-07-01T10:00:00Z', '2026-07-01T10:00:00Z')
+        """,
+        (project_id,),
+    )
+    engine.conn.commit()
+
+    monkeypatch.delenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE", raising=False)
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_PROFILE", "read_only")
+
+    denied = json.loads(server.burnbar_memory_doctor(project_path=repo, apply=True))
+    assert denied["status"] == "denied"
+    assert denied["code"] == "MCP_CAPABILITY_DISABLED"
+    assert denied["capability"] == "memory_write"
+    assert denied["tool"] == "burnbar_memory_doctor"
+    # Refused means refused: the orphan is still there.
+    assert engine.conn.execute("SELECT COUNT(*) FROM agent_memory_bodies").fetchone()[0] == 1
+
+    # The report-only path is readable under the same profile.
+    report = json.loads(server.burnbar_memory_doctor(project_path=repo))
+    assert report["memoryEngine"]["status"] in ("ok", "degraded")
+    assert "apply" not in report["memoryEngine"]
+    assert engine.conn.execute("SELECT COUNT(*) FROM agent_memory_bodies").fetchone()[0] == 1
+
+    # With the capability granted, `apply` runs.
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE", "true")
+    granted = json.loads(server.burnbar_memory_doctor(project_path=repo, apply=True))
+    assert granted["memoryEngine"]["apply"]["applied"] is True
+    engine.close()
+
+
+def test_no_tool_docstring_names_the_capability_that_does_not_exist() -> None:
+    """M13: a docstring that names a gate the server does not have is worse than none.
+
+    `memory_read` is not a member of `LOCAL_MCP_CAPABILITY_ENV`; two docstrings
+    claimed it, one of them on a tool that mutates. A caller reading them would
+    conclude the tool was gated on something, and be wrong in both directions.
+    """
+    import server
+
+    assert "memory_read" not in server.LOCAL_MCP_CAPABILITY_ENV
+    offenders = [
+        name
+        for name in dir(server)
+        if name.startswith("burnbar_") and "`memory_read`" in (getattr(getattr(server, name), "__doc__", "") or "")
+    ]
+    assert offenders == [], f"docstrings name a capability that does not exist: {offenders}"
+    assert "`memory_write`" in (server.burnbar_memory_doctor.__doc__ or "")

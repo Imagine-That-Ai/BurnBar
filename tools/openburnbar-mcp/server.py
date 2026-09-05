@@ -3015,7 +3015,8 @@ def burnbar_memory_timeline(
     is refused without returning its body or metadata. "Last helped" is the most
     recent recall that served this memory, falling back to its latest write.
 
-    Gate: `memory_read`.
+    Gate: ungated, like `burnbar_memory_history` — the project scoping above is
+    what fences it, not a capability.
     """
     if limited := _local_mcp_rate_limit("burnbar_memory_timeline", "memory"):
         return limited
@@ -3778,13 +3779,21 @@ def burnbar_memory_doctor(
     Report-first: without `apply` this call only reads. `apply=True` prunes
     exactly two things — orphan memory bodies past the grace period that no
     receipt, staged upload or live daemon row references, and parked supersedes
-    past the retention window. It never edits a watermark, heals a ledger or
+    past the retention window whose age it can actually prove. It never edits a
+    watermark, never writes the app-owned `agent_memory_inbox`, and never
     deletes a finding; everything else it reports stays for a human.
 
-    Gate: `memory_read` (the code-index half is rate-limited under `code`).
+    Gate: the report is ungated, like `burnbar_memory_history`. `apply=True`
+    deletes rows and requires `memory_write`. Rate-limited under the code family.
     """
     if limited := _local_mcp_rate_limit("burnbar_memory_doctor", "code"):
         return limited
+    # The report is a read; `apply` is a delete, and is gated exactly like every
+    # other mutating tool on this surface. The default profile is `read_only`,
+    # so without this an agent granted nothing at all could prune store rows by
+    # passing one boolean.
+    if apply and (denied := _capability_denial("burnbar_memory_doctor", "memory_write")):
+        return denied
     try:
         with _memory_engine() as engine:
             memory = engine.doctor(project_path=project_path, aux_scan_cursor=aux_scan_cursor, apply=apply)

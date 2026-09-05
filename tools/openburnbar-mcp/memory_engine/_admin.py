@@ -637,16 +637,27 @@ class _Maintenance:
             retention_seconds = parked_retention_days * 86400.0
             for parked in self.parked_supersedes():
                 ts = _parse_iso(parked.get("receivedAt") or parked.get("reportedAt") or parked.get("updatedAt"))
-                if ts is not None and (now_dt - ts).total_seconds() <= retention_seconds:
+                # Same rule as the orphan loop above, and for the same reason: no
+                # usable timestamp means no way to prove the row cleared the
+                # retention window, so it is reported rather than deleted.
+                # `parked_supersedes()` builds these as `str(x or y or "")`, and
+                # `_parse_iso("")` is None — falling through here pruned rows at
+                # ZERO age under the default 30-day window.
+                if ts is None or (now_dt - ts).total_seconds() <= retention_seconds:
                     continue
                 source = parked.get("source")
-                if source == "inbox" and parked.get("docID"):
-                    self.conn.execute("DELETE FROM agent_memory_inbox WHERE doc_id = ?", (parked["docID"],))
-                elif source == "engine_meta" and parked.get("key"):
+                if source == "engine_meta" and parked.get("key"):
                     self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (parked["key"],))
                 elif source == "memories" and parked.get("memoryID"):
                     self.conn.execute("UPDATE memories SET superseded_by = NULL WHERE id = ?", (parked["memoryID"],))
                 else:
+                    # `source == "inbox"` lands here deliberately. `agent_memory_inbox`
+                    # is the daemon's transport table: an unapplied document is one
+                    # the engine has not acknowledged — a lineage-held revision sits
+                    # exactly like this by design — and deleting it loses the memory
+                    # permanently and silently, the same class of harm as rewinding
+                    # `remote_sync_watermarks`. The doctor reports it; the daemon
+                    # drains it.
                     continue
                 pruned_supersedes += 1
 
@@ -790,7 +801,11 @@ class _Maintenance:
                     "severity": "warn",
                     "code": "PARKED_SUPERSEDES",
                     "detail": f"{len(parked_list)} parked supersede(s) waiting for target memories.",
-                    "fix": "Wait for the target memories to sync, or run doctor with apply=True to prune parked supersedes past the retention window.",
+                    "fix": (
+                        "Wait for the target memories to sync. `apply=True` prunes only the engine's own "
+                        "notes past the retention window, and only where their age can be proved; an "
+                        "unapplied inbox document belongs to the daemon and is never deleted from here."
+                    ),
                 }
             )
 

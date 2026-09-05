@@ -1149,8 +1149,9 @@ export const TOOL_ATLAS: AtlasTool[] = [
   {
     name: "burnbar_memory_doctor",
     group: "lifecycle",
-    desc: "Health of the store, encryption, embeddings, policy, audit chain, daemon mirror and code index — including a resumable sweep for secrets sitting in auxiliary fields.",
-    caps: [],
+    desc: "Health of the store, encryption, embeddings, policy, audit chain, daemon mirror and code index — including a resumable sweep for secrets sitting in auxiliary fields. Report-only unless you pass apply, which prunes aged orphan bodies and aged parked supersedes and nothing else.",
+    caps: ["memory_write"],
+    capsWhen: { memory_write: "with apply" },
     memory: true
   },
 
