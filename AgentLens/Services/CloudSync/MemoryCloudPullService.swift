@@ -55,6 +55,12 @@ struct MemoryCloudPullResult: Equatable, Sendable {
     /// catching up, and hitting `maxPagesPerCycle` means it will carry on next
     /// cycle.
     let pagesRead: Int
+    /// Forget receipts parked for the engine this cycle — the retirements a
+    /// device that already merged a fact would otherwise never hear about.
+    let receiptsApplied: Int
+    /// Receipt documents refused by verification. Never parked; the receipt
+    /// cursor freezes in front of them.
+    let receiptsRejected: Int
 
     init(
         applied: Int,
@@ -64,7 +70,9 @@ struct MemoryCloudPullResult: Equatable, Sendable {
         skipped: Int = 0,
         sweptStale: Int = 0,
         rejectedPermanent: Int = 0,
-        pagesRead: Int = 1
+        pagesRead: Int = 1,
+        receiptsApplied: Int = 0,
+        receiptsRejected: Int = 0
     ) {
         self.applied = applied
         self.unchanged = unchanged
@@ -74,6 +82,8 @@ struct MemoryCloudPullResult: Equatable, Sendable {
         self.sweptStale = sweptStale
         self.rejectedPermanent = rejectedPermanent
         self.pagesRead = pagesRead
+        self.receiptsApplied = receiptsApplied
+        self.receiptsRejected = receiptsRejected
     }
 }
 
@@ -487,6 +497,21 @@ final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
             }
         }
         try await transaction.commit()
+        // The deletion half of convergence, on its own cursor. Deliberately
+        // AFTER the facts: a retirement that arrives in the same cycle as the
+        // revision it retires should be parked after it, so a partial drain
+        // applies them in that order too. See `pullForgetReceipts`.
+        let receipts = try await pullForgetReceipts(uid: uid, now: now)
+        if receipts.applied > 0 || receipts.rejected > 0 {
+            AppLogger.sync.info(
+                "memory_cloud_pull_receipts",
+                metadata: [
+                    "applied": String(receipts.applied),
+                    "unchanged": String(receipts.unchanged),
+                    "rejected": String(receipts.rejected)
+                ]
+            )
+        }
         // The other half of the merged-row sweep the daemon already runs: an
         // unmerged row waits for an engine that may never run, so it needs a
         // bound too. Last, so a row this cycle just parked is never swept by it.
@@ -505,7 +530,9 @@ final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
             skipped: skipped,
             sweptStale: sweptStale,
             rejectedPermanent: rejectedPermanent,
-            pagesRead: pagesRead
+            pagesRead: pagesRead,
+            receiptsApplied: receipts.applied,
+            receiptsRejected: receipts.rejected
         )
     }
 
@@ -698,4 +725,333 @@ final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
         if let timestamp = value as? Timestamp { return timestamp.dateValue() }
         return OpenBurnBarDatabase.parseDateValue(value)
     }
+}
+
+// MARK: - Forget receipts (Memory Blind Sync PR-2, Codex A)
+//
+// The deletion half of convergence. `cloudSyncCandidateChatMemories` excludes
+// every row with `validTo != nil`, so a RETIRED revision is never uploaded:
+// when memory A is superseded or forgotten, its `memory_facts` document is
+// DELETED and a `memory_forget_receipts` document is written in its place. The
+// pull read only `memory_facts`, so a device that had already merged A kept it
+// active for ever — the supersede edge on B never arrived, and neither did the
+// deletion.
+//
+// Publishing the retired body instead would undo the point of the design: a
+// forget must not put the forgotten text back on the wire. So this pulls the
+// receipt channel, which is what the design made it for.
+//
+// A receipt is NOT a sealed envelope, unlike a fact: it is a plaintext document
+// of opaque keyed HMACs (`firestore.rules` bounds it to exactly the keys below),
+// because that is what makes it blind — a receipt names a memory only to a
+// device holding the member's own vault key, and reveals nothing to the backend
+// beyond "something was forgotten". Verification is therefore structural rather
+// than cryptographic, and the checks below are the client-side mirror of the
+// `memory_forget_receipts` rule, key for key.
+
+/// Why a remote forget-receipt document was refused. A log dimension only —
+/// never a model path, never a UI string.
+enum MemoryCloudReceiptRejection: String, Sendable {
+    /// A key outside the `firestore.rules` `memory_forget_receipts` allowlist,
+    /// including any of the plaintext fields the rules forbid outright.
+    case disallowedField = "receipt_disallowed_field"
+    /// `uid` or `receiptID` does not name this member / this document, so the
+    /// receipt and the slot it sits in disagree about what it is.
+    case identityMismatch = "receipt_identity_mismatch"
+    /// The HMAC/reason shape is not one of the two the rules permit (a
+    /// source-level receipt or a fact-level one), or a field is malformed.
+    case malformedReceipt = "receipt_malformed"
+    /// A schema this build does not read. Forward compatibility, not an attack.
+    case unsupportedSchema = "receipt_unsupported_schema"
+    /// No usable `replicatedAt`, or one stamped implausibly far in the future —
+    /// the ordering key of this channel is unauthenticated by construction, so
+    /// it is bounded by real time rather than trusted outright.
+    case unusableReplicatedAt = "receipt_unusable_replicated_at"
+}
+
+extension MemoryCloudPullService {
+    /// Exactly the keys `firestore.rules` permits on a `memory_forget_receipts`
+    /// document. Kept in lockstep with `validMemoryForgetReceiptKeys()`.
+    static let allowedReceiptFields: Set<String> = [
+        "uid",
+        "receiptID",
+        "schemaVersion",
+        "memoryIdHmac",
+        "sourceRefHmac",
+        "sourceRefHmacs",
+        "reason",
+        "createdAt",
+        "replicatedAt"
+    ]
+
+    /// The coarse reasons the rules allow. A receipt naming anything else was
+    /// not written by a first-party client.
+    static let allowedReceiptReasons: Set<String> = [
+        "user_delete",
+        "review_status_quarantined",
+        "review_status_rejected",
+        "clear_history",
+        "gc_30d",
+        "unknown"
+    ]
+
+    /// The receipt payload schema this build reads.
+    static let currentReceiptSchemaVersion = 1
+
+    /// The discriminator the parked row carries so the engine can tell a
+    /// retirement from a fact WITHOUT the daemon having to understand either.
+    ///
+    /// It rides inside `payload_json`, which the daemon passes through
+    /// verbatim, because `agent_memory_inbox` has no kind column and this wave
+    /// adds no migration. `BurnBarMemorySyncInboxEntry.entryKind` mirrors it on
+    /// the wire for readers that would rather not look inside the payload.
+    /// A payload with no `entryKind` is a fact — every fact payload ever parked
+    /// predates this key, so absence has to mean "fact" and does.
+    static let forgetReceiptEntryKind = "memory_forget_receipt"
+
+    /// A verified receipt, in the shape the inbox parks it.
+    struct VerifiedReceipt {
+        let receiptID: String
+        /// The identity the receipt names: the fact-level `memoryIdHmac` when
+        /// there is one, else the source-level `sourceRefHmac`. Both are keyed
+        /// HMACs under the member's own vault key, so the engine can match them
+        /// against the rows it holds and nobody else can.
+        let identityHmac: String
+        let payloadJSON: String
+        let replicatedAt: Date
+    }
+
+    enum ReceiptVerificationOutcome {
+        case success(VerifiedReceipt)
+        case failure(MemoryCloudReceiptRejection)
+    }
+
+    /// Pure, side-effect-free admission check for one receipt document — the
+    /// client-side mirror of the `memory_forget_receipts` rule.
+    static func verifyReceipt(
+        document documentID: String,
+        data: [String: Any],
+        uid: String,
+        now: Date
+    ) -> ReceiptVerificationOutcome {
+        guard Set(data.keys).isSubset(of: allowedReceiptFields) else {
+            return .failure(.disallowedField)
+        }
+        guard let documentUID = data["uid"] as? String, documentUID == uid else {
+            return .failure(.identityMismatch)
+        }
+        guard let receiptID = data["receiptID"] as? String, receiptID == documentID else {
+            return .failure(.identityMismatch)
+        }
+        guard let schemaVersion = (data["schemaVersion"] as? NSNumber)?.intValue,
+              schemaVersion >= 1,
+              schemaVersion <= currentReceiptSchemaVersion else {
+            return .failure(.unsupportedSchema)
+        }
+        guard let reason = data["reason"] as? String, allowedReceiptReasons.contains(reason) else {
+            return .failure(.malformedReceipt)
+        }
+        let memoryIdHmac = data["memoryIdHmac"] as? String
+        let sourceRefHmac = data["sourceRefHmac"] as? String
+        let sourceRefHmacs = data["sourceRefHmacs"] as? [String]
+        // Exactly the two shapes the rules permit, and no mixing: a fact-level
+        // receipt (a memory id HMAC plus the source refs it cited) or a
+        // source-level one (a single source ref HMAC).
+        let identityHmac: String
+        if let memoryIdHmac {
+            guard sourceRefHmac == nil, isOpaqueHmac(memoryIdHmac) else { return .failure(.malformedReceipt) }
+            guard (sourceRefHmacs ?? []).allSatisfy(isOpaqueHmac) else { return .failure(.malformedReceipt) }
+            identityHmac = memoryIdHmac
+        } else if let sourceRefHmac {
+            guard sourceRefHmacs == nil, isOpaqueHmac(sourceRefHmac) else { return .failure(.malformedReceipt) }
+            identityHmac = sourceRefHmac
+        } else {
+            return .failure(.malformedReceipt)
+        }
+        guard let replicatedAt = firestoreDate(data["replicatedAt"]) else {
+            return .failure(.unusableReplicatedAt)
+        }
+        // This channel's ordering key is unauthenticated by construction — a
+        // receipt is deliberately not a sealed envelope — so a backend could
+        // stamp one in the year 3000 and carry the cursor past every real
+        // retirement behind it. Bounding it by real time is what stops that; the
+        // tolerance is the same skew window the fact channel re-scans.
+        guard replicatedAt <= now.addingTimeInterval(clockSkewRescanWindow) else {
+            return .failure(.unusableReplicatedAt)
+        }
+        let createdAt = firestoreDate(data["createdAt"]) ?? replicatedAt
+        let parked = ParkedForgetReceipt(
+            entryKind: forgetReceiptEntryKind,
+            schemaVersion: schemaVersion,
+            receiptID: receiptID,
+            reason: reason,
+            memoryIdHmac: memoryIdHmac,
+            sourceRefHmac: sourceRefHmac,
+            sourceRefHmacs: sourceRefHmacs,
+            createdAt: createdAt,
+            replicatedAt: replicatedAt
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let payloadJSON: String
+        do {
+            payloadJSON = String(decoding: try encoder.encode(parked), as: UTF8.self)
+        } catch {
+            // Unreachable for a fixed `Codable` of strings and dates, but this is
+            // the admission path: a receipt that cannot be written down is one
+            // the engine must never be handed.
+            return .failure(.malformedReceipt)
+        }
+        return .success(VerifiedReceipt(
+            receiptID: receiptID,
+            identityHmac: identityHmac,
+            payloadJSON: payloadJSON,
+            replicatedAt: replicatedAt
+        ))
+    }
+
+    /// The exact JSON the engine receives. Documented for the Python lane in
+    /// `.superpowers/sdd/2026-09-03-memory-blind-sync/receipt-entry-shape.md`;
+    /// every field is either an opaque keyed HMAC or a coarse enum, so the
+    /// parked row carries no more plaintext than the cloud document did.
+    struct ParkedForgetReceipt: Codable {
+        let entryKind: String
+        let schemaVersion: Int
+        let receiptID: String
+        let reason: String
+        let memoryIdHmac: String?
+        let sourceRefHmac: String?
+        let sourceRefHmacs: [String]?
+        let createdAt: Date
+        let replicatedAt: Date
+    }
+
+    private static func isOpaqueHmac(_ value: String) -> Bool {
+        value.count == 64 && value.allSatisfy { $0.isHexDigit && !$0.isUppercase }
+    }
+
+    /// Pages `users/{uid}/memory_forget_receipts` on its own cursor and parks
+    /// every receipt that verifies, so a device that already merged a fact
+    /// learns it was retired.
+    ///
+    /// Refused receipts FREEZE this cursor rather than advancing past
+    /// themselves, unlike the fact channel: a receipt carries no authenticated
+    /// instant at all, so there is no trustworthy stamp to advance to. The cost
+    /// is re-reading a small collection each cycle while a malformed receipt
+    /// exists; the alternative would let an unauthenticated field skip real
+    /// retirements.
+    func pullForgetReceipts(uid: String, now: Date) async throws -> MemoryCloudReceiptPullResult {
+        let watermark = try await watermarkStore.fetchWatermarkOrDefault(
+            accountUid: uid,
+            collectionKind: .memoryForgetReceipts
+        )
+        let queryFloor = watermark.addingTimeInterval(-Self.clockSkewRescanWindow)
+        let receiptCollection = firestoreGateway
+            .collection("users")
+            .document(uid)
+            .collection("memory_forget_receipts")
+        let transaction = AtomicRemoteSyncTransaction(
+            dbQueue: store.dbQueue,
+            watermarkStore: watermarkStore,
+            accountUid: uid,
+            collectionKind: .memoryForgetReceipts
+        )
+
+        var applied = 0
+        var unchanged = 0
+        var rejected = 0
+        var frozen = false
+        var rejectionFloor: Date?
+        var eligibleStamps: [Date] = []
+        var pageCursor: (replicatedAt: Date, docID: String)?
+        var pagesRead = 0
+        var exhausted = false
+
+        do {
+            while pagesRead < Self.maxPagesPerCycle {
+                var query: CloudSyncQueryGateway = receiptCollection
+                    .whereField("replicatedAt", isGreaterThan: queryFloor)
+                    .order(by: "replicatedAt", descending: false)
+                    .orderByDocumentID(descending: false)
+                if let pageCursor {
+                    query = query.start(afterOrderedValues: [pageCursor.replicatedAt, pageCursor.docID])
+                }
+                let snapshot = try await query.limit(to: pageLimit).getDocuments()
+                pagesRead += 1
+                let documents = snapshot.documents
+                if documents.isEmpty {
+                    exhausted = true
+                    break
+                }
+                for document in documents {
+                    let data = document.data()
+                    switch Self.verifyReceipt(document: document.documentID, data: data, uid: uid, now: now) {
+                    case .failure(let reason):
+                        rejected += 1
+                        if !frozen {
+                            frozen = true
+                            rejectionFloor = Self.firestoreDate(data["replicatedAt"])
+                        }
+                        AppLogger.sync.error(
+                            "memory_cloud_pull_receipt_rejected",
+                            metadata: ["reason": reason.rawValue, "doc_id": document.documentID]
+                        )
+                        continue
+                    case .success(let receipt):
+                        let outcome = try await store.upsertRemoteMemoryFact(
+                            docID: receipt.receiptID,
+                            userID: uid,
+                            engineMemoryID: receipt.identityHmac,
+                            payloadJSON: receipt.payloadJSON,
+                            remoteUpdatedAt: receipt.replicatedAt,
+                            now: now
+                        )
+                        switch outcome {
+                        case .inserted, .replaced:
+                            applied += 1
+                        case .unchanged:
+                            unchanged += 1
+                        }
+                        if !frozen {
+                            eligibleStamps.append(receipt.replicatedAt)
+                        }
+                    }
+                }
+                if documents.count < pageLimit {
+                    exhausted = true
+                    break
+                }
+                guard let last = documents.last,
+                      let lastStamp = Self.firestoreDate(last.data()["replicatedAt"]) else {
+                    AppLogger.sync.error("memory_cloud_pull_receipt_page_cursor_unreadable")
+                    break
+                }
+                pageCursor = (lastStamp, last.documentID)
+            }
+        } catch {
+            transaction.rollback()
+            throw error
+        }
+
+        var eligible = eligibleStamps
+        if frozen {
+            eligible = rejectionFloor.map { floor in eligibleStamps.filter { $0 < floor } } ?? []
+        }
+        let stoppedShort = !exhausted && !frozen
+        if let ceiling = Self.watermarkCeiling(eligibleStamps: eligible, pageWasFull: stoppedShort) {
+            for stamp in eligible where stamp <= ceiling {
+                transaction.recordProcessedItem(remoteUpdatedAt: stamp)
+            }
+        }
+        try await transaction.commit()
+        return MemoryCloudReceiptPullResult(applied: applied, unchanged: unchanged, rejected: rejected)
+    }
+}
+
+/// What one cycle's receipt channel did.
+struct MemoryCloudReceiptPullResult: Equatable, Sendable {
+    let applied: Int
+    let unchanged: Int
+    let rejected: Int
 }

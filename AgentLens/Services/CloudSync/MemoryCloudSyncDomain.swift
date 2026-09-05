@@ -395,7 +395,11 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
                             "rejected": String(pulled.rejected),
                             "skipped": String(pulled.skipped),
                             "purged_other_account": String(pulled.purgedOtherAccount),
-                            "swept_stale": String(pulled.sweptStale)
+                            "swept_stale": String(pulled.sweptStale),
+                            "rejected_permanent": String(pulled.rejectedPermanent),
+                            "pages_read": String(pulled.pagesRead),
+                            "receipts_applied": String(pulled.receiptsApplied),
+                            "receipts_rejected": String(pulled.receiptsRejected)
                         ]
                     )
                 } catch {

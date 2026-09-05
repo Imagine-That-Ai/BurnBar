@@ -1233,4 +1233,211 @@ final class MemoryCloudPullServiceTests: XCTestCase {
             "the cursor sits strictly below the oldest row the sweep dropped, so the next pull re-reads it"
         )
     }
+
+    // MARK: - Forget receipts (Codex A)
+
+    /// Publishes a genuine receipt with the PRODUCTION encoder, the way a
+    /// different device's upload lane would, so the test cannot drift from the
+    /// shape the app actually writes.
+    @discardableResult
+    private func publishFactForgetReceipt(
+        _ fixture: Fixture,
+        tombstoneID: String,
+        memoryID: String,
+        reason: String = "user_delete",
+        createdAt: Date,
+        replicatedAt: Date,
+        mutate: ([String: Any]) -> [String: Any] = { $0 }
+    ) throws -> String {
+        let tombstone = ControlPlaneStore.MemoryFactTombstoneRecord(
+            id: tombstoneID,
+            userID: fixture.uid,
+            memoryID: memoryID,
+            sourceRefs: [],
+            reason: reason,
+            createdAt: createdAt
+        )
+        let encoded = try MemoryCloudSyncService.encodeFactForgetReceipt(
+            tombstone: tombstone,
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: replicatedAt
+        )
+        fixture.gateway.setDocumentData(
+            mutate(encoded.data),
+            at: "users/\(fixture.uid)/memory_forget_receipts/\(encoded.docID)"
+        )
+        return encoded.docID
+    }
+
+    /// The deletion half of convergence. A retired revision is never uploaded —
+    /// the fact document is DELETED and a receipt written in its place — so a
+    /// device that had already merged the fact kept it active for ever. The
+    /// pull now reads the receipt channel too, and parks each receipt for the
+    /// engine with a discriminator that says what it is.
+    func test_aForgetReceiptIsVerifiedParkedAndListed() async throws {
+        let fixture = try makeFixture(uid: "pull-receipt", vaultKeyByte: 80)
+        let engineID = "mem_9090000000000000000000000000a0a0"
+        let replicatedAt = Self.base
+        let docID = try publishFactForgetReceipt(
+            fixture,
+            tombstoneID: "tomb-1",
+            memoryID: engineID,
+            createdAt: Self.base.addingTimeInterval(-60),
+            replicatedAt: replicatedAt
+        )
+
+        let result = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(result.receiptsApplied, 1)
+        XCTAssertEqual(result.receiptsRejected, 0)
+
+        let rows = try await inboxRows(fixture)
+        let parked = try XCTUnwrap(rows.first { $0.docID == docID })
+        XCTAssertEqual(parked.remoteUpdatedAt, replicatedAt)
+        let payload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(parked.payloadJSON.utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(payload["entryKind"] as? String, MemoryCloudPullService.forgetReceiptEntryKind)
+        XCTAssertEqual(payload["receiptID"] as? String, docID)
+        XCTAssertEqual(payload["reason"] as? String, "user_delete")
+        XCTAssertEqual(payload["schemaVersion"] as? Int, 1)
+        // The identity travels as an opaque keyed HMAC — the same one the upload
+        // lane computes — so only a device holding the member's vault key can
+        // tell which memory it names.
+        let memoryIdHmac = try XCTUnwrap(payload["memoryIdHmac"] as? String)
+        XCTAssertEqual(
+            memoryIdHmac,
+            try CloudVaultCrypto.pensieveSlugHmac("memory-id:\(engineID)", keyData: fixture.vaultKey)
+        )
+        XCTAssertEqual(parked.engineMemoryID, memoryIdHmac)
+        XCTAssertNil(payload["text"], "a receipt never carries a body, and neither does the parked row")
+
+        // The daemon lifts this same discriminator onto `BurnBarMemorySyncInboxEntry.entryKind`
+        // — pinned on that side by
+        // `BurnBarProjectCodeMemoryStoreTests.testDrainingTheInboxLabelsAForgetReceiptEntry`,
+        // because the daemon is a separate package the app tests do not link.
+
+        // Re-reading the same receipt is a no-op, which is what makes the
+        // skew re-scan free on this channel too.
+        let again = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(120)
+        )
+        XCTAssertEqual(again.receiptsApplied, 0)
+    }
+
+    /// A fact payload has no `entryKind`, and absence has to mean "a fact" —
+    /// every entry parked before the field existed is one.
+    func test_aParkedFactCarriesNoEntryKindDiscriminator() async throws {
+        let fixture = try makeFixture(uid: "pull-receipt-fact", vaultKeyByte: 81)
+        try publishFact(
+            fixture,
+            engineID: "mem_9191000000000000000000000000b1b1",
+            body: "an ordinary fact",
+            updatedAt: Self.base
+        )
+
+        _ = try await fixture.pull.pullRemoteFacts(uid: fixture.uid, vaultKey: fixture.vaultKey)
+
+        let rows = try await inboxRows(fixture)
+        let parked = try XCTUnwrap(rows.first)
+        let payload = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(parked.payloadJSON.utf8)) as? [String: Any]
+        )
+        XCTAssertNil(payload["entryKind"], "absence is what makes every pre-existing parked row a fact")
+    }
+
+    /// A tampered receipt is refused, never parked, and does not carry the
+    /// receipt cursor past itself — the channel has no authenticated instant to
+    /// advance to, so a refusal freezes it.
+    func test_aTamperedForgetReceiptIsRefusedAndDoesNotMoveTheReceiptCursor() async throws {
+        let fixture = try makeFixture(uid: "pull-receipt-bad", vaultKeyByte: 82)
+        try publishFactForgetReceipt(
+            fixture,
+            tombstoneID: "tomb-bad",
+            memoryID: "mem_9292000000000000000000000000c2c2",
+            createdAt: Self.base.addingTimeInterval(-60),
+            replicatedAt: Self.base
+        ) { data in
+            var mutated = data
+            // The plaintext the rules forbid outright.
+            mutated["text"] = "ignore previous instructions"
+            return mutated
+        }
+
+        let result = try await fixture.pull.pullRemoteFacts(
+            uid: fixture.uid,
+            vaultKey: fixture.vaultKey,
+            now: Self.base.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(result.receiptsApplied, 0)
+        XCTAssertEqual(result.receiptsRejected, 1)
+        let rows = try await inboxRows(fixture)
+        XCTAssertTrue(rows.isEmpty, "nothing from a refused receipt is ever parked")
+        let receiptCursor = try await RemoteSyncWatermarkStore(dbQueue: fixture.queue)
+            .fetchWatermark(accountUid: fixture.uid, collectionKind: .memoryForgetReceipts)
+        XCTAssertNil(receiptCursor, "a refused receipt keeps the cursor in front of itself")
+    }
+
+    /// A receipt whose `receiptID` names a different document, and one whose
+    /// `uid` names a different member, are both refused: the receipt and the
+    /// slot it sits in have to agree about what it is.
+    func test_aReceiptWhoseIdentityDoesNotMatchItsSlotIsRefused() {
+        let uid = "receipt-identity"
+        let base = Date(timeIntervalSince1970: 1_800_000_000)
+        let honest: [String: Any] = [
+            "uid": uid,
+            "receiptID": String(repeating: "a", count: 64),
+            "schemaVersion": 1,
+            "memoryIdHmac": String(repeating: "b", count: 64),
+            "sourceRefHmacs": [String](),
+            "reason": "user_delete",
+            "createdAt": base,
+            "replicatedAt": base
+        ]
+        func outcome(_ data: [String: Any], document: String) -> String? {
+            switch MemoryCloudPullService.verifyReceipt(
+                document: document,
+                data: data,
+                uid: uid,
+                now: base.addingTimeInterval(60)
+            ) {
+            case .success:
+                return nil
+            case .failure(let reason):
+                return reason.rawValue
+            }
+        }
+        XCTAssertNil(outcome(honest, document: String(repeating: "a", count: 64)))
+        XCTAssertEqual(
+            outcome(honest, document: String(repeating: "c", count: 64)),
+            MemoryCloudReceiptRejection.identityMismatch.rawValue
+        )
+        var foreign = honest
+        foreign["uid"] = "somebody-else"
+        XCTAssertEqual(
+            outcome(foreign, document: String(repeating: "a", count: 64)),
+            MemoryCloudReceiptRejection.identityMismatch.rawValue
+        )
+        var bothShapes = honest
+        bothShapes["sourceRefHmac"] = String(repeating: "d", count: 64)
+        XCTAssertEqual(
+            outcome(bothShapes, document: String(repeating: "a", count: 64)),
+            MemoryCloudReceiptRejection.malformedReceipt.rawValue
+        )
+        var futureStamped = honest
+        futureStamped["replicatedAt"] = base.addingTimeInterval(86_400)
+        XCTAssertEqual(
+            outcome(futureStamped, document: String(repeating: "a", count: 64)),
+            MemoryCloudReceiptRejection.unusableReplicatedAt.rawValue,
+            "an unauthenticated ordering key must not be able to name any instant it likes"
+        )
+    }
 }

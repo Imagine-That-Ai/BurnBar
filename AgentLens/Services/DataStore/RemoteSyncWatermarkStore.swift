@@ -50,10 +50,18 @@ enum RemoteSyncCollectionKind: String, CaseIterable {
     /// Memory Blind Sync: the member's own sealed memory facts, pulled back down
     /// above this watermark by `MemoryCloudPullService`.
     case memoryFacts = "memory_facts"
+    /// Memory Blind Sync: the forget receipts that retire a fact on the devices
+    /// that already merged it.
+    ///
+    /// Its OWN cursor, not the facts one, because the two collections are
+    /// ordered by different fields written at different moments — a receipt
+    /// carries `replicatedAt`, a fact `updatedAt` — and a shared cursor would
+    /// let either channel skip the other's documents.
+    case memoryForgetReceipts = "memory_forget_receipts"
 
     /// All collection kinds for iteration.
     static var allCases: [RemoteSyncCollectionKind] {
-        [.usage, .conversations, .chatThreads, .memoryFacts]
+        [.usage, .conversations, .chatThreads, .memoryFacts, .memoryForgetReceipts]
     }
 
     /// How far back a FIRST sync of this collection reaches when no watermark
@@ -72,11 +80,16 @@ enum RemoteSyncCollectionKind: String, CaseIterable {
     /// without a single error. So the first sync of `memory_facts` reaches back
     /// past any plausible store, and every later sync is bounded by the durable
     /// watermark exactly as before.
+    ///
+    /// `memory_forget_receipts` shares that floor for the same reason from the
+    /// other side: a receipt says "this fact is gone", and a device that merged
+    /// the fact years ago still needs the retirement. Receipts are tiny and
+    /// applying one twice is a no-op, so a full first pass is cheap.
     var firstSyncFloor: Date {
         switch self {
         case .usage, .conversations, .chatThreads:
             return Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
-        case .memoryFacts:
+        case .memoryFacts, .memoryForgetReceipts:
             return Date(timeIntervalSince1970: 0)
         }
     }

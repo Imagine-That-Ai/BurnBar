@@ -158,17 +158,42 @@ extension BurnBarProjectCodeMemoryStore {
             )
             return BurnBarMemorySyncInboxListResponse(
                 traceID: traceID,
-                entries: rows.map {
-                    BurnBarMemorySyncInboxEntry(
-                        docID: $0.string(0),
-                        userID: $0.string(1),
-                        engineMemoryID: $0.string(2),
-                        payloadJSON: $0.string(3),
-                        remoteUpdatedAt: $0.string(4)
+                entries: rows.map { row in
+                    let payloadJSON = row.string(3)
+                    return BurnBarMemorySyncInboxEntry(
+                        docID: row.string(0),
+                        userID: row.string(1),
+                        engineMemoryID: row.string(2),
+                        payloadJSON: payloadJSON,
+                        remoteUpdatedAt: row.string(4),
+                        entryKind: Self.syncInboxEntryKind(fromPayloadJSON: payloadJSON)
                     )
                 }
             )
         }
+    }
+
+    /// Lifts the routing discriminator out of a parked payload, so an entry says
+    /// what it is without a reader having to open it.
+    ///
+    /// This is the ONE thing the courier reads inside a payload, and it reads
+    /// exactly one key. The daemon still does not understand facts, receipts, or
+    /// merge semantics — the engine owns all of that — but `agent_memory_inbox`
+    /// has no kind column, this wave adds no migration, and a discriminator that
+    /// only exists inside an opaque string cannot be honoured by anything that
+    /// declines to look. Anything unparseable is nil, i.e. "a fact", which is
+    /// what every entry written before this field existed is.
+    static func syncInboxEntryKind(fromPayloadJSON payloadJSON: String) -> String? {
+        struct Discriminator: Decodable {
+            let entryKind: String?
+        }
+        guard let data = payloadJSON.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(Discriminator.self, from: data),
+              let entryKind = decoded.entryKind,
+              !entryKind.isEmpty else {
+            return nil
+        }
+        return entryKind
     }
 
     /// Marks the named documents merged. Idempotent by construction: the update

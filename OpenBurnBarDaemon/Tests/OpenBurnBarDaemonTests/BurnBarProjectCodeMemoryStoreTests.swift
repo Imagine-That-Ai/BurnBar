@@ -2437,6 +2437,50 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
     }
 
+    /// The courier labels a forget receipt without understanding one.
+    ///
+    /// `agent_memory_inbox` has no kind column and the blind-sync wave adds no
+    /// migration, so the app writes the discriminator inside `payload_json` —
+    /// which this RPC passes through verbatim — and the daemon lifts exactly
+    /// that one key onto `BurnBarMemorySyncInboxEntry.entryKind`. A fact payload
+    /// has no such key, and absence has to mean "a fact": every row parked
+    /// before the field existed is one. The exact JSON is the contract in
+    /// `.superpowers/sdd/2026-09-03-memory-blind-sync/receipt-entry-shape.md`.
+    func testDrainingTheInboxLabelsAForgetReceiptEntry() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-fact', 'member-1', 'mem_aaaa', '{"text":"a fact"}',
+                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-receipt', 'member-1', 'aabbcc', '{"entryKind":"memory_forget_receipt","reason":"user_delete"}',
+                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-garbled', 'member-1', 'mem_cccc', 'not json at all',
+                 '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        let listed = try store.syncInboxList(BurnBarMemorySyncInboxListRequest())
+
+        XCTAssertEqual(listed.entries.map(\.docID), ["doc-fact", "doc-receipt", "doc-garbled"])
+        XCTAssertNil(listed.entries[0].entryKind, "a fact carries no discriminator, and never has")
+        XCTAssertEqual(listed.entries[1].entryKind, "memory_forget_receipt")
+        XCTAssertNil(listed.entries[2].entryKind, "an unreadable payload is a fact, not an error")
+        XCTAssertEqual(
+            listed.entries[1].payloadJSON,
+            #"{"entryKind":"memory_forget_receipt","reason":"user_delete"}"#,
+            "the payload itself is passed through byte for byte"
+        )
+    }
+
     /// The engine has no keys and no network: the only way a memory fact the app
     /// pulled down reaches it is this drain. Listing returns unapplied rows
     /// oldest-first, acknowledging stamps them, and a second list is empty — so a

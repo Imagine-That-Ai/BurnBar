@@ -451,22 +451,42 @@ public struct BurnBarMemorySyncInboxEntry: Codable, Hashable, Sendable {
     /// so the app publishes that member and the daemon enforces it — and it
     /// travels so the engine can AUDIT which member a row belongs to.
     public let userID: String
+    /// For a fact, the engine's own memory id. For a forget receipt, the opaque
+    /// keyed HMAC the receipt names (`memoryIdHmac`, or `sourceRefHmac` for a
+    /// source-level one) — the identity the engine matches against the rows it
+    /// holds, and which nobody without the member's vault key can compute.
     public let engineMemoryID: String
     public let payloadJSON: String
     public let remoteUpdatedAt: String
+    /// What this entry IS, when it is not a fact: `"memory_forget_receipt"` for
+    /// a retirement the engine should apply rather than merge.
+    ///
+    /// ADDITIVE and OPTIONAL, defaulting to nil, so a decoder that has never
+    /// heard of it — the Python engine before it learns receipts, a Windows
+    /// build, an older daemon — keeps working unchanged. Absent means "a fact":
+    /// every entry parked before this field existed is one.
+    ///
+    /// It MIRRORS the `entryKind` discriminator inside `payloadJSON`, which is
+    /// authoritative. `agent_memory_inbox` has no kind column and this wave adds
+    /// no migration, so the app writes the discriminator where the payload
+    /// already travels verbatim and the daemon lifts it out for readers that
+    /// would rather not look inside.
+    public let entryKind: String?
 
     public init(
         docID: String,
         userID: String,
         engineMemoryID: String,
         payloadJSON: String,
-        remoteUpdatedAt: String
+        remoteUpdatedAt: String,
+        entryKind: String? = nil
     ) {
         self.docID = docID
         self.userID = userID
         self.engineMemoryID = engineMemoryID
         self.payloadJSON = payloadJSON
         self.remoteUpdatedAt = remoteUpdatedAt
+        self.entryKind = entryKind
     }
 }
 

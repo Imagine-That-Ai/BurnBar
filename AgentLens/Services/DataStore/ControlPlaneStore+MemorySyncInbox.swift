@@ -228,7 +228,10 @@ extension ControlPlaneStore {
     /// (`BurnBarMemoryDeviceSyncMarker.collectionKind`), which is not a cursor —
     /// and the watermarks of the conversation-shaped collections, which have
     /// nothing to do with the inbox.
-    static let memoryInboxCursorKinds: [String] = [RemoteSyncCollectionKind.memoryFacts.rawValue]
+    static let memoryInboxCursorKinds: [String] = [
+        RemoteSyncCollectionKind.memoryFacts.rawValue,
+        RemoteSyncCollectionKind.memoryForgetReceipts.rawValue
+    ]
 
     /// Deletes the inbox cursors of every account except `userID` (or of every
     /// account when it is nil). Deletion rather than a rewind: a re-pull is
