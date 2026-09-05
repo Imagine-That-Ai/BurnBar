@@ -900,3 +900,56 @@ CREATE TABLE IF NOT EXISTS standing_orders (
 
 CREATE INDEX IF NOT EXISTS standing_orders_enabled_fired_idx
     ON standing_orders(isEnabled, lastFiredAt);
+
+-- ── Receipts & Receipts FTS (v65+) ──────────────────────────────────────────
+-- Durable itemized receipts for completed agent runs with token economics,
+-- cache savings, duration, provenance signature, and FTS5 indexing.
+
+CREATE TABLE IF NOT EXISTS receipts (
+    id TEXT PRIMARY KEY NOT NULL,
+    sessionId TEXT NOT NULL,
+    projectName TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    modelName TEXT NOT NULL,
+    timestamp DATETIME NOT NULL,
+    durationSeconds REAL NOT NULL DEFAULT 0.0,
+    inputTokens INTEGER NOT NULL DEFAULT 0,
+    outputTokens INTEGER NOT NULL DEFAULT 0,
+    cacheReadTokens INTEGER NOT NULL DEFAULT 0,
+    cacheWriteTokens INTEGER NOT NULL DEFAULT 0,
+    totalCostUSD REAL NOT NULL DEFAULT 0.0,
+    estimatedCacheSavingsUSD REAL NOT NULL DEFAULT 0.0,
+    cacheHitPercentage REAL NOT NULL DEFAULT 0.0,
+    tokensPerSecond REAL NOT NULL DEFAULT 0.0,
+    promptSummary TEXT NOT NULL DEFAULT '',
+    filesTouchedJSON TEXT NOT NULL DEFAULT '[]',
+    toolsUsedJSON TEXT NOT NULL DEFAULT '[]',
+    gitBranch TEXT,
+    gitCommit TEXT,
+    isStarred BOOLEAN NOT NULL DEFAULT 0,
+    contentSignature TEXT NOT NULL,
+    createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Added by v66_receipts_accomplishments_and_quality:
+    harness TEXT NOT NULL DEFAULT '',
+    actualAccomplishmentsJSON TEXT NOT NULL DEFAULT '[]',
+    qualityReviewJSON TEXT NOT NULL DEFAULT '{}',
+    achievementsJSON TEXT NOT NULL DEFAULT '[]',
+    gitStatsJSON TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS receipts_session_idx ON receipts(sessionId);
+CREATE INDEX IF NOT EXISTS receipts_timestamp_idx ON receipts(timestamp);
+CREATE INDEX IF NOT EXISTS receipts_project_idx ON receipts(projectName);
+CREATE INDEX IF NOT EXISTS receipts_provider_idx ON receipts(provider);
+CREATE INDEX IF NOT EXISTS receipts_cost_idx ON receipts(totalCostUSD);
+CREATE INDEX IF NOT EXISTS receipts_starred_idx ON receipts(isStarred);
+CREATE INDEX IF NOT EXISTS receipts_harness_idx ON receipts(harness);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS receipts_fts USING fts5(
+    promptSummary,
+    filesTouched,
+    toolsUsed,
+    modelName,
+    projectName,
+    tokenize='porter unicode61'
+);

@@ -22,6 +22,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case dataPrivacy
     case computerUse
     case pets
+    case receipts
 
     var id: String { rawValue }
 
@@ -29,6 +30,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .home: return "Home"
         case .general: return "General"
+        case .receipts: return "Receipts"
         case .aiInbox: return "AI Inbox"
         case .updates: return "Updates"
         case .daemon: return "Engine Room"
@@ -85,6 +87,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Agent Watch, browser driving, Mac input, approvals, and audit chain"
         case .pets:
             return "Desktop companion, pet picker, agent brain, and summon hotkey"
+        case .receipts:
+            return "Session popups, thermal slips, quality reviews, and sounds"
         }
     }
 
@@ -92,6 +96,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .home: return "house.fill"
         case .general: return "gearshape.fill"
+        case .receipts: return "scroll.fill"
         case .aiInbox: return "tray.full.fill"
         case .updates: return "arrow.down.circle.fill"
         case .daemon: return "cpu.fill"
@@ -128,6 +133,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .home: return DesignSystem.Colors.ember
         case .general: return DesignSystem.Colors.amber
+        case .receipts: return DesignSystem.Colors.amber
         case .aiInbox: return DesignSystem.Colors.ember
         case .updates: return DesignSystem.Colors.frost
         case .daemon: return DesignSystem.Colors.teal
@@ -165,7 +171,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .home:            return .home
         case .agents, .modelProxy:
             return .agentsAndModels
-        case .general, .aiInbox:
+        case .general, .receipts, .aiInbox:
             return .lookAndFeel
         case .account, .cloud, .alerts, .notifications, .devicesAndSync:
             return .accountAndSync
@@ -233,7 +239,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .agentsAndModels:
             return [.agents, .modelProxy]
         case .lookAndFeel:
-            return [.general, .aiInbox]
+            return [.general, .receipts, .aiInbox]
         case .accountAndSync:
             return [.account, .cloud, .devicesAndSync, .alerts, .notifications]
         case .system:
