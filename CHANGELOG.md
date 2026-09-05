@@ -36,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- **Yanked `der` 0.8.0 was kicking the merge queue.** RustCrypto yanked
+  `der` 0.8.0 at 08:29 CT on 2026-09-05. Merge-group `cargo-audit` fail-closed
+  on the yank (`[warning/yanked] der 0.8.0`) and GitHub removed every
+  merge-queue candidate, including the already-approved style-dictionary bump.
+  `pkcs8` 0.11 / `spki` 0.8 already accept `^0.8`, and unyanked `0.8.1` has
+  been on crates.io since July, so `crates/openburnbar-iroh` and
+  `crates/burnbar-remote` now pin `0.8.1` by checksum. Pinned by
+  `check-cargo-audit-fail-closed.test.mjs`.
 - **Remote-access agent: Developer-ID signing + client-side server authentication (M-10).**
   `scripts/install-remote-access-agent.sh` now signs the root
   `OpenBurnBarRemoteAccessAgent` with the Developer ID identity (hardened runtime +
