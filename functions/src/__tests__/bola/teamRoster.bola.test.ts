@@ -40,6 +40,7 @@ export const BOLA_MANIFEST = {
   promoteTeamMember: ["promoteTeamMember rejects cross-user object access"],
   removeTeamMember: ["removeTeamMember rejects cross-user object access"],
   rotateTeamKey: ["rotateTeamKey rejects cross-user object access"],
+  abandonTeamKeyGeneration: ["abandonTeamKeyGeneration rejects cross-user object access"],
 } as const;
 
 async function teamRosterCallables() {
@@ -107,6 +108,19 @@ describe("BOLA - team roster authority", () => {
       expectedOutcome: "throws",
       expectedCode: CROSS_TENANT_DENIAL,
       payload: { teamId: VICTIM_TEAM_ID, newKeyVersion: 2, envelopeIds: [] },
+    });
+  });
+
+  it("abandonTeamKeyGeneration rejects cross-user object access", async () => {
+    const mod = await teamRosterCallables();
+    await tier2CallableProof(bolaStore, {
+      exportedName: "abandonTeamKeyGeneration",
+      run: callableRunner(mod.abandonTeamKeyGeneration),
+      expectedOutcome: "throws",
+      expectedCode: CROSS_TENANT_DENIAL,
+      // Burning the victim team's next key version would leave them unable to
+      // rotate to it — a denial of their revocation primitive, from outside.
+      payload: { teamId: VICTIM_TEAM_ID, version: 2 },
     });
   });
 });

@@ -5,7 +5,7 @@
  * document ids and ECIES-wrapped key envelopes, never plaintext or any team
  * key. What the server DOES own — because clients cannot be trusted to assert
  * it — is membership. `firestore.rules` denies every client write to
- * `team_rosters/**`, so the six callables below are the only way a roster ever
+ * `team_rosters/**`, so the seven callables below are the only way a roster ever
  * changes, and every mutation lands an append-only `audit_log` row.
  *
  * Invariants this module exists to hold:
@@ -34,11 +34,16 @@
  *    member's trusted devices, for every retained team key version AND for the
  *    non-rotating slug key. That decision is re-checked, against the member row
  *    AND the team's membership epoch, inside the transaction that writes it.
- *  - `rotateTeamKey` moves strictly `activeKeyVersion + 1`, verifies envelope
- *    coverage for every remaining active member's devices (refusing outright
- *    if any active member has no pinned device, the founder included), appends
- *    to `retainedKeyVersions`, and commits in chunks so a large team does not
- *    hit the 500-write batch ceiling.
+ *  - `rotateTeamKey` moves strictly to the next NON-BURNED version, verifies
+ *    envelope coverage for every remaining active member's devices (refusing
+ *    outright if any active member has no pinned device, the founder included),
+ *    appends to `retainedKeyVersions`, and commits in chunks so a large team
+ *    does not hit the 500-write batch ceiling.
+ *  - A generation an admin minted, published envelopes for and abandoned is
+ *    stepped over rather than left to wedge the team: `abandonTeamKeyGeneration`
+ *    appends it to `burnedKeyVersions`, and only for the next unclaimed version,
+ *    only when it is neither active nor retained, and only when an envelope for
+ *    it really exists.
  *  - A team always keeps at least one active admin, and that guard is decided
  *    inside the transaction that evicts the member — a query-then-write guard
  *    let two concurrent removals of the last two admins both see two.
@@ -71,6 +76,7 @@ import {
   auditRef,
   commitChunked,
   commitGuardedByTeamState,
+  nextRotatableKeyVersion,
   readMembershipEpoch,
   readTeam,
 } from "./teamRosterState.js";
@@ -285,6 +291,10 @@ export class TeamRosterService {
           name,
           activeKeyVersion: 1,
           retainedKeyVersions: [1],
+          // Seeded explicitly for the same reason as the epoch below: a guard
+          // should never have to tell "no burned list yet" from "nothing
+          // burned" on a document it is about to commit under.
+          burnedKeyVersions: [],
           slugKeyId: null,
           keyRotationRequired: false,
           // Seeded explicitly so the guard never has to distinguish "no epoch
@@ -648,6 +658,108 @@ export class TeamRosterService {
     return { teamId, targetUid, keyRotationRequired: true };
   }
 
+  /**
+   * Burn a key generation an admin minted, published envelopes for, and
+   * abandoned — the only way a team gets past one.
+   *
+   * THE DEADLOCK THIS EXISTS TO BREAK. Admin A mints `v(N+1)`, publishes some of
+   * its envelopes and never reaches {@link rotateTeamKey}. The roster still
+   * records `N`; `K_A` exists only in A's Keychain; `v(N+1)`'s envelope ids are
+   * occupied and, because `firestore.rules` says `allow update, delete: if false`
+   * on an envelope, unrepairable. The strict-sequence rule then allows exactly
+   * one version to be minted — `N+1` — and that is the one no other admin can
+   * complete, because nothing publishable says which key a wrap carries. The
+   * team cannot rotate at all, so it cannot revoke a departed member either.
+   *
+   * Burning `N+1` moves {@link nextRotatableKeyVersion} past it and the team
+   * rotates to `N+2` instead, leaving the abandoned envelopes in place —
+   * harmless, because the rules pin every fact write to the roster's ACTIVE key
+   * version, so no document can ever name a generation this authority did not
+   * record.
+   *
+   * THREE PRECONDITIONS, so this is not a way to skip version numbers at will:
+   *
+   *  - `version` must be exactly the next non-burned version. An admin cannot
+   *    reach forward and burn a generation nobody has tried to mint.
+   *  - `version` must not be the active one, nor in `retainedKeyVersions`. A
+   *    version the team actually published is never abandoned; the check is
+   *    reachable rather than decorative, because a malformed team document can
+   *    carry a retained version ahead of `activeKeyVersion`.
+   *  - at least one envelope for `v{version}` must exist. That is what makes it
+   *    a real abandoned rotation rather than a hole punched in the sequence.
+   *
+   * The append commits through {@link commitGuardedByTeamState}, so a promotion,
+   * a removal or a concurrent rotation landing in the window aborts it. Every
+   * call that BURNS lands an `audit_log` row naming the actor and the version.
+   *
+   * IDEMPOTENT FOR A VERSION ALREADY BURNED (PR 2 review round 4, B8). The
+   * client's recovery is two calls — burn, then rotate — and the retry after a
+   * failed rotation re-presents the SAME version. Reporting that as
+   * `invalid-argument` ("only the next unclaimed version can be abandoned")
+   * would be true of the sequence rule and useless to the caller, whose burn has
+   * in fact already landed; worse, it is indistinguishable from an admin
+   * reaching forward. So an already-burned version returns the roster's current
+   * state, writes nothing and logs no audit row, and the client goes straight to
+   * the rotation. Admin-only still applies: the check above this line runs
+   * first.
+   */
+  static async abandonKeyGeneration(
+    callerUid: string,
+    teamId: string,
+    version: number,
+  ): Promise<{ teamId: string; activeKeyVersion: number; burnedKeyVersions: number[] }> {
+    await this.assertActiveAdmin(callerUid, teamId);
+
+    const teamRef = db.doc(`team_rosters/${teamId}`);
+    const team = readTeam((await teamRef.get()).data(), teamId);
+    if (team.activeKeyVersion === version || team.retainedKeyVersions.includes(version)) {
+      throw new HttpsError("failed-precondition", `Key version ${version} is recorded by this team and is not abandoned.`);
+    }
+    if (team.burnedKeyVersions.includes(version)) {
+      return { teamId, activeKeyVersion: team.activeKeyVersion, burnedKeyVersions: team.burnedKeyVersions };
+    }
+    const expectedVersion = nextRotatableKeyVersion(team);
+    if (version !== expectedVersion) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Only the next unclaimed key version (${expectedVersion}) can be abandoned, got ${version}.`,
+      );
+    }
+    const published = await db
+      .collection(`team_key_envelopes/${teamId}/envelopes`)
+      .where("keySlot", "==", `v${version}`)
+      .limit(1)
+      .get();
+    if (published.empty) {
+      throw new HttpsError(
+        "failed-precondition",
+        `No key envelope was ever published for version ${version}, so there is no abandoned rotation to burn.`,
+      );
+    }
+
+    const burnedKeyVersions = [...new Set([...team.burnedKeyVersions, version])].sort((a, b) => a - b);
+    const now = FieldValue.serverTimestamp();
+    await commitGuardedByTeamState({
+      teamId,
+      expected: team,
+      writes: [
+        { ref: teamRef, merge: true, data: { burnedKeyVersions, updatedAt: now } },
+        {
+          ref: auditRef(teamId),
+          merge: false,
+          data: auditEvent({
+            teamId,
+            action: "key_generation_abandoned",
+            actorUid: callerUid,
+            detail: { version, abandonedEnvelopeId: published.docs[0]?.id ?? null },
+          }),
+        },
+      ],
+    });
+
+    return { teamId, activeKeyVersion: team.activeKeyVersion, burnedKeyVersions };
+  }
+
   static async rotateTeamKey(
     callerUid: string,
     teamId: string,
@@ -659,10 +771,14 @@ export class TeamRosterService {
     const teamRef = db.doc(`team_rosters/${teamId}`);
     const teamSnap = await teamRef.get();
     const team = readTeam(teamSnap.data(), teamId);
-    if (newKeyVersion !== team.activeKeyVersion + 1) {
+    // STRICTLY THE NEXT NON-BURNED VERSION. Still one generation at a time —
+    // `burnedKeyVersions` only ever grows through `abandonKeyGeneration`, which
+    // proves the version it burns was really claimed by an abandoned rotation.
+    const expectedKeyVersion = nextRotatableKeyVersion(team);
+    if (newKeyVersion !== expectedKeyVersion) {
       throw new HttpsError(
         "invalid-argument",
-        `Expected newKeyVersion to be ${team.activeKeyVersion + 1}, got ${newKeyVersion}.`,
+        `Expected newKeyVersion to be ${expectedKeyVersion}, got ${newKeyVersion}.`,
       );
     }
     if (newKeyVersion > MAX_TEAM_KEY_VERSION) {

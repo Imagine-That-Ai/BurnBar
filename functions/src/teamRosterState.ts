@@ -49,6 +49,14 @@ interface TeamDocument {
   activeKeyVersion: number;
   /** Every key version a joiner must still be able to open. Append-only. */
   retainedKeyVersions: number[];
+  /**
+   * Key versions an admin minted, published envelopes for, and abandoned before
+   * `rotateTeamKey` ever recorded them. Append-only, server-written only, and
+   * skipped by {@link nextRotatableKeyVersion} — see `abandonKeyGeneration` in
+   * `./teamRoster.ts` for why a team otherwise cannot rotate at all once one
+   * generation is burned.
+   */
+  burnedKeyVersions: number[];
   /** Opaque fingerprint of the non-rotating slug key; the server never sees the key. */
   slugKeyId: string | null;
   keyRotationRequired: boolean;
@@ -67,7 +75,13 @@ interface PendingWrite {
 }
 
 type TeamAuditAction =
-  "team_created" | "member_invited" | "invite_accepted" | "member_promoted" | "member_removed" | "key_rotated";
+  | "team_created"
+  | "member_invited"
+  | "invite_accepted"
+  | "member_promoted"
+  | "member_removed"
+  | "key_rotated"
+  | "key_generation_abandoned";
 
 /**
  * The team's membership epoch, defaulting to 0 for anything that is not a
@@ -83,14 +97,39 @@ export function readMembershipEpoch(raw: FirebaseFirestore.DocumentData | undefi
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+/** Whole key versions >= 1, in the order the roster stored them. */
+function readKeyVersionList(raw: unknown): number[] {
+  return Array.isArray(raw)
+    ? raw.filter((value): value is number => typeof value === "number" && Number.isInteger(value) && value >= 1)
+    : [];
+}
+
+/**
+ * The next generation a rotation may mint: the first version after the active
+ * one that has NOT been burned.
+ *
+ * A burned version is one an admin minted, published envelopes for, and
+ * abandoned; its envelope ids are occupied by wraps of a key only that admin
+ * holds, and envelopes are create-only and immutable. Without this skip, the one
+ * version the strict-sequence rule allows is the one nobody can complete, and
+ * the team loses its ability to rotate — which is its ability to revoke a
+ * departed member. `TeamVaultKeyDistributor.nextRotatableKeyVersion` computes
+ * the same number client side so a rotation knows which version it is minting
+ * before it wraps anything; THIS one is the authority.
+ */
+export function nextRotatableKeyVersion(team: { activeKeyVersion: number; burnedKeyVersions: number[] }): number {
+  const burned = new Set(team.burnedKeyVersions);
+  let candidate = team.activeKeyVersion + 1;
+  while (burned.has(candidate)) candidate += 1;
+  return candidate;
+}
+
 export function readTeam(raw: FirebaseFirestore.DocumentData | undefined, teamId: string): TeamDocument {
   if (!raw) {
     throw new HttpsError("not-found", "Team not found.");
   }
   const activeKeyVersion = typeof raw.activeKeyVersion === "number" ? raw.activeKeyVersion : 0;
-  const retained = Array.isArray(raw.retainedKeyVersions)
-    ? raw.retainedKeyVersions.filter((value): value is number => typeof value === "number")
-    : [];
+  const retained = readKeyVersionList(raw.retainedKeyVersions);
   if (activeKeyVersion < 1 || retained.length === 0) {
     throw new HttpsError("failed-precondition", "Team roster is missing its key state.");
   }
@@ -99,6 +138,7 @@ export function readTeam(raw: FirebaseFirestore.DocumentData | undefined, teamId
     name: typeof raw.name === "string" ? raw.name : "",
     activeKeyVersion,
     retainedKeyVersions: retained,
+    burnedKeyVersions: readKeyVersionList(raw.burnedKeyVersions),
     slugKeyId: typeof raw.slugKeyId === "string" ? raw.slugKeyId : null,
     keyRotationRequired: raw.keyRotationRequired === true,
     membershipEpoch: readMembershipEpoch(raw),
@@ -154,20 +194,28 @@ export async function commitChunked(writes: PendingWrite[]): Promise<void> {
 interface TeamGuardState {
   activeKeyVersion: number;
   retainedKeyVersions: number[];
+  /**
+   * Guarded too, because it decides which version a rotation is allowed to mint
+   * (see {@link nextRotatableKeyVersion}). An `abandonTeamKeyGeneration` landing
+   * inside a rotation's window moves that target, so the rotation must abort and
+   * recompute rather than record a generation nobody agreed on.
+   */
+  burnedKeyVersions: number[];
   membershipEpoch: number;
+}
+
+function listMoved(fresh: number[], expected: number[]): boolean {
+  return fresh.length !== expected.length || fresh.some((value, index) => value !== expected[index]);
 }
 
 function teamStateMoved(raw: FirebaseFirestore.DocumentData | undefined, expected: TeamGuardState): boolean {
   if (!raw) return true;
   const activeKeyVersion = typeof raw.activeKeyVersion === "number" ? raw.activeKeyVersion : 0;
-  const retained = Array.isArray(raw.retainedKeyVersions)
-    ? raw.retainedKeyVersions.filter((value): value is number => typeof value === "number")
-    : [];
   return (
     activeKeyVersion !== expected.activeKeyVersion ||
     readMembershipEpoch(raw) !== expected.membershipEpoch ||
-    retained.length !== expected.retainedKeyVersions.length ||
-    retained.some((value, index) => value !== expected.retainedKeyVersions[index])
+    listMoved(readKeyVersionList(raw.retainedKeyVersions), expected.retainedKeyVersions) ||
+    listMoved(readKeyVersionList(raw.burnedKeyVersions), expected.burnedKeyVersions)
   );
 }
 

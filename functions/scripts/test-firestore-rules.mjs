@@ -6093,6 +6093,7 @@ async function seedTeamRoster(teamId, members, teamOverrides = {}) {
       name: "Red Team",
       activeKeyVersion: 1,
       retainedKeyVersions: [1],
+      burnedKeyVersions: [],
       slugKeyId: null,
       keyRotationRequired: false,
       createdBy: members[0]?.uid ?? "unknown",
@@ -6314,6 +6315,47 @@ test("test_a_client_cannot_write_the_roster", async () => {
     );
     await assertFails(deleteDoc(doc(db, `team_rosters/${teamId}/members/${adminUid}`)));
   }
+});
+
+test("test_a_client_cannot_write_burned_key_versions", async () => {
+  // `burnedKeyVersions` is the roster field that decides which generation a
+  // rotation may mint (PR 2 review round 3, B7). A client that could append to
+  // it would be able to walk the team's key version forward at will — every
+  // burn permanently spends one of the 100 versions `validCloudSealedBlob`
+  // allows — or, worse, burn the version an in-flight rotation is publishing.
+  // It is written ONLY by `abandonTeamKeyGeneration`, and the roster's blanket
+  // `allow write: if false` is what makes that true. This test pins it: the
+  // field arrives with the rest of the team document and must not become an
+  // exception to that rule.
+  const teamId = "team_aaaaaaaaaaaaaaa9";
+  const adminUid = "t27-admin-9";
+  const memberUid = "t27-member-9";
+
+  await seedTeamRoster(teamId, [{ uid: adminUid, role: "admin" }, { uid: memberUid }]);
+  await seedBurnBarProMaxEntitlement(adminUid);
+  await seedBurnBarProMaxEntitlement(memberUid);
+
+  for (const [label, uid] of [["admin", adminUid], ["member", memberUid]]) {
+    assert.ok(label);
+    const db = authedDb(uid);
+    await assertFails(updateDoc(doc(db, `team_rosters/${teamId}`), { burnedKeyVersions: [2] }));
+    await assertFails(setDoc(doc(db, `team_rosters/${teamId}`), { burnedKeyVersions: [2] }, { merge: true }));
+    // ...and not by rewriting the whole document either.
+    await assertFails(
+      setDoc(doc(db, `team_rosters/${teamId}`), {
+        teamId,
+        activeKeyVersion: 1,
+        retainedKeyVersions: [1],
+        burnedKeyVersions: [2, 3, 4],
+        schemaVersion: 1,
+      })
+    );
+  }
+
+  // The server-written value is still readable by an active member, which is
+  // what lets a client compute the version its next rotation will mint.
+  const stored = await getDoc(doc(authedDb(memberUid), `team_rosters/${teamId}`));
+  assert.deepEqual(stored.data().burnedKeyVersions, []);
 });
 
 test("test_a_member_of_team_a_cannot_read_team_b", async () => {
@@ -6841,6 +6883,54 @@ test("test_a_member_cannot_pre_place_an_envelope_for_a_future_key_generation", a
   await assertFails(selfEnvelope("v3", "device-m2"));
 });
 
+test("test_the_rotating_admin_may_self_wrap_the_next_generation", async () => {
+  // Memory program D16 / PR 2, and the other half of C-1. The test above proves
+  // an ordinary member CANNOT self-wrap a future generation. This one proves the
+  // rotating ADMIN still can — for its OWN Macs — because PR 2's rotation client
+  // depends on exactly that and nothing else pinned it.
+  //
+  // `TeamVaultKeyDistributor.rotateTeamKey` walks `activeMemberUids` and wraps
+  // `v(N+1)` for each, the rotator's own uid AMONG THEM. That write has the
+  // shape of a self-wrap — `d.uid == request.auth.uid` — for a generation the
+  // roster has NOT published yet, so the non-admin disjunct denies it and only
+  // `isTeamAdmin(teamId)` admits it. Without this case, a refactor that routed
+  // the rotator's own devices through `selfWrapKeys` (the "tidier" spelling)
+  // would compile, pass every fake-gateway Swift test, and be denied in
+  // production against the rotating admin's own Macs alone: the rotation would
+  // publish for everyone else, then fail coverage on the admin, leaving a
+  // partially distributed generation that no retry could repair.
+  //
+  // ROLE, NOT IDENTITY, IS WHAT DECIDES. The two writes below are byte-identical
+  // apart from whose row carries `role: "admin"`, so this cannot pass by
+  // accident on some property both callers share.
+  const teamId = "team_ccccccccccccccc8";
+  const rotatorUid = "t27-rotator-40";
+  const memberUid = "t27-member-40";
+
+  await seedTeamRoster(teamId, [{ uid: rotatorUid, role: "admin" }, { uid: memberUid }]);
+  for (const uid of [rotatorUid, memberUid]) {
+    await seedBurnBarProMaxEntitlement(uid);
+  }
+
+  const selfWrap = (uid, slot, deviceId) =>
+    setDoc(
+      doc(authedDb(uid), `team_key_envelopes/${teamId}/envelopes/${uid}_${deviceId}_1_${slot}`),
+      teamKeyEnvelope(teamId, uid, deviceId, 1, slot, uid)
+    );
+
+  // The team is at v1. The rotating admin publishes v2 for its own device.
+  await assertSucceeds(selfWrap(rotatorUid, "v2", "device-rotator"));
+  // The same write, same slot, same self-addressing, by a member whose only
+  // difference is `role` — denied.
+  await assertFails(selfWrap(memberUid, "v2", "device-member"));
+
+  // The admin's licence is the ROLE and it is read live, so an admin the roster
+  // has evicted loses it: `isTeamAdmin` requires `status == "active"`, which is
+  // what keeps a departed admin from squatting the generation that revokes them.
+  await setTeamMemberStatus(teamId, rotatorUid, "removed");
+  await assertFails(selfWrap(rotatorUid, "v3", "device-rotator"));
+});
+
 test("test_an_envelope_wrapped_to_a_hex_fingerprint_is_rejected", async () => {
   // Memory program D16 / PR 1. `recipientPublicKeyFingerprint` is the ONLY
   // thing binding an envelope to a key the recipient actually published — the
@@ -6891,6 +6981,260 @@ test("test_an_envelope_wrapped_to_a_hex_fingerprint_is_rejected", async () => {
       teamKeyEnvelope(teamId, adminUid, "device-a", 1, "v4", adminUid, {
         recipientPublicKeyFingerprint: 1,
       })
+    )
+  );
+});
+
+test("test_a_team_blob_may_label_a_key_version_above_the_personal_ceiling", async () => {
+  // Memory program D16 / PR 2, design §3(a). `validCloudSealedBlob` caps
+  // `keyVersion` at 100. A PERSONAL vault key rotates on device re-enrolment
+  // and recovery, so 100 generations is beyond any real account — but a TEAM
+  // key rotates on every DEPARTURE, so the same ceiling would cap a tenant's
+  // whole lifetime turnover at 100 people and then refuse every write. The team
+  // validator passes 1000; the personal one is untouched, and both ends are
+  // asserted here so raising one can never silently raise the other.
+  const teamId = "team_ccccccccccccccd2";
+  const memberUid = "t27-member-25";
+  const highFactId = "d".repeat(64);
+  const tooHighFactId = "e".repeat(64);
+  const personalDocID = "f".repeat(64);
+
+  await seedTeamRoster(teamId, [{ uid: memberUid, role: "admin" }], {
+    activeKeyVersion: 640,
+    retainedKeyVersions: [1, 640],
+  });
+  await seedBurnBarProMaxEntitlement(memberUid);
+  const memberDb = authedDb(memberUid);
+
+  // Well past the personal ceiling, still inside the team one.
+  await assertSucceeds(
+    setDoc(
+      doc(memberDb, `team_memory_facts/${teamId}/facts/${highFactId}`),
+      teamMemoryFact(teamId, memberUid, highFactId, {
+        teamKeyVersion: 640,
+        sealedMemory: sealedTeamBlobAt(teamId, "team_memory_facts", highFactId, "sealedMemory", { keyVersion: 640 }),
+      })
+    )
+  );
+
+  // Above the team ceiling it is refused: 1000 is a real bound, not "no bound".
+  await setTeamActiveKeyVersion(teamId, 1001, [1, 640, 1001]);
+  await assertFails(
+    setDoc(
+      doc(memberDb, `team_memory_facts/${teamId}/facts/${tooHighFactId}`),
+      teamMemoryFact(teamId, memberUid, tooHighFactId, {
+        teamKeyVersion: 1001,
+        sealedMemory: sealedTeamBlobAt(teamId, "team_memory_facts", tooHighFactId, "sealedMemory", {
+          keyVersion: 1001,
+        }),
+      })
+    )
+  );
+
+  // The PERSONAL lane keeps the ceiling of 100 it shipped with: 100 writes,
+  // 101 does not. Asserting BOTH is what makes this a ceiling test rather than
+  // a "something about this document was wrong" test.
+  const personalFact = (docID, keyVersion) => ({
+    uid: memberUid,
+    docID,
+    schemaVersion: 1,
+    sourceKind: "chat",
+    kind: "fact",
+    reviewStatus: "approved",
+    sealedMemory: sealedBlobAt(memberUid, "memory_facts", docID, "sealedMemory", { keyVersion }),
+    sourceRefHmacs: ["a".repeat(64)],
+    citationCount: 1,
+    validFrom: TEAM_FACT_TIMESTAMP,
+    updatedAt: TEAM_FACT_TIMESTAMP,
+    replicatedAt: TEAM_FACT_TIMESTAMP,
+  });
+  await assertSucceeds(
+    setDoc(doc(memberDb, `users/${memberUid}/memory_facts/${personalDocID}`), personalFact(personalDocID, 100))
+  );
+  await assertFails(
+    setDoc(doc(memberDb, `users/${memberUid}/memory_facts/${"0".repeat(64)}`), personalFact("0".repeat(64), 101))
+  );
+});
+
+test("test_a_sealed_payload_above_schema_version_2_is_rejected", async () => {
+  // Memory program D16 / PR 2 review B3, and mutant mE. PR 2 factored the
+  // sealed-payload envelope shape into `validSealedPayloadShape`. The
+  // `schemaVersion == 2` pin deliberately did NOT move with it: it is repeated
+  // by `validCloudSealedPayload`, `validPathBoundCloudSealedPayloadAt` and
+  // `validRoamingProfileSealedPayload`, because
+  // `scripts/privacy/scan-chat-cloud-plaintext.mjs` asserts statically that
+  // `validCloudSealedPayload` pins it — a privacy gate the factoring silently
+  // defeated by moving the clause out of the section the scanner reads.
+  //
+  // Nothing covered the clause behaviourally either: deleting it broke no test.
+  // This is that test. `sealedReplyPayload` runs through
+  // `validSealedPayloadForUser` -> `validCloudSealedPayload`, so a payload that
+  // announces a codec this rules file has never seen is refused rather than
+  // stored and handed to a client that would then have to guess.
+  const db = authedDb("nina-schema");
+  const eventPath = "users/nina-schema/agent_notification_events/event-sv";
+  await seedCloudVaultState("nina-schema");
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), eventPath), {
+      id: "event-sv",
+      uid: "nina-schema",
+      sourceKind: "cli_session",
+      sourcePath: "users/nina-schema/cli_sessions/thread-1",
+      threadId: "thread-1",
+      messageId: "assistant-1",
+      runtime: "codex",
+      providerLabel: "Codex",
+      title: "Codex replied",
+      preview: "Done.",
+      createdAt: serverTimestamp(),
+      createdAtMillis: Date.now(),
+      updatedAt: serverTimestamp(),
+      updatedAtMillis: Date.now(),
+      status: "pending",
+      fanoutAttemptCount: 0,
+      replyEnabled: true,
+      schemaVersion: 1,
+    });
+  });
+
+  const reply = (id, payload) => ({
+    id,
+    uid: "nina-schema",
+    eventId: "event-sv",
+    threadId: "thread-1",
+    runtime: "codex",
+    sourceKind: "cli_session",
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedReplyPayload: payload,
+    status: "queued",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    schemaVersion: 1,
+  });
+
+  // Schema 2 is the shipped codec and still writes.
+  await assertSucceeds(
+    setDoc(doc(db, "users/nina-schema/agent_notification_replies/reply-v2"), reply("reply-v2", sealedPayload()))
+  );
+  // 3 and 1 are refused: the pin is an equality, not a floor.
+  await assertFails(
+    setDoc(
+      doc(db, "users/nina-schema/agent_notification_replies/reply-v3"),
+      reply("reply-v3", { ...sealedPayload(), schemaVersion: 3 })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, "users/nina-schema/agent_notification_replies/reply-v1"),
+      reply("reply-v1", { ...sealedPayload(), schemaVersion: 1 })
+    )
+  );
+});
+
+test("test_a_path_bound_sealed_payload_above_schema_version_2_is_rejected", async () => {
+  // Memory program D16 / PR 2 review round 2, flag 1, and mutant mG. The sister
+  // case to `test_a_sealed_payload_above_schema_version_2_is_rejected`, aimed at
+  // the SECOND of the three callers that repeat `schemaVersion == 2` after PR 2
+  // factored the envelope shape into `validSealedPayloadShape`. Deleting the
+  // clause from `validPathBoundCloudSealedPayloadAt` used to break no test, so
+  // the comment above `validSealedPayloadShape` claimed a guard that did not
+  // exist for two of its three callers. This is that guard.
+  //
+  // `cli_sessions` is a path-bound writer (rules M-007), so its `sealedPayload`
+  // runs `validPathBoundSealedPayloadForUser` ->
+  // `validPathBoundCloudSealedPayload` -> `validPathBoundCloudSealedPayloadAt`.
+  // Nothing else in that chain looks at the inner `schemaVersion`: the outer
+  // `sealedSchemaVersion` is a different field, and `validSealedPayloadShape`
+  // only requires the key to be present.
+  const uid = "pb-schema-owner";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+
+  const session = (id, payload) => ({
+    id,
+    agent: "codex",
+    createdAt: "2026-06-05T00:00:00.000Z",
+    updatedAt: "2026-06-05T00:00:00.000Z",
+    schemaVersion: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: payload,
+  });
+
+  // Schema 2 is the shipped codec and still writes.
+  await assertSucceeds(
+    setDoc(
+      doc(db, `users/${uid}/cli_sessions/sess-pb-v2`),
+      session(
+        "sess-pb-v2",
+        sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD(uid, "cli_sessions", "sess-pb-v2", "sealedPayload"))
+      )
+    )
+  );
+  // 3 and 1 are refused: the pin is an equality, not a floor.
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_sessions/sess-pb-v3`),
+      session("sess-pb-v3", {
+        ...sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD(uid, "cli_sessions", "sess-pb-v3", "sealedPayload")),
+        schemaVersion: 3,
+      })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/cli_sessions/sess-pb-v1`),
+      session("sess-pb-v1", {
+        ...sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD(uid, "cli_sessions", "sess-pb-v1", "sealedPayload")),
+        schemaVersion: 1,
+      })
+    )
+  );
+});
+
+test("test_a_roaming_profile_sealed_payload_above_schema_version_2_is_rejected", async () => {
+  // Memory program D16 / PR 2 review round 2, flag 1, and mutant mH. The THIRD
+  // caller that repeats `schemaVersion == 2`. `validRoamingProfileSealedPayload`
+  // is reached only from `validRoamingProfileDocument`, which no other case in
+  // this suite exercises with a varying inner schema — so deleting the clause
+  // there used to be free. With this case, each of the three copies is killed by
+  // exactly one test and the comment above `validSealedPayloadShape` is true as
+  // written.
+  const uid = "roam-schema-owner";
+  const db = authedDb(uid);
+  await seedCloudVaultState(uid);
+
+  const roamingAAD =
+    `OpenBurnBar-CloudVault-aad-v2|${uid}|roaming_profile|current|sealedPayload|2|OpenBurnBar-RoamingProfile-v1`;
+  const profile = (payload) => ({
+    uid,
+    schemaVersion: 1,
+    payloadSchemaVersion: 1,
+    updatedAt: serverTimestamp(),
+    sealedPayload: payload,
+  });
+
+  // Schema 2 is the shipped codec and still writes.
+  await assertSucceeds(
+    setDoc(
+      doc(db, `users/${uid}/roaming_profile/current`),
+      profile(sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", roamingAAD))
+    )
+  );
+  // 3 and 1 are refused: the pin is an equality, not a floor.
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/roaming_profile/current`),
+      profile({ ...sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", roamingAAD), schemaVersion: 3 })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `users/${uid}/roaming_profile/current`),
+      profile({ ...sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", roamingAAD), schemaVersion: 1 })
     )
   );
 });

@@ -2,6 +2,7 @@
 import type { BolaLedgerCode } from "../../security/bolaCoverageTypes.js";
 
 export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = {
+  abandonTeamKeyGeneration: "permission-denied",
   acceptTeamInvite: "permission-denied",
   adoptProviderAccountForDevice: "not-found",
   appendCliAgentMissionEvent: "invalid-argument",

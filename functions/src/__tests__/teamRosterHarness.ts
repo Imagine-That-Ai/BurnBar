@@ -116,12 +116,15 @@ function collectionRef(path: string) {
         get: (field: string) => data[field],
       }));
 
-  function query(predicates: Array<{ field: string; value: unknown }>) {
+  function query(predicates: Array<{ field: string; value: unknown }>, take?: number) {
     return {
       where: (field: string, op: string, value: unknown) =>
-        op === "==" ? query([...predicates, { field, value }]) : query(predicates),
+        op === "==" ? query([...predicates, { field, value }], take) : query(predicates, take),
+      /** Real enough for an existence probe: `.limit(1).get()` returns at most one doc. */
+      limit: (count: number) => query(predicates, count),
       get: async () => {
-        const docs = directDocs().filter((entry) => predicates.every((p) => entry.get(p.field) === p.value));
+        const matched = directDocs().filter((entry) => predicates.every((p) => entry.get(p.field) === p.value));
+        const docs = take === undefined ? matched : matched.slice(0, take);
         return { docs, size: docs.length, empty: docs.length === 0 };
       },
     };
@@ -251,6 +254,7 @@ export function seedTeam(overrides: Doc = {}): void {
     name: "Core Platform",
     activeKeyVersion: 1,
     retainedKeyVersions: [1],
+    burnedKeyVersions: [],
     slugKeyId: null,
     keyRotationRequired: false,
     membershipEpoch: 0,

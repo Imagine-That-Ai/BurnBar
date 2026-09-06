@@ -3,6 +3,28 @@ import type { EndpointAuthorizationEntry } from "./bolaCoverageTypes.js";
 
 export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   {
+    exportedName: "abandonTeamKeyGeneration",
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck:
+      "handler requires an ACTIVE ADMIN row for request.auth.uid on that team, and burns only the next unclaimed key version, only when it is neither active nor retained and an envelope for it exists",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "abandonTeamKeyGeneration rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["abandonTeamKeyGeneration"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "acceptTeamInvite",
     trigger: "callable",
     authMethod: "Firebase Auth with server-side team roster membership checks",

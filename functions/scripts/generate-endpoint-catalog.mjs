@@ -1061,6 +1061,27 @@ const CATALOG_OVERRIDES = {
     ],
     highRiskComputerUse: false,
   },
+  abandonTeamKeyGeneration: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck:
+      "handler requires an ACTIVE ADMIN row for request.auth.uid on that team, and burns only the next unclaimed key version, only when it is neither active nor retained and an envelope for it exists",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "abandonTeamKeyGeneration rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["abandonTeamKeyGeneration"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   rotateTeamKey: {
     trigger: "callable",
     authMethod: "Firebase Auth with server-side team roster membership checks",
@@ -1554,11 +1575,12 @@ const objectExpectedCodes = Object.fromEntries(
     }),
 );
 
-// 95 pre-existing object-id endpoints + the five team roster callables that
-// take a teamId / member uid from the client (D16 / P21).
-if (Object.keys(objectExpectedCodes).length !== 100) {
+// 95 pre-existing object-id endpoints + the six team roster callables that
+// take a teamId / member uid from the client (D16 / P21). The sixth,
+// `abandonTeamKeyGeneration`, landed with PR 2's rotation escape hatch.
+if (Object.keys(objectExpectedCodes).length !== 101) {
   throw new Error(
-    `Expected exactly 100 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
+    `Expected exactly 101 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
   );
 }
 

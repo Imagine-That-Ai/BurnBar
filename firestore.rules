@@ -1133,7 +1133,30 @@ service cloud.firestore {
     // CloudVaultBlobEnvelopeDoc (sealed binary blob, larger than sealed text).
     // Used by project_memory_snapshots.sealedSnapshot. Mirrors the Swift/TS
     // CloudVaultCrypto blob envelope shape — never invent a new one.
+    // `keyVersion` ceiling, parameterised (memory program D16 / PR 2).
+    //
+    // The personal lane keeps its shipped ceiling of 100: a personal vault key
+    // rotates on device re-enrolment and recovery, and a hundred generations is
+    // already far beyond any real account. A TEAM key rotates on every DEPARTURE
+    // (`removeTeamMember` sets `keyRotationRequired`), so the ceiling is a hard
+    // limit on how many people may ever leave a team before its documents can no
+    // longer be re-sealed — a 100-member-turnover cap on a tenant's whole
+    // lifetime. `validTeamCloudSealedBlob` below therefore passes 1000.
+    //
+    // `keyVersion` sits OUTSIDE the ciphertext and outside the AAD, so it is a
+    // key-SELECTION hint, not the binding: the keyed `plaintextHMAC` below is
+    // what actually proves which key sealed the blob. Raising the ceiling
+    // therefore widens no authorisation — it only stops refusing labels that a
+    // long-lived team legitimately reaches.
     function validCloudSealedBlob(value, expectedAAD) {
+      return validCloudSealedBlobUpTo(value, expectedAAD, 100);
+    }
+
+    function validTeamCloudSealedBlob(value, expectedAAD) {
+      return validCloudSealedBlobUpTo(value, expectedAAD, 1000);
+    }
+
+    function validCloudSealedBlobUpTo(value, expectedAAD, maxKeyVersion) {
       return value is map
         && value.keys().hasOnly([
           "schemaVersion",
@@ -1152,7 +1175,7 @@ service cloud.firestore {
         && value.algorithm == "AES-256-GCM"
         && value.keyVersion is int
         && value.keyVersion >= 1
-        && value.keyVersion <= 100
+        && value.keyVersion <= maxKeyVersion
         && (
           (
             value.schemaVersion == 1
@@ -1182,7 +1205,31 @@ service cloud.firestore {
         && value.matches("^v1_[a-f0-9]{32}$");
     }
 
-    function validCloudSealedPayload(value) {
+    // RULES-SIZE COMPACTION (memory program D16 / PR 2). Three sealed-payload
+    // validators — `validCloudSealedPayload`, `validPathBoundCloudSealedPayloadAt`
+    // and `validRoamingProfileSealedPayload` — carried a byte-for-byte identical
+    // envelope shape and differed ONLY in the `aad` clause each one binds. The
+    // shape is factored here and the three keep their own AAD binding, so this
+    // is a pure de-duplication: every check each validator made before, it still
+    // makes, in the same order, against the same value. Nothing was weakened to
+    // buy bytes. (`firestore.rules` is on a hard 150 KiB fail line; PR 2's team
+    // additions are paid for from this saving — see the ruling in the PR body.)
+    //
+    // `schemaVersion == 2` DELIBERATELY STAYS OUT OF THIS SHAPE and is repeated
+    // by all three callers (PR 2 review B3). `scripts/privacy/scan-chat-cloud-plaintext.mjs`
+    // asserts, statically, that the text of `validCloudSealedPayload` pins the
+    // sealed-payload schema — a privacy gate that a "clever" factoring silently
+    // defeated by moving the clause out of the section the scanner reads. Held
+    // here it would also be un-mutation-testable in each caller: the clause is
+    // now the caller's own, so deleting it from any one of the three fails
+    // exactly one test (PR 2 review round 2, flag 1) —
+    // `test_a_sealed_payload_above_schema_version_2_is_rejected` for this
+    // function, `test_a_path_bound_sealed_payload_above_schema_version_2_is_rejected`
+    // for `validPathBoundCloudSealedPayloadAt`, and
+    // `test_a_roaming_profile_sealed_payload_above_schema_version_2_is_rejected`
+    // for `validRoamingProfileSealedPayload`. Three copies of one comparison is
+    // the honest price of a static assertion that a reviewer can grep for.
+    function validSealedPayloadShape(value) {
       return value is map
         && value.keys().hasOnly([
           "schemaVersion",
@@ -1192,20 +1239,24 @@ service cloud.firestore {
           "sealedBoxBase64",
           "aad"
         ])
-        && value.schemaVersion == 2
         && value.algorithm == "AES-256-GCM"
         && value.keyVersion is int
         && value.keyVersion >= 1
         && value.keyVersion <= 100
         && validVaultKeyID(value.vaultKeyID)
-        && (
-          value.aad == "OpenBurnBar-CloudVaultSealedPayload-v2"
-          || validCloudVaultAAD(value.aad)
-        )
         && value.sealedBoxBase64 is string
         && value.sealedBoxBase64.size() > 0
         && value.sealedBoxBase64.size() <= 900000
         && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validCloudSealedPayload(value) {
+      return validSealedPayloadShape(value)
+        && value.schemaVersion == 2
+        && (
+          value.aad == "OpenBurnBar-CloudVaultSealedPayload-v2"
+          || validCloudVaultAAD(value.aad)
+        );
     }
 
     // ---- Signal at-rest CloudVault envelopes ------------------------------------
@@ -1350,26 +1401,9 @@ service cloud.firestore {
     }
 
     function validPathBoundCloudSealedPayloadAt(userId, collection, docId, field, value) {
-      return value is map
-        && value.keys().hasOnly([
-          "schemaVersion",
-          "algorithm",
-          "keyVersion",
-          "vaultKeyID",
-          "sealedBoxBase64",
-          "aad"
-        ])
+      return validSealedPayloadShape(value)
         && value.schemaVersion == 2
-        && value.algorithm == "AES-256-GCM"
-        && value.keyVersion is int
-        && value.keyVersion >= 1
-        && value.keyVersion <= 100
-        && validVaultKeyID(value.vaultKeyID)
-        && value.aad == cloudVaultAADContext(userId, collection, docId, field)
-        && value.sealedBoxBase64 is string
-        && value.sealedBoxBase64.size() > 0
-        && value.sealedBoxBase64.size() <= 900000
-        && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+        && value.aad == cloudVaultAADContext(userId, collection, docId, field);
     }
 
     function validPathBoundCloudSealedPayload(userId, collection, docId, value) {
@@ -1377,27 +1411,10 @@ service cloud.firestore {
     }
 
     function validRoamingProfileSealedPayload(userId, value) {
-      return value is map
-        && value.keys().hasOnly([
-          "schemaVersion",
-          "algorithm",
-          "keyVersion",
-          "vaultKeyID",
-          "sealedBoxBase64",
-          "aad"
-        ])
+      return validSealedPayloadShape(value)
         && value.schemaVersion == 2
-        && value.algorithm == "AES-256-GCM"
-        && value.keyVersion is int
-        && value.keyVersion >= 1
-        && value.keyVersion <= 100
-        && validVaultKeyID(value.vaultKeyID)
         && matchesCurrentVaultKey(userId, value.vaultKeyID)
-        && value.aad == roamingProfileAADContext(userId)
-        && value.sealedBoxBase64 is string
-        && value.sealedBoxBase64.size() > 0
-        && value.sealedBoxBase64.size() <= 900000
-        && value.sealedBoxBase64.matches("^[A-Za-z0-9+/=]+$");
+        && value.aad == roamingProfileAADContext(userId);
     }
 
     function validRoamingProfileDocument(userId, profileId) {
@@ -5139,7 +5156,10 @@ service cloud.firestore {
           && d.sourceKind in ["chat", "agent"]
           && validMemoryFactKind(d.kind)
           && d.reviewStatus == "approved"
-          && validCloudSealedBlob(
+          // Team ceiling, not the personal 100 — a team key rotates on every
+          // departure, so 100 would cap a tenant's lifetime turnover. See
+          // `validTeamCloudSealedBlob`.
+          && validTeamCloudSealedBlob(
             d.sealedMemory,
             cloudVaultAADContext("team:" + teamId, "team_memory_facts", docID, "sealedMemory")
           )
