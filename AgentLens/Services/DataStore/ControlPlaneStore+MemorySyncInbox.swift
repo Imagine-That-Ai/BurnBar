@@ -502,18 +502,15 @@ extension ControlPlaneStore {
 
     /// The member the marker currently names, or nil when there is no consent.
     /// Reads exactly what the daemon reads, so a test can assert one boundary.
+    ///
+    /// The exactly-one-row rule itself lives ONCE in this target, on
+    /// `ControlPlaneStore.memoryDeviceSyncMarkerReading` — the same read the
+    /// health card and the sync-status row go through — so a change to the
+    /// doctrine cannot land on the reporting surfaces and miss the drain's own
+    /// gate, or the reverse.
     func fetchMemoryDeviceSyncMarkerUserID() async throws -> String? {
         try await dbQueue.read { db in
-            let rows = try String.fetchAll(
-                db,
-                sql: """
-                SELECT accountUid FROM \(BurnBarMemoryDeviceSyncMarker.tableName)
-                WHERE \(BurnBarMemoryDeviceSyncMarker.kindColumn) = ?
-                LIMIT 2
-                """,
-                arguments: [BurnBarMemoryDeviceSyncMarker.collectionKind]
-            )
-            return rows.count == 1 ? rows.first : nil
+            try Self.memoryDeviceSyncMarkerReading(db).accountUid
         }
     }
 

@@ -230,6 +230,127 @@ final class ProjectMemoryHealthCardTests: XCTestCase {
         XCTAssertTrue(card.engineDoctorNote.contains("not measured here"))
     }
 
+    // MARK: - The marker is read on the daemon's exactly-one-row rule
+
+    /// An ambiguous marker table is what the daemon reads as NO consent, so the
+    /// card must not age the newest of two rows: "Marker age: just now" beside
+    /// a daemon that is draining nothing is the wrong reassurance. The rule
+    /// lives once, in `ControlPlaneStore.memoryDeviceSyncMarkerReading`, and
+    /// both memory surfaces read through it.
+    func test_two_marker_rows_are_read_as_no_consent_rather_than_the_newest() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        try await queue.write { db in
+            for (uid, refreshedAt) in [
+                ("uid-1", now.addingTimeInterval(-5)),
+                ("uid-other", now.addingTimeInterval(-90 * 86_400))
+            ] {
+                try db.execute(
+                    sql: """
+                    INSERT INTO remote_sync_watermarks
+                        (accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version)
+                    VALUES (?, ?, ?, NULL, 1)
+                    """,
+                    arguments: [uid, BurnBarMemoryDeviceSyncMarker.collectionKind, refreshedAt]
+                )
+            }
+        }
+
+        let daemonView = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertNil(daemonView, "Two rows is 'no consent' to the reader the daemon mirrors")
+
+        let snapshot = try await store.memoryHealthLocalSnapshot(accountUid: "uid-1")
+        XCTAssertNil(snapshot.deviceSyncMarkerRefreshedAt)
+
+        let card = ProjectMemoryHealthCardModel(
+            analytics: Self.analytics,
+            snapshot: snapshot,
+            secretScannerAvailable: true,
+            now: now
+        )
+        XCTAssertEqual(
+            card.statRows.first { $0.title == "Marker age" }?.value,
+            ProjectMemoryHealthCardModel.placeholder
+        )
+        XCTAssertFalse(
+            card.findings.contains { $0.code == MemoryHealthLocalFindings.syncMarkerStale },
+            "Absent is not stale, and an ambiguous table is absent"
+        )
+    }
+
+    /// N3: the marker names WHICH member consents, and on a shared Mac that
+    /// member is not necessarily the one reading the card. Aging somebody
+    /// else's marker here would let the card raise `SYNC_MARKER_STALE` about a
+    /// consent this account never gave — while the sync-status row 40px below
+    /// says "Another member" about the same row. One comparison
+    /// (`MemoryDeviceSyncMarkerReading.namesAnotherMember(than:)`), both
+    /// surfaces, failing closed.
+    func test_a_marker_naming_another_member_is_not_judged_as_this_account_s_consent() async throws {
+        let queue = try DatabaseQueue()
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+        try database.runMigrationsSafely()
+        let store = ControlPlaneStore(dbQueue: queue)
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        // Long past the daemon's bound, so it WOULD raise the finding if the
+        // card judged it.
+        let refreshedAt = now.addingTimeInterval(-10 * BurnBarMemoryDeviceSyncMarker.maxAge)
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO remote_sync_watermarks
+                    (accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version)
+                VALUES (?, ?, ?, NULL, 1)
+                """,
+                arguments: ["uid-other", BurnBarMemoryDeviceSyncMarker.collectionKind, refreshedAt]
+            )
+        }
+
+        // Exactly one row, so this is NOT the ambiguous case: the daemon reads
+        // it as uid-other's consent, and honours it for uid-other.
+        let daemonView = try await store.fetchMemoryDeviceSyncMarkerUserID()
+        XCTAssertEqual(daemonView, "uid-other")
+
+        let snapshot = try await store.memoryHealthLocalSnapshot(accountUid: "uid-1")
+        XCTAssertNil(
+            snapshot.deviceSyncMarkerRefreshedAt,
+            "Another member's marker is that member's consent, not this account's"
+        )
+
+        let card = ProjectMemoryHealthCardModel(
+            analytics: Self.analytics,
+            snapshot: snapshot,
+            secretScannerAvailable: true,
+            now: now
+        )
+        XCTAssertEqual(
+            card.statRows.first { $0.title == "Marker age" }?.value,
+            ProjectMemoryHealthCardModel.placeholder
+        )
+        XCTAssertFalse(
+            card.findings.contains { $0.code == MemoryHealthLocalFindings.syncMarkerStale },
+            "The card must not warn this account about a marker naming somebody else"
+        )
+
+        // The same Mac read for the member the marker DOES name still ages it
+        // and still raises the finding — this fails closed on a mismatch, it
+        // does not go blind.
+        let owner = try await store.memoryHealthLocalSnapshot(accountUid: "uid-other")
+        XCTAssertEqual(owner.deviceSyncMarkerRefreshedAt, refreshedAt)
+        XCTAssertTrue(
+            ProjectMemoryHealthCardModel(
+                analytics: Self.analytics,
+                snapshot: owner,
+                secretScannerAvailable: true,
+                now: now
+            ).findings.contains { $0.code == MemoryHealthLocalFindings.syncMarkerStale }
+        )
+    }
+
     // MARK: - Ages come from the watermarks
 
     /// The two ages are read from the real sync bookkeeping — the `memory_facts`
