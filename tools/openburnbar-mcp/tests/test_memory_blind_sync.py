@@ -4095,12 +4095,16 @@ def test_an_export_is_a_serving_path_and_answers_to_the_same_fence(tmp_path: Pat
     assert "payments service" not in wide_bodies
     assert wide_withheld == 1
 
-    # Its own narrow export withholds nothing, because the project fence never
-    # selected the row in the first place: the count reports what THIS fence
-    # held back, not what the caller was never going to be shown.
-    narrow_ids, _, narrow_withheld = _exported(engine, unrelated)
+    # Its own narrow export gets neither the id nor the body, and is told so.
+    # Amendment A1 is why the count is 1 rather than 0 here: the local project
+    # fence no longer pre-empts the team one, so the narrow export SELECTS every
+    # team row and this fence is what holds it back — which is the only way the
+    # count can be honest, because a team row's landing partition is a
+    # `teamProjectId` that no local project id ever equals.
+    narrow_ids, narrow_bodies, narrow_withheld = _exported(engine, unrelated)
     assert local_id not in narrow_ids
-    assert narrow_withheld == 0
+    assert "payments service" not in narrow_bodies
+    assert narrow_withheld == 1
 
     # And the linked checkout still exports the row it is entitled to, on both
     # the narrow and the all-projects call.
@@ -4219,6 +4223,393 @@ def test_a_link_file_read_for_another_project_decides_nothing(tmp_path: Path) ->
         assert engine._session_team_links(project_p).teams == {}
     (Path(linked) / ".openburnbar" / "project.json").write_text(" " * 4096)
     assert engine._session_team_links(project_p).teams == {}
+    engine.close()
+
+
+# ----- A1: the landing partition is not a local project id ------------------
+#
+# The two-clone proof exposed the functional half of T4. `teamProjectId` is
+# deliberately NOT a local `proj_<32hex>` id — that indirection is the whole
+# cross-member convergence mitigation, because two members' checkouts of the
+# same repository mint different local ids and a team row has to converge
+# anyway. So a team row LANDS in a partition (`memories.project_id =
+# "burnbar-core"`) that no local project id will ever equal.
+#
+# `_team_row_servable` was already right about that pair. The LOCAL project
+# fence, applied independently on every read, was not: `(m.project_id = ? OR
+# m.scope = 'personal')` drops a project-scoped team row before the serving
+# predicate is ever consulted. The result was a row that passed every write and
+# admission check, sat in the store, said `_team_row_servable(...) is True` when
+# asked directly — and appeared in NO recall surface on ANY member's Mac,
+# including the author's. Only `engineScope = "personal"` team facts reached a
+# model, because a personal row is cross-project by the engine's own design and
+# so survives the local fence by accident.
+#
+# Amendment A1 (design doc, `docs/superpowers/plans/2026-09-05-team-memory-design.md`):
+#
+#   A team row is servable in this session IFF this checkout's
+#   `.openburnbar/project.json` links that team to exactly the `teamProjectId`
+#   the row landed in. The session's own local `proj_` id is not part of the
+#   comparison, because a team landing id and a local project id are different
+#   namespaces by design.
+#
+# So the local project fence stops applying to team rows — on every query that
+# carries it — and `_team_row_servable` becomes the single thing that decides
+# one. Every T4/T5 security property is preserved, and each has its own test
+# below.
+
+TEAM_PROJECT = "burnbar-core"
+OTHER_TEAM_PROJECT = "burnbar-ios"
+# One body that exercises every serving surface at once: it extracts an entity
+# AND a relation, so `entities` and `relations` have something to hold back.
+A1_BODY = "Redis is the cache for the payments service."
+A1_QUERY = "redis cache payments service"
+
+
+def _team_project_fixture(
+    tmp_path: Path, name: str, *, engine_scope: str = "project"
+) -> tuple[me.MemoryEngine, str, str, str]:
+    """A team fact landing in a REAL `teamProjectId`, not in a local project id.
+
+    This is the shape the two-clone proof produces and the shape every member's
+    Mac actually holds: `projectID = "burnbar-core"`, a token checked into the
+    shared repository, which is not and cannot be either checkout's local
+    `proj_<32hex>`. `linked` publishes that exact pair; `unrelated` publishes
+    nothing.
+    """
+    engine = _replica(tmp_path, name)
+    linked = str(tmp_path / f"{name}_linked")
+    unrelated = str(tmp_path / f"{name}_unrelated")
+    Path(linked).mkdir(parents=True, exist_ok=True)
+    Path(unrelated).mkdir(parents=True, exist_ok=True)
+    _project_id(engine, linked)
+    _project_id(engine, unrelated)
+    _write_team_link(linked, {TEAM_ID: TEAM_PROJECT})
+
+    body = A1_BODY
+    result = engine.merge_remote(
+        [
+            _doc(
+                "doc_team_landing_partition",
+                "mem_8888bbbb8888bbbb8888bbbb8888bbbb",
+                body,
+                project_id=TEAM_PROJECT,
+                updated_at=T1,
+                engine_scope=engine_scope,
+                team_id=TEAM_ID,
+                author_uid="uid_alice",
+            )
+        ]
+    )
+    assert result["applied"] == 1, result
+    local_id = engine._team_local_memory_id(TEAM_ID, TEAM_PROJECT, engine_scope, canonical_body_hash(body))
+    row = _rows(engine)[local_id]
+    # The landing partition is the team's token, and it is not a local id.
+    assert row["projectID"] == TEAM_PROJECT
+    assert TEAM_PROJECT != _project_id(engine, linked)
+    return engine, linked, unrelated, local_id
+
+
+def _served_everywhere(engine: me.MemoryEngine, repo: str, memory_id: str) -> dict[str, bool]:
+    """Every serving surface, asked the same question about one row."""
+    cwd = os.getcwd()
+    try:
+        os.chdir(repo)
+        by_id = engine.get(memory_id)["status"] == "ok"
+        by_history = engine.history(memory_id)["status"] == "ok"
+    finally:
+        os.chdir(cwd)
+    return {
+        "recall": memory_id
+        in {str(item["memoryID"]) for item in engine.recall(A1_QUERY, project_path=repo)["results"]},
+        "recall_pack": memory_id in engine.recall_pack(A1_QUERY, project_path=repo)["pack"],
+        "list": memory_id in _listed_ids(engine, repo),
+        "get": by_id,
+        "history": by_history,
+        "timeline": engine.timeline(memory_id, project_path=repo)["status"] == "ok",
+        "entities": any(memory_id in item["memoryIDs"] for item in engine.entities(project_path=repo)["entities"]),
+        "relations": any(
+            str(item["memoryID"]) == memory_id for item in engine.relations(project_path=repo)["relations"]
+        ),
+        "export": memory_id in _exported(engine, repo)[0],
+        "export_all_projects": memory_id in _exported(engine, repo, all_projects=True)[0],
+    }
+
+
+def test_a_project_scoped_team_fact_is_served_to_the_checkout_that_links_it(tmp_path: Path) -> None:
+    """The reproduction, and the corrected behaviour (amendment A1).
+
+    Before A1 every one of these surfaces answered False in the linked checkout
+    — including for the member who contributed the fact — while
+    `_team_row_servable` said True when asked directly. That gap is the bug: the
+    local project fence, not the serving predicate, was deciding, and a team
+    landing id can never equal a local `proj_` id.
+    """
+    engine, linked, _, local_id = _team_project_fixture(tmp_path, "landing_partition")
+
+    # The serving predicate always agreed the row belongs here.
+    links = engine._session_team_links(_project_id(engine, linked))
+    assert links.teams == {TEAM_ID: TEAM_PROJECT}
+    assert engine._team_row_servable(TEAM_ID, TEAM_PROJECT, _project_id(engine, linked), links) is True
+
+    # And now every surface does too.
+    assert _served_everywhere(engine, linked, local_id) == {
+        "recall": True,
+        "recall_pack": True,
+        "list": True,
+        "get": True,
+        "history": True,
+        "timeline": True,
+        "entities": True,
+        "relations": True,
+        "export": True,
+        "export_all_projects": True,
+    }
+    # The body reaches a model, which is the whole point of contributing it.
+    assert "payments service" in engine.recall_pack(A1_QUERY, project_path=linked)["pack"]
+    engine.close()
+
+
+def test_a_personal_scoped_team_fact_still_reaches_the_linked_checkout(tmp_path: Path) -> None:
+    """The lane that already worked keeps working, with a real landing partition.
+
+    A personal-scoped team fact survived the local project fence by accident —
+    the engine reads a personal row as cross-project. A1 must not disturb that:
+    the row is served in the linked checkout exactly as before.
+    """
+    engine, linked, _, local_id = _team_project_fixture(tmp_path, "personal_scoped", engine_scope="personal")
+    assert all(_served_everywhere(engine, linked, local_id).values())
+    engine.close()
+
+
+# --- the six preserved security properties ---------------------------------
+
+
+def test_a_checkout_that_links_nothing_serves_no_project_scoped_team_row(tmp_path: Path) -> None:
+    """Property 1. No link file, no serving — on every surface, for both scopes.
+
+    A1 widens which rows a query SELECTS; it grants nothing. A checkout with no
+    `.openburnbar/project.json` publishes to no team, so `links.teams` is empty,
+    `links.teams.get(team_id)` is None, and nothing matches a landing partition.
+    """
+    for scope in ("project", "personal"):
+        engine, _, unrelated, local_id = _team_project_fixture(tmp_path, f"unlinked_{scope}", engine_scope=scope)
+        assert not (Path(unrelated) / ".openburnbar" / "project.json").exists()
+        assert not any(_served_everywhere(engine, unrelated, local_id).values())
+        # And `include_cross_project` does not widen it: that flag opens the
+        # PROJECT fence, and A1 took team rows out of that fence entirely.
+        wide = engine.recall(A1_QUERY, project_path=unrelated, include_cross_project=True)
+        assert local_id not in {str(item["memoryID"]) for item in wide["results"]}
+        wide_list = engine.list(project_path=unrelated, include_cross_project=True)
+        assert local_id not in {str(item["memoryID"]) for item in wide_list["results"]}
+        assert "payments service" not in _exported(engine, unrelated, all_projects=True)[1]
+        engine.close()
+
+
+def test_a_checkout_linking_a_different_team_project_serves_nothing(tmp_path: Path) -> None:
+    """Property 2. The predicate compares the PAIR, not the team.
+
+    A member whose repository links team T to `burnbar-ios` must not be handed
+    T's rows that landed in `burnbar-core`: that is a different project's
+    partition, and the member linked neither their session nor their team to it.
+    """
+    engine, linked, _, local_id = _team_project_fixture(tmp_path, "wrong_project")
+    _write_team_link(linked, {TEAM_ID: OTHER_TEAM_PROJECT})
+    assert not any(_served_everywhere(engine, linked, local_id).values())
+    engine.close()
+
+
+def test_a_checkout_linking_a_different_team_serves_nothing(tmp_path: Path) -> None:
+    """Property 3. Another team's link is not this team's link.
+
+    Even when the OTHER team is linked to exactly this row's landing partition,
+    the row's own team is absent from `links.teams` and the lookup misses.
+    """
+    engine, linked, _, local_id = _team_project_fixture(tmp_path, "wrong_team")
+    _write_team_link(linked, {OTHER_TEAM_ID: TEAM_PROJECT})
+    assert not any(_served_everywhere(engine, linked, local_id).values())
+    engine.close()
+
+
+def test_removing_the_link_stops_serving_a_project_scoped_team_row_at_once(tmp_path: Path) -> None:
+    """Property 4. Unlinking works on the next call, not on the next pull.
+
+    The file is the whole record and it is read live. A1 changed which rows a
+    query selects and changed nothing about that.
+    """
+    engine, linked, _, local_id = _team_project_fixture(tmp_path, "unlink_landing")
+    assert all(_served_everywhere(engine, linked, local_id).values())
+
+    _write_team_link(linked, None)
+    assert not any(_served_everywhere(engine, linked, local_id).values())
+    # An export that now SELECTS the row and withholds it says so, rather than
+    # dropping it silently the way the local project fence used to.
+    assert _exported(engine, linked)[2] == 1
+
+    _write_team_link(linked, {TEAM_ID: TEAM_PROJECT})
+    assert all(_served_everywhere(engine, linked, local_id).values())
+    engine.close()
+
+
+def test_the_landing_partition_rule_leaves_personal_rows_alone(tmp_path: Path) -> None:
+    """Property 5. A row with no `teamID` is decided by exactly what decided it before.
+
+    A1 exempts TEAM rows from the local project fence. A personal row keeps it:
+    project-scoped in its own project only, personal-scoped everywhere, with a
+    link file present and with none.
+    """
+    engine, linked, unrelated, _ = _team_project_fixture(tmp_path, "personal_untouched_a1")
+    personal = engine.remember(
+        "Espresso machine descaling is due every eight weeks.", project_path=linked, kind="fact", scope="personal"
+    )
+    scoped = engine.remember("The release branch is cut on Tuesdays.", project_path=linked, kind="fact")
+    personal_id, scoped_id = str(personal["memoryID"]), str(scoped["memoryID"])
+
+    for links in (None, {TEAM_ID: TEAM_PROJECT}, {TEAM_ID: OTHER_TEAM_PROJECT}, {OTHER_TEAM_ID: TEAM_PROJECT}):
+        _write_team_link(linked, links)
+        _write_team_link(unrelated, links)
+        here = _listed_ids(engine, linked)
+        there = _listed_ids(engine, unrelated)
+        assert {personal_id, scoped_id} <= here
+        assert personal_id in there
+        assert scoped_id not in there
+        assert engine.get(personal_id)["status"] == "ok"
+        assert engine.get(scoped_id)["status"] == "ok"
+        assert engine.timeline(scoped_id, project_path=unrelated)["code"] == "FOREIGN_PROJECT"
+    engine.close()
+
+
+def test_the_landing_partition_rule_leaves_the_write_fence_untouched(tmp_path: Path) -> None:
+    """Property 6. Reading is not authorship, and A1 grants no write.
+
+    T5 says a team-origin row is never mutated or retired by a local write in
+    ANY session — linked or not. A1 makes the row VISIBLE in the linked
+    checkout, which is the first time that lock has been reachable at all for a
+    project-scoped row, so it is proven here on exactly that row.
+    """
+    engine, linked, unrelated, local_id = _team_project_fixture(tmp_path, "write_fence_a1")
+    before = _team_row_state(engine, local_id)
+
+    # The linked session sees the row, and is refused by name.
+    cwd = os.getcwd()
+    try:
+        os.chdir(linked)
+        assert engine.update(local_id, tags=["mine"])["code"] == "TEAM_ROW_NOT_WRITABLE"
+        assert engine.review(local_id, "rejected")["code"] == "TEAM_ROW_NOT_WRITABLE"
+    finally:
+        os.chdir(cwd)
+    assert engine.forget(local_id, project_path=linked)["code"] == "TEAM_ROW_NOT_WRITABLE"
+
+    # The unlinked session may not even learn the row exists.
+    try:
+        os.chdir(unrelated)
+        assert engine.update(local_id, tags=["mine"])["code"] == "TEAM_PROJECT_NOT_LINKED"
+        assert engine.review(local_id, "rejected")["code"] == "TEAM_PROJECT_NOT_LINKED"
+    finally:
+        os.chdir(cwd)
+    assert engine.forget(local_id, project_path=unrelated)["code"] == "TEAM_PROJECT_NOT_LINKED"
+
+    # And a local `remember` of the SAME body in the linked project gets the
+    # member their own personal row in their own project, and reinforces,
+    # supersedes and retires nothing of the team's. A1 is why this is an ADD
+    # rather than the `TEAM_ROW_NOT_WRITABLE` convergence the PR3 ruling
+    # described: that ruling assumed a team row lands on the local project's
+    # `UNIQUE(project_id, scope, body_hash)` triple, and it does not — the
+    # landing partition is the team's. The lock itself is unchanged: the write
+    # pool contains no team row in any session, so there was never a team row
+    # here to reinforce.
+    again = engine.remember(A1_BODY, project_path=linked, kind="fact")
+    assert again["event"] == "ADD", again
+    assert str(again["memoryID"]) != local_id
+    assert engine._row_team_id(str(again["memoryID"])) is None
+    assert _team_row_state(engine, local_id) == before
+    engine.close()
+
+
+# --- the two forms of the rule, and both mutation directions ----------------
+
+
+def test_the_sql_and_python_forms_of_the_serving_rule_agree(tmp_path: Path) -> None:
+    """`list`'s SQL clause and the in-Python filters answer identically.
+
+    `list` fences in SQL because it counts and paginates there; `recall`,
+    `entities`, `relations` and `export` fence in Python. Both are built from
+    `_team_row_servable`, so they cannot disagree — and this walks the same
+    fixtures through both to say so out loud.
+    """
+    engine, linked, unrelated, local_id = _team_project_fixture(tmp_path, "sql_python_agree")
+    cases = [
+        (linked, {TEAM_ID: TEAM_PROJECT}, True),
+        (linked, None, False),
+        (linked, {TEAM_ID: OTHER_TEAM_PROJECT}, False),
+        (linked, {OTHER_TEAM_ID: TEAM_PROJECT}, False),
+        (unrelated, {TEAM_ID: TEAM_PROJECT}, True),
+        (unrelated, None, False),
+    ]
+    for repo, links, expected in cases:
+        _write_team_link(repo, links)
+        project_id = _project_id(engine, repo)
+        session_links = engine._session_team_links(project_id)
+        python_form = engine._team_row_servable(TEAM_ID, TEAM_PROJECT, project_id, session_links)
+        clause, params = engine._team_visibility_sql(project_id)
+        sql_form = (
+            engine.conn.execute(
+                f"SELECT COUNT(*) FROM memories AS m WHERE m.id = ? AND {clause}",  # noqa: S608 — built by the predicate
+                [local_id, *params],
+            ).fetchone()[0]
+            == 1
+        )
+        assert python_form is expected, (repo, links)
+        assert sql_form is expected, (repo, links)
+        # And the surfaces built on each agree with both.
+        assert (local_id in _listed_ids(engine, repo)) is expected
+        recalled = {str(item["memoryID"]) for item in engine.recall(A1_QUERY, project_path=repo)["results"]}
+        assert (local_id in recalled) is expected
+        assert (local_id in _exported(engine, repo)[0]) is expected
+    engine.close()
+
+
+def test_mutation_neutering_the_serving_predicate_serves_the_row_everywhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation 1. Force `_team_row_servable` to True: the unlinked repo gets it.
+
+    A1 removed the local project fence from team rows, so this predicate is now
+    the ONLY thing holding a project-scoped team row back. Neutering it has to
+    open every surface at once — if it did not, something else would be doing
+    the fencing and A1's single-decision claim would be false.
+    """
+    engine, _, unrelated, local_id = _team_project_fixture(tmp_path, "mutation_open")
+    assert not any(_served_everywhere(engine, unrelated, local_id).values())
+
+    monkeypatch.setattr(me.MemoryEngine, "_team_row_servable", lambda *_a, **_k: True)
+    assert all(_served_everywhere(engine, unrelated, local_id).values())
+    assert "payments service" in _exported(engine, unrelated, all_projects=True)[1]
+    engine.close()
+
+
+def test_mutation_the_old_landing_versus_session_comparison_hides_the_row_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation 2. Put the local project id back into the comparison: the bug returns.
+
+    This is the defect, expressed as a one-line mutation of the corrected
+    predicate. A landing partition and a local project id are different
+    namespaces, so `landing_project_id == session_project_id` is never true for
+    a real team fact and the linked checkout goes blind again — which is exactly
+    what the two-clone proof observed.
+    """
+
+    def old(_self, team_id, landing_project_id, session_project_id, links):  # type: ignore[no-untyped-def]
+        if not team_id:
+            return True
+        return landing_project_id == session_project_id and links.teams.get(team_id) == landing_project_id
+
+    engine, linked, _, local_id = _team_project_fixture(tmp_path, "mutation_regress")
+    assert all(_served_everywhere(engine, linked, local_id).values())
+
+    monkeypatch.setattr(me.MemoryEngine, "_team_row_servable", old)
+    assert not any(_served_everywhere(engine, linked, local_id).values())
     engine.close()
 
 
