@@ -165,9 +165,13 @@ type TestCallableRequest<T extends Record<string, unknown>> = {
   data: T;
 };
 
-export function callableRequest<T extends Record<string, unknown>>(uid: string, data: T): TestCallableRequest<T> {
+export function callableRequest<T extends Record<string, unknown>>(
+  uid: string,
+  data: T,
+  tokenClaims: Record<string, unknown> = {},
+): TestCallableRequest<T> {
   return {
-    auth: { uid, token: {} },
+    auth: { uid, token: { ...tokenClaims } },
     app: { appId: "openburnbar-test" },
     rawRequest: { headers: {} },
     data,
@@ -415,6 +419,12 @@ type Tier2CallableProofOptions = {
   exportedName: string;
   run: (request: unknown) => Promise<unknown>;
   payload?: Record<string, unknown>;
+  /**
+   * Auth token claims the attacker presents. Default `{}`. Set the claims a
+   * callable checks BEFORE its object check (e.g. `email_verified`) so the
+   * proof exercises the object binding rather than a cheaper earlier guard.
+   */
+  tokenClaims?: Record<string, unknown>;
   expectedOutcome?: BolaExpectedOutcome;
   expectedCode?: BolaExpectedCode;
   strictCode?: boolean;
@@ -433,6 +443,7 @@ export async function tier2CallableProof(
     exportedName,
     run,
     payload,
+    tokenClaims,
     expectedOutcome = "throws",
     expectedCode: requestedExpectedCode,
     strictCode = BOLA_STRICT_CODE_ENDPOINTS.has(exportedName) || BOLA_STRICT_CODE_PENDING.has(exportedName),
@@ -464,7 +475,7 @@ export async function tier2CallableProof(
   store.clear();
   seedBolaVictimTenant(store, exportedName);
   const victimBefore = snapshotTenantPaths(store, BOB_UID);
-  const request = callableRequest(ALICE_UID, payload ?? bolaCrossUserData());
+  const request = callableRequest(ALICE_UID, payload ?? bolaCrossUserData(), tokenClaims);
 
   if (expectedOutcome === "throws") {
     await expectCallableDenial(run, request, expectedCode, { strictCode });

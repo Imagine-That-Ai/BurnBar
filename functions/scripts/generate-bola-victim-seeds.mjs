@@ -3,6 +3,7 @@
  * Generate bolaVictimSeeds.generated.ts from endpointAuthorizationCatalog.
  * Seeds victim-tenant Firestore paths for tier-2 BOLA isolation proofs.
  */
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseGeneratedLiteral } from "./generated-literal-parser.mjs";
@@ -49,6 +50,14 @@ const PROBE = {
   peerNodeId: "bob-peer",
   keyId: "bob-key",
   recoveryId: "bob-recovery",
+  // Team proofs pass an explicit payload (the team callables validate the
+  // teamId shape), so this value is only used to shape the victim seeds.
+  teamId: "team_bbbbbbbbbbbbbbbb",
+  // MUST stay identical to the token acceptTeamInvite's BOLA proof sends
+  // (functions/src/__tests__/bola/teamRoster.bola.test.ts). The invite below is
+  // seeded so Alice's call reaches the `inviteeUid` comparison instead of
+  // stopping at "no such invite" (PR1 review F10 / N-6).
+  inviteToken: `inv_${"a".repeat(40)}`,
 };
 
 const BOB = "__BOB_UID__";
@@ -227,6 +236,44 @@ function seedsForEndpoint(entry) {
 
   if (name.includes("VoIP") || ids.has("pairedDeviceId")) {
     push(bobPath(`devices/${PROBE.pairedDeviceId}`), { voipDeviceToken: "bob-voip" });
+  }
+
+  if (name.includes("Team")) {
+    push(globalPath(`team_rosters/${PROBE.teamId}`), {
+      teamId: PROBE.teamId,
+      activeKeyVersion: 1,
+      retainedKeyVersions: [1],
+      keyRotationRequired: false,
+      schemaVersion: 1,
+    });
+    push(globalPath(`team_rosters/${PROBE.teamId}/members/${BOB}`), {
+      uid: BOB,
+      teamId: PROBE.teamId,
+      role: "admin",
+      status: "active",
+      activeTeamKeyVersion: 1,
+      schemaVersion: 1,
+    });
+    // A REAL pending invite, bound to Bob, whose id is the hash of the token
+    // the attacker presents. Without it the acceptTeamInvite proof refused at
+    // `!inviteSnap.exists` — a true refusal, but not the binding the test is
+    // named for (PR1 review F10 / N-6). No `expiresAt` is seeded on purpose:
+    // the uid comparison runs BEFORE the expiry check, so if that comparison
+    // were ever weakened the call would fall through to a `failed-precondition`
+    // expiry refusal and the proof's expected `permission-denied` would fail.
+    push(
+      globalPath(
+        `team_rosters/${PROBE.teamId}/invites/${createHash("sha256").update(PROBE.inviteToken, "utf8").digest("hex")}`,
+      ),
+      {
+        teamId: PROBE.teamId,
+        inviteeUid: BOB,
+        role: "member",
+        status: "pending",
+        invitedBy: BOB,
+        schemaVersion: 1,
+      },
+    );
   }
 
   // Fallback: seed generic paths for any remaining object ids

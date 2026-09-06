@@ -1047,6 +1047,44 @@ service cloud.firestore {
         );
     }
 
+    // --- Team memory roster helpers (D16 / P21) ---
+    // The live roster is the membership authority. Every team read AND every
+    // team write re-reads the member document below, so a member whose status
+    // the roster callables flip to "removed" is cut off on their very next
+    // request rather than whenever a bearer token happens to expire. Clients
+    // never write team_rosters/** — see the `allow write: if false` rules.
+    function teamMemberPath(teamId) {
+      return /databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid);
+    }
+
+    function isTeamMember(teamId) {
+      return request.auth != null
+        && exists(teamMemberPath(teamId))
+        && get(teamMemberPath(teamId)).data.status == "active";
+    }
+
+    function isTeamAdmin(teamId) {
+      return isTeamMember(teamId)
+        && get(teamMemberPath(teamId)).data.role == "admin";
+    }
+
+    // Team memory is a Data Vault surface; the entitlement is re-read on every
+    // team read, exactly as the personal lane's client-side gate assumes.
+    function readsTeamMemory(teamId) {
+      return isTeamMember(teamId) && hasActiveDataVaultEntitlement(request.auth.uid);
+    }
+
+    // Sealed team documents are pinned to the roster's CURRENT key generation,
+    // so a write sealed under a superseded key is refused at the door.
+    function activeTeamKeyVersion(teamId) {
+      return get(/databases/$(database)/documents/team_rosters/$(teamId)).data.activeKeyVersion;
+    }
+
+    // Shared with users/{uid}/memory_facts: one coarse kind vocabulary.
+    function validMemoryFactKind(value) {
+      return value in ["fact", "preference", "event", "profile", "relationship", "other", "decision", "architecture", "procedure", "gotcha", "todo"];
+    }
+
     function cloudVaultAADContext(userId, collection, docID, field) {
       return "OpenBurnBar-CloudVault-aad-v2|" + userId + "|" + collection + "|" + docID + "|" + field + "|2|" + field;
     }
@@ -3238,7 +3276,7 @@ service cloud.firestore {
         && request.resource.data.schemaVersion is int
         && request.resource.data.schemaVersion >= 1
         && request.resource.data.sourceKind in ["chat", "agent"]
-        && request.resource.data.kind in ["fact", "preference", "event", "profile", "relationship", "other", "decision", "architecture", "procedure", "gotcha", "todo"]
+        && validMemoryFactKind(request.resource.data.kind)
         && request.resource.data.reviewStatus == "approved"
         && validCloudSealedBlob(
           request.resource.data.sealedMemory,
@@ -4960,6 +4998,229 @@ service cloud.firestore {
         allow create, update: if sharedArtifactVersionSealedOwnerWrite(workspaceId, teamId, artifactId, revisionId);
         allow delete: if sharedArtifactOwnerRead(workspaceId);
       }
+    }
+
+    // --- Team memory spaces (D16 / P21) ---
+    // A fourth blind lane beside the personal one: the server holds ciphertext,
+    // opaque 64-hex document ids, opaque source HMACs and ECIES-wrapped key
+    // envelopes — never plaintext, embeddings, citations or any team key. The
+    // roster is server-owned; membership cannot be asserted by a client.
+
+    match /team_rosters/{teamId} {
+      allow read: if isTeamMember(teamId);
+      allow write: if false;
+
+      match /members/{memberUid} {
+        allow read: if request.auth != null
+          && (request.auth.uid == memberUid || isTeamMember(teamId));
+        allow write: if false;
+      }
+
+      // Invites carry a uid binding and a token hash. Neither is client
+      // business: acceptTeamInvite (Admin SDK) is the only reader.
+      match /invites/{inviteId} {
+        allow read, write: if false;
+      }
+
+      match /audit_log/{eventId} {
+        allow read: if isTeamAdmin(teamId);
+        allow write: if false;
+      }
+    }
+
+    // Per-DEVICE ECIES key envelopes. A member's second Mac holds a different
+    // escrow private key, so the team key is wrapped once per trusted device,
+    // never once per member. A member READS only envelopes addressed to itself.
+    //
+    // WHO MAY PUBLISH (PR1 review ruling F1). Envelopes are create-only and
+    // immutable, so an id, once written, can never be repaired. Letting every
+    // active member create an envelope for every other uid therefore handed any
+    // member a permanent denial-of-key primitive: squat a joiner's ids with
+    // garbage wraps and that joiner is active-but-blind for ever. `create` is
+    // now: an ACTIVE ADMIN (the role that legitimately hands out team keys), or
+    // an active member wrapping keys for ITS OWN uid (self-wrap, which is how
+    // a founder bootstraps and how a member enrols a second Mac). `wrappedBy`
+    // is pinned to the author so the roster authority can tell whose wrap it
+    // is; `assertEnvelopeCoverage` then counts only envelopes an active admin
+    // (or the recipient themself) wrapped.
+    match /team_key_envelopes/{teamId}/envelopes/{envelopeId} {
+      function validTeamKeyEnvelope() {
+        let d = request.resource.data;
+        return d.keys().hasOnly([
+          "teamId", "uid", "deviceId", "escrowKeyVersion", "keySlot",
+          "algorithm", "wrappedKeyBase64", "recipientPublicKeyFingerprint", "wrappedBy", "createdAt"
+        ])
+          && d.teamId == teamId
+          && d.wrappedBy == request.auth.uid
+          && d.deviceId.size() <= 160
+          && d.escrowKeyVersion is int
+          && d.escrowKeyVersion >= 1
+          // NO `d.keySlot.matches(...)` HERE (PR1 review N-1), by exactly the
+          // argument that deleted the plaintext negations below: it is dead.
+          // The id pin on the next line forces `keySlot` to be the id's tail
+          // (and a non-string `keySlot` fails the concatenation, so the write
+          // is denied), and the roster authority binds it to
+          // `requirement.keySlot` server side before any envelope counts.
+          // Mutation-tested: weakening the regex to `is string` broke no test.
+          // Do not re-add it; add a test instead.
+          && envelopeId == d.uid + "_" + d.deviceId + "_" + string(d.escrowKeyVersion) + "_" + d.keySlot
+          && d.algorithm == "ECIES-P256-AESGCM"
+          && d.wrappedKeyBase64.size() > 0
+          && d.wrappedKeyBase64.size() <= 4096
+          && d.wrappedKeyBase64.matches("^[A-Za-z0-9+/=]+$")
+          // THE RECIPIENT FINGERPRINT IS BASE64, NOT HEX (memory program D16 /
+          // PR 1 defect fix). This validator originally reused
+          // `validMemorySourceRefHmac` — the 64-hex opaque-id shape — but an
+          // escrow device's `publicKeyFingerprint` is `SHA256(x9.63 public key)`
+          // BASE64-ENCODED everywhere it is produced and consumed:
+          // `CloudVaultDeviceKeypair.publicKeyFingerprint` writes it that way,
+          // `users/{uid}/escrow_public_keys` stores it that way (a free-form
+          // <=128-char string there), and `EscrowDeviceSafetyCode.isFingerprint`
+          // base64-DECODES it to re-derive the binding. Demanding 64 hex here
+          // meant no envelope a real device ever wraps could be created, and the
+          // matching hex filter in `pinEscrowDeviceFingerprints` dropped every
+          // real device, so `acceptTeamInvite` refused every join. Exactly 44
+          // base64 characters — a 32-byte digest — keeps this a real pin rather
+          // than a loose length bound.
+          && d.recipientPublicKeyFingerprint is string
+          && d.recipientPublicKeyFingerprint.matches("^[A-Za-z0-9+/]{43}=$")
+          && d.createdAt is timestamp
+          // The recipient must be on this roster: no unbounded, unreclaimable
+          // storage under a tenant addressed to uids that were never invited.
+          && exists(/databases/$(database)/documents/team_rosters/$(teamId)/members/$(d.uid));
+      }
+
+      // WHICH GENERATION A MEMBER MAY SELF-WRAP (Cursor round, thread
+      // firestore.rules:5096). Admin-or-self closed peer squatting but left the
+      // FUTURE open: an id is immutable, so an active member self-wrapping
+      // `v{N+1}` — the slot the next rotation will require of them — to any key
+      // but their pinned one occupied that id for ever. `rotateTeamKey` then
+      // failed coverage on the fingerprint mismatch and could not repair the
+      // document, so any single member could permanently deny the team its only
+      // revocation primitive while keeping the current key. A self-wrap is
+      // therefore confined to generations the team has ALREADY published — the
+      // current one, or the non-rotating slug key, which is all a founder
+      // bootstrap or a second-Mac enrolment ever needs. Publishing for the next
+      // generation is the rotating admin's job.
+      allow read: if isTeamMember(teamId) && resource.data.uid == request.auth.uid;
+      allow create: if (isTeamAdmin(teamId)
+          || (isTeamMember(teamId)
+            && request.resource.data.uid == request.auth.uid
+            && (request.resource.data.keySlot == "slug"
+              || request.resource.data.keySlot == "v" + string(activeTeamKeyVersion(teamId)))))
+        && validTeamKeyEnvelope();
+      allow update, delete: if false;
+    }
+
+    match /team_memory_facts/{teamId}/facts/{docID} {
+      // `vaultGeneration` is deliberately absent from this allowlist: it is a
+      // personal-vault concept, and admitting it would let the personal rewrap
+      // worker's update shape land on a team document by accident.
+      function validTeamMemoryFact() {
+        let d = request.resource.data;
+        return d.keys().hasOnly([
+          "uid", "teamId", "docID", "schemaVersion", "sourceKind", "kind",
+          "reviewStatus", "sealedMemory", "sourceRefHmacs", "citationCount",
+          "validFrom", "updatedAt", "replicatedAt", "teamKeyVersion", "rewrapJobId"
+        ])
+          && d.teamId == teamId
+          && d.docID == docID
+          && validMemoryOpaqueId(docID)
+          // Plaintext (`text`, `body`, `citations`, `vector`, `cloakedVector`,
+          // `embedding`) is rejected by the `hasOnly` allowlist above — the
+          // single enforcement point. PR1 review: explicit `!("text" in d)`
+          // negations were mutation-tested and provably dead (removing all six
+          // broke no test, because the allowlist already denies them), so they
+          // were removed rather than left as rules bytes that look load-bearing
+          // and are not. `test_member_cannot_write_plaintext_fields` proves the
+          // allowlist refuses every one of those field names.
+          && d.schemaVersion is int
+          && d.schemaVersion >= 2
+          && d.sourceKind in ["chat", "agent"]
+          && validMemoryFactKind(d.kind)
+          && d.reviewStatus == "approved"
+          && validCloudSealedBlob(
+            d.sealedMemory,
+            cloudVaultAADContext("team:" + teamId, "team_memory_facts", docID, "sealedMemory")
+          )
+          && d.sealedMemory.schemaVersion >= 2
+          && validMemorySourceRefHmacs(d.sourceRefHmacs)
+          && d.citationCount is int
+          && d.citationCount == d.sourceRefHmacs.size()
+          && d.validFrom is timestamp
+          && d.updatedAt is timestamp
+          && d.replicatedAt is timestamp
+          && d.teamKeyVersion == activeTeamKeyVersion(teamId)
+          && d.sealedMemory.keyVersion == d.teamKeyVersion
+          && (!("rewrapJobId" in d) || (d.rewrapJobId is string && d.rewrapJobId.size() <= 160));
+      }
+
+      allow read: if readsTeamMemory(teamId);
+
+      allow create: if readsTeamMemory(teamId)
+        && validTeamMemoryFact()
+        && request.resource.data.uid == request.auth.uid;
+
+      // Authorship is immutable EVEN FOR AN ADMIN: an admin may re-seal or
+      // correct a teammate's row, but can never rewrite who wrote it, and a
+      // plain member may not touch another member's fact at all.
+      allow update: if readsTeamMemory(teamId)
+        && validTeamMemoryFact()
+        && request.resource.data.uid == resource.data.uid
+        && (request.auth.uid == resource.data.uid || isTeamAdmin(teamId));
+
+      // DELIBERATE ASYMMETRY (PR1 review F8): `read`/`create`/`update` go
+      // through `readsTeamMemory` (membership AND the Data Vault entitlement),
+      // but `delete` requires membership only. A member whose subscription
+      // lapses must still be able to retract what they wrote — never trap a
+      // user's data behind a billing state. The membership check is unchanged,
+      // so an ex-member still cannot delete anything.
+      allow delete: if (isTeamMember(teamId) && request.auth.uid == resource.data.uid)
+        || isTeamAdmin(teamId);
+    }
+
+    // Fact-level forget receipts for the team lane. Opaque HMACs and coarse
+    // reasons only; source thread/message ids and fact bodies stay device-only.
+    //
+    // A RECEIPT IS A CLAIM, NOT AN AUTHORITY (PR1 review F7). `uid` is pinned
+    // to the author, but `memoryIdHmac` and `sourceRefHmacs` are opaque and
+    // deliberately unbound — the rules cannot tell whose fact an HMAC names
+    // without the team key. So a member CAN file a receipt naming a teammate's
+    // fact. The consumer (PR 3's pull path) must therefore treat a receipt as
+    // "uid asks to forget X" and honour it only where `uid` already has the
+    // authority to delete X, never as authority to tombstone another author's
+    // row. The fact-level `allow delete` above is the real authority boundary.
+    match /team_memory_facts/{teamId}/forget_receipts/{receiptId} {
+      function validTeamForgetReceipt() {
+        let d = request.resource.data;
+        return d.keys().hasOnly([
+          "uid", "teamId", "receiptID", "schemaVersion", "memoryIdHmac",
+          "sourceRefHmacs", "reason", "createdAt", "replicatedAt"
+        ])
+          && d.teamId == teamId
+          && d.receiptID == receiptId
+          && validMemoryOpaqueId(receiptId)
+          && d.schemaVersion is int
+          && d.schemaVersion >= 1
+          && validMemorySourceRefHmac(d.memoryIdHmac)
+          && validMemorySourceRefHmacs(d.sourceRefHmacs)
+          && d.reason in ["user_delete", "review_status_quarantined", "review_status_rejected", "clear_history", "gc_30d", "unknown"]
+          && d.createdAt is timestamp
+          && d.replicatedAt is timestamp;
+      }
+
+      allow read: if readsTeamMemory(teamId);
+
+      allow create: if isTeamMember(teamId)
+        && validTeamForgetReceipt()
+        && request.resource.data.uid == request.auth.uid;
+
+      allow update: if isTeamMember(teamId)
+        && validTeamForgetReceipt()
+        && request.resource.data.uid == resource.data.uid
+        && request.auth.uid == resource.data.uid;
+
+      allow delete: if false;
     }
 
     // --- Mercury budget split (ADR 006) ---
