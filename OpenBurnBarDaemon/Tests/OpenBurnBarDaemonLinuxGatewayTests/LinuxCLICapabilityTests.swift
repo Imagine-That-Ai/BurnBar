@@ -20,6 +20,13 @@ final class LinuxCLICapabilityTests: XCTestCase {
             .simulatorList,
             .simulatorReplay,
             .memoryRecall,
+            // Signed CLI courier for the Python MCP on signed installs
+            // (`openburnbar-cli search-sql|memory-remember|memory-forget`, #2499)
+            // and the Memory Pro policy read the courier needs (#2501).
+            .searchSQL,
+            .memoryRemember,
+            .memoryForget,
+            .memoryModelPolicy,
             .codeIndexProject,
             .codeWatchProject,
             .codeSearch,
@@ -65,7 +72,7 @@ final class LinuxCLICapabilityTests: XCTestCase {
             .computerUseSessionStart,
             .computerUseInvoke,
             .missionCreate,
-            .memoryRemember,
+            .memoryReviewStatus,
             .codeOpsDiagnostics,
             .clientDetach
         ] {
