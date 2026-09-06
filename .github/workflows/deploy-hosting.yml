@@ -109,7 +109,7 @@ jobs:
       protected_signer_run_id: ${{ steps.proof.outputs.protected_signer_run_id }}
       protected_signer_run_attempt: ${{ steps.proof.outputs.protected_signer_run_attempt }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -178,7 +178,7 @@ jobs:
             echo "requires_proof=$requires_proof"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version: 24
 
@@ -479,7 +479,7 @@ jobs:
           )
 
       - name: Upload immutable hosting artifact
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: hosting-artifacts-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/hosting-artifact
@@ -511,7 +511,7 @@ jobs:
       reused_existing_evidence: ${{ steps.stable-replay.outputs.reused }}
     steps:
       - name: Download immutable hosting artifact
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5.0.0 (node24-native)
         with:
           name: hosting-artifacts-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/hosting-artifact
@@ -571,7 +571,7 @@ jobs:
           walk(config)
           PY
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version-file: .nvmrc
 
@@ -740,10 +740,10 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Download exact deployed hosting artifact
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5.0.0 (node24-native)
         with:
           name: hosting-artifacts-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/hosting-artifact
@@ -775,7 +775,7 @@ jobs:
 
       - name: Upload exact Console deploy health evidence
         if: ${{ needs.build-hosting-artifacts.outputs.stable_release == 'true' }}
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: console-deploy-health-${{ github.run_id }}-${{ github.run_attempt }}
           path: console-deploy-health.json

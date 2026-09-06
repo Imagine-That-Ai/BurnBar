@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           persist-credentials: false
 
@@ -60,7 +60,7 @@ jobs:
           targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
 
       - name: Cache cargo registry + target
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             ~/.cargo/registry
@@ -101,7 +101,7 @@ jobs:
           ls -la crates/burnbar-remote/target/aarch64-pc-windows-msvc/debug/*.dll crates/burnbar-remote/target/aarch64-pc-windows-msvc/debug/*.lib 2>/dev/null || true
 
       - name: Upload burnbar-remote Windows native libraries
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: burnbar-remote-windows-native
           path: |

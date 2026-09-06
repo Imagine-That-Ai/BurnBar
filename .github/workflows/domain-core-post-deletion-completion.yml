@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out exact release-B commit
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.release_commit }}
           fetch-depth: 0
@@ -131,12 +131,12 @@ jobs:
 
       - name: Sign post-deletion completion receipt
         id: attest
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v3.0.0
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v3.0.0
         with:
           subject-path: ${{ runner.temp }}/domain-core-post-deletion-completion.json
 
       - name: Publish immutable completion receipt and provenance
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: domain-core-post-deletion-completion-${{ inputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
