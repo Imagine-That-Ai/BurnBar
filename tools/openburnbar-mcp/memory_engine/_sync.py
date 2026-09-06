@@ -19,9 +19,9 @@ from typing import Any, NamedTuple
 
 from . import gate
 from ._ledger import _SyncLedger
+from ._namespaces import _ConvergenceNamespaces
 from ._util import (
     _aux_strings,
-    _convergence_key,
     _json_dumps,
     _json_loads,
     _parse_iso,
@@ -34,12 +34,15 @@ from ._util import (
 from .constants import (
     DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS,
     MEMORY_SCOPES,
+    REMOTE_AUTHOR_UID_RE,
     REMOTE_MEMORY_ID_RE,
     REMOTE_PAYLOAD_SCHEMA_MAX,
     REMOTE_RECEIPT_ENTRY_KIND,
     REMOTE_RECEIPT_SCHEMA_MAX,
     REMOTE_SOURCE_KIND,
     REMOTE_PREVIOUS_BODY_HASH_RE,
+    REMOTE_PROJECT_ID_RE,
+    REMOTE_TEAM_ID_RE,
     REMOTE_WRITER_DEVICE_RE,
 )
 from .embeddings import encode_vector
@@ -116,6 +119,17 @@ class _RemoteFact:
     # visible rather than silently ignored.
     writer_device_rejected: bool = False
     previous_body_hash_rejected: bool = False
+    # The team a fact was contributed to, and by whom, when it came down the TEAM
+    # lane (memory program D16). Both are None for a personal fact, which is what
+    # every document written before the team lane existed is. Same
+    # dropped-but-landed rule as `writer_device`: an unparseable value costs the
+    # attribution, never the memory.
+    # `team_id` carries no `_rejected` twin: an out-of-shape one is REFUSED at
+    # screening (`INVALID_TEAM_ID`) rather than dropped, so no fact ever reaches
+    # here having lost it — see `REMOTE_TEAM_ID_RE`.
+    team_id: str | None = None
+    author_uid: str | None = None
+    author_uid_rejected: bool = False
 
     @property
     def order_key(self) -> tuple[datetime, str, str]:
@@ -146,8 +160,12 @@ class _SyncMark(NamedTuple):
         return (self.updated_ts, self.memory_id, self.body_hash)
 
 
-class _BlindSync(_SyncLedger):
-    """`MemoryEngine`'s blind-sync merge surface: watermark, screen, converge, LWW."""
+class _BlindSync(_ConvergenceNamespaces, _SyncLedger):
+    """`MemoryEngine`'s blind-sync merge surface: watermark, screen, converge, LWW.
+
+    WHICH LINEAGE a remote row may resolve to is `_namespaces.py`'s question, not
+    this file's: read its module docstring before touching any id resolution
+    here."""
 
     def _record_forget_receipt(self, memory_id: str) -> None:
         """Persist what a hard forget destroyed, so blind sync cannot undo it.
@@ -169,35 +187,55 @@ class _BlindSync(_SyncLedger):
             "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
             (
                 (f"forget_receipt:{memory_id}", _json_dumps(receipt)),
-                (f"forget_identity:{_convergence_key(project_id, scope, body_hash)}", memory_id),
+                # NAMESPACED by the row's own provenance. An identity receipt is
+                # keyed on `(project, scope, bodyHash)`, which a team row and a
+                # personal row can share word for word; unnamespaced, forgetting
+                # one would refuse the other for ever — the isolation invariant
+                # broken in the "delete" direction.
+                (self._forget_identity_key(project_id, scope, body_hash, self._row_team_id(memory_id)), memory_id),
             ),
         )
 
-    def _forgotten(self, memory_id: str, project_id: str, scope: str, body_hash: str) -> str | None:
-        """The forget receipt that forbids a remote row, if there is one."""
-        identity = _convergence_key(project_id, scope, body_hash)
+    def _forgotten(
+        self, memory_id: str, project_id: str, scope: str, body_hash: str, team_id: str | None = None
+    ) -> str | None:
+        """The forget receipt that forbids a remote row, if there is one.
+
+        Consulted in the arriving fact's OWN namespace: a personal forget never
+        refuses a team fact, and a team's forget never refuses the member's own.
+        """
         row = self.conn.execute(
             "SELECT key FROM engine_meta WHERE key IN (?, ?) LIMIT 1",
-            (f"forget_receipt:{memory_id}", f"forget_identity:{identity}"),
+            (
+                f"forget_receipt:{memory_id}",
+                self._forget_identity_key(project_id, scope, body_hash, team_id),
+            ),
         ).fetchone()
         return str(row["key"]) if row is not None else None
 
-    def _record_memory_alias(self, foreign_id: str, memory_id: str) -> None:
+    def _record_memory_alias(self, foreign_id: str, memory_id: str, team_id: str | None = None) -> None:
         """Remember that a foreign engine id folded into a local row.
 
         Without this, a fact learned independently on two devices reinforces the
         row that arrived first (§5) and every later reference to the id that lost
         — a supersede edge, a further update — would resolve to nothing and park
         for ever. The alias is what lets convergence hold on both sides.
+
+        NAMESPACED for a team fact, because an alias is a REDIRECTION: an
+        unnamespaced `memory_alias:<victim id> -> <team row>` written from a
+        hostile team payload would send the member's own later revisions of that
+        id to the team's row. A team member's sealed `memoryID` therefore aliases
+        only inside `memory_alias:team:<teamID>:` — which is also what lets a
+        team supersede edge naming another member's engine id still resolve.
         """
         if foreign_id == memory_id:
             return
         self.conn.execute(
             "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
-            (f"memory_alias:{foreign_id}", memory_id),
+            (self._memory_alias_key(foreign_id, team_id), memory_id),
         )
 
-    def _alias_target(self, foreign_id: str) -> str | None:
+    def _alias_target(self, foreign_id: str, team_id: str | None = None) -> str | None:
         """The live row `foreign_id` folded into, if the alias still resolves.
 
         Two devices answer this from different evidence, and both have to agree.
@@ -212,7 +250,7 @@ class _BlindSync(_SyncLedger):
         if not foreign_id:
             return None
         row = self.conn.execute(
-            "SELECT value FROM engine_meta WHERE key = ?", (f"memory_alias:{foreign_id}",)
+            "SELECT value FROM engine_meta WHERE key = ?", (self._memory_alias_key(foreign_id, team_id),)
         ).fetchone()
         if row is not None:
             # Aliases chain when a holder is itself folded away. Bounded, because a
@@ -222,7 +260,7 @@ class _BlindSync(_SyncLedger):
             while alias not in visited and len(visited) < _ALIAS_CHAIN_MAX_HOPS:
                 visited.add(alias)
                 next_row = self.conn.execute(
-                    "SELECT value FROM engine_meta WHERE key = ?", (f"memory_alias:{alias}",)
+                    "SELECT value FROM engine_meta WHERE key = ?", (self._memory_alias_key(alias, team_id),)
                 ).fetchone()
                 if next_row is None:
                     break
@@ -261,8 +299,16 @@ class _BlindSync(_SyncLedger):
             current = str(row["superseded_by"])
         return None
 
-    def _local_memory_id(self, foreign_id: str) -> str | None:
+    def _local_memory_id(self, foreign_id: str, team_id: str | None = None) -> str | None:
         """The local row a remote engine id names: itself, or what it folded into.
+
+        **NAMESPACED, and this is the choke point.** Every id a remote document
+        supplies — the fact's own `memoryID`, a supersede target, a receipt's
+        resolved id — reaches a local row through here, so filtering the ANSWER
+        by provenance is what makes the isolation invariant hold on all of them
+        at once rather than at each call site. A team's id never resolves to a
+        personal row (Cursor T1/T2), and a personal id never resolves to a row a
+        team contributed.
 
         **A RETIRED row loses to its own alias.** When two rows converge, the
         loser is retired *into* the holder and an alias records the redirection —
@@ -281,12 +327,18 @@ class _BlindSync(_SyncLedger):
         """
         if not foreign_id:
             return None
+        resolved: str | None
         row = self.conn.execute("SELECT valid_to FROM memories WHERE id = ?", (foreign_id,)).fetchone()
         if row is not None:
             if row["valid_to"] is None:
-                return foreign_id
-            return self._alias_target(foreign_id) or foreign_id
-        return self._alias_target(foreign_id)
+                resolved = foreign_id
+            else:
+                resolved = self._alias_target(foreign_id, team_id) or foreign_id
+        else:
+            resolved = self._alias_target(foreign_id, team_id)
+        if resolved is None or not self._row_is_addressable_by(resolved, team_id):
+            return None
+        return resolved
 
     def _sync_mark(self, memory_id: str) -> _SyncMark | None:
         """The last remote revision this row absorbed, if any.
@@ -341,43 +393,6 @@ class _BlindSync(_SyncLedger):
         if applied is not None and _canonical_iso(str(row["updated_at"])) == applied.updated_at:
             return None
         return (_parse_iso(str(row["updated_at"])) or _EPOCH, str(row["body_hash"]))
-
-    def _record_convergence_identity(self, project_id: str, scope: str, body_hash: str, memory_id: str) -> None:
-        """Remember which local row a body belongs to, for good.
-
-        The live `UNIQUE(project_id, scope, body_hash)` lookup only answers while
-        the row still holds that body. A device that receives an edit before it
-        receives the duplicate the edit replaced would otherwise key the
-        duplicate to nothing and store it as a second memory, while a device that
-        received them the other way round folded them into one — the same
-        documents, two different beliefs. This ledger is what makes the answer
-        the same on every replica whatever order the documents arrive in.
-
-        **Every writer keeps it, not only the merge.** A member who authors a
-        fact here and then edits it here has moved the body on exactly as a pair
-        of merged revisions would, and a device that only ever wrote locally is
-        still a replica: if the local paths left no entry, another device's
-        independently-learned copy of the superseded body would land as a second
-        active row on the authoring device and fold into one everywhere else.
-        `_write.py::_commit_fact` and `_read.py::update` call this for the same
-        reason `_merge_remote_fact` does.
-        """
-        self.conn.execute(
-            "INSERT OR REPLACE INTO engine_meta (key, value) VALUES (?, ?)",
-            (f"sync_identity:{_convergence_key(project_id, scope, body_hash)}", memory_id),
-        )
-
-    def _converged_local_id(self, fact: _RemoteFact) -> str | None:
-        """The local row a remote body was last keyed to, if it still exists."""
-        row = self.conn.execute(
-            "SELECT value FROM engine_meta WHERE key = ?",
-            (f"sync_identity:{_convergence_key(fact.project_id, fact.scope, fact.body_hash)}",),
-        ).fetchone()
-        if row is None:
-            return None
-        memory_id = str(row["value"])
-        exists = self.conn.execute("SELECT 1 FROM memories WHERE id = ?", (memory_id,)).fetchone()
-        return memory_id if exists is not None else None
 
     def _screen_remote_row(self, raw: Any) -> tuple[_RemoteFact | None, dict[str, Any]]:
         """Parse and gate one inbox entry before anything about it is believed.
@@ -456,6 +471,16 @@ class _BlindSync(_SyncLedger):
             return stop(
                 "PROJECT_IDENTITY_MISSING",
                 "the payload carries no engine project id, so it can never be keyed for convergence",
+            )
+        if not REMOTE_PROJECT_ID_RE.match(project_id):
+            # REFUSED, not dropped — see `REMOTE_PROJECT_ID_RE`. Every other
+            # remote string here can be dropped because losing it costs only
+            # attribution; losing this one costs the convergence key itself, so a
+            # value outside the token shape is terminal and acknowledged rather
+            # than parked or silently blanked.
+            return stop(
+                "INVALID_PROJECT_ID",
+                "projectID must be a project token: letters, digits, '_', '.', ':' or '-', at most 128 characters",
             )
         scope = str(payload.get("engineScope") or "").strip().lower()
         if scope not in MEMORY_SCOPES:
@@ -542,6 +567,36 @@ class _BlindSync(_SyncLedger):
         if writer_device is not None and not REMOTE_WRITER_DEVICE_RE.match(writer_device):
             writer_device = None
             writer_device_rejected = True
+        # Team provenance (memory program D16) — and NOT by the `writerDevice`
+        # route, because `teamID` is not attribution: it SELECTS THE NAMESPACE
+        # this document merges in. REFUSED, not dropped. A dropped `teamID`
+        # leaves a document that came down the TEAM lane merging on the PERSONAL
+        # lane, keyed on the sealer's own attacker-chosen `memoryID` — Cursor's
+        # T2 overwrite reached through the selector rather than through the id.
+        # The receipt lane already refuses this identical condition for the
+        # identical reason ("would fall through to the personal namespace and
+        # delete there"); a fact falling through would OVERWRITE there. Nothing
+        # legitimate is lost: `teamRoster.ts::newTeamId` is the only minter,
+        # `TeamMemoryPullService.verify` refuses the shape again before parking,
+        # and a document whose team is unreadable names no namespace this device
+        # could honour anyway.
+        team_id = payload.get("teamID")
+        team_id = str(team_id).strip() if team_id else None
+        if team_id is not None and not REMOTE_TEAM_ID_RE.match(team_id):
+            return stop(
+                "INVALID_TEAM_ID",
+                "teamID must be a team token: 'team_' followed by 16 lowercase hex digits",
+            )
+        author_uid = payload.get("authorUID")
+        author_uid = str(author_uid).strip() if author_uid else None
+        # DROPPED, like `writerDevice` and unlike `teamID`: a uid is pure
+        # attribution, so an unparseable one costs the badge and never the
+        # member's fact. Counted on the decision (`authorUIDRejected`) under the
+        # same "counted, never echoed" rule the other dropped fields follow.
+        author_uid_rejected = False
+        if author_uid is not None and not REMOTE_AUTHOR_UID_RE.match(author_uid):
+            author_uid = None
+            author_uid_rejected = True
         return (
             _RemoteFact(
                 doc_id=doc_id,
@@ -571,6 +626,9 @@ class _BlindSync(_SyncLedger):
                 previous_body_hash_rejected=previous_body_hash_rejected,
                 writer_device=writer_device,
                 writer_device_rejected=writer_device_rejected,
+                team_id=team_id,
+                author_uid=author_uid,
+                author_uid_rejected=author_uid_rejected,
             ),
             {},
         )
@@ -758,6 +816,20 @@ class _BlindSync(_SyncLedger):
                 ack=False,
             )
         reason = str(payload.get("reason") or "unknown")
+        # WHICH NAMESPACE MAY THIS RECEIPT DELETE IN (Cursor T1). A receipt is
+        # the one remote instruction that DESTROYS local rows, so it is held to
+        # the isolation invariant hardest: a receipt carrying `teamID` may
+        # tombstone only rows that team contributed, and a personal receipt may
+        # tombstone only personal rows. A personal row sharing a team row's body
+        # — or, before the derived id below, its engine id — is never a target
+        # of a team receipt, whatever the receipt says.
+        team_id = payload.get("teamID")
+        team_id = str(team_id).strip() if team_id else None
+        if team_id is not None and not REMOTE_TEAM_ID_RE.match(team_id):
+            # DROPPED would be wrong here, unlike on a fact: a receipt whose team
+            # is unreadable would fall through to the personal namespace and
+            # delete there. Refused instead.
+            return done("REFUSE", "INVALID_TEAM_ID", "the receipt names a team id outside the team token shape")
         if not payload.get("memoryIdHmac"):
             # A source-level receipt names a chat source reference. The engine
             # holds no source refs, so there is nothing here for it to forget.
@@ -767,20 +839,45 @@ class _BlindSync(_SyncLedger):
             # No row on this device can match it either, now or later.
             return done("REFUSE", "RECEIPT_UNRESOLVED", "the receipt names no engine memory id this device knows")
 
-        receipt_key = f"forget_receipt:{memory_id}"
-        already = self.conn.execute("SELECT 1 FROM engine_meta WHERE key = ?", (receipt_key,)).fetchone() is not None
         # The receipt's own id, and the local row a foreign id folded into: the
         # member forgot THAT memory, whichever engine id their other device knew
-        # it by. A retired-and-aliased loser resolves to its holder here.
-        targets = [memory_id]
-        canonical = self._local_memory_id(memory_id)
-        if canonical and canonical != memory_id:
+        # it by. A retired-and-aliased loser resolves to its holder here — inside
+        # the receipt's own namespace, never across it.
+        targets = [] if team_id else [memory_id]
+        if team_id:
+            # A TEAM row's local id is derived, so the receipt's engine id is
+            # never itself a target. It resolves the way a team fact's does:
+            # through the identity the document was keyed on when the receipt
+            # carries it, and otherwise through this team's alias space.
+            identity_target = self._team_receipt_identity_target(payload, team_id)
+            if identity_target:
+                targets.append(identity_target)
+        canonical = self._local_memory_id(memory_id, team_id)
+        if canonical and canonical not in targets:
             targets.append(canonical)
+        if team_id and not targets:
+            return done(
+                "REFUSE", "RECEIPT_UNRESOLVED", "the receipt names no memory this team contributed to this device"
+            )
+        # COMPUTED BELOW THE GUARD, deliberately. `memory_id` is the sealer's own
+        # engine id — a PERSONAL-shaped key — so a team receipt that resolved
+        # nothing would otherwise name `forget_receipt:<a personal id>` in a live
+        # local, one reordering away from an `INSERT OR IGNORE` that poisons the
+        # personal forget space from the team lane. Past this line `targets[0]`
+        # exists whenever `team_id` does, so the expression cannot fall back.
+        receipt_key = f"forget_receipt:{targets[0] if team_id else memory_id}"
+        already = self.conn.execute("SELECT 1 FROM engine_meta WHERE key = ?", (receipt_key,)).fetchone() is not None
         purged: list[str] = []
         project_id: str | None = None
         for target in targets:
             row = self.conn.execute("SELECT rowid, project_id FROM memories WHERE id = ?", (target,)).fetchone()
             if row is None:
+                continue
+            if not self._row_is_addressable_by(target, team_id):
+                # THE GUARD THIS WHOLE BRANCH EXISTS FOR. Every id above was
+                # resolved in the receipt's namespace, and this asserts it again
+                # immediately before the purge — the one place where getting it
+                # wrong destroys a member's data rather than merely misfiling it.
                 continue
             project_id = project_id or str(row["project_id"])
             if not self.conn.in_transaction:
@@ -838,9 +935,18 @@ class _BlindSync(_SyncLedger):
             decision["writerDeviceRejected"] = True
         if fact.previous_body_hash_rejected:
             decision["previousBodyHashRejected"] = True
+        if fact.author_uid_rejected:
+            # Counted, never echoed, exactly like the two above. There is no
+            # `teamIDRejected` beside them because a `teamID` outside the token
+            # shape never gets this far: it is refused at screening.
+            decision["authorUIDRejected"] = True
         if decision["event"] not in ("REFUSE", "HOLD"):
             self._record_convergence_identity(
-                fact.project_id, fact.scope, fact.body_hash, str(decision.get("memoryID") or fact.memory_id)
+                fact.project_id,
+                fact.scope,
+                fact.body_hash,
+                str(decision.get("memoryID") or fact.memory_id),
+                team_id=fact.team_id,
             )
         return decision
 
@@ -852,6 +958,8 @@ class _BlindSync(_SyncLedger):
         gap_timeout: float = DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS,
     ) -> dict[str, Any]:
         """Never resurrect, converge, then LWW."""
+        if fact.team_id:
+            return self._decide_team_fact(fact, now_epoch=now_epoch, gap_timeout=gap_timeout)
         local_id = self._local_memory_id(fact.memory_id)
         # `UNIQUE(project_id, scope, body_hash)` spans retired rows, so there is
         # at most one local holder of this convergence identity, ever.
@@ -859,6 +967,14 @@ class _BlindSync(_SyncLedger):
             "SELECT id, valid_to FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ?",
             (fact.project_id, fact.scope, fact.body_hash),
         ).fetchone()
+        if holder is not None and not self._row_is_addressable_by(str(holder["id"]), None):
+            # The identity is held by a row a TEAM contributed. A personal
+            # revision must not converge into it, reinforce it, or retire it —
+            # the isolation invariant runs in both directions — and
+            # `UNIQUE(project_id, scope, body_hash)` leaves nowhere else to put
+            # this body inside that project, so the document is refused rather
+            # than folded into someone else's lineage.
+            return self._refuse_cross_namespace(fact, str(holder["id"]), None)
         if local_id is None and holder is None:
             # No live row holds this body — but one may have held it before a
             # revision moved it on. That row is still the memory this body
@@ -939,12 +1055,19 @@ class _BlindSync(_SyncLedger):
         *,
         now_epoch: float | None = None,
         gap_timeout: float = DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS,
+        team_id: str | None = None,
     ) -> dict[str, Any]:
         row = self.conn.execute(
             "SELECT rowid, project_id, body_hash, updated_at, immutable FROM memories WHERE id = ?", (memory_id,)
         ).fetchone()
         if row is None:  # pragma: no cover — `_local_memory_id` proved it exists
-            return self._write_remote_row(fact, fact.memory_id, existing=None)
+            return self._write_remote_row(fact, memory_id if team_id else fact.memory_id, existing=None)
+        # BELT, not braces. Both callers already resolved `memory_id` inside the
+        # arriving fact's namespace, and this is the last statement before the
+        # row is rewritten — so the invariant is asserted where the damage would
+        # actually be done rather than only where the id was chosen.
+        if not self._row_is_addressable_by(memory_id, team_id):
+            return self._refuse_cross_namespace(fact, memory_id, team_id)
         if str(row["project_id"]) != fact.project_id:
             return {
                 "event": "REFUSE",
@@ -1047,7 +1170,12 @@ class _BlindSync(_SyncLedger):
             # identity is unique, so the two converge: reinforce the holder and
             # retire the row this revision came from into it.
             holder = str(clash["id"])
-            self._record_memory_alias(fact.memory_id, holder)
+            if not self._row_is_addressable_by(holder, team_id):
+                # ...unless the holder is in another namespace, in which case
+                # converging would retire THIS row into a lineage that is not
+                # allowed to claim it. Refused instead, and the row stands.
+                return self._refuse_cross_namespace(fact, holder, team_id)
+            self._record_memory_alias(fact.memory_id, holder, team_id)
             # `remote_at`: the retirement belongs to the remote revision that
             # caused it, and the loser's own writer mark stays where it was, so a
             # later revision of it is still judged against the right instant.
@@ -1056,6 +1184,12 @@ class _BlindSync(_SyncLedger):
                 reason="converged into an identical remote fact",
                 replacement=holder,
                 remote_at=fact.updated_at,
+                # T5: this retirement IS the team lane when the revision came
+                # through it, and `_row_is_addressable_by` above has already
+                # proved the two rows share a namespace. On the personal lane
+                # the flag stays False, so a personal revision still cannot
+                # retire a team row even if one somehow reached here.
+                team_scoped=bool(team_id),
             )
             return self._reinforce_remote(fact, holder)
         return self._write_remote_row(fact, memory_id, existing=row)
@@ -1094,7 +1228,12 @@ class _BlindSync(_SyncLedger):
             # would lose the memory rather than converge it.
             return decision
         loser_id = str(loser["id"])
-        self._record_memory_alias(loser_id, memory_id)
+        if not self._row_is_addressable_by(loser_id, fact.team_id):
+            # A live row in ANOTHER namespace holds this body. It is not a
+            # duplicate of this one and must not be retired into it; the
+            # decision stays exactly what LWW made it.
+            return decision
+        self._record_memory_alias(loser_id, memory_id, fact.team_id)
         # `remote_at`: the retirement belongs to the remote revision that proved
         # the two ids are one, exactly as the live-clash branch below does.
         if self._retire(
@@ -1102,8 +1241,11 @@ class _BlindSync(_SyncLedger):
             reason="converged into the memory a later revision had already moved on",
             replacement=memory_id,
             remote_at=fact.updated_at,
+            team_scoped=bool(fact.team_id),  # T5; the namespace check above is what earns it
         ):
-            self._record_convergence_identity(fact.project_id, fact.scope, fact.body_hash, memory_id)
+            self._record_convergence_identity(
+                fact.project_id, fact.scope, fact.body_hash, memory_id, team_id=fact.team_id
+            )
             return {**decision, "convergedID": loser_id}
         return decision
 
@@ -1120,6 +1262,15 @@ class _BlindSync(_SyncLedger):
             metadata["gateLabels"] = fact.gate_labels
         if fact.injection:
             metadata["injectionLabels"] = fact.injection
+        if fact.team_id:
+            # THE ROW'S PROVENANCE, and the only place it is ever written (T6):
+            # it lands in the reserved `_burnbar` namespace, which every local
+            # write path refuses to caller input, so `_row_team_id`'s answer is
+            # the sync lane's alone. `teamID` passed `REMOTE_TEAM_ID_RE` at
+            # screening, so what lands is a bounded token, and a row written
+            # before the team lane existed simply has no stamp — which reads as
+            # "personal", the correct answer, and needs no migration.
+            metadata.update(self._team_provenance_metadata(fact.team_id, fact.author_uid))
         salience = self.compute_salience(fact.kind, fact.confidence, 0)
         relations = extract_relations(fact.body)
         # External embedding must never run while the write lock is held; each
@@ -1217,6 +1368,14 @@ class _BlindSync(_SyncLedger):
             # arrive by. The field was parsed onto `_RemoteFact` and then dropped.
             # A device id is not member content, so `meta_json` is where it goes.
             history_meta["writerDevice"] = fact.writer_device
+        if fact.team_id:
+            # Beside `writerDevice`, by the same argument and the same route:
+            # a team id and a uid are opaque tokens, not member content, so
+            # `meta_json` is where they go. This is what the "Team fact ·
+            # contributed by X" badge reads.
+            history_meta["teamID"] = fact.team_id
+        if fact.author_uid:
+            history_meta["authorUID"] = fact.author_uid
         self._history(memory_id, fact.project_id, "merged_remote", None, fact.body, history_meta)
         if fact.injection:
             audit_event(
@@ -1272,8 +1431,15 @@ class _BlindSync(_SyncLedger):
         `supersedes_json` deliberately does not travel: it is the inverse of
         `supersededBy` and is rebuilt here from the edge that did. Returns False
         when the target has not arrived, which is what parks the document.
+
+        RESOLVED IN THE FACT'S OWN NAMESPACE. A supersede edge retires a row and
+        rewrites another's `supersedes_json`, so an unscoped resolution would let
+        a team document supersede a personal memory — the isolation invariant
+        broken in its third direction. A team edge names the SEALER's engine id,
+        which `_decide_team_fact` aliased into this team's own space, so a
+        genuine team supersede still lands.
         """
-        target = self._local_memory_id(fact.superseded_by or "")
+        target = self._local_memory_id(fact.superseded_by or "", fact.team_id)
         if target is None:
             return False
         if target == memory_id:

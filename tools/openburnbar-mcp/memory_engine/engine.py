@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ._admin import _Maintenance
+from ._lifecycle import _Lifecycle
 from ._read import _ReadPath
 from ._sync import _BlindSync
 from ._util import _clamp, _json_dumps, _json_loads, _parse_iso
@@ -142,7 +143,7 @@ class ActiveMemory:
 _PROJECT_CACHE: dict[str, tuple[tuple[int, str, int, str], list[ActiveMemory]]] = {}
 
 
-class MemoryEngine(_WritePath, _ReadPath, _Maintenance, _BlindSync):
+class MemoryEngine(_WritePath, _ReadPath, _Lifecycle, _Maintenance, _BlindSync):
     def __init__(
         self,
         conn: sqlite3.Connection,

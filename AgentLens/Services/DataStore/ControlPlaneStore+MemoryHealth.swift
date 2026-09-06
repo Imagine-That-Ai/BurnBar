@@ -231,6 +231,75 @@ extension ControlPlaneStore {
         }
     }
 
+    /// The canonical filesystem root the daemon recorded for one engine project
+    /// id, or nil when this Mac has never indexed that project.
+    ///
+    /// READ-ONLY, like `memoryHealthProjects` and for the same reason: resolving
+    /// a path through the daemon REGISTERS a project, and the team lane must
+    /// never invent one. The team lane needs the root to read that repository's
+    /// checked-in `.openburnbar/project.json` (`TeamProjectLink`) — a project
+    /// with no recorded root simply contributes to no team.
+    func memoryProjectRecordedRoot(engineProjectID: String) async throws -> String? {
+        guard !engineProjectID.isEmpty else { return nil }
+        return try await dbQueue.read { db -> String? in
+            let root = try String.fetchOne(
+                db,
+                sql: "SELECT primary_path FROM pcm_projects WHERE project_id = ?",
+                arguments: [engineProjectID]
+            )
+            return (root?.isEmpty == false) ? root : nil
+        }
+    }
+
+    /// How many recorded repository roots the team lane will scan for
+    /// `.openburnbar/project.json` links in one cycle.
+    ///
+    /// Its OWN cap rather than `memoryHealthProjectLimit`: that number is what a
+    /// UI card offers to pick between, and a security admission set must not
+    /// silently narrow because someone tuned a picker. Sized so a member with
+    /// every project they have ever indexed still gets a complete set, while a
+    /// pathological store cannot turn one sync cycle into an unbounded
+    /// filesystem walk.
+    ///
+    /// THE COST OF THE CAP, stated (round-5 nit 6d). The window is ordered by
+    /// `updated_at DESC`, so a member with more than 200 indexed projects has a
+    /// MOVING admission set: a root that falls out of the window loses its
+    /// links, and one that re-enters gains them again — which the rewind-on-link
+    /// rule reads as "newly linked" and pays for with a full re-scan of that
+    /// team's collection. Local cost only (bounded by `maxPagesPerCycle`, and
+    /// the re-scan is idempotent), self-healing, and it can never ADMIT anything
+    /// the member did not commit — but on such a store the cycle is doing real
+    /// work it did not need to. Raising the cap is the fix if that is ever
+    /// someone's Mac; a smaller limit is not.
+    static let teamProjectLinkScanLimit = 200
+
+    /// Every recorded repository root on this Mac, most recently written first.
+    ///
+    /// READ-ONLY for the same reason `memoryProjectRecordedRoot` is: resolving a
+    /// path through the daemon REGISTERS a project, and the team lane must never
+    /// invent one. This is the PULL's half of the project-link question — the
+    /// push asks per project, the pull needs the whole admission set — and an
+    /// empty result means this checkout links nothing to any team, which the
+    /// pull reads as "refuse everything" rather than "allow everything".
+    func memoryProjectRecordedRoots(
+        limit: Int = ControlPlaneStore.teamProjectLinkScanLimit
+    ) async throws -> [String] {
+        let cappedLimit = max(1, min(limit, Self.teamProjectLinkScanLimit))
+        return try await dbQueue.read { db -> [String] in
+            try String.fetchAll(
+                db,
+                sql: """
+                SELECT primary_path
+                FROM pcm_projects
+                WHERE primary_path IS NOT NULL AND primary_path != ''
+                ORDER BY updated_at DESC, project_id ASC
+                LIMIT ?
+                """,
+                arguments: [cappedLimit]
+            )
+        }
+    }
+
     /// Reads every health input the app can produce on its own.
     ///
     /// - Parameter accountUid: the signed-in member, for the `memory_facts`

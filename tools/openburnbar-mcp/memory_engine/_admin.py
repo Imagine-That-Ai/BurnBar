@@ -8,7 +8,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import project_code_memory as pcm
 
@@ -41,6 +41,9 @@ from .store import (
     resolve_project,
     verify_audit_chain,
 )
+
+if TYPE_CHECKING:  # pragma: no cover — annotation only; the value is built in `_namespaces`.
+    from ._namespaces import _SessionTeamLinks
 
 
 # The auxiliary-exposure sweep is a regex pass over short strings, so the cap is
@@ -251,6 +254,21 @@ class _Maintenance:
         include_superseded: bool = False,
         all_projects: bool = False,
     ) -> dict[str, Any]:
+        """Every memory this session may be served, as JSON.
+
+        T4: an export SERVES bodies — whole ones, with their ids, to whatever
+        holds `sensitive_read` — so it answers to `_team_row_servable` exactly
+        as `recall`, `list` and `get` do. `all_projects` widens the PROJECT
+        fence and never the team one: a team row is exported only where THIS
+        checkout links its team to the project that row landed in, so an
+        unrelated repository exports none of them, and deleting the link stops
+        the export on the very next call rather than at the next pull.
+
+        The omission is counted, never silent. `teamRowsWithheld` tells an
+        operator taking a backup that N rows were held back, so a restore is
+        not quietly short of rows nobody can name — the same reason
+        `import_memories` counts its own strips and skips.
+        """
         params: list[Any] = [self.provider.version_id]
         where = "WHERE 1=1"
         payload: dict[str, Any] = {}
@@ -262,11 +280,26 @@ class _Maintenance:
         if not include_superseded:
             where += " AND m.valid_to IS NULL"
         rows = self.conn.execute(self._SELECT + where + " ORDER BY m.created_at ASC", params).fetchall()
+        # Both resolved lazily, and for the reason `_team_serves_memory` gives:
+        # a store holding no team row must not gain a `projects` upsert or a
+        # link-file read because somebody took a backup.
+        session_project_id: str | None = payload.get("projectID")
+        links: _SessionTeamLinks | None = None
+        team_rows_withheld = 0
         items = []
         for row in rows:
             memory = self._row_to_memory(row)
             if memory is None:
                 continue
+            team_id = self._metadata_team_id(memory.metadata)
+            if team_id is not None:
+                if session_project_id is None:
+                    session_project_id = resolve_project(self.conn, project_path)[0]
+                if links is None:
+                    links = self._session_team_links(session_project_id)
+                if not self._team_row_servable(team_id, memory.project_id, session_project_id, links):
+                    team_rows_withheld += 1
+                    continue
             item = memory.public()
             if memory.sensitivity == "secret":
                 item["secretText"] = self._open_vault(memory.id, memory.project_id) if include_secrets else None
@@ -276,7 +309,11 @@ class _Maintenance:
             action="memory.export",
             project_id=payload.get("projectID"),
             subject_id=None,
-            labels=[f"count:{len(items)}", f"secrets:{'yes' if include_secrets else 'no'}"],
+            labels=[
+                f"count:{len(items)}",
+                f"secrets:{'yes' if include_secrets else 'no'}",
+                f"teamWithheld:{team_rows_withheld}",
+            ],
             actor=self.config.actor,
         )
         self._commit()
@@ -286,6 +323,7 @@ class _Maintenance:
             "allProjects": all_projects,
             "exportedAt": now_iso(),
             "count": len(items),
+            "teamRowsWithheld": team_rows_withheld,
             "memories": items,
             **payload,
         }
@@ -310,6 +348,7 @@ class _Maintenance:
                 "historicalSkipped": 0,
                 **project_payload(project_id, root),
             }
+        reserved_stripped = 0
         for raw in items:
             if not isinstance(raw, dict):
                 continue
@@ -327,6 +366,13 @@ class _Maintenance:
             # Engine-owned metadata is recomputed on write and must not leak across stores.
             for key in ("daemonMemoryID", "gateLabels", "injectionLabels"):
                 fact.metadata.pop(key, None)
+            # T6, and the same rule those three already state, generalised to
+            # the reserved namespace: an archive row may carry a team stamp this
+            # store never earned. STRIPPED rather than refused, because an
+            # import is a machine-generated payload and one stale row must not
+            # make a whole restore unimportable — the body lands as what it
+            # actually is here, a personal memory. Counted, so it is not silent.
+            reserved_stripped += len(self._strip_reserved_metadata(fact.metadata))
             decisions.append(
                 self._commit_fact(
                     project_id=project_id,
@@ -356,6 +402,7 @@ class _Maintenance:
             "summary": summary,
             "decisions": decisions,
             "historicalSkipped": historical_skipped,
+            "reservedMetadataStripped": reserved_stripped,
             **project_payload(project_id, root),
         }
 
@@ -431,6 +478,10 @@ class _Maintenance:
             if fact is None:
                 continue
             fact.metadata = {**fact.metadata, "legacyMemoryID": legacy_id}
+            # T6: same strip as `import_memories`, and here it also keeps a
+            # stamped legacy row from becoming permanently retryable — a REJECT
+            # is non-terminal, so it would be re-offered on every drain for ever.
+            self._strip_reserved_metadata(fact.metadata)
             decision = self._commit_fact(
                 project_id=owner_project_id,
                 root=owner_root,
@@ -592,6 +643,7 @@ class _Maintenance:
 
         pruned_orphans = 0
         pruned_supersedes = 0
+        unstamped_provenance = 0
 
         if apply:
             # A7's `--apply` bound, deliberately narrow: prune aged orphan bodies
@@ -660,6 +712,13 @@ class _Maintenance:
                 if source == "engine_meta" and parked.get("key"):
                     self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (parked["key"],))
                 elif source == "memories" and parked.get("memoryID"):
+                    # T5: `--apply` runs on this device, for this user, and a
+                    # parked supersede edge is part of a team row's state — the
+                    # team lane put it there and the team lane resolves it. The
+                    # finding stays in the report either way, so nothing is
+                    # hidden by declining to write.
+                    if self._team_write_refusal(str(parked["memoryID"]), project_id=active_project_id) is not None:
+                        continue
                     self.conn.execute("UPDATE memories SET superseded_by = NULL WHERE id = ?", (parked["memoryID"],))
                 else:
                     # `source == "inbox"` lands here deliberately. `agent_memory_inbox`
@@ -672,8 +731,24 @@ class _Maintenance:
                     continue
                 pruned_supersedes += 1
 
-            if pruned_orphans or pruned_supersedes:
+            # T6 recovery, and the one repair in this pass that RESTORES access
+            # rather than reclaiming space. A stamped row no `sync_identity:team:`
+            # entry accounts for is a row the team lane never wrote — a caller
+            # forged the stamp before the write paths refused it — and it is
+            # invisible to every read and locked against `forget` and `update`,
+            # the unstamping included. Un-stamping is the only way out, it
+            # touches nothing but the engine's own namespace, and the finding
+            # below still reports whatever this loop could not repair.
+            for orphan in self.orphan_team_provenance():
+                if self._clear_team_provenance(str(orphan["memoryID"])):
+                    unstamped_provenance += 1
+
+            if pruned_orphans or pruned_supersedes or unstamped_provenance:
                 self._commit()
+            if unstamped_provenance:
+                # These rows were fenced out of `_load_active`'s pool; a cached
+                # list from before the repair still hides them.
+                self._invalidate_cache()
 
         aux = self.aux_secret_exposure(active_project_id, after_rowid=aux_scan_cursor or 0)
         exposures, aux_scan = aux["exposures"], aux["scan"]
@@ -957,6 +1032,22 @@ class _Maintenance:
                     }
                 )
 
+        orphan_provenance = self.orphan_team_provenance()
+        if orphan_provenance:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "ORPHAN_TEAM_PROVENANCE",
+                    "detail": (
+                        f"{len(orphan_provenance)} memories carry team provenance that no team convergence "
+                        "ledger entry accounts for. The team lane never wrote them, so they are hidden from "
+                        "recall and locked against forget and update."
+                    ),
+                    "memoryIDs": [item["memoryID"] for item in orphan_provenance][:20],
+                    "fix": "Run burnbar_memory_doctor with apply=true (requires memory_write) to un-stamp them.",
+                }
+            )
+
         payload: dict[str, Any] = {
             "status": "ok" if not any(item["severity"] == "error" for item in findings) else "degraded",
             "engine": {
@@ -990,6 +1081,7 @@ class _Maintenance:
                 "applied": True,
                 "prunedOrphans": pruned_orphans,
                 "prunedSupersedes": pruned_supersedes,
+                "unstampedTeamProvenance": unstamped_provenance,
             }
         payload.update(project_extra)
         return payload

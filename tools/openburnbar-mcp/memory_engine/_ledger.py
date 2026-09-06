@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 import project_code_memory as pcm
 
 from ._util import _convergence_key, _json_dumps, _json_loads, _receipt_payload, now_iso
-from .constants import LINEAGE_HOLD_QUEUE_MAX_SIZE
+from .constants import LINEAGE_HOLD_QUEUE_MAX_SIZE, REMOTE_TEAM_ID_RE
 from .store import audit_event
 
 if TYPE_CHECKING:  # pragma: no cover — annotations only; importing it would be circular
@@ -226,7 +226,19 @@ class _SyncLedger:
                 payload = _receipt_payload(dict(r))
                 if isinstance(payload, dict) and payload.get("supersededBy"):
                     target = str(payload.get("supersededBy"))
-                    if self._local_memory_id(target) is None:
+                    # RESOLVED IN THE PARKED ROW'S OWN NAMESPACE. This is a
+                    # read-only diagnostic, so getting it wrong misreports
+                    # rather than misfiles — but an unnamespaced lookup asks the
+                    # personal alias space about a TEAM edge and would report a
+                    # resolvable team supersede as parked (and, in the other
+                    # direction, quietly answer a team question with a personal
+                    # row's id). Screened exactly as the merge path screens it:
+                    # anything outside the token shape is no team at all.
+                    row_team_id = payload.get("teamID")
+                    row_team_id = str(row_team_id).strip() if row_team_id else None
+                    if row_team_id is not None and not REMOTE_TEAM_ID_RE.match(row_team_id):
+                        row_team_id = None
+                    if self._local_memory_id(target, row_team_id) is None:
                         parked.append(
                             {
                                 "source": "inbox",

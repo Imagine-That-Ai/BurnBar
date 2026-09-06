@@ -213,7 +213,12 @@ def test_apply_leaves_a_clean_re_run(tmp_path: Path) -> None:
     }
 
     applied = engine.doctor(project_path=repo, apply=True, grace_period_seconds=86400.0, parked_retention_days=7)
-    assert applied["apply"] == {"applied": True, "prunedOrphans": 1, "prunedSupersedes": 1}
+    assert applied["apply"] == {
+        "applied": True,
+        "prunedOrphans": 1,
+        "prunedSupersedes": 1,
+        "unstampedTeamProvenance": 0,
+    }
 
     assert engine.doctor(project_path=repo)["findings"] == []
     engine.close()
@@ -305,7 +310,12 @@ def test_apply_never_deletes_a_finding_it_cannot_repair(tmp_path: Path) -> None:
     }
 
     applied = engine.doctor(project_path=repo, apply=True, grace_period_seconds=0.0, parked_retention_days=0)
-    assert applied["apply"] == {"applied": True, "prunedOrphans": 0, "prunedSupersedes": 0}
+    assert applied["apply"] == {
+        "applied": True,
+        "prunedOrphans": 0,
+        "prunedSupersedes": 0,
+        "unstampedTeamProvenance": 0,
+    }
 
     # Every report-only condition is still reported, and its underlying row is intact.
     assert {finding["code"] for finding in engine.doctor(project_path=repo)["findings"]} == reported
@@ -380,7 +390,12 @@ def test_a_parked_supersede_with_no_timestamp_is_reported_not_pruned(tmp_path: P
 
     # The default retention window, untouched: the row is zero seconds old.
     applied = engine.doctor(project_path=repo, apply=True)
-    assert applied["apply"] == {"applied": True, "prunedOrphans": 0, "prunedSupersedes": 0}
+    assert applied["apply"] == {
+        "applied": True,
+        "prunedOrphans": 0,
+        "prunedSupersedes": 0,
+        "unstampedTeamProvenance": 0,
+    }
     assert len(engine.parked_supersedes()) == 1
     assert {finding["code"] for finding in engine.doctor(project_path=repo)["findings"]} == {"PARKED_SUPERSEDES"}
     engine.close()

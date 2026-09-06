@@ -233,6 +233,20 @@ extension ControlPlaneStore {
                 // read could name a device out of another member's inbox row.
                 // With nobody signed in there is no inbox to read, and the
                 // memory simply names no arrival device.
+                //
+                // AND IT MUST BE NAMESPACE-SCOPED (PR3 Cursor ruling, T2). The
+                // join is on `engine_memory_id` alone, and a TEAM row is parked
+                // under the engine id its payload seals — which on a modified
+                // client is a teammate's id, lifted from a document that member
+                // already had. Without this predicate a hostile team fact
+                // naming a member's PRIVATE memory would become that memory's
+                // "arrival" record here: its `writerDevice`, `teamID` and
+                // `authorUID` reported to the model and rendered in the UI as
+                // facts about a row the team never touched. Team rows are
+                // excluded outright rather than matched more carefully, because
+                // a team row's own local engine id is derived by the engine
+                // (`_team_local_memory_id`) and never equals the sealed one, so
+                // this join could not correctly connect one anyway.
                 var inboundPayload: String?
                 if let userID {
                     inboundPayload = try String.fetchOne(
@@ -243,10 +257,11 @@ extension ControlPlaneStore {
                         JOIN agent_memory_bodies AS bodies
                             ON bodies.engine_memory_id = inbox.engine_memory_id
                         WHERE bodies.memory_id = ? AND inbox.user_id = ?
+                            AND inbox.doc_id NOT LIKE ?
                         ORDER BY inbox.remote_updated_at DESC
                         LIMIT 1
                         """,
-                        arguments: [memoryID, userID]
+                        arguments: [memoryID, userID, "\(TeamMemoryPullService.inboxDocIDPrefix)%"]
                     )
                 }
 
