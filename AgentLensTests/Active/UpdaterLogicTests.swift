@@ -266,6 +266,33 @@ final class UpdaterLogicTests: XCTestCase {
         XCTAssertFalse(DirectDownloadUpdateInstaller.isWritableForReplacement("/System/OpenBurnBar.app"))
     }
 
+    func testCompareOfferedBuildTreatsEqualBuildAsAlreadyInstalled() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("OBBBuildCompare-\(UUID().uuidString)", isDirectory: true)
+        let contents = root.appendingPathComponent("OpenBurnBar.app/Contents", isDirectory: true)
+        try fileManager.createDirectory(at: contents, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: root) }
+
+        let info: [String: String] = ["CFBundleVersion": "82"]
+        let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+        try data.write(to: contents.appendingPathComponent("Info.plist"))
+
+        let appPath = root.appendingPathComponent("OpenBurnBar.app").path
+        XCTAssertEqual(
+            DirectDownloadUpdateInstaller.compareOfferedBuild(at: appPath, currentBuild: 82),
+            .orderedSame
+        )
+        XCTAssertEqual(
+            DirectDownloadUpdateInstaller.compareOfferedBuild(at: appPath, currentBuild: 81),
+            .orderedDescending
+        )
+        XCTAssertEqual(
+            DirectDownloadUpdateInstaller.compareOfferedBuild(at: appPath, currentBuild: 83),
+            .orderedAscending
+        )
+    }
+
     // MARK: - Helpers
 
     private static func sampleRelease(version: String) -> DirectDownloadRelease {

@@ -53,11 +53,13 @@ extension DirectDownloadRelease: Decodable {
 }
 
 extension DirectDownloadRelease {
-    /// Numeric `CFBundleVersion` comparison first; falls back to a numeric
-    /// `CFBundleShortVersionString` comparison when builds are equal or
-    /// non-numeric (so `1.10.0` > `1.9.0`).
+    /// Numeric `CFBundleVersion` is the Sparkle / installer identity.
+    /// A higher marketing string (`1.0.40+repair.36` vs `1.0.40`) at the same
+    /// build must not re-offer a packet the installer will then refuse as an
+    /// equal-build swap. Marketing comparison is only the fallback when a
+    /// build is missing or non-numeric.
     func isNewer(thanBuild currentBuild: String, currentVersion: String) -> Bool {
-        if let remote = Int(build), let local = Int(currentBuild), remote != local {
+        if let remote = Int(build), let local = Int(currentBuild) {
             return remote > local
         }
         return version.compare(currentVersion, options: .numeric) == .orderedDescending
