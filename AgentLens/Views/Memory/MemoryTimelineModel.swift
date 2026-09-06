@@ -101,6 +101,11 @@ final class MemoryTimelineModel {
         let validTo: String?
         let supersededBy: String?
         let writerDevice: String?
+        /// The team space a synced-in memory came from, and the account that
+        /// contributed it (memory program D16 / P22). Both nil for a personal
+        /// memory. `MemoryTimelineView` renders them as the "Team Fact" badge.
+        let teamID: String?
+        let authorUID: String?
         let source: String
         let revisionBodiesRetained: Bool
         /// The read hit its cap: older events exist and are not in `revisions`.
@@ -120,6 +125,8 @@ final class MemoryTimelineModel {
             validTo: String? = nil,
             supersededBy: String? = nil,
             writerDevice: String? = nil,
+            teamID: String? = nil,
+            authorUID: String? = nil,
             source: String = MemoryTimelineSource.appAudit,
             revisionBodiesRetained: Bool = false,
             truncated: Bool = false
@@ -134,6 +141,8 @@ final class MemoryTimelineModel {
             self.validTo = validTo
             self.supersededBy = supersededBy
             self.writerDevice = writerDevice
+            self.teamID = teamID
+            self.authorUID = authorUID
             self.source = source
             self.revisionBodiesRetained = revisionBodiesRetained
             self.truncated = truncated
@@ -164,6 +173,8 @@ final class MemoryTimelineModel {
                 validTo: record.validTo,
                 supersededBy: record.supersededBy,
                 writerDevice: record.writerDevice,
+                teamID: record.teamID,
+                authorUID: record.authorUID,
                 source: record.source,
                 revisionBodiesRetained: record.revisionBodiesRetained,
                 truncated: record.truncated
@@ -183,6 +194,12 @@ final class MemoryTimelineModel {
     private(set) var validTo: String?
     private(set) var supersededBy: String?
     private(set) var writerDevice: String?
+    private(set) var teamID: String?
+    private(set) var authorUID: String?
+    /// Whether `teamID` is on this Mac's own list of teams, resolved ONCE per
+    /// load rather than on every render: the list is a `UserDefaults` read and
+    /// `teamFactBadge` is a computed property SwiftUI may evaluate freely.
+    private(set) var isTeamListedOnThisMac = false
     private(set) var source: String?
     private(set) var revisionBodiesRetained = false
     private(set) var truncated = false
@@ -193,15 +210,20 @@ final class MemoryTimelineModel {
     private(set) var errorMessage: String?
 
     private let loadTimeline: LoadTimeline
+    private let listedTeamIDs: @MainActor () -> Set<String>
 
     init(
         memoryID: String,
         projectPath: String? = nil,
-        loadTimeline: @escaping LoadTimeline
+        loadTimeline: @escaping LoadTimeline,
+        listedTeamIDs: @escaping @MainActor () -> Set<String> = {
+            Set(UserDefaultsTeamMembershipDirectory().knownTeamIDs())
+        }
     ) {
         self.memoryID = memoryID
         self.projectPath = projectPath
         self.loadTimeline = loadTimeline
+        self.listedTeamIDs = listedTeamIDs
     }
 
     func load() async {
@@ -235,6 +257,9 @@ final class MemoryTimelineModel {
             validTo = nil
             supersededBy = nil
             writerDevice = nil
+            teamID = nil
+            authorUID = nil
+            isTeamListedOnThisMac = false
             truncated = false
             return
         }
@@ -249,6 +274,51 @@ final class MemoryTimelineModel {
         validTo = result.validTo
         supersededBy = result.supersededBy
         writerDevice = result.writerDevice
+        teamID = result.teamID
+        authorUID = result.authorUID
+        // Resolved here, with the rest of the result, so the badge is a pure
+        // read of settled state. Absent team id means the question is not asked.
+        isTeamListedOnThisMac = result.teamID.map { listedTeamIDs().contains($0) } ?? false
+    }
+
+    /// `Team Fact · contributed by <member>` — shown only when this memory
+    /// actually arrived from a team space.
+    ///
+    /// It reads the SAME two fields PR 3 lands and invents nothing:
+    /// `TeamMemoryPullService` writes `teamID` and `authorUID` inside the parked
+    /// `payloadJSON`, which is where `writerDevice` already comes from. No
+    /// `teamID` means a personal memory, and absence is the honest signal — an
+    /// "unknown team" label on every personal row would be noise that says
+    /// nothing.
+    ///
+    /// The member string is the contributor's account id. This lane never learns
+    /// a display name (the roster holds uids and no client may read a directory),
+    /// so a badge that rendered one would be inventing it.
+    ///
+    /// A MISSING AUTHOR IS SAID, NOT SUBSTITUTED (PR 4 review L5). The fallback
+    /// was the TEAM id, so a fact whose `authorUID` did not survive into the
+    /// parked payload read "contributed by team_abcdef0123456789" — an
+    /// attribution to something that contributes nothing. The badge still fires
+    /// (the row IS a team fact, and reading as personal would be the worse
+    /// error); it simply declines to name a contributor it does not have.
+    ///
+    /// A TEAM THIS MAC NO LONGER LISTS DROPS THE CONTRIBUTOR LINE (PR 4 review
+    /// N5). The store's lift is scoped to the member and the `team:` doc-id
+    /// prefix and never to the roster, so a fact from a team the member has left
+    /// still badges. That is right — the fact did come from there — but rendering
+    /// it identically to a live team's fact implies a membership that ended.
+    /// See `TeamMemoryCopy.teamFactFormerTeam` for why this reads as a statement
+    /// about THIS MAC'S LIST rather than about membership: the list is
+    /// `UserDefaultsTeamMembershipDirectory`, a navigation cache the section's
+    /// own doc comment calls "not authority", and a cleared cache must not be
+    /// rendered as "you left".
+    var teamFactBadge: String? {
+        guard let teamID, !teamID.isEmpty else { return nil }
+        guard isTeamListedOnThisMac else { return TeamMemoryCopy.teamFactFormerTeam }
+        guard let member = authorUID.flatMap({ $0.isEmpty ? nil : $0 }) else {
+            return TeamMemoryCopy.teamFactUnknownContributor
+        }
+        return TeamMemoryCopy.teamFactAttribution(member: member)
     }
 
     // MARK: - What the member is told about the result itself

@@ -206,6 +206,7 @@ enum SettingsAnchor {
     static let indexingMemory = "general.indexing.memory"
     static let indexingMemoryDeviceSync = "general.indexing.memoryDeviceSync"
     static let indexingMemoryCloudModels = "general.indexing.memoryCloudModels"
+    static let indexingTeamMemory = "general.indexing.teamMemory"
     static let indexingMemoryHealth = "general.indexing.memoryHealth"
     static let indexingMemorySyncStatus = "general.indexing.memorySyncStatus"
 

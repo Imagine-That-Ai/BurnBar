@@ -473,25 +473,28 @@ final class TeamVaultKeyDistributionTests: XCTestCase {
     }
 
     func test_a_personal_rotation_never_walks_the_team_fact_path() {
-        // The team rewrap is invoked DIRECTLY by the rotation flow, not
-        // discovered through the data-domain registry — the `team_pensieve`
-        // entry lands with PR 4's UI, because every registry row is rendered
-        // unconditionally as public trust copy on burnbar.ai/privacy, in the
-        // Android privacy labels and in the Control Center, and the registry has
-        // no "unreleased" concept that could hide one (PR 2 review, concern 4).
-        //
-        // What still has to hold, registry or no registry: the PERSONAL rewrap
-        // workers must never try to walk the team path. Both the macOS and iOS
-        // ones iterate `domain.firestorePaths` as `userRef.collection(id)`, so a
-        // team path in that list would send a personal rotation at a user
-        // subcollection that does not exist and that the rules deny.
+        // PR 4 lands the `team_pensieve` registry entry, with the UI it
+        // describes — every registry row is rendered unconditionally as public
+        // trust copy on burnbar.ai/privacy, in the Android privacy labels and in
+        // the Control Center, and the registry has no "unreleased" concept that
+        // could hide one (PR 2 review, concern 4). So the domain is now
+        // discoverable...
+        let team = CloudVaultRotationRewrapWorker.documentRewrapDomains.first { $0.id == "team_pensieve" }
+        XCTAssertNotNil(team, "the team data-domain entry ships with the team UI in PR 4")
+
+        // ...and its `firestorePaths` is EMPTY, which is the load-bearing half.
+        // That field means "per-user subcollection" to every consumer: both the
+        // macOS and iOS personal rewrap workers iterate it as
+        // `userRef.collection(id)`, so a team path in that list would send a
+        // PERSONAL rotation at a user subcollection that does not exist and that
+        // the rules deny. The team rewrap is invoked DIRECTLY by the rotation
+        // flow instead (`TeamVaultKeyDistributor.rotateTeamKey`), so nothing in
+        // this lane depends on registry discovery.
+        XCTAssertEqual(team?.firestorePaths, [], "team facts are not a users/{uid} subcollection")
+        XCTAssertEqual(team?.storagePaths, [])
         XCTAssertFalse(
             CloudVaultRotationRewrapWorker.documentRewrapCollectionIDs.contains("team_memory_facts"),
             "team facts are NOT a users/{uid} subcollection; the personal worker must not try to walk them"
-        )
-        XCTAssertNil(
-            CloudVaultRotationRewrapWorker.documentRewrapDomains.first { $0.id == "team_pensieve" },
-            "the team data-domain entry ships with the team UI in PR 4, not here"
         )
         XCTAssertEqual(TeamCloudVaultRewrapWorker.factsRootCollection, "team_memory_facts")
         XCTAssertEqual(TeamCloudVaultRewrapWorker.aadUID(teamId: teamId), "team:\(teamId)")
@@ -1852,6 +1855,98 @@ final class TeamVaultKeyDistributionTests: XCTestCase {
         )
     }
 
+    // MARK: - Rotation completeness is a ROSTER fact (PR 4, promoting PR 2 review N1)
+
+    func test_a_completed_rewrap_is_published_to_the_roster_for_every_member() async throws {
+        // PR 2 recorded completion in `UserDefaults`, which answers only "did
+        // THIS Mac finish the pass". "Has this team's corpus been re-keyed" is a
+        // TEAM question, and the next admin to pick the job up is on a different
+        // Mac. PR 4 promotes it to a roster field written by an admin-only
+        // callable — `firestore.rules` still says `allow write: if false` on
+        // `team_rosters/{teamId}`, so the field is server-written by
+        // construction and no client can claim a rotation it never ran.
+        let world = TeamKeyWorld()
+        try world.keyRing.store(world.teamVaultKeyV1, teamId: teamId, slot: .vault(version: 1))
+        let docID = try CloudVaultCrypto.pensieveSlugHmac(
+            "team-memory-fact:\(teamId):published",
+            keyData: world.teamSlugKey
+        )
+        try world.seedTeamFact(
+            docID: docID,
+            body: Data("published".utf8),
+            keyData: world.teamVaultKeyV1,
+            teamKeyVersion: 1
+        )
+
+        let progress = try await world.rewrapWorker(publishToRoster: true).runRewrap(
+            teamId: teamId,
+            jobId: "job-published",
+            keyRing: world.keyRing,
+            newKeyData: world.teamVaultKeyV2,
+            newTeamKeyVersion: 2
+        )
+
+        XCTAssertTrue(progress.isComplete)
+        // The LOCAL note is still written. It is the only thing that answers
+        // "is the next pass on this machine a resume" when the network is down,
+        // so the promotion adds a publisher rather than replacing the store.
+        XCTAssertEqual(
+            world.completions.completedRewrap(teamId: teamId),
+            TeamRewrapCompletion(jobId: "job-published", teamKeyVersion: 2)
+        )
+        XCTAssertEqual(
+            world.callables.rewrapCompletions,
+            [
+                RecordingTeamRosterCallables.RewrapCompletion(
+                    teamId: teamId,
+                    keyVersion: 2,
+                    rewrapJobId: "job-published"
+                )
+            ]
+        )
+    }
+
+    func test_a_pass_that_skipped_a_fact_publishes_no_roster_completion() async throws {
+        // The whole point of the marker: a rotation whose corpus is only
+        // partly re-keyed must not look finished to any member. The roster
+        // cannot tell on its own — `rotateTeamKey` clears `keyRotationRequired`
+        // and advances `activeKeyVersion` before a single fact is re-sealed.
+        let world = TeamKeyWorld()
+        let unheldKey = TeamKeyWorld.randomKey()
+        try world.keyRing.store(world.teamVaultKeyV1, teamId: teamId, slot: .vault(version: 1))
+        for (label, keyData, version) in [
+            ("held", world.teamVaultKeyV1, 1),
+            ("unheld", unheldKey, 9)
+        ] as [(String, Data, Int)] {
+            let docID = try CloudVaultCrypto.pensieveSlugHmac(
+                "team-memory-fact:\(teamId):\(label)",
+                keyData: world.teamSlugKey
+            )
+            try world.seedTeamFact(
+                docID: docID,
+                body: Data(label.utf8),
+                keyData: keyData,
+                teamKeyVersion: version
+            )
+        }
+
+        let progress = try await world.rewrapWorker(publishToRoster: true).runRewrap(
+            teamId: teamId,
+            jobId: "job-partial",
+            keyRing: world.keyRing,
+            newKeyData: world.teamVaultKeyV2,
+            newTeamKeyVersion: 2
+        )
+
+        XCTAssertEqual(progress.skippedDocuments, 1)
+        XCTAssertFalse(progress.isComplete)
+        XCTAssertNil(world.completions.completedRewrap(teamId: teamId))
+        XCTAssertTrue(
+            world.callables.rewrapCompletions.isEmpty,
+            "a partial pass must not stamp the roster with a completion every member would read as done"
+        )
+    }
+
     func test_the_rewrap_pages_past_the_first_batch() async throws {
         // The pass walks by document id with `whereDocumentID(isGreaterThan:)`.
         // Every existing case seeded ONE fact against `batchLimit: 2`, so the
@@ -2131,11 +2226,20 @@ final class RecordingTeamRosterCallables: TeamRosterCallableInvoking, @unchecked
         let version: Int
     }
 
+    /// The roster-side completion stamp (PR 4). Recorded, so a test can assert
+    /// that a pass which SKIPPED a document publishes nothing.
+    struct RewrapCompletion: Equatable {
+        let teamId: String
+        let keyVersion: Int
+        let rewrapJobId: String
+    }
+
     private let lock = NSLock()
     private var recordedPromotions: [Promotion] = []
     private var recordedRotations: [Rotation] = []
     private var recordedAbandonments: [Abandonment] = []
     private var queuedRotationErrors: [Error] = []
+    private var recordedCompletions: [RewrapCompletion] = []
 
     var promotions: [Promotion] { lock.withLock { recordedPromotions } }
     /// Every generation the roster authority was asked to BURN, in order.
@@ -2143,6 +2247,7 @@ final class RecordingTeamRosterCallables: TeamRosterCallableInvoking, @unchecked
     /// EVERY rotation ATTEMPT, refused ones included — a refusal that publishes
     /// the same envelope ids as the retry is the property the C-4 test asserts.
     var rotations: [Rotation] { lock.withLock { recordedRotations } }
+    var rewrapCompletions: [RewrapCompletion] { lock.withLock { recordedCompletions } }
 
     /// Make the next `rotateTeamKey` call record its attempt and then throw.
     /// Queued, so one test can model "refused, then accepted on retry".
@@ -2166,6 +2271,14 @@ final class RecordingTeamRosterCallables: TeamRosterCallableInvoking, @unchecked
 
     func abandonTeamKeyGeneration(teamId: String, version: Int) async throws {
         lock.withLock { recordedAbandonments.append(Abandonment(teamId: teamId, version: version)) }
+    }
+
+    func recordTeamRewrapComplete(teamId: String, keyVersion: Int, rewrapJobId: String) async throws {
+        lock.withLock {
+            recordedCompletions.append(
+                RewrapCompletion(teamId: teamId, keyVersion: keyVersion, rewrapJobId: rewrapJobId)
+            )
+        }
     }
 }
 
@@ -2226,8 +2339,15 @@ final class TeamKeyWorld: @unchecked Sendable {
         )
     }
 
-    func rewrapWorker(batchLimit: Int = 2) -> TeamCloudVaultRewrapWorker {
-        TeamCloudVaultRewrapWorker(gateway: gateway, batchLimit: batchLimit, completionRecorder: completions)
+    func rewrapWorker(batchLimit: Int = 2, publishToRoster: Bool = false) -> TeamCloudVaultRewrapWorker {
+        TeamCloudVaultRewrapWorker(
+            gateway: gateway,
+            batchLimit: batchLimit,
+            completionRecorder: completions,
+            completionPublisher: publishToRoster
+                ? TeamRosterCallableCompletionPublisher(callables: callables)
+                : nil
+        )
     }
 
     @discardableResult

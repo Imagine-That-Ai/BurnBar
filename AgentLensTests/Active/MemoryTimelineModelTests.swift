@@ -55,6 +55,105 @@ final class MemoryTimelineModelTests: XCTestCase {
         XCTAssertEqual(model.source, MemoryTimelineSource.appAudit)
     }
 
+    // MARK: - Team provenance (memory program D16 / P22, PR 4)
+
+    func test_a_team_fact_is_badged_with_its_team_and_contributor() async {
+        // The badge reads the SAME two fields PR 3 lands and invents none:
+        // `TeamMemoryPullService` writes `teamID` and `authorUID` inside the
+        // parked `payloadJSON`, which is exactly where `writerDevice` already
+        // comes from, and `ControlPlaneStore.memoryTimeline` lifts all three
+        // through one parser.
+        let model = MemoryTimelineModel(
+            memoryID: "mem_team",
+            loadTimeline: { memoryID, _ in
+                MemoryTimelineModel.TimelineResult(
+                    memoryID: memoryID,
+                    revisions: [self.revision(seq: 1, event: "memory.add")],
+                    writerDevice: "macbook-pro",
+                    teamID: "team_abcdef0123456789",
+                    authorUID: "uid-42"
+                )
+            },
+            listedTeamIDs: { ["team_abcdef0123456789"] }
+        )
+        await model.load()
+        XCTAssertEqual(model.teamFactBadge, "Team Fact · contributed by uid-42")
+    }
+
+    func test_a_personal_memory_carries_no_team_badge() async {
+        // Absence is the honest signal. An "unknown team" label on every
+        // personal row would be noise that says nothing, and almost every row
+        // is personal.
+        let model = MemoryTimelineModel(memoryID: "mem_personal") { memoryID, _ in
+            MemoryTimelineModel.TimelineResult(
+                memoryID: memoryID,
+                revisions: [self.revision(seq: 1, event: "memory.add")],
+                writerDevice: "macbook-pro"
+            )
+        }
+        await model.load()
+        XCTAssertNil(model.teamFactBadge)
+    }
+
+    func test_a_team_fact_whose_author_was_dropped_says_so_rather_than_naming_the_team() async {
+        // `authorUID` is dropped-but-landed on the engine side, so a payload can
+        // reach here with a team and no author. Falling back to "personal" would
+        // be one wrong answer — the row DID come from a team space — and
+        // attributing it to the TEAM id is the other (PR 4 review L5): a team
+        // does not contribute facts, its members do.
+        let model = MemoryTimelineModel(
+            memoryID: "mem_team",
+            loadTimeline: { memoryID, _ in
+                MemoryTimelineModel.TimelineResult(
+                    memoryID: memoryID,
+                    revisions: [self.revision(seq: 1, event: "memory.add")],
+                    teamID: "team_abcdef0123456789",
+                    authorUID: ""
+                )
+            },
+            listedTeamIDs: { ["team_abcdef0123456789"] }
+        )
+        await model.load()
+        XCTAssertEqual(model.teamFactBadge, "Team Fact · contributor unknown")
+        XCTAssertEqual(model.teamFactBadge, TeamMemoryCopy.teamFactUnknownContributor)
+        // The badge still fires, and it still says "Team Fact".
+        XCTAssertEqual(model.teamFactBadge?.hasPrefix(TeamMemoryCopy.teamFactBadgeLabel), true)
+        // No identifier of any kind is invented in its place.
+        XCTAssertEqual(model.teamFactBadge?.contains("team_abcdef0123456789"), false)
+    }
+
+    func test_a_fact_from_a_team_this_mac_no_longer_lists_drops_the_contributor() async {
+        // PR 4 review N5. The store's lift is scoped to the member and the
+        // `team:` doc-id prefix and NEVER to the roster, so a fact parked from a
+        // team the member has since left still badges — correctly, because the
+        // fact did come from there. What was wrong was rendering it identically
+        // to a live team's fact: `contributed by <uid>` reads as a current
+        // membership, and the uid is only interpretable against a roster this
+        // member can no longer read.
+        let model = MemoryTimelineModel(
+            memoryID: "mem_team",
+            loadTimeline: { memoryID, _ in
+                MemoryTimelineModel.TimelineResult(
+                    memoryID: memoryID,
+                    revisions: [self.revision(seq: 1, event: "memory.add")],
+                    teamID: "team_abcdef0123456789",
+                    authorUID: "uid-42"
+                )
+            },
+            // `leaveTeam` calls `directory.forget(teamID:)`, so this is exactly
+            // what this Mac's list looks like after a leave.
+            listedTeamIDs: { ["team_0123456789abcdef"] }
+        )
+        await model.load()
+        XCTAssertEqual(model.teamFactBadge, TeamMemoryCopy.teamFactFormerTeam)
+        // It is still a Team Fact — reading as personal would be the worse error.
+        XCTAssertEqual(model.teamFactBadge?.hasPrefix(TeamMemoryCopy.teamFactBadgeLabel), true)
+        // And it names neither the contributor nor the team: the local cache
+        // holds team IDS and no names, so there is nothing honest to render.
+        XCTAssertEqual(model.teamFactBadge?.contains("uid-42"), false)
+        XCTAssertEqual(model.teamFactBadge?.contains("team_abcdef0123456789"), false)
+    }
+
     /// The writing device is the point of the packet: a member with two machines
     /// has to be able to see which one wrote a revision — when the history being
     /// read records one at all.

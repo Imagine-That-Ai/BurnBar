@@ -280,7 +280,11 @@ final class ControlPlaneStoreMemoryTimelineTests: XCTestCase {
                         localUserID: "user-1",
                         documentID: String(repeating: "a", count: 64)
                     ),
-                    #"{"memoryID":"eng_mem_victim","writerDevice":"attacker-laptop","teamID":"team_0123456789abcdef"}"#,
+                    #"""
+                    {"memoryID":"eng_mem_victim","writerDevice":"attacker-laptop",\#
+                    "teamID":"team_0123456789abcdef","authorUID":"uid-attacker",\#
+                    "projectID":"proj_fixture","engineScope":"project","bodyHash":"hash"}
+                    """#,
                     "2026-09-09T00:00:00.000Z",
                     "2026-09-09T00:01:00.000Z"
                 ]
@@ -289,6 +293,15 @@ final class ControlPlaneStoreMemoryTimelineTests: XCTestCase {
 
         let poisoned = try await store.memoryTimeline(memoryID: "mem_private", userID: "user-1")
         XCTAssertNil(poisoned.writerDevice, "a team row must never name a personal memory's arrival device")
+        // ...AND IT NAMES NO TEAM EITHER (PR 4). The badge lift is keyed on the
+        // id the engine DERIVES — over this payload's canonicalised
+        // `(teamID, projectID, engineScope)` and the CANONICAL hash of the
+        // LOCAL body, never the `bodyHash` the payload advertises — and what it
+        // derives is a team-namespaced id that is not `eng_mem_victim`. A
+        // payload cannot reach a chosen personal row without a SHA-256
+        // preimage, and personal ids are random rather than derived.
+        XCTAssertNil(poisoned.teamID, "a forged team row must not badge a personal memory")
+        XCTAssertNil(poisoned.authorUID)
 
         // The member's OWN inbox row for the same memory is still read, so the
         // exclusion is about provenance and not about the join being disabled.
@@ -308,6 +321,292 @@ final class ControlPlaneStoreMemoryTimelineTests: XCTestCase {
         }
         let honest = try await store.memoryTimeline(memoryID: "mem_private", userID: "user-1")
         XCTAssertEqual(honest.writerDevice, "my-own-macbook")
+    }
+
+    // MARK: - Inbound team provenance (memory program D16 / P22, PR 4)
+
+    /// The badge's two fields are lifted from the parked team document — keyed
+    /// on the id the ENGINE DERIVES, not the one the payload seals.
+    ///
+    /// PR 3's Cursor ruling T2 made the sealed `memoryID` non-authoritative:
+    /// `memory_engine/_namespaces.py::_team_local_memory_id` lands a team
+    /// document under `sha256("team|<teamID>|<convergence identity>")`, and the
+    /// `writerDevice` join therefore excludes team rows outright — a team row's
+    /// `engine_memory_id` column is the attacker-choosable sealed value and is a
+    /// key to nothing local. So the team lift does its own lookup and its own
+    /// derivation, over the payload's OWN `(teamID, projectID, engineScope,
+    /// bodyHash)`.
+    func test_a_team_fact_names_its_team_and_contributor() async throws {
+        let (queue, store) = try makeStore()
+        try await insertAuthorityRow(queue, id: "mem_team")
+        try await insertAuditEvent(
+            queue,
+            seq: 1,
+            subjectID: "mem_team",
+            action: "memory.merge",
+            ts: "2026-09-01T00:00:00.000Z"
+        )
+        // The hash the ENGINE would have keyed this row on: recomputed from the
+        // body this device holds, lowercased, never the payload's advertised
+        // `bodyHash` (PR 4 review N2). The fixture's stored `body_hash` column
+        // is left as the daemon-mirror value it really is — a different,
+        // non-lowered hash — precisely so that reading it would fail this test.
+        let derived = TeamMemoryPullService.teamLocalEngineMemoryID(
+            teamID: "team_abcdef0123456789",
+            projectID: "proj_fixture",
+            engineScope: "project",
+            canonicalBodyHash: TeamMemorySyncService.canonicalBodyHash("Retention is ninety days.")
+        )
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_bodies
+                    (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+                VALUES ('mem_team', 'proj_fixture', ?, 'Retention is ninety days.', 'daemon-mirror-hash', ?, ?)
+                """,
+                arguments: [derived, "2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z"]
+            )
+            // THE ROW ID IS THE NAMESPACED ONE PR 3 ACTUALLY WRITES —
+            // `team:<teamId>:<uid>:<cloud doc id>` (PR 3 review MEDIUM-2),
+            // because a team document id is shared across members and the inbox
+            // `doc_id` is that table's primary key. The lift filters on that
+            // prefix and matches on the derivation, never on `doc_id` itself.
+            //
+            // `TeamMemoryPullService` writes the whole verified payload as
+            // `payloadJSON` — the `entryKind` precedent, so no column and no
+            // migration — which is the same place `writerDevice` already lives.
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_inbox
+                    (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+                VALUES (?, 'user-1', 'eng_sealed_by_the_author', ?, ?, ?, NULL)
+                """,
+                arguments: [
+                    TeamMemoryPullService.inboxDocID(
+                        teamID: "team_abcdef0123456789",
+                        localUserID: "user-1",
+                        documentID: String(repeating: "b", count: 64)
+                    ),
+                    // NON-CANONICAL ON PURPOSE, and carrying a `bodyHash` that
+                    // is not the key: padded `projectID`, upper-case
+                    // `engineScope`, and a `bodyHash` naming a body this device
+                    // never stored. The engine strips and lowercases these and
+                    // recomputes the hash from the gated body, so a badge that
+                    // read them raw would silently not fire here — which is
+                    // exactly the redaction case PR 4 review N2 names.
+                    #"""
+                    {"memoryID":"eng_sealed_by_the_author","teamID":"team_abcdef0123456789",\#
+                    "authorUID":"uid-42","projectID":"  proj_fixture ","engineScope":"PROJECT",\#
+                    "bodyHash":"the-senders-advice-about-its-own-store"}
+                    """#,
+                    "2026-09-02T00:00:00.000Z",
+                    "2026-09-02T00:01:00.000Z"
+                ]
+            )
+        }
+
+        let record = try await store.memoryTimeline(memoryID: "mem_team", userID: "user-1")
+        XCTAssertEqual(record.teamID, "team_abcdef0123456789")
+        XCTAssertEqual(record.authorUID, "uid-42")
+        // The sealed `engine_memory_id` is NOT what connected them.
+        XCTAssertNotEqual(derived, "eng_sealed_by_the_author")
+
+        // A memory that never came from a team names none — which is what the
+        // absent badge is built on.
+        try await insertAuthorityRow(queue, id: "mem_solo")
+        let solo = try await store.memoryTimeline(memoryID: "mem_solo", userID: "user-1")
+        XCTAssertNil(solo.teamID)
+        XCTAssertNil(solo.authorUID)
+    }
+
+    /// The derivation is a CROSS-LANGUAGE contract, so it is pinned as a vector
+    /// on both sides.
+    ///
+    /// `memory_engine/_namespaces.py::_team_local_memory_id` is what actually
+    /// lands the row; this Swift copy only has to agree with it, and a silent
+    /// disagreement would not fail a build — it would quietly stop badging every
+    /// team fact. `test_memory_blind_sync.py` pins the same three vectors.
+    func test_the_team_local_id_derivation_matches_the_engine_byte_for_byte() {
+        XCTAssertEqual(
+            TeamMemoryPullService.teamLocalEngineMemoryID(
+                teamID: "team_abcdef0123456789",
+                projectID: "proj_fixture",
+                engineScope: "project",
+                canonicalBodyHash: "hash"
+            ),
+            "mem_67cfa917b1b5e9b3cfde42a2f2967aaf"
+        )
+        XCTAssertEqual(
+            TeamMemoryPullService.teamLocalEngineMemoryID(
+                teamID: "team_0123456789abcdef",
+                projectID: "proj_fixture",
+                engineScope: "project",
+                canonicalBodyHash: "hash"
+            ),
+            "mem_89c55a69b98bd82e7a265374b1d649a4"
+        )
+        // The team id is an input, so two teams sharing one body land apart.
+        XCTAssertNotEqual(
+            TeamMemoryPullService.teamLocalEngineMemoryID(
+                teamID: "team_abcdef0123456789",
+                projectID: "proj_fixture",
+                engineScope: "project",
+                canonicalBodyHash: "hash"
+            ),
+            TeamMemoryPullService.teamLocalEngineMemoryID(
+                teamID: "team_0123456789abcdef",
+                projectID: "proj_fixture",
+                engineScope: "project",
+                canonicalBodyHash: "hash"
+            )
+        )
+    }
+
+    /// The vector that differs from the pinned one ONLY by canonicalisation
+    /// (PR 4 review N2).
+    ///
+    /// The two literals above pin the hash function; they say nothing about the
+    /// input normalisation, which is where the real divergence was.
+    /// `_screen_remote_row` derives from `project_id.strip()`,
+    /// `engineScope.strip().lower()` and `str(team_id).strip()`, so a payload
+    /// that arrives padded or upper-cased lands on the SAME engine row — and a
+    /// derivation reading the payload raw would have produced a different id and
+    /// silently dropped the badge, which reads identically to "personal".
+    func test_the_derivation_canonicalises_its_inputs_the_way_the_engine_does() {
+        XCTAssertEqual(
+            TeamMemoryPullService.teamLocalEngineMemoryID(
+                teamID: " team_abcdef0123456789\n",
+                projectID: "  proj_fixture ",
+                engineScope: "\tPROJECT ",
+                canonicalBodyHash: "hash"
+            ),
+            "mem_67cfa917b1b5e9b3cfde42a2f2967aaf",
+            "padding and case must not move a team document to a different local id"
+        )
+    }
+
+    /// And the body hash the derivation is fed is the ENGINE'S, recomputed.
+    ///
+    /// `memory_engine/_util.py::canonical_body_hash` is `sha256_hex(body.lower())`.
+    /// The daemon-mirror hash the app stores in `agent_memory_bodies.body_hash`
+    /// is `sha256_hex(body)` with no lowering — `_util.py:42` says in so many
+    /// words that it is a different hash in a different namespace — so the two
+    /// part company on any body with one capital letter in it, which is most of
+    /// them. Pinned as a literal, and pinned again in Python.
+    func test_the_canonical_body_hash_is_the_engines_lowered_one() {
+        XCTAssertEqual(
+            TeamMemorySyncService.canonicalBodyHash("Body"),
+            "230d8358dc8e8890b4c58deeb62912ee2f20357ae92a5cc861b98e68fe31acb5"
+        )
+        XCTAssertEqual(
+            TeamMemorySyncService.canonicalBodyHash("Body"),
+            TeamMemorySyncService.canonicalBodyHash("body"),
+            "the engine lowercases before hashing, so case cannot split one fact in two"
+        )
+    }
+
+    /// The walk is BOUNDED, and the bound is real (PR 4 review N4).
+    ///
+    /// The derivation cannot be indexed or expressed in SQL, so a personal
+    /// memory — almost every memory — pays a walk of the member's whole parked
+    /// team corpus that can never match. `teamProvenanceScanLimit` caps that
+    /// walk. This pins the cap at its edge in BOTH directions, because a cap
+    /// that silently swallowed the match would be the worse bug: the match at
+    /// position `limit + 1` is not found, the identical match at position
+    /// `limit` is.
+    func test_the_team_provenance_walk_stops_at_its_scan_bound() async throws {
+        let (queue, store) = try makeStore()
+        try await insertAuthorityRow(queue, id: "mem_capped")
+        try await insertAuditEvent(
+            queue,
+            seq: 1,
+            subjectID: "mem_capped",
+            action: "memory.merge",
+            ts: "2026-09-01T00:00:00.000Z"
+        )
+        let body = "The release train leaves on Thursdays."
+        let derived = TeamMemoryPullService.teamLocalEngineMemoryID(
+            teamID: "team_abcdef0123456789",
+            projectID: "proj_fixture",
+            engineScope: "project",
+            canonicalBodyHash: TeamMemorySyncService.canonicalBodyHash(body)
+        )
+        let limit = ControlPlaneStore.teamProvenanceScanLimit
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_bodies
+                    (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+                VALUES ('mem_capped', 'proj_fixture', ?, ?, 'daemon-mirror-hash', ?, ?)
+                """,
+                arguments: [derived, body, "2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z"]
+            )
+            // The MATCH is the oldest row, so `ORDER BY remote_updated_at DESC`
+            // reaches it last — position `limit + 1`.
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_inbox
+                    (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+                VALUES (?, 'user-1', 'eng_sealed', ?, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', NULL)
+                """,
+                arguments: [
+                    TeamMemoryPullService.inboxDocID(
+                        teamID: "team_abcdef0123456789",
+                        localUserID: "user-1",
+                        documentID: String(repeating: "b", count: 64)
+                    ),
+                    #"""
+                    {"teamID":"team_abcdef0123456789","authorUID":"uid-42",\#
+                    "projectID":"proj_fixture","engineScope":"project"}
+                    """#
+                ]
+            )
+            // `limit` newer team rows in front of it, each a different team so
+            // the per-triple derivation cache cannot collapse the walk.
+            for index in 0..<limit {
+                let teamID = String(format: "team_%016x", index)
+                try db.execute(
+                    sql: """
+                    INSERT INTO agent_memory_inbox
+                        (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+                    VALUES (?, 'user-1', 'eng_other', ?, ?, ?, NULL)
+                    """,
+                    arguments: [
+                        TeamMemoryPullService.inboxDocID(
+                            teamID: teamID,
+                            localUserID: "user-1",
+                            documentID: String(format: "%064x", index)
+                        ),
+                        #"{"teamID":"\#(teamID)","authorUID":"uid-x","projectID":"proj_fixture","engineScope":"project"}"#,
+                        // Unique and lexicographically increasing — the column
+                        // is TEXT, and every one of these sorts NEWER than the
+                        // match's `2026-01-01`.
+                        String(format: "2026-09-02T00:00:00.%03dZ", index),
+                        "2026-09-09T00:00:00.000Z"
+                    ]
+                )
+            }
+        }
+
+        let capped = try await store.memoryTimeline(memoryID: "mem_capped", userID: "user-1")
+        XCTAssertNil(capped.teamID, "a match past the scan bound is not reached")
+
+        // Remove ONE row in front of it and the very same match lands.
+        try await queue.write { db in
+            try db.execute(
+                sql: "DELETE FROM agent_memory_inbox WHERE doc_id = ?",
+                arguments: [
+                    TeamMemoryPullService.inboxDocID(
+                        teamID: String(format: "team_%016x", 0),
+                        localUserID: "user-1",
+                        documentID: String(format: "%064x", 0)
+                    )
+                ]
+            )
+        }
+        let inBound = try await store.memoryTimeline(memoryID: "mem_capped", userID: "user-1")
+        XCTAssertEqual(inBound.teamID, "team_abcdef0123456789")
+        XCTAssertEqual(inBound.authorUID, "uid-42")
     }
 
     // MARK: - Truncation

@@ -4746,3 +4746,50 @@ def test_neutering_the_write_predicate_resurrects_the_retired_team_row(
     row = engine.conn.execute("SELECT valid_to FROM memories WHERE id = ?", (retired_id,)).fetchone()
     assert row["valid_to"] is None, "without the fence the retired team row comes back to life"
     engine.close()
+
+
+def test_the_team_local_id_derivation_is_pinned_for_the_app_half():
+    """`_team_local_memory_id` is a CROSS-LANGUAGE contract, so pin it.
+
+    The Mac app derives the same id to answer "which local memory is this parked
+    team document the arrival record of" — the Team Fact badge (memory program
+    D16 / P22, PR 4) — because after the T2 ruling the payload's own `memoryID`
+    is not a key to anything local. Nothing about a drift between the two
+    implementations would fail a build: the badge would simply stop appearing,
+    silently, on every team fact. These are the same three vectors
+    `ControlPlaneStoreMemoryTimelineTests` pins in Swift.
+    """
+    derive = me.MemoryEngine._team_local_memory_id
+    assert derive("team_abcdef0123456789", "proj_fixture", "project", "hash") == (
+        "mem_67cfa917b1b5e9b3cfde42a2f2967aaf"
+    )
+    assert derive("team_0123456789abcdef", "proj_fixture", "project", "hash") == (
+        "mem_89c55a69b98bd82e7a265374b1d649a4"
+    )
+    # The team id is an input, so two teams sharing one body land apart.
+    assert derive("team_abcdef0123456789", "proj_fixture", "project", "hash") != derive(
+        "team_0123456789abcdef", "proj_fixture", "project", "hash"
+    )
+    # THE INPUT NORMALISATION, pinned separately from the hash (PR 4 review N2).
+    # `_screen_remote_row` derives from `project_id.strip()`,
+    # `engineScope.strip().lower()` and `str(team_id).strip()` — never from the
+    # raw payload strings — so the app half canonicalises before it derives. A
+    # padded or upper-cased payload names the SAME row, and the two literals
+    # above could not have caught a divergence here because they pin the hash,
+    # not the normalisation. `test_the_derivation_canonicalises_its_inputs_the_
+    # way_the_engine_does` asserts the identical vector in Swift.
+    assert (
+        derive(
+            " team_abcdef0123456789\n".strip(),
+            "  proj_fixture ".strip(),
+            "\tPROJECT ".strip().lower(),
+            "hash",
+        )
+        == "mem_67cfa917b1b5e9b3cfde42a2f2967aaf"
+    )
+    # And the body hash is the ENGINE'S, lowered — not the daemon-mirror hash
+    # the app stores in `agent_memory_bodies.body_hash`, which `_util.py:42`
+    # names as a different hash in a different namespace. The Swift half pins
+    # this same literal in `test_the_canonical_body_hash_is_the_engines_lowered_one`.
+    assert canonical_body_hash("Body") == "230d8358dc8e8890b4c58deeb62912ee2f20357ae92a5cc861b98e68fe31acb5"
+    assert canonical_body_hash("Body") == canonical_body_hash("body")

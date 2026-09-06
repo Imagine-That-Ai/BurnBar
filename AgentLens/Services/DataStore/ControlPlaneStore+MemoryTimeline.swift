@@ -87,6 +87,14 @@ struct MemoryTimelineRecord: Equatable, Sendable {
     /// `agent_memory_bodies.engine_memory_id`). Nil for a memory this device
     /// learned itself, and nil when the payload names no device.
     let writerDevice: String?
+    /// The team space a synced-in memory was contributed to, and the account
+    /// that contributed it — read from the SAME parked cloud payload as
+    /// `writerDevice` (memory program D16 / P22). `TeamMemoryPullService` writes
+    /// `teamID` and `authorUID` INSIDE `payloadJSON`, following the `entryKind`
+    /// precedent, so no column and no migration exist for either. Both nil for a
+    /// personal memory, which is what almost every memory is.
+    let teamID: String?
+    let authorUID: String?
     /// Which history this is. Always `MemoryTimelineSource.appAudit` here.
     let source: String
     /// ALWAYS false: this ledger does not retain revision contents, and the view
@@ -109,6 +117,8 @@ struct MemoryTimelineRecord: Equatable, Sendable {
         validTo: String? = nil,
         supersededBy: String? = nil,
         writerDevice: String? = nil,
+        teamID: String? = nil,
+        authorUID: String? = nil,
         source: String = MemoryTimelineSource.appAudit,
         revisionBodiesRetained: Bool = false,
         truncated: Bool = false
@@ -123,6 +133,8 @@ struct MemoryTimelineRecord: Equatable, Sendable {
         self.validTo = validTo
         self.supersededBy = supersededBy
         self.writerDevice = writerDevice
+        self.teamID = teamID
+        self.authorUID = authorUID
         self.source = source
         self.revisionBodiesRetained = revisionBodiesRetained
         self.truncated = truncated
@@ -265,6 +277,41 @@ extension ControlPlaneStore {
                     )
                 }
 
+                // TEAM PROVENANCE IS A SEPARATE LIFT, KEYED ON THE ID THE ENGINE
+                // DERIVES (memory program D16 / P22, PR 4).
+                //
+                // The read above deliberately cannot answer it. PR3's ruling made
+                // the sealed `memoryID` non-authoritative, so a team row's
+                // `engine_memory_id` column is a value the sealer chose and a key
+                // to nothing local — which is why the join excludes team rows
+                // outright rather than reading them more carefully.
+                //
+                // The id a team document ACTUALLY lands under is derived by the
+                // engine (`_namespaces.py::_team_local_memory_id`) from
+                // `(teamID, convergence identity)`. So the badge re-derives it
+                // and matches on that. Landing on a chosen row would need a
+                // SHA-256 preimage, and the personal id space is unreachable by
+                // construction: a personal row's engine id is random, never
+                // derived. The `writerDevice` exclusion is therefore untouched
+                // by this — a forged team row still names no device, and now
+                // names no team.
+                //
+                // THREE INPUTS COME OFF THE PAYLOAD, CANONICALISED THE WAY THE
+                // ENGINE CANONICALISES THEM, AND THE FOURTH DOES NOT (PR 4
+                // review N2). `_screen_remote_row` strips `projectID`, strips
+                // and lowercases `engineScope`, strips `teamID` — and RECOMPUTES
+                // the body hash from the gated body, refusing on principle to
+                // take the sender's word for it. This side does the same: the
+                // hash is `TeamMemorySyncService.canonicalBodyHash` over the
+                // body this device already holds, so a payload that arrives
+                // non-canonical, or whose body this device's gate redacted,
+                // still badges — and the attacker-controlled part of the
+                // preimage shrinks by a field.
+                var teamProvenance: ParkedTeamProvenance?
+                if let userID {
+                    teamProvenance = try Self.teamProvenance(db: db, memoryID: memoryID, userID: userID)
+                }
+
                 let validFrom: String? = lineage?["valid_from"]
                 let validTo: String? = lineage?["valid_to"]
                 let supersededBy: String? = lineage?["superseded_by"]
@@ -285,6 +332,8 @@ extension ControlPlaneStore {
                     validTo: validTo,
                     supersededBy: supersededBy,
                     writerDevice: inboundPayload.flatMap(Self.writerDevice(inPayloadJSON:)),
+                    teamID: teamProvenance?.teamID,
+                    authorUID: teamProvenance?.authorUID,
                     truncated: truncated
                 )
             }
@@ -328,9 +377,248 @@ extension ControlPlaneStore {
         }
     }
 
+    /// Everything the Team Fact badge needs out of ONE parked team document.
+    ///
+    /// The three identity fields are the engine's derivation inputs; a payload
+    /// missing any of them is not matchable and is skipped rather than guessed
+    /// at. `bodyHash` is deliberately NOT among them (PR 4 review N2): the
+    /// engine recomputes the body hash from the gated body and never trusts the
+    /// sender's copy, so this side recomputes it too — from the local body,
+    /// which is the same body — and reads one field fewer off the payload.
+    ///
+    /// ONE PARSE PER ROW, not five (PR 4 review N4). The five fields used to be
+    /// five independent `payloadString` calls, each re-running the byte-bound
+    /// check and a full `JSONSerialization` pass over the same string, on every
+    /// row of a walk that runs to completion for every personal memory. Decoding
+    /// once into this type costs one pass and keeps the dual spellings.
+    private struct ParkedTeamPayload: Decodable {
+        let teamID: String
+        let projectID: String
+        let engineScope: String
+        let authorUID: String?
+
+        /// Both spellings for every field, for the reason the device lookup
+        /// accepts four: the engine's own meta lookup does.
+        private enum CodingKeys: String, CodingKey {
+            case teamID
+            case teamIDSnake = "team_id"
+            case projectID
+            case projectIDSnake = "project_id"
+            case engineScope
+            case engineScopeSnake = "engine_scope"
+            case authorUID
+            case authorUIDSnake = "author_uid"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            func firstNonEmpty(_ keys: CodingKeys...) -> String? {
+                for key in keys {
+                    // try?-ok(a payload field of the wrong JSON type is "absent", the same reading the dictionary lookup gave it)
+                    guard let raw = try? container.decodeIfPresent(String.self, forKey: key) else { continue }
+                    if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return raw }
+                }
+                return nil
+            }
+            guard let teamID = firstNonEmpty(.teamID, .teamIDSnake),
+                  let projectID = firstNonEmpty(.projectID, .projectIDSnake),
+                  let engineScope = firstNonEmpty(.engineScope, .engineScopeSnake) else {
+                throw MemoryTimelineError.historyUnavailable("parked team payload names no derivable identity")
+            }
+            self.teamID = teamID
+            self.projectID = projectID
+            self.engineScope = engineScope
+            self.authorUID = firstNonEmpty(.authorUID, .authorUIDSnake)
+        }
+    }
+
+    /// What the badge lift reports about ONE matched team document.
+    private struct ParkedTeamProvenance {
+        let teamID: String
+        let authorUID: String?
+    }
+
+    /// How many parked team rows one detail view will walk before it stops.
+    ///
+    /// A CAP EXISTS BECAUSE THE WORST CASE IS THE COMMON CASE (PR 4 review N4):
+    /// a personal memory — almost every memory — matches nothing, so the walk
+    /// always runs to the end of the member's team rows. The durable fix is
+    /// PR 3's lane (stamp the derived local id on the inbox row at park time and
+    /// this becomes one indexed lookup); there is no column for it today, so the
+    /// scan is the only option here and a bound is the honest mitigation.
+    ///
+    /// AND EXCEEDING IT IS LOGGED, never silent. An unlogged cap would drop the
+    /// badge from the oldest team facts of a very active member — a wrong answer
+    /// wearing the same face as the right one, since an absent badge means
+    /// "personal". The bound is deliberately far above any plausible parked
+    /// corpus for one member, so the log line is a signal that the durable fix
+    /// is now owed rather than routine noise.
+    static let teamProvenanceScanLimit = 1_000
+
+    private static func parkedTeamProvenance(
+        inPayloadJSON json: String,
+        canonicalBodyHash: String,
+        matching engineMemoryID: String,
+        derivationCache: inout [String: String]
+    ) -> ParkedTeamProvenance? {
+        guard payloadIsWithinParseBound(json), let data = json.data(using: .utf8) else { return nil }
+        // A row that is not a derivable team payload is not an error: the inbox
+        // carries receipts and older shapes under the same prefix.
+        // try?-ok(an inbox row that is not a derivable team payload contributes no badge; it is not a read failure)
+        guard let payload = try? JSONDecoder().decode(ParkedTeamPayload.self, from: data) else { return nil }
+        // ONE DERIVATION PER DISTINCT IDENTITY (PR 4 review N4). A team's facts
+        // share `(teamID, projectID, engineScope)` almost entirely, so this
+        // collapses two SHA-256 passes per ROW into two per distinct triple.
+        // Keyed on `\u{1}` because it cannot occur in any of the three tokens.
+        let cacheKey = [payload.teamID, payload.projectID, payload.engineScope].joined(separator: "\u{1}")
+        let derived: String
+        if let cached = derivationCache[cacheKey] {
+            derived = cached
+        } else {
+            derived = TeamMemoryPullService.teamLocalEngineMemoryID(
+                teamID: payload.teamID,
+                projectID: payload.projectID,
+                engineScope: payload.engineScope,
+                canonicalBodyHash: canonicalBodyHash
+            )
+            derivationCache[cacheKey] = derived
+        }
+        guard derived == engineMemoryID else { return nil }
+        return ParkedTeamProvenance(teamID: payload.teamID, authorUID: payload.authorUID)
+    }
+
+    /// The parked team document THIS memory came from, or nil for the personal
+    /// memory almost every row is.
+    ///
+    /// Scoped three ways, and the last one is the security boundary: to this
+    /// member (`user_id`), to team rows (the `doc_id` prefix — a personal doc id
+    /// is 64 hex characters and can never begin with it), and to the document
+    /// whose OWN derivation names this memory's engine id.
+    ///
+    /// COST, STATED AND NOW BOUNDED (PR 4 review N4). The derivation cannot be
+    /// indexed or expressed in SQL, so this walks the member's team rows
+    /// newest-first and stops at the first match. It is a lazy cursor rather
+    /// than a fetch-all, and it runs once when a member opens one memory's
+    /// detail view — never on a list. Three bounds keep the personal case, which
+    /// is the common one and never matches, from paying for the team case:
+    ///
+    ///   1. **It does not start.** The local body is read first, so a memory the
+    ///      engine never mirrored costs one indexed lookup; and the walk is
+    ///      skipped entirely unless this member has at least one parked team row
+    ///      — which for a member in no team is every memory they own, at the
+    ///      cost of one `EXISTS`.
+    ///   2. **One JSON parse per row**, not the five independent ones the five
+    ///      payload fields used to cost.
+    ///   3. **One derivation per distinct `(teamID, projectID, engineScope)`**,
+    ///      and at most `teamProvenanceScanLimit` rows, with the overflow
+    ///      logged rather than silently answering "personal".
+    private static func teamProvenance(
+        db: Database,
+        memoryID: MemoryID,
+        userID: String
+    ) throws -> ParkedTeamProvenance? {
+        // The engine id AND the body, in one read: the body is what the
+        // canonical hash is recomputed from (PR 4 review N2). The stored
+        // `body_hash` column is deliberately NOT used — it is the daemon-mirror
+        // hash, which `memory_engine/_util.py:42` names as a different,
+        // non-lowered hash in a different namespace.
+        guard let row = try Row.fetchOne(
+            db,
+            sql: "SELECT engine_memory_id, body FROM agent_memory_bodies WHERE memory_id = ? LIMIT 1",
+            arguments: [memoryID]
+        ) else {
+            return nil
+        }
+        let engineMemoryID: String = row["engine_memory_id"] ?? ""
+        let body: String = row["body"] ?? ""
+        // An empty body cannot be the body a team fact landed with — the engine
+        // refuses `EMPTY_MEMORY` — so a scrubbed row asks no question here.
+        guard engineMemoryID.isEmpty == false, body.isEmpty == false else { return nil }
+
+        let teamPrefix = "\(TeamMemoryPullService.inboxDocIDPrefix)%"
+        let hasTeamRows = try Bool.fetchOne(
+            db,
+            sql: """
+            SELECT EXISTS(
+                SELECT 1 FROM agent_memory_inbox WHERE user_id = ? AND doc_id LIKE ? LIMIT 1
+            )
+            """,
+            arguments: [userID, teamPrefix]
+        ) ?? false
+        guard hasTeamRows else { return nil }
+
+        let canonicalBodyHash = TeamMemorySyncService.canonicalBodyHash(body)
+        var derivationCache: [String: String] = [:]
+        let payloads = try String.fetchCursor(
+            db,
+            sql: """
+            SELECT payload_json
+            FROM agent_memory_inbox
+            WHERE user_id = ? AND doc_id LIKE ?
+            ORDER BY remote_updated_at DESC
+            LIMIT ?
+            """,
+            arguments: [userID, teamPrefix, teamProvenanceScanLimit + 1]
+        )
+        var scanned = 0
+        while let payload = try payloads.next() {
+            scanned += 1
+            if scanned > teamProvenanceScanLimit {
+                AppLogger.dataStore.silentFailure(
+                    "team provenance walk hit its scan bound before matching",
+                    error: MemoryTimelineError.historyUnavailable("team provenance scan bound reached"),
+                    context: ["bound": String(teamProvenanceScanLimit)]
+                )
+                return nil
+            }
+            if let provenance = parkedTeamProvenance(
+                inPayloadJSON: payload,
+                canonicalBodyHash: canonicalBodyHash,
+                matching: engineMemoryID,
+                derivationCache: &derivationCache
+            ) {
+                return provenance
+            }
+        }
+        return nil
+    }
+
     /// Pulls the writing device out of a parked cloud payload, accepting each
     /// spelling the engine's own meta lookup accepts.
     private static func writerDevice(inPayloadJSON json: String) -> String? {
+        payloadString(inPayloadJSON: json, keys: ["writerDevice", "writer_device", "deviceId", "device_id"])
+    }
+
+    /// The first non-empty string among `keys` in a parked cloud payload.
+    ///
+    /// One parser for every routing field that rides INSIDE `payloadJSON`
+    /// (`writerDevice`, and the team lane's `teamID` / `authorUID` and the three
+    /// identity fields), because they are all read the same way and a second
+    /// copy would drift on the byte bound alone. Both spellings are accepted for
+    /// the same reason the device lookup accepts four: the engine's own meta
+    /// lookup does.
+    private static func payloadString(inPayloadJSON json: String, keys: [String]) -> String? {
+        guard payloadIsWithinParseBound(json), let data = json.data(using: .utf8) else { return nil }
+        let object: Any
+        do {
+            object = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            AppLogger.dataStore.silentFailure("Unparseable agent_memory_inbox payload_json", error: error)
+            return nil
+        }
+        guard let dictionary = object as? [String: Any] else { return nil }
+        for key in keys {
+            if let value = dictionary[key] as? String,
+               value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                return value
+            }
+        }
+        return nil
+    }
+
+    /// The one byte bound on parsing a parked payload, shared by both readers so
+    /// the team lift cannot quietly parse something the device lookup refuses to.
+    private static func payloadIsWithinParseBound(_ json: String) -> Bool {
         guard json.utf8.count <= memoryTimelinePayloadByteLimit else {
             AppLogger.dataStore.silentFailure(
                 "agent_memory_inbox payload_json past the timeline parse bound",
@@ -340,23 +628,8 @@ extension ControlPlaneStore {
                     "bytes": String(json.utf8.count)
                 ]
             )
-            return nil
+            return false
         }
-        guard let data = json.data(using: .utf8) else { return nil }
-        let object: Any
-        do {
-            object = try JSONSerialization.jsonObject(with: data)
-        } catch {
-            AppLogger.dataStore.silentFailure("Unparseable agent_memory_inbox payload_json", error: error)
-            return nil
-        }
-        guard let dictionary = object as? [String: Any] else { return nil }
-        for key in ["writerDevice", "writer_device", "deviceId", "device_id"] {
-            if let value = dictionary[key] as? String,
-               value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                return value
-            }
-        }
-        return nil
+        return true
     }
 }

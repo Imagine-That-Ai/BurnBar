@@ -69,6 +69,16 @@ struct MemoryTimelineView: View {
                 }
             }
 
+            if let badge = model.teamFactBadge {
+                Text(badge)
+                    .font(.system(size: 9, weight: .semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(DesignSystem.Colors.whimsy.opacity(0.14))
+                    .foregroundStyle(DesignSystem.Colors.whimsy)
+                    .clipShape(Capsule())
+            }
+
             if let device = model.writerDevice {
                 Label("Arrived from \(device)", systemImage: "laptopcomputer")
                     .font(DesignSystem.Typography.tiny)
