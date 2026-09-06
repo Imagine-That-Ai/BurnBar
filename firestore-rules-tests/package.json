@@ -27,8 +27,8 @@
     "test:roaming-profile": "firebase emulators:exec --only firestore --project burnbar-test 'node roaming-profile.test.js'"
   },
   "dependencies": {
-    "@firebase/rules-unit-testing": "^5.0.1",
-    "firebase": "12.17.1"
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "12.18.0"
   },
   "license": "AGPL-3.0-only"
 }
