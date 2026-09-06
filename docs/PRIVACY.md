@@ -100,6 +100,23 @@ Turning the feature off stops all replication; deleting a memory writes a forget
 
 **Reading your own sync state.** Privacy & Indexing → Memory → "Memory sync status" shows how long it has been since this Mac pulled a memory, how long since it pulled a deletion, when its device-sync consent marker was last refreshed, and how many pulled memories are still waiting for the memory engine. Every number is read from this Mac's own encrypted database, is shown only to you, and is never uploaded or reported anywhere. Anything this Mac did not actually measure is shown as a dash rather than as a zero.
 
+### Optional Team Memory Spaces (opt-in per team, paid entitlement)
+
+If you turn on "Sync memories with this team" for a specific team in **Settings → Privacy**, approved project memories for projects that are linked to that team are shared with the team's other members in `team_memory_facts/{teamId}/facts`. It is off for every team by default, and it is a strict subset of your own memory sync: turning off "Back up approved memories" or "Sync memories to my other devices", signing out, or losing the Data Vault entitlement stops every team too.
+
+**What the lane is.** It is **blind**, like the personal one. The body, kind, scope, confidence and project of every team memory are sealed on your Mac with a team vault key that is generated on a member's Mac, held in Keychains, and distributed only as ECIES-wrapped envelopes addressed to each member's individual trusted devices. OpenBurnBar servers hold ciphertext, a 64-hex document id that is a keyed hash under a key they have never seen, up to fifty opaque source hashes under that same key, a coarse `kind` from an eleven-value vocabulary, the author's user id, the team's key generation and three timestamps. They hold no memory text, no citations, no embeddings, no project names and no team key.
+
+**What the server does see, and it is not nothing.** The server owns the *roster*, because no client can be trusted to assert who is on a team. That means four things are visible to it by design and are not hidden: **team size**, **join and leave timing**, **per-member write volume** (every fact document carries a plaintext author id and a replication timestamp, so who contributes how much, and when, is countable), and the **distribution of `kind` values** across a team. Nothing else.
+
+**What a team space is NOT.** Every active member of a team holds the team vault key, so **every active member can read every team fact**. The per-team switch is a contribution and display control, not a confidentiality boundary: a team space does not protect one member from another, and a shared symmetric key cannot. What it does guarantee is that membership is enforced by the server and cannot be forged by a client, that non-members and removed members are cut off at the security rules and cryptographically at the same moment, and that the author recorded on a stored fact is immutable — even to a team admin.
+
+**Joining, and leaving.** These two properties cannot be changed by any setting, and the app says both before you act:
+
+1. **Joining a team grants read access to the team's existing history.** Before the roster makes you an active member, a team admin's Mac issues your devices an encrypted copy of every team key generation the team still retains — so from the moment you can sync at all, you can open everything the team has ever sealed, including memories contributed before you joined.
+2. **Leaving a team protects future memories only.** Leaving or being removed cuts your access at the next read or write and causes the team key to rotate, so memories sealed afterwards are unreadable to you. It cannot erase memories or keys already downloaded onto your devices, and nothing can.
+
+Deleting the individual memories you contributed is always available to you, on a lapsed subscription too — the server's rules permit a member to delete only rows they authored, and deliberately do not require an active entitlement to do it, so a billing state can never trap your own contributions. Erasing a whole team space is *not* offered from your account-deletion path: the space belongs to every member, and deleting it because one member left would destroy the others' data.
+
 ### Optional Diagnostics (opt-in only)
 
 If you enable crash reporting or diagnostics, anonymized crash reports may be sent to Sentry. This is disabled by default.

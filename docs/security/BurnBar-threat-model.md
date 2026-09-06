@@ -429,6 +429,28 @@ Audit note: metadata and search/index fields are intentionally not hidden, and l
 
 Audit note: this is a strong code path, but it rests on endpoint key security and correct production enforcement.
 
+### Team Memory Spaces (memory program D16)
+
+A fourth blind lane beside the personal memory one, with a server-owned membership authority. Threat model, in the terms of §6:
+
+- **Curious or compromised server / operator.** Sees, per team fact: an AES-256-GCM ciphertext it holds no key for; a 64-hex document id that is an HMAC under a key it has never seen (`teamSlugKey`, which never rotates and never seals anything); up to fifty opaque source HMACs under that same key; a coarse `kind`; the author's uid; the team's key generation; and three timestamps. It also sees ECIES-wrapped per-device key envelopes it cannot open. It never sees plaintext, embeddings, citations, project names, or any team key.
+- **Non-member.** Denied at `firestore.rules` on every read and every write. The rules `get()` the live roster on each request, so there is no cached grant to outlive a change.
+- **Ex-member.** Cut off at that same roster `get()` the instant `status` changes — not at token expiry — and cannot decrypt anything sealed under the generation the subsequent rotation introduces.
+- **Forwarded invite.** Worthless. `inviteTeamMember` resolves the invitee's uid server-side from a verified email and stores only `sha256(token)`; `acceptTeamInvite` requires `request.auth.uid === invite.inviteeUid` and a verified email claim. The token is single-use and expires in seven days.
+- **Cross-team ciphertext splice.** The AAD carries `team:<teamId>`, so a blob moved between teams fails its AES-GCM tag — and the rules refuse the write before that.
+- **Roster-tampering client.** `allow write: if false` on `team_rosters/**`, unconditionally, with no callable anywhere that accepts a membership assertion. Eight App-Check-enforced callables are the only path (`createTeam`, `inviteTeamMember`, `acceptTeamInvite`, `promoteTeamMember`, `removeTeamMember`, `rotateTeamKey`, `abandonTeamKeyGeneration`, `recordTeamRewrapComplete`), each appending to an append-only audit log.
+- **Client claiming a rotation it never ran.** `rewrapCompletedKeyVersion` — the "the corpus has actually been re-sealed" marker every member reads — is written only by the admin-only `recordTeamRewrapComplete` callable through the Admin SDK, and only for the roster's current key generation.
+
+**The named trust assumption, stated verbatim as the design states it:**
+
+> **Every active member of a team holds the team vault key and can therefore read every team fact.** Consent is a display and contribution control, not a confidentiality boundary. A team gate must protect member A from member B — and this design does **not** make that claim, because a shared symmetric key cannot. What it does claim is that *membership itself* is server-enforced and unforgeable by clients, that non-members and ex-members are cut off cryptographically and at the rules simultaneously, and that authorship of a stored fact is immutable even to an admin. A member who runs a modified client can read everything their key opens and can contribute facts their own device fabricated; the audit log records who wrote what, and that is the whole of the protection against a hostile insider.
+
+**Server-side residual metadata.** Four things the server can infer and this design does not hide: **team size** (the roster is a server-owned collection it writes itself); **join and leave timing** (roster mutations are server-side callables, and each one is stamped); **per-member write volume** (every fact document carries a plaintext author `uid` and a `replicatedAt`, so who contributes how much, and when, is countable); and the **`kind` distribution** across a team (one of eleven values, plaintext, because the rules validate it). Nothing else is.
+
+**Rotation protects future writes only.** A departed member keeps `teamVaultKey_v1…vN` and every fact already replicated to their device. Rotation makes facts sealed under `v(N+1)` undecryptable to them and the roster cutoff makes the collection unreadable to them; neither retracts bits already sent. `teamSlugKey` is retained by every member who ever held it and therefore never seals content — it names documents, it does not protect them.
+
+Audit note: the two-clone integration test for cross-member project-id convergence does not exist yet, so "two members of one team derive the same document id for the same fact" is proved by unit tests and by construction (a checked-in `teamProjectId`), not end to end.
+
 ### Provider Secret Storage
 
 - Hosted/cloud-refreshable credentials are normalized and validated through backend provider adapters, then stored as Secret Manager envelopes encrypted with a KMS-wrapped DEK (`providerAccounts.ts:168-249`, `secrets.ts:1-263`).
@@ -467,6 +489,7 @@ Audit note: this is a local trust boundary. A signed app compromise or local pri
 | Metadata privacy | Some content fields sealed; push previews minimized; project memory IDs opaque | Low/medium | Significant metadata remains visible by design |
 | Availability | Rate limits, TTLs, retries, size caps, sweeper patterns, process management | Medium | Firebase/APNs/FCM/provider/local runtime outages remain best-effort |
 | Admin blindness | Sealed content bodies can remain confidential from cloud/admin without endpoint keys | Narrow | Admins can see metadata, decrypt hosted provider secrets with IAM/KMS, delete/corrupt data, deploy bad code/rules |
+| Team memory confidentiality from the server | Team-key AES-GCM with `team:<teamId>` AAD, keyed opaque document ids, per-device ECIES key envelopes; the roster is server-owned and client-unwritable | Medium/high for the server-facing claim | NOT a boundary between members: every active member holds the team key and can read every team fact. Team size, join/leave timing, per-member write volume and the `kind` distribution stay visible. Rotation protects future writes only |
 
 ## 10. Security Claims Review
 
@@ -480,6 +503,7 @@ Audit note: this is a local trust boundary. A signed app compromise or local pri
 6. Hosted provider credentials are kept out of Firestore plaintext and are stored in Secret Manager using KMS-backed envelope encryption.
 7. Agent reply push notifications use a generic preview rather than message text when content is sealed.
 8. Encrypted session backups and search results store sealed bodies/previews/snippets, while search operates over keyed hashes and plaintext facets.
+9. Team memory membership is server-enforced: `firestore.rules` denies every client write to `team_rosters/**`, invites are bound to the invitee's uid at issue, and a removed member is refused on the next read or write rather than at token expiry.
 
 ### Claims We Cannot Defend
 
@@ -494,6 +518,8 @@ Audit note: this is a local trust boundary. A signed app compromise or local pri
 9. "Local agents are sandboxed." The reviewed process runners launch local executables with user-level process privileges; no hard sandbox is evident from those files.
 10. "Hosted provider credentials are zero-knowledge." Hosted/cloud-refreshable provider credentials are intentionally decryptable by backend infrastructure with the right IAM/KMS access.
 11. "Hosted MCP can search decrypted CloudVault content in the cloud by default." The hosted path cannot derive vault trapdoors without the local decrypt shim unless an explicit remote-readable mode is separately enabled and audited.
+12. "A team memory space keeps one member's memories private from another." It does not, and does not claim to: the team vault key is shared by every active member. It is a contribution and display boundary, plus a server-facing confidentiality boundary — not a member-to-member one.
+13. "Leaving a team removes a departed member's access to what they already had." Rotation and the roster cutoff stop future reads; neither retracts facts or keys already replicated to that member's devices. The same asymmetry is visible in the departed member's own UI and is stated there rather than hidden: facts already parked from a team they have left keep their provenance badge, which drops the contributor attribution and reads `Team Fact · from a team this Mac no longer lists` (`TeamMemoryCopy.teamFactFormerTeam`). Leaving retires this Mac's local sync records for that team immediately — pull cursor, push watermark and project-link record — so no new team fact arrives, but nothing already on the device is withdrawn.
 
 ## 11. Residual Risks
 

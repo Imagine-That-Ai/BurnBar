@@ -93,3 +93,12 @@ docs/security/SECURITY_REMEDIATION_2026-06-09.md ::: no one in the middle ::: 1
 docs/PRODUCT_FOCUS_AND_ONBOARDING_PLAN.md ::: zero-knowledge ::: 1
 docs/product-focus/FEATURE_INVENTORY.md ::: zero-knowledge ::: 2
 docs/product-focus/MONETIZATION_AND_TRIAL_SPEC.md ::: zero-knowledge ::: 1
+# Team memory design spec (memory program D16 / P22, 2026-09-05): the checked-in
+# copy of the D16 design document. Every occurrence below is inside the PROHIBITION
+# itself — the constraints table naming this very gate and its banned phrases, the
+# defect row that identifies the held attempt's "zero-knowledge" wording as defect
+# 7, and the rewrite list that says the same string must be replaced with "blind".
+# An internal design document, not shipped user copy; the shipped strings live in
+# AgentLens/Views/Memory/TeamMemoryCopy.swift and say "blind".
+docs/superpowers/plans/2026-09-05-team-memory-design.md ::: zero-knowledge ::: 3
+docs/superpowers/plans/2026-09-05-team-memory-design.md ::: zero knowledge ::: 1
