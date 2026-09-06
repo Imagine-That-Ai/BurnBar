@@ -79,23 +79,31 @@ enum MemoryExtractionPromptBuilder {
     /// budget is exceeded (recent turns carry the durable signal; the terminal
     /// assistant commit that triggered extraction is the newest).
     static func renderTranscript(lines: [TranscriptLine], maxChars: Int) -> String {
-        let rendered = lines.map { line -> String in
+        let rendered = lines.map { line -> (header: String, body: String) in
             let collapsed = line.text
                 .replacingOccurrences(of: "\r\n", with: "\n")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            return "[\(line.messageID)] \(line.role): \(collapsed)"
+            return ("[\(line.messageID)] \(line.role): ", collapsed)
         }
 
         guard maxChars > 0 else { return "" }
 
         var kept: [String] = []
         var used = 0
-        for entry in rendered.reversed() {
+        for line in rendered.reversed() {
+            let entry = line.header + line.body
             if entry.count > maxChars, kept.isEmpty {
-                // Keep the TAIL of a single oversized turn. `prefix` here kept the
-                // OLDEST slice, which inverted this function's whole contract —
-                // the newest text is the reason extraction ran.
-                kept.append(String(entry.suffix(maxChars)))
+                // Keep the TAIL of a single oversized turn — the newest text is the
+                // reason extraction ran, so `prefix` here would keep the OLDEST
+                // slice and invert this function's whole contract. The `[id] role:`
+                // header still leads: the prompt forbids inventing ids, so a slice
+                // that arrives without one is a slice the model cannot cite.
+                let bodyBudget = maxChars - line.header.count
+                kept.append(
+                    bodyBudget > 0
+                        ? line.header + String(line.body.suffix(bodyBudget))
+                        : String(line.header.prefix(maxChars))
+                )
                 break
             }
             let cost = entry.count + 1 // +1 for the joining newline

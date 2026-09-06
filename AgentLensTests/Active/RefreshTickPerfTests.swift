@@ -501,26 +501,44 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         )
     }
 
-    func test_backgroundTickDoesNotHydrateBeforePresentationDemand() async throws {
+    /// The status item is a presentation consumer that is ALWAYS on screen, so it
+    /// counts as standing demand: the first background tick after ingestion
+    /// hydrates once and prints the automatic first number instead of leaving the
+    /// menu bar icon-only until someone opens the popover. The O(delta) invariant
+    /// this file exists to pin is that it happens EXACTLY once — every later tick
+    /// must still return on the write marker without touching the aggregate.
+    func test_backgroundTickHydratesOnceForTheStatusItemThenStaysCold() async throws {
         let store = try makeStore()
         store.nowProvider = { [noon] in noon }
         try await store.insert([sampleUsage(seed: 1), sampleUsage(seed: 2)])
 
         XCTAssertNil(store.debugLastReloadedUsageWriteMarkerForTesting)
+        XCTAssertFalse(store.debugHasLoadedUsagePresentationForTesting)
         let v0 = store.usagesVersion
         await store.reloadUsagesIfChanged()
 
-        XCTAssertTrue(store.usages.isEmpty)
-        XCTAssertEqual(store.usagesVersion, v0)
-        XCTAssertNil(store.lastRefresh)
-        XCTAssertFalse(store.debugHasLoadedUsagePresentationForTesting)
-        XCTAssertNotNil(store.debugLastReloadedUsageWriteMarkerForTesting)
-
-        await store.loadUsagePresentationIfNeeded()
-
         XCTAssertEqual(store.usages.count, 2)
         XCTAssertEqual(store.usagesVersion, v0 &+ 1)
+        XCTAssertNotNil(store.lastRefresh)
         XCTAssertTrue(store.debugHasLoadedUsagePresentationForTesting)
+        XCTAssertNotNil(store.debugLastReloadedUsageWriteMarkerForTesting)
+        let generation = store.debugRefreshGenerationForTesting
+
+        await store.reloadUsagesIfChanged()
+
+        XCTAssertEqual(
+            store.debugRefreshGenerationForTesting,
+            generation,
+            "An unchanged write marker must not re-run the multi-window aggregate."
+        )
+        XCTAssertEqual(store.usagesVersion, v0 &+ 1)
+
+        // The one hydration already satisfied explicit demand, so opening the
+        // popover costs nothing beyond it.
+        await store.loadUsagePresentationIfNeeded()
+
+        XCTAssertEqual(store.debugRefreshGenerationForTesting, generation)
+        XCTAssertEqual(store.usages.count, 2)
     }
 
     func test_repeatedPresentationLoadIsIdempotent() async throws {

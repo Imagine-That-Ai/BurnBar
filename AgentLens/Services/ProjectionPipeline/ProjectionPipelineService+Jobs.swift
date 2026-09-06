@@ -158,15 +158,30 @@ extension ProjectionPipelineService {
             }
 
             do {
-                try await process(leasedJob)
-                let completed = try await dataStore.markProjectionJobCompleted(
-                    id: leasedJob.id,
-                    leaseOwner: leaseOwner,
-                    completedAt: nowProvider()
-                )
-                guard completed else { continue }
-                try await updateSubsystemHealthAfterCompletion(for: leasedJob)
-                report.completedJobs += 1
+                switch try await process(leasedJob) {
+                case .completed:
+                    let completed = try await dataStore.markProjectionJobCompleted(
+                        id: leasedJob.id,
+                        leaseOwner: leaseOwner,
+                        completedAt: nowProvider()
+                    )
+                    guard completed else { continue }
+                    try await updateSubsystemHealthAfterCompletion(for: leasedJob)
+                    report.completedJobs += 1
+                case .deferred(let availableAt):
+                    // The job made progress but is not finished. Park the SAME
+                    // durable row on a future `availableAt` instead of completing
+                    // it: completing here is what silently truncated a full-corpus
+                    // re-embed at one slice. The worker sleeps until `availableAt`
+                    // (see `UsageAggregator.scheduleNextProjectionSweepIfNeeded`)
+                    // rather than polling, so the wait costs nothing.
+                    _ = try await dataStore.deferProjectionJob(
+                        id: leasedJob.id,
+                        leaseOwner: leaseOwner,
+                        availableAt: availableAt,
+                        updatedAt: nowProvider()
+                    )
+                }
             } catch {
                 let code = ProjectionPipelineError.code(for: error)
                 let message = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
@@ -320,7 +335,7 @@ extension ProjectionPipelineService {
         }
     }
 
-    internal func process(_ job: ProjectionJobRecord) async throws {
+    internal func process(_ job: ProjectionJobRecord) async throws -> ProjectionJobProcessingOutcome {
         switch job.jobType {
         case .project, .reproject:
             try await processProjection(job)
@@ -332,8 +347,17 @@ extension ProjectionPipelineService {
         case .rebuild:
             try await processRebuild()
         case .reembed:
-            try await processReembed(job)
+            // A re-embed lease covers at most one embedding slice
+            // (`ProjectionPipelineRuntimeTuning.reembedSliceSize`). When the
+            // corpus outruns that slice the job is NOT done: hand the caller a
+            // deferral so the same durable row is rescheduled and the remaining
+            // chunks are covered on later passes.
+            let slice = try await processReembed(job)
+            if slice.hasMore {
+                return .deferred(until: nowProvider().addingTimeInterval(reembedContinuationDelay))
+            }
         }
+        return .completed
     }
 
 }
