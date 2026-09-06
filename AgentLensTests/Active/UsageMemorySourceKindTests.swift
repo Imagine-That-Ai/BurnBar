@@ -252,6 +252,224 @@ final class UsageMemorySourceKindTests: XCTestCase {
         XCTAssertTrue(usageDelete)
     }
 
+    // MARK: - Reseal preserves the A-MEM context sentence
+
+    /// Seeds a `safari_ask` memory carrying an A-MEM context sentence.
+    @discardableResult
+    private func addUsageMemoryWithContext(
+        store: ControlPlaneStore,
+        id: MemoryID,
+        body: String = "Prefers GRDB migrations reviewed before merge.",
+        context: String? = "Asked while reading the GRDB migration docs.",
+        now: Date
+    ) async throws -> Memory {
+        try await store.addMemoryAuthorityRecord(
+            MemoryAddRequest(
+                text: body,
+                kind: .fact,
+                scope: MemoryScope(userID: "user-1"),
+                confidence: 0.6,
+                reviewStatus: .quarantined
+            ),
+            id: id,
+            sourceKind: .safariAsk,
+            context: context,
+            now: now,
+            enabled: true
+        )
+    }
+
+    private func snapshot(
+        _ queue: DatabaseQueue,
+        memoryID: MemoryID
+    ) async throws -> (json: String, decoded: ControlPlaneStore.MemoryBodySnapshot) {
+        let json = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT snapshot_json FROM memory_body_snapshots WHERE memory_id = ?",
+                arguments: [memoryID]
+            )
+        }
+        let unwrapped = try XCTUnwrap(json)
+        return (
+            unwrapped,
+            try JSONDecoder.memorySnapshotDecoder.decode(
+                ControlPlaneStore.MemoryBodySnapshot.self,
+                from: Data(unwrapped.utf8)
+            )
+        )
+    }
+
+    /// The defect this guards: the reseal used to call `memoryBodySnapshotJSON`
+    /// without `context:`, so a body edit dropped the A-MEM context sentence
+    /// and silently downgraded the snapshot from schemaVersion 2 to 1.
+    func test_bodyUpdatePreservesUsageContextAndSchemaVersion() async throws {
+        let (queue, store) = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_800_000_400)
+        try await addUsageMemoryWithContext(store: store, id: "mem-usage-reseal", now: now)
+
+        let updated = try await store.updateMemoryAuthorityRecord(
+            id: "mem-usage-reseal",
+            patch: MemoryPatch(text: "Prefers GRDB migrations reviewed by two people.", confidence: 0.75),
+            sourceKinds: MemorySourceKind.usageKinds,
+            now: now.addingTimeInterval(60)
+        )
+        XCTAssertTrue(updated)
+
+        let (_, resealed) = try await snapshot(queue, memoryID: "mem-usage-reseal")
+        XCTAssertEqual(resealed.schemaVersion, 2)
+        XCTAssertEqual(resealed.context, "Asked while reading the GRDB migration docs.")
+        XCTAssertEqual(resealed.body, "Prefers GRDB migrations reviewed by two people.")
+        XCTAssertEqual(resealed.sourceKind, .safariAsk)
+
+        // The reseal re-derives the hash from the new body, in the snapshot and
+        // in the `body_hash` column that dedup joins on.
+        let expectedHash = ControlPlaneStore.sha256Hex("Prefers GRDB migrations reviewed by two people.")
+        XCTAssertEqual(resealed.bodyHash, expectedHash)
+        let columnHash = try await queue.read { db in
+            try String.fetchOne(db, sql: "SELECT body_hash FROM memory_body_snapshots WHERE memory_id = 'mem-usage-reseal'")
+        }
+        XCTAssertEqual(columnHash, expectedHash)
+    }
+
+    /// Chat never has a context sentence, so its reseal must stay on
+    /// schemaVersion 1 and must not start emitting a `context` key.
+    func test_chatBodyUpdateStaysSchemaVersionOneWithoutContextKey() async throws {
+        let (queue, store) = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_800_000_500)
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(text: "Prefers dark mode.", kind: .preference, scope: MemoryScope(userID: "user-1")),
+            id: "mem-chat-reseal",
+            now: now,
+            enabled: true
+        )
+
+        let updated = try await store.updateChatMemoryAuthorityRecord(
+            id: "mem-chat-reseal",
+            patch: MemoryPatch(text: "Prefers dark mode everywhere."),
+            now: now.addingTimeInterval(60)
+        )
+        XCTAssertTrue(updated)
+
+        let (json, resealed) = try await snapshot(queue, memoryID: "mem-chat-reseal")
+        XCTAssertEqual(resealed.schemaVersion, 1)
+        XCTAssertNil(resealed.context)
+        XCTAssertFalse(json.contains("\"context\""))
+        XCTAssertEqual(resealed.body, "Prefers dark mode everywhere.")
+    }
+
+    /// A caller may change the context sentence deliberately, with no body
+    /// patch — the body and its hash survive the reseal untouched.
+    func test_contextReplaceRewritesSentenceWithoutTouchingBody() async throws {
+        let (queue, store) = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_800_000_600)
+        try await addUsageMemoryWithContext(store: store, id: "mem-usage-context-only", now: now)
+
+        let updated = try await store.updateMemoryAuthorityRecord(
+            id: "mem-usage-context-only",
+            patch: MemoryPatch(),
+            sourceKinds: MemorySourceKind.usageKinds,
+            context: .replace("Asked again while reviewing a migration PR."),
+            now: now.addingTimeInterval(60)
+        )
+        XCTAssertTrue(updated)
+
+        let (_, resealed) = try await snapshot(queue, memoryID: "mem-usage-context-only")
+        XCTAssertEqual(resealed.schemaVersion, 2)
+        XCTAssertEqual(resealed.context, "Asked again while reviewing a migration PR.")
+        XCTAssertEqual(resealed.body, "Prefers GRDB migrations reviewed before merge.")
+        XCTAssertEqual(resealed.bodyHash, ControlPlaneStore.sha256Hex("Prefers GRDB migrations reviewed before merge."))
+    }
+
+    /// `.replace(nil)` is the one sanctioned way to drop the sentence, and it
+    /// takes the snapshot back to schemaVersion 1 without a `context` key.
+    func test_contextReplaceWithNilClearsSentenceAndDowngradesSchemaVersion() async throws {
+        let (queue, store) = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_800_000_700)
+        try await addUsageMemoryWithContext(store: store, id: "mem-usage-context-clear", now: now)
+
+        let updated = try await store.updateMemoryAuthorityRecord(
+            id: "mem-usage-context-clear",
+            patch: MemoryPatch(),
+            sourceKinds: MemorySourceKind.usageKinds,
+            context: .replace(nil),
+            now: now.addingTimeInterval(60)
+        )
+        XCTAssertTrue(updated)
+
+        let (json, resealed) = try await snapshot(queue, memoryID: "mem-usage-context-clear")
+        XCTAssertEqual(resealed.schemaVersion, 1)
+        XCTAssertNil(resealed.context)
+        XCTAssertFalse(json.contains("\"context\""))
+    }
+
+    /// G7 runs over the context sentence too — it is plaintext at rest in
+    /// `snapshot_json`, so a secret there must fail closed before the reseal.
+    func test_replacementContextSecretIsRejectedBeforeReseal() async throws {
+        let (queue, store) = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_800_000_800)
+        try await addUsageMemoryWithContext(store: store, id: "mem-usage-context-secret", now: now)
+
+        do {
+            _ = try await store.updateMemoryAuthorityRecord(
+                id: "mem-usage-context-secret",
+                patch: MemoryPatch(),
+                sourceKinds: MemorySourceKind.usageKinds,
+                context: .replace("Asked right after pasting sk-ant-1234567890abcdef1234567890."),
+                now: now.addingTimeInterval(60)
+            )
+            XCTFail("Expected a secret-bearing context sentence to be rejected before the reseal.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.ChatMemoryAuthorityError,
+                .secretRejected(labels: ["anthropic-api-key"])
+            )
+        }
+
+        let (_, unchanged) = try await snapshot(queue, memoryID: "mem-usage-context-secret")
+        XCTAssertEqual(unchanged.context, "Asked while reading the GRDB migration docs.")
+
+        let audit = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: """
+                SELECT labels_json FROM memory_audit
+                WHERE subject_id = 'mem-usage-context-secret' AND action = 'memory.secret_rejected'
+                """
+            )
+        }
+        XCTAssertTrue(try XCTUnwrap(audit).contains("source_kind:safari_ask"))
+    }
+
+    /// Same gate on the add path: the context sentence is sealed alongside the
+    /// body, so it must be scanned there as well.
+    func test_addPathRejectsSecretInContextSentence() async throws {
+        let (queue, store) = try makeStore()
+
+        do {
+            try await addUsageMemoryWithContext(
+                store: store,
+                id: "mem-usage-add-context-secret",
+                context: "Asked right after pasting sk-ant-1234567890abcdef1234567890.",
+                now: Date(timeIntervalSince1970: 1_800_000_900)
+            )
+            XCTFail("Expected a secret-bearing context sentence to be rejected before persistence.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.ChatMemoryAuthorityError,
+                .secretRejected(labels: ["anthropic-api-key"])
+            )
+        }
+
+        let persisted = try await queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM agent_memories WHERE id = 'mem-usage-add-context-secret'"
+            ) ?? 0
+        }
+        XCTAssertEqual(persisted, 0)
+    }
+
     func test_usageSecretRejectionAuditsWithUsageSourceKindLabel() async throws {
         let (queue, store) = try makeStore()
         let secret = "sk-ant-1234567890abcdef1234567890"

@@ -4,7 +4,7 @@ import CryptoKit
 import OpenBurnBarCore
 
 extension ControlPlaneStore {
-    struct MemoryBodySnapshot: Codable {
+    struct MemoryBodySnapshot: Codable, Sendable {
         let schemaVersion: Int
         let memoryID: MemoryID
         let sourceKind: MemorySourceKind
@@ -132,6 +132,27 @@ extension ControlPlaneStore {
             ])
         }
         return json
+    }
+
+    /// Decode the sealed snapshot for `id` on an existing connection.
+    ///
+    /// Body-only callers go through `openChatMemoryBody`; the reseal path needs
+    /// the whole snapshot so an edit can carry the A-MEM `context` sentence
+    /// forward. Resealing without it would drop the sentence and downgrade the
+    /// snapshot from `schemaVersion` 2 back to 1.
+    static func memoryBodySnapshot(db: Database, id: MemoryID) throws -> MemoryBodySnapshot? {
+        guard let snapshotJSON = try String.fetchOne(
+            db,
+            sql: "SELECT snapshot_json FROM memory_body_snapshots WHERE id = ? AND memory_id = ?",
+            arguments: [memorySnapshotSlug(id), id]
+        ),
+              let data = snapshotJSON.data(using: .utf8)
+        else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(MemoryBodySnapshot.self, from: data)
     }
 
     static func memoryProvenanceID(memoryID: MemoryID, citationID: String) -> String {

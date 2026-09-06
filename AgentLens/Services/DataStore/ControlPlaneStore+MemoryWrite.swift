@@ -4,6 +4,22 @@ import CryptoKit
 import OpenBurnBarCore
 
 extension ControlPlaneStore {
+    /// How a reseal treats the sealed snapshot's A-MEM `context` sentence.
+    ///
+    /// A body edit must never touch it *implicitly*: resealing without carrying
+    /// the stored sentence forward destroys it and downgrades a usage snapshot
+    /// from `schemaVersion` 2 back to 1. `MemoryPatch` deliberately does not
+    /// carry this — the `MemoryServing` contract is frozen and cross-track
+    /// coordinated, so the knob lives on the store method instead.
+    enum MemoryContextEdit: Sendable, Equatable {
+        /// Carry the stored context sentence forward unchanged. The default,
+        /// and the only correct behavior for a body-only edit.
+        case preserve
+        /// Replace the context sentence deliberately. `nil` (or whitespace)
+        /// clears it, taking the snapshot back to `schemaVersion` 1.
+        case replace(String?)
+    }
+
     func updateChatMemoryAuthorityRecord(id: MemoryID, patch: MemoryPatch, now: Date = Date()) async throws -> Bool {
         try await updateMemoryAuthorityRecord(id: id, patch: patch, sourceKinds: [.chat], now: now)
     }
@@ -12,30 +28,50 @@ extension ControlPlaneStore {
         id: MemoryID,
         patch: MemoryPatch,
         sourceKinds: Set<MemorySourceKind>,
+        context: MemoryContextEdit = .preserve,
         now: Date = Date()
     ) async throws -> Bool {
         guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
         let partition = MemoryStoragePartition(existing.sourceKind)
         let patchedBody = patch.text?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let patchedBody {
-            guard patchedBody.isEmpty == false else { throw ChatMemoryAuthorityError.emptyBody }
-            let secretLabels = Self.memoryGateFindingIDs(in: patchedBody)
-            if secretLabels.isEmpty == false {
-                try await appendMemoryAuditEvent(
-                    action: "memory.secret_rejected",
-                    projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
-                    subjectID: id,
-                    labels: [
-                        "memory_id": id,
-                        "source_kind": existing.sourceKind.rawValue,
-                        "labels": secretLabels.joined(separator: ",")
-                    ],
-                    now: now
-                )
-                throw ChatMemoryAuthorityError.secretRejected(labels: secretLabels)
+        if let patchedBody, patchedBody.isEmpty {
+            throw ChatMemoryAuthorityError.emptyBody
+        }
+        // `let`, not `var` — the write closure below captures it, and Swift 6
+        // rejects a captured `var` in concurrently-executing code.
+        let replacementContext: String? = {
+            guard case .replace(let value) = context else { return nil }
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed?.isEmpty == true ? nil : trimmed
+        }()
+        // G7 covers every string this call would seal into `snapshot_json` —
+        // the new body and, when the caller replaces it, the context sentence.
+        // Order-preserving union so a body-only edit reports exactly the labels
+        // it reported before this parameter existed.
+        var secretLabels: [String] = []
+        for text in [patchedBody, replacementContext].compactMap({ $0 }) {
+            for label in Self.memoryGateFindingIDs(in: text) where secretLabels.contains(label) == false {
+                secretLabels.append(label)
             }
         }
+        if secretLabels.isEmpty == false {
+            try await appendMemoryAuditEvent(
+                action: "memory.secret_rejected",
+                projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
+                subjectID: id,
+                labels: [
+                    "memory_id": id,
+                    "source_kind": existing.sourceKind.rawValue,
+                    "labels": secretLabels.joined(separator: ",")
+                ],
+                now: now
+            )
+            throw ChatMemoryAuthorityError.secretRejected(labels: secretLabels)
+        }
 
+        // A reseal is needed when this call changes sealed content: a new body,
+        // or a deliberate context replacement on an unchanged body.
+        let resealsSnapshot = patchedBody != nil || context != .preserve
         let snapshotSlug = Self.memorySnapshotSlug(id)
         let auditLabels = [
             "memory_id:\(id)",
@@ -43,16 +79,28 @@ extension ControlPlaneStore {
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
-            if let patchedBody {
-                let bodyHash = Self.sha256Hex(patchedBody)
+            // Read the stored snapshot inside the write transaction so a
+            // concurrent reseal cannot slip between the read and the rewrite.
+            let stored = try resealsSnapshot ? Self.memoryBodySnapshot(db: db, id: id) : nil
+            // `stored?.body` only carries a context-only edit; a body patch
+            // reseals even when the snapshot row is somehow absent, exactly as
+            // this path did before.
+            if resealsSnapshot, let resealBody = patchedBody ?? stored?.body {
+                let resealContext: String?
+                switch context {
+                case .preserve: resealContext = stored?.context
+                case .replace: resealContext = replacementContext
+                }
+                let bodyHash = Self.sha256Hex(resealBody)
                 let bodyRef = Self.memorySnapshotRef(snapshotSlug)
                 let snapshotJSON = try Self.memoryBodySnapshotJSON(
                     memoryID: id,
-                    body: patchedBody,
+                    body: resealBody,
                     bodyHash: bodyHash,
                     citations: existing.citations,
                     createdAt: existing.createdAt,
-                    sourceKind: existing.sourceKind
+                    sourceKind: existing.sourceKind,
+                    context: resealContext
                 )
                 try db.execute(
                     sql: """
