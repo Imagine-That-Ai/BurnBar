@@ -72,9 +72,13 @@ struct TeamRewrapCompletion: Equatable, Sendable {
 /// which is enough for what it has to decide: whether the next pass on THIS
 /// machine is resuming an unfinished re-key or re-running a finished one. It
 /// holds a job id and a key generation, nothing secret, so it lives in
-/// `UserDefaults` rather than the Keychain. PR 4 promotes it to a roster field
-/// written by `rotateTeamKey`, so every member sees it and not just the admin
-/// who happened to run the pass.
+/// `UserDefaults` rather than the Keychain.
+///
+/// PR 4 PROMOTED IT TO THE ROSTER as well — see `TeamRewrapCompletionPublishing`
+/// below. The local note is KEPT rather than replaced: it is the only thing that
+/// still answers "did THIS machine finish the pass" when the network is down or
+/// the publish itself fails, and losing that would turn every offline retry into
+/// a full re-scan.
 protocol TeamRewrapCompletionRecording: Sendable {
     func completedRewrap(teamId: String) -> TeamRewrapCompletion?
     func recordCompletedRewrap(_ completion: TeamRewrapCompletion, teamId: String)
@@ -100,27 +104,60 @@ struct UserDefaultsTeamRewrapCompletionStore: TeamRewrapCompletionRecording {
     private static func defaultsKey(teamId: String) -> String { "\(defaultsKeyPrefix)\(teamId)" }
 }
 
+/// Publishes a finished re-key to the ROSTER, so every member sees it (memory
+/// program D16 / P22, PR 4 — the promotion PR 2 review N1 deferred).
+///
+/// WHY THE ROSTER AND NOT JUST THE LOCAL NOTE. The local note answers a
+/// machine-local question ("is this pass a resume or a re-run"); "has this
+/// team's corpus actually been re-keyed" is a TEAM question, and a note on one
+/// admin's Mac is invisible to every other member — including the next admin to
+/// pick the job up. `recordTeamRewrapComplete` is an admin-only callable that
+/// stamps `rewrapCompletedKeyVersion` / `rewrapJobId` on `team_rosters/{teamId}`
+/// with the Admin SDK; `firestore.rules` still says `allow write: if false` on
+/// that document, so the field is server-written by construction and no client
+/// can claim a rotation it did not run.
+protocol TeamRewrapCompletionPublishing: Sendable {
+    func publishCompletedRewrap(_ completion: TeamRewrapCompletion, teamId: String) async throws
+}
+
+/// The production publisher: the roster callable client PR 2 already owns.
+struct TeamRosterCallableCompletionPublisher: TeamRewrapCompletionPublishing {
+    let callables: TeamRosterCallableInvoking
+
+    func publishCompletedRewrap(_ completion: TeamRewrapCompletion, teamId: String) async throws {
+        try await callables.recordTeamRewrapComplete(
+            teamId: teamId,
+            keyVersion: completion.teamKeyVersion,
+            rewrapJobId: completion.jobId
+        )
+    }
+}
+
 /// Walks `team_memory_facts/{teamId}/facts` through `CloudSyncFirestoreGateway`
 /// — never a raw `Firestore.firestore()` handle — and re-seals each fact's
 /// `sealedMemory` under the new team key.
 struct TeamCloudVaultRewrapWorker: Sendable {
-    /// NO DATA-DOMAIN REGISTRY ENTRY IN THIS PR (PR 2 review, concern 4). The
-    /// registry is not a private index: every entry is rendered unconditionally
-    /// on `burnbar.ai/privacy`, in the Android privacy labels and in the macOS
-    /// Control Center, and it carries no `status`/`unreleased` concept that
-    /// could hide one. Landing a "Team Memory" row here would publish public
-    /// trust copy for a feature no user can create until PR 4 ships the UI. The
-    /// entry moves to that PR, with the surface it describes.
+    /// THE `team_pensieve` DATA-DOMAIN ENTRY LANDS IN PR 4, WITH THIS UI (PR 2
+    /// review, concern 4). The registry is not a private index: every entry is
+    /// rendered unconditionally on `burnbar.ai/privacy`, in the Android privacy
+    /// labels and in the macOS Control Center, and it carries no
+    /// `status`/`unreleased` concept that could hide one — so a "Team Memory"
+    /// row in PR 2 would have published public trust copy for a feature no user
+    /// could create for two more PRs.
     ///
-    /// Nothing in this lane depends on registry discovery: the rotation flow
-    /// invokes this worker DIRECTLY (`TeamVaultKeyDistributor.rotateTeamKey`),
-    /// unlike the personal lane, which is data-driven over
-    /// `CloudVaultRotationRewrapWorker.documentRewrapDomains`. When the entry
-    /// does land, its `firestorePaths` must stay EMPTY: that field means
-    /// "per-user subcollection" to every consumer — both the macOS and iOS
-    /// personal rewrap workers iterate it as `userRef.collection(id)` — so
-    /// naming `team_memory_facts` there would send a PERSONAL rotation walking a
-    /// user subcollection that does not exist and that the rules deny.
+    /// Its `firestorePaths` is deliberately EMPTY and must stay that way: that
+    /// field means "per-user subcollection" to every consumer — both the macOS
+    /// and iOS personal rewrap workers iterate it as `userRef.collection(id)` —
+    /// so naming `team_memory_facts` there would send a PERSONAL rotation
+    /// walking a user subcollection that does not exist and that the rules deny.
+    ///
+    /// Nothing in this lane depends on registry discovery either way: the
+    /// rotation flow invokes this worker DIRECTLY
+    /// (`TeamVaultKeyDistributor.rotateTeamKey`), unlike the personal lane,
+    /// which is data-driven over
+    /// `CloudVaultRotationRewrapWorker.documentRewrapDomains`.
+    /// `test_a_personal_rotation_never_walks_the_team_fact_path` pins both
+    /// halves.
     static let factsRootCollection = "team_memory_facts"
     static let factsSubcollection = "facts"
     /// The AAD `collection` part every team fact was sealed under. It is the
@@ -135,6 +172,10 @@ struct TeamCloudVaultRewrapWorker: Sendable {
     let gateway: CloudSyncFirestoreGateway
     var batchLimit: Int = 50
     var completionRecorder: TeamRewrapCompletionRecording = UserDefaultsTeamRewrapCompletionStore()
+    /// Optional on purpose. A rewrap driven by a test, or by a caller with no
+    /// signed-in Functions handle, still records the local note; only the
+    /// production rotation flow wires the roster publisher.
+    var completionPublisher: TeamRewrapCompletionPublishing?
 
     /// Re-seal every fact in the team space under `newKeyData`.
     ///
@@ -288,10 +329,34 @@ struct TeamCloudVaultRewrapWorker: Sendable {
             // COMPLETION SIGNAL (PR 2 review N1). Only a pass that left nothing
             // behind records one, so "the roster says rotated" and "the corpus
             // is actually re-keyed" stop being the same claim.
-            completionRecorder.recordCompletedRewrap(
-                TeamRewrapCompletion(jobId: jobId, teamKeyVersion: newTeamKeyVersion),
-                teamId: teamId
-            )
+            let completion = TeamRewrapCompletion(jobId: jobId, teamKeyVersion: newTeamKeyVersion)
+            completionRecorder.recordCompletedRewrap(completion, teamId: teamId)
+            // PR 4: the same fact, published to the roster so every member sees
+            // it. The LOCAL note is written first and unconditionally, because a
+            // failed publish must not make this machine re-scan the whole space
+            // next time — the pass genuinely finished, and only the announcement
+            // did not land. A publish failure is therefore logged and swallowed,
+            // never propagated: the rotation itself already succeeded, and
+            // throwing here would report a completed re-key as a failure.
+            if let completionPublisher {
+                do {
+                    try await completionPublisher.publishCompletedRewrap(completion, teamId: teamId)
+                } catch {
+                    // The REASON, not just the fact (PR 4 review L3). Swallowing
+                    // is right — the rotation finished and only the announcement
+                    // did not land — but a swallowed failure whose only record is
+                    // "it failed" cannot be diagnosed, and this is the field
+                    // every member's "re-sealed" line depends on.
+                    Self.logger.error(
+                        """
+                        team_rewrap_completion_publish_failed \
+                        team=\(teamId, privacy: .public) \
+                        version=\(newTeamKeyVersion, privacy: .public) \
+                        error=\(String(describing: error), privacy: .public)
+                        """
+                    )
+                }
+            }
         }
         return progress
     }

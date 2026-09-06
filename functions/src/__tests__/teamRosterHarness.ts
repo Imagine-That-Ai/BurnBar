@@ -258,6 +258,10 @@ export function seedTeam(overrides: Doc = {}): void {
     slugKeyId: null,
     keyRotationRequired: false,
     membershipEpoch: 0,
+    // Mirrors what `createTeam` writes: "no re-seal pass has finished" is a
+    // stored null, not an absent field (D16 / P22, PR 4).
+    rewrapCompletedKeyVersion: null,
+    rewrapJobId: null,
     createdBy: ADMIN_UID,
     schemaVersion: 1,
     ...overrides,

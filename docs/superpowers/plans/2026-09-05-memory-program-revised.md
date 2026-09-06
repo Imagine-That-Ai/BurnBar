@@ -573,6 +573,32 @@ Swift transport where most of the live defects were.
   Validate: rules red-team (non-member denied; ex-member post-rotation denied); blindness
   proof paragraph updated; UI copy asserted by a test the way the website copy gates assert
   page copy.
+
+  **Status (2026-09-05): the spec landed and grew to FOUR PRs, three of them complete.**
+  The design lives at
+  [`2026-09-05-team-memory-design.md`](2026-09-05-team-memory-design.md), amendments
+  included; the two-PR estimate did not survive contact with the escrow model (keys are
+  per-DEVICE, not per-member) or with the doc-id derivation (a rotation must re-seal in
+  place, so the naming key cannot be the sealing key).
+  - **PR 1 — roster authority, rules, red-team suite.** [#2536]. Six App-Check-enforced
+    callables, uid-bound invites, `allow write: if false` on every roster path, 13 red-team
+    rules cases + BOLA registration.
+  - **PR 2 — key distribution, rotation, in-place rewrap.** Per-device ECIES envelopes,
+    a non-rotating slug key, a rewrap that converges from any retained generation and never
+    touches the outer `updatedAt` (which would freeze every member's watermark).
+  - **PR 3 — client sealer, pull, consent gate, engine provenance.** `TeamMemorySyncGate`
+    ANDed under the whole personal device-sync gate; `teamID` / `authorUID` ride inside
+    `payloadJSON`, so no table and no migration.
+  - **PR 4 — UI, copy, docs, the deferred registry entry, the roster completion field.**
+    The Settings section, `TeamMemoryCopy` + its gate test, the `Team Fact` provenance
+    badge, the `team_pensieve` data domain (held back from PR 2 because every registry row
+    is unconditional public trust copy), and `recordTeamRewrapComplete`, which promotes
+    PR 2's local rotation-completion note to a server-written roster field.
+
+  **NOT SHIPPED until the two-clone integration test exists.** Cross-member project-id
+  convergence is mitigated by the checked-in `teamProjectId` in `.openburnbar/project.json`
+  and proven by unit tests, but never end to end across two real clones over two transports.
+  D16 stays open on that, and on the absent writer/doctor check for the project-link file.
 - **D17 — org kinds/policies as a Remote Config ceiling.** Mirror the fleet-ceiling shape
   with KD12's resolved lever: `orgCeilingResolved` seeded from the active cached RC
   snapshot at init and ANDed into the org lane; member-local memory is a separate lane.

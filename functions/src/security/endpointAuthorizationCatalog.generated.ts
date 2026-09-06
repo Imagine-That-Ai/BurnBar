@@ -3171,6 +3171,28 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "recordTeamRewrapComplete",
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck:
+      "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and refuses any key version but the roster's current activeKeyVersion",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "recordTeamRewrapComplete rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["recordTeamRewrapComplete"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "redeemMissionApprovalAnswer",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",

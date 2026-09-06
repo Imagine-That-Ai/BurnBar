@@ -62,6 +62,15 @@ interface TeamDocument {
   keyRotationRequired: boolean;
   /** Bumped on every change to the ACTIVE member set. See the file header. */
   membershipEpoch: number;
+  /**
+   * The generation whose re-seal pass finished with NOTHING skipped, and the
+   * job that finished it. Null until one has. Written only by
+   * `recordTeamRewrapComplete` (Admin SDK — the rules deny every client write
+   * to this document), so a member reading "re-sealed under generation 3" is
+   * reading a server-recorded fact rather than a client's claim.
+   */
+  rewrapCompletedKeyVersion: number | null;
+  rewrapJobId: string | null;
   createdBy: string;
   schemaVersion: number;
   createdAt: Timestamp | FieldValue;
@@ -81,7 +90,8 @@ type TeamAuditAction =
   | "member_promoted"
   | "member_removed"
   | "key_rotated"
-  | "key_generation_abandoned";
+  | "key_generation_abandoned"
+  | "rewrap_recorded";
 
 /**
  * The team's membership epoch, defaulting to 0 for anything that is not a
@@ -142,6 +152,9 @@ export function readTeam(raw: FirebaseFirestore.DocumentData | undefined, teamId
     slugKeyId: typeof raw.slugKeyId === "string" ? raw.slugKeyId : null,
     keyRotationRequired: raw.keyRotationRequired === true,
     membershipEpoch: readMembershipEpoch(raw),
+    rewrapCompletedKeyVersion:
+      typeof raw.rewrapCompletedKeyVersion === "number" ? raw.rewrapCompletedKeyVersion : null,
+    rewrapJobId: typeof raw.rewrapJobId === "string" ? raw.rewrapJobId : null,
     createdBy: typeof raw.createdBy === "string" ? raw.createdBy : "",
     schemaVersion: typeof raw.schemaVersion === "number" ? raw.schemaVersion : TEAM_ROSTER_SCHEMA_VERSION,
     createdAt: raw.createdAt,

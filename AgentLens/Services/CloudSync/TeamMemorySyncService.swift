@@ -302,6 +302,29 @@ enum TeamMemorySyncService {
         String(CloudVaultCrypto.sha256Hex("\(teamProjectId)|\(engineScope)|\(bodyHash)").prefix(32))
     }
 
+    /// The engine's OWN body hash, recomputed from a body this device holds.
+    ///
+    /// BYTE-IDENTICAL to `memory_engine/_util.py::canonical_body_hash`:
+    /// `sha256_hex(body.lower())`. Lowercased, and that is the whole difference
+    /// that matters — the daemon-mirror hash the app stores in
+    /// `agent_memory_bodies.body_hash` is `sha256_hex(body)` with NO lowering
+    /// (`server.py::_memory_mirror_updated`), which `_util.py:42` names as a
+    /// different hash in a different namespace that "must never be folded into
+    /// this helper". Reading that column and calling it the canonical hash is
+    /// therefore wrong for every body containing one capital letter.
+    ///
+    /// WHY THE APP RECOMPUTES RATHER THAN TRUSTS A FIELD. `_screen_remote_row`
+    /// sets `body_hash = canonical_body_hash(body)` from the GATED body with the
+    /// comment "the payload's `bodyHash` is the sender's advice about its own
+    /// store and is deliberately never trusted as the key". Anything deriving
+    /// the engine's row identity has to make the same move or it derives a
+    /// different identity the moment this device's secret/PII policy redacts the
+    /// body, or the sender's `bodyHash` is simply stale. Pinned across languages
+    /// beside `convergenceKey` for the same reason it is.
+    static func canonicalBodyHash(_ body: String) -> String {
+        CloudVaultCrypto.sha256Hex(body.lowercased())
+    }
+
     /// The opaque document id, HMAC'd under the NON-ROTATING slug key.
     ///
     /// Two members who learned the same fact independently derive the same id

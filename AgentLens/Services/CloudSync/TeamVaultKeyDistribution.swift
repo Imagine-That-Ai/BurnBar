@@ -190,11 +190,12 @@ struct KeychainTeamVaultKeyRing: TeamVaultKeyRing {
     }
 }
 
-/// The three roster callables this lane drives. All are Admin-SDK authorities
-/// and none ever receives a key. `promoteTeamMember` and `rotateTeamKey` verify
+/// The roster callables this lane drives. All are Admin-SDK authorities and
+/// none ever receives a key. `promoteTeamMember` and `rotateTeamKey` verify
 /// envelope COVERAGE (an envelope per pinned device per retained key version,
 /// bound to the pinned fingerprint) before they will move a member to `active`
-/// or record a new key generation.
+/// or record a new key generation; `recordTeamRewrapComplete` stamps a
+/// completion the roster refuses for any generation but the current one.
 ///
 /// `abandonTeamKeyGeneration` is the ESCAPE HATCH from a burned generation. An
 /// admin who mints `v(N+1)`, publishes envelopes and never reaches
@@ -206,10 +207,32 @@ struct KeychainTeamVaultKeyRing: TeamVaultKeyRing {
 /// admin-only, it refuses any version the roster has recorded as active or
 /// retained, and it refuses a version no envelope was ever published for, so it
 /// cannot be used to skip version numbers at will.
+///
+/// EVERY CONFORMER, IN ONE LIST — adding a requirement here breaks each of them,
+/// and a missing one is a build failure in a target the merge queue may not
+/// compile (PR 4 review §5, hazard 4):
+///
+///   * `FirebaseTeamRosterCallableClient` — this file, directly below.
+///   * `RecordingTeamRosterCallables` —
+///     `AgentLensTests/Active/Security/TeamVaultKeyDistributionTests.swift`.
+///
+/// Keep that list exhaustive: a double a later PR introduces belongs on this
+/// list rather than in a third place nobody greps for.
 protocol TeamRosterCallableInvoking: Sendable {
     func promoteTeamMember(teamId: String, uid: String, envelopeIds: [String]) async throws
     func rotateTeamKey(teamId: String, newKeyVersion: Int, envelopeIds: [String]) async throws
     func abandonTeamKeyGeneration(teamId: String, version: Int) async throws
+    /// Stamp "the corpus is actually re-keyed at this generation" on the roster
+    /// (memory program D16 / P22, PR 4 — the promotion PR 2 review N1 deferred
+    /// to the PR that ships a surface to read it).
+    ///
+    /// Separate from `rotateTeamKey` on purpose, and it must stay separate:
+    /// `rotateTeamKey` runs BEFORE a single fact is re-sealed — it has to,
+    /// because the rules pin fact writes to the roster's active generation — so
+    /// folding the marker into it would stamp "re-keyed" on a corpus nothing had
+    /// touched yet, which is precisely the claim N1 exists to stop the roster
+    /// making.
+    func recordTeamRewrapComplete(teamId: String, keyVersion: Int, rewrapJobId: String) async throws
 }
 
 // AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase `Functions` instance;
@@ -245,6 +268,14 @@ final class FirebaseTeamRosterCallableClient: TeamRosterCallableInvoking, @unche
         _ = try await functions.httpsCallable("abandonTeamKeyGeneration").call([
             "teamId": teamId,
             "version": version
+        ])
+    }
+
+    func recordTeamRewrapComplete(teamId: String, keyVersion: Int, rewrapJobId: String) async throws {
+        _ = try await functions.httpsCallable("recordTeamRewrapComplete").call([
+            "teamId": teamId,
+            "keyVersion": keyVersion,
+            "rewrapJobId": rewrapJobId
         ])
     }
 }

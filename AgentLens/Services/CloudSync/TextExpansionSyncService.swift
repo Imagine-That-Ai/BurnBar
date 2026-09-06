@@ -277,10 +277,10 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
     }
 
     private static func snippet(from data: [String: Any], documentID: String, vaultKey: Data) throws -> TextExpansionSnippet? {
-        guard let sealedTitle = sealedText(from: data["sealedTitle"]),
-              let sealedTrigger = sealedText(from: data["sealedTrigger"]),
-              let sealedBody = sealedText(from: data["sealedBody"]),
-              let sealedScope = sealedText(from: data["sealedScope"]),
+        guard let sealedTitle = CloudVaultCrypto.decodeSealedText(from: data["sealedTitle"]),
+              let sealedTrigger = CloudVaultCrypto.decodeSealedText(from: data["sealedTrigger"]),
+              let sealedBody = CloudVaultCrypto.decodeSealedText(from: data["sealedBody"]),
+              let sealedScope = CloudVaultCrypto.decodeSealedText(from: data["sealedScope"]),
               let modeRaw = data["mode"] as? String,
               let mode = TextExpansionMode(rawValue: modeRaw),
               let createdAt = date(from: data["createdAt"]),
@@ -340,18 +340,6 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
         let object = try JSONSerialization.jsonObject(with: data)
         guard let dictionary = object as? [String: Any] else { return [:] }
         return dictionary
-    }
-
-    private static func sealedText(from value: Any?) -> CloudVaultSealedText? {
-        guard let dictionary = value as? [String: Any] else {
-            return nil
-        }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: dictionary)
-            return try JSONDecoder().decode(CloudVaultSealedText.self, from: data)
-        } catch {
-            return nil
-        }
     }
 
     private static func date(from value: Any?) -> Date? {

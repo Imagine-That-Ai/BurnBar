@@ -1214,6 +1214,16 @@ jobs:
       - name: Verify no un-reviewed over-claim copy
         run: bash scripts/ci/verify-signal-honesty-copy.sh
 
+      # The in-process mirror of the gate above (TeamMemoryCopyGateTests) walks
+      # `TeamMemoryCopy.allCopy`, a hand-maintained list. This proves the list is
+      # complete, so a new team-memory string cannot escape the fast mirror
+      # (memory program D16 / P22, PR 4 review L9). Self-test first: a gate whose
+      # matcher is broken passes everything.
+      - name: Verify the team-memory copy inventory is complete
+        run: |
+          bash scripts/ci/verify-team-memory-copy-inventory.sh --self-test
+          bash scripts/ci/verify-team-memory-copy-inventory.sh
+
   # ── Services: E2EE relay + paid hosted-MCP (tech-debt audit H4) ────────────
   # The hermes-realtime-relay and hosted-mcp packages (22 test files) ran in
   # zero CI lanes — a regression in the paid CLI's hosted-MCP path or the E2EE

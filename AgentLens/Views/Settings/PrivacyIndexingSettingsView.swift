@@ -44,6 +44,8 @@ struct PrivacyIndexingSettingsView: View {
     /// arrived", which is a question a member only asks when something looks
     /// wrong. Mirrors the Advanced disclosure in Connections.
     @State private var isMemorySyncStatusExpanded = false
+    @State private var showTeamMemoryUnlockSheet = false
+    @State private var teamMemoryModel: TeamMemorySectionModel?
     private static let deviceSyncGatedFeature = GatedFeature.gatedFeature(.dataVault)
 
     /// Opt-in analytics consent toggle. Reads/writes the shared tri-state consent
@@ -153,6 +155,8 @@ struct PrivacyIndexingSettingsView: View {
                     deviceSyncRow
 
                     MemoryCloudModelsSection(settingsManager: settingsManager)
+
+                    teamMemorySection
 
                     NavigationLink {
                         memoryReviewDestination
@@ -809,6 +813,120 @@ struct PrivacyIndexingSettingsView: View {
     /// `MemoryCloudModelsSection` resolves it for its own veil.
     private var deviceSyncIsUnlocked: Bool {
         deviceSyncEntitlement.cloudTier.satisfies(Self.deviceSyncGatedFeature.requiredTier)
+    }
+
+    /// Team memory (memory program D16). Same entitlement and the same veil as
+    /// the device-sync row, because it is the same lane: `TeamMemorySyncGate`
+    /// ANDs the whole personal device-sync gate — entitlement included — under
+    /// every team, so a member below the tier could not sync a team even with
+    /// the switch on. Showing them what the feature is beats a dead grey row.
+    ///
+    /// The model is built once, lazily, and only when a member is signed in:
+    /// its first act is a roster READ, and issuing one for a signed-out window
+    /// would be a network call nobody asked for.
+    @ViewBuilder
+    private var teamMemorySection: some View {
+        Group {
+            if deviceSyncIsUnlocked {
+                if let teamMemoryModel {
+                    TeamMemorySection(model: teamMemoryModel)
+                } else {
+                    Color.clear.frame(height: 0)
+                }
+            } else {
+                LockedFeatureVeil(
+                    headline: TeamMemoryCopy.sectionTitle,
+                    detail: TeamMemoryCopy.sectionSubtitle,
+                    ctaLabel: "See Pro",
+                    icon: "person.3.sequence.fill",
+                    action: { showTeamMemoryUnlockSheet = true },
+                    background: { Color.clear.frame(height: 0) }
+                )
+            }
+        }
+        .sheet(isPresented: $showTeamMemoryUnlockSheet) {
+            FeatureUnlockSheet(feature: Self.deviceSyncGatedFeature)
+        }
+        .onAppear {
+            guard teamMemoryModel == nil, accountManager.isSignedIn else { return }
+            teamMemoryModel = Self.makeTeamMemoryModel(
+                settingsManager: settingsManager,
+                accountManager: accountManager,
+                cloudSyncDomain: runtimeContext?.memoryCloudSyncDomain
+            )
+        }
+    }
+
+    /// Assembles the production seams. Kept `static` so it reads as wiring: the
+    /// roster read, the four membership callables and the rotation sequence are
+    /// each their own type, and the model holds no Firebase handle itself.
+    ///
+    /// `personalGateProvider` is the SCOPE, not the sub-toggle (PR 4 review L4).
+    /// `MemoryDeviceSyncScope.current(...)` is the one computation of "may a
+    /// remote memory reach this device right now" — the four personal memory
+    /// levers ANDed with the account levers (Firebase available, signed in,
+    /// account cloud sync on) — and it is exactly what `TeamMemorySyncGate`
+    /// requires as `deviceSyncGateOpen && accountLeversOpen`. Passing
+    /// `memoryDeviceSyncEnabled` alone let a member with account cloud sync off
+    /// switch a team on and watch `TeamMemorySyncDomain.runCycle` return `.idle`
+    /// with nothing on screen saying why.
+    @MainActor
+    private static func makeTeamMemoryModel(
+        settingsManager: SettingsManager,
+        accountManager: AccountManager,
+        cloudSyncDomain: MemoryCloudSyncDomain?
+    ) -> TeamMemorySectionModel {
+        let gateway = CloudSyncFirestoreLiveGateway()
+        let callables = FirebaseTeamRosterCallableClient()
+        let uid = accountManager.currentUID
+        let deviceId = accountManager.deviceId
+        let keyRing = KeychainTeamVaultKeyRing()
+        let rotator: TeamKeyRotating? = uid.map { uid in
+            TeamVaultKeyRotator(
+                gateway: gateway,
+                uid: uid,
+                deviceId: deviceId,
+                keyRing: keyRing,
+                callables: callables
+            )
+        }
+        // The join half of design §3(b)2. Nil while signed out, exactly like the
+        // rotator: both wrap keys AS this account, and there is no account to
+        // wrap as.
+        let joinerKeys: TeamJoinerKeyIssuing? = uid.map { uid in
+            TeamVaultJoinerKeyIssuer(
+                gateway: gateway,
+                uid: uid,
+                deviceId: deviceId,
+                keyRing: keyRing,
+                callables: callables
+            )
+        }
+        return TeamMemorySectionModel(
+            roster: FirestoreTeamRosterDirectory(gateway: gateway),
+            admin: FirebaseTeamMemoryAdministrator(),
+            rotator: rotator,
+            joinerKeys: joinerKeys,
+            uidProvider: { accountManager.currentUID },
+            personalGateProvider: {
+                MemoryDeviceSyncScope.current(account: accountManager, settings: settingsManager).isOpen
+            },
+            remoteConfigProvider: {
+                (
+                    settingsManager.memoryTeamSyncRemoteConfigAllowed,
+                    settingsManager.memoryTeamSyncRemoteConfigResolved
+                )
+            },
+            optInProvider: { settingsManager.memoryTeamSyncEnabledTeamIDs },
+            optInWriter: { settingsManager.memoryTeamSyncEnabledTeamIDs = $0 },
+            // The eager half of the leave (PR 4 review §3). Nil only when this
+            // settings surface was built without a runtime context, in which
+            // case there is no sync lane to invalidate and the next cycle — on
+            // whichever process owns one — does it.
+            invalidateTeamSync: { [weak cloudSyncDomain] teamID in
+                await cloudSyncDomain?.invalidateTeamMemorySync(teamID: teamID)
+            }
+        )
     }
 
     /// "Sync memories to my other devices". Below the Data Vault tier the row

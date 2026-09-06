@@ -404,9 +404,31 @@ test("cloudVaultRewrapStrategy: every vault-backed domain has an explicit rotati
       entitlements_billing: null,
       device_trust_keys: "key_wrappers_only",
       audit_timeline: "document_envelopes",
+      team_pensieve: "document_envelopes",
     },
     "CloudVault rotation policy must be explicit for every domain that contains CloudVault-sealed material",
   );
+});
+
+// Team memory (D16 / PR 2) is the one document-rewrap domain whose sealed
+// documents do NOT live under `users/{uid}/`: they are at
+// `team_memory_facts/{teamId}/facts`, walked by `TeamCloudVaultRewrapWorker`
+// against a TEAM key, not by the personal `CloudVaultRotationRewrapWorker`
+// against a user's vault key. Its `firestorePaths` is therefore deliberately
+// empty, because that field means "per-user subcollection" everywhere it is
+// consumed: both the macOS and the iOS personal rewrap workers iterate
+// `domain.firestorePaths` as `userRef.collection(id)`, so naming a team path
+// there would send a personal rotation walking a user subcollection that does
+// not exist and that the rules deny. The domain still has to BE in the registry
+// so `documentRewrapDomains` discovers it and the Data & Privacy Control Center
+// can account for the data; this test pins the empty list so nobody "fixes" it
+// into the personal workers' path list.
+test("cloudVaultRewrapStrategy: team memory is rewrap-registered without a per-user path", () => {
+  const team = registry.domains.find((d) => d.id === "team_pensieve");
+  assert.ok(team, "the team_pensieve domain must exist");
+  assert.equal(team.cloudVaultRewrapStrategy, "document_envelopes");
+  assert.deepEqual(team.firestorePaths, [], "team facts are not a users/{uid} subcollection");
+  assert.deepEqual(team.storagePaths, []);
 });
 
 // Memory blind sync mirrors approved memories (chat and agent-sourced alike)

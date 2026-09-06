@@ -354,6 +354,16 @@ enum SettingsManifest {
             helpText: "Pro. Off by default. Providers you consent to receive redacted memory text directly from this Mac; BurnBar never receives your memory data."
         ),
         SettingsItem(
+            id: "general.indexing.teamMemory",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingTeamMemory,
+            title: "Team Memory",
+            subtitle: "Opt-in per team: share approved project memories with a team space, see the roster, rotate the team key",
+            keywords: ["team", "team memory", "shared memory", "roster", "invite", "join team", "leave team", "rotate key", "members", "blind", "pensieve"],
+            helpText: "Off for every team by default, and a strict subset of your own memory sync. Joining a team grants access to the team's existing history; leaving protects future memories only. Every active member holds the team key and can read every team fact."
+        ),
+        SettingsItem(
             id: "general.indexing.memoryHealth",
             tab: .general,
             pageRoute: .indexing,
@@ -1063,6 +1073,7 @@ enum SettingsManifest {
         SettingsAnchor.indexingMemory,
         SettingsAnchor.indexingMemoryDeviceSync,
         SettingsAnchor.indexingMemoryCloudModels,
+        SettingsAnchor.indexingTeamMemory,
         SettingsAnchor.indexingMemoryHealth,
         SettingsAnchor.indexingMemorySyncStatus,
         SettingsAnchor.summariesAuto,

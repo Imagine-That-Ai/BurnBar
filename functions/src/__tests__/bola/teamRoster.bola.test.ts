@@ -41,6 +41,7 @@ export const BOLA_MANIFEST = {
   removeTeamMember: ["removeTeamMember rejects cross-user object access"],
   rotateTeamKey: ["rotateTeamKey rejects cross-user object access"],
   abandonTeamKeyGeneration: ["abandonTeamKeyGeneration rejects cross-user object access"],
+  recordTeamRewrapComplete: ["recordTeamRewrapComplete rejects cross-user object access"],
 } as const;
 
 async function teamRosterCallables() {
@@ -97,6 +98,21 @@ describe("BOLA - team roster authority", () => {
       expectedOutcome: "throws",
       // Evicting the victim team's only admin would be the worst outcome here.
       payload: { teamId: VICTIM_TEAM_ID, targetUid: BOB_UID },
+    });
+  });
+
+  it("recordTeamRewrapComplete rejects cross-user object access", async () => {
+    const mod = await teamRosterCallables();
+    await tier2CallableProof(bolaStore, {
+      exportedName: "recordTeamRewrapComplete",
+      run: callableRunner(mod.recordTeamRewrapComplete),
+      expectedOutcome: "throws",
+      expectedCode: CROSS_TENANT_DENIAL,
+      // Alice claims Bob's team finished a re-key. If the roster check ever
+      // weakened, this would stamp `rewrapCompletedKeyVersion` on a tenant she
+      // is not on — a field every member of that team reads as "your memories
+      // have actually been re-sealed".
+      payload: { teamId: VICTIM_TEAM_ID, keyVersion: 1, rewrapJobId: "alice-job" },
     });
   });
 

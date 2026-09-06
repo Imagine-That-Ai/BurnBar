@@ -8,6 +8,46 @@ struct SessionSummaryPayload: Decodable {
     let summary: String
 }
 
+// MARK: - OpenAI-Compatible Chat Response
+
+/// The one parser for an OpenAI-compatible `/chat/completions` response body.
+///
+/// `SummaryLLMClient` and `MemoryExtractionLLMClient` are deliberate siblings —
+/// same request shape, same "return nil on any failure" posture — and each one
+/// carried a verbatim copy of this walk (`choices[0].message.content`, string or
+/// content-block array). Two copies of a wire-format reader is two places for the
+/// two lanes to start disagreeing about what a compliant server returned, so this
+/// is the single implementation both call.
+///
+/// Untyped by necessity: the body is third-party JSON whose `content` is either a
+/// `String` or an array of blocks, so a `Decodable` model would need a custom
+/// `init(from:)` that reproduces exactly this branch.
+enum OpenAICompatibleChatResponse {
+    /// The assistant's reply text, or `nil` when the body is not JSON, carries no
+    /// choice, or carries a `content` this client cannot read. An all-empty block
+    /// array is `nil` rather than `""`, matching what both call sites did before.
+    static func assistantText(fromResponseBody data: Data) -> String? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
+              let choices = root["choices"] as? [[String: Any]],
+              let first = choices.first,
+              let message = first["message"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        if let content = message["content"] as? String {
+            return content
+        }
+        if let blocks = message["content"] as? [[String: Any]] {
+            let joined = blocks.compactMap { block -> String? in
+                block["text"] as? String
+            }.joined()
+            return joined.isEmpty ? nil : joined
+        }
+        return nil
+    }
+}
+
 // MARK: - Summary LLM Client
 
 /// Stateless, `Sendable` client for calling Ollama and OpenAI-compatible
@@ -62,26 +102,11 @@ struct SummaryLLMClient: Sendable {
 
         guard let (data, response) = try? await URLSession.shared.data(for: request), // try?-ok(network fetch, skip)
               let http = response as? HTTPURLResponse,
-              (200 ..< 300).contains(http.statusCode),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
-              let choices = root["choices"] as? [[String: Any]],
-              let first = choices.first,
-              let message = first["message"] as? [String: Any]
+              (200 ..< 300).contains(http.statusCode)
         else {
             return nil
         }
-
-        if let content = message["content"] as? String {
-            return content
-        }
-        if let blocks = message["content"] as? [[String: Any]] {
-            let joined = blocks.compactMap { block -> String? in
-                if let text = block["text"] as? String { return text }
-                return nil
-            }.joined()
-            return joined.isEmpty ? nil : joined
-        }
-        return nil
+        return OpenAICompatibleChatResponse.assistantText(fromResponseBody: data)
     }
 
     // MARK: - Ollama
