@@ -116,7 +116,43 @@ public struct ReceiptFilter: Hashable, Sendable {
 
     // MARK: - Smart Syntax Parsing
 
+    /// Which modifier a numeric power token fills.
+    private enum NumericBound {
+        case minSpend
+        case maxSpend
+        case minCache
+    }
+
+    /// Every numeric power-token prefix, the modifier it fills, and the unit
+    /// symbol stripped from its value.
+    ///
+    /// A table rather than an `else if` ladder so the ordering invariant is
+    /// structural instead of positional: the list is sorted longest-first at
+    /// initialisation, so `spend:>=` can never be shadowed by `spend:>` however
+    /// the entries happen to be written down. The ladder made that a
+    /// hand-maintained property of source order, and combined it with a
+    /// hardcoded `dropFirst(7)` that parsed `cost:>5.00` as `00`.
+    private static let numericPrefixes: [(prefix: String, bound: NumericBound, unit: String)] = [
+        ("spend:>=", .minSpend, "$"),
+        ("spend:>", .minSpend, "$"),
+        ("spend:<=", .maxSpend, "$"),
+        ("spend:<", .maxSpend, "$"),
+        ("cost:>=", .minSpend, "$"),
+        ("cost:>", .minSpend, "$"),
+        ("cost:<=", .maxSpend, "$"),
+        ("cost:<", .maxSpend, "$"),
+        ("cache:>=", .minCache, "%"),
+        ("cache:>", .minCache, "%")
+    ].sorted { $0.prefix.count > $1.prefix.count }
+
+    /// Tokens that mean "starred only". Matched whole, not by prefix.
+    private static let starredTokens: Set<String> = ["is:starred", "starred:true", "has:star"]
+
     /// Parse inline power tokens from the search query (e.g. `spend:>1.00`, `cache:>80%`, `model:sonnet`, `project:BurnBar`).
+    ///
+    /// Anything that does not parse — an unknown prefix, a bare `model:`, a
+    /// non-numeric `cost:>abc` — stays in the cleaned query and is searched as
+    /// free text rather than becoming an empty filter that matches everything.
     public static func parseSmartQuery(_ input: String) -> (cleanedQuery: String, filterModifiers: ReceiptFilterModifiers) {
         let tokens = input.split(separator: " ").map(String.init)
         var cleanedTokens: [String] = []
@@ -129,25 +165,29 @@ public struct ReceiptFilter: Hashable, Sendable {
 
         for token in tokens {
             let lower = token.lowercased()
-            if lower.hasPrefix("spend:>") || lower.hasPrefix("cost:>") {
-                let valueStr = token.dropFirst(7).replacingOccurrences(of: "$", with: "")
-                if let val = Double(valueStr) { minSpend = val; continue }
-            } else if lower.hasPrefix("spend:<") || lower.hasPrefix("cost:<") {
-                let valueStr = token.dropFirst(7).replacingOccurrences(of: "$", with: "")
-                if let val = Double(valueStr) { maxSpend = val; continue }
-            } else if lower.hasPrefix("cache:>") {
-                let valueStr = token.dropFirst(7).replacingOccurrences(of: "%", with: "")
-                if let val = Double(valueStr) { minCache = val; continue }
+
+            if let match = numericPrefixes.first(where: { lower.hasPrefix($0.prefix) }) {
+                let valueStr = token.dropFirst(match.prefix.count)
+                    .replacingOccurrences(of: match.unit, with: "")
+                if let value = Double(valueStr) {
+                    switch match.bound {
+                    case .minSpend: minSpend = value
+                    case .maxSpend: maxSpend = value
+                    case .minCache: minCache = value
+                    }
+                    continue
+                }
             } else if lower.hasPrefix("model:") {
-                model = String(token.dropFirst(6))
-                continue
+                let value = String(token.dropFirst("model:".count))
+                if !value.isEmpty { model = value; continue }
             } else if lower.hasPrefix("project:") {
-                project = String(token.dropFirst(8))
-                continue
-            } else if lower == "is:starred" || lower == "starred:true" {
+                let value = String(token.dropFirst("project:".count))
+                if !value.isEmpty { project = value; continue }
+            } else if starredTokens.contains(lower) {
                 starred = true
                 continue
             }
+
             cleanedTokens.append(token)
         }
 

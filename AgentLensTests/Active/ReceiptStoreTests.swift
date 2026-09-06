@@ -47,15 +47,95 @@ final class ReceiptStoreTests: XCTestCase {
 
     // MARK: - Filter Power Query Token Parsing
 
-    func test_receiptFilter_parsesSmartQueryTokens() {
-        let input = "refactor auth spend:>1.50 model:sonnet cache:>80% is:starred"
-        let (cleaned, modifiers) = ReceiptFilter.parseSmartQuery(input)
+    /// Every lower-bound spend prefix. `spend:>=` and `cost:>=` are the ordering
+    /// fences: if a longer prefix ever lost to a shorter one, `spend:>=1.50`
+    /// would match the `spend:>` arm, `Double("=1.50")` would be nil, and the
+    /// token would silently fall through to free-text search with the suite
+    /// still green.
+    func test_receiptFilter_parsesEveryMinimumSpendPrefix() {
+        for prefix in ["spend:>=", "spend:>", "cost:>=", "cost:>"] {
+            let (cleaned, mods) = ReceiptFilter.parseSmartQuery("\(prefix)$5.00")
+            XCTAssertEqual(mods.minSpend, 5.00, "\(prefix) did not set minSpend")
+            XCTAssertNil(mods.maxSpend, "\(prefix) must not set maxSpend")
+            XCTAssertEqual(cleaned, "", "\(prefix) leaked into the free-text query")
+        }
+    }
 
+    /// Every upper-bound spend prefix, same ordering fence.
+    func test_receiptFilter_parsesEveryMaximumSpendPrefix() {
+        for prefix in ["spend:<=", "spend:<", "cost:<=", "cost:<"] {
+            let (cleaned, mods) = ReceiptFilter.parseSmartQuery("\(prefix)$20.00")
+            XCTAssertEqual(mods.maxSpend, 20.00, "\(prefix) did not set maxSpend")
+            XCTAssertNil(mods.minSpend, "\(prefix) must not set minSpend")
+            XCTAssertEqual(cleaned, "", "\(prefix) leaked into the free-text query")
+        }
+    }
+
+    func test_receiptFilter_parsesEveryCacheThresholdPrefix() {
+        for prefix in ["cache:>=", "cache:>"] {
+            let (cleaned, mods) = ReceiptFilter.parseSmartQuery("\(prefix)80%")
+            XCTAssertEqual(mods.minCache, 80.0, "\(prefix) did not set minCache")
+            XCTAssertEqual(cleaned, "", "\(prefix) leaked into the free-text query")
+        }
+    }
+
+    /// `cost:>` is six characters. The old parser used a hardcoded `dropFirst(7)`,
+    /// so `cost:>5.00` parsed as `00` — a $0.00 floor that matched everything.
+    func test_receiptFilter_takesOffsetsFromThePrefixNotAFixedCount() {
+        let (cleaned, mods) = ReceiptFilter.parseSmartQuery("fix bug cost:>$5.00 cost:<=$20.00")
+        XCTAssertEqual(cleaned, "fix bug")
+        XCTAssertEqual(mods.minSpend, 5.00)
+        XCTAssertEqual(mods.maxSpend, 20.00)
+    }
+
+    func test_receiptFilter_parsesModelAndProjectPrefixes() {
+        let (cleaned, mods) = ReceiptFilter.parseSmartQuery("refactor model:claude-3-7-sonnet project:AgentLens")
+        XCTAssertEqual(cleaned, "refactor")
+        XCTAssertEqual(mods.model, "claude-3-7-sonnet")
+        XCTAssertEqual(mods.project, "AgentLens")
+    }
+
+    func test_receiptFilter_parsesEveryStarAlias() {
+        for alias in ["is:starred", "starred:true", "has:star"] {
+            let (cleaned, mods) = ReceiptFilter.parseSmartQuery("audit \(alias)")
+            XCTAssertEqual(mods.starred, Optional(true), "\(alias) did not set starred")
+            XCTAssertEqual(cleaned, "audit")
+        }
+    }
+
+    func test_receiptFilter_parsesAMixedQuery() {
+        let (cleaned, mods) = ReceiptFilter.parseSmartQuery("refactor auth spend:>1.50 model:sonnet cache:>80% is:starred")
         XCTAssertEqual(cleaned, "refactor auth")
-        XCTAssertEqual(modifiers.minSpend, 1.50)
-        XCTAssertEqual(modifiers.model, "sonnet")
-        XCTAssertEqual(modifiers.minCache, 80.0)
-        XCTAssertEqual(modifiers.starred, Optional(true))
+        XCTAssertEqual(mods.minSpend, 1.50)
+        XCTAssertEqual(mods.model, "sonnet")
+        XCTAssertEqual(mods.minCache, 80.0)
+        XCTAssertEqual(mods.starred, Optional(true))
+    }
+
+    /// A token that cannot be parsed stays free text. An empty value in
+    /// particular must never become a filter: `model:` used to yield `""`, which
+    /// becomes `modelName LIKE '%%'` downstream and matches every row.
+    func test_receiptFilter_leavesEmptyAndUnknownTokensAsFreeText() {
+        let empties = ["spend:>", "spend:>=", "cost:<", "cache:>", "model:", "project:"]
+        for token in empties {
+            let (cleaned, mods) = ReceiptFilter.parseSmartQuery(token)
+            XCTAssertEqual(cleaned, token, "\(token) was swallowed instead of searched")
+            XCTAssertNil(mods.minSpend, "\(token) set minSpend")
+            XCTAssertNil(mods.maxSpend, "\(token) set maxSpend")
+            XCTAssertNil(mods.minCache, "\(token) set minCache")
+            XCTAssertNil(mods.model, "\(token) set model")
+            XCTAssertNil(mods.project, "\(token) set project")
+            XCTAssertNil(mods.starred, "\(token) set starred")
+        }
+
+        // Unknown prefixes, unknown star aliases, and non-numeric values alike.
+        for token in ["vibe:>3", "spend:!=2", "is:pinned", "cost:>abc"] {
+            let (cleaned, mods) = ReceiptFilter.parseSmartQuery("triage \(token)")
+            XCTAssertEqual(cleaned, "triage \(token)", "\(token) was swallowed instead of searched")
+            XCTAssertNil(mods.minSpend, "\(token) set minSpend")
+            XCTAssertNil(mods.maxSpend, "\(token) set maxSpend")
+            XCTAssertNil(mods.starred, "\(token) set starred")
+        }
     }
 
     // MARK: - CRUD & Starring
@@ -225,5 +305,137 @@ final class ReceiptStoreTests: XCTestCase {
         let json = ReceiptExportService.makeJSON(for: receipt)
         XCTAssertTrue(json.contains("\"sessionId\" : \"sess-999\""))
         XCTAssertTrue(json.contains("\"totalCostUSD\" : 0.48"))
+    }
+}
+
+// MARK: - Slip Inspector State
+
+/// `ReceiptDetailCardView` carries no `.id(receipt.id)`, so one view instance
+/// sees successive receipts and these two value types carry the whole
+/// "what resets, what survives" contract.
+final class ReceiptInspectorStateTests: XCTestCase {
+
+    private func makeReceipt(
+        id: String,
+        isStarred: Bool = false,
+        review: ReceiptQualityReview? = nil
+    ) -> ReceiptRecord {
+        var receipt = ReceiptRecord(
+            id: id,
+            sessionId: "sess-\(id)",
+            projectName: "BurnBar",
+            provider: .claudeCode,
+            modelName: "claude-3-7-sonnet",
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000),
+            inputTokens: 100,
+            outputTokens: 50,
+            totalCostUSD: 0.10,
+            isStarred: isStarred
+        )
+        receipt.qualityReview = review
+        return receipt
+    }
+
+    private func makeReview(grade: String) -> ReceiptQualityReview {
+        ReceiptQualityReview(
+            grade: grade,
+            score: 90,
+            goalScore: 90,
+            rigorScore: 90,
+            efficiencyScore: 90,
+            reviewedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+    }
+
+    func test_inspectorState_resetsPerReceiptStateWhenTheReceiptChanges() {
+        var state = ReceiptInspectorState(receipt: makeReceipt(id: "a", isStarred: true))
+        XCTAssertTrue(state.isStarred)
+
+        state.showCopiedAlert = true
+        state.copiedAlertText = "Thermal Slip PNG Copied"
+
+        state.receiptChanged(to: makeReceipt(id: "b", isStarred: false))
+
+        XCTAssertFalse(state.isStarred, "the star must follow the newly selected receipt")
+        XCTAssertFalse(state.showCopiedAlert, "receipt A's toast must not sit on receipt B")
+        XCTAssertEqual(state.copiedAlertText, ReceiptInspectorState.defaultCopiedAlertText)
+    }
+
+    func test_inspectorState_keepsTheLensAcrossReceipts() {
+        var state = ReceiptInspectorState(receipt: makeReceipt(id: "a"))
+        state.selectedLens = .audit
+
+        state.receiptChanged(to: makeReceipt(id: "b"))
+
+        XCTAssertEqual(
+            state.selectedLens,
+            .audit,
+            "the lens is a viewing mode the user chose, not per-receipt state"
+        )
+    }
+
+    func test_inspectorState_seedsFromTheReceiptAndTheRequestedLens() {
+        let state = ReceiptInspectorState(receipt: makeReceipt(id: "a", isStarred: true), lens: .efficiency)
+        XCTAssertEqual(state.selectedLens, .efficiency)
+        XCTAssertTrue(state.isStarred)
+        XCTAssertFalse(state.showCopiedAlert)
+    }
+
+    func test_slipState_resetsGradeAndCopyStateWhenTheReceiptChanges() {
+        let graded = makeReceipt(id: "a", review: makeReview(grade: "A+"))
+        var state = ReceiptSlipState(receipt: graded)
+        XCTAssertEqual(state.localReview?.grade, "A+")
+
+        state.isGrading = true
+        state.hasCopied = true
+
+        state.receiptChanged(to: makeReceipt(id: "b"))
+
+        XCTAssertNil(state.localReview, "receipt A's grade must not show on receipt B")
+        XCTAssertFalse(state.isGrading)
+        XCTAssertFalse(state.hasCopied)
+    }
+
+    func test_slipState_adoptsTheNewReceiptsExistingReview() {
+        var state = ReceiptSlipState(receipt: makeReceipt(id: "a"))
+        XCTAssertNil(state.localReview)
+
+        state.receiptChanged(to: makeReceipt(id: "b", review: makeReview(grade: "B")))
+
+        XCTAssertEqual(state.localReview?.grade, "B")
+    }
+
+    func test_slipState_appliesAGradeForTheReceiptItIsStillGrading() {
+        var state = ReceiptSlipState(receipt: makeReceipt(id: "a"))
+        state.startGrading(makeReceipt(id: "a"))
+        XCTAssertTrue(state.isGrading)
+
+        XCTAssertTrue(state.applyGrade(makeReview(grade: "A+"), from: "a"))
+
+        XCTAssertEqual(state.localReview?.grade, "A+")
+        XCTAssertFalse(state.isGrading)
+    }
+
+    func test_slipState_dropsALateGradeThatBelongsToAPreviousReceipt() {
+        var state = ReceiptSlipState(receipt: makeReceipt(id: "a"))
+        state.startGrading(makeReceipt(id: "a"))
+
+        // The user selects receipt B while A's audit is still in flight.
+        state.receiptChanged(to: makeReceipt(id: "b"))
+        XCTAssertFalse(state.isGrading, "receipt B is not being graded")
+
+        XCTAssertFalse(
+            state.applyGrade(makeReview(grade: "A+"), from: "a"),
+            "a grade for a receipt this slip is no longer grading must be refused"
+        )
+        XCTAssertNil(state.localReview, "receipt A's late grade must not paint receipt B's slip")
+        XCTAssertFalse(state.isGrading)
+
+        // Returning to A does not resurrect the abandoned audit either: the
+        // grade reaches A through its persisted `qualityReview`, not through
+        // this slip's in-flight slot.
+        state.receiptChanged(to: makeReceipt(id: "a"))
+        XCTAssertFalse(state.applyGrade(makeReview(grade: "A+"), from: "a"))
+        XCTAssertNil(state.localReview)
     }
 }

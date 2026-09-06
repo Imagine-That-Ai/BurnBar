@@ -319,6 +319,26 @@ struct BurnBarProfileMenu: View {
                 routeToSettingsTab(.daemon)
             }
 
+            // Goes to the dashboard's Receipts section, like the switcher, the
+            // command palette and the toolbar. Routed through the deep link
+            // rather than a direct call because `AppCommandRouter.handle` is the
+            // router's only entry point and already opens the dashboard window
+            // on the way — the same path `FirstRunReveal` takes for
+            // `openburnbar://quota` (`MenuBarPopoverView.swift:191`). The
+            // standalone drawer window stays reachable from the menu-bar receipt
+            // flyout; a profile-menu row is a section, not a second window.
+            menuRowButton(
+                icon: "scroll.fill",
+                title: "Receipts Register",
+                subtitle: "Session receipts & quality audits",
+                color: DesignSystem.Colors.amber
+            ) {
+                dismissMenu()
+                if let url = URL(string: "openburnbar://receipts") {
+                    _ = AppCommandRouter.shared.handle(url)
+                }
+            }
+
             menuRowButton(
                 icon: "lock.shield.fill",
                 title: "Data & Privacy",

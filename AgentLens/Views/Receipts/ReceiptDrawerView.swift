@@ -62,7 +62,11 @@ struct ReceiptDrawerView: View {
                 contentSplitView
             }
         }
-        .frame(minWidth: 780, minHeight: 560)
+        // No hard minimum here: `OpenBurnBarWindowManager` already applies
+        // `.frame(minWidth: 840, minHeight: 600)` at both window call sites, and as
+        // a dashboard section this view must compress like every sibling route
+        // rather than overflow the 1040x650 dashboard window minimum.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(drawerBackground)
         .task {
             await reloadReceipts()
@@ -385,6 +389,10 @@ struct ReceiptDrawerView: View {
                             }
                         }
                     )
+                    // No `.id(receipt.id)` here on purpose: it would rebuild the
+                    // subtree on every selection, making the card's and the slip's
+                    // `onChange(of: receipt.id)` resets unreachable *and* throwing
+                    // away the lens the user picked. The resets are the mechanism.
                     .padding(.top, 14)
                     .padding(.bottom, 24)
                 } else {

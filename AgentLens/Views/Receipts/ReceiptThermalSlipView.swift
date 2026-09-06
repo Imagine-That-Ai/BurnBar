@@ -28,6 +28,58 @@ struct ReceiptBarcodeView: View {
     }
 }
 
+// MARK: - Thermal Slip State
+
+/// The thermal slip's local state, lifted out of the view so the "what resets on
+/// a receipt switch" rule is testable. The slip is rendered inside
+/// `ReceiptDetailCardView`, which carries no `.id(receipt.id)`, so one instance
+/// sees successive receipts and this reset is the only thing stopping receipt A's
+/// grade — or its "Copied Receipt!" confirmation — showing on receipt B.
+struct ReceiptSlipState: Equatable {
+    var localReview: ReceiptQualityReview?
+    var isGrading: Bool
+    var hasCopied: Bool
+
+    /// The receipt an in-flight on-demand audit was started for, or `nil` when
+    /// nothing is in flight. An audit is a slow async round trip and the slip is
+    /// reused across receipts, so without this the completion for receipt A can
+    /// land while receipt B is on screen and stamp A's grade onto B's slip.
+    private(set) var gradingReceiptID: String?
+
+    init(receipt: ReceiptRecord) {
+        self.localReview = receipt.qualityReview
+        self.isGrading = false
+        self.hasCopied = false
+        self.gradingReceiptID = nil
+    }
+
+    mutating func receiptChanged(to receipt: ReceiptRecord) {
+        localReview = receipt.qualityReview
+        isGrading = false
+        hasCopied = false
+        // Any audit still in flight was started for the receipt we just left, so
+        // its result is no longer displayable here.
+        gradingReceiptID = nil
+    }
+
+    mutating func startGrading(_ receipt: ReceiptRecord) {
+        isGrading = true
+        gradingReceiptID = receipt.id
+    }
+
+    /// Adopts `review` only while `receiptID` is still the receipt this slip is
+    /// grading. Returns `false` — changing nothing — for a late result whose
+    /// receipt has since been replaced.
+    @discardableResult
+    mutating func applyGrade(_ review: ReceiptQualityReview, from receiptID: String) -> Bool {
+        guard gradingReceiptID == receiptID else { return false }
+        localReview = review
+        isGrading = false
+        gradingReceiptID = nil
+        return true
+    }
+}
+
 // MARK: - Thermal Slip View
 
 struct ReceiptThermalSlipView: View {
@@ -35,9 +87,7 @@ struct ReceiptThermalSlipView: View {
     var onUpdateReview: ((ReceiptQualityReview) -> Void)?
     var onToggleStar: (() -> Void)?
 
-    @State private var isGrading = false
-    @State private var hasCopied = false
-    @State private var localReview: ReceiptQualityReview?
+    @State private var state: ReceiptSlipState
     @Environment(\.colorScheme) private var colorScheme
 
     init(
@@ -48,11 +98,11 @@ struct ReceiptThermalSlipView: View {
         self.receipt = receipt
         self.onUpdateReview = onUpdateReview
         self.onToggleStar = onToggleStar
-        self._localReview = State(initialValue: receipt.qualityReview)
+        self._state = State(initialValue: ReceiptSlipState(receipt: receipt))
     }
 
     private var effectiveReview: ReceiptQualityReview? {
-        localReview ?? receipt.qualityReview
+        state.localReview ?? receipt.qualityReview
     }
 
     private var paperBackground: Color {
@@ -145,6 +195,12 @@ struct ReceiptThermalSlipView: View {
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.08), radius: 8, x: 0, y: 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Thermal receipt for \(receipt.projectName), total cost \(receipt.formattedCost)")
+        .onChange(of: receipt.id) { _, _ in
+            state.receiptChanged(to: receipt)
+        }
+        .onChange(of: receipt.qualityReview) { _, newReview in
+            state.localReview = newReview
+        }
     }
 
     // MARK: - Subviews
@@ -382,14 +438,14 @@ struct ReceiptThermalSlipView: View {
                     gradeSessionOnDemand()
                 } label: {
                     HStack(spacing: 5) {
-                        if isGrading {
+                        if state.isGrading {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
                             Image(systemName: "checkmark.seal.fill")
                                 .font(.system(size: 11))
                         }
-                        Text(isGrading ? "Auditing Session…" : "⚡️ Grade this Session (Quality Review)")
+                        Text(state.isGrading ? "Auditing Session…" : "⚡️ Grade this Session (Quality Review)")
                             .font(.system(size: 10.5, weight: .bold, design: .monospaced))
                     }
                     .frame(maxWidth: .infinity)
@@ -399,7 +455,7 @@ struct ReceiptThermalSlipView: View {
                     .clipShape(.rect(cornerRadius: 4))
                 }
                 .buttonStyle(.plain)
-                .disabled(isGrading)
+                .disabled(state.isGrading)
             }
         }
     }
@@ -420,13 +476,23 @@ struct ReceiptThermalSlipView: View {
     }
 
     private func gradeSessionOnDemand() {
-        isGrading = true
+        // `receipt` is captured by value here; `state` reads through `@State`
+        // storage and therefore reflects whatever receipt is on screen when the
+        // audit returns. That mismatch is the whole hazard: a slow audit for
+        // `graded` must not be displayed once the user has moved on.
+        let graded = receipt
+        state.startGrading(graded)
         Task { @MainActor in
             let auditor = ReceiptQualityAuditor()
-            let review = await auditor.audit(receipt: receipt)
-            self.localReview = review
-            self.isGrading = false
-            ReceiptAudioPlayer.playQualityAuditStampSound()
+            let review = await auditor.audit(receipt: graded)
+            // The grade belongs to `graded` and is persisted against it either
+            // way — `onUpdateReview` is bound to that receipt's row, so the
+            // audit the user paid for is never thrown away. Only the on-screen
+            // effects are dropped when the slip has moved to another receipt.
+            let landedOnScreen = self.state.applyGrade(review, from: graded.id)
+            if landedOnScreen {
+                ReceiptAudioPlayer.playQualityAuditStampSound()
+            }
             onUpdateReview?(review)
         }
     }
@@ -509,16 +575,16 @@ struct ReceiptThermalSlipView: View {
         HStack(spacing: 8) {
             Button {
                 ReceiptExportService.copyMarkdownToClipboard(receipt: receipt)
-                hasCopied = true
+                state.hasCopied = true
                 Task {
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    hasCopied = false
+                    state.hasCopied = false
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: hasCopied ? "checkmark" : "doc.on.doc")
+                    Image(systemName: state.hasCopied ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 10))
-                    Text(hasCopied ? "Copied Receipt!" : "Copy for PR (Markdown)")
+                    Text(state.hasCopied ? "Copied Receipt!" : "Copy for PR (Markdown)")
                         .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
                 }
                 .frame(maxWidth: .infinity)
