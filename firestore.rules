@@ -1052,7 +1052,8 @@ service cloud.firestore {
     // team write re-reads the member document below, so a member whose status
     // the roster callables flip to "removed" is cut off on their very next
     // request rather than whenever a bearer token happens to expire. Clients
-    // never write team_rosters/** — see the `allow write: if false` rules.
+    // never write team_rosters/**: no write rule is declared anywhere under
+    // that tree, so Firestore's default deny is the gate.
     function teamMemberPath(teamId) {
       return /databases/$(database)/documents/team_rosters/$(teamId)/members/$(request.auth.uid);
     }
@@ -5023,25 +5024,23 @@ service cloud.firestore {
     // envelopes — never plaintext, embeddings, citations or any team key. The
     // roster is server-owned; membership cannot be asserted by a client.
 
+    // Server-written only (Admin SDK roster callables); no client write rule
+    // anywhere under team_rosters/** by design — Firestore's default deny is
+    // the gate.
     match /team_rosters/{teamId} {
       allow read: if isTeamMember(teamId);
-      allow write: if false;
 
       match /members/{memberUid} {
         allow read: if request.auth != null
           && (request.auth.uid == memberUid || isTeamMember(teamId));
-        allow write: if false;
       }
 
       // Invites carry a uid binding and a token hash. Neither is client
-      // business: acceptTeamInvite (Admin SDK) is the only reader.
-      match /invites/{inviteId} {
-        allow read, write: if false;
-      }
+      // business: acceptTeamInvite (Admin SDK) is the only reader, so this
+      // subcollection carries no client rule at all — default deny, both ways.
 
       match /audit_log/{eventId} {
         allow read: if isTeamAdmin(teamId);
-        allow write: if false;
       }
     }
 
@@ -5126,7 +5125,7 @@ service cloud.firestore {
             && (request.resource.data.keySlot == "slug"
               || request.resource.data.keySlot == "v" + string(activeTeamKeyVersion(teamId)))))
         && validTeamKeyEnvelope();
-      allow update, delete: if false;
+      // Create-only and immutable: no update or delete rule by design.
     }
 
     match /team_memory_facts/{teamId}/facts/{docID} {
@@ -5240,7 +5239,8 @@ service cloud.firestore {
         && request.resource.data.uid == resource.data.uid
         && request.auth.uid == resource.data.uid;
 
-      allow delete: if false;
+      // Tamper-evidence: receipts are never deletable by a client, so no
+      // delete rule is declared.
     }
 
     // --- Mercury budget split (ADR 006) ---
