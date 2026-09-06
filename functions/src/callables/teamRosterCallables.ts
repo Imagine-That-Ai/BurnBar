@@ -163,3 +163,21 @@ export const rotateTeamKey = onCallProduction(
     return TeamRosterService.rotateTeamKey(callerUid, teamId, newKeyVersion, envelopeIds);
   },
 );
+
+/**
+ * Burn a key generation an abandoned rotation left occupying its envelope ids,
+ * so the team can rotate past it. Admin-only, and the service refuses any
+ * version that is not the next unclaimed one, is recorded as active or
+ * retained, or has no published envelope — see `TeamRosterService.abandonKeyGeneration`.
+ */
+export const abandonTeamKeyGeneration = onCallProduction(
+  "abandonTeamKeyGeneration",
+  TEAM_CALLABLE_OPTIONS,
+  async (request: CallableRequest<{ teamId?: unknown; version?: unknown }>) => {
+    const callerUid = requireAuthUid(request);
+    const teamId = requireTeamId(request.data?.teamId);
+    const version = requireBoundedNumber(request.data?.version, "version", 2, MAX_TEAM_KEY_VERSION);
+    await checkTeamRosterMutationRateLimit(callerUid);
+    return TeamRosterService.abandonKeyGeneration(callerUid, teamId, version);
+  },
+);

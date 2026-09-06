@@ -278,4 +278,5 @@ export {
   promoteTeamMember,
   removeTeamMember,
   rotateTeamKey,
+  abandonTeamKeyGeneration,
 } from "./callables/teamRosterCallables.js";
