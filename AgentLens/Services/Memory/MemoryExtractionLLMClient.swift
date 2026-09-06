@@ -63,25 +63,11 @@ struct MemoryExtractionLLMClient: Sendable {
 
         guard let (data, response) = try? await URLSession.shared.data(for: request), // try?-ok(network fetch, skip)
               let http = response as? HTTPURLResponse,
-              (200 ..< 300).contains(http.statusCode),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
-              let choices = root["choices"] as? [[String: Any]],
-              let first = choices.first,
-              let message = first["message"] as? [String: Any]
+              (200 ..< 300).contains(http.statusCode)
         else {
             return nil
         }
-
-        if let content = message["content"] as? String {
-            return content
-        }
-        if let blocks = message["content"] as? [[String: Any]] {
-            let joined = blocks.compactMap { block -> String? in
-                block["text"] as? String
-            }.joined()
-            return joined.isEmpty ? nil : joined
-        }
-        return nil
+        return OpenAICompatibleChatResponse.assistantText(fromResponseBody: data)
     }
 
     // MARK: - Ollama

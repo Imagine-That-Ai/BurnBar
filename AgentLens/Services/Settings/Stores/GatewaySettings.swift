@@ -50,14 +50,6 @@ final class GatewaySettings {
         didSet { persistence.set(crossVendorDegradeEnabled, forKey: "crossVendorDegradeEnabled") }
     }
 
-    var gatewayConfigurationDict: [String: Any] {
-        [
-            "enabled": gatewayEnabled,
-            "host": gatewayHost.isEmpty ? "127.0.0.1" : gatewayHost,
-            "port": gatewayPort > 0 ? gatewayPort : 8317
-        ]
-    }
-
     init(
         persistence: SettingsPersistenceCoordinator,
         secretPersistence: SettingsSecretPersistence,
