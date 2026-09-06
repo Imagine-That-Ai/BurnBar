@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -42,7 +42,7 @@ jobs:
           targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
 
       - name: Cache Cargo registry and parser target
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -94,7 +94,7 @@ jobs:
         run: cargo build --manifest-path crates/project-code-static-parser/Cargo.toml --release --target aarch64-pc-windows-msvc
 
       - name: Upload parser binaries
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: project-code-static-parser-windows
           path: |

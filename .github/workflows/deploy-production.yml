@@ -75,7 +75,7 @@ jobs:
       proof_artifact: ${{ steps.domain-core-proof.outputs.artifact_name }}
       prepared_artifact: ${{ steps.prepared-artifact.outputs.artifact_name }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -272,7 +272,7 @@ jobs:
             echo "domain_core_profile=$DOMAIN_CORE_PROFILE"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -361,7 +361,7 @@ jobs:
           printf 'run_id=%s\nrun_attempt=%s\n' "$run_id" "$run_attempt" >> "$GITHUB_OUTPUT"
 
       - name: Download exact unsigned candidate bundle
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.domain-core-source.outputs.run_id }}
@@ -369,7 +369,7 @@ jobs:
           path: ${{ runner.temp }}/domain-core-release-materials/candidate
 
       - name: Download exact candidate rollback artifact
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.domain-core-source.outputs.run_id }}
@@ -674,7 +674,7 @@ jobs:
 
       - name: Upload immutable prepared deploy artifact
         if: steps.tag.outputs.dry_run != 'true'
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ${{ steps.prepared-artifact.outputs.artifact_name }}
           path: ${{ runner.temp }}/domain-core-functions-prepared-deploy
@@ -759,7 +759,7 @@ jobs:
       HAS_SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
     steps:
       - name: Download immutable prepared deploy artifact
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v6.0.0 (node24-native)
         with:
           name: ${{ needs.prepare-functions-deploy.outputs.prepared_artifact }}
           path: ${{ runner.temp }}/domain-core-functions-prepared-deploy
@@ -779,7 +779,7 @@ jobs:
           fi
           (cd "$stage" && sha256sum --check --strict SHA256SUMS)
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 (node24-native)
         with:
           node-version-file: .nvmrc
 
@@ -1041,7 +1041,7 @@ jobs:
 
       - name: Upload exact deployed Functions proof inputs
         if: steps.stable-replay.outputs.reused != 'true'
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: ${{ needs.prepare-functions-deploy.outputs.proof_artifact }}
           path: ${{ runner.temp }}/domain-core-functions-prepared-deploy/domain-core-functions-deploy-proof
@@ -1087,7 +1087,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Post-deploy health gate
         env:
@@ -1110,7 +1110,7 @@ jobs:
 
       - name: Upload deploy health artifact
         if: always() && hashFiles('deploy-health.json') != ''
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-functions-deploy-health-${{ needs.deploy-functions.outputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: deploy-health.json
@@ -1125,7 +1125,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Record Functions deploy or health failure (per-lane dedupe; page once)
         if: >-
@@ -1264,7 +1264,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload post-release Functions evidence handoff
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: domain-core-functions-release-evidence-handoff-${{ needs.deploy-functions.outputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/domain-core-functions-release-evidence-handoff.json
