@@ -3885,18 +3885,73 @@ def test_an_out_of_shape_project_id_is_refused(tmp_path: Path) -> None:
 # the only place that can notice a link being taken away afterwards.
 
 
-def _write_team_link(root: str, links: dict[str, str] | None) -> None:
-    """Write — or delete — the `.openburnbar/project.json` a checkout commits.
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "Fence",
+    "GIT_AUTHOR_EMAIL": "fence@burnbar.dev",
+    "GIT_AUTHOR_DATE": "2020-01-01T00:00:00+0000",
+    "GIT_COMMITTER_NAME": "Fence",
+    "GIT_COMMITTER_EMAIL": "fence@burnbar.dev",
+    "GIT_COMMITTER_DATE": "2020-01-01T00:00:00+0000",
+}
+
+
+def _git(root: str, *args: str) -> str:
+    import os
+    import subprocess
+
+    env = {**os.environ, **_GIT_ENV}
+    result = subprocess.run(  # noqa: S603
+        ["git", "-C", str(root), *args], check=True, capture_output=True, text=True, env=env
+    )
+    return result.stdout.strip()
+
+
+def _checkout(root: str) -> str:
+    """A real repository, because a link only counts once it is COMMITTED.
+
+    The D16 Cursor ruling made `HEAD` the authority for every link entry, so a
+    fixture that writes the file into a plain directory is testing a state the
+    product deliberately refuses. These directories are repositories, and
+    `_write_team_link` commits into them — which is what a member does.
+
+    It must run BEFORE the first `_project_id` call for a root: initialising a
+    repository changes the project's identity fingerprint, and so its id.
+    """
+    Path(root).mkdir(parents=True, exist_ok=True)
+    _git(root, "init", "-q")
+    Path(root, "app.py").write_text("# widgets\n")
+    _git(root, "add", "-A", "--", ".")
+    _git(root, "commit", "-qm", "init")
+    # Its own remote, so its own fingerprint. The commit metadata is pinned, so
+    # without this two checkouts made here would share a root commit and
+    # therefore a project id — which is the two-clone convergence property
+    # `test_team_two_clone.py` is about, and the opposite of what these fixtures
+    # need, since they turn on one project's rows not being another's.
+    _git(root, "remote", "add", "origin", f"https://example.invalid/{Path(root).name}.git")
+    return root
+
+
+def _write_team_link(root: str, links: dict[str, str] | None, *, commit: bool = True) -> None:
+    """Write — or delete — the `.openburnbar/project.json` a checkout commits, and commit it.
 
     `None` removes the file, which is how a member unlinks: the file is the
     whole record, so deleting it is the removal.
+
+    COMMITTING is part of writing it here, because it is part of writing it in
+    the product: `_session_team_links` honours an entry only when the working
+    tree and `HEAD` agree on it, so an uncommitted file links nothing. Pass
+    `commit=False` for the tests that are about that distinction.
     """
     path = Path(root) / ".openburnbar" / "project.json"
     if links is None:
         path.unlink(missing_ok=True)
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"teams": {team: {"teamProjectId": project} for team, project in links.items()}}))
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"teams": {team: {"teamProjectId": project} for team, project in links.items()}}))
+    if commit:
+        _git(root, "add", "-A", "--", ".")
+        if _git(root, "status", "--porcelain"):
+            _git(root, "commit", "-qm", "link")
 
 
 def _team_leak_fixture(tmp_path: Path, name: str) -> tuple[me.MemoryEngine, str, str, str, str]:
@@ -3908,10 +3963,8 @@ def _team_leak_fixture(tmp_path: Path, name: str) -> tuple[me.MemoryEngine, str,
     recall pack of every repository on the Mac.
     """
     engine = _replica(tmp_path, name)
-    linked = str(tmp_path / f"{name}_linked")
-    unrelated = str(tmp_path / f"{name}_unrelated")
-    Path(linked).mkdir(parents=True, exist_ok=True)
-    Path(unrelated).mkdir(parents=True, exist_ok=True)
+    linked = _checkout(str(tmp_path / f"{name}_linked"))
+    unrelated = _checkout(str(tmp_path / f"{name}_unrelated"))
     project_p = _project_id(engine, linked)
     _write_team_link(linked, {TEAM_ID: project_p})
 
@@ -4040,10 +4093,8 @@ def test_the_team_serving_fence_leaves_personal_rows_alone(tmp_path: Path) -> No
     its own project — with a link file present and with none.
     """
     engine = _replica(tmp_path, "personal_untouched")
-    home = str(tmp_path / "personal_home")
-    other = str(tmp_path / "personal_other")
-    Path(home).mkdir(parents=True, exist_ok=True)
-    Path(other).mkdir(parents=True, exist_ok=True)
+    home = _checkout(str(tmp_path / "personal_home"))
+    other = _checkout(str(tmp_path / "personal_other"))
     home_id = _project_id(engine, home)
 
     personal = engine.remember(
@@ -4276,12 +4327,18 @@ def _team_project_fixture(
     shared repository, which is not and cannot be either checkout's local
     `proj_<32hex>`. `linked` publishes that exact pair; `unrelated` publishes
     nothing.
+
+    Both roots are real repositories (`_checkout`), and the link is COMMITTED,
+    because the D16 Cursor ruling made `HEAD` the authority for every entry: a
+    link file that only the working tree carries publishes nothing at all, so a
+    plain directory here would test the state the product refuses rather than
+    the one A1 rules on. `_checkout` has to run before the first `_project_id`
+    call for a root — initialising a repository changes the identity
+    fingerprint, and so the project id.
     """
     engine = _replica(tmp_path, name)
-    linked = str(tmp_path / f"{name}_linked")
-    unrelated = str(tmp_path / f"{name}_unrelated")
-    Path(linked).mkdir(parents=True, exist_ok=True)
-    Path(unrelated).mkdir(parents=True, exist_ok=True)
+    linked = _checkout(str(tmp_path / f"{name}_linked"))
+    unrelated = _checkout(str(tmp_path / f"{name}_unrelated"))
     _project_id(engine, linked)
     _project_id(engine, unrelated)
     _write_team_link(linked, {TEAM_ID: TEAM_PROJECT})
@@ -5043,8 +5100,7 @@ def test_the_doctor_unstamps_team_provenance_no_team_ledger_accounts_for(
 def _retired_team_row_fixture(tmp_path: Path, name: str) -> tuple[me.MemoryEngine, str, str, str]:
     """A -> B -> A, set up: a team row retired by a team supersede, still in the index."""
     engine = _replica(tmp_path, name)
-    linked = str(tmp_path / f"{name}_linked")
-    Path(linked).mkdir(parents=True, exist_ok=True)
+    linked = _checkout(str(tmp_path / f"{name}_linked"))
     project_p = _project_id(engine, linked)
     _write_team_link(linked, {TEAM_ID: project_p})
 

@@ -2590,6 +2590,114 @@ final class TeamMemorySyncTests: XCTestCase {
         )
     }
 
+    // MARK: - Only a COMMITTED link is a link (D16 Cursor ruling, HIGH)
+
+    /// A real repository in a temporary directory, with one commit.
+    private func makeRepository(file: StaticString = #filePath, line: UInt = #line) throws -> URL {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("team-link-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try "# widgets\n".write(to: root.appendingPathComponent("app.py"), atomically: true, encoding: .utf8)
+        try runGit(["init", "-q"], at: root)
+        try runGit(["add", "-A", "--", "."], at: root)
+        try runGit(["commit", "-qm", "init"], at: root)
+        return root
+    }
+
+    @discardableResult
+    private func runGit(_ arguments: [String], at root: URL) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", root.path] + arguments
+        var environment = ProcessInfo.processInfo.environment
+        for (key, value) in [
+            "GIT_AUTHOR_NAME": "Fence", "GIT_AUTHOR_EMAIL": "fence@burnbar.dev",
+            "GIT_COMMITTER_NAME": "Fence", "GIT_COMMITTER_EMAIL": "fence@burnbar.dev"
+        ] { environment[key] = value }
+        process.environment = environment
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        try process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func writeLink(_ ids: [String: String], at root: URL) throws {
+        let directory = root.appendingPathComponent(".openburnbar", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let entries = ids.map { "\"\($0.key)\": { \"teamProjectId\": \"\($0.value)\" }" }.joined(separator: ",")
+        try "{ \"teams\": { \(entries) } }"
+            .write(to: directory.appendingPathComponent("project.json"), atomically: true, encoding: .utf8)
+    }
+
+    /// **The eligibility rule, on the Swift half of the lane.**
+    ///
+    /// `RecordedRootTeamProjectLinkResolver` asks `TeamProjectLink.read` which
+    /// `teamProjectId` a project publishes to a team, and that answer is what
+    /// makes a member's approved memories eligible to upload. Before the D16
+    /// Cursor ruling it came from the WORKING TREE, so anything able to write a
+    /// file in a private checkout on a Mac already syncing the team could opt
+    /// that repository in — no human confirmation, no commit. Now the working
+    /// tree and `HEAD` must agree, per entry.
+    ///
+    /// `memory_engine/_namespaces.py::_session_team_links` is the same rule on
+    /// the engine side and `test_only_a_committed_link_makes_a_project_eligible`
+    /// is its twin; the two are meant to agree state for state, which is why
+    /// this test walks the same four.
+    func test_only_a_committed_team_project_link_is_eligible() throws {
+        let root = try makeRepository()
+        defer { try? FileManager.default.removeItem(at: root) } // try?-ok(test temp cleanup)
+
+        // 1. Working tree only — the reported path. Written, never committed.
+        try writeLink([teamID: "burnbar-core"], at: root)
+        XCTAssertEqual(TeamProjectLink.readWorkingTree(projectRoot: root).teamProjectID(forTeam: teamID), "burnbar-core")
+        XCTAssertNil(TeamProjectLink.readCommitted(projectRoot: root).teamProjectID(forTeam: teamID))
+        XCTAssertNil(
+            TeamProjectLink.read(projectRoot: root).teamProjectID(forTeam: teamID),
+            "a link nobody committed is not a link"
+        )
+
+        // 2. Committed — the only state that publishes anything.
+        try runGit(["add", "-A", "--", "."], at: root)
+        try runGit(["commit", "-qm", "link"], at: root)
+        XCTAssertEqual(TeamProjectLink.read(projectRoot: root).teamProjectID(forTeam: teamID), "burnbar-core")
+
+        // 3. Committed then modified, both ways round. A re-point that HEAD does
+        // not carry is neither the old link nor the new one, and a local
+        // deletion stops the lane at once rather than waiting for a commit.
+        try writeLink([teamID: "burnbar-core-fork"], at: root)
+        XCTAssertNil(TeamProjectLink.read(projectRoot: root).teamProjectID(forTeam: teamID))
+        try FileManager.default.removeItem(at: root.appendingPathComponent(".openburnbar/project.json"))
+        XCTAssertNil(TeamProjectLink.read(projectRoot: root).teamProjectID(forTeam: teamID))
+
+        // 4. Per entry, not per file: an uncommitted edit adding a second team
+        // must not silently unlink the first, which HEAD carries.
+        try writeLink([teamID: "burnbar-core", "team_fedcba9876543210": "burnbar-ios"], at: root)
+        let mixed = TeamProjectLink.read(projectRoot: root)
+        XCTAssertEqual(mixed.teamProjectID(forTeam: teamID), "burnbar-core")
+        XCTAssertNil(mixed.teamProjectID(forTeam: "team_fedcba9876543210"))
+    }
+
+    /// No git work tree at all: same bytes, same path, no repository, no link.
+    ///
+    /// The ruling's named case, and the fail-closed answer — a directory with
+    /// nothing checked in has checked in no decision. It is also the shape a
+    /// tampered checkout would most easily reach, so it is asserted rather than
+    /// left to follow from the code.
+    func test_a_link_file_outside_any_repository_publishes_nothing() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("team-link-bare-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) } // try?-ok(test temp cleanup)
+
+        try writeLink([teamID: "burnbar-core"], at: root)
+        XCTAssertEqual(TeamProjectLink.readWorkingTree(projectRoot: root).teamProjectID(forTeam: teamID), "burnbar-core")
+        XCTAssertNil(TeamProjectLink.read(projectRoot: root).teamProjectID(forTeam: teamID))
+        XCTAssertTrue(TeamProjectLink.readCommitted(projectRoot: root).teamProjectIDsByTeamID.isEmpty)
+    }
+
     // MARK: - Cross-language convergence
 
     /// The golden vector, asserted from the SWIFT side. Its Python twin

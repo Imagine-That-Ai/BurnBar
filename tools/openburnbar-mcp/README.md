@@ -369,6 +369,7 @@ Run it by hand against any transcript:
 | `burnbar_index_status` | Read project-scoped code-memory index status |
 | `burnbar_explore` | **Write** auto-index if needed, then search and return a context pack |
 | `burnbar_memory_doctor` | Check local memory/code schema, write mode, and index health |
+| `burnbar_team_link_project` | **Write** the checked-in `.openburnbar/project.json` entry saying which shared `teamProjectId` this repository publishes to a team — team document ids derive from it and never from the repository's git identity. Every write needs `confirm=true`, and the entry counts only once it is COMMITTED: both readers take the link from git `HEAD` |
 | `burnbar_list_project_memory` | List project memory snapshots with source counts and freshness |
 | `burnbar_get_project_memory` | Read one project memory snapshot by slug |
 | `burnbar_cloud_sync_project_memory` | Sync a local project memory snapshot through the encrypted cloud path |

@@ -27,7 +27,7 @@ export const MEMORY_STORE_PATH =
 
 /** MEMORY_TOOLSET in tools/openburnbar-mcp/server.py — the tools a client
  *  gets with BURNBAR_MCP_TOOLSET=memory. Counted, not guessed. */
-export const MEMORY_TOOL_COUNT = 37;
+export const MEMORY_TOOL_COUNT = 38;
 
 /* The whole server, for the sections that speak about it rather than about
    the memory toolset. Parsed out of server.py by the copy gate, so they
@@ -36,7 +36,7 @@ export const MEMORY_TOOL_COUNT = 37;
 
 /** Every `burnbar_*` tool the server registers — memory, code intelligence,
  *  sessions, spend and the rest of the product surface. */
-export const BURNBAR_TOOL_COUNT = 68;
+export const BURNBAR_TOOL_COUNT = 69;
 
 /** `ministry_*` + `castle_*` + `bench_*`: agent fan-out and benchmarking
  *  tooling. Real, registered, and listed in the atlas under their own three
@@ -1166,6 +1166,13 @@ export const TOOL_ATLAS: AtlasTool[] = [
     name: "burnbar_project_adopt",
     group: "lifecycle",
     desc: "Join this folder to an existing project id. A .burnbar/project-id file only proposes one — nothing is applied until you confirm, so cloning a repository can never re-scope its memories. The refusal shows both sides: the memories adopting would join, and the ones this folder keeps under its current id and stops seeing.",
+    caps: ["memory_write"],
+    memory: true
+  },
+  {
+    name: "burnbar_team_link_project",
+    group: "lifecycle",
+    desc: "Say which shared project id this repository publishes to a team, in .openburnbar/project.json. Team document ids derive from that checked-in id and never from the repository's git identity, because an SSH clone and an HTTPS clone of one repository derive different project ids. Every write needs an explicit confirmation, and a link counts only once it is committed: the engine reads the file from git HEAD, so a written-but-uncommitted entry uploads nothing and serves nothing. A link file that cannot be parsed is never overwritten.",
     caps: ["memory_write"],
     memory: true
   },

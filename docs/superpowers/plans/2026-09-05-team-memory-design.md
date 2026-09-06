@@ -1,10 +1,10 @@
 <!--
-Copied verbatim into the repo by memory-program D16 / P22, PR 4, from the design
+Copied verbatim into the repo by memory-program D16 / P22, from the design
 session's own output. The "Requested return" preamble (a note about that
-session's tooling) is the only thing dropped; everything from the H1 below is
-byte-identical to the source, INCLUDING all NINE amendment blocks. The first is
-the `##` parent; the other eight are the `###` blocks nested under it, in source
-order:
+session's tooling) is the only thing dropped; everything from the H1 below down
+to the one local block named at the end of this note is byte-identical to the
+source, INCLUDING all TEN amendment blocks. The first is the `##` parent; the
+other nine are the `###` blocks nested under it, in source order:
 
   1. "Amendments from PR1 review (2026-09-05)"        (`##`, the parent block)
   2. "Round 2 (nits) — 2026-09-05"
@@ -17,24 +17,47 @@ order:
   7. "PR3 review rulings (2026-09-05)"
   8. "PR3 round 3 rulings (2026-09-06)"
   9. "PR3 Cursor rulings (2026-09-06)"
+ 10. "Amendment A1 — the landing partition is not a local project id
+     (2026-09-06)" — copied into the repo by PR #2544, which fixed what it rules
+     on; it arrives here through `main` and is reproduced unedited
 
 That count is the count of amendment headings in the source, not a carried-over
-number: `grep -cE '^#{2,3} (Amendments|Round|PR[0-9])'` over the source returns
-exactly 9, and the same grep over this file returns the same 9 lines in the same
-order. The previous header said EIGHT while block 9 was absent, which made the
-file's own completeness claim verifiably false (PR 4 review N1).
+number: `grep -cE '^#{2,3} (Amendment|Round|PR[0-9])'` over the source returns
+exactly 10, and the same grep over this file returns the same 10 lines in the
+same order. The header said NINE while block 10 was already in both the source
+and `main`, which is the same completeness defect the previous header was
+written to close (PR 4 review N1) — it is corrected here rather than carried.
 
-BYTE-IDENTICAL NOW MEANS BYTE-IDENTICAL. The previous copy also carried one
-paragraph that exists nowhere in the source — PR 4's own note about where the
-Team Fact badge reads its provenance from. It has been removed. A local
-insertion, however true, is what makes "byte-identical from the H1 below"
-unverifiable, and this is the third recurrence of exactly that defect class
-(M2 → N1 → N1). PR 4's own notes about PR 4's own code live in the PR body and
-in the code's doc comments, both of which say more than that paragraph did; the
-controller's record is copied, never edited in place. The check is one command:
+ONE BLOCK IN THIS FILE IS NOT FROM THE SOURCE, and it says so in its own first
+sentence:
 
-    diff <(awk '/^# Team Memory Implementation Design/{f=1} f' <source>) \
-         <(awk '/^# Team Memory Implementation Design/{f=1} f' <this file>)
+ 11. "D16 Cursor ruling — the link file is a committed, confirmed decision
+     (2026-09-06)" — a controller ruling issued on PR #2542 after the source
+     session had ended, which directed that it be recorded in this file. It is
+     appended at the END, after every copied block, so the byte-identical check
+     runs cleanly over blocks 1-10 by stopping at its heading.
+
+     Naming it here rather than letting a reader discover it is the whole point
+     of the M2 -> N1 -> N1 lesson: an unannounced local insertion is what makes
+     the claim unverifiable. An announced one, placed last, does not.
+
+BYTE-IDENTICAL NOW MEANS BYTE-IDENTICAL. An earlier copy carried one paragraph
+that exists nowhere in the source — PR 4's own note about where the Team Fact
+badge reads its provenance from. It was removed. A local insertion, however
+true, is what makes "byte-identical from the H1 below" unverifiable, and that
+was the third recurrence of exactly that defect class (M2 → N1 → N1). A PR's own
+notes about its own code live in the PR body and in the code's doc comments,
+both of which say more; the controller's record is copied, never edited in
+place. The check is one command, and both sides stop at the first `### D16 `
+heading because BOTH files now carry local blocks under that prefix — this one
+carries block 11, and the source has since gained its own local block ("D16
+bootstrap-wiring Cursor ruling"), which belongs to the PR that copies it next
+and is deliberately absent here:
+
+    diff <(awk '/^# Team Memory Implementation Design/{f=1}
+                /^### D16 /{exit} f' <source>) \
+         <(awk '/^# Team Memory Implementation Design/{f=1}
+                /^### D16 /{exit} f' <this file>)
 
 Where an amendment contradicts the design text above it, the amendment wins:
 that is stated in the amendments themselves and is the rule PR 2, 3 and 4 were
@@ -43,12 +66,13 @@ built to.
 The design is a LIVING controller record and it is still being amended. Block 9
 was appended to the source after PR 4's round-3 review, which found it missing
 (N1) exactly as the round-2 review had found block 8 missing (M2) and PR 4's
-first docs commit had found block 7 missing. All three are binding on PR 4 —
-each says so in its own opening sentence — so the file is re-copied whole rather
-than patched, and this list is enumerated by name so the next copy can be checked
-instead of trusted. A block that lands after this commit belongs to whichever PR
-copies next; the amendments are ahead of the code by design, and a block being
-present here is not a claim that its rulings are implemented on this branch.
+first docs commit had found block 7 missing. Block 10 landed later still, on
+`main`, while this branch was open. All are binding — each says so in its own
+opening sentence — so the file is re-copied whole rather than patched, and this
+list is enumerated by name so the next copy can be checked instead of trusted. A
+block that lands after this commit belongs to whichever PR copies next; the
+amendments are ahead of the code by design, and a block being present here is
+not a claim that its rulings are implemented on this branch.
 
 Line and file citations are as of `main` @ `80819e891d`; the shipped code has
 moved on where the amendments say so.
@@ -1389,3 +1413,102 @@ the row into an unlinked checkout on every surface
 restoring the landing-vs-session comparison hides it from the LINKED checkout on
 every surface, which is the defect itself
 (`test_mutation_the_old_landing_versus_session_comparison_hides_the_row_again`).
+
+### D16 Cursor ruling — the link file is a committed, confirmed decision (2026-09-06)
+
+**Block 11, and the only block in this file that was NOT copied from the design
+session's source.** It is a controller ruling issued on PR #2542 after the source
+session ended, recorded here because the ruling itself directed that it be, and
+marked as a local block so the byte-identical claim in this file's header stays
+checkable over blocks 1–10. Where it contradicts anything above, the ruling
+wins — including over block 10 (amendment A1) immediately above, which it does
+not contradict but narrows: A1 says a team row is servable iff this checkout's
+`.openburnbar/project.json` links that team to the row's landing partition, and
+clause 2 below fixes which bytes of that file count as the link.
+
+The finding (Cursor, HIGH, `tools/openburnbar-mcp/memory_engine/_namespaces.py:859`):
+a first-time `link_team_project` write proceeded with `confirmed=False` — only a
+re-point was gated — `burnbar_memory_doctor` was ungated and flagged the ordinary
+`syncedOnThisMac && !linkedInThisCheckout` state with a `fix` naming the tool,
+and `RecordedRootTeamProjectLinkResolver` / `TeamProjectLink.read` used the
+WORKING-TREE `.openburnbar/project.json` rather than git `HEAD`. So an agent, or
+a prompt-injected tool call, in a private checkout on a Mac that already synced
+the team could create that file with no human confirmation and no commit, and
+that checkout's approved engine memories became eligible to upload under the
+teammates' agreed `teamProjectId`.
+
+§3(a) called this file "a checked-in, human decision". The ruling makes the code
+enforce that sentence, in three clauses.
+
+**Clause 1 — every write is confirmed, not only a re-point.**
+`burnbar_team_link_project` refuses a first-time write without `confirm=true`
+(`LINK_REQUIRES_CONFIRMATION`) exactly as it refuses a re-point
+(`LINK_ALREADY_SET`), and the refusal states what would become uploadable. The
+two codes stay distinct because they are different decisions: a member who meant
+to create a link should learn that one already exists, not merely that they
+forgot a flag. What is at stake was never the file's previous contents — it is
+what the file makes publishable, and on a Mac already syncing the team the FIRST
+write is precisely the one that publishes.
+
+**Clause 2 — eligibility follows the COMMITTED link.** Both readers —
+`TeamProjectLink.read` (upload eligibility and pull admission) and
+`memory_engine/_namespaces.py::_session_team_links` (the T4 serving fence) —
+honour an entry only when the working tree and `HEAD` name the same
+`teamProjectId` for that team.
+
+* Committed and unmodified → a link.
+* Working tree only (never committed, or committed and then re-pointed) → NOT a
+  link. Nobody agreed to it.
+* `HEAD` only (deleted or edited out locally) → NOT a link either. This preserves
+  the property the fence was built for: taking a link away stops the lane on the
+  very next call, without waiting for a commit.
+* No git work tree, unborn branch, git missing or git hung → NOTHING is a link.
+  Fail closed, as the ruling directs: a directory with nothing checked in has
+  checked in no decision, and a reader that could tell those cases apart is a
+  reader that could be talked into treating "no repository" as "committed".
+
+The intersection is taken **per entry, not per file** — the one place the shipped
+rule is narrower than the ruling's literal text, and deliberately. Failing a
+dirty file closed as a whole would let an in-progress edit adding team B silently
+unlink team A, whose entry `HEAD` carries and the team agreed to weeks ago.
+Nothing is gained by that collateral: the attack is an entry `HEAD` does not
+carry, and per-entry closes exactly it, in both directions.
+
+The git read is bounded the way the file read is (`git show HEAD:<path>` streamed
+to `maxBytes + 1`, refused whole if over) and is skipped entirely when the
+working tree names nothing, so a checkout with no link file still costs one
+`stat` and no subprocess.
+
+**Clause 3 — the doctor reports, and does not read as a remediation script.**
+`TEAM_PROJECT_LINK_GAPS` gains `linkWrittenButNotCommitted` /
+`uncommittedTeamIDs` as their own dimension — "you wrote this link and did not
+commit it" is a different sentence from "this team has no entry here", and
+collapsing them is what made an uncommitted file look like a working link. The
+finding carries a `decision` field stating that linking makes this checkout's
+approved memories eligible to upload to that team, readable by every member now
+and in future, and that this is a human decision and not a step to run because a
+report mentioned it. `fix` names the tool, its `confirm=true`, and the commit.
+There is still **no `apply`**, and none is added.
+
+**Where the working-tree read survives.** Only in reporting: the doctor's
+`workingTreeTeamProjectID` / `linkWrittenButNotCommitted`, the writer's
+`effective` / `committedTeamProjectID` / `nextStep`, and the
+`team_memory_project_link_not_committed` log dimension. No fence reads it.
+
+**Tests** (`tools/openburnbar-mcp/tests/test_team_two_clone.py`, plus the Swift
+twins in `AgentLensTests/Active/TeamMemorySyncTests.swift`):
+`test_an_unconfirmed_uncommitted_link_makes_nothing_uploadable` is the reported
+path as the thing that must not happen; `test_a_first_time_link_is_refused_without_confirm`,
+`test_only_a_committed_link_makes_a_project_eligible`,
+`test_an_uncommitted_link_serves_no_team_row_into_this_session` and
+`test_the_doctor_reports_an_uncommitted_link_as_uncommitted_not_as_linked` take a
+clause each; `test_only_a_committed_team_project_link_is_eligible` and
+`test_a_link_file_outside_any_repository_publishes_nothing` mirror clause 2 on the
+Swift half so the two readers cannot drift; and
+`test_the_three_ruling_clauses_are_each_load_bearing` restores each clause's
+pre-ruling behaviour and names the test that goes red.
+
+`test_team_two_clone.py`'s own `_team_project_id_for` — the doc-id pre-image's
+project half, and the mutation target of the two-clone proof — now asks the
+engine's own reader instead of re-parsing the file, so that proof rides on the
+shipped eligibility rule rather than on a second implementation of it.

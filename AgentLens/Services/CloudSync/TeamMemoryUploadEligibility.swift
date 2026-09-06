@@ -113,10 +113,76 @@ struct TeamProjectLink: Equatable, Sendable {
         }
     }
 
-    /// Reads `<projectRoot>/.openburnbar/project.json`, bounded to `maxBytes`.
-    /// An absent, unreadable or oversized file is an empty link, for the same
-    /// reason a malformed one is.
+    /// THE ELIGIBILITY READ. An entry counts only when the working tree and
+    /// `HEAD` name the same `teamProjectId` for the team.
+    ///
+    /// **D16 Cursor ruling (HIGH).** The doc comment above calls this file "a
+    /// checked-in, human decision"; before this, the code read the WORKING TREE,
+    /// which made it a decision anything able to write a file could take.
+    /// Anything that can write in a private checkout — an agent, a
+    /// prompt-injected tool call — could opt that repository into a team this
+    /// Mac already syncs, and its approved memories then became eligible to
+    /// upload under the teammates' agreed `teamProjectId`, with no human
+    /// confirmation and no commit anywhere. This lane's readers are every member
+    /// of the team, now and in future (Semantic A), so the write that opens it
+    /// has to be one a human made and a repository records.
+    ///
+    /// The intersection is taken PER ENTRY, and both directions fail closed:
+    ///
+    /// * committed and unmodified -> a link;
+    /// * working tree only (never committed, or committed and then re-pointed)
+    ///   -> NOT a link: nobody agreed to it;
+    /// * `HEAD` only (deleted or edited out locally) -> NOT a link either, which
+    ///   keeps the property the serving fence was built for — taking the link
+    ///   away stops the lane on the very next cycle, without waiting for a
+    ///   commit.
+    ///
+    /// Per entry, not per file: failing a dirty file closed as a whole would let
+    /// an in-progress edit adding team B silently stop team A, whose entry was
+    /// committed and agreed weeks ago. The attack is an entry `HEAD` does not
+    /// carry, and per-entry closes exactly that.
+    ///
+    /// A checkout with no git work tree, an unborn branch, or no committed link
+    /// file publishes nothing. That is the fail-closed answer and the only
+    /// honest one: a directory with nothing checked in has checked in no
+    /// decision.
+    ///
+    /// `memory_engine/_namespaces.py::_session_team_links` is the same rule on
+    /// the engine side, and the two are meant to agree entry for entry.
     static func read(projectRoot: URL) -> TeamProjectLink {
+        let working = readWorkingTree(projectRoot: projectRoot)
+        guard !working.teamProjectIDsByTeamID.isEmpty else {
+            // Nothing in the working tree can intersect with anything, so the
+            // git read is skipped: the common case (no link file) stays one
+            // bounded file read and no subprocess.
+            return working
+        }
+        let committed = readCommitted(projectRoot: projectRoot)
+        let effective = working.teamProjectIDsByTeamID.filter { team, id in
+            committed.teamProjectIDsByTeamID[team] == id
+        }
+        if effective.count < working.teamProjectIDsByTeamID.count {
+            // Neither an error nor a silence: a member who wrote a link and did
+            // not commit it has a repository that publishes nothing, and this is
+            // the operator-visible half of `burnbar_memory_doctor`'s
+            // `linkWrittenButNotCommitted`. Ids are not logged.
+            AppLogger.sync.error(
+                "team_memory_project_link_not_committed",
+                metadata: ["count": String(working.teamProjectIDsByTeamID.count - effective.count)]
+            )
+        }
+        return TeamProjectLink(teamProjectIDsByTeamID: effective, droppedEntries: working.droppedEntries)
+    }
+
+    /// The working-tree half: `<projectRoot>/.openburnbar/project.json`, bounded
+    /// to `maxBytes`. An absent, unreadable or oversized file is an empty link,
+    /// for the same reason a malformed one is.
+    ///
+    /// NOT an eligibility answer on its own — `read` is. This exists so the
+    /// intersection has two named halves that can each be tested, and so a
+    /// future surface that wants to tell a human "you wrote this and did not
+    /// commit it" has an honest way to ask.
+    static func readWorkingTree(projectRoot: URL) -> TeamProjectLink {
         let url = projectRoot.appendingPathComponent(relativePath)
         let link: TeamProjectLink
         do {
@@ -137,6 +203,73 @@ struct TeamProjectLink: Equatable, Sendable {
             )
         }
         return link
+    }
+
+    /// The committed half: the link file's bytes as they exist at `HEAD`.
+    ///
+    /// Every way there can fail to be a committed blob at that path collapses to
+    /// the same empty link — not a git work tree, unborn branch, path untracked,
+    /// `HEAD` naming a tree or submodule there, git missing, git hung — because
+    /// a caller that could tell those apart is a caller that could be talked
+    /// into treating "no repository" as "committed".
+    static func readCommitted(projectRoot: URL) -> TeamProjectLink {
+        guard let data = committedBlob(projectRoot: projectRoot, path: relativePath) else {
+            return TeamProjectLink(teamProjectIDsByTeamID: [:])
+        }
+        return decode(from: data)
+    }
+
+    /// `git show HEAD:<path>`, bounded to `maxBytes`, or nil.
+    ///
+    /// Bounded by reading the pipe rather than by checking a size afterwards: a
+    /// `readDataToEndOfFile` on an attacker-sized blob would already have paid
+    /// the cost, which is the same argument `readBounded` makes about the file.
+    /// The environment is stripped of `GIT_*` and every prompt is disarmed, on
+    /// the pattern `ReceiptAccomplishmentSynthesizer.runGitCommand` established:
+    /// this runs against a member's own repository, and a repository must not be
+    /// able to make it ask a question or reach the network.
+    private static func committedBlob(projectRoot: URL, path: String) -> Data? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = [
+            "-C", projectRoot.path,
+            "--no-optional-locks",
+            "-c", "core.fsmonitor=false",
+            "-c", "core.hooksPath=/dev/null",
+            "-c", "credential.helper=",
+            "show", "HEAD:\(path)"
+        ]
+        var environment = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("GIT_") }
+        environment["GIT_ASKPASS"] = "/usr/bin/false"
+        environment["GIT_OPTIONAL_LOCKS"] = "0"
+        environment["GIT_TERMINAL_PROMPT"] = "0"
+        environment["SSH_ASKPASS"] = "/usr/bin/false"
+        process.environment = environment
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        process.standardInput = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        let handle = pipe.fileHandleForReading
+        // try?-ok(a failed pipe read is an empty blob, which the returnStatus/size guard below turns into "no committed link" — the fail-closed answer every other failure mode here already produces)
+        let data = (try? handle.read(upToCount: maxBytes + 1)) ?? Data()
+        let deadline = Date().addingTimeInterval(3.0)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        if process.isRunning {
+            process.terminate()
+            return nil
+        }
+        try? handle.close() // try?-ok(read-only teardown of a bounded pipe read)
+        guard process.terminationStatus == 0, data.count <= maxBytes else { return nil }
+        return data
     }
 
     /// Reads at most `maxBytes` from `url`, or nil when the file is larger.
