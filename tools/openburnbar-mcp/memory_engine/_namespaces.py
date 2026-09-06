@@ -70,7 +70,7 @@ from .constants import (
     TEAM_PROJECT_LINK_RELATIVE_PATH,
     TEAM_PROVENANCE_SUBKEY,
 )
-from .store import audit_event, resolve_project
+from .store import audit_event, project_payload, resolve_project
 
 if TYPE_CHECKING:  # pragma: no cover — annotations only; importing it would be circular
     from collections.abc import Sequence
@@ -86,10 +86,19 @@ class _SessionTeamLinks(NamedTuple):
     that was read for a different project rather than trusting its caller to
     have paired them correctly. A serving fence whose input can be mismatched
     silently is not a fence.
+
+    `teams` is the EFFECTIVE map and the only one any fence may read: an entry
+    is in it when the working tree and `HEAD` agree on it (D16 Cursor ruling,
+    below). `working_tree` and `committed` are the two halves it was built from,
+    kept so the doctor can tell a member "you wrote this link and did not commit
+    it" — which is a true and useful thing to say — without any of the fences
+    being able to mistake that state for a link.
     """
 
     project_id: str
     teams: dict[str, str]
+    working_tree: dict[str, str] = {}  # noqa: RUF012 — NamedTuple default, never mutated
+    committed: dict[str, str] = {}  # noqa: RUF012 — NamedTuple default, never mutated
 
 
 class _ConvergenceNamespaces:
@@ -507,45 +516,25 @@ class _ConvergenceNamespaces:
     # `_team_write_filter` drops team rows from every session's pool regardless
     # of any project, so a wider pool is a wider set of rows it discards.
 
-    def _session_team_links(self, project_id: str) -> _SessionTeamLinks:
-        """`teamID -> teamProjectId` THIS checkout publishes, read live off disk.
+    @staticmethod
+    def _decode_team_links(raw: bytes | None) -> dict[str, str]:
+        """`teamID -> teamProjectId` out of link-file bytes, by the reader's rules.
 
-        The same file the app reads (`TeamProjectLink.read`), by the same rules:
-        an absent, unreadable, oversized, malformed or out-of-shape entry is no
-        link at all, so every failure mode here means "this checkout publishes
-        nothing to that team" and the rows stay unserved. Fail-closed in every
-        direction.
-
-        The root comes from `projects.primary_path` — the folder `resolve_project`
-        recorded for this project id — so a project this engine has never seen
-        resolves to no links rather than to a guessed path. A team row's own
-        landing project (`teamProjectId`) is not a local checkout and has no such
-        row, which is exactly right: it names nothing on this disk.
-
-        NOT CACHED, on purpose. One bounded read of a few hundred bytes per
-        serving call is the price of "unlinking stops the serving now", and
-        `resolve_project` already stats this repository on the same call.
+        The one parser, so the working-tree half and the committed half cannot
+        disagree about what a byte string means. An absent, oversized, malformed
+        or out-of-shape input is NO LINK — `{}` — rather than a throw: every
+        failure mode of this file has to mean "this checkout publishes nothing",
+        and one bad entry must not cost a second team its correct one.
         """
-        row = self.conn.execute("SELECT primary_path FROM projects WHERE project_id = ?", (project_id,)).fetchone()
-        if row is None:
-            return _SessionTeamLinks(project_id, {})
-        path = Path(str(row["primary_path"])).joinpath(*TEAM_PROJECT_LINK_RELATIVE_PATH)
-        try:
-            if not path.is_file():
-                return _SessionTeamLinks(project_id, {})
-            with path.open("rb") as handle:
-                raw = handle.read(TEAM_PROJECT_LINK_MAX_BYTES + 1)
-        except OSError:
-            return _SessionTeamLinks(project_id, {})
-        if len(raw) > TEAM_PROJECT_LINK_MAX_BYTES:
-            return _SessionTeamLinks(project_id, {})
+        if raw is None or len(raw) > TEAM_PROJECT_LINK_MAX_BYTES:
+            return {}
         try:
             parsed = _json_loads(raw.decode("utf-8"), None)
         except UnicodeDecodeError:
-            return _SessionTeamLinks(project_id, {})
+            return {}
         teams = parsed.get("teams") if isinstance(parsed, dict) else None
         if not isinstance(teams, dict):
-            return _SessionTeamLinks(project_id, {})
+            return {}
         links: dict[str, str] = {}
         for team_id, entry in teams.items():
             # Both halves are screened to the shapes the merge already holds
@@ -558,7 +547,92 @@ class _ConvergenceNamespaces:
             candidate = str(entry.get("teamProjectId") or "").strip()
             if REMOTE_PROJECT_ID_RE.match(candidate):
                 links[team_id] = candidate
-        return _SessionTeamLinks(project_id, links)
+        return links
+
+    @classmethod
+    def _committed_team_links(cls, root: Path) -> dict[str, str]:
+        """The link entries this checkout has actually COMMITTED at `HEAD`.
+
+        Everything that is not a committed blob at that path — no repository, an
+        unborn branch, the file untracked, git absent — is `{}`, which is the
+        fail-closed answer the ruling asks for and the only honest one: the link
+        is defined as a checked-in decision, so a checkout with nothing checked
+        in has made no decision.
+        """
+        import project_code_memory as pcm
+
+        return cls._decode_team_links(
+            pcm.git_committed_blob(root, "/".join(TEAM_PROJECT_LINK_RELATIVE_PATH), TEAM_PROJECT_LINK_MAX_BYTES)
+        )
+
+    def _session_team_links(self, project_id: str) -> _SessionTeamLinks:
+        """`teamID -> teamProjectId` THIS checkout publishes, read live off disk.
+
+        The same file the app reads (`TeamProjectLink.read`), by the same rules:
+        an absent, unreadable, oversized, malformed or out-of-shape entry is no
+        link at all, so every failure mode here means "this checkout publishes
+        nothing to that team" and the rows stay unserved. Fail-closed in every
+        direction.
+
+        **THE COMMITTED HALF (D16 Cursor ruling, HIGH).** An entry counts only
+        when the working tree and `HEAD` name the SAME `teamProjectId` for the
+        team. The working-tree file alone is not a link, because anything that
+        can write a file in this checkout — an agent, a prompt-injected tool
+        call, a stray editor macro — could otherwise opt a private repository
+        into a team whose members already sync on this Mac, and this lane's
+        readers are every member of that team, now and in future. The design
+        calls this file "a checked-in, human decision"; this is that sentence
+        made enforceable.
+
+        The intersection is taken PER ENTRY, and both directions of disagreement
+        fail closed:
+
+          * committed and unmodified -> a link;
+          * present in the working tree only (never committed, or committed and
+            then re-pointed) -> NOT a link, because no one agreed to it;
+          * present at `HEAD` only (the member deleted or edited it out locally)
+            -> NOT a link either, which preserves the property the fence was
+            built for: taking the link away stops the serving on the very next
+            call, without waiting for a commit.
+
+        Per entry rather than per file on purpose: failing the whole file closed
+        whenever it is dirty would let an in-progress edit adding team B silently
+        stop team A, whose entry was committed and agreed weeks ago. Nothing is
+        gained by that collateral — the attack is an entry that `HEAD` does not
+        carry, and per-entry closes exactly it.
+
+        The root comes from `projects.primary_path` — the folder `resolve_project`
+        recorded for this project id — so a project this engine has never seen
+        resolves to no links rather than to a guessed path. A team row's own
+        landing project (`teamProjectId`) is not a local checkout and has no such
+        row, which is exactly right: it names nothing on this disk.
+
+        NOT CACHED, on purpose. One bounded read of a few hundred bytes per
+        serving call is the price of "unlinking stops the serving now", and
+        `resolve_project` already stats this repository on the same call. The
+        git read is the second bounded read, and it is skipped entirely when the
+        working tree names nothing: an empty intersection needs no second half,
+        so the overwhelmingly common case (no link file at all) still costs one
+        `stat` and no subprocess.
+        """
+        row = self.conn.execute("SELECT primary_path FROM projects WHERE project_id = ?", (project_id,)).fetchone()
+        if row is None:
+            return _SessionTeamLinks(project_id, {})
+        root = Path(str(row["primary_path"]))
+        path = root.joinpath(*TEAM_PROJECT_LINK_RELATIVE_PATH)
+        try:
+            if not path.is_file():
+                return _SessionTeamLinks(project_id, {})
+            with path.open("rb") as handle:
+                raw: bytes | None = handle.read(TEAM_PROJECT_LINK_MAX_BYTES + 1)
+        except OSError:
+            return _SessionTeamLinks(project_id, {})
+        working_tree = self._decode_team_links(raw)
+        if not working_tree:
+            return _SessionTeamLinks(project_id, {}, {}, {})
+        committed = self._committed_team_links(root)
+        effective = {team: target for team, target in working_tree.items() if committed.get(team) == target}
+        return _SessionTeamLinks(project_id, effective, working_tree, committed)
 
     def _team_row_servable(
         self,
@@ -777,6 +851,373 @@ class _ConvergenceNamespaces:
             "code": "TEAM_ROW_NOT_WRITABLE",
             "memoryID": memory_id,
             "reason": "this memory belongs to a team; it changes through the team lane, not through a local write",
+        }
+
+    # ----- the link file's WRITER and its DIAGNOSTIC (D16 follow-ups) -----
+    #
+    # `_session_team_links` above is the reader, and until now it was the only
+    # code that knew this file existed. A member who wanted to publish a
+    # repository to a team hand-edited JSON at a path nothing documented, and a
+    # member who got it wrong saw an empty team space with no explanation
+    # anywhere: the serving fence refuses silently by design, the pull-side
+    # refusal is a Swift log dimension, and `doctor` said nothing at all.
+    #
+    # So the file gets one writer and one report, both here, beside the reader
+    # they have to agree with. The writer is deliberately narrow — it edits one
+    # team's entry and preserves everything else in the document byte for byte —
+    # and `doctor` never writes it: this link is a CHECKED-IN, human decision
+    # about what a repository publishes to whom, and a diagnostic that repairs
+    # it by itself would be committing on the member's behalf.
+
+    def link_team_project(
+        self,
+        *,
+        project_path: str | None,
+        team_id: str,
+        team_project_id: str,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        """Write `teams.<teamId>.teamProjectId` into this checkout's link file.
+
+        Both halves are screened to the SAME shapes `_session_team_links`
+        screens on the way back in (`REMOTE_TEAM_ID_RE`, `REMOTE_PROJECT_ID_RE`),
+        because a value this writer accepts and that reader drops would be a link
+        the member believes they made and the engine does not have.
+
+        EVERY WRITE NEEDS `confirmed=True` (D16 Cursor ruling, HIGH). The first
+        write to a team needs it exactly as a re-point does. The original shape
+        gated only the re-point, on the reasoning that creating an entry destroys
+        nothing — but the thing at stake here was never the file's previous
+        contents. It is what the file makes publishable: naming a team here is
+        the act that puts this repository's approved memories in front of every
+        member of that team, now and in future, and on a Mac already syncing that
+        team the *first* write is precisely the write that opens the door. A
+        confirmation that fires only on the second write protects the wrong one.
+        The refusal says what would become uploadable so the confirmation is an
+        informed one rather than a reflex.
+
+        Re-pointing keeps its own code, `LINK_ALREADY_SET`, and reports both
+        sides: it is a different decision — it moves every future document of
+        that team into another partition — and a member who meant to create a
+        link should learn that one already exists rather than be told only that
+        they forgot a flag. An entry that already names the same project is a
+        no-op that reports itself as one, and needs no confirmation because it
+        changes nothing.
+
+        A file this reader cannot parse is NEVER overwritten, with or without a
+        confirmation. It may hold other teams' entries, and the one thing worse
+        than a wrong link is a silently deleted one; the member is told the path
+        and fixes it by hand.
+
+        THE WRITE IS NOT THE LINK. `_session_team_links` honours an entry only
+        once `HEAD` carries it too, so this tool's successful return is a written
+        file and nothing more; the result says so in `effective` and
+        `committedTeamProjectID`. That is the point — a tool call can write a
+        file, and only a human can commit one.
+        """
+        project_id, root = resolve_project(self.conn, project_path)
+        base = dict(project_payload(project_id, root))
+        team = str(team_id or "").strip()
+        target = str(team_project_id or "").strip()
+        if not REMOTE_TEAM_ID_RE.match(team):
+            return {
+                "status": "refused",
+                "code": "INVALID_TEAM_ID",
+                "reason": "teamId must be 'team_' followed by 16 lowercase hex digits",
+                **base,
+            }
+        if not REMOTE_PROJECT_ID_RE.match(target):
+            return {
+                "status": "refused",
+                "code": "INVALID_TEAM_PROJECT_ID",
+                "reason": (
+                    "teamProjectId must be a project token: letters, digits, '_', '.', ':' or '-', "
+                    "at most 128 characters"
+                ),
+                **base,
+            }
+
+        path = root.joinpath(*TEAM_PROJECT_LINK_RELATIVE_PATH)
+        document: dict[str, Any] = {}
+        if path.is_file():
+            try:
+                with path.open("rb") as handle:
+                    raw = handle.read(TEAM_PROJECT_LINK_MAX_BYTES + 1)
+            except OSError as exc:
+                return {
+                    "status": "refused",
+                    "code": "LINK_FILE_UNREADABLE",
+                    "reason": f"{path} could not be read: {exc.strerror or 'unreadable'}",
+                    "path": str(path),
+                    **base,
+                }
+            parsed: Any = None
+            if len(raw) <= TEAM_PROJECT_LINK_MAX_BYTES:
+                try:
+                    parsed = _json_loads(raw.decode("utf-8"), None)
+                except UnicodeDecodeError:
+                    parsed = None
+            if not isinstance(parsed, dict) or not isinstance(parsed.get("teams", {}), dict):
+                # Never clobbered. The reader treats this file as publishing
+                # nothing, so the member's team space is already empty and the
+                # repair is a human edit, not a rewrite that could drop a
+                # teammate's entry along with the damage.
+                return {
+                    "status": "refused",
+                    "code": "LINK_FILE_UNREADABLE",
+                    "reason": (
+                        "the existing link file is missing, oversized, not JSON, or has no 'teams' object; "
+                        "this tool will not overwrite it"
+                    ),
+                    "path": str(path),
+                    **base,
+                }
+            document = parsed
+
+        teams = dict(document.get("teams") or {})
+        entry = teams.get(team)
+        previous = None
+        if isinstance(entry, dict):
+            candidate = str(entry.get("teamProjectId") or "").strip()
+            previous = candidate or None
+        committed = self._committed_team_links(root)
+        if previous == target:
+            return {
+                "status": "ok",
+                "event": "NONE",
+                "reason": "already_linked",
+                "teamID": team,
+                "teamProjectID": target,
+                "path": str(path),
+                "teams": {key: str((value or {}).get("teamProjectId") or "") for key, value in teams.items()},
+                "trackedByGit": self._link_file_tracked(root),
+                "committedTeamProjectID": committed.get(team),
+                "effective": committed.get(team) == target,
+                **base,
+            }
+        if previous is not None and not confirmed:
+            return {
+                "status": "refused",
+                "code": "LINK_ALREADY_SET",
+                "reason": (
+                    "this repository already publishes to that team under a different project id; "
+                    "re-pointing it moves every future document of that team into another partition, and "
+                    "publishes this checkout's approved memories to that team under the new id. "
+                    "A human must decide this: re-run with confirm=true, then COMMIT the file — "
+                    "an uncommitted entry is not a link"
+                ),
+                "teamID": team,
+                "currentTeamProjectID": previous,
+                "committedTeamProjectID": committed.get(team),
+                "proposedTeamProjectID": target,
+                "path": str(path),
+                **base,
+            }
+        if previous is None and not confirmed:
+            # D16 Cursor ruling, HIGH. The FIRST write is the one that opens the
+            # door, so it is the one a confirmation has to stand in front of.
+            return {
+                "status": "refused",
+                "code": "LINK_REQUIRES_CONFIRMATION",
+                "reason": (
+                    f"linking this repository to {team} makes its approved memories eligible to upload to that "
+                    "team, readable by every member of it now and in future, and admits that team's facts into "
+                    "this checkout's sessions. A human must decide this: re-run with confirm=true, then COMMIT "
+                    "the file — an uncommitted entry is not a link"
+                ),
+                "teamID": team,
+                "proposedTeamProjectID": target,
+                "path": str(path),
+                **base,
+            }
+
+        # The entry is REPLACED, not merged: `teamProjectId` is the only key this
+        # schema defines, and carrying an unknown sibling forward would preserve
+        # something no reader on either side of the lane understands.
+        teams[team] = {"teamProjectId": target}
+        document["teams"] = teams
+        encoded = (_json_dumps(document) + "\n").encode("utf-8")
+        if len(encoded) > TEAM_PROJECT_LINK_MAX_BYTES:
+            # The reader refuses an oversized file WHOLE — this checkout would
+            # then publish nothing to any team — so writing one would break the
+            # links that already work.
+            return {
+                "status": "refused",
+                "code": "LINK_FILE_TOO_LARGE",
+                "reason": (
+                    f"the resulting file would be {len(encoded)} bytes, over the "
+                    f"{TEAM_PROJECT_LINK_MAX_BYTES}-byte bound both readers enforce"
+                ),
+                "path": str(path),
+                **base,
+            }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(encoded)
+        except OSError as exc:
+            return {
+                "status": "unavailable",
+                "code": "LINK_FILE_UNWRITABLE",
+                "reason": f"{path} could not be written: {exc.strerror or 'unwritable'}",
+                "path": str(path),
+                **base,
+            }
+        audit_event(
+            self.conn,
+            action="memory.team_project_linked",
+            project_id=project_id,
+            subject_id=None,
+            labels=[f"team:{team}", "event:relinked" if previous else "event:linked"],
+            actor=self.config.actor,
+        )
+        self._commit()
+        effective = committed.get(team) == target
+        return {
+            "status": "ok",
+            "event": "RELINKED" if previous else "LINKED",
+            "teamID": team,
+            "teamProjectID": target,
+            "previousTeamProjectID": previous,
+            "path": str(path),
+            "teams": {key: str((value or {}).get("teamProjectId") or "") for key, value in teams.items()},
+            # The link only reaches a teammate by being COMMITTED. An untracked
+            # file publishes to this Mac and nowhere else, which looks exactly
+            # like a working link until someone else pulls.
+            "trackedByGit": self._link_file_tracked(root),
+            # And it is not a link on THIS Mac either until then. The file is
+            # written; the fences read `HEAD`, so until this entry is committed
+            # nothing about eligibility has changed, and the caller is told that
+            # in the same breath as "ok" rather than being left to infer it.
+            "committedTeamProjectID": committed.get(team),
+            "effective": effective,
+            "nextStep": (
+                None
+                if effective
+                else (
+                    f"commit {'/'.join(TEAM_PROJECT_LINK_RELATIVE_PATH)} — until this entry is in HEAD it links "
+                    "nothing, uploads nothing and admits nothing"
+                )
+            ),
+            **base,
+        }
+
+    @staticmethod
+    def _link_file_tracked(root: Path) -> bool:
+        """Whether git knows about the link file. Advice, never a gate."""
+        import project_code_memory as pcm
+
+        listed = pcm._git_output(root, ["ls-files", "--", "/".join(TEAM_PROJECT_LINK_RELATIVE_PATH)])
+        return bool(listed)
+
+    def team_project_link_report(self, project_path: str | None = None) -> dict[str, Any]:
+        """Per team: what this checkout links, what it withholds, and what looks wrong.
+
+        Read-only, counts and ids only, no bodies — the `ORPHAN_TEAM_PROVENANCE`
+        contract. Three dimensions, each answering a different way a member ends
+        up staring at an empty team space:
+
+          1. `factsWithheldTeamProjectNotLinked` — team rows this store HOLDS and
+             this session refuses to serve, which is the local face of
+             `TEAM_PROJECT_NOT_LINKED`. (The Swift pull's refusal of the same
+             name happens before the engine ever sees the document and is a log
+             dimension; this engine cannot count it and does not claim to.)
+          2. `linkedInThisCheckout` false on a team this Mac is otherwise syncing
+             — the roster/opt-in evidence being a `team:<teamId>:<uid>` account
+             key in `remote_sync_watermarks`, plus any team that has stamped a
+             row or an entry in the convergence ledger here.
+          3. `linkNamesNoHeldPartition` — this store HOLDS facts for the team
+             and not one of them landed in the project the link names. A
+             transposed character looks exactly like this. The qualifier is
+             load-bearing: a link with no rows behind it yet is a brand-new
+             correct link as often as a typo, and there is nothing local that
+             can tell those apart, so the finding stays quiet until the store
+             holds evidence. `linkedTeamProjectIDIsLocalProject` is reported
+             beside it as context and decides nothing.
+          4. `linkWrittenButNotCommitted` — the working-tree file names a
+             `teamProjectId` for this team that `HEAD` does not carry. This is
+             the ONE place the working-tree read stays honest, and it is a
+             report, never a link: `linkedInThisCheckout` is false for exactly
+             these teams, because no fence honours an entry nobody committed
+             (D16 Cursor ruling). Telling a member "you wrote this and did not
+             commit it" is useful; showing them the same state as "linked" is
+             the finding this ruling came from. `workingTreeTeamProjectID` and
+             `committedTeamProjectID` are reported beside it so the two halves
+             are visible rather than inferred.
+        """
+        project_id, root = resolve_project(self.conn, project_path)
+        links = self._session_team_links(project_id)
+
+        landing: dict[str, set[str]] = {}
+        withheld: dict[str, int] = {}
+        held: dict[str, int] = {}
+        for row in self.conn.execute(
+            f"SELECT project_id, json_extract(metadata_json, '{TEAM_ID_JSON_PATH}') AS team_id "  # noqa: S608
+            f"FROM memories WHERE json_extract(metadata_json, '{TEAM_ID_JSON_PATH}') IS NOT NULL"
+        ).fetchall():
+            team = str(row["team_id"])
+            landing.setdefault(team, set()).add(str(row["project_id"]))
+            held[team] = held.get(team, 0) + 1
+            if not self._team_row_servable(team, str(row["project_id"]), project_id, links):
+                withheld[team] = withheld.get(team, 0) + 1
+
+        known: set[str] = set(links.teams) | set(links.working_tree) | set(links.committed) | set(landing)
+        ledger: set[str] = set()
+        for row in self.conn.execute(
+            "SELECT key FROM engine_meta WHERE substr(key, 1, 19) = 'sync_identity:team:'"
+        ).fetchall():
+            parts = str(row["key"]).split(":")
+            if len(parts) > 2 and REMOTE_TEAM_ID_RE.match(parts[2]):
+                ledger.add(parts[2])
+        known |= ledger
+
+        synced: set[str] = set()
+        import project_code_memory as pcm
+
+        if "remote_sync_watermarks" in pcm.table_names(self.conn):
+            for row in self.conn.execute(
+                "SELECT DISTINCT accountUid FROM remote_sync_watermarks WHERE substr(accountUid, 1, 5) = 'team:'"
+            ).fetchall():
+                parts = str(row["accountUid"]).split(":")
+                if len(parts) > 1 and REMOTE_TEAM_ID_RE.match(parts[1]):
+                    synced.add(parts[1])
+        known |= synced
+
+        local_projects = {
+            str(row["project_id"]) for row in self.conn.execute("SELECT project_id FROM projects").fetchall()
+        }
+
+        teams: list[dict[str, Any]] = []
+        for team in sorted(known):
+            linked = links.teams.get(team)
+            working = links.working_tree.get(team)
+            head = links.committed.get(team)
+            partitions = sorted(landing.get(team, set()))
+            teams.append(
+                {
+                    "teamID": team,
+                    "linkedTeamProjectID": linked,
+                    "linkedInThisCheckout": linked is not None,
+                    # The working-tree read, kept where it is honest: a written
+                    # and uncommitted entry is a thing a member did and needs to
+                    # hear about. It is NOT a link and no field here says it is.
+                    "workingTreeTeamProjectID": working,
+                    "committedTeamProjectID": head,
+                    "linkWrittenButNotCommitted": bool(working is not None and head != working),
+                    "syncedOnThisMac": team in synced,
+                    "factsHeldLocally": held.get(team, 0),
+                    "factsWithheldTeamProjectNotLinked": withheld.get(team, 0),
+                    "landingProjectIDs": partitions,
+                    "linkNamesNoHeldPartition": bool(linked is not None and partitions and linked not in partitions),
+                    "linkedTeamProjectIDIsLocalProject": bool(linked is not None and linked in local_projects),
+                }
+            )
+        return {
+            "status": "ok",
+            "checkoutProjectID": project_id,
+            "linkPath": str(root.joinpath(*TEAM_PROJECT_LINK_RELATIVE_PATH)),
+            "links": dict(sorted(links.teams.items())),
+            "teams": teams,
+            **project_payload(project_id, root),
         }
 
     # ----- T6 recovery: provenance no team lane can account for -----

@@ -178,17 +178,32 @@ def _root_commit(path: Path) -> str:
     return _git(path, "rev-list", "--max-parents=0", "HEAD")
 
 
-def _write_link(root: Path, links: dict[str, str] | None) -> None:
-    """The checked-in `.openburnbar/project.json`. `None` deletes it."""
+def _write_link(root: Path, links: dict[str, str] | None, *, commit: bool = True) -> None:
+    """The checked-in `.openburnbar/project.json`. `None` deletes it.
+
+    CHECKED IN is the operative word, and now the default: the engine reads the
+    COMMITTED file (D16 Cursor ruling), so a written-and-uncommitted entry is not
+    a link and nothing in this proof would converge on one. `commit=False` is for
+    the tests that are about exactly that distinction.
+    """
     path = root / ".openburnbar" / "project.json"
     if links is None:
         path.unlink(missing_ok=True)
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"teams": {team: {"teamProjectId": project} for team, project in links.items()}}),
-        encoding="utf-8",
-    )
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"teams": {team: {"teamProjectId": project} for team, project in links.items()}}),
+            encoding="utf-8",
+        )
+    if commit:
+        _commit_link(root)
+
+
+def _commit_link(root: Path) -> None:
+    """Commit whatever the link file currently is — its content, or its absence."""
+    _git(root, "add", "-A", "--", ".")
+    if _git(root, "status", "--porcelain"):
+        _git(root, "commit", "-qm", "link")
 
 
 def _team_project_id_for(member: _Member, team_id: str) -> str | None:
@@ -197,13 +212,13 @@ def _team_project_id_for(member: _Member, team_id: str) -> str | None:
     THE WHOLE MITIGATION, in one function, so that the mutation test at the
     bottom of this file can replace exactly it — see
     `_git_fingerprint_project_id` — and watch the proof collapse.
+
+    It asks the ENGINE'S OWN reader rather than re-parsing the file, so this
+    proof rides on the shipped eligibility rule — working tree AND `HEAD`, per
+    entry — instead of on a second implementation that could agree with the
+    design while the product disagreed with both.
     """
-    path = member.root / ".openburnbar" / "project.json"
-    if not path.is_file():
-        return None
-    parsed = json.loads(path.read_text(encoding="utf-8"))
-    entry = parsed.get("teams", {}).get(team_id)
-    return str(entry["teamProjectId"]) if isinstance(entry, dict) else None
+    return member.engine._session_team_links(member.engine_project_id).teams.get(team_id)
 
 
 def _git_fingerprint_project_id(member: _Member, team_id: str) -> str | None:
@@ -791,3 +806,692 @@ def test_deriving_the_doc_id_from_the_git_fingerprint_breaks_the_proof(team, mon
 
     assert _team_row_ids(alice) == set()
     assert _team_row_ids(bob) == set()
+
+
+# ---------------------------------------------------------------------------
+# 5. The link file's writer and its diagnostic (the second D16 follow-up)
+# ---------------------------------------------------------------------------
+#
+# The file above is checked in by hand in every test so far, which is exactly
+# how it worked before this PR: no writer, no diagnostic, and a mislinked
+# repository showing up as an empty team space with no explanation anywhere.
+# These cases drive the same convergence through the tool instead.
+
+
+class _NoopContext:
+    """Hand the server tools an engine the test owns, without closing it."""
+
+    def __init__(self, engine: me.MemoryEngine) -> None:
+        self._engine = engine
+
+    def __enter__(self) -> me.MemoryEngine:
+        return self._engine
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
+
+
+def _read_link_file(root: Path) -> dict[str, object]:
+    return json.loads((root / ".openburnbar" / "project.json").read_text(encoding="utf-8"))
+
+
+def test_the_link_tool_is_gated_by_memory_write(team, server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Writing the link file is a write, and it is gated like every other one.
+
+    The link decides what this repository publishes to a team — a wider egress
+    than any local row — so an agent granted nothing at all may not set it, for
+    the same reason it may not run `burnbar_project_adopt`.
+    """
+    import server
+
+    alice, _, _ = team
+    monkeypatch.setattr(server, "_memory_engine", lambda: _NoopContext(alice.engine))
+    denied = json.loads(
+        server.burnbar_team_link_project(team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID, project_path=str(alice.root))
+    )
+    assert denied["status"] == "denied"
+    assert denied["capability"] == "memory_write"
+
+    monkeypatch.setenv("OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE", "true")
+    allowed = json.loads(
+        server.burnbar_team_link_project(team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID, project_path=str(alice.root))
+    )
+    assert allowed["status"] == "ok"
+    assert allowed["event"] == "NONE"
+    assert allowed["reason"] == "already_linked"
+
+
+def test_the_link_tool_creates_the_file_and_the_two_clones_then_converge(team) -> None:
+    """The whole point, driven through the writer: link, pull, converge.
+
+    Bob's checkout starts publishing nothing — the default for every repository
+    — so Alice's contribution is refused as `TEAM_PROJECT_NOT_LINKED` and his
+    team space is empty. A confirmed call writes the file, a COMMIT makes it a
+    link, the rewind-on-link rule re-offers what was refused, and the two clones
+    land the same row id despite two different git project identities.
+
+    The commit is a step in this test rather than an afterthought because it is
+    a step in the product: the tool writes, the human commits, and only then is
+    anything eligible (D16 Cursor ruling).
+    """
+    alice, bob, cloud = team
+    _write_link(bob.root, None)
+
+    a_mid = _remember_and_approve(alice, FACT_BODY)
+    a_doc = _push(alice, cloud, a_mid, team_id=TEAM_ID, updated_at=T1)
+    assert _pull(bob, cloud, team_id=TEAM_ID)["refusedNotLinked"] == [a_doc]
+    assert _team_row_ids(bob) == set()
+
+    linked = bob.engine.link_team_project(
+        project_path=str(bob.root), team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID, confirmed=True
+    )
+    assert linked["status"] == "ok"
+    assert linked["event"] == "LINKED"
+    assert linked["teamID"] == TEAM_ID
+    assert linked["teamProjectID"] == TEAM_PROJECT_ID
+    assert linked["previousTeamProjectID"] is None
+    assert linked["teams"] == {TEAM_ID: TEAM_PROJECT_ID}
+    # Written but not committed, and the tool says so twice over: an untracked
+    # link publishes to this Mac and nowhere else, and an uncommitted one is not
+    # a link even here.
+    assert linked["trackedByGit"] is False
+    assert linked["effective"] is False
+    assert linked["committedTeamProjectID"] is None
+    assert "commit" in str(linked["nextStep"])
+    assert _read_link_file(bob.root) == {"teams": {TEAM_ID: {"teamProjectId": TEAM_PROJECT_ID}}}
+
+    # And it really does nothing yet. Rewinding the cursor the way the pull does
+    # on a new link changes nothing, because there is no new link.
+    bob.pull_cursor = ""
+    assert _pull(bob, cloud, team_id=TEAM_ID)["refusedNotLinked"] == [a_doc]
+    assert _team_row_ids(bob) == set()
+
+    _commit_link(bob.root)
+    assert bob.engine._link_file_tracked(bob.root) is True
+
+    # The link is live on the next call, with nothing restarted: the reader is
+    # not cached. Rewind the cursor the way the pull does when the link set
+    # gains an id, and everything refused before the link lands.
+    bob.pull_cursor = ""
+    assert _pull(bob, cloud, team_id=TEAM_ID)["applied"] == 1
+    landed = me.MemoryEngine._team_local_memory_id(TEAM_ID, TEAM_PROJECT_ID, "personal", canonical_body_hash(FACT_BODY))
+    assert _team_row_ids(bob) == {landed}
+    assert landed in _recalled_ids(bob, "merge queue main")
+
+    # Re-running the tool on the committed link is the reported no-op, and it
+    # now says the entry is effective.
+    again = bob.engine.link_team_project(project_path=str(bob.root), team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID)
+    assert again["event"] == "NONE"
+    assert again["effective"] is True
+
+
+def test_the_link_tool_refuses_to_clobber_a_different_id_without_confirm(team) -> None:
+    """Re-pointing a link moves every future document of that team. Ask first.
+
+    `burnbar_project_adopt`'s pattern, for the same reason: the existing value
+    may be a teammate's commit, and re-pointing it silently would split the
+    team's space exactly the way the git fingerprint would have.
+    """
+    alice, _, _ = team
+    refused = alice.engine.link_team_project(
+        project_path=str(alice.root), team_id=TEAM_ID, team_project_id=OTHER_TEAM_PROJECT_ID
+    )
+    assert refused["status"] == "refused"
+    assert refused["code"] == "LINK_ALREADY_SET"
+    assert refused["currentTeamProjectID"] == TEAM_PROJECT_ID
+    assert refused["proposedTeamProjectID"] == OTHER_TEAM_PROJECT_ID
+    assert _read_link_file(alice.root)["teams"] == {TEAM_ID: {"teamProjectId": TEAM_PROJECT_ID}}
+
+    relinked = alice.engine.link_team_project(
+        project_path=str(alice.root),
+        team_id=TEAM_ID,
+        team_project_id=OTHER_TEAM_PROJECT_ID,
+        confirmed=True,
+    )
+    assert relinked["event"] == "RELINKED"
+    assert relinked["previousTeamProjectID"] == TEAM_PROJECT_ID
+    # A confirmed re-point is still only a written file: HEAD still names the
+    # old id, so the OLD link is what is honoured until the change is committed
+    # — and per the intersection rule, a disagreement is no link at all.
+    assert relinked["effective"] is False
+    assert relinked["committedTeamProjectID"] == TEAM_PROJECT_ID
+    assert _team_project_id_for(alice, TEAM_ID) is None
+    _commit_link(alice.root)
+    assert _team_project_id_for(alice, TEAM_ID) == OTHER_TEAM_PROJECT_ID
+
+    # An unchanged value needs no confirmation and changes nothing.
+    again = alice.engine.link_team_project(
+        project_path=str(alice.root), team_id=TEAM_ID, team_project_id=OTHER_TEAM_PROJECT_ID
+    )
+    assert again["event"] == "NONE"
+    assert again["reason"] == "already_linked"
+
+
+def test_the_link_tool_screens_both_ids_the_way_the_reader_screens_them(team) -> None:
+    """A value this writer accepts and the reader drops would be a phantom link."""
+    alice, _, _ = team
+    other_team = "team_fedcba9876543210"
+
+    bad_team = alice.engine.link_team_project(
+        project_path=str(alice.root), team_id="team_NOTHEX", team_project_id="burnbar-ios"
+    )
+    assert bad_team["status"] == "refused"
+    assert bad_team["code"] == "INVALID_TEAM_ID"
+
+    bad_project = alice.engine.link_team_project(
+        project_path=str(alice.root), team_id=other_team, team_project_id="has spaces and | pipes"
+    )
+    assert bad_project["status"] == "refused"
+    assert bad_project["code"] == "INVALID_TEAM_PROJECT_ID"
+
+    over_bound = alice.engine.link_team_project(
+        project_path=str(alice.root), team_id=other_team, team_project_id="a" * 129
+    )
+    assert over_bound["code"] == "INVALID_TEAM_PROJECT_ID"
+
+    # Nothing was written by any of them, and the good entry is untouched.
+    assert _read_link_file(alice.root)["teams"] == {TEAM_ID: {"teamProjectId": TEAM_PROJECT_ID}}
+
+    # A second team is ADDED beside the first, never instead of it.
+    added = alice.engine.link_team_project(
+        project_path=str(alice.root), team_id=other_team, team_project_id="burnbar-ios", confirmed=True
+    )
+    assert added["event"] == "LINKED"
+    assert added["teams"] == {TEAM_ID: TEAM_PROJECT_ID, other_team: "burnbar-ios"}
+    assert _team_project_id_for(alice, TEAM_ID) == TEAM_PROJECT_ID
+
+
+def test_the_link_tool_never_overwrites_a_link_file_it_cannot_parse(team) -> None:
+    """A damaged file may hold another team's entry. It is reported, never rewritten."""
+    alice, _, _ = team
+    path = alice.root / ".openburnbar" / "project.json"
+    path.write_text("{ this is not json", encoding="utf-8")
+
+    for confirm in (False, True):
+        refused = alice.engine.link_team_project(
+            project_path=str(alice.root),
+            team_id=TEAM_ID,
+            team_project_id=TEAM_PROJECT_ID,
+            confirmed=confirm,
+        )
+        assert refused["status"] == "refused"
+        assert refused["code"] == "LINK_FILE_UNREADABLE"
+        assert refused["path"] == str(path)
+    assert path.read_text(encoding="utf-8") == "{ this is not json"
+
+    # Oversized reads the same way, and for the same reason: the reader refuses
+    # such a file WHOLE, so the repository already publishes nothing.
+    path.write_text(json.dumps({"teams": {}, "pad": "x" * 4096}), encoding="utf-8")
+    assert (
+        alice.engine.link_team_project(project_path=str(alice.root), team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID)[
+            "code"
+        ]
+        == "LINK_FILE_UNREADABLE"
+    )
+
+
+def _link_finding(engine: me.MemoryEngine, root: Path) -> dict[str, object] | None:
+    report = engine.doctor(project_path=str(root))
+    for finding in report["findings"]:
+        if finding.get("code") == "TEAM_PROJECT_LINK_GAPS":
+            return finding
+    return None
+
+
+def test_the_doctor_explains_an_empty_team_space_instead_of_leaving_it_silent(team) -> None:
+    """The finding this follow-up exists for: a member removes a link and asks why.
+
+    Before it, unlinking produced silence on every surface — the serving fence
+    refuses without saying so, by design, and the pull-side refusal is a Swift
+    log dimension the engine cannot see. Now the doctor names the team, counts
+    the rows being withheld, and names the tool that fixes it.
+    """
+    alice, bob, cloud = team
+    a_mid = _remember_and_approve(alice, FACT_BODY)
+    _push(alice, cloud, a_mid, team_id=TEAM_ID, updated_at=T1)
+    assert _pull(bob, cloud, team_id=TEAM_ID)["applied"] == 1
+    assert _link_finding(bob.engine, bob.root) is None, "a correctly linked checkout is not a finding"
+
+    _write_link(bob.root, None)
+    finding = _link_finding(bob.engine, bob.root)
+    assert finding is not None
+    assert finding["severity"] == "warn"
+    assert finding["linkPath"] == str(bob.root / ".openburnbar" / "project.json")
+    assert "burnbar_team_link_project" in str(finding["fix"])
+    assert "COMMIT" in str(finding["fix"])
+
+    teams = {str(item["teamID"]): item for item in finding["teams"]}
+    assert set(teams) == {TEAM_ID}
+    entry = teams[TEAM_ID]
+    assert entry["linkedInThisCheckout"] is False
+    assert entry["linkedTeamProjectID"] is None
+    assert entry["factsHeldLocally"] == 1
+    assert entry["factsWithheldTeamProjectNotLinked"] == 1
+    assert entry["landingProjectIDs"] == [TEAM_PROJECT_ID]
+
+    # Counts and ids, never bodies — the ORPHAN_TEAM_PROVENANCE contract.
+    assert FACT_BODY not in json.dumps(finding)
+    assert "merge queue" not in json.dumps(finding)
+
+    # And it clears the moment the link comes back — which takes the write AND
+    # the commit, because the write alone changes nothing the fences read. The
+    # intermediate state is its own finding, asserted in
+    # `test_the_doctor_reports_an_uncommitted_link_as_uncommitted_not_as_linked`.
+    bob.engine.link_team_project(
+        project_path=str(bob.root), team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID, confirmed=True
+    )
+    assert _link_finding(bob.engine, bob.root) is not None
+    _commit_link(bob.root)
+    assert _link_finding(bob.engine, bob.root) is None
+
+
+def test_the_doctor_flags_a_link_that_names_a_partition_none_of_the_held_facts_are_in(team) -> None:
+    """The typo case: the link is present, well-formed, and points one character away.
+
+    This is the state that produced the original complaint — a team space that
+    empties itself with no explanation. The qualifier is what makes the finding
+    worth reading: a link with no rows behind it yet is a brand-new correct link
+    as often as a typo, and nothing local can tell those apart, so the doctor
+    stays quiet until the store actually holds facts the link disagrees with.
+    """
+    alice, bob, cloud = team
+    a_mid = _remember_and_approve(alice, FACT_BODY)
+    _push(alice, cloud, a_mid, team_id=TEAM_ID, updated_at=T1)
+    assert _pull(bob, cloud, team_id=TEAM_ID)["applied"] == 1
+    assert _link_finding(bob.engine, bob.root) is None
+
+    _write_link(bob.root, {TEAM_ID: "burbnar-core"})  # one transposition
+    finding = _link_finding(bob.engine, bob.root)
+    assert finding is not None
+    entry = {str(item["teamID"]): item for item in finding["teams"]}[TEAM_ID]
+    assert entry["linkedInThisCheckout"] is True
+    assert entry["linkedTeamProjectID"] == "burbnar-core"
+    assert entry["linkNamesNoHeldPartition"] is True
+    assert entry["landingProjectIDs"] == [TEAM_PROJECT_ID]
+    assert entry["factsHeldLocally"] == 1
+    assert entry["factsWithheldTeamProjectNotLinked"] == 1
+    assert "none of the" in str(finding["detail"])
+
+    # A link with nothing behind it yet is NOT a finding — that is a fresh
+    # checkout, not a mistake, and crying wolf there would make the whole
+    # report ignorable.
+    quiet_alice = alice.engine.doctor(project_path=str(alice.root))
+    assert not [f for f in quiet_alice["findings"] if f.get("code") == "TEAM_PROJECT_LINK_GAPS"]
+
+
+def test_the_doctor_names_a_team_this_mac_syncs_and_this_checkout_does_not_link(team) -> None:
+    """The roster/opt-in half: `remote_sync_watermarks` is the local evidence.
+
+    The app writes a `team:<teamId>:<uid>` account key for every team it syncs —
+    the pull cursor, the push watermark and the link records all share it — so a
+    team with a key here and no entry in this repository is a team the member
+    opted in to and never told this repository about.
+    """
+    alice, _, _ = team
+    other_team = "team_fedcba9876543210"
+    alice.engine.conn.execute(
+        "CREATE TABLE IF NOT EXISTS remote_sync_watermarks ("
+        "accountUid TEXT NOT NULL, collectionKind TEXT NOT NULL, lastSyncedAt TEXT NOT NULL, "
+        "lastProcessedRemoteUpdateAt TEXT, version INTEGER NOT NULL DEFAULT 1, "
+        "PRIMARY KEY (accountUid, collectionKind))"
+    )
+    alice.engine.conn.execute(
+        "INSERT INTO remote_sync_watermarks (accountUid, collectionKind, lastSyncedAt) VALUES (?, ?, ?)",
+        (f"team:{other_team}:{UID_A}", "memory_facts_team", T1),
+    )
+    alice.engine.conn.commit()
+
+    finding = _link_finding(alice.engine, alice.root)
+    assert finding is not None
+    teams = {str(item["teamID"]): item for item in finding["teams"]}
+    assert teams[other_team]["syncedOnThisMac"] is True
+    assert teams[other_team]["linkedInThisCheckout"] is False
+    assert teams[other_team]["factsHeldLocally"] == 0
+    # The correctly linked team is reported in the reader's own map but is not
+    # one of the teams the finding flags.
+    assert TEAM_ID not in teams
+    assert alice.engine.team_project_link_report(str(alice.root))["links"] == {TEAM_ID: TEAM_PROJECT_ID}
+
+
+def test_the_doctor_never_writes_the_link_file_even_with_apply(team) -> None:
+    """No `apply`. The link is a checked-in, human decision, not a repair.
+
+    `doctor(apply=True)` prunes aged orphans, resets parked supersedes and
+    un-stamps forged provenance. Writing a link would be committing on the
+    member's behalf, in a file a teammate reads.
+    """
+    alice, _, _ = team
+    _write_link(alice.root, None)
+    path = alice.root / ".openburnbar" / "project.json"
+
+    report = alice.engine.doctor(project_path=str(alice.root), apply=True)
+    assert report["apply"]["applied"] is True
+    assert not path.exists()
+    assert "linkFile" not in report["apply"]
+
+
+# ---------------------------------------------------------------------------
+# 5. The D16 Cursor ruling: a link is a COMMITTED, CONFIRMED, human decision
+# ---------------------------------------------------------------------------
+#
+# The finding (HIGH, PR #2542): a first-time `link_team_project` write went
+# through with `confirmed=False`, only a re-point was gated, `doctor` was
+# ungated and flagged the ordinary `syncedOnThisMac && !linkedInThisCheckout`
+# state with a `fix` naming the tool, and both link readers used the WORKING
+# TREE. So anything able to write a file in a private checkout on a Mac that
+# already syncs a team — an agent, a prompt-injected tool call — could opt that
+# repository in without a human confirmation and without a commit, and its
+# approved memories became eligible to upload under the teammates' agreed
+# `teamProjectId`.
+#
+# The ruling, in three clauses, and one test per clause plus the reproduction
+# the finding described:
+#
+#   1. every write is confirmed, not only a re-point;
+#   2. eligibility follows the COMMITTED link, failing closed on no HEAD, on an
+#      uncommitted entry and on a committed-then-modified one;
+#   3. the doctor reports the gap and says what linking DOES, and stays a
+#      report rather than a remediation script.
+
+
+def _bob_syncs_the_team(bob: _Member) -> None:
+    """The precondition the finding names: this Mac already syncs this team.
+
+    A `team:<teamId>:<uid>` account key in `remote_sync_watermarks` is the local
+    evidence of an opt-in, which is what makes an unconfirmed link in a PRIVATE
+    checkout an egress rather than a no-op.
+    """
+    bob.engine.conn.execute(
+        "CREATE TABLE IF NOT EXISTS remote_sync_watermarks ("
+        "accountUid TEXT NOT NULL, collectionKind TEXT NOT NULL, lastSyncedAt TEXT NOT NULL, "
+        "lastProcessedRemoteUpdateAt TEXT, version INTEGER NOT NULL DEFAULT 1, "
+        "PRIMARY KEY (accountUid, collectionKind))"
+    )
+    bob.engine.conn.execute(
+        "INSERT OR REPLACE INTO remote_sync_watermarks (accountUid, collectionKind, lastSyncedAt) VALUES (?, ?, ?)",
+        (f"team:{TEAM_ID}:{UID_B}", "memory_facts_team", T1),
+    )
+    bob.engine.conn.commit()
+
+
+def test_an_unconfirmed_uncommitted_link_makes_nothing_uploadable(team) -> None:
+    """THE REPORTED PATH, end to end, as the thing that must not happen.
+
+    Bob's Mac already syncs the team. His private checkout links nothing, and he
+    has a private, approved memory in it. A tool call — his, or one an injected
+    instruction talked an agent into — asks for the link with no confirmation
+    and commits nothing.
+
+    Before the ruling both halves of that succeeded and the memory became
+    eligible to upload under the team's agreed `teamProjectId`. Now the write is
+    refused for want of a confirmation, and even a confirmed write leaves the
+    repository publishing nothing until a human commits it. Two independent
+    stops, because each closes a different half of the finding.
+    """
+    _, bob, cloud = team
+    _bob_syncs_the_team(bob)
+    _write_link(bob.root, None)
+    private = _remember_and_approve(bob, SECOND_BODY)
+
+    # (1) The unconfirmed write is refused, and it says what it would have done.
+    refused = bob.engine.link_team_project(project_path=str(bob.root), team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID)
+    assert refused["status"] == "refused"
+    assert refused["code"] == "LINK_REQUIRES_CONFIRMATION"
+    assert "eligible to upload" in str(refused["reason"])
+    assert not (bob.root / ".openburnbar" / "project.json").exists()
+    assert _team_project_id_for(bob, TEAM_ID) is None
+
+    # (2) And confirmation alone is not the link either. The file is written,
+    # nothing is committed, and the repository still publishes nothing — so the
+    # private memory has no landing partition and cannot be sealed at all.
+    written = bob.engine.link_team_project(
+        project_path=str(bob.root), team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID, confirmed=True
+    )
+    assert written["status"] == "ok"
+    assert written["effective"] is False
+    assert _team_project_id_for(bob, TEAM_ID) is None
+    with pytest.raises(AssertionError):
+        _seal(bob, private, team_id=TEAM_ID, updated_at=T2)
+    assert cloud.docs == {}
+
+    # The commit is the decision, and it is the only thing that was missing.
+    _commit_link(bob.root)
+    assert _team_project_id_for(bob, TEAM_ID) == TEAM_PROJECT_ID
+
+
+def test_a_first_time_link_is_refused_without_confirm(team) -> None:
+    """Ruling clause 1. The FIRST write is the one that opens the door.
+
+    The original gate fired only on a re-point, on the reasoning that creating
+    an entry destroys nothing. True, and beside the point: what is at stake is
+    not the file's previous contents but what the file makes publishable, and on
+    a Mac already syncing the team the first write is exactly the write that
+    publishes. Both refusals now exist, they carry different codes because they
+    are different decisions, and neither writes a byte.
+    """
+    alice, bob, _ = team
+    _write_link(bob.root, None)
+    path = bob.root / ".openburnbar" / "project.json"
+
+    first = bob.engine.link_team_project(project_path=str(bob.root), team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID)
+    assert first["status"] == "refused"
+    assert first["code"] == "LINK_REQUIRES_CONFIRMATION"
+    assert first["proposedTeamProjectID"] == TEAM_PROJECT_ID
+    assert "confirm=true" in str(first["reason"])
+    assert "COMMIT" in str(first["reason"])
+    assert not path.exists(), "a refused write writes nothing, not even an empty file"
+
+    # A re-point keeps its own code and reports both sides — a member who meant
+    # to create a link should learn that one already exists, not just that they
+    # forgot a flag.
+    repoint = alice.engine.link_team_project(
+        project_path=str(alice.root), team_id=TEAM_ID, team_project_id=OTHER_TEAM_PROJECT_ID
+    )
+    assert repoint["code"] == "LINK_ALREADY_SET"
+    assert repoint["currentTeamProjectID"] == TEAM_PROJECT_ID
+
+    # And the confirmed first write goes through, so the gate is a gate and not
+    # a wall.
+    assert (
+        bob.engine.link_team_project(
+            project_path=str(bob.root), team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID, confirmed=True
+        )["event"]
+        == "LINKED"
+    )
+    assert path.is_file()
+
+
+def test_only_a_committed_link_makes_a_project_eligible(team) -> None:
+    """Ruling clause 2, in its four states, on the shipped reader.
+
+    committed -> a link; working tree only -> not; committed then modified ->
+    not, in both directions; no git HEAD at all -> not. Every negative is a
+    fail-closed answer, and the last one is the ruling's named case: a directory
+    with nothing checked in has checked in no decision.
+    """
+    alice, bob, _ = team
+
+    # Committed: the fixture's own state, and the only one that links.
+    assert _team_project_id_for(bob, TEAM_ID) == TEAM_PROJECT_ID
+    links = bob.engine._session_team_links(bob.engine_project_id)
+    assert links.teams == {TEAM_ID: TEAM_PROJECT_ID}
+    assert links.committed == {TEAM_ID: TEAM_PROJECT_ID}
+
+    # Working tree only.
+    _write_link(bob.root, None)
+    _write_link(bob.root, {TEAM_ID: TEAM_PROJECT_ID}, commit=False)
+    links = bob.engine._session_team_links(bob.engine_project_id)
+    assert links.teams == {}
+    assert links.working_tree == {TEAM_ID: TEAM_PROJECT_ID}
+    assert links.committed == {}
+
+    # Committed, then modified: the working tree names a different id than HEAD.
+    _write_link(bob.root, {TEAM_ID: TEAM_PROJECT_ID})
+    _write_link(bob.root, {TEAM_ID: OTHER_TEAM_PROJECT_ID}, commit=False)
+    links = bob.engine._session_team_links(bob.engine_project_id)
+    assert links.teams == {}, "a modified entry is neither the old link nor the new one"
+    assert links.working_tree == {TEAM_ID: OTHER_TEAM_PROJECT_ID}
+    assert links.committed == {TEAM_ID: TEAM_PROJECT_ID}
+
+    # Modified the other way: HEAD still carries it, the member deleted it
+    # locally. The fence has always had to stop serving the instant a link is
+    # taken away, without waiting for a commit, and it still does.
+    _write_link(bob.root, None, commit=False)
+    assert bob.engine._session_team_links(bob.engine_project_id).teams == {}
+
+    # Per entry, not per file: an in-progress edit adding a second team must not
+    # silently unlink the first, whose entry HEAD carries and the team agreed to.
+    other_team = "team_fedcba9876543210"
+    _write_link(bob.root, {TEAM_ID: TEAM_PROJECT_ID})
+    _write_link(bob.root, {TEAM_ID: TEAM_PROJECT_ID, other_team: "burnbar-ios"}, commit=False)
+    assert bob.engine._session_team_links(bob.engine_project_id).teams == {TEAM_ID: TEAM_PROJECT_ID}
+
+    # No git HEAD at all: same bytes, same path, no repository. Fail closed.
+    bare = alice.root.parent / "not_a_repo"
+    bare.mkdir()
+    (bare / ".openburnbar").mkdir()
+    (bare / ".openburnbar" / "project.json").write_text(
+        json.dumps({"teams": {TEAM_ID: {"teamProjectId": TEAM_PROJECT_ID}}}), encoding="utf-8"
+    )
+    bare_project = me.resolve_project(alice.engine.conn, str(bare))[0]
+    bare_links = alice.engine._session_team_links(bare_project)
+    assert bare_links.working_tree == {TEAM_ID: TEAM_PROJECT_ID}
+    assert bare_links.teams == {}
+
+
+def test_an_uncommitted_link_serves_no_team_row_into_this_session(team) -> None:
+    """Ruling clause 2 on the READ half, with a real row rather than a map.
+
+    The finding's second sentence: "the T4 serving fence for this session opens
+    on the next recall". It does not, now. Bob holds a team row landed under the
+    agreed partition; unlinking and re-writing the entry WITHOUT committing must
+    leave that row unserved on every path the fence covers.
+    """
+    alice, bob, cloud = team
+    a_mid = _remember_and_approve(alice, FACT_BODY)
+    _push(alice, cloud, a_mid, team_id=TEAM_ID, updated_at=T1)
+    assert _pull(bob, cloud, team_id=TEAM_ID)["applied"] == 1
+    landed = me.MemoryEngine._team_local_memory_id(TEAM_ID, TEAM_PROJECT_ID, "personal", canonical_body_hash(FACT_BODY))
+    assert landed in _recalled_ids(bob, "merge queue main")
+
+    _write_link(bob.root, None)
+    assert landed not in _recalled_ids(bob, "merge queue main")
+
+    # Re-written in the working tree and not committed: the row stays held back,
+    # and so does every other serving path.
+    _write_link(bob.root, {TEAM_ID: TEAM_PROJECT_ID}, commit=False)
+    assert landed not in _recalled_ids(bob, "merge queue main")
+    assert not bob.engine._team_serves_memory(landed, bob.engine_project_id)
+    exported = bob.engine.export(project_path=str(bob.root))
+    assert landed not in json.dumps(exported)
+    assert FACT_BODY not in json.dumps(exported)
+
+    _commit_link(bob.root)
+    assert landed in _recalled_ids(bob, "merge queue main")
+
+
+def test_the_doctor_reports_an_uncommitted_link_as_uncommitted_not_as_linked(team) -> None:
+    """Ruling clause 3. The two states are different sentences, so they read differently.
+
+    A written-and-uncommitted entry is the ONE place the working-tree read stays
+    honest — "you wrote this and did not commit it" is true and worth saying —
+    and it is reported as its own dimension rather than folded into either
+    "linked" (which it is not) or a bare "no entry" (which loses what the member
+    actually did).
+    """
+    _, bob, _ = team
+    _bob_syncs_the_team(bob)
+    _write_link(bob.root, None)
+
+    # Nothing written yet: the plain unlinked case.
+    entry = {str(item["teamID"]): item for item in _link_finding(bob.engine, bob.root)["teams"]}[TEAM_ID]
+    assert entry["linkedInThisCheckout"] is False
+    assert entry["linkWrittenButNotCommitted"] is False
+    assert entry["workingTreeTeamProjectID"] is None
+
+    _write_link(bob.root, {TEAM_ID: TEAM_PROJECT_ID}, commit=False)
+    finding = _link_finding(bob.engine, bob.root)
+    assert finding is not None
+    entry = {str(item["teamID"]): item for item in finding["teams"]}[TEAM_ID]
+    assert entry["linkedInThisCheckout"] is False, "an uncommitted entry is not a link"
+    assert entry["linkWrittenButNotCommitted"] is True
+    assert entry["workingTreeTeamProjectID"] == TEAM_PROJECT_ID
+    assert entry["committedTeamProjectID"] is None
+    assert finding["uncommittedTeamIDs"] == [TEAM_ID]
+    assert "never committed" in str(finding["detail"])
+
+    # The finding says what linking DOES and whose decision it is, and it does
+    # not read as a step to run because a report mentioned it.
+    assert "eligible to upload" in str(finding["decision"])
+    assert "human decision" in str(finding["decision"])
+    assert "not a step to run" in str(finding["decision"])
+    assert "human confirms" in str(finding["fix"])
+    assert "COMMITS" in str(finding["fix"])
+    assert "confirm=true" in str(finding["fix"])
+    assert "apply" not in finding
+
+    _commit_link(bob.root)
+    assert _link_finding(bob.engine, bob.root) is None
+
+
+def test_the_three_ruling_clauses_are_each_load_bearing(team, monkeypatch: pytest.MonkeyPatch) -> None:
+    """One mutation per clause, each turning a NAMED test red.
+
+    A clause that no test notices being removed is a clause that is not enforced,
+    whatever the code says. Each mutation restores the pre-ruling behaviour of
+    exactly one clause and the assertion that then fails is named beside it.
+    """
+    _, bob, _ = team
+    _bob_syncs_the_team(bob)
+
+    # Clause 1 — gate only the re-point again. Fails
+    # `test_a_first_time_link_is_refused_without_confirm` and the first half of
+    # `test_an_unconfirmed_uncommitted_link_makes_nothing_uploadable`.
+    _write_link(bob.root, None)
+    original = me.MemoryEngine.link_team_project
+
+    def unconfirmed_first_write(self, **kwargs: object):
+        return original(self, **{**kwargs, "confirmed": True})
+
+    monkeypatch.setattr(me.MemoryEngine, "link_team_project", unconfirmed_first_write)
+    assert (
+        bob.engine.link_team_project(project_path=str(bob.root), team_id=TEAM_ID, team_project_id=TEAM_PROJECT_ID)[
+            "status"
+        ]
+        == "ok"
+    ), "clause 1 mutation must restore the unconfirmed first write"
+    monkeypatch.undo()
+
+    # Clause 2 — read the working tree again. The uncommitted file written just
+    # above becomes a link, which is the finding. Fails
+    # `test_only_a_committed_link_makes_a_project_eligible`,
+    # `test_an_uncommitted_link_serves_no_team_row_into_this_session` and the
+    # second half of the reproduction.
+    assert bob.engine._session_team_links(bob.engine_project_id).teams == {}
+    monkeypatch.setattr(
+        me.MemoryEngine,
+        "_committed_team_links",
+        classmethod(lambda cls, root: cls._decode_team_links((root / ".openburnbar" / "project.json").read_bytes())),
+    )
+    assert bob.engine._session_team_links(bob.engine_project_id).teams == {TEAM_ID: TEAM_PROJECT_ID}, (
+        "clause 2 mutation must restore the working-tree read"
+    )
+    monkeypatch.undo()
+
+    # Clause 3 — collapse the uncommitted dimension back into the linked one.
+    # Fails `test_the_doctor_reports_an_uncommitted_link_as_uncommitted_not_as_linked`.
+    finding = _link_finding(bob.engine, bob.root)
+    assert finding is not None
+    assert finding["uncommittedTeamIDs"] == [TEAM_ID]
+    report = bob.engine.team_project_link_report(str(bob.root))
+    monkeypatch.setattr(
+        me.MemoryEngine,
+        "team_project_link_report",
+        lambda self, project_path=None: {
+            **report,
+            "teams": [{**team_entry, "linkWrittenButNotCommitted": False} for team_entry in report["teams"]],
+        },
+    )
+    collapsed = _link_finding(bob.engine, bob.root)
+    assert collapsed is not None
+    assert collapsed["uncommittedTeamIDs"] == [], "clause 3 mutation must hide the uncommitted dimension"

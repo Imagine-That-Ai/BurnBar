@@ -1055,6 +1055,81 @@ class _Maintenance:
                 }
             )
 
+        # The link file's diagnostic (D16 follow-up). Checkout-relative by
+        # nature — "which teams does THIS repository publish to" has no answer
+        # without a repository — so it runs only when a project resolved, the
+        # same condition the auxiliary-exposure scan above is gated on.
+        #
+        # WARN, not ERROR: every state it reports is a configuration a member
+        # can hold on purpose for a while (a team synced but not yet linked in
+        # this repository is the normal state of every repository the team does
+        # not share), and none of them lock a row the way orphan provenance
+        # does. Counts and ids only, like every other team finding.
+        #
+        # NO `apply`, AND NO REMEDIATION SCRIPT (D16 Cursor ruling, clause 3).
+        # The link is a checked-in, human decision about what a repository
+        # publishes to whom; a doctor that wrote it would be committing on the
+        # member's behalf, and a doctor whose `fix` reads as a command to run
+        # would be handing an agent the same door by another route. So the
+        # finding names the tool, states plainly what linking DOES — it makes
+        # this checkout's approved memories uploadable to that team, and admits
+        # that team's facts here — and says a human must confirm and commit it.
+        # `decision` carries that sentence as its own field so a caller cannot
+        # render the fix without it.
+        if active_project_id is not None:
+            link_report = self.team_project_link_report(project_path=project_path)
+            project_extra.setdefault("teamProjectLinks", link_report["links"])
+            flagged = [
+                team
+                for team in link_report["teams"]
+                if team["factsWithheldTeamProjectNotLinked"]
+                or (team["syncedOnThisMac"] and not team["linkedInThisCheckout"])
+                or team["linkNamesNoHeldPartition"]
+                or team["linkWrittenButNotCommitted"]
+            ]
+            if flagged:
+                withheld_total = sum(int(team["factsWithheldTeamProjectNotLinked"]) for team in flagged)
+                unlinked = [team["teamID"] for team in flagged if not team["linkedInThisCheckout"]]
+                mismatched = [team["teamID"] for team in flagged if team["linkNamesNoHeldPartition"]]
+                # Reported apart from `unlinked` even though every one of these
+                # is also unlinked: "you have not linked this team" and "you
+                # wrote this link and have not committed it" are different
+                # sentences with different next steps, and collapsing them is
+                # what made an uncommitted file look like a working link.
+                uncommitted = [team["teamID"] for team in flagged if team["linkWrittenButNotCommitted"]]
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "TEAM_PROJECT_LINK_GAPS",
+                        "detail": (
+                            f"{len(flagged)} team(s) have a link problem in this checkout: "
+                            f"{withheld_total} team fact(s) are held back from this session for "
+                            f"TEAM_PROJECT_NOT_LINKED, {len(unlinked)} team(s) this Mac syncs have no entry in "
+                            f"{link_report['linkPath']} that HEAD carries, {len(uncommitted)} of those name a "
+                            "teamProjectId in the working tree that was never committed (a written link is not a "
+                            f"link), and {len(mismatched)} link(s) name a project id none of the facts this store "
+                            "holds for that team landed in."
+                        ),
+                        "teams": flagged,
+                        "linkPath": link_report["linkPath"],
+                        "uncommittedTeamIDs": uncommitted,
+                        "decision": (
+                            "Linking a repository to a team makes this checkout's approved memories eligible to "
+                            "upload to that team — readable by every member of it, now and in future — and admits "
+                            "that team's facts into this checkout's sessions. That is a human decision about what "
+                            "this repository publishes and to whom. It is not a step to run because a report "
+                            "mentioned it."
+                        ),
+                        "fix": (
+                            "If — and only if — the team agreed to share this repository, a human confirms the "
+                            "teamProjectId the team agreed on (burnbar_team_link_project takes confirm=true and "
+                            "requires memory_write) and COMMITS the file. Until the entry is in HEAD it links "
+                            "nothing: the engine reads the committed file, so an uncommitted or locally-modified "
+                            "entry uploads nothing and serves nothing."
+                        ),
+                    }
+                )
+
         payload: dict[str, Any] = {
             "status": "ok" if not any(item["severity"] == "error" for item in findings) else "degraded",
             "engine": {

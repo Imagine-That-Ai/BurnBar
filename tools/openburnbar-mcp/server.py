@@ -3772,6 +3772,77 @@ def burnbar_project_adopt(project_id: str | None = None, project_path: str | Non
 
 
 @mcp.tool()
+def burnbar_team_link_project(
+    team_id: str,
+    team_project_id: str,
+    project_path: str | None = None,
+    confirm: bool = False,
+) -> str:
+    """
+    Say which shared project id this repository publishes to a team, in `.openburnbar/project.json`.
+
+    A team document's id derives from this checked-in `teamProjectId` and never
+    from the repository's git identity, because a member who cloned over SSH and
+    one who cloned over HTTPS derive different engine project ids for the same
+    repository — so a git-derived id would split one team's memory in half,
+    silently, with every upload still reporting success. The file is the record:
+    a repository with no entry for a team publishes nothing to it, and only a
+    COMMIT makes a link real for anyone but this Mac.
+
+    EVERY WRITE NEEDS `confirm=True`, a first-time link exactly as much as a
+    re-point. Naming a team here is the act that makes this repository's approved
+    memories eligible to upload to that team — readable by every member of it,
+    now and in future — and admits that team's facts into this checkout's
+    sessions. On a Mac that already syncs the team, the FIRST write is the one
+    that opens that door, so it is the one the confirmation stands in front of.
+    An entry that already names a different project is refused with both sides
+    reported (a different decision, and its own code); one that already names the
+    same project is a no-op and needs no confirmation.
+
+    AND THE WRITE IS NOT THE LINK. The engine and the app both read this file
+    from git `HEAD`: an entry counts only where the working tree and `HEAD` agree
+    on it, per team. A written-but-uncommitted entry, a locally-modified one, and
+    a file in a directory that is not a git work tree all publish NOTHING and
+    serve nothing — the result's `effective` and `nextStep` say so. Only a commit
+    makes a link, which is what "a checked-in, human decision" has to mean if it
+    is to mean anything.
+
+    Both ids are held to the shapes the engine screens them by on the way back
+    in — `team_` plus 16 lowercase hex for the team, a project token of at most
+    128 characters for the project — so a value this tool accepts is a value the
+    reader will honour. A link file this reader cannot parse is never
+    overwritten, confirmation or not: it may hold another team's entry.
+
+    `burnbar_memory_doctor` reports the other half — teams this Mac syncs with no
+    entry `HEAD` carries, entries written and never committed, links naming a
+    project nothing local matches, and how many team facts are being withheld
+    from this session because of it.
+
+    Gate: `memory_write`.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_team_link_project", "memory"):
+        return limited
+    if denied := _capability_denial("burnbar_team_link_project", "memory_write"):
+        return denied
+    with _memory_engine() as engine:
+        try:
+            result = engine.link_team_project(
+                project_path=project_path,
+                team_id=team_id,
+                team_project_id=team_project_id,
+                confirmed=confirm,
+            )
+        except ValueError as exc:
+            # An unresolvable `project_path` is a refusal, not a crash — the same
+            # shape `burnbar_project_adopt` gives a malformed id.
+            return json.dumps(
+                {"status": "refused", "code": "INVALID_PROJECT_PATH", "reason": str(exc)},
+                indent=2,
+            )
+        return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
 def burnbar_audit_trail(project_path: str | None = None, limit: int = 50) -> str:
     """Return the label-only memory audit hash chain (with chain verification) for a project.
 
@@ -6078,6 +6149,7 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_memory_sync_pull",
         "burnbar_memory_doctor",
         "burnbar_project_adopt",
+        "burnbar_team_link_project",
         "burnbar_audit_trail",
         "burnbar_memory_analytics",
         "burnbar_search_code",

@@ -35,6 +35,7 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_call_graph` | Traverse bounded call graph edges |
 | `burnbar_index_status` | Report parser, encryption, semantic, and production-readiness status |
 | `burnbar_memory_doctor` | Diagnose local memory/code schema and readiness |
+| `burnbar_team_link_project` | **Write** which shared `teamProjectId` this repository publishes to a team, in `.openburnbar/project.json` — needs `confirm=true`, and counts only once committed |
 | `burnbar_get_conversation` | Full row + fullText for one conversation by ID |
 | `burnbar_chat_messages` | In-app assistant chat_messages tail |
 | `burnbar_record_hermes_usage` | **Write** an idempotent row to the daemon usage ledger |

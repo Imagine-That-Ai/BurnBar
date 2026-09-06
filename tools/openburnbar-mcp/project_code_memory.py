@@ -321,6 +321,65 @@ def _git_output(root: Path, arguments: list[str]) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def git_committed_blob(root: Path, relative_path: str, max_bytes: int) -> bytes | None:
+    """The bytes of `relative_path` AS COMMITTED at `HEAD`, or None when there are none.
+
+    `None` covers every way a path can fail to be a committed blob, and the
+    caller is expected to treat them all identically: the directory is not a git
+    work tree, the branch is unborn (no `HEAD`), the path is not in the tree,
+    `HEAD` names a directory or a submodule at that path, git is missing, or git
+    hung. There is deliberately no distinguishing return value — a caller that
+    branches on *why* there is no committed content is a caller that can be
+    talked into treating "no repository" as "committed".
+
+    BOUNDED like every other read of this class. `git show` streams the blob, so
+    the pipe is read to `max_bytes + 1` and a blob over the bound returns None
+    (the same "refused whole, never truncated" rule the link-file readers apply)
+    without the whole object ever being held. `subprocess.run` would have
+    buffered an attacker-sized blob in full before any check could run, which is
+    why this does not use `_git_output`.
+    """
+    argv = [
+        "git",
+        "-C",
+        str(root),
+        "--no-optional-locks",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "show",
+        f"HEAD:{relative_path}",
+    ]
+    try:
+        process = subprocess.Popen(  # noqa: S603 — fixed argv, no shell, path is a constant
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    try:
+        assert process.stdout is not None  # noqa: S101 — guaranteed by stdout=PIPE
+        raw = process.stdout.read(max_bytes + 1)
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+            return None
+    except OSError:
+        process.kill()
+        return None
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+    if process.returncode != 0 or len(raw) > max_bytes:
+        return None
+    return raw
+
+
 def project_identity_fingerprint(root: Path) -> str:
     resolved = root.resolve()
     if _git_output(resolved, ["rev-parse", "--is-inside-work-tree"]) != "true":
