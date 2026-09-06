@@ -267,3 +267,15 @@ export { backfillPrivacyPlaintext, backfillPrivacyPlaintextScheduled } from "./c
 export { scanLegacyPlaintextArtifacts } from "./callables/sharedArtifactLegacyScan.js";
 
 export { submitDomainCoreShadowSamples } from "./callables/domainCoreShadowEvidence.js";
+
+// Team memory roster authority (D16 / P21). Firestore rules deny every client
+// write to `team_rosters/**`, so these callables are the only path by which a
+// team, its membership, or its key generation ever changes.
+export {
+  createTeam,
+  inviteTeamMember,
+  acceptTeamInvite,
+  promoteTeamMember,
+  removeTeamMember,
+  rotateTeamKey,
+} from "./callables/teamRosterCallables.js";

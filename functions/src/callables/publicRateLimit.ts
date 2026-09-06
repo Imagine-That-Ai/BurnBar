@@ -109,7 +109,13 @@ type CallableRateLimitAction =
   | "agent_notification_reply_burst"
   | "agent_notification_reply_daily"
   | "mission_create_burst"
-  | "mission_create_hourly";
+  | "mission_create_hourly"
+  | "team_roster_mutation_burst"
+  | "team_roster_mutation_daily"
+  | "team_invite_burst"
+  | "team_invite_daily"
+  | "team_invite_accept_burst"
+  | "team_invite_accept_daily";
 
 const CALLABLE_RATE_LIMITS: Record<CallableRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
   // VoIP call trigger: each call fans out APNs + FCM pushes. 20 burst/min,
@@ -130,6 +136,23 @@ const CALLABLE_RATE_LIMITS: Record<CallableRateLimitAction, { windowSeconds: num
   // is the only remaining flood valve.
   mission_create_burst: { windowSeconds: 60, maxAttempts: 10 },
   mission_create_hourly: { windowSeconds: 3600, maxAttempts: 60 },
+  // Team roster mutations (createTeam / promoteTeamMember / removeTeamMember /
+  // rotateTeamKey). Each writes the server-owned roster plus an audit row, and
+  // a rotation fans out one write per active member; roster churn is a human
+  // action measured in a handful per day, so 10/min and 100/day leave normal
+  // administration unthrottled while capping roster/audit flooding.
+  team_roster_mutation_burst: { windowSeconds: 60, maxAttempts: 10 },
+  team_roster_mutation_daily: { windowSeconds: 86_400, maxAttempts: 100 },
+  // inviteTeamMember resolves the invitee through `admin.auth().getUserByEmail`,
+  // which is an account-existence oracle. Bound it tightly per admin uid so the
+  // invite path cannot be looped into a directory scrape.
+  team_invite_burst: { windowSeconds: 60, maxAttempts: 5 },
+  team_invite_daily: { windowSeconds: 86_400, maxAttempts: 50 },
+  // acceptTeamInvite looks a bearer token up by sha256. The token is 192 bits
+  // and uid-bound, so guessing is already hopeless; the limit keeps a caller
+  // from turning the invite namespace into a probing surface anyway.
+  team_invite_accept_burst: { windowSeconds: 60, maxAttempts: 5 },
+  team_invite_accept_daily: { windowSeconds: 86_400, maxAttempts: 50 },
 };
 
 // Owner-funded hosted Intelligence Brief (OpenRouter). The Pro paywall gates
@@ -532,6 +555,32 @@ export async function checkAgentNotificationReplyRateLimit(uid: string): Promise
  */
 export async function checkMissionCreateRateLimit(uid: string): Promise<void> {
   await incrementCallableRateLimitsAtomically(uid, ["mission_create_burst", "mission_create_hourly"]);
+}
+
+/**
+ * Per-admin rate limit for the team roster mutation callables (`createTeam`,
+ * `promoteTeamMember`, `removeTeamMember`, `rotateTeamKey`). Throws
+ * `resource-exhausted` when either bound is hit.
+ */
+export async function checkTeamRosterMutationRateLimit(uid: string): Promise<void> {
+  await incrementCallableRateLimitsAtomically(uid, ["team_roster_mutation_burst", "team_roster_mutation_daily"]);
+}
+
+/**
+ * Per-admin rate limit for `inviteTeamMember`. Bounds the account-existence
+ * oracle that `admin.auth().getUserByEmail` unavoidably exposes to a team
+ * admin. Throws `resource-exhausted` when either bound is hit.
+ */
+export async function checkTeamInviteRateLimit(uid: string): Promise<void> {
+  await incrementCallableRateLimitsAtomically(uid, ["team_invite_burst", "team_invite_daily"]);
+}
+
+/**
+ * Per-caller rate limit for `acceptTeamInvite`. Throws `resource-exhausted`
+ * when either bound is hit.
+ */
+export async function checkTeamInviteAcceptRateLimit(uid: string): Promise<void> {
+  await incrementCallableRateLimitsAtomically(uid, ["team_invite_accept_burst", "team_invite_accept_daily"]);
 }
 
 export async function checkHermesGatewayBearerRateLimit(
