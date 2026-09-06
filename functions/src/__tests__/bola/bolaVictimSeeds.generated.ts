@@ -2288,6 +2288,48 @@ export const BOLA_VICTIM_SEEDS: Record<string, BolaVictimSeed[]> = {
       },
     },
   ],
+  recordTeamRewrapComplete: [
+    {
+      path: "team_rosters/team_bbbbbbbbbbbbbbbb",
+      data: {
+        teamId: "team_bbbbbbbbbbbbbbbb",
+        activeKeyVersion: 1,
+        retainedKeyVersions: [1],
+        keyRotationRequired: false,
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "team_rosters/team_bbbbbbbbbbbbbbbb/members/__BOB_UID__",
+      data: {
+        uid: "__BOB_UID__",
+        teamId: "team_bbbbbbbbbbbbbbbb",
+        role: "admin",
+        status: "active",
+        activeTeamKeyVersion: 1,
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "team_rosters/team_bbbbbbbbbbbbbbbb/invites/3b0dea9b778a89d4092112f716891f29c34a6bb669eb881ddcf220ebfbc09097",
+      data: {
+        teamId: "team_bbbbbbbbbbbbbbbb",
+        inviteeUid: "__BOB_UID__",
+        role: "member",
+        status: "pending",
+        invitedBy: "__BOB_UID__",
+        schemaVersion: 1,
+      },
+    },
+    {
+      path: "users/__BOB_UID__/bola_victim/teamId/team_bbbbbbbbbbbbbbbb",
+      data: {
+        ownerUid: "__BOB_UID__",
+        status: "active",
+        schemaVersion: 1,
+      },
+    },
+  ],
   redeemMissionApprovalAnswer: [
     {
       path: "users/__BOB_UID__/escrow_devices/bob-device",

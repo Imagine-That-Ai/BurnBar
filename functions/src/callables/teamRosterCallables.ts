@@ -16,6 +16,7 @@ import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
   INVITE_TOKEN_PATTERN,
   MAX_ENVELOPE_IDS,
+  MAX_REWRAP_JOB_ID_LENGTH,
   MAX_TEAM_KEY_VERSION,
   TEAM_ID_PATTERN,
   TeamRosterService,
@@ -148,6 +149,30 @@ export const removeTeamMember = onCallProduction(
     const targetUid = requireUid(request.data?.targetUid, "targetUid");
     await checkTeamRosterMutationRateLimit(callerUid);
     return TeamRosterService.removeMember(callerUid, teamId, targetUid);
+  },
+);
+
+export const recordTeamRewrapComplete = onCallProduction(
+  "recordTeamRewrapComplete",
+  TEAM_CALLABLE_OPTIONS,
+  async (request: CallableRequest<{ teamId?: unknown; keyVersion?: unknown; rewrapJobId?: unknown }>) => {
+    const callerUid = requireAuthUid(request);
+    const teamId = requireTeamId(request.data?.teamId);
+    const keyVersion = requireBoundedNumber(request.data?.keyVersion, "keyVersion", 1, MAX_TEAM_KEY_VERSION);
+    const rewrapJobId = boundedTrimmedString(
+      request.data?.rewrapJobId,
+      "rewrapJobId",
+      MAX_REWRAP_JOB_ID_LENGTH,
+      true,
+    );
+    // A correlation handle, not a secret and not an id the server resolves —
+    // bounded to the shape a UUID or a short slug takes so it cannot be used to
+    // smuggle bytes into a document every member reads.
+    if (!/^[A-Za-z0-9_.:-]+$/u.test(rewrapJobId)) {
+      throw new HttpsError("invalid-argument", "rewrapJobId is not a valid job identifier.");
+    }
+    await checkTeamRosterMutationRateLimit(callerUid);
+    return TeamRosterService.recordRewrapComplete(callerUid, teamId, keyVersion, rewrapJobId);
   },
 );
 

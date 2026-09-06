@@ -279,4 +279,5 @@ export {
   removeTeamMember,
   rotateTeamKey,
   abandonTeamKeyGeneration,
+  recordTeamRewrapComplete,
 } from "./callables/teamRosterCallables.js";

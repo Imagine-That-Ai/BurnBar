@@ -49,6 +49,14 @@ export const UNDELETABLE_DOMAINS = new Set<string>([
   "device_trust_keys",
   "entitlements_billing",
   "audit_timeline",
+  // Team memory is a SHARED tenant, not this user's namespace. Erasing it from
+  // one member's account-deletion path would delete every other member's facts
+  // too. The member-facing action is to leave the team (which cuts their reads
+  // at the roster and rotates the key) and to delete the individual facts they
+  // authored, which `firestore.rules` permits by `resource.data.uid` — and
+  // permits even on a lapsed subscription, so a billing state never traps a
+  // user's own contributions.
+  "team_pensieve",
 ]);
 
 export const deleteDomainData = onCall(

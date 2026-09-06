@@ -34,6 +34,13 @@
  *    member's trusted devices, for every retained team key version AND for the
  *    non-rotating slug key. That decision is re-checked, against the member row
  *    AND the team's membership epoch, inside the transaction that writes it.
+ *  - "The key rotated" and "the corpus was re-keyed" are DIFFERENT facts, and
+ *    the roster records both separately. `rotateTeamKey` must advance
+ *    `activeKeyVersion` before a single fact is re-sealed, because
+ *    `firestore.rules` pins every fact write to the roster's active generation
+ *    — so `recordTeamRewrapComplete` is what an admin's client calls once a
+ *    re-seal pass has finished with nothing skipped, and it refuses any
+ *    generation but the current one.
  *  - `rotateTeamKey` moves strictly to the next NON-BURNED version, verifies
  *    envelope coverage for every remaining active member's devices (refusing
  *    outright if any active member has no pinned device, the founder included),
@@ -119,6 +126,8 @@ export const MAX_TEAM_KEY_VERSION = 100;
  * candidate set, which is the safe direction.
  */
 const MAX_ADMIN_GUARD_READS = 20;
+/** A rewrap job id is a client-minted correlation handle (a UUID today). */
+export const MAX_REWRAP_JOB_ID_LENGTH = 64;
 
 type TeamMemberRole = "admin" | "member";
 type TeamMemberStatus = "pending" | "active" | "suspended" | "removed";
@@ -300,6 +309,11 @@ export class TeamRosterService {
           // Seeded explicitly so the guard never has to distinguish "no epoch
           // yet" from "epoch zero" on a document it is about to commit under.
           membershipEpoch: 0,
+          // No re-seal pass has run, and a fresh team has nothing to re-seal.
+          // Seeded explicitly so "never recorded" is a stored null rather than
+          // an absent field a reader has to guess about.
+          rewrapCompletedKeyVersion: null,
+          rewrapJobId: null,
           createdBy: callerUid,
           schemaVersion: TEAM_ROSTER_SCHEMA_VERSION,
           createdAt: now,
@@ -527,11 +541,21 @@ export class TeamRosterService {
       throw new HttpsError("not-found", "That account has not accepted an invite to this team.");
     }
     if (memberSnap.get("status") !== "pending") {
+      // DOWNSTREAM READER: `TeamJoinerKeyIssueFailure.classify`
+      // (AgentLens/Services/CloudSync/TeamRosterDirectory.swift) matches the
+      // fragment "pending member can be promoted" to tell this refusal apart
+      // from the escrow-device one below — they share a status code and differ
+      // only in wording. Rewording either message downgrades the admin's copy to
+      // the generic "nothing was shared" notice; changing the CODE is fine.
+      // The permanent fix is a structured `details.reason` on both, mirrored in
+      // `TeamRosterPromotionRefusal`.
       throw new HttpsError("failed-precondition", "Only a pending member can be promoted.");
     }
     const team = readTeam(teamSnap.data(), teamId);
     const devices = readEscrowDeviceFingerprints(memberSnap.get("escrowDeviceFingerprints"));
     if (devices.length === 0) {
+      // DOWNSTREAM READER: the same `classify`, matching "escrow device". See
+      // the note on the refusal above.
       throw new HttpsError("failed-precondition", "That member has no trusted escrow device to receive team keys.");
     }
 
@@ -872,5 +896,79 @@ export class TeamRosterService {
     });
 
     return { teamId, activeKeyVersion: newKeyVersion, retainedKeyVersions };
+  }
+
+  /**
+   * Record that a re-seal pass finished with NOTHING skipped, at
+   * `keyVersion` (memory program D16 / P22, PR 4 — promoting PR 2 review N1
+   * from a local `UserDefaults` note).
+   *
+   * WHY THIS IS NOT PART OF `rotateTeamKey`. `rotateTeamKey` has to advance
+   * `activeKeyVersion` and clear `keyRotationRequired` BEFORE any fact is
+   * re-sealed, because `firestore.rules` pins every fact write to the roster's
+   * active generation. So the roster alone cannot tell "re-keyed" from "the
+   * rotation callable ran and the pass then died on document four": both look
+   * identical. Folding the marker into the rotation would stamp "re-keyed" on a
+   * corpus nothing had touched — the precise claim N1 exists to stop the roster
+   * making. It is a separate call, made after the pass, by the admin who ran it.
+   *
+   * WHY IT REFUSES ANY GENERATION BUT THE CURRENT ONE. A completion for a
+   * SUPERSEDED generation is meaningless (that corpus has since moved), and a
+   * completion for a FUTURE one is a claim about work the rules would not have
+   * allowed yet. Both are refused rather than stored and reasoned about later.
+   *
+   * The write goes through {@link commitGuardedByTeamState}, so a rotation
+   * landing between the read and the write makes this `aborted` instead of
+   * stamping a completion against a generation that is no longer current.
+   *
+   * GUARDED ON MEMBERSHIP TOO, not only on key state (PR 4 review L8, closed by
+   * PR 2's C-4 round). `commitGuardedByTeamState` re-reads `membershipEpoch`
+   * along with the key state, and this call passes the whole team document as
+   * its expectation — so a promotion landing mid-pass aborts the completion
+   * rather than recording "re-keyed" for an active set the pass never wrapped
+   * for. It does NOT bump the epoch: recording a completion changes no
+   * membership.
+   */
+  static async recordRewrapComplete(
+    callerUid: string,
+    teamId: string,
+    keyVersion: number,
+    rewrapJobId: string,
+  ): Promise<{ teamId: string; rewrapCompletedKeyVersion: number }> {
+    await this.assertActiveAdmin(callerUid, teamId);
+
+    const teamRef = db.doc(`team_rosters/${teamId}`);
+    const team = readTeam((await teamRef.get()).data(), teamId);
+    if (keyVersion !== team.activeKeyVersion) {
+      throw new HttpsError(
+        "failed-precondition",
+        `This team is on key version ${team.activeKeyVersion}; a completion for ${keyVersion} says nothing about it.`,
+      );
+    }
+
+    const now = FieldValue.serverTimestamp();
+    await commitGuardedByTeamState({
+      teamId,
+      expected: team,
+      writes: [
+        {
+          ref: teamRef,
+          merge: true,
+          data: { rewrapCompletedKeyVersion: keyVersion, rewrapJobId, updatedAt: now },
+        },
+        {
+          ref: auditRef(teamId),
+          merge: false,
+          data: auditEvent({
+            teamId,
+            action: "rewrap_recorded",
+            actorUid: callerUid,
+            detail: { keyVersion, rewrapJobId },
+          }),
+        },
+      ],
+    });
+
+    return { teamId, rewrapCompletedKeyVersion: keyVersion };
   }
 }

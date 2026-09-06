@@ -6291,6 +6291,25 @@ test("test_a_client_cannot_write_the_roster", async () => {
     await assertFails(
       updateDoc(doc(db, `team_rosters/${teamId}`), { activeKeyVersion: 99 })
     );
+    // The rotation-completion marker is public trust copy for the whole team
+    // ("your memories have actually been re-sealed"), so it is server-written
+    // by construction: `recordTeamRewrapComplete` writes it with the Admin SDK
+    // and the rules refuse every client, admin included (D16 / P22, PR 4).
+    //
+    // NOT AN INDEPENDENT PROOF, and it must not be counted as one (PR 4 review
+    // L6). `team_rosters/{teamId}` is a blanket `allow write: if false`, so this
+    // fails for exactly the same reason the `activeKeyVersion: 99` case above
+    // does and cannot go red on its own — only a field-wise rewrite of the
+    // document rule could make it independent. It is here as executable
+    // documentation of an invariant the whole team's copy rests on: if someone
+    // ever loosens that document rule, this line states which fields must stay
+    // server-written, and it will go red with the rest.
+    await assertFails(
+      updateDoc(doc(db, `team_rosters/${teamId}`), {
+        rewrapCompletedKeyVersion: 9,
+        rewrapJobId: "forged-job",
+      })
+    );
     await assertFails(
       setDoc(doc(db, `team_rosters/${teamId}/members/${attackerUid}`), {
         uid: attackerUid,
