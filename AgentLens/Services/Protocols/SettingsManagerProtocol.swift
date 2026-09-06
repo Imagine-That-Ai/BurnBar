@@ -129,6 +129,19 @@ protocol SettingsManagerProtocol: AnyObject, Sendable {
     /// granted by the per-user namespace rule.
     var memoryDeviceSyncEnabled: Bool { get }
 
+    /// The teams the member has opted into sharing memory with (default EMPTY —
+    /// every team off). Consent to share with one team is not consent to share
+    /// with another, so this is a set rather than a switch.
+    var memoryTeamSyncEnabledTeamIDs: Set<String> { get set }
+
+    /// The Remote Config fleet ceiling for the team lane, and whether it has
+    /// actually resolved. Carried as two values rather than one folded gate for
+    /// the closed-until-resolved rule (KD12): the RC field defaults to the
+    /// optimistic `true`, so a lane that could not tell "allowed" from "not yet
+    /// asked" would open at launch and ignore a kill already cached on disk.
+    var memoryTeamSyncRemoteConfigAllowed: Bool { get }
+    var memoryTeamSyncRemoteConfigResolved: Bool { get }
+
     // MARK: - CLI Assistant
 
     /// Whether CLI assistant is allowed.

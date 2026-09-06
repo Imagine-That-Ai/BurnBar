@@ -92,6 +92,7 @@ struct MemoryCloudPullReport: Equatable, Sendable {
 final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
     private let syncService: MemoryCloudSyncService
     private let pullService: any MemoryCloudPulling
+    private let teamDomain: any TeamMemorySyncCycling
     private let store: ControlPlaneStore
     private let accountManager: any AccountManaging
     private let settingsManager: any SettingsManagerProtocol
@@ -101,6 +102,7 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
 
     private let state = Locked(CloudSyncDomainState())
     private let pullState = Locked(MemoryCloudPullReport?.none)
+    private let teamState = Locked(TeamMemorySyncCycleReport?.none)
     private let markerRefresher = Locked(Task<Void, Never>?.none)
 
     /// How often the daemon's consent marker is re-vouched for, INDEPENDENT of
@@ -121,6 +123,10 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
     /// `_ = try await pullService.pullRemoteFacts(...)`.
     var lastPullReport: MemoryCloudPullReport? { pullState.read() }
 
+    /// What the TEAM half of the last cycle did, or nil while it has never run
+    /// this launch (the dormant default: no team is opted in).
+    var lastTeamReport: TeamMemorySyncCycleReport? { teamState.read() }
+
     init(
         store: ControlPlaneStore,
         accountManager: any AccountManaging,
@@ -129,10 +135,13 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider(),
         entitlementResolver: any MemoryDataVaultEntitlementResolving = MacCloudDataVaultEntitlementResolver(),
         pullService: (any MemoryCloudPulling)? = nil,
+        teamDomain: (any TeamMemorySyncCycling)? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.syncService = MemoryCloudSyncService(store: store, firestoreGateway: firestoreGateway)
         self.pullService = pullService ?? MemoryCloudPullService(store: store, firestoreGateway: firestoreGateway)
+        self.teamDomain = teamDomain
+            ?? TeamMemorySyncDomain(store: store, firestoreGateway: firestoreGateway)
         self.store = store
         self.accountManager = accountManager
         self.settingsManager = settingsManager
@@ -165,6 +174,12 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         /// omitted the account levers).
         let scope: MemoryDeviceSyncScope
 
+        /// The TEAM half's levers, read on this same hop so the two lanes can
+        /// never disagree about consent. `deviceSyncGateOpen` and
+        /// `accountLeversOpen` are the personal gate's own two halves, which is
+        /// what makes team sync a strict subset of it.
+        let team: TeamMemoryGateSnapshot
+
         /// Everything that must be true for a remote memory to reach this
         /// device's engine: the four-lever device-sync gate AND the account
         /// levers every sync domain honours. This — not `deviceSyncEnabled`
@@ -181,6 +196,7 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
         // for the entitlement to have been resolved, and an unresolved or lapsed
         // tier resolves to false, closing the gate (fail closed).
         settingsManager.memoryDeviceSyncEntitlementSatisfied = entitlementResolver.isDataVaultEntitled
+        let scope = MemoryDeviceSyncScope.current(account: accountManager, settings: settingsManager)
         return GateSnapshot(
             isFirebaseAvailable: accountManager.isFirebaseAvailable,
             isSignedIn: accountManager.isSignedIn,
@@ -189,8 +205,52 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
             deviceSyncEnabled: settingsManager.memoryDeviceSyncEnabled,
             deviceId: accountManager.deviceId,
             uid: accountManager.currentUID,
-            scope: MemoryDeviceSyncScope.current(account: accountManager, settings: settingsManager)
+            scope: scope,
+            team: TeamMemoryGateSnapshot(
+                // The personal gate's own two halves, so team sync cannot
+                // outlive the consent the member gave the personal lane.
+                deviceSyncGateOpen: settingsManager.memoryDeviceSyncEnabled,
+                accountLeversOpen: scope.isOpen,
+                optedInTeamIDs: settingsManager.memoryTeamSyncEnabledTeamIDs,
+                remoteConfigTeamSyncAllowed: settingsManager.memoryTeamSyncRemoteConfigAllowed,
+                remoteConfigResolved: settingsManager.memoryTeamSyncRemoteConfigResolved
+            )
         )
+    }
+
+    /// Invalidates one team's local sync records NOW — the surface a UI action
+    /// calls when the member leaves a team or switches its toggle off.
+    ///
+    /// WHY THE UI NEEDS THIS AT ALL. `TeamMemorySyncDomain.runCycle` already
+    /// drops the pull cursor, push watermark and project-link record of every
+    /// team outside the opted-in set, so correctness does not depend on this
+    /// call. Latency does. The cycle runs on `BehaviorSettings.refreshInterval`
+    /// — 600 s by default, adjustable to 15 minutes, stretched 5x by
+    /// `BackgroundCadenceCoordinator` while the app is inactive, which a
+    /// menu-bar app normally is — so a member who leaves a team and re-joins it
+    /// inside that window would be served by the very records the leave was
+    /// supposed to retire, with no cycle having ever observed the set without
+    /// the team in it.
+    ///
+    /// NON-THROWING BY DESIGN. A leave must not fail because a local delete
+    /// did: the drop is an optimisation over a guarantee the cycle still
+    /// carries, so a failure here is logged and the next cycle performs it.
+    /// A signed-out account has nothing to invalidate and returns silently.
+    func invalidateTeamMemorySync(teamID: String) async {
+        let uid = await MainActor.run { accountManager.currentUID }
+        guard let uid, !uid.isEmpty else { return }
+        do {
+            try await teamDomain.invalidateTeamMemorySync(teamID: teamID, uid: uid)
+        } catch {
+            // Logged, never surfaced: the next cycle drops the same rows.
+            AppLogger.sync.error(
+                "team_memory_sync_invalidate_failed",
+                metadata: [
+                    "team_id": teamID,
+                    "error_type": String(describing: type(of: error))
+                ]
+            )
+        }
     }
 
     /// Subscribe to account identity changes so the blind-sync inbox and its
@@ -411,6 +471,72 @@ final class MemoryCloudSyncDomain: CloudSyncDomain, Sendable {
                 }
             }
             pullState.write(MemoryCloudPullReport(outcome: pullOutcome, counters: pullResult))
+
+            // THE TEAM HALF, LAST AND NESTED. It runs only after the personal
+            // push and pull are done, inside its own `do/catch`, so nothing it
+            // can do — an unreachable roster, a key envelope that has not
+            // landed, a team the member was removed from between two cycles —
+            // undoes, blocks or reorders the personal cycle that already
+            // succeeded above. `TeamMemorySyncDomain.runCycle` does not throw at
+            // all (it counts per-team failures), and the `catch` here is the
+            // second belt: a future change that makes it throw must still not be
+            // able to reach the personal lane. The seam is a PROTOCOL
+            // (`TeamMemorySyncCycling`) precisely so that belt is testable — a
+            // throwing double drives this `catch` in
+            // `test_team_sync_failing_closed_does_not_affect_member_sync`, and
+            // the assertions there are on the personal cycle's own state.
+            // That test proves containment but NOT position: with this `catch`
+            // in place it would still pass if this block were hoisted above the
+            // push and pull. `test_the_team_half_runs_after_the_personal_watermark_has_committed`
+            // is what pins the position — the double reads the personal
+            // watermark when it starts, so it can only see it committed from
+            // here.
+            //
+            // Dormant by default: `optedInTeamIDs` is empty until the member
+            // opts a team in, and `runCycle` returns `.idle` before touching a
+            // Firestore handle or a Keychain item.
+            do {
+                let teamReport = try await teamDomain.runCycle(
+                    uid: uid,
+                    deviceId: gate.deviceId,
+                    gate: gate.team,
+                    now: syncStartedAt
+                )
+                teamState.write(teamReport)
+                if teamReport.teamsConsidered > 0 {
+                    AppLogger.sync.info(
+                        "team_memory_sync_completed",
+                        metadata: [
+                            "teams_considered": String(teamReport.teamsConsidered),
+                            "teams_synced": String(teamReport.teamsSynced),
+                            "uploaded": String(teamReport.uploaded),
+                            "skipped_ineligible": String(teamReport.skippedIneligible),
+                            // The bound on the read cost: on a steady team this
+                            // is the whole eligible set and `uploaded`,
+                            // `converged_foreign_author` and
+                            // `skipped_stale_revision` are all zero, because
+                            // nothing was read from the cloud at all.
+                            "skipped_unchanged": String(teamReport.skippedUnchanged),
+                            "skipped_stale_revision": String(teamReport.skippedStaleRevision),
+                            "converged_foreign_author": String(teamReport.convergedForeignAuthor),
+                            "failed_documents": String(teamReport.failedDocuments),
+                            "pull_applied": String(teamReport.pullApplied),
+                            "pull_rejected": String(teamReport.pullRejected),
+                            "failed_teams": String(teamReport.failedTeams)
+                        ]
+                    )
+                }
+            } catch {
+                // Logged, never recorded on `lastSyncError`: the personal cycle
+                // this domain reports on DID succeed, and saying otherwise would
+                // put a team problem in front of a member who may not even know
+                // they are on a team.
+                AppLogger.sync.error(
+                    "team_memory_sync_cycle_failed",
+                    metadata: ["error_type": String(describing: type(of: error))]
+                )
+            }
+
             let durationBucket = AnalyticsBuckets.durationMs(Int(now().timeIntervalSince(syncStartedAt) * 1000))
             let itemCountBucket = AnalyticsBuckets.count(result.uploaded)
             // A cycle whose pull failed is NOT a success. Reporting one was

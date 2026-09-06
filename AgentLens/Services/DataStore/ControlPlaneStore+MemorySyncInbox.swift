@@ -148,9 +148,15 @@ extension ControlPlaneStore {
             sql: """
             UPDATE agent_memory_inbox
             SET engine_memory_id = ?, applied_at = NULL
-            WHERE user_id = ? AND engine_memory_id = ?
+            WHERE user_id = ? AND engine_memory_id = ? AND doc_id NOT LIKE ?
             """,
-            arguments: [engineMemoryID, userID, memoryIDHmac]
+            // The team-row exclusion is belt to the HMAC's braces: a team row's
+            // `engine_memory_id` is an engine id and this predicate matches a
+            // 64-hex HMAC, so the two shapes cannot meet today. Stated in SQL
+            // anyway, because "these shapes happen not to collide" is a weaker
+            // guarantee than "this statement cannot reach a team row", and this
+            // one reopens rows for the engine to act on (PR3 Cursor ruling, T2).
+            arguments: [engineMemoryID, userID, memoryIDHmac, "\(TeamMemoryPullService.inboxDocIDPrefix)%"]
         )
         return db.changesCount
     }
@@ -169,16 +175,25 @@ extension ControlPlaneStore {
     /// Receipt rows live in the inbox too, under an opaque 64-hex HMAC rather
     /// than an engine id; the caller drops those (`isOpaqueHmac`) rather than
     /// hashing an HMAC and matching nothing.
+    ///
+    /// TEAM ROWS ARE EXCLUDED (PR3 Cursor ruling, T2). This is the candidate set
+    /// a PERSONAL forget receipt is resolved against, and a team row is parked
+    /// under the engine id its payload seals — an id chosen by whoever sealed
+    /// the document. Leaving them in would let any member of a team seed this
+    /// member's receipt-resolution set with ids of their choosing. The team
+    /// lane resolves nothing against this set (`resolvingReceiptHmac: nil`), so
+    /// nothing legitimate is lost.
     func fetchResolvableEngineMemoryIDs(userID: String) async throws -> [String] {
         try await dbQueue.read { db in
             try String.fetchAll(
                 db,
                 sql: """
-                SELECT DISTINCT engine_memory_id FROM agent_memory_inbox WHERE user_id = ?
+                SELECT DISTINCT engine_memory_id FROM agent_memory_inbox
+                WHERE user_id = ? AND doc_id NOT LIKE ?
                 UNION
                 SELECT engine_memory_id FROM agent_memory_bodies
                 """,
-                arguments: [userID]
+                arguments: [userID, "\(TeamMemoryPullService.inboxDocIDPrefix)%"]
             )
         }
     }
@@ -332,28 +347,103 @@ extension ControlPlaneStore {
         RemoteSyncCollectionKind.memoryForgetReceipts.rawValue
     ]
 
+    /// The team lane's PUSH watermark rows
+    /// (`RemoteSyncWatermarkStore.teamMemoryPushCollectionKind`), which share the
+    /// `team:<teamId>:<uid>` account key with the pull cursors above but are NOT
+    /// inbox cursors — they record what this member has already SENT.
+    ///
+    /// They belong in the account-switch DELETE and nowhere else. In the delete,
+    /// because a signed-out member's push state has no business surviving on
+    /// this Mac once their inbox cursors are gone; NOT in the 90-day rewind,
+    /// because that sweep drops parked INBOUND rows and moving the outbound
+    /// watermark backwards in response would re-read documents the sweep never
+    /// touched.
+    private static let memoryTeamPushWatermarkKinds: [String] = [
+        RemoteSyncWatermarkStore.teamMemoryPushCollectionKind
+    ]
+
+    /// The team lane's project-LINK records
+    /// (`RemoteSyncWatermarkStore.teamMemoryProjectLinkKindPrefix`), which share
+    /// the same account key again and are not cursors either — they record which
+    /// `teamProjectId`s were linked at the last successful pull, so that a link
+    /// appearing later rewinds the cursor and recovers what
+    /// `.projectNotLinkedToTeam` refused.
+    ///
+    /// They belong in the account-switch DELETE for the same reason the push
+    /// watermarks do: a signed-out member's observation of THIS Mac's links has
+    /// no business surviving their sign-out, and the row is a variable-suffix
+    /// kind, so the exact-match `IN (...)` above cannot reach it. NOT in the
+    /// 90-day rewind, which moves inbound cursors and nothing else.
+    private static let memoryTeamProjectLinkKindPredicate =
+        RemoteSyncWatermarkStore.teamMemoryProjectLinkKindPredicate
+
+    private static var memoryTeamProjectLinkKindArguments: [any DatabaseValueConvertible] {
+        [
+            RemoteSyncWatermarkStore.teamMemoryProjectLinkKindPrefix.count,
+            RemoteSyncWatermarkStore.teamMemoryProjectLinkKindPrefix
+        ]
+    }
+
+    /// Matches every inbox cursor belonging to ONE account — the personal one
+    /// (`accountUid = <uid>`) and every TEAM one (`accountUid =
+    /// "team:<teamId>:<uid>"`, `TeamMemoryPullService.watermarkAccountKey`).
+    ///
+    /// `RemoteSyncCollectionKind` is a closed enum, so the team lane's cursors
+    /// ride in the free-form `accountUid` column under the same `collectionKind`
+    /// as the personal ones. Every predicate in this file that means "this
+    /// account's inbox cursors" therefore has to say so in TWO shapes, and a
+    /// uid-exact one silently means "the personal one only" — which is how the
+    /// 90-day sweep came to delete team inbox rows (they carry `user_id = <uid>`
+    /// and are squarely in the doomed set) while rewinding no team cursor, so
+    /// the pull's strictly-greater-than filter never asked for them again. The
+    /// sweep's own promise is that it is a bounded re-fetch, not a loss.
+    ///
+    /// The suffix half is deliberately NOT `LIKE 'team:%:' || uid`: `LIKE`
+    /// treats `_` and `%` in the uid as wildcards, and a test uid such as
+    /// `uid_bob` would then match another member's cursor. `substr(x, -n)` is an
+    /// exact tail comparison. The `LIKE 'team:%'` prefix carries no uid text at
+    /// all, so it is wildcard-safe by construction.
+    private static let accountInboxCursorPredicate = """
+    (
+        accountUid = ?
+        OR (accountUid LIKE 'team:%' AND substr(accountUid, -(length(?) + 1)) = ':' || ?)
+    )
+    """
+
     /// Deletes the inbox cursors of every account except `userID` (or of every
     /// account when it is nil). Deletion rather than a rewind: a re-pull is
     /// idempotent (`upsertRemoteMemoryFact` is keyed on `(doc_id, remote_updated_at)`)
     /// and the engine's own last-writer-wins dedupes whatever it already holds,
     /// so the cheapest correct cursor after an unbounded purge is no cursor.
+    ///
+    /// The `except` clause preserves ALL of that account's cursors — the
+    /// personal one and every `team:<teamId>:<uid>` one. A uid-exact `<>` used
+    /// to delete the switching-IN member's own team cursors on every account
+    /// switch, forcing a full re-pull of every team space they had already
+    /// consumed: correct, and pure waste.
     private static func dropMemoryInboxCursors(_ db: Database, exceptUserID userID: String?) throws {
-        let placeholders = Array(repeating: "?", count: memoryInboxCursorKinds.count).joined(separator: ", ")
+        let kinds = memoryInboxCursorKinds + memoryTeamPushWatermarkKinds
+        let placeholders = Array(repeating: "?", count: kinds.count).joined(separator: ", ")
+        // The exact-match kinds OR the variable-suffix link records — see
+        // `memoryTeamProjectLinkKindPredicate` for why the second shape exists.
+        let kindPredicate = "(collectionKind IN (\(placeholders)) OR \(memoryTeamProjectLinkKindPredicate))"
+        let kindArguments: [any DatabaseValueConvertible] =
+            (kinds as [any DatabaseValueConvertible]) + memoryTeamProjectLinkKindArguments
         if let userID, !userID.isEmpty {
             try db.execute(
                 sql: """
                 DELETE FROM \(RemoteSyncWatermarkRecord.databaseTableName)
-                WHERE collectionKind IN (\(placeholders)) AND accountUid <> ?
+                WHERE \(kindPredicate) AND NOT \(accountInboxCursorPredicate)
                 """,
-                arguments: StatementArguments(memoryInboxCursorKinds + [userID])
+                arguments: StatementArguments(kindArguments + ([userID, userID, userID] as [any DatabaseValueConvertible]))
             )
         } else {
             try db.execute(
                 sql: """
                 DELETE FROM \(RemoteSyncWatermarkRecord.databaseTableName)
-                WHERE collectionKind IN (\(placeholders))
+                WHERE \(kindPredicate)
                 """,
-                arguments: StatementArguments(memoryInboxCursorKinds)
+                arguments: StatementArguments(kindArguments)
             )
         }
     }
@@ -366,6 +456,9 @@ extension ControlPlaneStore {
     /// exactly what was lost, where deleting the cursor would re-read the whole
     /// collection. One second, not zero, because the pull's filter is strictly
     /// greater-than and the swept document must be INSIDE the next page.
+    ///
+    /// Rewinds this account's TEAM cursors as well as its personal one — see
+    /// `accountInboxCursorPredicate` for why that is not one predicate.
     private static func rewindMemoryInboxCursors(_ db: Database, userID: String, toJustBefore instant: Date) throws {
         let rewound = instant.addingTimeInterval(-1)
         for kind in memoryInboxCursorKinds {
@@ -373,10 +466,10 @@ extension ControlPlaneStore {
                 sql: """
                 UPDATE \(RemoteSyncWatermarkRecord.databaseTableName)
                 SET lastProcessedRemoteUpdateAt = ?, version = version + 1
-                WHERE accountUid = ? AND collectionKind = ?
+                WHERE collectionKind = ? AND \(accountInboxCursorPredicate)
                     AND (lastProcessedRemoteUpdateAt IS NULL OR lastProcessedRemoteUpdateAt > ?)
                 """,
-                arguments: [rewound, userID, kind, rewound]
+                arguments: [rewound, kind, userID, userID, userID, rewound]
             )
         }
     }

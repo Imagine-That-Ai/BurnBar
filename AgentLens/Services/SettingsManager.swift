@@ -329,6 +329,11 @@ final class SettingsManager {
         // keep any active cached false authoritative.
         "memory_usage_extraction_enabled": NSNumber(value: true),
         "memory_usage_authority_writes_enabled": NSNumber(value: true),
+        // Team-memory fleet ceiling (memory program D16). Default true
+        // (allowed), and — unlike the switches above — inert on its own: the
+        // team lane is CLOSED UNTIL RESOLVED, so this default can never open a
+        // lane before an actual Remote Config value has been applied.
+        "memory_team_sync_enabled": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
         "media_normal_file_gb_per_day": NSNumber(value: 5),
@@ -398,6 +403,16 @@ final class SettingsManager {
                 forKey: "memory_usage_authority_writes_enabled"
             ).boolValue
         )
+        // The team ceiling resolves on the SAME two beats as the usage ones —
+        // the cached value before the round trip, the active value after it —
+        // because it is the lever that RESOLVES the team lane out of its
+        // held-closed state. Without a producer the gate's `remoteConfigResolved`
+        // term is never true and nothing in the team lane can run in production
+        // at all; with one, a fleet kill cached on disk closes it before the
+        // first cycle rather than after.
+        applyTeamMemoryRemoteConfig(
+            teamSyncEnabled: remoteConfig.configValue(forKey: "memory_team_sync_enabled").boolValue
+        )
 
         // Same for the Memory Pro cloud-models switch: a cached fleet kill must
         // close the gate (and re-send the daemon a disabled policy) before the
@@ -419,6 +434,7 @@ final class SettingsManager {
         let activeUsageAuthorityWritesEnabled = remoteConfig.configValue(
             forKey: "memory_usage_authority_writes_enabled"
         ).boolValue
+        let activeTeamSyncEnabled = remoteConfig.configValue(forKey: "memory_team_sync_enabled").boolValue
         if fetchResult.1 != nil {
             computerUseKillSwitch = true
             hasResolvedComputerUseRemoteConfig = true
@@ -482,6 +498,7 @@ final class SettingsManager {
             extractionEnabled: activeUsageExtractionEnabled,
             authorityWritesEnabled: activeUsageAuthorityWritesEnabled
         )
+        applyTeamMemoryRemoteConfig(teamSyncEnabled: activeTeamSyncEnabled)
     }
 
     // MARK: - Backward Compatibility (Computed Properties)
@@ -1000,6 +1017,42 @@ final class SettingsManager {
     /// gate the pull obeys, so a greyed-out switch never reads "on" and an
     /// on-looking switch never corresponds to a dormant channel.
     var memoryDeviceSyncRowEnabled: Bool { memoryDeviceSyncEnabled }
+
+    // MARK: Team memory (memory program D16)
+
+    /// The teams the member has opted into sharing memory with (default EMPTY).
+    /// The scheduler ANDs this per team with the whole device-sync gate through
+    /// `TeamMemorySyncGate`, so this set alone can never start a team upload.
+    var memoryTeamSyncEnabledTeamIDs: Set<String> {
+        get { memory.teamMemorySyncEnabled }
+        set { memory.teamMemorySyncEnabled = newValue }
+    }
+
+    /// The team lane's fleet ceiling and its resolution state. See
+    /// `MemorySettings.applyTeamRemoteConfig`.
+    var memoryTeamSyncRemoteConfigAllowed: Bool { memory.remoteConfigTeamSyncEnabled }
+    var memoryTeamSyncRemoteConfigResolved: Bool { memory.hasResolvedTeamRemoteConfig }
+
+    /// Apply a resolved Remote Config value to the team fleet ceiling and open
+    /// it for gating. The only path that resolves it, mirroring
+    /// `applyUsageMemoryRemoteConfig`; called from `refreshComputerUseRemoteConfigOnce`
+    /// on both the cached and the fetched beat. Resolution alone opens nothing:
+    /// `TeamMemorySyncGate` still needs the personal gate, the account levers,
+    /// a per-team opt-in and an active roster row.
+    ///
+    /// WHAT RESOLUTION ACTUALLY PROVES. The cached beat reads whatever
+    /// `RemoteConfig` has, which on an install that has never completed a fetch
+    /// is the REGISTERED DEFAULT — so "resolved" means "a value was applied",
+    /// not "a fleet value was observed", and an offline install resolves to the
+    /// default rather than staying held closed. This matches the usage lanes'
+    /// precedent exactly and is harmless while the opt-in set is empty (nothing
+    /// can run without a per-team opt-in, and no UI mints one before PR 4). PR 4
+    /// lands that UI: if the ceiling must be a POSITIVE fleet observation before
+    /// a member can opt in, register the default `false` and let the fetched
+    /// beat be the only thing that opens it.
+    func applyTeamMemoryRemoteConfig(teamSyncEnabled: Bool) {
+        memory.applyTeamRemoteConfig(teamSyncEnabled: teamSyncEnabled)
+    }
 
     // MARK: Memory Pro cloud models (opt-in, blind)
 

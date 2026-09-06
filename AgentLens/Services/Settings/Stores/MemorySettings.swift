@@ -66,6 +66,74 @@ final class MemorySettings {
     /// the pull stays closed until the tier actually resolves.
     var deviceSyncEntitlementSatisfied: Bool = false
 
+    /// Per-team opt-in for contributing to and reading a shared team memory
+    /// space (memory program D16, default EMPTY — every team off).
+    ///
+    /// A SET rather than a Bool, because consent to share with one team is not
+    /// consent to share with another: a member on two teams opts each in
+    /// separately, and joining a third opts in nothing. `TeamMemorySyncGate`
+    /// ANDs this under the whole shipped device-sync gate, so team sync is a
+    /// strict SUBSET of personal sync — turning cloud backup off stops it too,
+    /// and this switch alone can never start a team upload or download.
+    ///
+    /// Persisted as a JSON array of team ids so the order the member joined in
+    /// does not become state.
+    var teamMemorySyncEnabled: Set<String> = [] {
+        didSet {
+            persistence.set(
+                Self.encodeTeamIDs(teamMemorySyncEnabled),
+                forKey: "memoryTeamSyncEnabledTeamIDsJSON"
+            )
+        }
+    }
+
+    /// Firebase Remote Config `memory_team_sync_enabled` (default true). Not
+    /// user-settable and not persisted; a fleet flip to false closes every
+    /// team's lane instantly. Only meaningful once
+    /// `hasResolvedTeamRemoteConfig` is true — until then the lane is held
+    /// CLOSED regardless, so the optimistic `true` can never open it ahead of
+    /// the cached fleet value (the closed-until-resolved rule the usage lanes
+    /// already follow).
+    var remoteConfigTeamSyncEnabled: Bool = true
+
+    /// Whether a Remote Config value has been applied to the team fleet switch.
+    /// Not persisted: every launch re-resolves, so a relaunch starts closed.
+    private(set) var hasResolvedTeamRemoteConfig: Bool = false
+
+    /// The ONLY path that opens the team lane, mirroring
+    /// `applyUsageRemoteConfig`: the setter above deliberately does not resolve,
+    /// so a partial write can never promote a defaulted `true` into an open lane.
+    func applyTeamRemoteConfig(teamSyncEnabled: Bool) {
+        remoteConfigTeamSyncEnabled = teamSyncEnabled
+        hasResolvedTeamRemoteConfig = true
+    }
+
+    /// `nonisolated`: both are pure functions over their arguments, and the
+    /// consent gate's tests read them without a main-actor hop.
+    nonisolated static func encodeTeamIDs(_ teamIDs: Set<String>) -> String {
+        // Sorted, so the set's iteration order never becomes persisted state and
+        // two runs with the same opt-ins write the same bytes.
+        do {
+            let data = try JSONEncoder().encode(teamIDs.sorted())
+            return String(data: data, encoding: .utf8) ?? "[]"
+        } catch {
+            // A `[String]` cannot fail to encode; the empty list keeps the store
+            // consistent rather than persisting a half-written key.
+            return "[]"
+        }
+    }
+
+    nonisolated static func decodeTeamIDs(_ json: String) -> Set<String> {
+        guard let data = json.data(using: .utf8) else { return [] }
+        do {
+            return Set(try JSONDecoder().decode([String].self, from: data).filter { !$0.isEmpty })
+        } catch {
+            // A malformed persisted list degrades to "no team opted in", which
+            // is the fail-closed default. It must never throw at launch.
+            return []
+        }
+    }
+
     /// Firebase Remote Config `memory_extraction_enabled` (default true). Not
     /// user-settable; the fleet kill switch sets this false to halt extraction
     /// instantly. Fetch transport errors preserve extraction only when the
@@ -403,6 +471,11 @@ final class MemorySettings {
         if persistence.objectExists(forKey: "memoryDeviceSyncEnabled") {
             self.deviceSyncEnabled = persistence.bool(forKey: "memoryDeviceSyncEnabled")
         }
+        if persistence.objectExists(forKey: "memoryTeamSyncEnabledTeamIDsJSON") {
+            self.teamMemorySyncEnabled = Self.decodeTeamIDs(
+                persistence.string(forKey: "memoryTeamSyncEnabledTeamIDsJSON", defaultValue: "[]")
+            )
+        }
         // Load `consentShown` before `consentGranted` so the granted-didSet's
         // implicit `consentShown = true` never races a stale persisted value.
         if persistence.objectExists(forKey: "memoryConsentShown") {
@@ -621,6 +694,69 @@ enum MemoryDeviceSyncGate {
         remoteConfigEnabled: Bool
     ) -> Bool {
         deviceSyncOptIn && backupOptIn && entitlementSatisfied && remoteConfigEnabled
+    }
+}
+
+// MARK: - Team memory sync gate (memory program D16 / P22)
+
+/// Pure gate for "share memories with this team".
+///
+/// TEAM SYNC IS A STRICT SUBSET OF PERSONAL SYNC, and that is the point of the
+/// first two levers. `deviceSyncGateOpen` is `MemoryDeviceSyncGate.isEnabled`
+/// (the sub-toggle AND the backup opt-in AND the live Data Vault entitlement AND
+/// the fleet ceiling) and `accountLeversOpen` is
+/// `MemoryDeviceSyncScope.current(...).isOpen` (Firebase available AND signed in
+/// AND account cloud sync on). A member who turns cloud backup off, signs out,
+/// or loses the entitlement stops contributing to every team at the same instant
+/// — so a design miss in the team lane can never strand member data behind a
+/// switch the member believes is off.
+///
+/// The remaining three levers are the team's own:
+///
+///   * `teamOptIn` — this specific team, from `MemorySettings
+///     .teamMemorySyncEnabled`, default false for every team.
+///   * `rosterStatusActive` — the LIVE roster says this member is `active`, not
+///     `pending` (keys not yet issued) and not `removed`. The server enforces
+///     this too; reading it here is what stops a removed member's client from
+///     spending a cycle on writes the rules will refuse.
+///   * `remoteConfigTeamSyncAllowed` + `remoteConfigResolved` — the fleet
+///     ceiling, CLOSED UNTIL RESOLVED (KD12): the RC field defaults to the
+///     optimistic `true`, so without the resolution lever a consenting member's
+///     lane would open at launch and stay open until the async fetch landed,
+///     ignoring a kill already cached on disk.
+///
+/// ORG CEILING SEAM — A NAMED NO-OP, NOT A MISSING `&&`. PR #2534's
+/// organisation ceiling (`OrgMemoryRemoteConfigSnapshot` /
+/// `isOrgMemorySyncAllowed()`) IS on this branch's base: it is on `main`, and
+/// it lives ~300 lines above this comment in this very file. It is still not
+/// ANDed in here, and the reason is #2534's OWN ruling rather than an
+/// omission — `isOrgMemorySyncAllowed()`'s doc comment says it is
+/// "Deliberately NOT ANDed into any member-local gate", because member memory
+/// that was never org-gated must not be brickable by an absent, stale or
+/// denying org ceiling. This IS a member-local gate: every lever above is read
+/// from the member's own settings and the member's own roster row.
+///
+/// SO PR 4 MUST NOT WIRE IT AS A ONE-LINER. Whether a TEAM lane — unlike a
+/// member's personal one — should be org-gated is a design ruling that has not
+/// been made, and taking it silently by adding `orgCeilingAllowed` here would
+/// let an organisation that has published nothing, or whose ceiling has gone
+/// stale, close a lane the member and the team both consented to. Take the
+/// ruling first; the `&&` is the easy part.
+enum TeamMemorySyncGate {
+    static func isEnabled(
+        deviceSyncGateOpen: Bool,
+        accountLeversOpen: Bool,
+        teamOptIn: Bool,
+        rosterStatusActive: Bool,
+        remoteConfigTeamSyncAllowed: Bool,
+        remoteConfigResolved: Bool
+    ) -> Bool {
+        deviceSyncGateOpen
+            && accountLeversOpen
+            && teamOptIn
+            && rosterStatusActive
+            && remoteConfigTeamSyncAllowed
+            && remoteConfigResolved
     }
 }
 

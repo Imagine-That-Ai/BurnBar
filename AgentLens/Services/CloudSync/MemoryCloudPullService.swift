@@ -743,13 +743,27 @@ final class MemoryCloudPullService: MemoryCloudPulling, Sendable {
     /// carried must match exactly, which is what this window means. A backend
     /// editing the ordering key is bounded to under a second of the value the
     /// member's own device signed, rather than being free to name any instant.
-    private static func sameSealedInstant(_ outer: Date, _ sealed: Date) -> Bool {
+    ///
+    /// Internal rather than private so the TEAM lane binds its outer ordering
+    /// key with the SAME window (`TeamMemoryPullService.verify`). Two windows
+    /// would be two answers to one question, and the narrower of them would
+    /// start refusing documents the other accepted after a clock or encoder
+    /// change nobody connected to either lane.
+    static func sameSealedInstant(_ outer: Date, _ sealed: Date) -> Bool {
         abs(outer.timeIntervalSince(sealed)) < 1
     }
 
     /// Firestore hands dates back as `Timestamp`; the in-memory fake keeps the
     /// `Date` it was written with. Both must resolve or the watermark cannot move.
-    private static func firestoreDate(_ value: Any?) -> Date? {
+    ///
+    /// THE ONE IMPLEMENTATION for every memory lane. The personal push, the team
+    /// push and the team pull each grew a private copy of these three lines, and
+    /// four copies of "how this product reads an instant off a cloud document"
+    /// is four places for the personal and team lanes to start disagreeing about
+    /// which revision is newer. Callers that hold the whole document read the
+    /// field they mean — `firestoreDate(data["updatedAt"])` — instead of passing
+    /// an untyped dictionary to a helper that then picks the key for them.
+    static func firestoreDate(_ value: Any?) -> Date? {
         if let timestamp = value as? Timestamp { return timestamp.dateValue() }
         return OpenBurnBarDatabase.parseDateValue(value)
     }
