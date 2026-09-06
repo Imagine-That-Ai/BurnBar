@@ -2,6 +2,7 @@
 import type { BolaLedgerCode } from "../../security/bolaCoverageTypes.js";
 
 export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = {
+  acceptTeamInvite: "permission-denied",
   adoptProviderAccountForDevice: "not-found",
   appendCliAgentMissionEvent: "invalid-argument",
   approveEscrowDeviceTrust: "invalid-argument",
@@ -45,6 +46,7 @@ export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = {
   getEncryptedProjectMemorySnapshot: "permission-denied",
   getEncryptedSessionBlobDownloadUrl: "permission-denied",
   getHermesGatewayAttachmentDownloadUrl: "not-found",
+  inviteTeamMember: "permission-denied",
   issueIrohControllerRouteChallenge: "failed-precondition",
   issueLinuxAppCheckChallenge: "permission-denied",
   issuePhoneControlEnrollmentGrant: "permission-denied",
@@ -53,6 +55,7 @@ export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = {
   mintBurnbarAttachmentPartURL: "invalid-argument",
   mintLinuxAppCheckToken: "permission-denied",
   pollCliLink: "permission-denied",
+  promoteTeamMember: "permission-denied",
   publishAgentGrantAuthority: "permission-denied",
   publishIrohPairingPublicKey: "permission-denied",
   publishIrohPairingRecord: "permission-denied",
@@ -69,6 +72,7 @@ export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = {
   registerEscrowDevice: "invalid-argument",
   registerIrohControllerRoute: "failed-precondition",
   registerLinuxAppCheckDevice: "unauthenticated",
+  removeTeamMember: "permission-denied",
   repairTrustedSignalIdentity: "failed-precondition",
   resolveActiveIrohControllerRoutes: "no-side-effect",
   respondHermesGatewayApproval: "not-found",
@@ -84,6 +88,7 @@ export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = {
   revokeRemoteMcpClient: "no-side-effect",
   rotateCloudVaultKey: "permission-denied",
   rotateHermesGatewayClientToken: "not-found",
+  rotateTeamKey: "permission-denied",
   searchEncryptedConversationIndex: "permission-denied",
   setHermesGatewayOversightMode: "failed-precondition",
   signalPrekeyWatermark: "failed-precondition",

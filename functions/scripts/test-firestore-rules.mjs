@@ -6063,6 +6063,874 @@ test("war_wire_grants: owner grants and revokes; pairId must be canonical", asyn
   await assertSucceeds(deleteDoc(doc(ownerDb, path)));
 });
 
+// T27 — Team memory red-team suite (D16 / P21).
+//
+// These are adversarial by construction: each case is a way a member, an
+// ex-member, a neighbouring team or a plain client could try to reach data the
+// team lane promises they cannot. The lane's whole membership story is "the
+// rules re-read the live roster on every read AND every write", so the roster
+// is seeded with security rules DISABLED (mirroring the Admin-SDK-only roster
+// callables) and every assertion below runs through client rules.
+
+const TEAM_FACT_TIMESTAMP = Timestamp.fromDate(new Date("2026-09-05T00:00:00.000Z"));
+
+function cloudVaultTeamAAD(teamId, collection, docID, field) {
+  return cloudVaultAAD(`team:${teamId}`, collection, docID, field);
+}
+
+function sealedTeamBlobAt(teamId, collection, docID, field, overrides = {}) {
+  return sealedBlob({
+    aad: cloudVaultTeamAAD(teamId, collection, docID, field),
+    ...overrides,
+  });
+}
+
+async function seedTeamRoster(teamId, members, teamOverrides = {}) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const fs = context.firestore();
+    await setDoc(doc(fs, `team_rosters/${teamId}`), {
+      teamId,
+      name: "Red Team",
+      activeKeyVersion: 1,
+      retainedKeyVersions: [1],
+      slugKeyId: null,
+      keyRotationRequired: false,
+      createdBy: members[0]?.uid ?? "unknown",
+      schemaVersion: 1,
+      ...teamOverrides,
+    });
+    for (const member of members) {
+      await setDoc(doc(fs, `team_rosters/${teamId}/members/${member.uid}`), {
+        uid: member.uid,
+        teamId,
+        role: member.role ?? "member",
+        status: member.status ?? "active",
+        escrowDeviceFingerprints: [],
+        activeTeamKeyVersion: 1,
+        invitedBy: members[0]?.uid ?? "unknown",
+        schemaVersion: 1,
+      });
+    }
+  });
+}
+
+async function setTeamMemberStatus(teamId, uid, status) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), `team_rosters/${teamId}/members/${uid}`), { status });
+  });
+}
+
+async function setTeamActiveKeyVersion(teamId, activeKeyVersion, retainedKeyVersions) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), `team_rosters/${teamId}`), {
+      activeKeyVersion,
+      retainedKeyVersions,
+    });
+  });
+}
+
+async function seedTeamFact(teamId, uid, docID, overrides = {}) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), `team_memory_facts/${teamId}/facts/${docID}`),
+      teamMemoryFact(teamId, uid, docID, overrides)
+    );
+  });
+}
+
+function teamMemoryFact(teamId, uid, docID, overrides = {}) {
+  return {
+    uid,
+    teamId,
+    docID,
+    schemaVersion: 2,
+    sourceKind: "agent",
+    kind: "architecture",
+    reviewStatus: "approved",
+    sealedMemory: sealedTeamBlobAt(teamId, "team_memory_facts", docID, "sealedMemory"),
+    sourceRefHmacs: ["a".repeat(64)],
+    citationCount: 1,
+    validFrom: TEAM_FACT_TIMESTAMP,
+    updatedAt: TEAM_FACT_TIMESTAMP,
+    replicatedAt: TEAM_FACT_TIMESTAMP,
+    teamKeyVersion: 1,
+    ...overrides,
+  };
+}
+
+// An escrow device's `publicKeyFingerprint` is base64 of a 32-byte SHA-256
+// digest — 43 base64 characters plus the `=` pad — NOT 64 hex. Everything that
+// produces one (`CloudVaultDeviceKeypair`), stores one (`escrow_public_keys`)
+// and verifies one (`EscrowDeviceSafetyCode.isFingerprint`, which base64-decodes
+// it) agrees on that shape, so the fixture must too: seeding hex here is what
+// let a hex validator look green while refusing every envelope a real device
+// could ever wrap. See `test_an_envelope_wrapped_to_a_hex_fingerprint_is_rejected`.
+const TEAM_ESCROW_FINGERPRINT = `${"b".repeat(43)}=`;
+
+// Fixture wrap material, BUILT AT RUNTIME rather than committed. The rules only
+// require `wrappedKeyBase64` to be non-empty base64 under 4 KiB, so a fixture
+// never needs real wrapped bytes — and a committed base64 literal next to a
+// `…Key…` field name is exactly the shape the repo's secret scanner refuses.
+const WRAPPED_FIXTURE_B64 = Buffer.from("wrapped-fixture", "utf8").toString("base64");
+const SUBSTITUTED_FIXTURE_B64 = Buffer.from("substituted-fixture", "utf8").toString("base64");
+
+function teamKeyEnvelope(teamId, uid, deviceId, escrowKeyVersion, keySlot, wrappedBy, overrides = {}) {
+  return {
+    teamId,
+    uid,
+    deviceId,
+    escrowKeyVersion,
+    keySlot,
+    algorithm: "ECIES-P256-AESGCM",
+    wrappedKeyBase64: WRAPPED_FIXTURE_B64,
+    recipientPublicKeyFingerprint: TEAM_ESCROW_FINGERPRINT,
+    // Pinned by the rules to the author, so the roster authority can tell whose
+    // wrap an envelope is and count only wraps it is willing to trust.
+    wrappedBy,
+    createdAt: TEAM_FACT_TIMESTAMP,
+    ...overrides,
+  };
+}
+
+test("test_a_non_member_is_denied_read_and_write", async () => {
+  const teamId = "team_aaaaaaaaaaaaaaa1";
+  const memberUid = "t27-member-1";
+  const outsiderUid = "t27-outsider-1";
+  const factId = "1".repeat(64);
+  const outsiderFactId = "2".repeat(64);
+
+  await seedTeamRoster(teamId, [{ uid: memberUid, role: "admin" }]);
+  await seedBurnBarProMaxEntitlement(memberUid);
+  await seedBurnBarProMaxEntitlement(outsiderUid);
+
+  const memberDb = authedDb(memberUid);
+  const outsiderDb = authedDb(outsiderUid);
+
+  await assertSucceeds(
+    setDoc(doc(memberDb, `team_memory_facts/${teamId}/facts/${factId}`), teamMemoryFact(teamId, memberUid, factId))
+  );
+  await assertSucceeds(getDoc(doc(memberDb, `team_memory_facts/${teamId}/facts/${factId}`)));
+
+  // No roster row at all: get, list and create must every one of them fail.
+  await assertFails(getDoc(doc(outsiderDb, `team_memory_facts/${teamId}/facts/${factId}`)));
+  await assertFails(getDocs(collection(outsiderDb, `team_memory_facts/${teamId}/facts`)));
+  await assertFails(
+    setDoc(
+      doc(outsiderDb, `team_memory_facts/${teamId}/facts/${outsiderFactId}`),
+      teamMemoryFact(teamId, outsiderUid, outsiderFactId)
+    )
+  );
+  await assertFails(getDoc(doc(outsiderDb, `team_rosters/${teamId}`)));
+
+  // The entitlement alone buys nothing: a member without it is also denied.
+  const unentitledUid = "t27-unentitled-1";
+  await seedTeamRoster(teamId, [{ uid: memberUid, role: "admin" }, { uid: unentitledUid }]);
+  await assertFails(getDoc(doc(authedDb(unentitledUid), `team_memory_facts/${teamId}/facts/${factId}`)));
+});
+
+test("test_an_ex_member_is_denied_after_rotation", async () => {
+  const teamId = "team_aaaaaaaaaaaaaaa2";
+  const adminUid = "t27-admin-2";
+  const exMemberUid = "t27-ex-member-2";
+  const factId = "3".repeat(64);
+  const postRotationFactId = "4".repeat(64);
+
+  await seedTeamRoster(teamId, [{ uid: adminUid, role: "admin" }, { uid: exMemberUid }]);
+  await seedBurnBarProMaxEntitlement(adminUid);
+  await seedBurnBarProMaxEntitlement(exMemberUid);
+
+  const exMemberDb = authedDb(exMemberUid);
+  await assertSucceeds(
+    setDoc(
+      doc(exMemberDb, `team_memory_facts/${teamId}/facts/${factId}`),
+      teamMemoryFact(teamId, exMemberUid, factId)
+    )
+  );
+
+  await setTeamMemberStatus(teamId, exMemberUid, "removed");
+  await setTeamActiveKeyVersion(teamId, 2, [1, 2]);
+
+  // Cut off on the very next request — read AND write, including their own row.
+  await assertFails(getDoc(doc(exMemberDb, `team_memory_facts/${teamId}/facts/${factId}`)));
+  await assertFails(
+    updateDoc(doc(exMemberDb, `team_memory_facts/${teamId}/facts/${factId}`), { updatedAt: TEAM_FACT_TIMESTAMP })
+  );
+  await assertFails(
+    setDoc(
+      doc(exMemberDb, `team_memory_facts/${teamId}/facts/${postRotationFactId}`),
+      teamMemoryFact(teamId, exMemberUid, postRotationFactId, {
+        teamKeyVersion: 2,
+        sealedMemory: sealedTeamBlobAt(teamId, "team_memory_facts", postRotationFactId, "sealedMemory", {
+          keyVersion: 2,
+        }),
+      })
+    )
+  );
+  await assertFails(getDoc(doc(exMemberDb, `team_rosters/${teamId}`)));
+});
+
+test("test_a_client_cannot_write_the_roster", async () => {
+  const teamId = "team_aaaaaaaaaaaaaaa3";
+  const adminUid = "t27-admin-3";
+  const attackerUid = "t27-attacker-3";
+
+  await seedTeamRoster(teamId, [{ uid: adminUid, role: "admin" }]);
+  await seedBurnBarProMaxEntitlement(adminUid);
+  await seedBurnBarProMaxEntitlement(attackerUid);
+
+  // Not even an ACTIVE ADMIN may write the roster: the callables own it.
+  for (const [label, db] of [
+    ["attacker", authedDb(attackerUid)],
+    ["admin", authedDb(adminUid)],
+  ]) {
+    assert.ok(label);
+    await assertFails(
+      setDoc(doc(db, `team_rosters/${teamId}`), { teamId, name: "Forged", activeKeyVersion: 1 })
+    );
+    await assertFails(
+      updateDoc(doc(db, `team_rosters/${teamId}`), { activeKeyVersion: 99 })
+    );
+    await assertFails(
+      setDoc(doc(db, `team_rosters/${teamId}/members/${attackerUid}`), {
+        uid: attackerUid,
+        teamId,
+        role: "admin",
+        status: "active",
+      })
+    );
+    await assertFails(
+      setDoc(doc(db, `team_rosters/${teamId}/invites/${"c".repeat(64)}`), {
+        teamId,
+        inviteeUid: attackerUid,
+        status: "pending",
+      })
+    );
+    await assertFails(
+      setDoc(doc(db, `team_rosters/${teamId}/audit_log/forged-event`), {
+        teamId,
+        action: "member_promoted",
+        actorUid: attackerUid,
+      })
+    );
+    await assertFails(deleteDoc(doc(db, `team_rosters/${teamId}/members/${adminUid}`)));
+  }
+});
+
+test("test_a_member_of_team_a_cannot_read_team_b", async () => {
+  const teamA = "team_aaaaaaaaaaaaaaa4";
+  const teamB = "team_bbbbbbbbbbbbbbb4";
+  const userA = "t27-user-a-4";
+  const userB = "t27-user-b-4";
+  const factB = "5".repeat(64);
+  const intruderFact = "6".repeat(64);
+
+  await seedTeamRoster(teamA, [{ uid: userA, role: "admin" }]);
+  await seedTeamRoster(teamB, [{ uid: userB, role: "admin" }]);
+  await seedBurnBarProMaxEntitlement(userA);
+  await seedBurnBarProMaxEntitlement(userB);
+
+  const dbA = authedDb(userA);
+  const dbB = authedDb(userB);
+
+  await assertSucceeds(
+    setDoc(doc(dbB, `team_memory_facts/${teamB}/facts/${factB}`), teamMemoryFact(teamB, userB, factB))
+  );
+
+  await assertFails(getDoc(doc(dbA, `team_memory_facts/${teamB}/facts/${factB}`)));
+  await assertFails(getDocs(collection(dbA, `team_memory_facts/${teamB}/facts`)));
+  await assertFails(getDoc(doc(dbA, `team_rosters/${teamB}`)));
+  await assertFails(getDoc(doc(dbA, `team_rosters/${teamB}/members/${userB}`)));
+  await assertFails(
+    setDoc(
+      doc(dbA, `team_memory_facts/${teamB}/facts/${intruderFact}`),
+      teamMemoryFact(teamB, userA, intruderFact)
+    )
+  );
+});
+
+test("test_a_forwarded_invite_grants_nothing", async () => {
+  const teamId = "team_aaaaaaaaaaaaaaa5";
+  const adminUid = "t27-admin-5";
+  const inviteeUid = "t27-invitee-5";
+  const forwardeeUid = "t27-forwardee-5";
+  // The invite doc id IS sha256(token): holding the token means knowing the id.
+  const inviteId = "d".repeat(64);
+  const factId = "7".repeat(64);
+
+  await seedTeamRoster(teamId, [{ uid: adminUid, role: "admin" }]);
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `team_rosters/${teamId}/invites/${inviteId}`), {
+      teamId,
+      tokenHash: inviteId,
+      inviteeUid,
+      role: "member",
+      status: "pending",
+      invitedBy: adminUid,
+      schemaVersion: 1,
+    });
+  });
+  await seedBurnBarProMaxEntitlement(forwardeeUid);
+
+  const forwardeeDb = authedDb(forwardeeUid);
+
+  // Knowing the token buys no read of the invite, no self-insertion into the
+  // roster, and no access to team data. The uid binding itself is proved by
+  // teamRoster.test.ts; these rules make the token inert on its own.
+  await assertFails(getDoc(doc(forwardeeDb, `team_rosters/${teamId}/invites/${inviteId}`)));
+  await assertFails(
+    updateDoc(doc(forwardeeDb, `team_rosters/${teamId}/invites/${inviteId}`), { inviteeUid: forwardeeUid })
+  );
+  await assertFails(
+    setDoc(doc(forwardeeDb, `team_rosters/${teamId}/members/${forwardeeUid}`), {
+      uid: forwardeeUid,
+      teamId,
+      role: "member",
+      status: "active",
+    })
+  );
+  await assertFails(
+    setDoc(
+      doc(forwardeeDb, `team_memory_facts/${teamId}/facts/${factId}`),
+      teamMemoryFact(teamId, forwardeeUid, factId)
+    )
+  );
+});
+
+test("test_cross_team_ciphertext_splice_is_rejected", async () => {
+  const teamA = "team_aaaaaaaaaaaaaaa6";
+  const teamB = "team_bbbbbbbbbbbbbbb6";
+  const splicerUid = "t27-splicer-6";
+  const docID = "8".repeat(64);
+
+  // The splicer is legitimately active in BOTH teams; the only thing stopping
+  // team A's ciphertext from landing in team B is the AAD binding.
+  await seedTeamRoster(teamA, [{ uid: splicerUid, role: "admin" }]);
+  await seedTeamRoster(teamB, [{ uid: splicerUid, role: "admin" }]);
+  await seedBurnBarProMaxEntitlement(splicerUid);
+
+  const db = authedDb(splicerUid);
+
+  await assertFails(
+    setDoc(
+      doc(db, `team_memory_facts/${teamB}/facts/${docID}`),
+      teamMemoryFact(teamB, splicerUid, docID, {
+        sealedMemory: sealedTeamBlobAt(teamA, "team_memory_facts", docID, "sealedMemory"),
+      })
+    )
+  );
+  // A personal-lane AAD is refused for the same reason.
+  await assertFails(
+    setDoc(
+      doc(db, `team_memory_facts/${teamB}/facts/${docID}`),
+      teamMemoryFact(teamB, splicerUid, docID, {
+        sealedMemory: sealedBlobAt(splicerUid, "team_memory_facts", docID, "sealedMemory"),
+      })
+    )
+  );
+  await assertSucceeds(
+    setDoc(doc(db, `team_memory_facts/${teamB}/facts/${docID}`), teamMemoryFact(teamB, splicerUid, docID))
+  );
+});
+
+test("test_member_cannot_update_another_members_fact", async () => {
+  const teamId = "team_aaaaaaaaaaaaaaa7";
+  const authorUid = "t27-author-7";
+  const peerUid = "t27-peer-7";
+  const docID = "9".repeat(64);
+
+  await seedTeamRoster(teamId, [{ uid: authorUid, role: "admin" }, { uid: peerUid }]);
+  await seedBurnBarProMaxEntitlement(authorUid);
+  await seedBurnBarProMaxEntitlement(peerUid);
+  await seedTeamFact(teamId, authorUid, docID);
+
+  const peerDb = authedDb(peerUid);
+  const authorDb = authedDb(authorUid);
+
+  // A plain member may READ the fact but never overwrite it — not by keeping
+  // the author uid, and certainly not by claiming authorship.
+  await assertSucceeds(getDoc(doc(peerDb, `team_memory_facts/${teamId}/facts/${docID}`)));
+  await assertFails(
+    setDoc(doc(peerDb, `team_memory_facts/${teamId}/facts/${docID}`), teamMemoryFact(teamId, authorUid, docID))
+  );
+  await assertFails(
+    setDoc(doc(peerDb, `team_memory_facts/${teamId}/facts/${docID}`), teamMemoryFact(teamId, peerUid, docID))
+  );
+  await assertFails(deleteDoc(doc(peerDb, `team_memory_facts/${teamId}/facts/${docID}`)));
+
+  await assertSucceeds(
+    setDoc(doc(authorDb, `team_memory_facts/${teamId}/facts/${docID}`), teamMemoryFact(teamId, authorUid, docID))
+  );
+});
+
+test("test_admin_can_update_but_cannot_rewrite_the_author_uid", async () => {
+  const teamId = "team_aaaaaaaaaaaaaaa8";
+  const adminUid = "t27-admin-8";
+  const authorUid = "t27-author-8";
+  const docID = "a".repeat(64);
+
+  await seedTeamRoster(teamId, [{ uid: adminUid, role: "admin" }, { uid: authorUid }]);
+  await seedBurnBarProMaxEntitlement(adminUid);
+  await seedBurnBarProMaxEntitlement(authorUid);
+  await seedTeamFact(teamId, authorUid, docID);
+
+  const adminDb = authedDb(adminUid);
+
+  await assertSucceeds(
+    setDoc(
+      doc(adminDb, `team_memory_facts/${teamId}/facts/${docID}`),
+      teamMemoryFact(teamId, authorUid, docID, { rewrapJobId: "rewrap-2026-09-05" })
+    )
+  );
+  // Authorship is immutable even to an admin.
+  await assertFails(
+    setDoc(doc(adminDb, `team_memory_facts/${teamId}/facts/${docID}`), teamMemoryFact(teamId, adminUid, docID))
+  );
+});
+
+test("test_write_under_a_superseded_team_key_version_is_denied", async () => {
+  const teamId = "team_aaaaaaaaaaaaaaa9";
+  const memberUid = "t27-member-9";
+  const staleDocId = "b".repeat(64);
+  const freshDocId = "0".repeat(64);
+
+  await seedTeamRoster(teamId, [{ uid: memberUid, role: "admin" }]);
+  await seedBurnBarProMaxEntitlement(memberUid);
+  await setTeamActiveKeyVersion(teamId, 2, [1, 2]);
+
+  const db = authedDb(memberUid);
+
+  // v1 is retained (old documents still open) but no longer writable.
+  await assertFails(
+    setDoc(doc(db, `team_memory_facts/${teamId}/facts/${staleDocId}`), teamMemoryFact(teamId, memberUid, staleDocId))
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(db, `team_memory_facts/${teamId}/facts/${freshDocId}`),
+      teamMemoryFact(teamId, memberUid, freshDocId, {
+        teamKeyVersion: 2,
+        sealedMemory: sealedTeamBlobAt(teamId, "team_memory_facts", freshDocId, "sealedMemory", { keyVersion: 2 }),
+      })
+    )
+  );
+});
+
+test("test_outer_and_sealed_key_versions_must_match", async () => {
+  const teamId = "team_ccccccccccccccc1";
+  const memberUid = "t27-member-10";
+  const docID = "c".repeat(64);
+
+  await seedTeamRoster(teamId, [{ uid: memberUid, role: "admin" }]);
+  await seedBurnBarProMaxEntitlement(memberUid);
+  await setTeamActiveKeyVersion(teamId, 2, [1, 2]);
+
+  const db = authedDb(memberUid);
+
+  // Outer label says v2 (matching the roster) but the envelope is sealed v1.
+  await assertFails(
+    setDoc(
+      doc(db, `team_memory_facts/${teamId}/facts/${docID}`),
+      teamMemoryFact(teamId, memberUid, docID, {
+        teamKeyVersion: 2,
+        sealedMemory: sealedTeamBlobAt(teamId, "team_memory_facts", docID, "sealedMemory", { keyVersion: 1 }),
+      })
+    )
+  );
+  // ...and the mirror image: envelope v2, outer label v1.
+  await assertFails(
+    setDoc(
+      doc(db, `team_memory_facts/${teamId}/facts/${docID}`),
+      teamMemoryFact(teamId, memberUid, docID, {
+        teamKeyVersion: 1,
+        sealedMemory: sealedTeamBlobAt(teamId, "team_memory_facts", docID, "sealedMemory", { keyVersion: 2 }),
+      })
+    )
+  );
+});
+
+test("test_member_cannot_write_plaintext_fields", async () => {
+  // The ENFORCEMENT is `keys().hasOnly(...)` on the fact validator — a single
+  // allowlist, not a denylist. The explicit `!("text" in d)` negations that
+  // used to sit beside it were mutation-tested and provably dead (removing all
+  // six broke nothing), so they were deleted; this test is what proves every
+  // one of those field names is still refused.
+  const teamId = "team_ccccccccccccccc2";
+  const memberUid = "t27-member-11";
+
+  await seedTeamRoster(teamId, [{ uid: memberUid, role: "admin" }]);
+  await seedBurnBarProMaxEntitlement(memberUid);
+
+  const db = authedDb(memberUid);
+  const leaks = [
+    { text: "the plaintext body" },
+    { body: "the plaintext body" },
+    { citations: [{ threadLogicalID: "thread-1", messageID: "message-1" }] },
+    { embedding: [0.1, 0.2, 0.3] },
+    { cloakedVector: [0.1, 0.2, 0.3] },
+    { vector: [0.1, 0.2, 0.3] },
+    { projectName: "OpenBurnBar" },
+    // vaultGeneration is a PERSONAL vault concept; letting it in would admit
+    // the personal rewrap worker's update shape by accident.
+    { vaultGeneration: 3 },
+  ];
+
+  let index = 0;
+  for (const leak of leaks) {
+    const docID = `${index}`.repeat(64).slice(0, 64);
+    index += 1;
+    await assertFails(
+      setDoc(
+        doc(db, `team_memory_facts/${teamId}/facts/${docID}`),
+        teamMemoryFact(teamId, memberUid, docID, leak)
+      )
+    );
+  }
+  // Plaintext source refs in the HMAC list are rejected too.
+  const plaintextSourceId = "e".repeat(64);
+  await assertFails(
+    setDoc(
+      doc(db, `team_memory_facts/${teamId}/facts/${plaintextSourceId}`),
+      teamMemoryFact(teamId, memberUid, plaintextSourceId, {
+        sourceRefHmacs: ["thread-1|message-1|hash"],
+      })
+    )
+  );
+});
+
+test("test_placeholder_citation_hmacs_are_rejected", async () => {
+  const teamId = "team_ccccccccccccccc3";
+  const memberUid = "t27-member-12";
+  const overCountId = "f".repeat(64);
+  const underCountId = "1".repeat(63) + "2";
+  const okId = "2".repeat(63) + "3";
+
+  await seedTeamRoster(teamId, [{ uid: memberUid, role: "admin" }]);
+  await seedBurnBarProMaxEntitlement(memberUid);
+
+  const db = authedDb(memberUid);
+
+  // The held attempt derived citationCount and sourceRefHmacs independently,
+  // then padded the list with a placeholder. The rule now forces one
+  // derivation: the count IS the list length.
+  await assertFails(
+    setDoc(
+      doc(db, `team_memory_facts/${teamId}/facts/${overCountId}`),
+      teamMemoryFact(teamId, memberUid, overCountId, { citationCount: 2, sourceRefHmacs: ["a".repeat(64)] })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(db, `team_memory_facts/${teamId}/facts/${underCountId}`),
+      teamMemoryFact(teamId, memberUid, underCountId, {
+        citationCount: 1,
+        sourceRefHmacs: ["a".repeat(64), "b".repeat(64)],
+      })
+    )
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(db, `team_memory_facts/${teamId}/facts/${okId}`),
+      teamMemoryFact(teamId, memberUid, okId, {
+        citationCount: 2,
+        sourceRefHmacs: ["a".repeat(64), "b".repeat(64)],
+      })
+    )
+  );
+});
+
+test("test_a_member_cannot_read_another_members_key_envelope", async () => {
+  const teamId = "team_ccccccccccccccc4";
+  const memberUid = "t27-member-13";
+  const peerUid = "t27-peer-13";
+  const outsiderUid = "t27-outsider-13";
+
+  await seedTeamRoster(teamId, [{ uid: memberUid, role: "admin" }, { uid: peerUid }]);
+  await seedBurnBarProMaxEntitlement(memberUid);
+  await seedBurnBarProMaxEntitlement(peerUid);
+  await seedBurnBarProMaxEntitlement(outsiderUid);
+
+  const memberDb = authedDb(memberUid);
+  const peerDb = authedDb(peerUid);
+  const ownId = `${memberUid}_device-a_1_v1`;
+  const peerId = `${peerUid}_device-b_1_v1`;
+  const peerSlugId = `${peerUid}_device-b_1_slug`;
+
+  // An active ADMIN may PUBLISH an envelope for a joiner (the wrap happened
+  // client-side against the joiner's own published escrow key)...
+  await assertSucceeds(
+    setDoc(
+      doc(memberDb, `team_key_envelopes/${teamId}/envelopes/${ownId}`),
+      teamKeyEnvelope(teamId, memberUid, "device-a", 1, "v1", memberUid)
+    )
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(memberDb, `team_key_envelopes/${teamId}/envelopes/${peerId}`),
+      teamKeyEnvelope(teamId, peerUid, "device-b", 1, "v1", memberUid)
+    )
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(memberDb, `team_key_envelopes/${teamId}/envelopes/${peerSlugId}`),
+      teamKeyEnvelope(teamId, peerUid, "device-b", 1, "slug", memberUid)
+    )
+  );
+
+  // ...but reads only its own, and a published envelope is immutable.
+  await assertSucceeds(getDoc(doc(memberDb, `team_key_envelopes/${teamId}/envelopes/${ownId}`)));
+  await assertFails(getDoc(doc(memberDb, `team_key_envelopes/${teamId}/envelopes/${peerId}`)));
+  await assertSucceeds(getDoc(doc(peerDb, `team_key_envelopes/${teamId}/envelopes/${peerId}`)));
+  await assertFails(getDoc(doc(peerDb, `team_key_envelopes/${teamId}/envelopes/${ownId}`)));
+  await assertFails(getDocs(collection(memberDb, `team_key_envelopes/${teamId}/envelopes`)));
+  await assertFails(
+    updateDoc(doc(peerDb, `team_key_envelopes/${teamId}/envelopes/${peerId}`), {
+      wrappedKeyBase64: SUBSTITUTED_FIXTURE_B64,
+    })
+  );
+  await assertFails(deleteDoc(doc(peerDb, `team_key_envelopes/${teamId}/envelopes/${peerId}`)));
+
+  // The document id is pinned to (uid, deviceId, escrowKeyVersion, keySlot), so
+  // an envelope cannot be filed under a slot it does not name.
+  await assertFails(
+    setDoc(
+      doc(memberDb, `team_key_envelopes/${teamId}/envelopes/${memberUid}_device-a_1_v2`),
+      teamKeyEnvelope(teamId, memberUid, "device-a", 1, "v1", memberUid)
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(authedDb(outsiderUid), `team_key_envelopes/${teamId}/envelopes/${outsiderUid}_device-c_1_v1`),
+      teamKeyEnvelope(teamId, outsiderUid, "device-c", 1, "v1", outsiderUid)
+    )
+  );
+});
+
+test("test_a_plain_member_cannot_squat_a_peers_key_envelope", async () => {
+  // PR1 review F1. Envelopes are create-only and immutable: whoever writes an
+  // id owns it for ever, and nobody — not an admin, not a support callable —
+  // can repair it. When every active member could create an envelope for every
+  // uid, a plain member could pre-write a joiner's whole id set with garbage
+  // wraps and leave that joiner permanently active-but-blind. `create` is now
+  // admin-or-self, and `wrappedBy` is pinned to the author.
+  const teamId = "team_ccccccccccccccc5";
+  const adminUid = "t27-admin-14";
+  const malloryUid = "t27-mallory-14";
+  const joinerUid = "t27-joiner-14";
+  const outsiderUid = "t27-outsider-14";
+
+  await seedTeamRoster(teamId, [
+    { uid: adminUid, role: "admin" },
+    { uid: malloryUid },
+    { uid: joinerUid, status: "pending" },
+  ]);
+  for (const uid of [adminUid, malloryUid, joinerUid, outsiderUid]) {
+    await seedBurnBarProMaxEntitlement(uid);
+  }
+
+  const malloryDb = authedDb(malloryUid);
+  const adminDb = authedDb(adminUid);
+  const joinerId = `${joinerUid}_device-j_1_v1`;
+  const joinerSlugId = `${joinerUid}_device-j_1_slug`;
+  const mallorySelfId = `${malloryUid}_device-m_1_v1`;
+
+  // A plain member cannot squat the joiner's vault-key OR slug-key slots.
+  await assertFails(
+    setDoc(
+      doc(malloryDb, `team_key_envelopes/${teamId}/envelopes/${joinerId}`),
+      teamKeyEnvelope(teamId, joinerUid, "device-j", 1, "v1", malloryUid)
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(malloryDb, `team_key_envelopes/${teamId}/envelopes/${joinerSlugId}`),
+      teamKeyEnvelope(teamId, joinerUid, "device-j", 1, "slug", malloryUid)
+    )
+  );
+
+  // ...and cannot launder the attempt by lying about who wrapped it, in either
+  // direction: `wrappedBy` is pinned to `request.auth.uid`.
+  await assertFails(
+    setDoc(
+      doc(malloryDb, `team_key_envelopes/${teamId}/envelopes/${joinerId}`),
+      teamKeyEnvelope(teamId, joinerUid, "device-j", 1, "v1", adminUid)
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(malloryDb, `team_key_envelopes/${teamId}/envelopes/${mallorySelfId}`),
+      teamKeyEnvelope(teamId, malloryUid, "device-m", 1, "v1", adminUid)
+    )
+  );
+
+  // Self-wrap is the legitimate member case: enrolling a second Mac, and how a
+  // founder bootstraps their own key material.
+  await assertSucceeds(
+    setDoc(
+      doc(malloryDb, `team_key_envelopes/${teamId}/envelopes/${mallorySelfId}`),
+      teamKeyEnvelope(teamId, malloryUid, "device-m", 1, "v1", malloryUid)
+    )
+  );
+
+  // An envelope addressed to a uid that is not on this roster is refused, so
+  // the tenant cannot be filled with unreclaimable documents for strangers.
+  await assertFails(
+    setDoc(
+      doc(adminDb, `team_key_envelopes/${teamId}/envelopes/${outsiderUid}_device-o_1_v1`),
+      teamKeyEnvelope(teamId, outsiderUid, "device-o", 1, "v1", adminUid)
+    )
+  );
+
+  // The admin keeps the ability the lane actually needs: handing a PENDING
+  // joiner its keys.
+  await assertSucceeds(
+    setDoc(
+      doc(adminDb, `team_key_envelopes/${teamId}/envelopes/${joinerId}`),
+      teamKeyEnvelope(teamId, joinerUid, "device-j", 1, "v1", adminUid)
+    )
+  );
+});
+
+test("test_a_member_cannot_pre_place_an_envelope_for_a_future_key_generation", async () => {
+  // Cursor round, thread firestore.rules:5096. Admin-or-self closed peer
+  // squatting but left the FUTURE open. Envelope ids are immutable and derived
+  // as `{uid}_{deviceId}_{escrowKeyVersion}_v{N}`, so an active member could
+  // self-wrap the ids the NEXT rotation will demand of them — with a wrap to
+  // any key but their pinned one — and occupy them for ever. `rotateTeamKey`
+  // then fails coverage on the fingerprint mismatch and cannot repair a
+  // create-only document, so one ordinary member could permanently deny the
+  // team its only revocation primitive while keeping the current key.
+  //
+  // A self-wrap is now confined to generations the team has ALREADY published.
+  const teamId = "team_ccccccccccccccc7";
+  const adminUid = "t27-admin-16";
+  const malloryUid = "t27-mallory-16";
+
+  await seedTeamRoster(teamId, [{ uid: adminUid, role: "admin" }, { uid: malloryUid }]);
+  for (const uid of [adminUid, malloryUid]) {
+    await seedBurnBarProMaxEntitlement(uid);
+  }
+
+  const malloryDb = authedDb(malloryUid);
+  const adminDb = authedDb(adminUid);
+  const selfEnvelope = (slot, deviceId = "device-m") =>
+    setDoc(
+      doc(malloryDb, `team_key_envelopes/${teamId}/envelopes/${malloryUid}_${deviceId}_1_${slot}`),
+      teamKeyEnvelope(teamId, malloryUid, deviceId, 1, slot, malloryUid)
+    );
+
+  // The next generation, and the one after it, are both denied.
+  await assertFails(selfEnvelope("v2"));
+  await assertFails(selfEnvelope("v3"));
+
+  // What a member legitimately self-wraps still works: the CURRENT generation
+  // and the non-rotating slug key.
+  await assertSucceeds(selfEnvelope("v1"));
+  await assertSucceeds(selfEnvelope("slug"));
+
+  // The rotating admin is the one who publishes the next generation.
+  await assertSucceeds(
+    setDoc(
+      doc(adminDb, `team_key_envelopes/${teamId}/envelopes/${malloryUid}_device-m_1_v2`),
+      teamKeyEnvelope(teamId, malloryUid, "device-m", 1, "v2", adminUid)
+    )
+  );
+
+  // Once the rotation lands, v2 is a published generation and the member may
+  // self-wrap it for a newly enrolled device — but v3 is again out of reach.
+  await setTeamActiveKeyVersion(teamId, 2, [1, 2]);
+  await assertSucceeds(selfEnvelope("v2", "device-m2"));
+  await assertFails(selfEnvelope("v3", "device-m2"));
+});
+
+test("test_an_envelope_wrapped_to_a_hex_fingerprint_is_rejected", async () => {
+  // Memory program D16 / PR 1. `recipientPublicKeyFingerprint` is the ONLY
+  // thing binding an envelope to a key the recipient actually published — the
+  // roster authority compares it against the fingerprint pinned on the member
+  // row at accept time, and a mismatch means the requirement it was meant to
+  // cover is simply unmet. So the shape has to be the shape real devices
+  // publish: base64 of a 32-byte SHA-256 digest, 43 base64 characters plus the
+  // `=` pad. An earlier draft pinned `^[a-f0-9]{64}$` here, which no device has
+  // ever published; no client could have written a single valid envelope.
+  // Both halves are asserted so the regex cannot silently drift back to hex or
+  // slacken into a bare length bound.
+  const teamId = "team_ccccccccccccccd1";
+  const adminUid = "t27-admin-24";
+
+  await seedTeamRoster(teamId, [{ uid: adminUid, role: "admin" }]);
+  await seedBurnBarProMaxEntitlement(adminUid);
+  const adminDb = authedDb(adminUid);
+  const envelopePath = (slot) => `team_key_envelopes/${teamId}/envelopes/${adminUid}_device-a_1_${slot}`;
+
+  // The real shape is accepted.
+  await assertSucceeds(
+    setDoc(doc(adminDb, envelopePath("v1")), teamKeyEnvelope(teamId, adminUid, "device-a", 1, "v1", adminUid))
+  );
+
+  // 64 hex — the shape the earlier draft demanded — is not a fingerprint any
+  // device emits.
+  await assertFails(
+    setDoc(
+      doc(adminDb, envelopePath("v2")),
+      teamKeyEnvelope(teamId, adminUid, "device-a", 1, "v2", adminUid, {
+        recipientPublicKeyFingerprint: "b".repeat(64),
+      })
+    )
+  );
+
+  // Nor is a base64 string of the wrong digest length, or a non-string.
+  await assertFails(
+    setDoc(
+      doc(adminDb, envelopePath("v3")),
+      teamKeyEnvelope(teamId, adminUid, "device-a", 1, "v3", adminUid, {
+        recipientPublicKeyFingerprint: `${"b".repeat(27)}=`,
+      })
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(adminDb, envelopePath("v4")),
+      teamKeyEnvelope(teamId, adminUid, "device-a", 1, "v4", adminUid, {
+        recipientPublicKeyFingerprint: 1,
+      })
+    )
+  );
+});
+
+test("test_a_fact_create_pins_the_author_uid", async () => {
+  // PR1 review F9 / mutant M11: removing `request.resource.data.uid ==
+  // request.auth.uid` from the fact `allow create` broke no test. Every
+  // existing case that wrote a foreign uid was either an outsider (denied
+  // earlier by isTeamMember) or an update on an existing document. This is the
+  // create-time author pin on its own.
+  const teamId = "team_ccccccccccccccc6";
+  const authorUid = "t27-author-15";
+  const peerUid = "t27-peer-15";
+  const foreignId = "3".repeat(64);
+  const ownId = "4".repeat(64);
+
+  await seedTeamRoster(teamId, [{ uid: authorUid, role: "admin" }, { uid: peerUid }]);
+  await seedBurnBarProMaxEntitlement(authorUid);
+  await seedBurnBarProMaxEntitlement(peerUid);
+
+  const peerDb = authedDb(peerUid);
+
+  // A brand new document claiming a teammate as its author is refused...
+  await assertFails(
+    setDoc(doc(peerDb, `team_memory_facts/${teamId}/facts/${foreignId}`), teamMemoryFact(teamId, authorUid, foreignId))
+  );
+  // ...including for an ADMIN, who may edit a teammate's row but may not
+  // manufacture one in their name.
+  await assertFails(
+    setDoc(
+      doc(authedDb(authorUid), `team_memory_facts/${teamId}/facts/${foreignId}`),
+      teamMemoryFact(teamId, peerUid, foreignId)
+    )
+  );
+  // ...and the same member writing under their own uid succeeds.
+  await assertSucceeds(
+    setDoc(doc(peerDb, `team_memory_facts/${teamId}/facts/${ownId}`), teamMemoryFact(teamId, peerUid, ownId))
+  );
+});
+
 test("rules test environment is isolated", () => {
   assert.ok(testEnv.projectId.startsWith("openburnbar-rules-"));
 });
