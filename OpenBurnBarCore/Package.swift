@@ -591,12 +591,12 @@ let swiftTestingAppleDependencies: [Target.Dependency] = []
 // in the graph on every platform so native release builds do not depend on a
 // test-only manifest rewrite.
 let swiftTestingPackageDependencies: [Package.Dependency] = [
-    .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
+    .package(url: "https://github.com/swiftlang/swift-testing", from: "6.3.2")
 ]
 #else
 let swiftTestingAppleDependencies: [Target.Dependency] = [swiftTestingAppleDependency]
 let swiftTestingPackageDependencies: [Package.Dependency] = [
-    .package(url: "https://github.com/swiftlang/swift-testing", from: "0.11.0")
+    .package(url: "https://github.com/swiftlang/swift-testing", from: "6.3.2")
 ]
 #endif
 let swiftCryptoDependency: Target.Dependency = .product(name: "Crypto", package: "swift-crypto")
@@ -1657,13 +1657,13 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: packageProducts,
     dependencies: buildLinuxSecurityOnly ? [
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0")
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "4.5.1")
     ] : (hasLibSignalSwiftPackage ? [
         .package(name: "LibSignalClient", path: "../Vendor/libsignal/swift")
     ] : []) + (buildForLinuxBoundary ? [] : [
         .package(path: "../Vendor/GRDB-SQLCipher")
     ]) + swiftTestingPackageDependencies + [
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0")
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "4.5.1")
     ],
     targets: allTargets,
     swiftLanguageModes: [.v6]
