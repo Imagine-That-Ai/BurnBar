@@ -18,6 +18,11 @@ import OpenBurnBarEngine
 // other delete path touches the inbox by memory, so without it a forget left a
 // readable copy of the body on disk — and an unmerged copy would have been
 // offered back to the engine on the next drain.
+//
+// A TEAM row is parked under the SEALED id the contributing member chose, not
+// under the derived id the engine knows it by, so the ids below do not address
+// it. `deleteSyncInboxRows` closes that half by re-deriving each parked team
+// row's local id from its own provenance stamp — see its doc comment.
 
 extension BurnBarProjectCodeMemoryStore {
     func forget(_ request: BurnBarProjectMemoryForgetRequest) throws -> BurnBarProjectMemoryForgetResponse {
@@ -41,7 +46,9 @@ extension BurnBarProjectCodeMemoryStore {
             do {
                 // A hard forget leaves no readable copy anywhere this daemon
                 // owns — including the blind-sync landing zone, whose rows are
-                // opened plaintext no other delete path touches.
+                // opened plaintext no other delete path touches. Team rows
+                // included: `deleteSyncInboxRows` re-derives their local ids
+                // rather than trusting the sealed one they are parked under.
                 try deleteSyncInboxRows(engineMemoryIDs: engineIDs)
                 try removeProjectMemorySection(
                     projectID: projectID,

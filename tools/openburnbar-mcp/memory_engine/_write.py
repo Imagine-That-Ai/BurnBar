@@ -478,6 +478,25 @@ class _WritePath:
                 "kind": kind,
                 "scope": scope,
             }
+        # T6. THE choke point every locally-initiated write passes through —
+        # `remember`, `memorize`, every extractor batch, `import_legacy`,
+        # `import_memories` — and so the one place the engine's own metadata
+        # namespace is defended. A caller that names `_burnbar` is reaching for
+        # the team control plane (`metadata["teamID"]` used to BE that reach),
+        # and it is told which key and why rather than watching the write
+        # half-apply. The import paths strip before they get here, so an archive
+        # carrying a stale stamp still restores.
+        reserved = self._reserved_metadata_refusal(fact.metadata)
+        if reserved is not None:
+            audit_event(
+                self.conn,
+                action="memory.reserved_metadata_refused",
+                project_id=project_id,
+                subject_id=None,
+                labels=[f"keys:{len(reserved['reservedKeys'])}"],
+                actor=self.config.actor,
+            )
+            return {"event": "REJECT", **reserved, "kind": kind, "scope": scope}
         # Bound the auxiliary input before the gate walks it. This is the
         # backstop that covers every write path, `import_memories` included.
         overflow = aux_input_overflow(
@@ -598,10 +617,20 @@ class _WritePath:
         # Exact duplicate in the same project/scope → reinforce, unless the row
         # was rejected in review (stays hidden) or has expired (reactivated).
         exact = self.conn.execute(
-            "SELECT id, review_status, expires_at FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NULL",
+            "SELECT id, project_id, metadata_json, review_status, expires_at FROM memories "
+            "WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NULL",
             (project_id, scope, body_hash),
         ).fetchone()
         if exact is not None:
+            # T5, and the one case where the answer is neither "reinforce" nor
+            # "add". The store holds `UNIQUE(project_id, scope, body_hash)`, so
+            # when the row occupying this triple is a TEAM row there is no
+            # second row to create and reinforcing it is precisely what the
+            # write fence forbids. Report the convergence, change nothing.
+            refusal = self._team_write_refusal(str(exact["id"]), row=exact, project_id=project_id)
+            if refusal is not None:
+                self._commit()
+                return {"event": "NONE", **refusal, "kind": kind, "scope": scope}
             if str(exact["review_status"]) == "rejected":
                 audit_event(
                     self.conn,
@@ -660,7 +689,15 @@ class _WritePath:
                     decision["event"] = "UPDATE"
             return decision
 
-        active = self._load_active(project_id, include_personal_cross_project=(scope == "personal"))
+        # T5: the pool a local write reasons over never contains a team row.
+        # `include_personal_cross_project` is what carried one in — a team fact
+        # sealed `engineScope = "personal"` is cross-project on the personal
+        # lane — and this pool feeds near-duplicate reinforce, the judge, the
+        # conflict resolver AND the explicit `supersedes` check below, so one
+        # filter here closes all four.
+        active = self._team_write_filter(
+            self._load_active(project_id, include_personal_cross_project=(scope == "personal")), project_id
+        )
         candidates = [
             item
             for item in active
@@ -777,9 +814,24 @@ class _WritePath:
         # reverts to an earlier statement (A -> B -> A) brings the retired row back
         # under its original id instead of colliding on insert.
         retired = self.conn.execute(
-            "SELECT id, rowid, superseded_by FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NOT NULL",
+            "SELECT id, rowid, superseded_by, project_id, metadata_json FROM memories "
+            "WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NOT NULL",
             (project_id, scope, body_hash),
         ).fetchone()
+        if retired is not None:
+            # T7, and the last face of T5's rule. A team merge RETIRES the rows
+            # it supersedes and leaves them in `UNIQUE(project_id, scope,
+            # body_hash)`, so the A -> B -> A revert above would find a retired
+            # TEAM row and rewrite it in place — same id, local metadata, no
+            # stamp — resurrecting it as a personal row. That is the identical
+            # unauthorized mutation the live-row branch refuses, one `valid_to`
+            # apart, so it gets the identical answer: report the convergence,
+            # change nothing, and create no personal row on a triple the UNIQUE
+            # index says is already spoken for.
+            refusal = self._team_write_refusal(str(retired["id"]), row=retired, project_id=project_id)
+            if refusal is not None:
+                self._commit()
+                return {"event": "NONE", **refusal, "kind": kind, "scope": scope}
         reactivated_id = str(retired["id"]) if retired is not None else None
         memory_id = reactivated_id or ("mem_" + secrets.token_hex(16))
         salience = self.compute_salience(kind, fact.confidence, 0)
@@ -1330,171 +1382,3 @@ class _WritePath:
             missing_sql = f"SELECT id FROM memories WHERE id IN ({placeholders})"  # noqa: S608 — placeholders only; values are bound
             found.update(str(row["id"]) for row in self.conn.execute(missing_sql, chunk).fetchall())
         return [item for item in wanted if item not in found]
-
-    def _retire(self, memory_id: str, *, reason: str, replacement: str | None, remote_at: str | None = None) -> bool:
-        """Close a row out. `remote_at` is the blind-sync merge: the retirement
-        instant comes from the remote revision that caused it, and `updated_at` —
-        the row's last *writer* mark, which last-writer-wins reads — is left
-        alone, because a merge is not a local write. Stamping this device's clock
-        there would make every remote revision authored before the merge ran look
-        stale for ever.
-        """
-        row = self._get_row(memory_id)
-        if row is None or row["valid_to"] is not None:
-            return False
-        if bool(row["immutable"]):
-            self._history(
-                memory_id,
-                str(row["project_id"]),
-                "retire_blocked_immutable",
-                None,
-                None,
-                {"reason": reason, "replacement": replacement},
-            )
-            return False
-        if remote_at is None:
-            ts = now_iso()
-            self.conn.execute(
-                "UPDATE memories SET valid_to = ?, superseded_by = ?, updated_at = ? WHERE id = ?",
-                (ts, replacement, ts, memory_id),
-            )
-        else:
-            self.conn.execute(
-                "UPDATE memories SET valid_to = ?, superseded_by = ? WHERE id = ?",
-                (remote_at, replacement, memory_id),
-            )
-        self._history(
-            memory_id, str(row["project_id"]), "retired", None, None, {"reason": reason, "replacement": replacement}
-        )
-        return True
-
-    def _history(
-        self, memory_id: str, project_id: str, event: str, before: str | None, after: str | None, meta: dict[str, Any]
-    ) -> None:
-        aad = f"{memory_id}|{project_id}|history"
-        before_cipher = before_nonce = after_cipher = after_nonce = None
-        if before is not None:
-            before_cipher, before_nonce = self.keyring.seal(before, aad)
-        if after is not None:
-            after_cipher, after_nonce = self.keyring.seal(after, aad)
-        self.conn.execute(
-            "INSERT INTO memory_history (memory_id, project_id, event, actor, ts, before_cipher, before_nonce, after_cipher, after_nonce, key_id, meta_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                memory_id,
-                project_id,
-                event,
-                self.config.actor,
-                now_iso(),
-                before_cipher,
-                before_nonce,
-                after_cipher,
-                after_nonce,
-                self.keyring.key_id,
-                _json_dumps(meta),
-            ),
-        )
-
-    def fold(
-        self,
-        folded_id: str,
-        canonical_id: str | None = None,
-        *,
-        into: str | None = None,
-        reason: str = "folded",
-    ) -> dict[str, Any]:
-        """Fold a memory id into a canonical row.
-
-        Writes `memory_alias:<folded_id>` to engine_meta, retires `folded_id`
-        if present in memories, and records a memory_history entry.
-        """
-        target = canonical_id or into
-        if not target or not folded_id:
-            return {"status": "error", "reason": "missing_ids"}
-        if folded_id == target:
-            return {"status": "ok", "event": "NONE", "reason": "self_fold_no_op", "memoryID": target}
-
-        resolved_target = self._alias_target(target) or target
-        target_row = self.conn.execute(
-            "SELECT rowid, id, project_id, valid_to FROM memories WHERE id = ?", (resolved_target,)
-        ).fetchone()
-        if target_row is None:
-            return {"status": "not_found", "memoryID": resolved_target}
-
-        existing_alias = self._alias_target(folded_id)
-        if existing_alias == resolved_target:
-            return {
-                "status": "ok",
-                "event": "NONE",
-                "reason": "already_folded",
-                "memoryID": resolved_target,
-                "foldedID": folded_id,
-            }
-
-        folded_row = self.conn.execute(
-            "SELECT rowid, id, project_id, valid_to, metadata_json, tags_json FROM memories WHERE id = ?", (folded_id,)
-        ).fetchone()
-        # Written after the lookup, so the alias and the retirement it describes
-        # happen together. A folded id with no local row is still legitimate —
-        # a remote id folding into a local one is exactly that — but the alias
-        # is no longer recorded before this method knows what it is folding.
-        self._record_memory_alias(folded_id, resolved_target)
-        if folded_row is not None and folded_row["valid_to"] is None:
-            meta = _json_loads(folded_row["metadata_json"], {})
-            meta["foldedInto"] = resolved_target
-            tags = normalize_tags(list(_json_loads(folded_row["tags_json"], [])) + ["folded"])
-            self.conn.execute(
-                "UPDATE memories SET metadata_json = ?, tags_json = ? WHERE id = ?",
-                (_json_dumps(meta), _json_dumps(tags), folded_id),
-            )
-            self._retire(folded_id, reason=reason, replacement=resolved_target)
-
-        target_proj = str(target_row["project_id"])
-        self._history(
-            resolved_target,
-            target_proj,
-            "fold_absorbed",
-            None,
-            None,
-            {"foldedID": folded_id, "reason": reason},
-        )
-        if folded_row is not None:
-            self._history(
-                folded_id,
-                str(folded_row["project_id"]),
-                "folded",
-                None,
-                None,
-                {"canonicalID": resolved_target, "reason": reason},
-            )
-
-        if folded_row is not None:
-            inv = self.conn.execute("SELECT supersedes_json FROM memories WHERE id = ?", (resolved_target,)).fetchone()
-            if inv is not None:
-                supersedes = sorted({*_json_loads(inv["supersedes_json"], []), folded_id})
-                self.conn.execute(
-                    "UPDATE memories SET supersedes_json = ? WHERE id = ?",
-                    (_json_dumps(supersedes), resolved_target),
-                )
-
-        # A fold changes which row an id resolves to, for good. Every other
-        # id-lifecycle decision — add, update, forget, sync add, resurrection
-        # refused — leaves a label-only row in the hash chain; this one left
-        # `memory_history` and nothing else, so the record of decisions did not
-        # contain the redirection.
-        audit_event(
-            self.conn,
-            project_id=target_proj,
-            action="memory.fold",
-            subject_id=resolved_target,
-            labels=[f"folded:{folded_id}", f"reason:{reason}", "retired" if folded_row is not None else "alias_only"],
-            actor=self.config.actor,
-        )
-        self._commit()
-        self._invalidate_cache()
-        return {
-            "status": "ok",
-            "event": "FOLD",
-            "canonicalID": resolved_target,
-            "foldedID": folded_id,
-            "reason": reason,
-        }

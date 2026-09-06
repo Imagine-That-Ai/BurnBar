@@ -490,6 +490,14 @@ public struct BurnBarMemorySyncInboxEntry: Codable, Hashable, Sendable {
     /// already travels verbatim and the daemon lifts it out for readers that
     /// would rather not look inside.
     public let entryKind: String?
+    /// The team this fact was contributed to, for an entry that came down the
+    /// TEAM lane rather than the member's own. Nil for a personal fact — which
+    /// every entry parked before this field existed is.
+    ///
+    /// Same trick, same reason as `entryKind`: it MIRRORS the `teamID` inside
+    /// `payloadJSON`, which is authoritative, so `agent_memory_inbox` needs no
+    /// team column and this wave adds no migration.
+    public let teamID: String?
 
     public init(
         docID: String,
@@ -497,7 +505,8 @@ public struct BurnBarMemorySyncInboxEntry: Codable, Hashable, Sendable {
         engineMemoryID: String,
         payloadJSON: String,
         remoteUpdatedAt: String,
-        entryKind: String? = nil
+        entryKind: String? = nil,
+        teamID: String? = nil
     ) {
         self.docID = docID
         self.userID = userID
@@ -505,6 +514,7 @@ public struct BurnBarMemorySyncInboxEntry: Codable, Hashable, Sendable {
         self.payloadJSON = payloadJSON
         self.remoteUpdatedAt = remoteUpdatedAt
         self.entryKind = entryKind
+        self.teamID = teamID
     }
 }
 

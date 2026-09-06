@@ -26,7 +26,6 @@ from ._util import (
     normalize_tags,
     now_iso,
     raw_tags,
-    sha256_hex,
     canonical_body_hash,
 )
 from .constants import (
@@ -49,6 +48,7 @@ from .constants import (
     RRF_K,
     RRF_LEXICAL_WEIGHT,
     RRF_SEMANTIC_WEIGHT,
+    TIMELINE_META_KEYS,
 )
 from .embeddings import _cosine, encode_vector
 from .extract import PACK_TOKEN_BUDGET_FLOOR, _pack_safe, _slot_key, extract_entities, extract_relations
@@ -59,30 +59,6 @@ from .text import BM25, _estimate_tokens, _snippet, tokenize
 
 if TYPE_CHECKING:
     from .engine import ActiveMemory
-
-
-# The revision-metadata keys `timeline()` documents and returns. `meta_json` is
-# written from a remote payload on a merged revision, so anything outside this
-# set is a sending device's content, not this tool's contract.
-_TIMELINE_META_KEYS = (
-    "remoteMemoryID",
-    "updatedAt",
-    "event",
-    "writerDevice",
-    "writer_device",
-    "deviceId",
-    "device_id",
-    "extracted_by",
-    "extractedBy",
-    "model_id",
-    "modelId",
-    "reason",
-    "replacement",
-    "canonicalID",
-    "foldedID",
-    "supersededBy",
-    "remoteSupersededBy",
-)
 
 
 class _ReadPath:
@@ -171,6 +147,9 @@ class _ReadPath:
             pool = self._load_active(
                 project_id, include_personal_cross_project=True, include_cross_project=include_cross_project
             )
+        # A team row is served only into a session this checkout links to that
+        # team (`_namespaces.py`), whatever `include_cross_project` says.
+        pool = self._team_serve_filter(pool, project_id)
 
         wanted_kinds = {normalize_kind(k) for k in kinds} if kinds else None
         wanted_tags = set(normalize_tags(list(tags))) if tags else None
@@ -643,6 +622,8 @@ class _ReadPath:
 
     def get(self, memory_id: str, *, include_secrets: bool = False, include_history: bool = False) -> dict[str, Any]:
         target_id = self._alias_target(memory_id) or memory_id
+        if not self._team_serves_memory(target_id):
+            return {"status": "refused", "code": "TEAM_PROJECT_NOT_LINKED", "memoryID": memory_id}
         row = self._get_row(target_id)
         if row is None:
             return {"status": "not_found", "memoryID": memory_id}
@@ -678,8 +659,9 @@ class _ReadPath:
         page_size: int = 50,
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
-        where = ["1=1"]
-        params: list[Any] = []
+        team_fence, team_params = self._team_visibility_sql(project_id)
+        where = ["1=1", team_fence]
+        params: list[Any] = [*team_params]
         if not include_cross_project:
             where.append("(m.project_id = ? OR m.scope = 'personal')")
             params.append(project_id)
@@ -777,6 +759,29 @@ class _ReadPath:
         existing = self._row_to_memory(row)
         if existing is None:
             return {"status": "unavailable", "code": "UNDECRYPTABLE", "memoryID": memory_id}
+        # T5: checked ahead of `immutable`, because the team fence is the
+        # stronger claim — `immutable=false` is a local caller's own switch and
+        # must not become the way around it.
+        refusal = self._team_write_refusal(memory_id, row=row)
+        if refusal is not None:
+            return {"status": "denied", **refusal}
+        # T6. The patch is merged into the stored metadata below, so without
+        # this a caller could stamp team provenance onto their own personal row
+        # and lock it out of `forget`, `update` and every read — including the
+        # unstamping. Engine-owned keys are the engine's to write; the row keeps
+        # whatever the sync lane already put there.
+        reserved = self._reserved_metadata_refusal(metadata)
+        if reserved is not None:
+            audit_event(
+                self.conn,
+                action="memory.reserved_metadata_refused",
+                project_id=existing.project_id,
+                subject_id=memory_id,
+                labels=[f"keys:{len(reserved['reservedKeys'])}"],
+                actor=self.config.actor,
+            )
+            self._commit()
+            return {"status": "rejected", **reserved, "memoryID": memory_id}
         if existing.immutable and immutable is not False:
             return {
                 "status": "denied",
@@ -1103,6 +1108,12 @@ class _ReadPath:
         if row is None:
             self.conn.rollback()
             return {"status": "not_found", "memoryID": memory_id}
+        # T5. A review decision is a write: rejecting a team row would hide it
+        # from every member of the team on this device.
+        refusal = self._team_write_refusal(memory_id, row=row)
+        if refusal is not None:
+            self.conn.rollback()
+            return {"status": "denied", **refusal}
         if expected_updated_at and str(row["updated_at"]) != str(expected_updated_at):
             self.conn.rollback()
             return {
@@ -1132,138 +1143,6 @@ class _ReadPath:
         self._invalidate_cache()
         return {"status": "ok", "memoryID": memory_id, "reviewStatus": normalized}
 
-    def forget(self, memory_id: str, *, project_path: str | None = None) -> dict[str, Any]:
-        target_id = self._alias_target(memory_id) or memory_id
-        row = self.conn.execute(
-            "SELECT rowid, id, project_id, immutable FROM memories WHERE id = ?", (target_id,)
-        ).fetchone()
-        if row is None:
-            return {"status": "not_found", "memoryID": memory_id}
-        project_id = str(row["project_id"])
-        canonical_id = str(row["id"])
-        self._purge(canonical_id, int(row["rowid"]), preserve_daemon_mirror=True)
-        if target_id != memory_id:
-            folded_row = self.conn.execute("SELECT rowid FROM memories WHERE id = ?", (memory_id,)).fetchone()
-            if folded_row is not None:
-                self._purge(memory_id, int(folded_row["rowid"]), preserve_daemon_mirror=True)
-            self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (f"memory_alias:{memory_id}",))
-        audit_event(
-            self.conn,
-            action="memory.forget",
-            project_id=project_id,
-            subject_id=canonical_id,
-            labels=["local hard delete", "vault purged", "history purged", "vectors purged"],
-            actor=self.config.actor,
-        )
-        self._commit()
-        self._invalidate_cache()
-        return {
-            "status": "ok",
-            "memoryID": canonical_id,
-            "projectID": project_id,
-            "purged": ["memory", "vector", "history", "relations", "vault"],
-        }
-
-    def _purge(self, memory_id: str, rowid: int, *, preserve_daemon_mirror: bool = False) -> None:
-        # A hard forget is this device's decision, and blind sync must not undo
-        # it: record the receipt before the row is gone, keyed both by id and by
-        # the `(project_id, scope, body_hash)` identity a remote copy converges
-        # on, so the same fact cannot come back under another engine's id.
-        self._record_forget_receipt(memory_id)
-        self.conn.execute("DELETE FROM memory_vectors WHERE memory_rowid = ?", (rowid,))
-        self.conn.execute("DELETE FROM memory_history WHERE memory_id = ?", (memory_id,))
-        self.conn.execute("DELETE FROM memory_relations WHERE memory_id = ?", (memory_id,))
-        self.conn.execute("DELETE FROM memory_vault WHERE memory_id = ?", (memory_id,))
-        if not preserve_daemon_mirror:
-            self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (f"daemon_mirror:{memory_id}",))
-        # A replay receipt that points at this memory must not claim it still exists.
-        self.conn.execute("DELETE FROM memory_ingest WHERE decisions_json LIKE ?", (f'%"memoryID":"{memory_id}"%',))
-        self.conn.execute("UPDATE memories SET superseded_by = NULL WHERE superseded_by = ?", (memory_id,))
-        # A foreign engine id that folded into this row now points at nothing, and
-        # neither the row's applied-remote mark nor the convergence ledger entries
-        # that key a body to it can outlive the row they describe.
-        self.conn.execute(
-            "DELETE FROM engine_meta WHERE key LIKE 'memory_alias:%' AND value = ?",
-            (memory_id,),
-        )
-        self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (f"sync_mark:{memory_id}",))
-        self.conn.execute(
-            "DELETE FROM engine_meta WHERE key LIKE 'sync_identity:%' AND value = ?",
-            (memory_id,),
-        )
-        self.conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
-
-    def forget_all(
-        self,
-        *,
-        project_path: str | None,
-        scope: str | None = None,
-        kinds: Sequence[str] | None = None,
-        confirm: str = "",
-        selection_token: str | None = None,
-    ) -> dict[str, Any]:
-        """Two-step bulk delete. The preview returns `selectionToken`, a digest
-        of the exact rows it would delete; the confirmation must carry that
-        token, so rows created or filters changed between the two calls are
-        refused instead of silently deleted."""
-        project_id, root = resolve_project(self.conn, project_path)
-        where = ["project_id = ?"]
-        params: list[Any] = [project_id]
-        normalized: list[str] = []
-        if scope and scope != "all":
-            where.append("scope = ?")
-            params.append(scope)
-        if kinds:
-            try:
-                normalized = sorted({normalize_kind_strict(k) for k in kinds})
-            except ValueError as exc:
-                return {
-                    "status": "rejected",
-                    "code": "INVALID_KIND",
-                    "reason": str(exc),
-                    "allowed": list(KINDS),
-                    **project_payload(project_id, root),
-                }
-            where.append(f"kind IN ({','.join('?' * len(normalized))})")
-            params.extend(normalized)
-        rows = self.conn.execute(f"SELECT rowid, id FROM memories WHERE {' AND '.join(where)}", params).fetchall()  # noqa: S608 — fixed column names, bound values
-        memory_ids = sorted(str(row["id"]) for row in rows)
-        current_token = sha256_hex(
-            _json_dumps({"project": project_id, "scope": scope or "all", "kinds": normalized, "ids": memory_ids})
-        )[:24]
-        if confirm != "DELETE" or (selection_token or "") != current_token:
-            code = None
-            if confirm == "DELETE":
-                code = "SELECTION_TOKEN_REQUIRED" if not selection_token else "SELECTION_CHANGED"
-            return {
-                "status": "confirm_required",
-                **({"code": code} if code else {}),
-                "wouldDelete": len(rows),
-                "confirm": "DELETE",
-                "selectionToken": current_token,
-                **project_payload(project_id, root),
-            }
-        for row in rows:
-            # Keep each daemon id as a tombstone until the server confirms the
-            # corresponding remote deletion.
-            self._purge(str(row["id"]), int(row["rowid"]), preserve_daemon_mirror=True)
-        audit_event(
-            self.conn,
-            action="memory.forget_all",
-            project_id=project_id,
-            subject_id=None,
-            labels=[f"deleted:{len(rows)}", f"scope:{scope or 'all'}"],
-            actor=self.config.actor,
-        )
-        self._commit()
-        self._invalidate_cache()
-        return {
-            "status": "ok",
-            "deleted": len(rows),
-            "deletedMemoryIDs": memory_ids,
-            **project_payload(project_id, root),
-        }
-
     def history(self, memory_id: str, limit: int = 100) -> dict[str, Any]:
         """Every change to one memory, with the bodies of a quarantined or
         rejected row withheld (`bodiesRedacted`), exactly as `timeline()`
@@ -1275,6 +1154,8 @@ class _ReadPath:
         agent refused a quarantined body by `timeline()` read the same
         revisions here, on the same id, with the same (zero) capability.
         """
+        if not self._team_serves_memory(memory_id):
+            return {"status": "refused", "code": "TEAM_PROJECT_NOT_LINKED", "memoryID": memory_id}
         rows = self.conn.execute(
             "SELECT * FROM memory_history WHERE memory_id = ? ORDER BY seq DESC LIMIT ?",
             (memory_id, max(1, min(int(limit), 500))),
@@ -1325,6 +1206,13 @@ class _ReadPath:
         ).fetchone()
         if row is None:
             return {"status": "not_found", "memoryID": memory_id, **project_payload(project_id, root)}
+        if not self._team_serves_memory(target_id, project_id):
+            return {
+                "status": "refused",
+                "code": "TEAM_PROJECT_NOT_LINKED",
+                "memoryID": memory_id,
+                **project_payload(project_id, root),
+            }
         if str(row["project_id"]) != project_id and str(row["scope"]) != "personal":
             # B8: project-scoped read API refuses a foreign memory ID without returning body or meta.
             return {
@@ -1413,7 +1301,7 @@ class _ReadPath:
                     # A projection, not the whole column: `meta_json` on a merged
                     # revision is written from a remote payload, and returning it
                     # verbatim publishes whatever a sending device put there.
-                    "meta": {key: meta[key] for key in _TIMELINE_META_KEYS if key in meta},
+                    "meta": {key: meta[key] for key in TIMELINE_META_KEYS if key in meta},
                     "writerDevice": writer_device,
                     "extractedBy": extracted_by,
                     "modelId": model_id,
@@ -1441,7 +1329,9 @@ class _ReadPath:
         now = datetime.now(UTC)
         pool = [
             memory
-            for memory in self._load_active(project_id, include_cross_project=include_cross_project)
+            for memory in self._team_serve_filter(
+                self._load_active(project_id, include_cross_project=include_cross_project), project_id
+            )
             if memory.review_status == "approved" and not _is_expired(memory.expires_at, now)
         ]
         counts: dict[str, dict[str, Any]] = {}
@@ -1462,7 +1352,7 @@ class _ReadPath:
         now = datetime.now(UTC)
         active = [
             memory
-            for memory in self._load_active(project_id)
+            for memory in self._team_serve_filter(self._load_active(project_id), project_id)
             if memory.review_status == "approved" and not _is_expired(memory.expires_at, now)
         ]
         active_ids = {memory.id for memory in active}

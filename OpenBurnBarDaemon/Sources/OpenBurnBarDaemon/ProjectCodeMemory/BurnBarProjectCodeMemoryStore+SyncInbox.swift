@@ -160,49 +160,68 @@ extension BurnBarProjectCodeMemoryStore {
                 traceID: traceID,
                 entries: rows.map { row in
                     let payloadJSON = row.string(3)
+                    let routing = Self.syncInboxDiscriminators(fromPayloadJSON: payloadJSON)
                     return BurnBarMemorySyncInboxEntry(
                         docID: row.string(0),
                         userID: row.string(1),
                         engineMemoryID: row.string(2),
                         payloadJSON: payloadJSON,
                         remoteUpdatedAt: row.string(4),
-                        entryKind: Self.syncInboxEntryKind(fromPayloadJSON: payloadJSON)
+                        entryKind: routing.entryKind,
+                        teamID: routing.teamID
                     )
                 }
             )
         }
     }
 
-    /// Lifts the routing discriminator out of a parked payload, so an entry says
-    /// what it is without a reader having to open it.
+    /// The two routing fields the courier lifts out of a parked payload, so an
+    /// entry says what it is and where it came from without a reader having to
+    /// open it: what an entry IS, and which team it came from.
     ///
-    /// This is the ONE thing the courier reads inside a payload, and it reads
-    /// exactly one key. The daemon still does not understand facts, receipts, or
-    /// merge semantics — the engine owns all of that — but `agent_memory_inbox`
-    /// has no kind column, this wave adds no migration, and a discriminator that
-    /// only exists inside an opaque string cannot be honoured by anything that
-    /// declines to look. Anything unparseable is nil, i.e. "a fact", which is
-    /// what every entry written before this field existed is.
-    static func syncInboxEntryKind(fromPayloadJSON payloadJSON: String) -> String? {
+    /// Exactly two keys, and no understanding of what is inside them. The daemon
+    /// still does not understand facts, receipts, or merge semantics — the engine
+    /// owns all of that.
+    /// `teamID` joins `entryKind` for the same reason and by the same rule
+    /// (memory program D16): `agent_memory_inbox` has no team column, this wave
+    /// adds no migration, and a provenance field that only exists inside an
+    /// opaque string cannot be honoured by anything that declines to look.
+    /// Anything unparseable is nil — a personal fact, which is what every entry
+    /// written before these fields existed is.
+    static func syncInboxDiscriminators(
+        fromPayloadJSON payloadJSON: String
+    ) -> (entryKind: String?, teamID: String?) {
         struct Discriminator: Decodable {
             let entryKind: String?
+            let teamID: String?
         }
+        // try?-ok(a payload this courier cannot parse is a personal entry with
+        // no routing fields, which is what every row written before these fields
+        // existed is — the failure IS the answer, and there is nothing to
+        // report to a caller that only wants two optional discriminators).
+        // Outside `scripts/debt/check-try-optional-budget.sh`'s scope
+        // (`AgentLens/Services`); tagged so widening that scope reads this as
+        // reviewed rather than as a regression from the team-memory lane.
         guard let data = payloadJSON.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode(Discriminator.self, from: data),
-              let entryKind = decoded.entryKind,
-              !entryKind.isEmpty else {
-            return nil
+              let decoded = try? JSONDecoder().decode(Discriminator.self, from: data) else {
+            return (nil, nil)
         }
-        return entryKind
+        let entryKind = decoded.entryKind.flatMap { $0.isEmpty ? nil : $0 }
+        let teamID = decoded.teamID.flatMap { $0.isEmpty ? nil : $0 }
+        return (entryKind, teamID)
     }
 
     /// Marks the named documents merged. Idempotent by construction: the update
     /// is guarded on `applied_at IS NULL`, so acknowledging a doc id twice — or
     /// one that was never parked — changes nothing and reports zero.
     ///
-    /// A doc id is `pensieveSlugHmac("memory-fact:<engine id>")` under the
-    /// member's own vault key, so it is already per-user keyed and could not
-    /// collide across accounts. The `user_id` predicate is here anyway, against
+    /// Doc ids are already per-user keyed, by two different constructions: a
+    /// personal row's is `pensieveSlugHmac("memory-fact:<engine id>")` under the
+    /// member's own vault key, and a team row's is the composite
+    /// `team:<teamId>:<uid>:<cloud doc id>` (`TeamMemoryPullService.inboxDocID`)
+    /// — the SAME cloud document parked for two members on one Mac is two rows,
+    /// not one. So neither shape can collide across accounts. The `user_id`
+    /// predicate is here anyway, against
     /// the same consent marker `syncInboxList` reads: an acknowledgement is a
     /// write, and a caller with no consent must not be able to mark another
     /// member's parked facts merged and so hide them from the member who owns
@@ -300,17 +319,138 @@ extension BurnBarProjectCodeMemoryStore {
     func deleteSyncInboxRows(engineMemoryIDs: [String]) throws {
         let ids = Array(Set(engineMemoryIDs.filter { !$0.isEmpty })).sorted().prefix(1_000)
         guard !ids.isEmpty else { return }
+        let consentUserID = memoryDeviceSyncConsentUserID()
         let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
-        guard let consentUserID = memoryDeviceSyncConsentUserID() else {
+        if let consentUserID {
+            try execute(
+                "DELETE FROM agent_memory_inbox WHERE user_id = ? AND engine_memory_id IN (\(placeholders))",
+                [.text(consentUserID)] + ids.map { .text($0) }
+            )
+        } else {
             try execute(
                 "DELETE FROM agent_memory_inbox WHERE engine_memory_id IN (\(placeholders))",
                 ids.map { .text($0) }
             )
-            return
         }
-        try execute(
-            "DELETE FROM agent_memory_inbox WHERE user_id = ? AND engine_memory_id IN (\(placeholders))",
-            [.text(consentUserID)] + ids.map { .text($0) }
+        // The id-keyed statement above cannot reach a TEAM row — see below.
+        try deleteTeamSyncInboxRows(engineMemoryIDs: Set(ids), consentUserID: consentUserID)
+    }
+
+    /// What marks an `agent_memory_inbox` row as TEAM-origin, in SQL.
+    ///
+    /// The daemon's copy of `TeamMemoryPullService.inboxDocIDPrefix`, which is
+    /// app-side and not linkable from here. The literal contains no `%` and no
+    /// `_`, so it is a `LIKE` prefix with no wildcard to escape;
+    /// `test_a_team_row_and_a_personal_row_park_under_distinguishable_doc_ids`
+    /// pins the two sides together.
+    static let teamInboxDocIDPrefix = "team:"
+
+    /// The local engine id one TEAM document lands under in the MCP engine.
+    ///
+    /// BYTE-IDENTICAL to `memory_engine/_namespaces.py::_team_local_memory_id`:
+    /// `"mem_" + sha256_hex("team|<teamID>|" + _convergence_key)[:32]`, where
+    /// `_convergence_key` is `sha256_hex("<projectID>|<engineScope>|<bodyHash>")[:32]`.
+    /// Pipes, not colons; SHA-256, not HMAC; 32 characters, not 64 — the same
+    /// shape rule `TeamMemorySyncService.convergenceKey` follows on the app side.
+    static func teamLocalMemoryID(
+        teamID: String,
+        projectID: String,
+        engineScope: String,
+        bodyHash: String
+    ) -> String {
+        let convergence = String(sha256Hex("\(projectID)|\(engineScope)|\(bodyHash)").prefix(32))
+        return "mem_" + String(sha256Hex("team|\(teamID)|\(convergence)").prefix(32))
+    }
+
+    /// The four fields a team row's local engine id is DERIVED from, lifted out
+    /// of a parked payload.
+    ///
+    /// Still no understanding of merge semantics: this reads four opaque strings
+    /// and hashes them. Anything missing or unparseable is nil — a row this
+    /// courier cannot address, which is the honest answer and never a guess.
+    static func teamLocalMemoryID(fromPayloadJSON payloadJSON: String) -> String? {
+        struct Identity: Decodable {
+            let teamID: String?
+            let projectID: String?
+            let engineScope: String?
+            let bodyHash: String?
+        }
+        // try?-ok(a payload this courier cannot parse addresses no team row, and
+        // there is nothing to report to a caller that only wants an optional id
+        // — the failure IS the answer, exactly as in `syncInboxDiscriminators`).
+        // Outside `scripts/debt/check-try-optional-budget.sh`'s scope
+        // (`AgentLens/Services`); tagged so widening that scope reads this as
+        // reviewed rather than as a regression from the team-memory lane.
+        guard let data = payloadJSON.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(Identity.self, from: data) else {
+            return nil
+        }
+        guard let teamID = decoded.teamID, !teamID.isEmpty,
+              let projectID = decoded.projectID, !projectID.isEmpty,
+              let engineScope = decoded.engineScope, !engineScope.isEmpty,
+              let bodyHash = decoded.bodyHash, !bodyHash.isEmpty else {
+            return nil
+        }
+        return teamLocalMemoryID(
+            teamID: teamID,
+            projectID: projectID,
+            engineScope: engineScope,
+            bodyHash: bodyHash
         )
+    }
+
+    /// Drops the parked plaintext of every TEAM row whose DERIVED local id is
+    /// being forgotten.
+    ///
+    /// WHY THE STATEMENT ABOVE IS NOT ENOUGH (PR3 round-5 nit 2). A personal row
+    /// is parked under the same engine id the engine knows it by, so deleting by
+    /// `engine_memory_id` reaches it. A TEAM row is not: since the isolation
+    /// fix, its local id is DERIVED from `(teamID, projectID, engineScope,
+    /// bodyHash)` and the `engine_memory_id` column still holds the SEALED id
+    /// the contributing member chose — deliberately, because that id is the only
+    /// handle the cloud copy has. So a local `burnbar_forget` on a landed team
+    /// row blanked the memory and left its opened plaintext parked here, which
+    /// breaks this file's own promise that a hard forget leaves no readable copy
+    /// anywhere this daemon owns.
+    ///
+    /// Resolved the way the engine resolves it — by re-deriving the id from the
+    /// payload's own provenance stamp — rather than by widening the delete to a
+    /// `doc_id` prefix, because a prefix would delete every team row that HAPPENS
+    /// to share a doc-id shape rather than the one row that is this memory.
+    ///
+    /// Scoped to the consent marker's member exactly as the caller is, and with
+    /// the same no-marker rule: a DELETE has no leaking direction, and refusing
+    /// to delete is what leaves readable plaintext behind.
+    private func deleteTeamSyncInboxRows(engineMemoryIDs: Set<String>, consentUserID: String?) throws {
+        let prefixPattern = "\(Self.teamInboxDocIDPrefix)%"
+        let rows: [SQLiteRow]
+        if let consentUserID {
+            rows = try queryRows(
+                "SELECT doc_id, payload_json FROM agent_memory_inbox WHERE user_id = ? AND doc_id LIKE ?",
+                [.text(consentUserID), .text(prefixPattern)]
+            )
+        } else {
+            rows = try queryRows(
+                "SELECT doc_id, payload_json FROM agent_memory_inbox WHERE doc_id LIKE ?",
+                [.text(prefixPattern)]
+            )
+        }
+        let doomed = rows.compactMap { row -> String? in
+            guard let derived = Self.teamLocalMemoryID(fromPayloadJSON: row.string(1)),
+                  engineMemoryIDs.contains(derived) else { return nil }
+            return row.string(0)
+        }
+        guard !doomed.isEmpty else { return }
+        // Chunked for the same reason the caller caps its id list: a statement's
+        // bind count is bounded even when the row count is not.
+        for chunk in stride(from: 0, to: doomed.count, by: 500).map({ start in
+            Array(doomed[start..<min(start + 500, doomed.count)])
+        }) {
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ", ")
+            try execute(
+                "DELETE FROM agent_memory_inbox WHERE doc_id IN (\(placeholders))",
+                chunk.map { .text($0) }
+            )
+        }
     }
 }
