@@ -466,9 +466,46 @@ class _ConvergenceNamespaces:
     # a serving path like any other — whole bodies and their ids, and under
     # `all_projects` with no project fence at all — so it puts every stamped row
     # to this same predicate per row (`_admin.py::export`) and reports what it
-    # held back as `teamRowsWithheld`. `reindex` and `_reinforce_recall_ids` are
-    # the named residuals: they touch team rows and serve nothing, no body, no
-    # id and no lineage, to any caller.
+    # held back as `teamRowsWithheld`. `reindex`, `memory_analytics` and
+    # `_reinforce_recall_ids` are the named residuals: they touch team rows and
+    # serve nothing, no body, no id and no lineage, to any caller.
+    #
+    # AMENDMENT A1 — the landing partition is not a local project id.
+    #
+    # T4 as first written left the pre-existing LOCAL project fence in place and
+    # added this one beside it. That composition is what the two-clone proof
+    # broke: a team row's landing partition is the `teamProjectId` checked into
+    # the shared repository, deliberately NOT a local `proj_<32hex>` id, because
+    # two members' checkouts of the same repository mint different local ids and
+    # a team fact has to converge across them anyway. So `memories.project_id`
+    # holds a value from a different namespace, `(m.project_id = ? OR m.scope =
+    # 'personal')` can never admit it, and a project-scoped team fact was
+    # filtered out of every read surface on every member's Mac — the author's
+    # included — while THIS predicate said True when asked directly. Only
+    # `engineScope = "personal"` team facts reached a model at all, and only
+    # because a personal row is cross-project by the engine's own design.
+    #
+    # The rule, binding:
+    #
+    #   A team row is servable in this session IFF this checkout's
+    #   `.openburnbar/project.json` links that team to exactly the
+    #   `teamProjectId` the row landed in. The session's own local `proj_` id is
+    #   not part of the comparison.
+    #
+    # So the local project fence stops applying to team rows — every query that
+    # carries it adds `TEAM_ROW_PRESENT_SQL` (or, in Python, checks
+    # `_metadata_team_id`) — and this predicate becomes the single thing that
+    # decides one. Widening a SELECT grants nothing on its own: `_load_active`,
+    # `recall`, `list`, `timeline` and `export` all hand what they now select
+    # straight to `_team_row_servable`, which is why neutering it opens all of
+    # them at once and reverting it to a landing-vs-session comparison closes all
+    # of them at once. Both directions are proven
+    # (`test_mutation_neutering_the_serving_predicate_serves_the_row_everywhere`,
+    # `test_mutation_the_old_landing_versus_session_comparison_hides_the_row_again`).
+    #
+    # The write fence (T5, below) is untouched by A1 in both letter and effect:
+    # `_team_write_filter` drops team rows from every session's pool regardless
+    # of any project, so a wider pool is a wider set of rows it discards.
 
     def _session_team_links(self, project_id: str) -> _SessionTeamLinks:
         """`teamID -> teamProjectId` THIS checkout publishes, read live off disk.
@@ -543,6 +580,12 @@ class _ConvergenceNamespaces:
         that landed in `burnbar-ios`, because those are a different project's
         partition and the member linked neither their session nor their team to
         it.
+
+        `session_project_id` is used to CHECK that `links` was read for this
+        session and for nothing else. It is deliberately not compared to
+        `landing_project_id`: those two are different namespaces (amendment A1
+        above), a local `proj_<32hex>` never equals a `teamProjectId`, and a
+        build that compared them served no project-scoped team fact to anybody.
         """
         if not team_id:
             return True

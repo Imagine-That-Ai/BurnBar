@@ -48,6 +48,7 @@ from .constants import (
     RRF_K,
     RRF_LEXICAL_WEIGHT,
     RRF_SEMANTIC_WEIGHT,
+    TEAM_ROW_PRESENT_SQL,
     TIMELINE_META_KEYS,
 )
 from .embeddings import _cosine, encode_vector
@@ -138,7 +139,12 @@ class _ReadPath:
         if include_superseded:
             rows = self.conn.execute(
                 self._SELECT
-                + ("" if include_cross_project else "WHERE (m.project_id = ? OR m.scope = 'personal')")
+                + (
+                    ""
+                    if include_cross_project
+                    # A1: team rows are not this fence's business — see below.
+                    else f"WHERE (m.project_id = ? OR m.scope = 'personal' OR {TEAM_ROW_PRESENT_SQL})"
+                )
                 + " ORDER BY m.updated_at DESC",
                 [self.provider.version_id] + ([] if include_cross_project else [project_id]),
             ).fetchall()
@@ -159,7 +165,17 @@ class _ReadPath:
         def allowed(memory: ActiveMemory) -> bool:
             if target_memory_id and memory.id != target_memory_id:
                 return False
-            if not include_cross_project and memory.project_id != project_id and memory.scope != "personal":
+            if (
+                not include_cross_project
+                and memory.project_id != project_id
+                and memory.scope != "personal"
+                # A1: a team row landed in a `teamProjectId`, which is not a
+                # local project id and never will be. `_team_serve_filter`
+                # above already decided it against the link file; comparing it
+                # to the session's own id here would only re-impose the fence
+                # that made project-scoped team facts invisible to everyone.
+                and self._metadata_team_id(memory.metadata) is None
+            ):
                 return False
             if scope_norm != "all" and memory.scope != scope_norm:
                 return False
@@ -663,7 +679,9 @@ class _ReadPath:
         where = ["1=1", team_fence]
         params: list[Any] = [*team_params]
         if not include_cross_project:
-            where.append("(m.project_id = ? OR m.scope = 'personal')")
+            # A1: `team_fence` above is what decides a team row; the local
+            # project fence must not pre-empt it with a cross-namespace compare.
+            where.append(f"(m.project_id = ? OR m.scope = 'personal' OR {TEAM_ROW_PRESENT_SQL})")
             params.append(project_id)
         if not include_superseded:
             where.append("m.valid_to IS NULL")
@@ -1202,10 +1220,11 @@ class _ReadPath:
         project_id, root = resolve_project(self.conn, project_path)
         target_id = self._alias_target(memory_id) or memory_id
         row = self.conn.execute(
-            "SELECT id, project_id, scope, review_status FROM memories WHERE id = ?", (target_id,)
+            "SELECT id, project_id, scope, review_status, metadata_json FROM memories WHERE id = ?", (target_id,)
         ).fetchone()
         if row is None:
             return {"status": "not_found", "memoryID": memory_id, **project_payload(project_id, root)}
+        is_team_row = self._metadata_team_id(_json_loads(row["metadata_json"], {}) or {}) is not None
         if not self._team_serves_memory(target_id, project_id):
             return {
                 "status": "refused",
@@ -1213,7 +1232,11 @@ class _ReadPath:
                 "memoryID": memory_id,
                 **project_payload(project_id, root),
             }
-        if str(row["project_id"]) != project_id and str(row["scope"]) != "personal":
+        # A1: a team row's landing partition is a `teamProjectId` and so is
+        # ALWAYS "foreign" to a local project id. The line above is the fence
+        # for those rows and it has already passed; B8 still guards every
+        # personal row exactly as it did.
+        if not is_team_row and str(row["project_id"]) != project_id and str(row["scope"]) != "personal":
             # B8: project-scoped read API refuses a foreign memory ID without returning body or meta.
             return {
                 "status": "refused",
