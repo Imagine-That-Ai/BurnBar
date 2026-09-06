@@ -280,11 +280,20 @@ _IS_LINUX = sys.platform.startswith("linux")
 # Pinned from OpenBurnBarPrivilegedTrust in
 # OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift:
 # `teamID` (the Organizational Unit on the signing leaf) and the CLI entry of
-# `daemonRPCPeerBundleIdentifiers`, which together form
-# `daemonRPCPeerDesignatedRequirement` — the requirement the daemon itself
-# evaluates against this courier. Keep both in sync with that file.
+# `daemonRPCPeerBundleIdentifiers`. Together they form the requirement below,
+# which is a strict narrowing of `daemonRPCPeerDesignatedRequirement` (that one
+# ORs in the app and daemon identifiers; the courier is only ever the CLI).
+# Keep both in sync with that file — `test_verify_courier_pins_the_swift_team_id`
+# and `PrivilegedSocketTrustTests` fail if they drift.
 _COURIER_TEAM_ID = "4Y367DF25B"
 _COURIER_BUNDLE_IDENTIFIER = "com.openburnbar.cli"
+
+# CodeDirectory flags the Swift daemon enforces programmatically (the Code
+# Signing Requirement Language cannot express them). Mirrors
+# `OpenBurnBarPrivilegedTrust.hardenedRuntimeFlag` / `.libraryValidationFlag`;
+# `scripts/build-macos-website-release.sh` signs the courier `runtime,library`.
+_COURIER_HARDENED_RUNTIME_FLAG = 0x1_0000
+_COURIER_LIBRARY_VALIDATION_FLAG = 0x2000
 
 # `scripts/build-macos-website-release.sh` installs and signs the courier at
 # `Contents/Helpers/OpenBurnBarCLI`. The `Contents/MacOS/openburnbar-cli` entries
@@ -299,52 +308,184 @@ _COURIER_BUNDLE_CANDIDATES = (
 # Packaged Linux installs put the courier here, root-owned.
 _COURIER_LINUX_PREFIX = "/opt/openburnbar/bin/"
 
+# Colon-separated courier paths that replace the defaults above. Set it when the
+# app lives somewhere else, or to the empty string to search nowhere. This can
+# only ever SHRINK or REDIRECT the search; every path it names is still put
+# through the full signature check below, so it cannot admit an untrusted
+# binary. The suite sets it so results never depend on whether the machine
+# running the tests happens to have OpenBurnBar installed.
+_COURIER_CANDIDATES_ENV = "OPENBURNBAR_APP_BUNDLE_PATHS"
 
-def _verify_courier(path: str) -> bool:
+
+def _courier_candidates() -> tuple[str, ...]:
+    override = os.environ.get(_COURIER_CANDIDATES_ENV)
+    if override is None:
+        return _COURIER_BUNDLE_CANDIDATES
+    return tuple(part for part in (piece.strip() for piece in override.split(os.pathsep)) if part)
+
+
+# Why the last `_signed_cli_path()` sweep found no courier, so the daemon's
+# "peer failed first-party code-signature verification" can name the real cause
+# instead of leaving the operator to guess. Subject metadata only — never
+# certificate bytes, keys, or anything from the keychain.
+_COURIER_REJECTIONS: list[str] = []
+
+_CODESIGN = "/usr/bin/codesign"
+_CODEDIRECTORY_FLAGS_RE = re.compile(r"\bflags=0x([0-9a-fA-F]+)")
+
+
+def _courier_designated_requirement() -> str:
+    """
+    The requirement a courier must satisfy, in the same grammar the Swift daemon
+    hands `SecRequirementCreateWithString`.
+
+    `anchor apple generic` + the Team ID on the leaf's Organizational Unit is
+    what binds the binary to this team. Both Developer ID and Apple Development
+    leaves carry `OU = <team id>`; only the *auto-generated designated
+    requirement text* differs between them (Developer ID phrases identity as
+    `leaf[subject.OU]`, Apple Development as `leaf[subject.CN]`), which is why
+    this is evaluated by codesign rather than string-matched against that text.
+    """
+    return (
+        f'anchor apple generic and certificate leaf[subject.OU] = "{_COURIER_TEAM_ID}" '
+        f'and identifier "{_COURIER_BUNDLE_IDENTIFIER}"'
+    )
+
+
+def _codesign(args: list[str], timeout: int = 10) -> subprocess.CompletedProcess[bytes] | None:
+    try:
+        return subprocess.run([_CODESIGN, *args], capture_output=True, timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _codesign_text(completed: subprocess.CompletedProcess[bytes] | None) -> str:
+    """codesign splits its output across stdout and stderr depending on release."""
+    if completed is None:
+        return ""
+    return (completed.stdout or b"").decode("utf-8", "replace") + (completed.stderr or b"").decode("utf-8", "replace")
+
+
+def _courier_signature_summary(path: str) -> str:
+    """
+    A one-line, non-sensitive description of what the candidate actually
+    presented: signing identifier, Team ID, and the leaf authority's common
+    name. These are the public subject fields printed by `codesign -dvvv`; no
+    certificate bytes, private keys, or keychain material are read or emitted.
+    """
+    described = _codesign(["-dvvv", path])
+    if described is None:
+        return "codesign could not be run"
+    text = _codesign_text(described)
+    if described.returncode != 0:
+        if "not signed" in text:
+            return "unsigned"
+        return "signature could not be read"
+    fields: list[str] = []
+    for label, key in (("identifier", "Identifier="), ("team", "TeamIdentifier=")):
+        for line in text.splitlines():
+            if line.startswith(key):
+                fields.append(f"{label}={line[len(key) :].strip() or '(none)'}")
+                break
+        else:
+            fields.append(f"{label}=(absent)")
+    for line in text.splitlines():
+        if line.startswith("Authority="):
+            fields.append(f"authority={line[len('Authority=') :].strip()}")
+            break
+    else:
+        fields.append("authority=(none — ad-hoc or unsigned)")
+    return ", ".join(fields)
+
+
+def _courier_codedirectory_flags(path: str) -> int | None:
+    """Parse the CodeDirectory `flags=0x…` word; None when it cannot be read."""
+    described = _codesign(["-d", "--verbose=2", path])
+    if described is None or described.returncode != 0:
+        return None
+    match = _CODEDIRECTORY_FLAGS_RE.search(_codesign_text(described))
+    if not match:
+        return None
+    try:
+        return int(match.group(1), 16)
+    except ValueError:
+        return None
+
+
+def _verify_courier_detail(path: str) -> tuple[bool, str]:
     """
     Confirm a candidate really is the first-party courier before handing it the
-    daemon's trust. Fails closed: any error, timeout, or unexpected output is a
-    rejection, because the alternative is piping memory reads and writes through
-    whatever binary happens to sit at a guessable path.
+    daemon's trust, and say why when it is not.
+
+    Fails closed: any error, timeout, or unexpected output is a rejection,
+    because the alternative is piping memory reads and writes through whatever
+    binary happens to sit at a guessable path.
+
+    On macOS the check is `codesign --verify --strict -R=<requirement>`, i.e.
+    the OS *evaluates* the pinned requirement against the signature. The
+    previous implementation instead substring-matched the binary's own
+    auto-generated designated-requirement text, which (a) is weaker — a
+    signature can carry an explicitly declared DR string — and (b) rejected
+    every locally built install, because codesign phrases an Apple Development
+    identity as `leaf[subject.CN]` even though that leaf carries the very same
+    `OU = <team id>` the pin is about.
     """
     if _IS_MACOS:
-        try:
-            verified = subprocess.run(
-                ["/usr/bin/codesign", "--verify", "--strict", path],
-                capture_output=True,
-                timeout=10,
-                check=False,
+        requirement = _courier_designated_requirement()
+        verified = _codesign(["--verify", "--strict", f"-R={requirement}", path])
+        if verified is None:
+            return False, "codesign could not be run"
+        if verified.returncode != 0:
+            detail = _codesign_text(verified).strip().splitlines()
+            reason = detail[-1].strip() if detail else f"codesign exited {verified.returncode}"
+            return (
+                False,
+                f"presented [{_courier_signature_summary(path)}]; required [{requirement}]; codesign: {reason}",
             )
-            if verified.returncode != 0:
-                return False
-            described = subprocess.run(
-                ["/usr/bin/codesign", "-d", "--requirements", "-", path],
-                capture_output=True,
-                timeout=10,
-                check=False,
+        flags = _courier_codedirectory_flags(path)
+        if flags is None:
+            return False, "CodeDirectory flags could not be read"
+        missing = [
+            name
+            for name, bit in (
+                ("hardened runtime", _COURIER_HARDENED_RUNTIME_FLAG),
+                ("library validation", _COURIER_LIBRARY_VALIDATION_FLAG),
             )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        if described.returncode != 0:
-            return False
-        # codesign writes the designated requirement to stderr on most releases
-        # and to stdout on others; require the team OU and identifier in either.
-        requirement = (described.stdout or b"").decode("utf-8", "replace") + (described.stderr or b"").decode(
-            "utf-8", "replace"
-        )
-        if f'certificate leaf[subject.OU] = "{_COURIER_TEAM_ID}"' not in requirement:
-            return False
-        return f'identifier "{_COURIER_BUNDLE_IDENTIFIER}"' in requirement
+            if not flags & bit
+        ]
+        if missing:
+            return False, f"signature satisfies the team requirement but is missing {' and '.join(missing)}"
+        return True, "ok"
 
     if _IS_LINUX:
         if not os.path.realpath(path).startswith(_COURIER_LINUX_PREFIX):
-            return False
+            return False, f"not under the packaged prefix {_COURIER_LINUX_PREFIX}"
         try:
-            return os.stat(path).st_uid == 0
-        except OSError:
-            return False
+            if os.stat(path).st_uid != 0:
+                return False, "not root-owned"
+        except OSError as exc:
+            return False, f"could not stat the candidate: {exc}"
+        return True, "ok"
 
-    return False
+    return False, f"no courier trust model for platform {sys.platform}"
+
+
+def _verify_courier(path: str) -> bool:
+    """Boolean face of :func:`_verify_courier_detail`."""
+    return _verify_courier_detail(path)[0]
+
+
+def _courier_rejection_summary() -> str:
+    """Operator-facing explanation of why no courier was accepted."""
+    if not _IS_MACOS and not _IS_LINUX:
+        return f"This platform ({sys.platform}) has no signed-courier path."
+    if not _COURIER_REJECTIONS:
+        return (
+            "No OpenBurnBar CLI courier was found on disk. Install the signed app "
+            f"(searched: {', '.join(_courier_candidates()) or '(none)'}) so encrypted-store "
+            "reads can travel through a binary the daemon trusts."
+        )
+    return "No courier was accepted. Candidates: " + "; ".join(_COURIER_REJECTIONS)
 
 
 def _signed_cli_path() -> str | None:
@@ -363,25 +504,53 @@ def _signed_cli_path() -> str | None:
     candidates: list[tuple[str, bool]] = []
     if override:
         candidates.append((override, trusted_override))
-    candidates += [(candidate, False) for candidate in _COURIER_BUNDLE_CANDIDATES]
+    candidates += [(candidate, False) for candidate in _courier_candidates()]
     candidates.append((shutil.which("openburnbar-cli") or "", False))
+    rejections: list[str] = []
     for candidate, skip_verification in candidates:
         if not candidate or not os.path.isfile(candidate) or not os.access(candidate, os.X_OK):
             continue
-        if skip_verification or _verify_courier(candidate):
+        if skip_verification:
+            _COURIER_REJECTIONS[:] = rejections
             return candidate
+        accepted, reason = _verify_courier_detail(candidate)
+        if accepted:
+            _COURIER_REJECTIONS[:] = rejections
+            return candidate
+        rejections.append(f"{candidate}: {reason}")
+    _COURIER_REJECTIONS[:] = rejections
     return None
 
 
 def _signed_cli_read(command: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     """
-    Run one daemon read through the signed CLI. Returns None when no signed
-    binary is present, so the caller can fall back to the direct socket (which
-    is what dev builds, where the peer gate is off, actually want).
+    Run one daemon read through the signed CLI. Returns None when no accepted
+    courier is present, so the caller can fall back to the direct socket — the
+    right path for daemons that do not enforce the peer gate. When the gate is
+    enforced, the caller reports ``_courier_rejection_summary()`` alongside the
+    daemon's refusal so the operator can see which candidate failed and why.
+    """
+    status, value = _signed_cli_read_detail(command, payload)
+    return value if status == "ok" else None
+
+
+def _signed_cli_read_detail(command: str, payload: dict[str, Any]) -> tuple[str, Any]:
+    """
+    Run one daemon read through the signed CLI, distinguishing the two very
+    different reasons it can come back empty:
+
+    * ``("no-courier", None)`` — nothing on this machine satisfied the courier
+      requirement, so the caller may still try the direct socket.
+    * ``("failed", message)`` — the courier ran and the *daemon* refused the
+      command. Retrying that same command over the direct socket cannot help,
+      and doing so used to replace the daemon's real answer (a missing table, a
+      rejected statement) with an unrelated code-signature refusal. Callers
+      report `message` instead.
+    * ``("ok", result)`` — a decoded JSON object.
     """
     cli = _signed_cli_path()
     if not cli:
-        return None
+        return "no-courier", None
     try:
         completed = subprocess.run(
             [cli, command],
@@ -390,15 +559,19 @@ def _signed_cli_read(command: str, payload: dict[str, Any]) -> dict[str, Any] | 
             timeout=20,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
+    except (OSError, subprocess.SubprocessError) as exc:
+        return "failed", f"signed CLI {command} could not be run: {exc}"
     if completed.returncode != 0:
-        return None
+        detail = (completed.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        reason = detail[-1].strip() if detail else f"exit code {completed.returncode}"
+        return "failed", f"signed CLI {command} failed: {reason}"
     try:
         decoded = json.loads(completed.stdout.decode("utf-8", "replace"))
-    except (ValueError, UnicodeDecodeError):
-        return None
-    return decoded if isinstance(decoded, dict) else None
+    except (ValueError, UnicodeDecodeError) as exc:
+        return "failed", f"signed CLI {command} returned invalid JSON: {exc}"
+    if not isinstance(decoded, dict):
+        return "failed", f"signed CLI {command} returned a non-object JSON result"
+    return "ok", decoded
 
 
 def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -435,10 +608,19 @@ def _signed_memory_write_authority(method: str, payload: dict[str, Any]) -> dict
         return {"code": "DAEMON_WRITE_REQUIRED", "reason": f"signed CLI invocation failed: {exc}"}
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip()
-        return {
-            "code": "DAEMON_WRITE_REJECTED",
-            "reason": detail or f"signed CLI {command} failed with exit code {completed.returncode}",
-        }
+        reason = detail or f"signed CLI {command} failed with exit code {completed.returncode}"
+        # A courier that never reached the daemon is *unreachable*, not *rejected*.
+        # The daemon phrases its own refusals as `privacy_rpc_error code=… message=…`;
+        # a socket that is absent or unresponsive fails before any of that. Reporting
+        # the two the same way told callers a write had been denied on the merits
+        # when in fact nothing had judged it. (Latent until the courier gate was
+        # fixed — an unfound courier could never produce this branch.)
+        if "privacy_rpc_error" not in reason:
+            return {
+                "code": "DAEMON_WRITE_REQUIRED",
+                "reason": f"signed CLI {command} could not reach the daemon: {reason}",
+            }
+        return {"code": "DAEMON_WRITE_REJECTED", "reason": reason}
     try:
         decoded = json.loads(completed.stdout.decode("utf-8", "replace"))
     except (ValueError, UnicodeDecodeError) as exc:
@@ -468,11 +650,25 @@ class _DaemonReadConnection:
     def execute(self, sql: str, params: Any = ()) -> _DaemonCursor:
         wire_args = [_sql_value_to_wire(value) for value in params]
         payload = {"sql": sql, "args": wire_args, "maxRows": 2000}
-        result = _signed_search_sql(payload)
-        if result is None:
-            # Dev/unsigned builds: the daemon's peer gate is not enforced, so the
-            # direct socket still works and is the cheaper path.
-            result = pcm.call_daemon("daemon.search.sql", payload, timeout_seconds=15.0)
+        status, value = _signed_cli_read_detail("search-sql", payload)
+        if status == "ok":
+            result = value
+        elif status == "failed":
+            # The courier reached the daemon and the daemon answered "no". That
+            # answer is the truth; re-asking over the direct socket would only
+            # swap it for an unrelated peer-gate refusal.
+            raise RuntimeError(str(value))
+        else:
+            # No courier was accepted. Some daemons do not enforce the peer gate,
+            # and for those the direct socket still works and is cheaper. When the
+            # gate IS on, the daemon's refusal alone says nothing about why the
+            # courier was skipped, so attach that diagnosis to the error.
+            try:
+                result = pcm.call_daemon("daemon.search.sql", payload, timeout_seconds=15.0)
+            except RuntimeError as exc:
+                if "code-signature" not in str(exc):
+                    raise
+                raise RuntimeError(f"{exc} — {_courier_rejection_summary()}") from exc
         columns = [str(name) for name in (result.get("columns") or [])]
         index_by_name = {name: index for index, name in enumerate(columns)}
         rows = [
@@ -1947,7 +2143,10 @@ def _memory_mirror_remember(decision: dict[str, Any], project_path: str | None) 
     if "code-signature" in reason:
         return {
             "status": "peer_rejected",
-            "reason": "daemon rejected this process as an unsigned peer; the engine store remains authoritative",
+            "reason": (
+                "daemon rejected this process as an unsigned peer; the engine store remains "
+                f"authoritative. {_courier_rejection_summary()}"
+            ),
         }
     if authority.get("code") == "DAEMON_WRITE_REJECTED":
         return {"status": "rejected", "reason": reason}
