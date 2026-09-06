@@ -526,3 +526,58 @@ test("sealingScheme: NON-WEBSITED — the scheme codename never reaches the publ
     );
   }
 });
+
+// ── Pensieve demo drift ────────────────────────────────────────────────────
+// apps/pensieve-experience is a hand-maintained static demo whose own preamble
+// claims "every structural fact is the real, shipped truth". Its DOMAINS array
+// is the one place that claim can silently rot: the registry gained a domain
+// (team_pensieve) and re-tiered another (conversations_chat) while the demo
+// kept asserting 12 domains and a server-readable chat. This gate is deliberately
+// narrow — ids, tiers, and the stated count, the facts the demo claims to mirror.
+// Illustrative copy, counts, and byte figures stay free.
+const DEMO_PATH = join(HERE, "..", "..", "apps", "pensieve-experience", "js", "data.js");
+
+/** Parse `id: "x", title: "…", icon: "…", tier: "y"` rows out of the demo's DOMAINS literal. */
+export function parseDemoDomains(source) {
+  const start = source.indexOf("const DOMAINS = [");
+  assert.ok(start >= 0, "demo data.js must declare `const DOMAINS = [`");
+  const body = source.slice(start);
+  const re = /id:\s*"([a-z_]+)",\s*title:\s*"([^"]+)",\s*icon:\s*"[a-z]+",\s*tier:\s*"([a-z_]+)"/g;
+  const rows = [];
+  let m;
+  while ((m = re.exec(body)) !== null) rows.push({ id: m[1], title: m[2], tier: m[3] });
+  return rows;
+}
+
+test("pensieve demo: domain ids and tiers match the registry", () => {
+  const source = readFileSync(DEMO_PATH, "utf8");
+  const demo = parseDemoDomains(source);
+
+  const demoIds = demo.map((d) => d.id).sort();
+  const registryIds = registry.domains.map((d) => d.id).sort();
+  assert.deepEqual(
+    demoIds,
+    registryIds,
+    "apps/pensieve-experience/js/data.js DOMAINS must list exactly the registry's domains",
+  );
+
+  const byId = new Map(registry.domains.map((d) => [d.id, d]));
+  for (const row of demo) {
+    assert.equal(
+      row.tier,
+      byId.get(row.id).encryptionTier,
+      `demo domain ${row.id} claims tier "${row.tier}" but the registry says "${byId.get(row.id).encryptionTier}"`,
+    );
+    assert.equal(row.title, byId.get(row.id).title, `demo domain ${row.id} title drifted from the registry`);
+  }
+});
+
+test("pensieve demo: the stated domain count matches the registry", () => {
+  const source = readFileSync(DEMO_PATH, "utf8");
+  const n = registry.domains.length;
+  const stated = [...source.matchAll(/the (\d+) data domains/g)].map((m) => Number(m[1]));
+  assert.ok(stated.length >= 1, 'demo data.js must state "the N data domains" in its header comment');
+  for (const claimed of stated) {
+    assert.equal(claimed, n, `demo data.js claims ${claimed} data domains; the registry has ${n}`);
+  }
+});

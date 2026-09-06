@@ -1,4 +1,5 @@
 import Darwin
+import Security
 import XCTest
 @testable import OpenBurnBarComputerUseCore
 
@@ -129,6 +130,65 @@ final class PrivilegedSocketTrustTests: XCTestCase {
         XCTAssertFalse(
             OpenBurnBarPrivilegedTrust.privilegedInputPeerDesignatedRequirement.contains("identifier \"com.openburnbar.cli\"")
         )
+    }
+
+    // MARK: - Certificate-type independence
+    //
+    // Regression: the Python MCP courier gate in `tools/openburnbar-mcp/server.py`
+    // used to substring-match a binary's auto-generated designated-requirement
+    // TEXT for `certificate leaf[subject.OU] = "<team>"`. codesign phrases a
+    // Developer ID identity that way but phrases an Apple Development identity as
+    // `certificate leaf[subject.CN] = "Apple Development: …"`, even though BOTH
+    // leaves carry `OU = <team id>`. Locally built installs were therefore refused
+    // and ~10 MCP tools died. The requirements below are *evaluated* by the
+    // Security framework rather than matched as text, and they bind identity to
+    // the OU so they hold for either certificate type. Keep it that way.
+
+    func test_requirementsBindTeamViaLeafOUSoDevelopmentAndDeveloperIDBothPass() {
+        let requirements = [
+            OpenBurnBarPrivilegedTrust.privilegedInputPeerDesignatedRequirement,
+            OpenBurnBarPrivilegedTrust.daemonRPCPeerDesignatedRequirement,
+            OpenBurnBarPrivilegedTrust.remoteAccessAgentDesignatedRequirement
+        ]
+        for req in requirements {
+            XCTAssertTrue(
+                req.contains("certificate leaf[subject.OU] = \"\(OpenBurnBarPrivilegedTrust.teamID)\""),
+                "requirement must pin the team on the leaf OU, which both Developer ID and Apple Development leaves carry"
+            )
+            XCTAssertTrue(req.contains("anchor apple generic"), "the Apple anchor is what makes the OU pin meaningful")
+            XCTAssertFalse(
+                req.contains("subject.CN"),
+                "pinning a common name would admit only one certificate type and is weaker than the OU + anchor pair"
+            )
+        }
+    }
+
+    func test_everyDesignatedRequirementCompilesAsRequirementLanguage() throws {
+        let requirements = [
+            OpenBurnBarPrivilegedTrust.privilegedInputPeerDesignatedRequirement,
+            OpenBurnBarPrivilegedTrust.daemonRPCPeerDesignatedRequirement,
+            OpenBurnBarPrivilegedTrust.remoteAccessAgentDesignatedRequirement
+        ]
+        for req in requirements {
+            var requirement: SecRequirement?
+            let status = SecRequirementCreateWithString(req as CFString, [], &requirement)
+            XCTAssertEqual(status, errSecSuccess, "requirement failed to compile: \(req)")
+            XCTAssertNotNil(requirement)
+        }
+    }
+
+    func test_daemonRPCRequirementIsASupersetOfTheMCPCourierPin() {
+        // tools/openburnbar-mcp/server.py builds
+        //   anchor apple generic and certificate leaf[subject.OU] = "<team>" and identifier "com.openburnbar.cli"
+        // which must remain a strict NARROWING of this requirement, never a widening.
+        let courierPin = "anchor apple generic and certificate leaf[subject.OU] = "
+            + "\"\(OpenBurnBarPrivilegedTrust.teamID)\" and identifier \"com.openburnbar.cli\""
+        let daemonReq = OpenBurnBarPrivilegedTrust.daemonRPCPeerDesignatedRequirement
+        XCTAssertTrue(daemonReq.hasPrefix("anchor apple generic and certificate leaf[subject.OU] = \"\(OpenBurnBarPrivilegedTrust.teamID)\""))
+        XCTAssertTrue(courierPin.contains("identifier \"com.openburnbar.cli\""))
+        XCTAssertTrue(daemonReq.contains("identifier \"com.openburnbar.cli\""))
+        var requirement: SecRequirement?
+        XCTAssertEqual(SecRequirementCreateWithString(courierPin as CFString, [], &requirement), errSecSuccess)
     }
 }
 
