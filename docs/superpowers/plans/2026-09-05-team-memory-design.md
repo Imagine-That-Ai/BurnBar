@@ -285,6 +285,8 @@ Team sync is a strict **subset** of personal sync: turning personal cloud backup
 
 **Server-side residual metadata (the blindness proof paragraph, to be updated in PR3's body):** team size, join/leave timing, per-member write volume, and the `kind` distribution are visible to the server. Nothing else is.
 
+**The serving boundary, restated after amendment A1 (2026-09-06).** The confidentiality claim on a member's *own* Mac is: a team row is read into a session only where that checkout's committed `.openburnbar/project.json` names the team AND the exact `teamProjectId` the row landed in. That claim is carried by one predicate, `_team_row_servable`, and by nothing else — amendment A1 removed the local project fence from team rows precisely so that no second, weaker filter can be mistaken for the boundary. Widening what a query SELECTS is not a widening of the boundary: the six properties below are each pinned by a test, and forcing the predicate to `True` opens every serving surface at once, which is what makes it the boundary rather than one contributor to it. A1 changes no server-visible metadata, no key handling, no roster authority and no write authority; the named trust assumption above is unchanged.
+
 ---
 
 ## 5. PR plan (4 PRs, each ≤ ~400 changed lines)
@@ -1284,3 +1286,106 @@ The shape:
   `_team_row_writable_by_local_user` to True turns 4 tests red (the reviewer's
   reinforce comes straight back, id and all); forcing `_team_row_servable` to
   True turns 6 red, two of them the new write-path disclosure tests.
+
+
+---
+
+### Amendment A1 — the landing partition is not a local project id (2026-09-06)
+
+**Found by:** the two-clone proof (`tools/openburnbar-mcp/tests/test_team_two_clone.py`, PR #2542).
+
+**The defect, plainly: a team fact contributed with `engineScope = "project"` landed correctly and then appeared in no recall surface on any member's Mac, including its own author.**
+
+`teamProjectId` is deliberately NOT a local `proj_<32hex>` id. That indirection is
+the whole cross-member convergence mitigation: two members' checkouts of the same
+repository mint different local ids, and a team fact has to converge across them,
+so it lands in the partition the shared repository names
+(`memories.project_id = "burnbar-core"`). T4 then added the serving fence
+*beside* the pre-existing LOCAL project fence rather than in place of it for team
+rows, and that composition is the bug — `(m.project_id = ? OR m.scope =
+'personal')` compares a `teamProjectId` against a local project id, values from
+two different namespaces, so it is false for every project-scoped team row in
+every session on every Mac. The row passed every write and admission check, sat
+in the store, answered `_team_row_servable(...) is True` when asked directly, and
+was filtered out of `recall`, `recall_pack`, `ask`, the session briefing, `list`,
+`timeline`, `entities`, `relations` and `export`. Only `engineScope = "personal"`
+team facts reached a model, and only by accident: a personal row is cross-project
+by the engine's own design and so survived the local fence.
+
+**The ruling (binding).**
+
+> A team row is servable in this session **iff this checkout's
+> `.openburnbar/project.json` links that team to exactly the `teamProjectId` the
+> row landed in.** The session's own local `proj_` id is not part of the
+> comparison, because a team landing id and a local project id are different
+> namespaces by design.
+
+**The shape.**
+
+* **One predicate, and now genuinely the only one.** `_team_row_servable` was
+  already comparing the right pair. What changed is everything around it: every
+  query that carries the local project fence widens it with
+  `constants.TEAM_ROW_PRESENT_SQL` (`json_extract(m.metadata_json, '$."_burnbar".team.teamID') IS NOT NULL`),
+  and the Python-side fences do the same with `_metadata_team_id(...) is None`,
+  so a team row reaches the predicate instead of being dropped before it.
+  Widening a `SELECT` grants nothing: what it selects is handed straight to the
+  predicate.
+* **Every call site, consistently.** `engine.py::_load_active` (the pool for
+  `recall`, `entities`, `relations`, and — behind `_team_write_filter` — every
+  local write); `_read.py::recall`'s `include_superseded` branch and its
+  `allowed()` predicate; `_read.py::list`'s project fence, beside the SQL clause
+  `_team_visibility_sql` already built from the predicate; `_read.py::timeline`'s
+  `FOREIGN_PROJECT` refusal, which is skipped for a team row that the team fence
+  above has already admitted and is unchanged for every personal row;
+  `_admin.py::export`'s narrow project fence.
+* **`export`'s count becomes honest.** A narrow export used to drop team rows in
+  SQL, so `teamRowsWithheld` was 0 while rows were being withheld — a backup
+  silently short of the team memory the member is entitled to. It now selects
+  them and the fence withholds and counts them.
+* **`timeline`'s `FOREIGN_PROJECT` is not weakened.** A team row's landing
+  partition is always "foreign" to a local project id; the team fence, which runs
+  first and is strictly stronger for those rows, is the one that decides them. B8
+  still guards every personal row exactly as before
+  (`test_the_landing_partition_rule_leaves_personal_rows_alone`).
+* **The Swift pull side does not mirror the defect and needed no change.**
+  `TeamMemoryPullService` admits a document with
+  `linkedTeamProjectIDs.contains(payload.projectID)` — a set membership within
+  the `teamProjectId` namespace, never a comparison against a local project id.
+  The daemon's `agent_memories` table is a separate store that the team lane
+  never writes to.
+* **The PR3 convergence note is corrected.** T5 said a local `remember` of an
+  identical body in the linked project would collide with the team row's
+  `UNIQUE(project_id, scope, body_hash)` and return `NONE /
+  TEAM_ROW_NOT_WRITABLE`. That assumed a team row lands on the local project's
+  triple, and it does not. The member gets their own personal row in their own
+  project; the team row is not reinforced, superseded or retired, because
+  `_team_write_filter` keeps it out of every local write's pool in every session.
+  The lock is unchanged — only the description of where it bites.
+* **Named residuals, unchanged by A1.** `reindex`, `memory_analytics` and
+  `aux_secret_exposure` stay fenced to the local project: they serve no body, no
+  id and no lineage, and leaving them fenced discloses strictly less. A
+  consequence worth stating: a team row's vectors come from the merge that landed
+  it, and a per-project `reindex` will not re-embed one — `reindex(all_projects=True)`
+  is the operation that does.
+
+**The six security properties, each preserved and each pinned by a test** (all in
+`tools/openburnbar-mcp/tests/test_memory_blind_sync.py`):
+
+| Property | Test |
+| --- | --- |
+| A checkout that links nothing serves nothing | `test_a_checkout_that_links_nothing_serves_no_project_scoped_team_row` |
+| A checkout linking a DIFFERENT `teamProjectId` for that team serves nothing | `test_a_checkout_linking_a_different_team_project_serves_nothing` |
+| A checkout linking a different TEAM serves nothing | `test_a_checkout_linking_a_different_team_serves_nothing` |
+| Removing the link stops the serving on the next call | `test_removing_the_link_stops_serving_a_project_scoped_team_row_at_once` |
+| Personal rows are unaffected | `test_the_landing_partition_rule_leaves_personal_rows_alone` |
+| The write fence and the local-write lock are untouched | `test_the_landing_partition_rule_leaves_the_write_fence_untouched` |
+
+**Both forms of the rule agree, and both mutation directions are proven.**
+`test_the_sql_and_python_forms_of_the_serving_rule_agree` walks the same six
+fixtures through `_team_visibility_sql`'s clause and the in-Python predicate and
+through the surfaces built on each. Forcing `_team_row_servable` to `True` serves
+the row into an unlinked checkout on every surface
+(`test_mutation_neutering_the_serving_predicate_serves_the_row_everywhere`);
+restoring the landing-vs-session comparison hides it from the LINKED checkout on
+every surface, which is the defect itself
+(`test_mutation_the_old_landing_versus_session_comparison_hides_the_row_again`).

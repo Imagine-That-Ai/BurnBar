@@ -27,6 +27,7 @@ from .constants import (
     SECRET_POLICIES,
     SECRET_POLICY_ENV,
     SHORT_HALF_LIFE_KINDS,
+    TEAM_ROW_PRESENT_SQL,
 )
 from .crypto import KeyRing, secure_store_files
 from .providers import ModelRouter
@@ -401,14 +402,19 @@ class MemoryEngine(_WritePath, _ReadPath, _Lifecycle, _Maintenance, _BlindSync):
         self, project_id: str, *, include_personal_cross_project: bool = True, include_cross_project: bool = False
     ) -> list[ActiveMemory]:
         version = self.provider.version_id
+        # A1: a team row's landing partition is a `teamProjectId`, so the LOCAL
+        # project fence would drop every project-scoped team row before any team
+        # predicate saw it. The pool admits them and hands the decision on —
+        # `_team_serve_filter` on the read paths, `_team_write_filter` on the
+        # write ones. Neither caller of this method is without one.
         if include_cross_project:
             where = "WHERE m.valid_to IS NULL"
             params: list[Any] = [version]
         elif include_personal_cross_project:
-            where = "WHERE m.valid_to IS NULL AND (m.project_id = ? OR m.scope = 'personal')"
+            where = f"WHERE m.valid_to IS NULL AND (m.project_id = ? OR m.scope = 'personal' OR {TEAM_ROW_PRESENT_SQL})"
             params = [version, project_id]
         else:
-            where = "WHERE m.valid_to IS NULL AND m.project_id = ?"
+            where = f"WHERE m.valid_to IS NULL AND (m.project_id = ? OR {TEAM_ROW_PRESENT_SQL})"
             params = [version, project_id]
         # Reinforcement moves access_count / last_accessed_at / salience without
         # touching updated_at, so the stamp has to include them or another

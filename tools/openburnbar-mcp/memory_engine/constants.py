@@ -516,6 +516,24 @@ TEAM_PROVENANCE_SUBKEY = "team"
 # unquoted on current SQLite, and quoting costs nothing on any version.
 TEAM_ID_JSON_PATH = '$."_burnbar".team.teamID'
 
+# "This row is team-origin", as a SQL predicate over the alias `m`.
+#
+# Amendment A1 (`docs/superpowers/plans/2026-09-05-team-memory-design.md`). A
+# team row's landing partition is the `teamProjectId` checked into the shared
+# repository — deliberately NOT a local `proj_<32hex>` id, because two members'
+# checkouts of the same repository mint different local ids and a team fact has
+# to converge across them anyway. So `memories.project_id` holds a value from a
+# different namespace, and the LOCAL project fence — `(m.project_id = ? OR
+# m.scope = 'personal')` — can never admit a project-scoped team row on ANY
+# member's Mac, the author's included.
+#
+# Every query that carries the local project fence therefore widens it with this
+# disjunct and hands the decision to `_team_row_servable`, which compares the
+# pair the link file actually states. The Python-side fences do the same with
+# `_metadata_team_id(...) is not None`. Widening a SELECT grants nothing: the
+# serving predicate still decides, and it is now the only thing that does.
+TEAM_ROW_PRESENT_SQL = f"json_extract(m.metadata_json, '{TEAM_ID_JSON_PATH}') IS NOT NULL"
+
 # NOT renamed, and deliberately: `memory_history.meta_json` (and so `timeline`'s
 # `TIMELINE_META_KEYS` above) still carries `teamID` / `authorUID` under those
 # exact names. That surface is written only by `_write_remote_row` from a

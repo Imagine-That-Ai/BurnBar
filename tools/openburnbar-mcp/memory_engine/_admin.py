@@ -30,6 +30,7 @@ from .constants import (
     ENGINE_SCHEMA_VERSION,
     LINEAGE_HOLD_QUEUE_MAX_SIZE,
     MAX_MEMORIES_PER_PROJECT_SOFT,
+    TEAM_ROW_PRESENT_SQL,
 )
 from .embeddings import encode_vector
 from .extract import Fact
@@ -267,14 +268,20 @@ class _Maintenance:
         The omission is counted, never silent. `teamRowsWithheld` tells an
         operator taking a backup that N rows were held back, so a restore is
         not quietly short of rows nobody can name — the same reason
-        `import_memories` counts its own strips and skips.
+        `import_memories` counts its own strips and skips. A1 is what makes that
+        count honest on the NARROW export too: a team row's landing partition is
+        a `teamProjectId`, so `m.project_id = ?` used to drop every one of them
+        before the team fence could see it — the row was neither exported nor
+        counted, and a linked member's own backup was silently short of the team
+        memory they are entitled to.
         """
         params: list[Any] = [self.provider.version_id]
         where = "WHERE 1=1"
         payload: dict[str, Any] = {}
         if not all_projects:
             project_id, root = resolve_project(self.conn, project_path)
-            where += " AND m.project_id = ?"
+            # A1: the team fence below decides a team row, not the local one.
+            where += f" AND (m.project_id = ? OR {TEAM_ROW_PRESENT_SQL})"
             params.append(project_id)
             payload = project_payload(project_id, root)
         if not include_superseded:
