@@ -236,6 +236,80 @@ final class ControlPlaneStoreMemoryTimelineTests: XCTestCase {
         XCTAssertNil(local.writerDevice)
     }
 
+    /// PR3 Cursor ruling, T2 (HIGH): a TEAM inbox row is never read as the
+    /// arrival record of a PERSONAL memory.
+    ///
+    /// The join is on `engine_memory_id` alone, and a team row is parked under
+    /// the engine id its payload SEALS — a value chosen by whoever sealed the
+    /// document, and every uploaded team document publishes one. So a member of
+    /// a team could name a teammate's private engine id, and their sealed
+    /// `writerDevice` / `teamID` / `authorUID` would be reported here as facts
+    /// about a memory the team never touched, to the UI and to the calling
+    /// model alike.
+    func test_a_team_inbox_row_never_names_the_device_of_a_personal_memory() async throws {
+        let (queue, store) = try makeStore()
+        try await insertAuthorityRow(queue, id: "mem_private")
+        try await insertAuditEvent(
+            queue,
+            seq: 1,
+            subjectID: "mem_private",
+            action: "memory.merge",
+            ts: "2026-09-01T00:00:00.000Z"
+        )
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_bodies
+                    (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+                VALUES ('mem_private', 'proj_fixture', 'eng_mem_victim', 'body', 'hash', ?, ?)
+                """,
+                arguments: ["2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z"]
+            )
+            // A TEAM row, parked under the victim's engine id, and NEWER than
+            // the personal one below so `ORDER BY remote_updated_at DESC` would
+            // have preferred it.
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_inbox
+                    (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+                VALUES (?, 'user-1', 'eng_mem_victim', ?, ?, ?, NULL)
+                """,
+                arguments: [
+                    TeamMemoryPullService.inboxDocID(
+                        teamID: "team_0123456789abcdef",
+                        localUserID: "user-1",
+                        documentID: String(repeating: "a", count: 64)
+                    ),
+                    #"{"memoryID":"eng_mem_victim","writerDevice":"attacker-laptop","teamID":"team_0123456789abcdef"}"#,
+                    "2026-09-09T00:00:00.000Z",
+                    "2026-09-09T00:01:00.000Z"
+                ]
+            )
+        }
+
+        let poisoned = try await store.memoryTimeline(memoryID: "mem_private", userID: "user-1")
+        XCTAssertNil(poisoned.writerDevice, "a team row must never name a personal memory's arrival device")
+
+        // The member's OWN inbox row for the same memory is still read, so the
+        // exclusion is about provenance and not about the join being disabled.
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memory_inbox
+                    (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+                VALUES ('doc-personal', 'user-1', 'eng_mem_victim', ?, ?, ?, NULL)
+                """,
+                arguments: [
+                    #"{"memoryID":"eng_mem_victim","writerDevice":"my-own-macbook"}"#,
+                    "2026-09-02T00:00:00.000Z",
+                    "2026-09-02T00:01:00.000Z"
+                ]
+            )
+        }
+        let honest = try await store.memoryTimeline(memoryID: "mem_private", userID: "user-1")
+        XCTAssertEqual(honest.writerDevice, "my-own-macbook")
+    }
+
     // MARK: - Truncation
 
     /// I2: a capped read used to return the OLDEST page and then call its last

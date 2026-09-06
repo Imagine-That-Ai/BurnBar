@@ -3018,16 +3018,26 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 ('doc-receipt', 'member-1', 'aabbcc', '{"entryKind":"memory_forget_receipt","reason":"user_delete"}',
                  '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
                 ('doc-garbled', 'member-1', 'mem_cccc', 'not json at all',
-                 '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', NULL);
+                 '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-team', 'member-1', 'mem_dddd',
+                 '{"teamID":"team_0123456789abcdef","authorUID":"uid_alice"}',
+                 '2026-09-04T00:00:04.000Z', '2026-09-04T00:00:09.000Z', NULL);
             """
         )
 
         let listed = try store.syncInboxList(BurnBarMemorySyncInboxListRequest())
 
-        XCTAssertEqual(listed.entries.map(\.docID), ["doc-fact", "doc-receipt", "doc-garbled"])
+        XCTAssertEqual(listed.entries.map(\.docID), ["doc-fact", "doc-receipt", "doc-garbled", "doc-team"])
         XCTAssertNil(listed.entries[0].entryKind, "a fact carries no discriminator, and never has")
         XCTAssertEqual(listed.entries[1].entryKind, "memory_forget_receipt")
         XCTAssertNil(listed.entries[2].entryKind, "an unreadable payload is a fact, not an error")
+        // The same trick, the same rule, one more key (memory program D16): a
+        // team fact says which team it came from without the courier learning
+        // anything else about it, and a personal fact says nothing at all.
+        XCTAssertNil(listed.entries[0].teamID, "a personal fact names no team, and never has")
+        XCTAssertNil(listed.entries[2].teamID)
+        XCTAssertEqual(listed.entries[3].teamID, "team_0123456789abcdef")
+        XCTAssertNil(listed.entries[3].entryKind, "a team FACT is still a fact")
         XCTAssertEqual(
             listed.entries[1].payloadJSON,
             #"{"entryKind":"memory_forget_receipt","reason":"user_delete"}"#,
@@ -3559,6 +3569,102 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             ),
             ["doc-theirs"],
             "the consenting member's parked plaintext is gone; the other account's row is not this forget's to delete"
+        )
+    }
+
+    /// A TEAM row's parked plaintext is reached too, though it is not parked
+    /// under the id the engine forgets it by (PR3 round-5 nit 2).
+    ///
+    /// The asymmetry this covers: a personal document is parked under the same
+    /// engine id the engine knows the row by, so deleting by `engine_memory_id`
+    /// finds it. A team document is parked under the SEALED id the contributing
+    /// member chose, while the engine lands the row under an id DERIVED from
+    /// `(teamID, projectID, engineScope, bodyHash)` — the isolation fix that
+    /// closed Cursor T2. So the delete list and the parked column stopped
+    /// naming the same thing, and a local `burnbar_forget` on a landed team row
+    /// left its opened body sitting in `agent_memory_inbox`.
+    ///
+    /// The promise under test is the file's own: a hard forget leaves NO
+    /// readable copy anywhere this daemon owns.
+    func testForgettingATeamMemoryAlsoDropsThePlaintextParkedUnderItsSealedID() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+
+        let teamID = "team_0123456789abcdef"
+        let teamProjectID = "burnbar-core"
+        let body = "The release train leaves on Thursdays."
+        let bodyHash = BurnBarProjectCodeMemoryStore.sha256Hex(body)
+        // What the ENGINE lands this document under: derived, never taken.
+        let derivedID = BurnBarProjectCodeMemoryStore.teamLocalMemoryID(
+            teamID: teamID,
+            projectID: teamProjectID,
+            engineScope: "project",
+            bodyHash: bodyHash
+        )
+        // What the DOCUMENT was parked under: the sealer's own engine id, which
+        // is a different value entirely and is deliberately kept, because it is
+        // the only handle the sealed cloud copy has.
+        let sealedID = "mem_99998888777766665555444433332222"
+        XCTAssertNotEqual(derivedID, sealedID)
+
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                engineMemoryID: derivedID
+            )
+        )
+        let teamPayload = """
+        {"teamID":"\(teamID)","projectID":"\(teamProjectID)","engineScope":"project",\
+        "bodyHash":"\(bodyHash)","memoryID":"\(sealedID)","text":"\(body)"}
+        """
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('team:\(teamID):member-1:doc-team-1', 'member-1', \(sqlLiteral(sealedID)),
+                 \(sqlLiteral(teamPayload)),
+                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('team:\(teamID):member-1:doc-team-2', 'member-1', \(sqlLiteral(sealedID)),
+                 '{"teamID":"\(teamID)","projectID":"\(teamProjectID)","engineScope":"project","bodyHash":"ff00","text":"a different team fact"}',
+                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-personal', 'member-1', 'mem_ffffffffffffffffffffffffffffff03', '{"text":"unrelated"}',
+                 '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: remembered.memoryID, projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-personal", "team:\(teamID):member-1:doc-team-2"],
+            "the forgotten TEAM row's parked plaintext is gone; the other team fact and the personal row are untouched"
+        )
+        // The promise, asserted as a promise rather than as a row count: the
+        // body is not readable anywhere this daemon owns.
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox WHERE payload_json LIKE '%release train%'"
+            ),
+            [],
+            "no parked plaintext of the forgotten body survives"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT memory_id FROM agent_memory_bodies WHERE body LIKE '%release train%'"
+            ),
+            [],
+            "and the mirrored body is blanked, as it always was"
         )
     }
 
