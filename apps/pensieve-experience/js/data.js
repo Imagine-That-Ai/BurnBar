@@ -1,8 +1,9 @@
 /* ============================================================================
    Pensieve — data model
    Mock state, but every structural fact is the real, shipped truth:
-   - the 12 data domains + their honest encryption tiers come from
-     apps/console/lib/domains.generated.ts (generated from the registry).
+   - the 13 data domains + their honest encryption tiers come from
+     packages/data-domains/registry.json (the canonical registry that also
+     generates domains.ts / DataDomains.swift / DataDomains.kt).
    - the cloak posture (cosine preserved, basis hidden, cross-tenant cos ~0.77,
      sourceKind + byteCount the only plaintext facets) comes from
      docs/pensieve-leakage-analysis.md.
@@ -99,7 +100,10 @@
     },
   };
 
-  /* ---- the 12 data domains (verbatim tiers from the registry) ----------- */
+  /* ---- the 13 data domains (verbatim tiers from the registry) -----------
+     Ids and tiers are gated against packages/data-domains/registry.json by
+     `demo domain list matches the registry` in registry.test.mjs. Adding a
+     domain there fails that test until this list is updated too.           */
   const DOMAINS = [
     {
       id: "pensieve", title: "Pensieve Knowledge", icon: "brain", tier: "end_to_end",
@@ -108,6 +112,14 @@
       deviceOnly: ["chunk text", "source paths", "section/category metadata"],
       retention: "Until you delete it · 30-day tombstone", count: "1,284 chunks", bytes: "2.9 MB",
       actions: ["view", "export", "delete", "configure", "sync"], gate: "Ultra",
+    },
+    {
+      id: "team_pensieve", title: "Team Memory", icon: "teams", tier: "end_to_end",
+      summary: "Memories you contribute to a team space. The lane is blind — sealed fact envelopes, opaque keyed ids, wrapped per-device keys. Membership is the honest exception: the server owns it, so team size, join/leave timing, and per-member write volume are visible. Inside a team the key is shared, so a team space is a contribution boundary between members, not a confidentiality one.",
+      serverSees: ["opaque keyed document ids", "opaque source hashes", "coarse kind", "team membership graph", "join/leave timing", "per-member write volume", "wrapped per-device key envelopes"],
+      deviceOnly: ["team fact bodies", "team fact citations", "project names", "team vault keys", "team slug key"],
+      retention: "Until you delete it", count: "96 facts", bytes: "—",
+      actions: ["view"], gate: "Pro Max",
     },
     {
       id: "device_trust_keys", title: "Device Trust & Vault Keys", icon: "vault", tier: "end_to_end",
@@ -126,6 +138,14 @@
       actions: ["view", "export", "delete"], gate: "Pro",
     },
     {
+      id: "conversations_chat", title: "Conversations & Chat", icon: "chat", tier: "end_to_end",
+      summary: "Assistant chats, CLI agent transcripts, mission prompts/results, and saved snippets, sealed on-device before Firestore receives them. Your per-item AI Inbox state — read, archived, snoozed, useful/not-useful — rides as plain status metadata so every device converges; the item title, body, and evidence stay sealed.",
+      serverSees: ["provider/runtime identifiers", "message counts", "status/routing metadata", "device ids", "timestamps", "AI Inbox lifecycle + feedback verdicts"],
+      deviceOnly: ["chat titles", "chat previews", "message bodies", "CLI transcripts", "mission prompts/results", "AI Inbox titles, summaries, and evidence"],
+      retention: "Until deleted", count: "340 threads", bytes: "—",
+      actions: ["view", "export", "delete"], gate: "Pro",
+    },
+    {
       id: "computer_use", title: "Agent Control & Escrow", icon: "cursor", tier: "zero_access",
       summary: "Computer-use (Agent Control) sessions and their tamper-evident escrow audit trail.",
       serverSees: ["session metadata", "action counts", "quota usage"],
@@ -140,14 +160,6 @@
       deviceOnly: ["media payload contents — relayed / sealed"],
       retention: "Rolling", count: "27 sessions", bytes: "—",
       actions: ["view", "delete"], gate: "Ultra",
-    },
-    {
-      id: "conversations_chat", title: "Conversations & Chat", icon: "chat", tier: "server_readable",
-      summary: "Assistant chats, CLI transcripts, and snippets mirrored across your devices. The cross-device mirror stores text the server can read — labeled server-readable for honesty. Sealing it at rest is tracked hardening.",
-      serverSees: ["assistant + CLI conversation text (mirror)", "thread metadata", "timestamps", "device"],
-      deviceOnly: ["chat_threads bodies when encrypted cloud backup is on"],
-      retention: "Until deleted", count: "340 threads", bytes: "—",
-      actions: ["view", "export", "delete"], gate: "Pro",
     },
     {
       id: "usage_spend", title: "Usage & Spend", icon: "spend", tier: "server_readable",
@@ -268,7 +280,7 @@
     mem({
       id: "m-tiers", source: "burnbar/docs/PENSIEVE.md",
       title: "Three encryption tiers, color-coded",
-      body: "Every data domain carries an honest tier: end-to-end (teal) is sealed on-device with the vault key — the hero tier; zero-access (slate) is encrypted at rest with the wrapped key under device trust; server-readable (amber) is plaintext the server can read, like usage telemetry and the cross-device chat mirror. Chat is server-readable and must never be labeled end-to-end.",
+      body: "Every data domain carries an honest tier: end-to-end (teal) is sealed on-device with the vault key — the hero tier; zero-access (slate) is encrypted at rest with the wrapped key under device trust; server-readable (amber) is plaintext the server can read, like usage telemetry, billing, and the device pairing graph. Chat is sealed on-device and carries the end-to-end tier; what stays server-readable there is routing metadata and AI Inbox lifecycle state.",
       committedAt: "2026-05-30T11:00:00Z", lastRecalledAt: "2026-06-02T15:20:00Z",
       recallCount: 22, dedup: "unique", agents: ["Hermes", "Claude (MCP)"],
     }),
