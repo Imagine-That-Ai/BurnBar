@@ -351,7 +351,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version: "1.24.4"
+          # actionlint v1.7.12's go.mod requires go >= 1.25.0. 1.24.4 plus
+          # GOTOOLCHAIN=local fails the install step:
+          #   github.com/rhysd/actionlint@v1.7.12 requires go >= 1.25.0
+          #   (running go 1.24.4; GOTOOLCHAIN=local)
+          # Honest red: dependabot #2477 Workflow Lint run 33630207454
+          # (Wed 2026-09-02 07:29 CT). This job is the live proof.
+          go-version: "1.25.0"
 
       - name: Install actionlint
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
