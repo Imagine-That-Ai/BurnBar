@@ -1176,7 +1176,12 @@ final class TeamMemorySyncTests: XCTestCase {
 
     /// A store holding `count` mirrored agent memories, plus the key ring and
     /// the fake cloud the domain will write into.
-    private func makePushFixture(uid: String = "uid_bob", count: Int = 1) async throws -> PushFixture {
+    private func makePushFixture(
+        uid: String = "uid_bob",
+        count: Int = 1,
+        seedKeyRing: Bool = true,
+        seedPendingKeyRingOnly: Bool = false
+    ) async throws -> PushFixture {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
@@ -1198,8 +1203,16 @@ final class TeamMemorySyncTests: XCTestCase {
         let slugKey = key(0xF5)
         let vaultKey = key(0xF6)
         let ring = InMemoryTeamVaultKeyRing()
-        try ring.store(slugKey, teamId: teamID, slot: .slug)
-        try ring.store(vaultKey, teamId: teamID, slot: .vault(version: 1))
+        if seedKeyRing {
+            try ring.store(slugKey, teamId: teamID, slot: .slug)
+            try ring.store(vaultKey, teamId: teamID, slot: .vault(version: 1))
+        }
+        if seedPendingKeyRingOnly {
+            // A founding this Mac minted and never published. Openable by
+            // nothing, agreed by nobody, and it must stay out of every read.
+            try ring.storePending(slugKey, teamId: teamID, slot: .slug)
+            try ring.storePending(vaultKey, teamId: teamID, slot: .vault(version: 1))
+        }
         return PushFixture(
             queue: queue,
             store: store,
@@ -1215,7 +1228,8 @@ final class TeamMemorySyncTests: XCTestCase {
     private func makeTeamDomain(
         _ fixture: PushFixture,
         gateway: CloudSyncFirestoreGateway? = nil,
-        pullService: any TeamMemoryPulling
+        pullService: any TeamMemoryPulling,
+        keyRingLoader: (any TeamKeyRingLoading)? = nil
     ) -> TeamMemorySyncDomain {
         TeamMemorySyncDomain(
             store: fixture.store,
@@ -1223,7 +1237,8 @@ final class TeamMemorySyncTests: XCTestCase {
             rosterReader: FixedTeamRosterReader(activeKeyVersion: 1),
             keyRing: fixture.ring,
             projectLinks: FixedTeamProjectLinkResolver(teamProjectID: teamProjectID),
-            pullService: pullService
+            pullService: pullService,
+            keyRingLoader: keyRingLoader
         )
     }
 
@@ -3536,5 +3551,210 @@ final class TeamMemorySyncTests: XCTestCase {
         XCTAssertTrue(reOptedIn.rewoundForNewProjectLink)
         let recordAfterReOptIn = try await linkRecord(fixture)
         XCTAssertEqual(recordAfterReOptIn, linkedProjects)
+    }
+
+    // MARK: - The joiner key pickup has a production caller (D16 wiring)
+
+    /// Records every pickup the cycle asks for, and optionally fills the ring —
+    /// which is what a real `loadKeyRingFromEnvelopes` does when an admin has
+    /// published this device's envelopes.
+    private final class RecordingTeamKeyRingLoader: TeamKeyRingLoading, @unchecked Sendable {
+        struct Call: Equatable {
+            let teamID: String
+            let uid: String
+            let deviceId: String
+        }
+
+        private let lock = NSLock()
+        private var recorded: [Call] = []
+        var calls: [Call] { lock.withLock { recorded } }
+        /// Applied to the ring on each call, so a case can stage "the envelopes
+        /// were there all along" without a Keychain or a Firestore.
+        var landing: (@Sendable () throws -> [TeamKeySlot])?
+        var error: Error?
+
+        func loadKeyRing(teamID: String, uid: String, deviceId: String) async throws -> [TeamKeySlot] {
+            lock.withLock { recorded.append(Call(teamID: teamID, uid: uid, deviceId: deviceId)) }
+            if let error { throw error }
+            return try landing?() ?? []
+        }
+    }
+
+    private struct TeamKeyRingLoaderFailure: Error {}
+
+    /// **The gap this pins.** `TeamVaultKeyDistributor.loadKeyRingFromEnvelopes`
+    /// shipped with no production caller, so a member an admin had just promoted
+    /// never read the envelopes addressed to their own device: `prepareTeam`
+    /// found no slug key, logged `team_memory_sync_awaiting_slug_key`, and did
+    /// that on every cycle for ever. The whole team lane was inert for every
+    /// joiner, permanently, and nothing said so.
+    ///
+    /// One cycle now takes a member from an empty ring to a completed push.
+    func test_a_promoted_member_with_an_empty_ring_reaches_ready_within_one_cycle() async throws {
+        let fixture = try await makePushFixture(seedKeyRing: false)
+        let loader = RecordingTeamKeyRingLoader()
+        let ring = fixture.ring
+        let slugKey = fixture.slugKey
+        let vaultKey = fixture.vaultKey
+        let team = teamID
+        loader.landing = {
+            try ring.store(slugKey, teamId: team, slot: .slug)
+            try ring.store(vaultKey, teamId: team, slot: .vault(version: 1))
+            return [.slug, .vault(version: 1)]
+        }
+        let pull = RecordingTeamPullService()
+
+        let report = try await makeTeamDomain(fixture, pullService: pull, keyRingLoader: loader).runCycle(
+            uid: fixture.uid,
+            deviceId: "device-bob",
+            gate: openGate(),
+            now: fixture.updatedAt
+        )
+
+        XCTAssertEqual(
+            loader.calls,
+            [RecordingTeamKeyRingLoader.Call(teamID: teamID, uid: fixture.uid, deviceId: "device-bob")],
+            "the pickup is asked for THIS member on THIS device — a wrap is per device, not per account"
+        )
+        XCTAssertEqual(report.uploaded, 1, "and the very same cycle seals a fact rather than parking")
+        XCTAssertEqual(report.teamsSynced, 1)
+        XCTAssertEqual(report.failedTeams, 0)
+        XCTAssertEqual(pull.calls, [teamID])
+        XCTAssertEqual(fixture.gateway.documents(under: fixture.factsPath).count, 1)
+    }
+
+    /// The cost guard. A steady team must not spend a Firestore query per beat
+    /// re-asking a question its Keychain already answers.
+    func test_the_key_pickup_is_not_issued_when_this_mac_already_holds_both_slots() async throws {
+        let fixture = try await makePushFixture()
+        let loader = RecordingTeamKeyRingLoader()
+
+        let report = try await makeTeamDomain(
+            fixture,
+            pullService: RecordingTeamPullService(),
+            keyRingLoader: loader
+        ).runCycle(uid: fixture.uid, deviceId: "device-bob", gate: openGate(), now: fixture.updatedAt)
+
+        XCTAssertEqual(report.uploaded, 1)
+        XCTAssertTrue(loader.calls.isEmpty, "a ring holding both slots issues no pickup at all")
+    }
+
+    /// A pickup that could not run is a device still WAITING, not a team that
+    /// FAILED. Counting it as `failedTeams` would report an outage for the
+    /// ordinary state of a member whose admin has not shared yet.
+    func test_a_key_pickup_that_fails_parks_the_team_rather_than_failing_it() async throws {
+        let fixture = try await makePushFixture(seedKeyRing: false)
+        let loader = RecordingTeamKeyRingLoader()
+        loader.error = TeamKeyRingLoaderFailure()
+        let pull = RecordingTeamPullService()
+
+        let report = try await makeTeamDomain(fixture, pullService: pull, keyRingLoader: loader).runCycle(
+            uid: fixture.uid,
+            deviceId: "device-bob",
+            gate: openGate(),
+            now: fixture.updatedAt
+        )
+
+        XCTAssertEqual(loader.calls.count, 1)
+        XCTAssertEqual(report.failedTeams, 0, "still waiting is not still broken")
+        XCTAssertEqual(report.teamsSynced, 0)
+        XCTAssertEqual(report.uploaded, 0)
+        XCTAssertTrue(pull.calls.isEmpty, "no slug key means no document id, so there is nothing to pull either")
+    }
+
+    /// THE NEGATIVE THE WHOLE PENDING MACHINERY RESTS ON. A generation this Mac
+    /// minted and never published is agreed by nobody: no other member holds its
+    /// bytes and the roster has not recorded it. It must never open a stored
+    /// fact and never seal a new one — and the pickup, which is the one path
+    /// that now writes to the ring on a cycle, must not promote it either.
+    func test_a_pending_ring_slot_never_opens_or_seals() async throws {
+        let fixture = try await makePushFixture(seedKeyRing: false, seedPendingKeyRingOnly: true)
+        let loader = RecordingTeamKeyRingLoader()
+        let pull = RecordingTeamPullService()
+
+        let report = try await makeTeamDomain(fixture, pullService: pull, keyRingLoader: loader).runCycle(
+            uid: fixture.uid,
+            deviceId: "device-bob",
+            gate: openGate(),
+            now: fixture.updatedAt
+        )
+
+        XCTAssertEqual(loader.calls.count, 1, "a pending-only ring reads as missing, so the pickup is asked for")
+        XCTAssertEqual(report.uploaded, 0)
+        XCTAssertEqual(report.teamsSynced, 0)
+        XCTAssertTrue(fixture.gateway.documents(under: fixture.factsPath).isEmpty, "nothing was sealed")
+        XCTAssertTrue(pull.calls.isEmpty, "and nothing was opened")
+        XCTAssertNil(
+            try fixture.ring.key(teamId: teamID, slot: .slug),
+            "the cycle promotes nothing: only a published generation may become active"
+        )
+        XCTAssertNil(try fixture.ring.key(teamId: teamID, slot: .vault(version: 1)))
+    }
+
+    /// The seam the SYNC CYCLE calls, exercised end to end with real ECIES: two
+    /// Macs of one account, one envelope each, and only the wrap addressed to
+    /// this device lands.
+    ///
+    /// This is what makes "a second device of the same account picks up its own
+    /// envelopes" a property rather than an intention. The other Mac's envelope
+    /// is READABLE here — same uid, same collection — and is skipped because its
+    /// wrap is for a different escrow private key.
+    func test_the_cycle_key_ring_loader_fills_this_devices_slots_and_no_others() async throws {
+        // `TeamKeyWorld` is the distributor suite's seeded fake Firestore, reused
+        // rather than re-built: the property under test is which envelope a real
+        // ECIES keypair can open, and a second world would be a second chance to
+        // get the seeding subtly wrong.
+        let joinerUid = "uid_joiner"
+        let adminUid = "uid_admin"
+        let world = TeamKeyWorld()
+        let teamId = world.teamId
+        world.seedTeam(
+            activeKeyVersion: 1,
+            retainedKeyVersions: [1],
+            slugKeyId: try CloudVaultCrypto.vaultKeyID(for: world.teamSlugKey)
+        )
+        let macA = world.enrolDevice(uid: joinerUid, deviceId: "device-a", escrowKeyVersion: 1)
+        let macB = world.enrolDevice(uid: joinerUid, deviceId: "device-b", escrowKeyVersion: 1)
+        world.seedMember(uid: joinerUid, pins: [macA.pin, macB.pin])
+        world.seedMember(uid: adminUid, pins: [], role: "admin")
+        for device in [macA, macB] {
+            for (slot, key) in [("v1", world.teamVaultKeyV1), ("slug", world.teamSlugKey)] {
+                try world.seedEnvelope(
+                    id: "\(joinerUid)_\(device.pin.deviceId)_1_\(slot)",
+                    uid: joinerUid,
+                    deviceId: device.pin.deviceId,
+                    escrowKeyVersion: 1,
+                    keySlot: slot,
+                    fingerprint: device.pin.publicKeyFingerprint,
+                    wrappedBy: adminUid,
+                    key: key,
+                    recipientPublicKey: device.publicKeyBase64
+                )
+            }
+        }
+
+        let ringB = InMemoryTeamVaultKeyRing()
+        let loaded = try await TeamVaultEnvelopeKeyRingLoader(
+            gateway: world.gateway,
+            keyRing: ringB,
+            escrowPrivateKey: macB
+        ).loadKeyRing(teamID: teamId, uid: joinerUid, deviceId: "device-b")
+
+        XCTAssertEqual(Set(loaded), [.vault(version: 1), .slug])
+        XCTAssertEqual(try ringB.key(teamId: teamId, slot: .vault(version: 1)), world.teamVaultKeyV1)
+        XCTAssertEqual(try ringB.key(teamId: teamId, slot: .slug), world.teamSlugKey)
+
+        // The other Mac's ring is untouched by this pass: a wrap is per DEVICE,
+        // and a loader that reached across would be reading a key it cannot open.
+        let ringA = InMemoryTeamVaultKeyRing()
+        _ = try await TeamVaultEnvelopeKeyRingLoader(
+            gateway: world.gateway,
+            keyRing: ringA,
+            escrowPrivateKey: macB
+        ).loadKeyRing(teamID: teamId, uid: joinerUid, deviceId: "device-a")
+        XCTAssertNil(
+            try ringA.key(teamId: teamId, slot: .vault(version: 1)),
+            "device-a's envelope cannot be opened with device-b's escrow key, so nothing lands"
+        )
     }
 }

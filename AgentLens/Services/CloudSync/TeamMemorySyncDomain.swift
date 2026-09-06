@@ -75,6 +75,58 @@ struct FirestoreTeamRosterReader: TeamRosterReading {
     }
 }
 
+/// Fills this device's key ring from the envelopes an admin addressed to it.
+///
+/// A seam for the same two reasons `TeamRosterReading` is one — a unit test
+/// cannot drive Firestore or a Keychain — and a seam AT ALL because
+/// `TeamVaultKeyDistributor.loadKeyRingFromEnvelopes` had **no production
+/// caller**. PR 2 wrote and tested the joiner's half of design §3(b)2 and
+/// nothing ever invoked it, so a member an admin had just promoted stayed
+/// keyless: `prepareTeam` logged `team_memory_sync_awaiting_slug_key` on every
+/// cycle for ever, and the envelope sitting on the server addressed to their own
+/// device was never read.
+///
+/// THE CYCLE IS THE RIGHT SEAM FOR IT, not launch. Promotion happens on ANOTHER
+/// Mac while this one is running, so a launch-time pickup would mean a member is
+/// admitted to a team and then waits for a relaunch — and a second Mac of the
+/// same account, enrolled and covered by an admin later, would wait for one too.
+/// The cycle already re-reads the roster every beat precisely because membership
+/// moves underneath it; the key ring moves on exactly the same schedule.
+protocol TeamKeyRingLoading: Sendable {
+    /// - Returns: the slots that landed, for logging. An empty result is the
+    ///   ordinary "nothing is addressed to this device yet" and never a failure.
+    func loadKeyRing(teamID: String, uid: String, deviceId: String) async throws -> [TeamKeySlot]
+}
+
+/// Production loader. It holds no Firebase handle of its own: the gateway is the
+/// one the cycle already uses, and `FirebaseTeamRosterCallableClient` resolves
+/// its `Functions` lazily inside a computed property, so constructing this on a
+/// Mac that never syncs a team costs nothing.
+///
+/// The callables are structurally unreachable from here — `loadKeyRingFromEnvelopes`
+/// invokes none of them — and are supplied only because the distributor is one
+/// value type carrying every capability. That is worth saying out loud: a pickup
+/// must never promote, rotate, abandon or stamp anything, and it does not.
+struct TeamVaultEnvelopeKeyRingLoader: TeamKeyRingLoading {
+    let gateway: CloudSyncFirestoreGateway
+    let keyRing: any TeamVaultKeyRing
+    /// Nil in production, where it resolves to this Mac's own Keychain escrow
+    /// key. A test supplies a real P-256 keypair: which device can open which
+    /// envelope is the property, and a mock of it would test nothing.
+    var escrowPrivateKey: (any TeamEscrowPrivateKeyProviding)?
+
+    func loadKeyRing(teamID: String, uid: String, deviceId: String) async throws -> [TeamKeySlot] {
+        try await TeamVaultKeyDistributor(
+            gateway: gateway,
+            uid: uid,
+            deviceId: deviceId,
+            keyRing: keyRing,
+            callables: FirebaseTeamRosterCallableClient(),
+            escrowPrivateKey: escrowPrivateKey ?? DeviceTeamEscrowPrivateKey(deviceId: deviceId)
+        ).loadKeyRingFromEnvelopes(teamId: teamID)
+    }
+}
+
 /// Resolves the checked-in `teamProjectId` an engine project publishes to a
 /// team, or nil when it publishes nothing to it.
 protocol TeamProjectLinkResolving: Sendable {
@@ -252,6 +304,7 @@ final class TeamMemorySyncDomain: TeamMemorySyncCycling, Sendable {
     private let keyRing: any TeamVaultKeyRing
     private let projectLinks: any TeamProjectLinkResolving
     private let pullService: any TeamMemoryPulling
+    private let keyRingLoader: any TeamKeyRingLoading
     private let watermarks: RemoteSyncWatermarkStore
 
     /// Team documents this PROCESS has already found under another member's
@@ -289,7 +342,8 @@ final class TeamMemorySyncDomain: TeamMemorySyncCycling, Sendable {
         rosterReader: (any TeamRosterReading)? = nil,
         keyRing: any TeamVaultKeyRing = KeychainTeamVaultKeyRing(),
         projectLinks: (any TeamProjectLinkResolving)? = nil,
-        pullService: (any TeamMemoryPulling)? = nil
+        pullService: (any TeamMemoryPulling)? = nil,
+        keyRingLoader: (any TeamKeyRingLoading)? = nil
     ) {
         self.store = store
         self.firestoreGateway = firestoreGateway
@@ -298,6 +352,8 @@ final class TeamMemorySyncDomain: TeamMemorySyncCycling, Sendable {
         self.projectLinks = projectLinks ?? RecordedRootTeamProjectLinkResolver(store: store)
         self.pullService = pullService
             ?? TeamMemoryPullService(store: store, firestoreGateway: firestoreGateway)
+        self.keyRingLoader = keyRingLoader
+            ?? TeamVaultEnvelopeKeyRingLoader(gateway: firestoreGateway, keyRing: keyRing)
         self.watermarks = RemoteSyncWatermarkStore(dbQueue: store.dbQueue)
     }
 
@@ -429,7 +485,7 @@ final class TeamMemorySyncDomain: TeamMemorySyncCycling, Sendable {
         for teamID in gate.optedInTeamIDs.sorted() {
             let prepared: (roster: TeamRosterSnapshot, slugKey: Data)?
             do {
-                prepared = try await prepareTeam(teamID: teamID, uid: uid, gate: gate)
+                prepared = try await prepareTeam(teamID: teamID, uid: uid, deviceId: deviceId, gate: gate)
             } catch {
                 failedTeams += 1
                 logTeamFailure("team_memory_sync_roster_failed", teamID: teamID, error: error)
@@ -519,6 +575,7 @@ final class TeamMemorySyncDomain: TeamMemorySyncCycling, Sendable {
     private func prepareTeam(
         teamID: String,
         uid: String,
+        deviceId: String,
         gate: TeamMemoryGateSnapshot
     ) async throws -> (roster: TeamRosterSnapshot, slugKey: Data)? {
         guard let roster = try await rosterReader.rosterSnapshot(teamID: teamID, uid: uid) else {
@@ -532,6 +589,32 @@ final class TeamMemorySyncDomain: TeamMemorySyncCycling, Sendable {
             remoteConfigTeamSyncAllowed: gate.remoteConfigTeamSyncAllowed,
             remoteConfigResolved: gate.remoteConfigResolved
         ) else { return nil }
+
+        // THE KEY PICKUP, AND WHY IT SITS EXACTLY HERE (design §3(b)2).
+        //
+        // The gate above has just said this member is ACTIVE on the roster,
+        // which is the state `promoteTeamMember` refuses to grant until an
+        // envelope exists for every pinned device at every retained generation.
+        // So "active, and this Mac holds no key" is not an ambiguous state: the
+        // envelopes are published and this device has simply never read them.
+        // Running the pickup on the far side of the gate is what keeps that
+        // true — a PENDING member has no envelopes yet and would spend a query
+        // on every beat learning so.
+        //
+        // ONLY WHEN A SLOT IS MISSING, so a healthy team's cycle costs nothing:
+        // in steady state both reads below hit the Keychain and return, and no
+        // Firestore query is issued at all. When one is missing this runs ONCE
+        // for this team this cycle, and the ring is re-read after it — which is
+        // what lets a member promoted between two beats start working without a
+        // relaunch, and a second Mac of the same account pick up its own wraps.
+        //
+        // A FAILED PICKUP IS NOT A FAILED TEAM. It is logged and the pass falls
+        // through to the same "no slug key, do nothing this cycle" it would have
+        // reached anyway; counting it as `failedTeams` would report an outage
+        // for a device that is merely still waiting.
+        if try ringIsMissingASlot(teamID: teamID, activeKeyVersion: roster.activeKeyVersion) {
+            await loadKeyRing(teamID: teamID, uid: uid, deviceId: deviceId)
+        }
 
         guard let slugKey = try TeamMemorySyncService.retainedKey(
             from: keyRing,
@@ -548,6 +631,45 @@ final class TeamMemorySyncDomain: TeamMemorySyncCycling, Sendable {
             return nil
         }
         return (roster, slugKey)
+    }
+
+    /// Does this device lack either of the two keys a full cycle needs — the
+    /// non-rotating slug key that NAMES documents, or the roster's active
+    /// generation that SEALS them?
+    ///
+    /// The active generation is included deliberately. A member who holds the
+    /// slug key but not `v(N+1)` reads the team space and contributes nothing,
+    /// which `pushTeamFacts` reports as `teamKeyVersionUnavailable` and the
+    /// operator sees as a permanently half-working team; the envelope that fixes
+    /// it is on the server, addressed to this device, from the moment the
+    /// rotating admin published it.
+    private func ringIsMissingASlot(teamID: String, activeKeyVersion: Int) throws -> Bool {
+        if try TeamMemorySyncService.retainedKey(from: keyRing, teamID: teamID, slot: .slug) == nil {
+            return true
+        }
+        return try TeamMemorySyncService.retainedKey(
+            from: keyRing,
+            teamID: teamID,
+            slot: .vault(version: activeKeyVersion)
+        ) == nil
+    }
+
+    private func loadKeyRing(teamID: String, uid: String, deviceId: String) async {
+        do {
+            let loaded = try await keyRingLoader.loadKeyRing(teamID: teamID, uid: uid, deviceId: deviceId)
+            guard !loaded.isEmpty else { return }
+            // Slot NAMES only — `v2`, `slug`. Never a key, never a byte count,
+            // and never an envelope id.
+            AppLogger.sync.info(
+                "team_memory_sync_key_ring_loaded",
+                metadata: [
+                    "team_id": teamID,
+                    "slots": loaded.map(\.rawValue).sorted().joined(separator: ",")
+                ]
+            )
+        } catch {
+            logTeamFailure("team_memory_sync_key_ring_load_failed", teamID: teamID, error: error)
+        }
     }
 
     private func logTeamFailure(_ event: String, teamID: String, error: Error) {
