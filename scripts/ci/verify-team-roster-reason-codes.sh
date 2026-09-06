@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Team-roster reason-code mirror gate (memory program D16 / P22).
 #
-# The eight team-roster callables attach a machine-readable `details.reason` to
+# The nine team-roster callables attach a machine-readable `details.reason` to
 # every refusal (`functions/src/teamRosterReasons.ts`) and the Mac app switches
 # on it (`TeamRosterReasonCode` in
 # `AgentLens/Services/CloudSync/TeamRosterDirectory.swift`). That replaced

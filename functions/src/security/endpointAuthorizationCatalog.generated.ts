@@ -3193,6 +3193,28 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "recordTeamSlugKeyId",
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck:
+      "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and records the founding slug-key fingerprint write-once, refusing any second, different value",
+    handlerModule: "teamSlugKeyRecord.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "recordTeamSlugKeyId rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["recordTeamSlugKeyId"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "redeemMissionApprovalAnswer",
     trigger: "callable",
     authMethod: "Firebase Auth with callable-level ownership checks",

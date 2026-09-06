@@ -902,11 +902,25 @@ struct PrivacyIndexingSettingsView: View {
                 callables: callables
             )
         }
+        // The FOUNDING half of design §3(b)1, and the one this wiring was missing
+        // outright: `bootstrapTeamKeys` had no production caller, so a created
+        // team never got a `teamVaultKey_v1` or a `teamSlugKey` on any Mac. Nil
+        // while signed out for the same reason as the two above.
+        let founderKeys: TeamFounderKeyBootstrapping? = uid.map { uid in
+            TeamVaultFounderKeyBootstrapper(
+                gateway: gateway,
+                uid: uid,
+                deviceId: deviceId,
+                keyRing: keyRing,
+                callables: callables
+            )
+        }
         return TeamMemorySectionModel(
             roster: FirestoreTeamRosterDirectory(gateway: gateway),
             admin: FirebaseTeamMemoryAdministrator(),
             rotator: rotator,
             joinerKeys: joinerKeys,
+            founderKeys: founderKeys,
             uidProvider: { accountManager.currentUID },
             personalGateProvider: {
                 MemoryDeviceSyncScope.current(account: accountManager, settings: settingsManager).isOpen
@@ -919,6 +933,12 @@ struct PrivacyIndexingSettingsView: View {
             },
             optInProvider: { settingsManager.memoryTeamSyncEnabledTeamIDs },
             optInWriter: { settingsManager.memoryTeamSyncEnabledTeamIDs = $0 },
+            // Read from the SAME Keychain ring the sync cycle and the
+            // distributor use, so the row cannot report a readiness the lane
+            // below it disagrees with.
+            keyReadinessProvider: { detail in
+                TeamKeyReadiness.resolve(ring: keyRing, detail: detail)
+            },
             // The eager half of the leave (PR 4 review §3). Nil only when this
             // settings surface was built without a runtime context, in which
             // case there is no sync lane to invalidate and the next cycle — on

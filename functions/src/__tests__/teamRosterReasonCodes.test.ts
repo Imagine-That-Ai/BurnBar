@@ -446,6 +446,30 @@ const REFUSALS: Array<{ name: string; reason: string; run: () => Promise<unknown
     },
   },
 
+  // ── The founding slug key ─────────────────────────────────────────────────
+  {
+    name: "a slugKeyId that is not a vault-key fingerprint",
+    reason: TEAM_ROSTER_REASON.INVALID_SLUG_KEY_ID.reason,
+    run: () => callCallable("recordTeamSlugKeyId", authed({ teamId: TEAM_ID, slugKeyId: "not-a-fingerprint" })),
+  },
+  {
+    name: "a missing slugKeyId, refused by the shared validator",
+    reason: TEAM_ROSTER_REASON.INVALID_SLUG_KEY_ID.reason,
+    run: () => callCallable("recordTeamSlugKeyId", authed({ teamId: TEAM_ID })),
+  },
+  {
+    name: "a second, DIFFERENT founding slug key",
+    reason: TEAM_ROSTER_REASON.DIFFERENT_SLUG_KEY_RECORDED.reason,
+    run: () => {
+      // The same fingerprint again is a no-op and succeeds — the founder's
+      // "Finish Setting Up Keys" retry reaches this call again — so only a
+      // DIFFERENT one is the refusal, and it is refused for ever.
+      seedTeam({ slugKeyId: `v1_${"a".repeat(32)}` });
+      seedMember(ADMIN_UID, { role: "admin", escrowDeviceFingerprints: [DEVICE] });
+      return callCallable("recordTeamSlugKeyId", authed({ teamId: TEAM_ID, slugKeyId: `v1_${"b".repeat(32)}` }));
+    },
+  },
+
   // ── Envelope coverage ─────────────────────────────────────────────────────
   {
     name: "more envelopes than one call may verify",

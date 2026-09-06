@@ -128,6 +128,51 @@ protocol TeamVaultKeyRing: Sendable {
     /// ``TeamVaultKeyDistributor/requireKey(teamId:slot:)`` would still hand
     /// out. A no-op when there is nothing pending.
     func deletePendingKey(teamId: String, slot: TeamKeySlot) throws
+
+    /// Promote a mint this Mac made — but ONLY if no other key has taken the
+    /// slot in the meantime, and decide that INSIDE the same critical section
+    /// that writes (D16 bootstrap-wiring ruling, clauses 2 and 3).
+    ///
+    /// ``promotePendingKey(teamId:slot:)`` answers "is there a pending key",
+    /// which is the wrong question for a FOUNDING slot. A founding generation is
+    /// immutable and create-only, so the slot may hold exactly one key for the
+    /// life of the team; and this Mac's pending mint is not evidence that it is
+    /// the one, because ``TeamVaultKeyDistributor/loadKeyRingFromEnvelopes(teamId:)``
+    /// can have adopted the team's REAL key into the active half — from another
+    /// Mac of this same account, whose envelopes carry this same `wrappedBy` and
+    /// so sail through the B4 claim. Promoting over that adoption is the silent,
+    /// permanent vault split: this Mac seals under its own mint while every
+    /// published envelope and every other device hold the adopted one.
+    ///
+    /// ADOPTION WINS, ALWAYS. A pending mint that disagrees with an occupied
+    /// active slot is DESTROYED, never promoted, and the caller is told so it
+    /// can say so out loud.
+    ///
+    /// AND THE CHECK IS NOT SEPARABLE FROM THE WRITE. The adoption runs on the
+    /// sync cycle (``TeamMemorySyncDomain``) while the Settings action runs this,
+    /// against the same Keychain ring, so a check made earlier in the bootstrap
+    /// — before the envelopes were published, say — can be true when it is made
+    /// and false by the time the promotion happens. Conformances MUST read the
+    /// active half and write it under one lock.
+    func promotePendingMintUnlessAdopted(teamId: String, slot: TeamKeySlot) throws -> TeamKeyMintPromotion
+}
+
+/// What ``TeamVaultKeyRing/promotePendingMintUnlessAdopted(teamId:slot:)`` did
+/// with the mint this Mac was holding.
+enum TeamKeyMintPromotion: Equatable, Sendable {
+    /// The active half was empty and this Mac's mint now occupies it — the
+    /// ordinary first-time founding, and the resume of one.
+    case promoted
+    /// The active half already held these exact bytes: an earlier press of the
+    /// same idempotent action already promoted them. Nothing changed.
+    case alreadyActive
+    /// The active half held a DIFFERENT key — one adopted from the team's
+    /// published envelopes — so the local mint was destroyed. The member
+    /// continues with the adopted key; re-minting is never the remedy.
+    case discardedInFavourOfAdoptedKey
+    /// There was no pending mint at all. Nothing to promote and nothing to
+    /// discard.
+    case nothingPending
 }
 
 /// Production ring: `CloudVaultKeyStore` under its own Keychain service, so a
@@ -146,6 +191,25 @@ protocol TeamVaultKeyRing: Sendable {
 struct KeychainTeamVaultKeyRing: TeamVaultKeyRing {
     static let keychainService = "com.openburnbar.team-vault-key"
 
+    /// Serialises every WRITE to this ring across the whole process, so
+    /// ``promotePendingMintUnlessAdopted(teamId:slot:)`` can read the active
+    /// half and write it as one indivisible step.
+    ///
+    /// PROCESS-WIDE AND STATIC BECAUSE THE RACERS ARE DIFFERENT INSTANCES. The
+    /// ring is a value type, constructed fresh at each call site: the Settings
+    /// founding action builds one, `TeamMemorySyncDomain`'s cycle holds another,
+    /// and it is precisely those two — a bootstrap promoting, an envelope pickup
+    /// adopting — that must not interleave. A per-instance lock would guard
+    /// nothing they share. The Keychain items themselves are the shared state,
+    /// and this is the only writer of them in this process.
+    ///
+    /// READS ARE DELIBERATELY UNLOCKED. `key`/`pendingKey` answer a question
+    /// that is stale the instant it returns however it is taken, so locking them
+    /// would buy no guarantee and would let a slow Keychain read block the
+    /// promotion that is the whole point of the lock. Every decision that
+    /// depends on a read being still-true takes the lock and re-reads inside it.
+    private static let writeLock = NSLock()
+
     private let store: CloudVaultKeyStore
 
     init(service: String = KeychainTeamVaultKeyRing.keychainService) {
@@ -157,7 +221,9 @@ struct KeychainTeamVaultKeyRing: TeamVaultKeyRing {
     }
 
     func store(_ keyData: Data, teamId: String, slot: TeamKeySlot) throws {
-        try store.saveKey(keyData, uid: Self.account(teamId: teamId, slot: slot))
+        try Self.writeLock.withLock {
+            try store.saveKey(keyData, uid: Self.account(teamId: teamId, slot: slot))
+        }
     }
 
     func pendingKey(teamId: String, slot: TeamKeySlot) throws -> Data? {
@@ -165,16 +231,39 @@ struct KeychainTeamVaultKeyRing: TeamVaultKeyRing {
     }
 
     func storePending(_ keyData: Data, teamId: String, slot: TeamKeySlot) throws {
-        try store.saveKey(keyData, uid: Self.pendingAccount(teamId: teamId, slot: slot))
+        try Self.writeLock.withLock {
+            try store.saveKey(keyData, uid: Self.pendingAccount(teamId: teamId, slot: slot))
+        }
     }
 
     func promotePendingKey(teamId: String, slot: TeamKeySlot) throws {
-        guard let pending = try pendingKey(teamId: teamId, slot: slot) else { return }
-        try store(pending, teamId: teamId, slot: slot)
+        try Self.writeLock.withLock {
+            guard let pending = try store.loadKey(uid: Self.pendingAccount(teamId: teamId, slot: slot)) else { return }
+            try store.saveKey(pending, uid: Self.account(teamId: teamId, slot: slot))
+        }
     }
 
     func deletePendingKey(teamId: String, slot: TeamKeySlot) throws {
-        try store.deleteKey(uid: Self.pendingAccount(teamId: teamId, slot: slot))
+        try Self.writeLock.withLock {
+            try store.deleteKey(uid: Self.pendingAccount(teamId: teamId, slot: slot))
+        }
+    }
+
+    func promotePendingMintUnlessAdopted(teamId: String, slot: TeamKeySlot) throws -> TeamKeyMintPromotion {
+        try Self.writeLock.withLock {
+            let pendingAccount = Self.pendingAccount(teamId: teamId, slot: slot)
+            let activeAccount = Self.account(teamId: teamId, slot: slot)
+            guard let pending = try store.loadKey(uid: pendingAccount) else { return .nothingPending }
+            // THE RE-READ IS THE POINT. Inside the lock, so an adoption cannot
+            // land between deciding and writing.
+            guard let active = try store.loadKey(uid: activeAccount) else {
+                try store.saveKey(pending, uid: activeAccount)
+                return .promoted
+            }
+            if active == pending { return .alreadyActive }
+            try store.deleteKey(uid: pendingAccount)
+            return .discardedInFavourOfAdoptedKey
+        }
     }
 
     private static func account(teamId: String, slot: TeamKeySlot) -> String {
@@ -233,6 +322,23 @@ protocol TeamRosterCallableInvoking: Sendable {
     /// touched yet, which is precisely the claim N1 exists to stop the roster
     /// making.
     func recordTeamRewrapComplete(teamId: String, keyVersion: Int, rewrapJobId: String) async throws
+
+    /// Record the founding `teamSlugKey`'s FINGERPRINT on the roster — never the
+    /// key (D16 bootstrap wiring).
+    ///
+    /// The B6 ruling promotes an envelope-sourced slot to the ACTIVE ring only
+    /// when the roster names it, and `.slug` is named by exactly this field. It
+    /// was seeded `null` by `createTeam` and written by nothing, so every
+    /// joiner's slug key landed PENDING — invisible to
+    /// ``TeamMemorySyncService/retainedKey(from:teamID:slot:)`` — and no member
+    /// but the founder could derive a document id. This is the write the design
+    /// assigned to PR 4 and PR 4 did not ship.
+    ///
+    /// Write-once server side: the same fingerprint again is a no-op, a
+    /// different one is refused for ever. The slug key names every document this
+    /// team will ever have, and a second one would address the whole space
+    /// somewhere else.
+    func recordTeamSlugKeyId(teamId: String, slugKeyId: String) async throws
 }
 
 // AUDIT(@unchecked Sendable): wraps a non-Sendable Firebase `Functions` instance;
@@ -278,6 +384,13 @@ final class FirebaseTeamRosterCallableClient: TeamRosterCallableInvoking, @unche
             "rewrapJobId": rewrapJobId
         ])
     }
+
+    func recordTeamSlugKeyId(teamId: String, slugKeyId: String) async throws {
+        _ = try await functions.httpsCallable("recordTeamSlugKeyId").call([
+            "teamId": teamId,
+            "slugKeyId": slugKeyId
+        ])
+    }
 }
 
 /// Opens envelopes addressed to THIS device. The escrow private key is
@@ -309,6 +422,14 @@ enum TeamVaultKeyDistributionError: LocalizedError, Equatable {
     /// (`commitGuardedByTeamState` -> `aborted`). Retryable by construction;
     /// see the doc comment on ``TeamVaultKeyDistributor/rotateTeamKey(teamId:activeKeyVersion:newKeyVersion:activeMemberUids:rewrapWorker:rewrapJobId:)``.
     case rosterStateMovedInFlight(teamId: String, operation: String)
+    /// The roster already names a DIFFERENT founding `slugKeyId`, so another
+    /// founding owns this generation and this pass published nothing (D16
+    /// founding-claim ruling, clause 2).
+    case foundingGenerationClaimedElsewhere(teamId: String)
+    /// The postcondition that makes the founding invariant enforced rather than
+    /// argued: this pass published wraps of one key for a founding slot and
+    /// ended holding a different one (clause 1). Refused rather than recorded.
+    case foundingGenerationForked(teamId: String, slot: String)
     case malformedEnvelope(envelopeId: String)
 
     var errorDescription: String? {
@@ -348,6 +469,19 @@ enum TeamVaultKeyDistributionError: LocalizedError, Equatable {
             commit a decision computed against stale state. Nothing was published beyond the envelopes,
             which are already claimed and will be reused. Re-read the roster and retry.
             """
+        case .foundingGenerationClaimedElsewhere(let teamId):
+            return """
+            Team \(teamId)'s founding keys were already claimed on the roster under a different key, so this Mac \
+            published nothing and threw away the keys it had minted. One generation may carry exactly one key. \
+            Finish the founding on the Mac that claimed it; this Mac receives the team's keys like any other \
+            device.
+            """
+        case .foundingGenerationForked(let teamId, let slot):
+            return """
+            Team \(teamId)'s \(slot) key ring no longer holds the key this pass published wraps of, so the \
+            founding was not completed and no fingerprint was recorded for it. The published envelopes and the \
+            roster still name one key; run the setup again and this Mac will pick that key up.
+            """
         case .malformedEnvelope(let envelopeId):
             return "Team key envelope \(envelopeId) is malformed and was not opened."
         }
@@ -374,8 +508,43 @@ struct TeamKeyBootstrap: Equatable, Sendable {
     /// Opaque `vaultKeyID`-style fingerprint of the slug key. Safe to publish:
     /// it lets a client notice it holds the wrong slug key without the server
     /// learning the key.
+    ///
+    /// It is a fingerprint of the key this pass CLAIMED on the roster and then
+    /// published wraps of — one value, used for the claim, returned here, and
+    /// checked against the ring before the pass completes (D16 founding-claim
+    /// ruling). Read-back and remembered used to be able to differ; they cannot
+    /// any more, because the pass refuses to finish when they do rather than
+    /// choosing between them.
     let slugKeyId: String
     let envelopeIds: [String]
+    /// Founding slots whose LOCAL mint was thrown away because the team's real
+    /// key had already arrived from the published envelopes.
+    ///
+    /// Empty on every ordinary founding. When it is not empty the pass still
+    /// SUCCEEDED — this Mac holds the team's key and can seal — but the member
+    /// is owed the truth that the keys they made here were not the ones adopted,
+    /// so the surface says so rather than letting it look like a plain success
+    /// (ruling clause 4). Their next action is to continue, never to re-mint.
+    ///
+    /// A DISCARD REPORTED HERE IS ALWAYS OF A MINT NOTHING PUBLISHED. The
+    /// discarded key was shadowed by the adopted one before the pass resolved
+    /// what to publish, so no envelope carries it. A mint that WAS published and
+    /// then lost its slot does not reach this field: it raises
+    /// ``TeamVaultKeyDistributionError/foundingGenerationForked(teamId:slot:)``
+    /// and the pass does not complete.
+    let discardedLocalMintSlots: [TeamKeySlot]
+
+    init(
+        teamKeyVersion: Int,
+        slugKeyId: String,
+        envelopeIds: [String],
+        discardedLocalMintSlots: [TeamKeySlot] = []
+    ) {
+        self.teamKeyVersion = teamKeyVersion
+        self.slugKeyId = slugKeyId
+        self.envelopeIds = envelopeIds
+        self.discardedLocalMintSlots = discardedLocalMintSlots
+    }
 }
 
 /// Writes and reads `team_key_envelopes/{teamId}/envelopes/{envelopeId}`, and
@@ -438,30 +607,213 @@ struct TeamVaultKeyDistributor: Sendable {
     /// published, so a bootstrap interrupted between the two writes resumes with
     /// the same `v1` and the same slug key instead of stranding a team whose
     /// published envelopes carry keys this device has thrown away.
+    ///
+    /// ONE GENERATION, ONE KEY — THE INVARIANT THIS METHOD EXISTS TO KEEP (D16
+    /// founding-claim ruling, HIGH, third security round):
+    ///
+    /// > For any team key generation, the published envelopes, this device's key
+    /// > ring, and the roster's recorded fingerprint must all name exactly ONE
+    /// > key. No path may publish a wrap for a key that is not the key the ring
+    /// > and the roster end up naming.
+    ///
+    /// Two earlier rounds fixed two ways of breaking it and left a third,
+    /// because both fixes acted on the RING after the envelopes were already on
+    /// the server. Round 1 stopped a stale mint being promoted over an adopted
+    /// key; round 2 made the roster's `slugKeyId` a genuine in-transaction
+    /// compare-and-set. Neither could help with what this pass had already
+    /// published: it wrapped the mint it was holding when `selfWrapKeys` began,
+    /// then discarded that mint and recorded the adopted key, so ring and roster
+    /// agreed with each other and disagreed with every envelope. And two Macs
+    /// starting from an EMPTY team both passed the fork pre-check honestly —
+    /// neither had written anything when it asked — and both published a rival
+    /// founding into create-only ids that can never be rewritten.
+    ///
+    /// THE ONE MECHANISM: **claim the generation before publishing a byte of
+    /// it.** The roster's write-once `slugKeyId` is the founding generation's
+    /// claim token, and this pass now resolves both founding keys, claims the
+    /// generation for the key it is about to publish, and only then writes an
+    /// envelope. That single reordering answers all three rounds with one rule
+    /// rather than three guards:
+    ///
+    ///   * A second Mac carrying a rival mint is refused AT THE CLAIM, before it
+    ///     reaches a document — round 1's fork, caught a step earlier and
+    ///     without depending on what happens to be in the ring.
+    ///   * Two Macs from an empty team cannot both win a write-once
+    ///     compare-and-set, so exactly one of them publishes — round 2's
+    ///     transactionality is what makes this true, promoted from a defensive
+    ///     fix to the load-bearing one.
+    ///   * And the envelopes are written from the RESOLVED bytes the claim
+    ///     named, not from a fresh ring read, so an adoption landing
+    ///     mid-publication cannot change what gets published.
+    ///
+    /// THE WINDOW IS CLOSED, NOT NARROWED. After a successful claim the roster
+    /// names this pass's key; for a DIFFERENT key to reach the active ring, some
+    /// device would have had to publish an envelope for this generation without
+    /// winning the claim, which no path does. The mid-publication adoption that
+    /// remains possible is this pass's own envelopes coming back through the
+    /// sync cycle, which is the same key by construction.
+    ///
+    /// AND IT IS ENFORCED, NOT ARGUED. A construction argument is worth only as
+    /// much as the next refactor, so the pass ALSO checks, before it returns,
+    /// that the key its ring holds for each founding slot is the key it
+    /// published — and refuses with
+    /// ``TeamVaultKeyDistributionError/foundingGenerationForked(teamId:slot:)``
+    /// rather than recording a fingerprint for a key the envelopes do not carry.
+    /// That is what separates the benign discard from the fatal one: a stale
+    /// mint this pass never published is thrown away and reported, while the
+    /// mint this pass DID publish surviving into a disagreement stops the pass.
+    ///
+    /// The ring-level rule from round 1 stays exactly where it was —
+    /// ``TeamVaultKeyRing/promotePendingMintUnlessAdopted(teamId:slot:)``
+    /// re-reads the active half inside the lock it writes under — because it is
+    /// the same rule stated at the ring: adoption wins over a local mint.
     func bootstrapTeamKeys(teamId: String) async throws -> TeamKeyBootstrap {
-        let slugKey = try mintKey(teamId: teamId, slot: .slug)
-        _ = try mintKey(teamId: teamId, slot: .vault(version: 1))
+        // 1. RESOLVE. Mint or reuse, and hold the exact bytes — every later step
+        //    in this pass is about THESE keys, and a second ring read could
+        //    silently answer with a different one.
+        let resolved: [TeamKeySlot: Data] = [
+            .slug: try mintKey(teamId: teamId, slot: .slug),
+            .vault(version: 1): try mintKey(teamId: teamId, slot: .vault(version: 1))
+        ]
+        guard let slugKey = resolved[.slug] else {
+            throw TeamVaultKeyDistributionError.missingKeyForSlot(teamId: teamId, slot: TeamKeySlot.slug.rawValue)
+        }
+        let slugKeyId = try CloudVaultCrypto.vaultKeyID(for: slugKey)
 
-        // BOTH slots are minted-in-this-pass, unconditionally (PR 2 review
-        // round 3, B6). The question the guard asks is "has the team already
-        // published this generation", and at bootstrap the answer is no for
-        // both: this Mac generated them moments ago and no other writer can
-        // legitimately hold their bytes. Deriving the answer from the ring's
-        // PENDING flag instead — which is what this used to do — asked a
-        // different question ("is this key still unpromoted on THIS Mac"), and
-        // a ring populated from envelopes could answer it wrongly.
+        // 2. CLAIM, BEFORE A SINGLE ENVELOPE. Write-once and decided inside the
+        //    transaction that writes (`functions/src/teamSlugKeyRecord.ts`), so
+        //    this is the point two foundings are serialised at — the only point
+        //    that exists before either of them has written anything, and
+        //    therefore the only one a pre-check could never stand in for.
+        //
+        //    The slug key alone is claimed and it covers BOTH founding slots:
+        //    they are minted together in this one pass, and a Mac that did not
+        //    win the slug claim publishes neither.
+        try await claimFoundingGeneration(teamId: teamId, slugKeyId: slugKeyId)
+
+        // 3. PUBLISH THE CLAIMED KEYS. `keys:` is what makes "the envelopes
+        //    carry the key that was claimed" structural rather than incidental:
+        //    the wrap pass uses these bytes and never re-reads the ring, so an
+        //    adoption landing between the claim and the last `setData` cannot
+        //    change what is written.
+        //
+        //    BOTH slots are minted-in-this-pass, unconditionally (PR 2 review
+        //    round 3, B6). The question that guard asks is "has the team already
+        //    published this generation", and at bootstrap the answer is no for
+        //    both. Deriving it from the ring's PENDING flag instead — which is
+        //    what this used to do — asked a different question ("is this key
+        //    still unpromoted on THIS Mac"), and a ring populated from envelopes
+        //    could answer it wrongly.
         let publication = try await selfWrapKeys(
             teamId: teamId,
             slots: [.vault(version: 1), .slug],
-            mintedInThisPass: [.vault(version: 1), .slug]
+            mintedInThisPass: [.vault(version: 1), .slug],
+            keys: resolved
         )
-        try keyRing.promotePendingKey(teamId: teamId, slot: .vault(version: 1))
-        try keyRing.promotePendingKey(teamId: teamId, slot: .slug)
+
+        // 4. PROMOTE, still under round 1's rule: adoption wins over a local
+        //    mint, decided inside the lock that writes.
+        var discarded: [TeamKeySlot] = []
+        for slot in [TeamKeySlot.vault(version: 1), .slug] {
+            switch try keyRing.promotePendingMintUnlessAdopted(teamId: teamId, slot: slot) {
+            case .discardedInFavourOfAdoptedKey:
+                discarded.append(slot)
+                // ERROR, not notice: nothing is broken now, but a founding pass
+                // that found the team already keyed by another of this account's
+                // Macs is a state worth being able to find in a log after the
+                // fact.
+                Self.logger.error(
+                    """
+                    Discarded this Mac's local founding mint for \(slot.rawValue, privacy: .public) in team \
+                    \(teamId, privacy: .public): the team's key had already arrived from its published envelopes. \
+                    The adopted key stands; nothing was re-minted.
+                    """
+                )
+            case .promoted, .alreadyActive, .nothingPending:
+                continue
+            }
+        }
+
+        // 5. PROVE IT. The three names — envelopes, ring, roster — must be one
+        //    key, and this is the line that will not let them be two.
+        try assertFoundingGenerationIsWhole(teamId: teamId, published: resolved)
         return TeamKeyBootstrap(
             teamKeyVersion: 1,
-            slugKeyId: try CloudVaultCrypto.vaultKeyID(for: slugKey),
-            envelopeIds: publication.envelopeIds
+            slugKeyId: slugKeyId,
+            envelopeIds: publication.envelopeIds,
+            discardedLocalMintSlots: discarded
         )
+    }
+
+    /// Take the founding generation on the roster, or refuse the whole pass.
+    ///
+    /// The roster's `slugKeyId` is write-once and its refusal is decided inside
+    /// the transaction that writes it, so exactly one of any number of
+    /// simultaneous foundings comes back successful. THE SAME fingerprint is a
+    /// no-op that succeeds — the "Finish Setting Up Keys" recovery re-runs this
+    /// whole idempotent bootstrap and reaches here again, and a Mac that adopted
+    /// the team's key claims the fingerprint the team already records.
+    ///
+    /// A DIFFERENT fingerprint means another founding owns this generation. The
+    /// local mints are DESTROYED rather than parked: nothing else in the world
+    /// holds those bytes, no envelope was published for them, and leaving them
+    /// would let a later pass find them through `requireKey`'s pending fallback
+    /// and publish the rival founding this refusal just prevented. Everything
+    /// else — a transport failure, an App Check refusal — is rethrown untouched,
+    /// because the generation is still UNCLAIMED and this Mac may try for it
+    /// again with the very same keys.
+    private func claimFoundingGeneration(teamId: String, slugKeyId: String) async throws {
+        do {
+            try await callables.recordTeamSlugKeyId(teamId: teamId, slugKeyId: slugKeyId)
+        } catch {
+            guard TeamRosterReasonCode.read(from: error as NSError) == .differentSlugKeyRecorded else { throw error }
+            for slot in [TeamKeySlot.vault(version: 1), .slug] {
+                try keyRing.deletePendingKey(teamId: teamId, slot: slot)
+            }
+            Self.logger.error(
+                """
+                Team \(teamId, privacy: .public) already records a different founding slug key, so this Mac's \
+                founding was refused before any envelope was written and the keys it had minted were destroyed. \
+                The founding stands on whichever Mac claimed it.
+                """
+            )
+            throw TeamVaultKeyDistributionError.foundingGenerationClaimedElsewhere(teamId: teamId)
+        }
+    }
+
+    /// The postcondition that turns the invariant from an argument into a check:
+    /// every founding slot this pass published a wrap for must be the slot's key
+    /// in the ring when the pass ends.
+    ///
+    /// It fires on exactly one thing — the ring moving to a key the envelopes do
+    /// not carry — and it is the ONLY difference between the benign discard and
+    /// the fatal one. A stale mint that was shadowed at resolve time by an
+    /// adopted key was never published, so the ring ends on the published key
+    /// and this passes; a mint that WAS published and then lost the slot leaves
+    /// the ring naming something no envelope carries, and this stops the pass
+    /// before a fingerprint for it can be recorded.
+    ///
+    /// REFUSING LEAVES A REPAIRABLE STATE, which is why it is better than
+    /// carrying on. The envelopes and the roster still name one key; the ring is
+    /// the one of the three that is neither immutable nor shared, and the next
+    /// key pickup ACTIVEs the published key over whatever displaced it.
+    private func assertFoundingGenerationIsWhole(teamId: String, published: [TeamKeySlot: Data]) throws {
+        // Sorted, so the slot the refusal NAMES is the same one on every run: an
+        // error whose payload depends on dictionary iteration order is an error
+        // nobody can assert on or grep a log for.
+        for slot in published.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let publishedKey = published[slot] else { continue }
+            guard try requireKey(teamId: teamId, slot: slot) == publishedKey else {
+                Self.logger.error(
+                    """
+                    Team \(teamId, privacy: .public) ended its founding holding a \
+                    \(slot.rawValue, privacy: .public) key its own published envelopes do not carry. Refusing to \
+                    complete the founding; the envelopes and the roster still name one key.
+                    """
+                )
+                throw TeamVaultKeyDistributionError.foundingGenerationForked(teamId: teamId, slot: slot.rawValue)
+            }
+        }
     }
 
     /// Wrap team keys for THIS account's own devices — a founder bootstrapping,
@@ -495,16 +847,26 @@ struct TeamVaultKeyDistributor: Sendable {
     /// for an active admin at any slot. An ADMIN calling this entry point is
     /// unconstrained for the same reason — `isTeamAdmin(teamId)` is the first
     /// disjunct — which is what makes the founder bootstrap below legal.
+    ///
+    /// `keys` is the founding bootstrap's seam and nobody else's: it hands down
+    /// the exact bytes the roster claim named, so the envelopes this writes
+    /// cannot drift onto a key that reached the ring after the claim (D16
+    /// founding-claim ruling, clause 1). Every other caller passes nil and the
+    /// wrap pass reads the ring, which is right for them — a joiner hand-off or
+    /// a second-Mac enrolment distributes generations the roster already
+    /// recorded, and the ring is the authority on those.
     func selfWrapKeys(
         teamId: String,
         slots: [TeamKeySlot],
-        mintedInThisPass: Set<TeamKeySlot> = []
+        mintedInThisPass: Set<TeamKeySlot> = [],
+        keys: [TeamKeySlot: Data]? = nil
     ) async throws -> TeamKeyEnvelopePublication {
         try await wrapKeys(
             teamId: teamId,
             recipientUids: [uid],
             slots: slots,
-            mintedInThisPass: mintedInThisPass
+            mintedInThisPass: mintedInThisPass,
+            keys: keys
         )
     }
 
@@ -1101,19 +1463,30 @@ struct TeamVaultKeyDistributor: Sendable {
     /// envelope, which touches the rules `hasOnly` list and the callable's field
     /// allowlist; that is PR 4 design work, named as a known risk in the PR body
     /// rather than attempted here.)
+    ///
+    /// WHERE THE KEY BYTES COME FROM IS THE CALLER'S CALL (D16 founding-claim
+    /// ruling, clause 1). `keys` is normally nil and phase 1 reads the ring,
+    /// which is the authority for every generation the roster already recorded.
+    /// The founding bootstrap passes the bytes it CLAIMED instead, because
+    /// between its claim and its last `setData` the sync cycle can move the ring
+    /// underneath it, and an envelope wrapping something other than the claimed
+    /// key is the exact defect the claim exists to prevent. Resolving once and
+    /// publishing from that resolution is what makes "the envelopes carry the
+    /// claimed key" a property of the code rather than of the timing.
     private func wrapKeys(
         teamId: String,
         recipientUids: [String],
         slots: [TeamKeySlot],
-        mintedInThisPass: Set<TeamKeySlot>
+        mintedInThisPass: Set<TeamKeySlot>,
+        keys: [TeamKeySlot: Data]? = nil
     ) async throws -> TeamKeyEnvelopePublication {
         // PHASE 1 — resolve EVERY recipient's targets and EVERY key. An envelope
         // is create-only and immutable, so a half-written set could never be
         // repaired; verifying first means a rejected fingerprint, a missing
         // escrow key or an unheld slot produces zero documents rather than a
         // permanently broken id set.
-        let keysBySlot = try slots.reduce(into: [TeamKeySlot: Data]()) { keys, slot in
-            keys[slot] = try requireKey(teamId: teamId, slot: slot)
+        let keysBySlot = try slots.reduce(into: [TeamKeySlot: Data]()) { resolved, slot in
+            resolved[slot] = try keys?[slot] ?? requireKey(teamId: teamId, slot: slot)
         }
         var plan: [(recipientUid: String, target: TeamWrapTarget, slot: TeamKeySlot, envelopeId: String)] = []
         for recipientUid in recipientUids {

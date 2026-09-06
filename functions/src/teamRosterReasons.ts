@@ -12,7 +12,7 @@
  * named this file's `details.reason` as the real fix.
  *
  * THE CONTRACT. Every `HttpsError` thrown by `./teamRoster.ts`,
- * `./teamRosterState.ts`, `./teamKeyEnvelopes.ts` and
+ * `./teamRosterState.ts`, `./teamKeyEnvelopes.ts`, `./teamSlugKeyRecord.ts` and
  * `./callables/teamRosterCallables.ts` is raised through {@link rosterError} and
  * carries `details: { reason: <one of the codes below> }`. The status code and
  * the human message are UNCHANGED — the message is what an operator reads in a
@@ -20,8 +20,8 @@
  * it must never be the thing a client switches on.
  *
  * WHAT IS AND IS NOT COVERED. Every refusal the ROSTER AUTHORITY decides — the
- * eight callables, their payload validation, the envelope-coverage helpers and
- * the state guard — carries a reason. The generic validators in
+ * nine callables, their payload validation, the envelope-coverage helpers, the
+ * founding slug-key recorder and the state guard — carries a reason. The generic validators in
  * `./callables/shared/validators.ts` are shared with the whole callable surface
  * and still raise bare `HttpsError`s; the roster callables therefore re-raise
  * them through {@link withRosterReason} so that a malformed roster payload is
@@ -185,6 +185,20 @@ export const TEAM_ROSTER_REASON = {
   ACTIVE_MEMBER_HAS_NO_PINNED_DEVICE: { code: "failed-precondition", reason: "ACTIVE_MEMBER_HAS_NO_PINNED_DEVICE" },
   /** `recordTeamRewrapComplete`: the completion names a generation that is not current. */
   REWRAP_KEY_VERSION_NOT_CURRENT: { code: "failed-precondition", reason: "REWRAP_KEY_VERSION_NOT_CURRENT" },
+
+  // ── The founding slug key (./teamSlugKeyRecord.ts) ────────────────────────
+  /** `recordTeamSlugKeyId`: `slugKeyId` is not a `CloudVaultCrypto.vaultKeyID` digest. */
+  INVALID_SLUG_KEY_ID: { code: "invalid-argument", reason: "INVALID_SLUG_KEY_ID" },
+  /**
+   * `recordTeamSlugKeyId`: this team already records a DIFFERENT fingerprint.
+   *
+   * Not "already recorded" — recording the same value again is a no-op and
+   * succeeds, because the founder's "Finish Setting Up Keys" retry re-runs the
+   * whole idempotent bootstrap and reaches that call again. Only a second,
+   * different founding is refused, and it is refused for ever: the slug key
+   * names every document the team has, so a second one would orphan all of them.
+   */
+  DIFFERENT_SLUG_KEY_RECORDED: { code: "failed-precondition", reason: "DIFFERENT_SLUG_KEY_RECORDED" },
 
   // ── Envelope coverage (./teamKeyEnvelopes.ts) ─────────────────────────────
   /** More envelopes are required than one call may verify. */

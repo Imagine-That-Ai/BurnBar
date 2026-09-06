@@ -27,6 +27,24 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
         set { state.beforeNextTransaction = newValue }
     }
 
+    /// One-shot hook fired immediately before the next document write lands.
+    /// Lets a test interleave a second writer INSIDE a multi-write pass — see
+    /// `FakeDocumentStore.beforeNextDocumentWrite`.
+    var beforeNextDocumentWrite: (@Sendable () -> Void)? {
+        get { store.beforeNextDocumentWrite }
+        set { store.beforeNextDocumentWrite = newValue }
+    }
+
+    /// The same one-shot seam for a second writer that must be AWAITED — a whole
+    /// second client pass, rather than a synchronous poke at this store. Fired
+    /// from the async `setData` path, so it lands in the same window the
+    /// synchronous hook does: after everything the interrupted pass decided up
+    /// front, before the first document it writes.
+    var beforeNextDocumentWriteAsync: (@Sendable () async -> Void)? {
+        get { store.beforeNextDocumentWriteAsync }
+        set { store.beforeNextDocumentWriteAsync = newValue }
+    }
+
     /// Number of batch commits that have been executed.
     var batchCommitCount: Int { state.batchCommitCount }
 
@@ -178,6 +196,9 @@ private final class FakeDocumentStore: Sendable {
     private let box = OSAllocatedUnfairLock<[String: [String: Any]]>(uncheckedState: [:])
     private let aggregateSumErrorBox = OSAllocatedUnfairLock<Error?>(uncheckedState: nil)
     private let queriedCollectionPathsBox = OSAllocatedUnfairLock<[String]>(uncheckedState: [])
+    private let beforeNextWriteBox = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(uncheckedState: nil)
+    private let beforeNextAsyncWriteBox =
+        OSAllocatedUnfairLock<(@Sendable () async -> Void)?>(uncheckedState: nil)
 
     /// Every collection path a query actually resolved through the gateway, in
     /// order. Recorded at snapshot construction — the single funnel every
@@ -217,11 +238,56 @@ private final class FakeDocumentStore: Sendable {
         }
     }
 
+    /// Fires ONCE, immediately before the next document write lands, and then
+    /// disarms itself.
+    ///
+    /// The seam a test needs to stage a genuinely CONCURRENT writer: a hook that
+    /// runs while a multi-write pass is mid-flight, after everything it decided
+    /// up front and before everything it decides at the end. The team key lane
+    /// uses it to land the sync cycle's envelope pickup in the middle of a
+    /// founding publication, which is the exact window the founding promotion's
+    /// re-check exists to cover.
+    var beforeNextDocumentWrite: (@Sendable () -> Void)? {
+        get { beforeNextWriteBox.withLockUnchecked { $0 } }
+        set { beforeNextWriteBox.withLockUnchecked { $0 = newValue } }
+    }
+
+    /// The awaitable sibling of ``beforeNextDocumentWrite``. See
+    /// `CloudSyncFirestoreFakeGateway.beforeNextDocumentWriteAsync`.
+    var beforeNextDocumentWriteAsync: (@Sendable () async -> Void)? {
+        get { beforeNextAsyncWriteBox.withLockUnchecked { $0 } }
+        set { beforeNextAsyncWriteBox.withLockUnchecked { $0 = newValue } }
+    }
+
+    /// Taken OUTSIDE `box` for the same reason the synchronous one is: the hook
+    /// is a whole second client pass and will read and write this same store.
+    func consumeBeforeNextAsyncWrite() async {
+        let hook = beforeNextAsyncWriteBox.withLockUnchecked { hook -> (@Sendable () async -> Void)? in
+            let taken = hook
+            hook = nil
+            return taken
+        }
+        await hook?()
+    }
+
+    /// Taken OUTSIDE `box`, so a hook is free to read or write this same store
+    /// without deadlocking on a lock the write it interrupts already holds.
+    private func consumeBeforeNextWrite() {
+        let hook = beforeNextWriteBox.withLockUnchecked { hook -> (@Sendable () -> Void)? in
+            let taken = hook
+            hook = nil
+            return taken
+        }
+        hook?()
+    }
+
     func setDocumentData(_ data: [String: Any], at path: String) {
+        consumeBeforeNextWrite()
         box.withLockUnchecked { $0[path] = data }
     }
 
     func mergeDocumentData(_ data: [String: Any], at path: String) {
+        consumeBeforeNextWrite()
         box.withLockUnchecked { documents in
             var existing = documents[path] ?? [:]
             for (key, value) in data {
@@ -398,6 +464,7 @@ private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway, Send
 
     func setData(_ data: [String: Any], merge: Bool) async throws {
         if let error = nextError() { throw error }
+        await store.consumeBeforeNextAsyncWrite()
         let normalized = normalizeFieldValues(data)
         if merge {
             store.mergeDocumentData(normalized, at: path)

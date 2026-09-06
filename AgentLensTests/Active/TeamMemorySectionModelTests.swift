@@ -134,6 +134,30 @@ final class TeamMemorySectionModelTests: XCTestCase {
         }
     }
 
+    /// Records the founding bootstrap instead of running it, and can refuse the
+    /// way the production seam refuses.
+    private final class FakeFounderKeys: TeamFounderKeyBootstrapping, @unchecked Sendable {
+        private let lock = NSLock()
+        private var recorded: [String] = []
+        var teamIDs: [String] { lock.withLock { recorded } }
+        var error: Error?
+        /// Founding slots whose local mint the bootstrap threw away because the
+        /// team's real key had already arrived. A SUCCESS that still owes the
+        /// member a sentence — see `report(discard:)`.
+        var discardedLocalMintSlots: [TeamKeySlot] = []
+
+        func bootstrapKeys(teamID: String) async throws -> TeamKeyBootstrap {
+            lock.withLock { recorded.append(teamID) }
+            if let error { throw error }
+            return TeamKeyBootstrap(
+                teamKeyVersion: 1,
+                slugKeyId: "slug-key-id",
+                envelopeIds: ["e1", "e2"],
+                discardedLocalMintSlots: discardedLocalMintSlots
+            )
+        }
+    }
+
     private static func functionsError(_ code: FunctionsErrorCode, _ message: String) -> NSError {
         NSError(domain: FunctionsErrorDomain, code: code.rawValue, userInfo: [NSLocalizedDescriptionKey: message])
     }
@@ -197,6 +221,7 @@ final class TeamMemorySectionModelTests: XCTestCase {
         teamID: String = "team_aaaaaaaaaaaaaaaa",
         activeKeyVersion: Int = 2,
         burnedKeyVersions: [Int] = [],
+        slugKeyRecorded: Bool = true,
         keyRotationRequired: Bool = false,
         rewrapCompletedKeyVersion: Int? = nil,
         myRole: String? = "admin",
@@ -212,6 +237,7 @@ final class TeamMemorySectionModelTests: XCTestCase {
             activeKeyVersion: activeKeyVersion,
             retainedKeyVersions: Array(1...max(1, activeKeyVersion)),
             burnedKeyVersions: burnedKeyVersions,
+            slugKeyRecorded: slugKeyRecorded,
             keyRotationRequired: keyRotationRequired,
             rewrapCompletedKeyVersion: rewrapCompletedKeyVersion,
             rewrapJobId: rewrapCompletedKeyVersion == nil ? nil : "job-1",
@@ -230,6 +256,8 @@ final class TeamMemorySectionModelTests: XCTestCase {
         admin: FakeAdmin = FakeAdmin(),
         directory: FakeDirectory = FakeDirectory(),
         joinerKeys: FakeJoinerKeys? = nil,
+        founderKeys: FakeFounderKeys? = nil,
+        keyReadiness: TeamKeyReadiness = .unknown,
         roster: FakeRoster? = nil,
         invalidations: InvalidationRecorder? = nil
     ) -> (TeamMemorySectionModel, FakeAdmin, FakeDirectory, () -> Set<String>) {
@@ -242,11 +270,13 @@ final class TeamMemorySectionModelTests: XCTestCase {
             roster: roster ?? FakeRoster(details: [detail.teamID: detail]),
             admin: admin,
             joinerKeys: joinerKeys,
+            founderKeys: founderKeys,
             uidProvider: { "me" },
             personalGateProvider: { personalGateOpen },
             remoteConfigProvider: { (remoteConfigAllowed, remoteConfigResolved) },
             optInProvider: { box.value },
             optInWriter: { box.value = $0 },
+            keyReadinessProvider: { _ in keyReadiness },
             invalidateTeamSync: { teamID in invalidations?.record(teamID) }
         )
         return (model, admin, directory, { box.value })
@@ -672,7 +702,10 @@ final class TeamMemorySectionModelTests: XCTestCase {
         }
         // The mirror is total, not a subset. If this number moves, a server code
         // was added or removed and the gate above should have said so first.
-        XCTAssertEqual(TeamRosterReasonCode.allCases.count, 44)
+        // 44 at #2545, plus the two the founding slug-key recorder raises
+        // (`INVALID_SLUG_KEY_ID`, `DIFFERENT_SLUG_KEY_RECORDED`) — both `.other`
+        // here, because "Share Team Keys" never calls that callable.
+        XCTAssertEqual(TeamRosterReasonCode.allCases.count, 46)
 
         // A code from a server newer than this build: ONE explicit fallback, and
         // it renders the generic copy rather than guessing at a neighbour.
@@ -1015,6 +1048,7 @@ final class TeamMemorySectionModelTests: XCTestCase {
             activeKeyVersion: 3,
             retainedKeyVersions: [1, 2, 3],
             burnedKeyVersions: [],
+            slugKeyRecorded: true,
             keyRotationRequired: false,
             rewrapCompletedKeyVersion: nil,
             rewrapJobId: nil,
@@ -1067,5 +1101,286 @@ final class TeamMemorySectionModelTests: XCTestCase {
         // rotation, which is what it is not.
         XCTAssertTrue(lines.contains(TeamMemoryCopy.rewrapProgress(resealed: 812, scanned: 4010)))
         XCTAssertTrue(lines.contains(TeamMemoryCopy.rewrapIncomplete(keyVersion: 2)))
+    }
+
+    // MARK: - Creating a team mints its keys (D16 wiring)
+
+    /// **The gap this pins.** `createTeam` used to call the callable, remember
+    /// the id and stop: `TeamVaultKeyDistributor.bootstrapTeamKeys` — the method
+    /// that generates `teamVaultKey_v1` and the non-rotating `teamSlugKey` and
+    /// publishes the founder's own envelopes — had no production caller anywhere.
+    /// Every team the shipped app created therefore had no keys at all, on any
+    /// Mac, for ever: the sync cycle parked on a missing slug key and "Share Team
+    /// Keys" failed `missingKeyForSlot` because the ADMIN's own ring was empty.
+    func test_creating_a_team_mints_and_publishes_its_founding_keys() async {
+        let founderKeys = FakeFounderKeys()
+        let (model, admin, directory, _) = makeModel(
+            detail: Self.detail(),
+            founderKeys: founderKeys,
+            keyReadiness: .ready
+        )
+        admin.newTeamID = "team_bbbbbbbbbbbbbbbb"
+
+        await model.createTeam(named: "Platform")
+
+        XCTAssertEqual(admin.created, ["Platform"])
+        XCTAssertEqual(
+            founderKeys.teamIDs,
+            ["team_bbbbbbbbbbbbbbbb"],
+            "the founding keys are minted for the id the callable just returned"
+        )
+        XCTAssertTrue(
+            directory.knownTeamIDs().contains("team_bbbbbbbbbbbbbbbb"),
+            "and the id is remembered: there is no 'list my teams' query, so losing it strands the team"
+        )
+        XCTAssertNil(model.errorMessage)
+    }
+
+    /// A bootstrap that fails must leave a RECOVERABLE state, not a team with no
+    /// keys and no way back: the team is real on the server, so the copy says so
+    /// and the row offers the resume rather than inviting a second `createTeam`.
+    func test_a_founding_that_did_not_publish_is_reported_honestly_and_can_be_resumed() async throws {
+        let founderKeys = FakeFounderKeys()
+        founderKeys.error = TeamMemorySectionModelTestError.refused
+        let (model, admin, directory, _) = makeModel(
+            detail: Self.detail(),
+            founderKeys: founderKeys,
+            // What the ring looks like after an interrupted bootstrap: both
+            // slots minted PENDING, neither published.
+            keyReadiness: .setupIncomplete
+        )
+        admin.newTeamID = Self.detail().teamID
+
+        await model.createTeam(named: "Platform")
+
+        XCTAssertEqual(
+            model.errorMessage,
+            TeamMemoryCopy.teamCreatedWithoutKeysNotice,
+            "never the generic 'that team action did not complete' — the team DID land"
+        )
+        XCTAssertTrue(directory.knownTeamIDs().contains(Self.detail().teamID))
+        let row = model.rows.first
+        XCTAssertEqual(row?.keyReadiness, .setupIncomplete)
+        XCTAssertEqual(row?.keyReadiness.notice, TeamMemoryCopy.keysSetupIncompleteNotice)
+        XCTAssertTrue(model.canFinishTeamSetup(row: try XCTUnwrap(row)))
+
+        // The resume is a plain retry of the same idempotent bootstrap.
+        founderKeys.error = nil
+        await model.finishTeamSetup(teamID: Self.detail().teamID)
+        XCTAssertEqual(
+            founderKeys.teamIDs,
+            [Self.detail().teamID, Self.detail().teamID],
+            "the same team, bootstrapped again — the pending ring is what keeps it the same KEYS"
+        )
+        XCTAssertNil(model.errorMessage)
+    }
+
+    /// The one refusal with a different remedy gets different copy. Telling a
+    /// member whose other Mac founded the team to "try again" would be telling
+    /// them to press a button that refuses for ever.
+    func test_a_founding_another_mac_published_gets_its_own_copy() async {
+        let founderKeys = FakeFounderKeys()
+        founderKeys.error = TeamFounderKeyBootstrapError.keysMintedOnAnotherDevice(teamID: Self.detail().teamID)
+        let (model, _, _, _) = makeModel(
+            detail: Self.detail(),
+            founderKeys: founderKeys,
+            keyReadiness: .awaitingKeys
+        )
+        await model.refresh()
+
+        await model.finishTeamSetup(teamID: Self.detail().teamID)
+
+        XCTAssertEqual(model.errorMessage, TeamMemoryCopy.keysFoundedOnAnotherDeviceNotice)
+        XCTAssertNotEqual(model.errorMessage, TeamMemoryCopy.finishTeamSetupFailedNotice)
+    }
+
+    /// A non-admin is never offered the founding action: the rules confine a
+    /// wrap of a generation nobody has published to an admin, so the button
+    /// would only ever be denied.
+    func test_only_an_admin_is_offered_the_founding_action() async throws {
+        let founderKeys = FakeFounderKeys()
+        let (model, _, _, _) = makeModel(
+            detail: Self.detail(myRole: "member"),
+            founderKeys: founderKeys,
+            keyReadiness: .awaitingKeys
+        )
+        await model.refresh()
+        let row = try XCTUnwrap(model.rows.first)
+
+        XCTAssertFalse(model.canFinishTeamSetup(row: row))
+        await model.finishTeamSetup(teamID: row.detail.teamID)
+        XCTAssertTrue(founderKeys.teamIDs.isEmpty, "and pressing it anyway reaches nothing")
+    }
+
+    /// The three states a member can be in, and the one non-state a build with
+    /// no ring reports.
+    ///
+    /// `ready` requires BOTH keys. The slug key NAMES documents and the active
+    /// generation SEALS them; a Mac holding one of them syncs nothing, and
+    /// saying "ready" there is exactly the silence this change is about.
+    func test_the_key_readiness_states_are_resolved_from_the_ring_not_the_roster() {
+        XCTAssertEqual(
+            TeamKeyReadiness.resolve(
+                holdsSlugKey: true,
+                holdsActiveVaultKey: true,
+                hasPendingFoundingMint: false,
+                rosterRecordedSlugKey: true
+            ),
+            .ready
+        )
+        XCTAssertEqual(
+            TeamKeyReadiness.resolve(
+                holdsSlugKey: true,
+                holdsActiveVaultKey: false,
+                hasPendingFoundingMint: false,
+                rosterRecordedSlugKey: true
+            ),
+            .awaitingKeys,
+            "the slug key alone names documents it cannot seal"
+        )
+        XCTAssertEqual(
+            TeamKeyReadiness.resolve(
+                holdsSlugKey: false,
+                holdsActiveVaultKey: true,
+                hasPendingFoundingMint: false,
+                rosterRecordedSlugKey: true
+            ),
+            .awaitingKeys
+        )
+        XCTAssertEqual(
+            TeamKeyReadiness.resolve(
+                holdsSlugKey: false,
+                holdsActiveVaultKey: false,
+                hasPendingFoundingMint: true,
+                rosterRecordedSlugKey: true
+            ),
+            .setupIncomplete,
+            "a pending founding mint is this Mac's own interrupted bootstrap"
+        )
+        // A published ring wins over a leftover pending slot: the slots are
+        // promoted, not deleted, so a resumed bootstrap leaves both behind.
+        XCTAssertEqual(
+            TeamKeyReadiness.resolve(
+                holdsSlugKey: true,
+                holdsActiveVaultKey: true,
+                hasPendingFoundingMint: true,
+                rosterRecordedSlugKey: true
+            ),
+            .ready
+        )
+        // THE STATE THE FOUNDER CANNOT SEE FROM THEIR OWN SYNC. This Mac holds
+        // everything and the roster has no `slugKeyId`, so the B6 rule lands
+        // every joiner's slug envelope in the PENDING ring and nobody else can
+        // derive a document id. The founder syncs perfectly; the team is dead.
+        XCTAssertEqual(
+            TeamKeyReadiness.resolve(
+                holdsSlugKey: true,
+                holdsActiveVaultKey: true,
+                hasPendingFoundingMint: false,
+                rosterRecordedSlugKey: false
+            ),
+            .founderRecordNotPublished
+        )
+        XCTAssertEqual(
+            TeamKeyReadiness.founderRecordNotPublished.notice,
+            TeamMemoryCopy.slugKeyNotRecordedNotice
+        )
+        XCTAssertNil(TeamKeyReadiness.unknown.notice, "a build with no ring says nothing rather than guessing")
+        XCTAssertEqual(TeamKeyReadiness.ready.notice, TeamMemoryCopy.keysReadyNotice)
+        XCTAssertEqual(TeamKeyReadiness.awaitingKeys.notice, TeamMemoryCopy.keysAwaitingAdminNotice)
+    }
+
+    /// The real ring reading, over the same in-memory double the distributor
+    /// tests use — so the closure the production wiring passes is exercised
+    /// rather than assumed.
+    func test_the_readiness_reading_uses_the_active_generation_the_roster_names() throws {
+        let ring = InMemoryTeamVaultKeyRing()
+        let recorded = Self.detail(activeKeyVersion: 2, slugKeyRecorded: true)
+        let teamID = recorded.teamID
+        let keyBytes = Data(repeating: 0x7A, count: 32)
+        XCTAssertEqual(TeamKeyReadiness.resolve(ring: ring, detail: recorded), .awaitingKeys)
+        try ring.storePending(keyBytes, teamId: teamID, slot: .slug)
+        XCTAssertEqual(TeamKeyReadiness.resolve(ring: ring, detail: recorded), .setupIncomplete)
+        try ring.store(keyBytes, teamId: teamID, slot: .slug)
+        try ring.store(keyBytes, teamId: teamID, slot: .vault(version: 1))
+        XCTAssertEqual(
+            TeamKeyReadiness.resolve(ring: ring, detail: recorded),
+            .setupIncomplete,
+            "holding v1 while the team seals under v2 is not ready — the rules refuse every write"
+        )
+        try ring.store(keyBytes, teamId: teamID, slot: .vault(version: 2))
+        XCTAssertEqual(TeamKeyReadiness.resolve(ring: ring, detail: recorded), .ready)
+        // Same ring, same Mac, and the TEAM's founding is unfinished.
+        XCTAssertEqual(
+            TeamKeyReadiness.resolve(
+                ring: ring,
+                detail: Self.detail(activeKeyVersion: 2, slugKeyRecorded: false)
+            ),
+            .founderRecordNotPublished
+        )
+    }
+
+    /// An admin whose own Mac is fully keyed is still offered the founding
+    /// action while the roster has no `slugKeyId` — because from where they sit
+    /// nothing looks wrong, and every member they admit gets a dead team.
+    func test_an_unrecorded_slug_key_still_offers_the_founding_action() async throws {
+        let founderKeys = FakeFounderKeys()
+        let (model, _, _, _) = makeModel(
+            detail: Self.detail(slugKeyRecorded: false),
+            founderKeys: founderKeys,
+            keyReadiness: .founderRecordNotPublished
+        )
+        await model.refresh()
+        let row = try XCTUnwrap(model.rows.first)
+
+        XCTAssertEqual(row.keyReadiness, .founderRecordNotPublished)
+        XCTAssertTrue(model.canFinishTeamSetup(row: row))
+        await model.finishTeamSetup(teamID: row.detail.teamID)
+        XCTAssertEqual(founderKeys.teamIDs, [row.detail.teamID])
+    }
+
+    /// A founding that threw this Mac's own minted keys away SAYS SO (D16
+    /// bootstrap-wiring ruling, clause 4).
+    ///
+    /// The pass succeeded — the team's real keys arrived from its published
+    /// envelopes and this Mac kept those — but the member pressed a button that
+    /// makes keys and the keys it made are gone. Reporting nothing would leave
+    /// them believing the keys on this Mac are the ones they just created, and
+    /// the one wrong reaction is to press it again.
+    func test_a_founding_that_discarded_this_macs_mint_reports_it() async throws {
+        let founderKeys = FakeFounderKeys()
+        founderKeys.discardedLocalMintSlots = [.vault(version: 1), .slug]
+        let (model, _, _, _) = makeModel(
+            detail: Self.detail(),
+            founderKeys: founderKeys,
+            keyReadiness: .setupIncomplete
+        )
+        await model.refresh()
+        let row = try XCTUnwrap(model.rows.first)
+
+        await model.finishTeamSetup(teamID: row.detail.teamID)
+
+        XCTAssertEqual(
+            model.errorMessage,
+            TeamMemoryCopy.foundingMintDiscardedNotice,
+            "the discard is disclosed, not swallowed as a plain success"
+        )
+    }
+
+    /// And the ordinary founding stays silent: a notice on every press would
+    /// train the founder to ignore the one press that matters.
+    func test_a_founding_that_discarded_nothing_says_nothing() async throws {
+        let founderKeys = FakeFounderKeys()
+        let (model, _, _, _) = makeModel(
+            detail: Self.detail(),
+            founderKeys: founderKeys,
+            keyReadiness: .setupIncomplete
+        )
+        await model.refresh()
+        let row = try XCTUnwrap(model.rows.first)
+
+        await model.finishTeamSetup(teamID: row.detail.teamID)
+
+        XCTAssertNil(model.errorMessage)
     }
 }

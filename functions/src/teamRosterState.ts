@@ -90,7 +90,9 @@ type TeamAuditAction =
   | "member_removed"
   | "key_rotated"
   | "key_generation_abandoned"
-  | "rewrap_recorded";
+  | "rewrap_recorded"
+  /** The founding `teamSlugKey`'s fingerprint reached the roster (D16). */
+  | "slug_key_recorded";
 
 /**
  * The team's membership epoch, defaulting to 0 for anything that is not a
@@ -201,6 +203,13 @@ export async function commitChunked(writes: PendingWrite[]): Promise<void> {
   }
 }
 
+/**
+ * What {@link commitGuardedByTeamState}'s `decideOnFreshTeam` hook says about
+ * the team document read inside the writing transaction: write, or stand down
+ * because the write it was going to make is already there.
+ */
+type InTransactionDecision = "commit" | "skip";
+
 /** The team state a roster decision was computed against. */
 interface TeamGuardState {
   activeKeyVersion: number;
@@ -253,6 +262,12 @@ function teamStateMoved(raw: FirebaseFirestore.DocumentData | undefined, expecte
  *
  * All three become an error the caller retries against current state rather
  * than a silently wrong commit.
+ *
+ * {@link TeamGuardState} is a MOVEMENT guard, and a movement guard is the wrong
+ * instrument for a WRITE-ONCE field: a field going from unset to set is not
+ * movement in any of the four values above, so two first-writes of `slugKeyId`
+ * both passed it (Cursor security round, MEDIUM, `teamSlugKeyRecord.ts:91`).
+ * `decideOnFreshTeam` is the second instrument — see its doc comment.
  */
 export async function commitGuardedByTeamState(options: {
   teamId: string;
@@ -262,9 +277,27 @@ export async function commitGuardedByTeamState(options: {
   stillPendingMemberRef?: FirebaseFirestore.DocumentReference;
   /** True when this commit changes the ACTIVE member set. */
   bumpMembershipEpoch?: boolean;
-}): Promise<void> {
+  /**
+   * A compare-and-set re-made on the team document THIS transaction read.
+   *
+   * The movement guard above asks "did the state my decision was computed
+   * against change?", which is exactly the wrong question for a write-once
+   * field: an unset field being filled by a concurrent first-writer moves none
+   * of the guarded values, so both writers pass and the loser's merge lands
+   * last. This hook asks the other question — "what does the field say NOW?" —
+   * on the snapshot the transaction's own read set covers, so a concurrent
+   * write to the team document either invalidates that read (real Firestore
+   * retries the body against the winner's value) or is seen by it.
+   *
+   * Return `"commit"` to write, `"skip"` for an idempotent no-op that writes
+   * NOTHING (audit row included), or throw the caller's own refusal — which is
+   * how `recordTeamSlugKeyId` keeps raising `DIFFERENT_SLUG_KEY_RECORDED` from
+   * inside the transaction rather than an undifferentiated `aborted`.
+   */
+  decideOnFreshTeam?: (fresh: FirebaseFirestore.DocumentData | undefined) => InTransactionDecision;
+}): Promise<{ committed: boolean }> {
   const teamRef = db.doc(`team_rosters/${options.teamId}`);
-  await db.runTransaction(async (transaction) => {
+  return db.runTransaction(async (transaction) => {
     const fresh = await transaction.get(teamRef);
     const freshData = fresh.data();
     if (teamStateMoved(freshData, options.expected)) {
@@ -272,6 +305,9 @@ export async function commitGuardedByTeamState(options: {
         REASON.ROSTER_STATE_MOVED_IN_FLIGHT,
         "This team's roster or key state changed while the call was in flight; retry against the current state.",
       );
+    }
+    if (options.decideOnFreshTeam?.(freshData) === "skip") {
+      return { committed: false };
     }
     if (options.stillPendingMemberRef) {
       const member = await transaction.get(options.stillPendingMemberRef);
@@ -293,5 +329,6 @@ export async function commitGuardedByTeamState(options: {
         { merge: true },
       );
     }
+    return { committed: true };
   });
 }
