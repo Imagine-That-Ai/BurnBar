@@ -4327,12 +4327,18 @@ def _team_project_fixture(
     shared repository, which is not and cannot be either checkout's local
     `proj_<32hex>`. `linked` publishes that exact pair; `unrelated` publishes
     nothing.
+
+    Both roots are real repositories (`_checkout`), and the link is COMMITTED,
+    because the D16 Cursor ruling made `HEAD` the authority for every entry: a
+    link file that only the working tree carries publishes nothing at all, so a
+    plain directory here would test the state the product refuses rather than
+    the one A1 rules on. `_checkout` has to run before the first `_project_id`
+    call for a root — initialising a repository changes the identity
+    fingerprint, and so the project id.
     """
     engine = _replica(tmp_path, name)
-    linked = str(tmp_path / f"{name}_linked")
-    unrelated = str(tmp_path / f"{name}_unrelated")
-    Path(linked).mkdir(parents=True, exist_ok=True)
-    Path(unrelated).mkdir(parents=True, exist_ok=True)
+    linked = _checkout(str(tmp_path / f"{name}_linked"))
+    unrelated = _checkout(str(tmp_path / f"{name}_unrelated"))
     _project_id(engine, linked)
     _project_id(engine, unrelated)
     _write_team_link(linked, {TEAM_ID: TEAM_PROJECT})

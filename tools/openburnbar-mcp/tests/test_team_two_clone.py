@@ -291,11 +291,13 @@ def _remember_and_approve(member: _Member, body: str, *, scope: str = "personal"
     `TeamMemoryUploadRefusal.notApproved`: a quarantined or rejected row never
     leaves the device on any lane, so nothing here is sealable until this runs.
 
-    The default scope is `personal` for the reason
-    `test_a_project_scoped_team_fact_lands_but_never_reaches_a_model` sets out at
-    length: a team document seals its own `engineScope`, and only a personal one
-    survives the engine's per-project recall partition once it has landed in the
-    `teamProjectId` partition. That residual is asserted rather than avoided.
+    The default scope is `personal` only because that is what the convergence
+    properties below are stated over; it is no longer load-bearing. It once was:
+    before amendment A1 a `project`-scoped team row landed in the
+    `teamProjectId` partition and then failed the engine's per-project recall
+    fence, so only a personal one reached a model.
+    `test_a_project_scoped_team_fact_lands_and_reaches_the_checkout_that_links_it`
+    now pins the corrected behaviour for both scopes.
     """
     result = member.engine.remember(body, project_path=str(member.root), kind="fact", scope=scope)
     memory_id = str(result["memoryID"])
@@ -690,30 +692,38 @@ def test_a_checkout_that_links_nothing_contributes_and_receives_nothing(team) ->
         _seal(bob, b_mid, team_id=TEAM_ID, updated_at=T2)
 
 
-def test_a_project_scoped_team_fact_lands_but_never_reaches_a_model(team) -> None:
-    """A NAMED RESIDUAL this proof found, asserted rather than papered over.
+def test_a_project_scoped_team_fact_lands_and_reaches_the_checkout_that_links_it(team) -> None:
+    """The residual this proof found, and the ruling that closed it (amendment A1).
 
-    A team document seals its own `engineScope`, and a team row lands in the
+    As first written this test asserted the DEFECT, deliberately and at length:
+    a team document seals its own `engineScope`, a team row lands in the
     `teamProjectId` partition — `burnbar-core`, the checked-in name, which is
-    deliberately NOT any local engine project id (that is the whole mitigation).
-    The T4 team fence admits such a row into a checkout that links the team to
-    exactly that partition. But the engine's PRE-EXISTING per-project fence runs
-    too, and it admits a non-personal row only when
-    `memory.project_id == session project_id` (`_read.py::recall`'s `allowed`,
-    and `list`'s SQL twin). A `personal`-scoped row is cross-project by design
-    and survives it; a `project`-scoped one does not.
+    NOT any local engine project id (that is the whole mitigation) — and the
+    engine's pre-existing per-project fence admitted a non-personal row only
+    when `memory.project_id == session project_id`. Two namespaces, never equal.
+    So a `project`-scoped team contribution uploaded cleanly, verified cleanly,
+    merged cleanly, was addressable by id, and appeared in `recall`,
+    `recall_pack`, `ask`, the session briefing, `list`, `entities` and
+    `relations` on NO member's Mac, its author's included. No error anywhere,
+    which is why only an end-to-end test could find it.
 
-    So a project-scoped team contribution today: uploads cleanly, verifies
-    cleanly, merges cleanly, is addressable by id — and never appears in
-    `recall`, `recall_pack`, `ask`, the session briefing, `list`, `entities` or
-    `relations` on any member's Mac, including the author's. No error is raised
-    anywhere, which is why only an end-to-end test could find it.
+    That test said: "Widening the project fence for linked team rows is a
+    serving change ... left to a ruling rather than taken here. If that ruling
+    lands, this test is the one that must change, deliberately." The ruling
+    landed — amendment A1, PR #2544, which cites this proof as what found it —
+    so this is that deliberate change, and the assertions are inverted rather
+    than deleted.
 
-    This test PINS that behaviour instead of hiding it. Widening the project
-    fence for linked team rows is a serving change, and serving breadth on this
-    lane is controller-ruled (PR3 Cursor T4) — so it is named in the PR body and
-    left to a ruling rather than taken here. If that ruling lands, this test is
-    the one that must change, deliberately.
+    A1's rule, and now the only thing deciding a team row: servable IFF this
+    checkout's committed `.openburnbar/project.json` links that team to exactly
+    the `teamProjectId` the row landed in. Bob's checkout does, so Bob is served
+    the row; unlink it and the next call stops serving it, with no pull, no
+    re-merge and no deletion — the D16 Cursor ruling's clause 2 and A1 meeting on
+    one row.
+
+    The negative properties A1 preserves have their own six tests in
+    `test_memory_blind_sync.py`. What is proved HERE, and only here, is that the
+    corrected rule holds on a row that travelled the whole two-clone path.
     """
     alice, bob, cloud = team
     a_mid = _remember_and_approve(alice, FACT_BODY, scope="project")
@@ -724,7 +734,13 @@ def test_a_project_scoped_team_fact_lands_but_never_reaches_a_model(team) -> Non
     landed = me.MemoryEngine._team_local_memory_id(TEAM_ID, TEAM_PROJECT_ID, "project", canonical_body_hash(FACT_BODY))
     assert _team_row_ids(bob) == {landed}
 
-    # Landed, and addressable by id: `get` carries no project partition.
+    # It landed in the TEAM's partition, not in either checkout's local id —
+    # the pre-condition that made the old fence unsatisfiable.
+    row = bob.engine.conn.execute("SELECT project_id FROM memories WHERE id = ?", (landed,)).fetchone()
+    assert str(row["project_id"]) == TEAM_PROJECT_ID
+    assert TEAM_PROJECT_ID not in {alice.engine_project_id, bob.engine_project_id}
+
+    # Addressable by id: `get` carries no project partition.
     import os
 
     cwd = os.getcwd()
@@ -734,13 +750,20 @@ def test_a_project_scoped_team_fact_lands_but_never_reaches_a_model(team) -> Non
     finally:
         os.chdir(cwd)
 
-    # And absent from every surface that would put it in front of a model.
-    assert landed not in _recalled_ids(bob, "merge queue main")
-    assert landed not in {str(item["memoryID"]) for item in bob.engine.list(project_path=str(bob.root))["results"]}
-    assert "only path to main" not in bob.engine.recall_pack("merge queue main", project_path=str(bob.root))["pack"]
+    # And present on every surface that puts a row in front of a model.
+    assert landed in _recalled_ids(bob, "merge queue main")
+    assert landed in {str(item["memoryID"]) for item in bob.engine.list(project_path=str(bob.root))["results"]}
+    assert "only path to main" in bob.engine.recall_pack("merge queue main", project_path=str(bob.root))["pack"]
 
-    # The personal-scoped twin of the same contribution IS served — the one-line
-    # difference that makes this a scope residual and not a broken lane.
+    # The AUTHOR is served the team row too, once she pulls her own document
+    # back — the half of the defect that made it impossible to notice by using
+    # the feature, since the contributor saw nothing either.
+    assert _pull(alice, cloud, team_id=TEAM_ID)["applied"] == 1
+    assert landed in _team_row_ids(alice)
+    assert landed in _recalled_ids(alice, "merge queue main")
+
+    # The personal-scoped twin behaves identically now. Before A1 this line was
+    # the ONLY one of the two that passed, and that asymmetry was the residual.
     a_personal = _remember_and_approve(alice, SECOND_BODY, scope="personal")
     _push(alice, cloud, a_personal, team_id=TEAM_ID, updated_at=T2)
     assert _pull(bob, cloud, team_id=TEAM_ID)["applied"] == 1
@@ -748,6 +771,14 @@ def test_a_project_scoped_team_fact_lands_but_never_reaches_a_model(team) -> Non
         TEAM_ID, TEAM_PROJECT_ID, "personal", canonical_body_hash(SECOND_BODY)
     )
     assert personal_landed in _recalled_ids(bob, "nightly builds merge gate")
+
+    # Unlinking stops both on the very next call. The rows are still in the
+    # store — this is a serving fence, not a delete — and no pull ran.
+    _write_link(bob.root, None)
+    assert _team_row_ids(bob) == {landed, personal_landed}
+    assert landed not in _recalled_ids(bob, "merge queue main")
+    assert personal_landed not in _recalled_ids(bob, "nightly builds merge gate")
+    assert landed not in {str(item["memoryID"]) for item in bob.engine.list(project_path=str(bob.root))["results"]}
 
 
 # ---------------------------------------------------------------------------
@@ -776,11 +807,13 @@ def test_deriving_the_doc_id_from_the_git_fingerprint_breaks_the_proof(team, mon
     to remove.
 
     Run by hand — editing `_team_project_id_for`'s body to
-    `return member.engine_project_id` — the same change turns EIGHT of this
-    file's ten tests red: every one above plus the two negatives. The two that
-    survive are the ones that must:
-    `test_an_ssh_clone_and_an_https_clone_derive_different_git_project_ids`,
-    which asserts the premise and is indifferent to the derivation, and this
+    `return member.engine_project_id` — the same change turns SIXTEEN of this
+    file's twenty-five tests red, measured, not estimated: eight of the nine
+    convergence tests above, and eight more among the link-tool, doctor and
+    committed-link tests that need a real checked-in id to mean anything. The
+    convergence test that survives is the one that must —
+    `test_an_ssh_clone_and_an_https_clone_derive_different_git_project_ids`
+    asserts the premise and is indifferent to the derivation — as does this
     test, which asserts the divergence the mutation causes.
     """
     alice, bob, cloud = team
