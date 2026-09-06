@@ -337,10 +337,6 @@ public final class KnowledgeSyncService: Sendable {
         ]
     }
 
-    private static func encode(_ vector: PensieveKnowledgeVector) -> [String: Any] {
-        encode(vector, signalEnvelope: nil)
-    }
-
     private static func encode(
         _ vector: PensieveKnowledgeVector,
         signalEnvelope: [String: Any]?
@@ -700,7 +696,9 @@ final class MemoryCloudSyncService: Sendable {
             // different bodies converge in the engine, and re-writing buys
             // nothing. A read is also cheaper than the write it usually avoids.
             let document = factCollection.document(encoded.docID)
-            let existingUpdatedAt = Self.cloudRevisionInstant(try await document.getData())
+            let existingUpdatedAt = MemoryCloudPullService.firestoreDate(
+                try await document.getData()?["updatedAt"]
+            )
             if let existingUpdatedAt, existingUpdatedAt >= memory.updatedAt {
                 skippedStaleRevision += 1
                 continue
@@ -930,20 +928,6 @@ final class MemoryCloudSyncService: Sendable {
                 "replicatedAt": now
             ]
         )
-    }
-
-    /// The `updatedAt` of a `memory_facts` document already in the cloud, or nil
-    /// when there is no document (or it carries no readable instant — which the
-    /// pull would refuse anyway, so treating it as "no revision" lets this
-    /// device replace it).
-    ///
-    /// Firestore hands dates back as `Timestamp`; the in-memory fake keeps the
-    /// `Date` it was written with. Both must resolve, exactly as in
-    /// `MemoryCloudPullService.firestoreDate`.
-    private static func cloudRevisionInstant(_ data: [String: Any]?) -> Date? {
-        guard let value = data?["updatedAt"] else { return nil }
-        if let timestamp = value as? Timestamp { return timestamp.dateValue() }
-        return OpenBurnBarDatabase.parseDateValue(value)
     }
 
     /// Forget receipts are deliberately NOT conditional. A receipt is terminal —
