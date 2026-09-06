@@ -1441,6 +1441,11 @@ else
   build_root="$work_dir/build-root"
   mkdir -p "$build_root/apps" "$build_root/packages" "$build_root/scripts" "$build_root/packaging" "$build_root/crates"
   cp -R "$root/apps/linux-desktop" "$build_root/apps/linux-desktop"
+  # apps/linux-desktop/src/providerPathRegistry.ts imports
+  # ../../../contracts/provider-ingestion-catalog.json, which resolves OUTSIDE
+  # the copied app directory. Without this the Vite build dies with
+  # "Could not resolve ../../../contracts/provider-ingestion-catalog.json".
+  cp -R "$root/contracts" "$build_root/contracts"
   # Preserve the repository-relative paths consumed by package.json, Vite,
   # the production scanner, native include_str!, and Tauri bundle resources.
   for shared_package in design-tokens entitlements gl-engine; do
