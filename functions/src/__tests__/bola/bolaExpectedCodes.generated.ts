@@ -69,6 +69,7 @@ export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = {
   recordSignalRotation: "failed-precondition",
   recordSignalSession: "failed-precondition",
   recordTeamRewrapComplete: "permission-denied",
+  recordTeamSlugKeyId: "permission-denied",
   redeemMissionApprovalAnswer: "invalid-argument",
   refreshProviderAccountQuota: "not-found",
   registerEscrowDevice: "invalid-argument",

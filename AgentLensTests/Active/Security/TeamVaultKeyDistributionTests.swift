@@ -2131,7 +2131,789 @@ final class TeamVaultKeyDistributionTests: XCTestCase {
         )
     }
 
+    // MARK: - The founder bootstrap has a production caller (D16 wiring)
+
+    /// THE GAP THIS PINS. `bootstrapTeamKeys` shipped with no production caller:
+    /// `FirebaseTeamMemoryAdministrator.createTeam` invoked the callable and
+    /// stopped, so no Mac ever minted `teamVaultKey_v1` or the non-rotating
+    /// `teamSlugKey`, every team began life with no keys at all, and the failure
+    /// was invisible — the roster said `activeKeyVersion: 1`, the member said
+    /// `active`, and the sync cycle silently parked on a missing slug key for
+    /// ever. This drives the seam the Settings section now calls.
+    func test_the_founder_bootstrapper_publishes_both_founding_keys() async throws {
+        let world = TeamKeyWorld()
+        let mac = world.enrolDevice(uid: adminUid, deviceId: "device-admin", escrowKeyVersion: 1)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1])
+        world.seedMember(uid: adminUid, pins: [mac.pin], role: "admin")
+
+        let bootstrap = try await world.founderBootstrapper(deviceId: "device-admin").bootstrapKeys(teamID: teamId)
+
+        // Both keys are ACTIVE on this Mac — pending would mean the publication
+        // never completed, and `TeamMemorySyncService.retainedKey` reads the
+        // active half only.
+        let vaultKey = try XCTUnwrap(try world.keyRing.key(teamId: teamId, slot: .vault(version: 1)))
+        let slugKey = try XCTUnwrap(try world.keyRing.key(teamId: teamId, slot: .slug))
+        XCTAssertEqual(bootstrap.teamKeyVersion, 1)
+        XCTAssertEqual(bootstrap.slugKeyId, try CloudVaultCrypto.vaultKeyID(for: slugKey))
+
+        // And the envelopes are on the server, self-addressed and openable by
+        // this device — which is what makes the founder's SECOND Mac, and every
+        // joiner, reachable at all.
+        XCTAssertEqual(
+            Set(bootstrap.envelopeIds),
+            ["\(adminUid)_device-admin_1_v1", "\(adminUid)_device-admin_1_slug"]
+        )
+        XCTAssertEqual(
+            try mac.unwrapTeamKey(world.wrappedKey(in: try world.envelope(id: "\(adminUid)_device-admin_1_v1"))),
+            vaultKey
+        )
+        XCTAssertEqual(
+            try mac.unwrapTeamKey(world.wrappedKey(in: try world.envelope(id: "\(adminUid)_device-admin_1_slug"))),
+            slugKey
+        )
+        try assertOneKeyPerFoundingGeneration(world, ring: world.keyRing, devices: [mac])
+
+        // AND THE ROSTER LEARNS WHICH SLUG KEY THIS TEAM USES. Without it the
+        // B6 rule lands every joiner's slug envelope in the PENDING ring, the
+        // retained-key reader never sees it, and no member but this one can
+        // derive a document id — so this line is what makes the whole lane
+        // reach a second person.
+        XCTAssertEqual(
+            world.callables.slugKeyRecords,
+            [RecordingTeamRosterCallables.SlugKeyRecord(teamId: teamId, slugKeyId: bootstrap.slugKeyId)]
+        )
+        XCTAssertEqual(bootstrap.slugKeyId, try CloudVaultCrypto.vaultKeyID(for: slugKey))
+        XCTAssertFalse(
+            bootstrap.slugKeyId.contains(slugKey.base64EncodedString()),
+            "a FINGERPRINT reaches the roster, never the key"
+        )
+    }
+
+    /// THE NASTIEST STATE IN THIS LANE IS NOW UNREACHABLE, and this is where
+    /// that is pinned.
+    ///
+    /// It used to be: the envelopes ARE published and the roster note is not.
+    /// The founder saw nothing wrong — their Mac held both keys and synced
+    /// perfectly — while every member they admitted got a slug envelope their
+    /// client held PENDING and never used. Since the roster claim became the
+    /// thing publication DEPENDS on rather than the thing that follows it, a
+    /// claim that does not land publishes nothing at all: the failure is loud,
+    /// visible on the founder's own Mac as an unfinished setup, and repaired by
+    /// the same idempotent press — which must NOT mint a second key on the way
+    /// through.
+    func test_a_founding_whose_roster_claim_failed_published_nothing_and_is_repaired() async throws {
+        let world = TeamKeyWorld()
+        let mac = world.enrolDevice(uid: adminUid, deviceId: "device-admin", escrowKeyVersion: 1)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1])
+        world.seedMember(uid: adminUid, pins: [mac.pin], role: "admin")
+        let bootstrapper = world.founderBootstrapper(deviceId: "device-admin")
+
+        world.callables.failNextSlugKeyRecord(with: TeamKeyWorldFailure.refused)
+        do {
+            _ = try await bootstrapper.bootstrapKeys(teamID: teamId)
+            XCTFail("expected the roster claim to fail")
+        } catch is TeamKeyWorldFailure {
+            // Expected: a transport failure, not a refusal — the generation is
+            // still unclaimed and this Mac may try for it again.
+        }
+        let mintedSlug = try XCTUnwrap(try world.keyRing.pendingKey(teamId: teamId, slot: .slug))
+        let mintedVault = try XCTUnwrap(try world.keyRing.pendingKey(teamId: teamId, slot: .vault(version: 1)))
+        XCTAssertTrue(
+            world.envelopeIds().isEmpty,
+            "an unclaimed generation publishes NOTHING: the invisible half-founding cannot be reached from here"
+        )
+        XCTAssertNil(try world.keyRing.key(teamId: teamId, slot: .slug), "and nothing is promoted")
+        XCTAssertNil(world.callables.recordedSlugKeyId, "a failed claim leaves the generation unclaimed")
+
+        let repaired = try await bootstrapper.bootstrapKeys(teamID: teamId)
+
+        XCTAssertEqual(
+            try world.keyRing.key(teamId: teamId, slot: .slug),
+            mintedSlug,
+            "the repair publishes the key the first press minted — a second slug key would rename every document"
+        )
+        XCTAssertEqual(try world.keyRing.key(teamId: teamId, slot: .vault(version: 1)), mintedVault)
+        XCTAssertEqual(repaired.slugKeyId, try CloudVaultCrypto.vaultKeyID(for: mintedSlug))
+        XCTAssertEqual(
+            world.callables.slugKeyRecords.map(\.slugKeyId),
+            [repaired.slugKeyId, repaired.slugKeyId],
+            "the retry claims the SAME fingerprint, which the roster treats as a no-op rather than a rival founding"
+        )
+        try assertOneKeyPerFoundingGeneration(world, ring: world.keyRing, devices: [mac])
+    }
+
+    /// A failure BETWEEN the mint and the publication must leave a state the
+    /// next press repairs, minting no second key.
+    ///
+    /// This is the whole reason the recovery reuses the pending-slot machinery
+    /// rather than a "did I create this team" flag: the slug key NAMES every
+    /// document, so a second one would address the entire team space somewhere
+    /// else, and the first one's envelopes are create-only and could never be
+    /// replaced.
+    func test_an_interrupted_founding_is_repaired_by_the_next_press_without_a_second_key() async throws {
+        let world = TeamKeyWorld()
+        let mac = world.enrolDevice(uid: adminUid, deviceId: "device-admin", escrowKeyVersion: 1)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1])
+        world.seedMember(uid: adminUid, pins: [mac.pin], role: "admin")
+        let bootstrapper = world.founderBootstrapper(deviceId: "device-admin")
+
+        // The published escrow key goes missing between the mint and the wrap —
+        // the shape of any failure after `mintKey` and before `setData`.
+        world.gateway.setDocumentData([:], at: "users/\(adminUid)/escrow_public_keys/device-admin_1")
+        do {
+            _ = try await bootstrapper.bootstrapKeys(teamID: teamId)
+            XCTFail("expected the interrupted bootstrap to throw")
+        } catch let error as TeamVaultKeyDistributionError {
+            XCTAssertEqual(error, .escrowPublicKeyUnavailable(uid: adminUid, deviceId: "device-admin", keyVersion: 1))
+        }
+        let mintedSlug = try XCTUnwrap(try world.keyRing.pendingKey(teamId: teamId, slot: .slug))
+        let mintedVault = try XCTUnwrap(try world.keyRing.pendingKey(teamId: teamId, slot: .vault(version: 1)))
+        XCTAssertNil(try world.keyRing.key(teamId: teamId, slot: .slug), "nothing is active until it is published")
+        XCTAssertTrue(world.envelopeIds().isEmpty, "and nothing was published")
+
+        world.seedEscrowPublicKey(
+            uid: adminUid,
+            deviceId: "device-admin",
+            escrowKeyVersion: 1,
+            publicKeyBase64: mac.publicKeyBase64,
+            fingerprint: mac.pin.publicKeyFingerprint
+        )
+        _ = try await bootstrapper.bootstrapKeys(teamID: teamId)
+
+        XCTAssertEqual(
+            try world.keyRing.key(teamId: teamId, slot: .slug),
+            mintedSlug,
+            "the repair publishes the key the first press minted — a second slug key would rename every document"
+        )
+        XCTAssertEqual(try world.keyRing.key(teamId: teamId, slot: .vault(version: 1)), mintedVault)
+        XCTAssertEqual(
+            try mac.unwrapTeamKey(world.wrappedKey(in: try world.envelope(id: "\(adminUid)_device-admin_1_v1"))),
+            mintedVault,
+            "and the envelope carries THAT key, not a fresh generation"
+        )
+    }
+
+    /// The refusal that keeps the repair from becoming the defect it repairs.
+    ///
+    /// `bootstrapTeamKeys` marks both founding slots `mintedInThisPass`, and that
+    /// guard admits an existing envelope when `wrappedBy == uid` — which is
+    /// exactly right against another ADMIN and blind to another MAC OF THIS
+    /// ACCOUNT, whose wraps carry the same `wrappedBy`. Without the pre-check a
+    /// founder's second Mac would claim the first Mac's envelope and publish a
+    /// DIFFERENT key beside it under the same immutable generation: two keys,
+    /// one `v1`, no repair. Nothing here may be written.
+    func test_a_second_mac_refuses_to_mint_over_a_founding_another_mac_published() async throws {
+        let world = TeamKeyWorld()
+        let macA = world.enrolDevice(uid: adminUid, deviceId: "device-a", escrowKeyVersion: 1)
+        let macB = world.enrolDevice(uid: adminUid, deviceId: "device-b", escrowKeyVersion: 1)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1])
+        world.seedMember(uid: adminUid, pins: [macA.pin, macB.pin], role: "admin")
+
+        // Mac A published its OWN envelopes and died before covering Mac B.
+        for (slot, key) in [("v1", world.teamVaultKeyV1), ("slug", world.teamSlugKey)] {
+            try world.seedEnvelope(
+                id: "\(adminUid)_device-a_1_\(slot)",
+                uid: adminUid,
+                deviceId: "device-a",
+                escrowKeyVersion: 1,
+                keySlot: slot,
+                fingerprint: macA.pin.publicKeyFingerprint,
+                wrappedBy: adminUid,
+                key: key,
+                recipientPublicKey: macA.publicKeyBase64
+            )
+        }
+        let idsBefore = Set(world.envelopeIds())
+
+        let ringB = InMemoryTeamVaultKeyRing()
+        let bootstrapperB = world.founderBootstrapper(deviceId: "device-b", keyRing: ringB, escrowDevice: macB)
+        do {
+            _ = try await bootstrapperB.bootstrapKeys(teamID: teamId)
+            XCTFail("expected the second Mac to refuse")
+        } catch let error as TeamFounderKeyBootstrapError {
+            XCTAssertEqual(error, .keysMintedOnAnotherDevice(teamID: teamId))
+        }
+
+        XCTAssertEqual(Set(world.envelopeIds()), idsBefore, "a refusal writes nothing")
+        XCTAssertNil(try ringB.key(teamId: teamId, slot: .vault(version: 1)))
+        XCTAssertNil(
+            try ringB.pendingKey(teamId: teamId, slot: .vault(version: 1)),
+            "and mints nothing, so a later hand-off is not shadowed by a rival key"
+        )
+        XCTAssertNil(try ringB.pendingKey(teamId: teamId, slot: .slug))
+    }
+
+    /// The other side of the same guard: when the first Mac DID cover this one,
+    /// the bootstrapper adopts those keys instead of refusing, and publishes
+    /// nothing new. This is also the second-device pickup — the envelope
+    /// addressed to THIS device is read and lands in the ring.
+    func test_a_second_device_of_the_same_account_adopts_its_own_envelopes() async throws {
+        let world = TeamKeyWorld()
+        let macA = world.enrolDevice(uid: adminUid, deviceId: "device-a", escrowKeyVersion: 1)
+        let macB = world.enrolDevice(uid: adminUid, deviceId: "device-b", escrowKeyVersion: 2)
+        world.seedTeam(
+            activeKeyVersion: 1,
+            retainedKeyVersions: [1],
+            slugKeyId: try CloudVaultCrypto.vaultKeyID(for: world.teamSlugKey)
+        )
+        world.seedMember(uid: adminUid, pins: [macA.pin, macB.pin], role: "admin")
+        for device in [macA, macB] {
+            for (slot, key) in [("v1", world.teamVaultKeyV1), ("slug", world.teamSlugKey)] {
+                try world.seedEnvelope(
+                    id: "\(adminUid)_\(device.pin.deviceId)_\(device.pin.escrowKeyVersion)_\(slot)",
+                    uid: adminUid,
+                    deviceId: device.pin.deviceId,
+                    escrowKeyVersion: device.pin.escrowKeyVersion,
+                    keySlot: slot,
+                    fingerprint: device.pin.publicKeyFingerprint,
+                    wrappedBy: adminUid,
+                    key: key,
+                    recipientPublicKey: device.publicKeyBase64
+                )
+            }
+        }
+        let idsBefore = Set(world.envelopeIds())
+
+        let ringB = InMemoryTeamVaultKeyRing()
+        _ = try await world
+            .founderBootstrapper(deviceId: "device-b", keyRing: ringB, escrowDevice: macB)
+            .bootstrapKeys(teamID: teamId)
+
+        XCTAssertEqual(
+            try ringB.key(teamId: teamId, slot: .vault(version: 1)),
+            world.teamVaultKeyV1,
+            "the second Mac opens the wrap addressed to IT and holds the team's real key"
+        )
+        XCTAssertEqual(try ringB.key(teamId: teamId, slot: .slug), world.teamSlugKey)
+        XCTAssertEqual(Set(world.envelopeIds()), idsBefore, "every id was already claimed; nothing new was written")
+        try assertOneKeyPerFoundingGeneration(world, ring: ringB, devices: [macA, macB])
+    }
+
+    // MARK: - Adoption beats a local mint (D16 bootstrap-wiring, Cursor HIGH)
+
+    /// THE REPORTED SEQUENCE, and the reason the promotion is no longer
+    /// unconditional.
+    ///
+    /// Mac A founds the team and publishes `v1` and the slug key to both of this
+    /// account's Macs. Mac B is carrying a founding mint of its own — an earlier
+    /// press that died before publishing anything — and then runs the recovery
+    /// this PR offers. Step 1 adopts A's keys into the ACTIVE ring, and until
+    /// this fix step 3 promoted B's stale PENDING mint straight over them: one
+    /// immutable `v1`/`slug` generation carrying two different keys, B sealing
+    /// under its own while every published envelope and every other device held
+    /// A's. `wrappedBy` is the same uid on both Macs, so the B4 claim waves the
+    /// envelopes through and no later pass can repair create-only documents.
+    ///
+    /// The whole point of the fix is in the last two assertions: ONE key per
+    /// slot, and it is the team's.
+    func test_a_stale_local_mint_never_overwrites_the_founding_key_this_mac_adopted() async throws {
+        let world = TeamKeyWorld()
+        let macA = world.enrolDevice(uid: adminUid, deviceId: "device-a", escrowKeyVersion: 1)
+        let macB = world.enrolDevice(uid: adminUid, deviceId: "device-b", escrowKeyVersion: 2)
+        let teamSlugKeyId = try CloudVaultCrypto.vaultKeyID(for: world.teamSlugKey)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1], slugKeyId: teamSlugKeyId)
+        world.seedMember(uid: adminUid, pins: [macA.pin, macB.pin], role: "admin")
+        for device in [macA, macB] {
+            for (slot, key) in [("v1", world.teamVaultKeyV1), ("slug", world.teamSlugKey)] {
+                try world.seedEnvelope(
+                    id: "\(adminUid)_\(device.pin.deviceId)_\(device.pin.escrowKeyVersion)_\(slot)",
+                    uid: adminUid,
+                    deviceId: device.pin.deviceId,
+                    escrowKeyVersion: device.pin.escrowKeyVersion,
+                    keySlot: slot,
+                    fingerprint: device.pin.publicKeyFingerprint,
+                    wrappedBy: adminUid,
+                    key: key,
+                    recipientPublicKey: device.publicKeyBase64
+                )
+            }
+        }
+        let idsBefore = Set(world.envelopeIds())
+
+        // Mac B's own abandoned founding, still sitting in its pending ring.
+        let ringB = InMemoryTeamVaultKeyRing()
+        let staleVaultMint = TeamKeyWorld.randomKey()
+        let staleSlugMint = TeamKeyWorld.randomKey()
+        try ringB.storePending(staleVaultMint, teamId: teamId, slot: .vault(version: 1))
+        try ringB.storePending(staleSlugMint, teamId: teamId, slot: .slug)
+
+        let bootstrap = try await world
+            .founderBootstrapper(deviceId: "device-b", keyRing: ringB, escrowDevice: macB)
+            .bootstrapKeys(teamID: teamId)
+
+        // 1. The adopted key survives and the mint does not.
+        XCTAssertEqual(try ringB.key(teamId: teamId, slot: .vault(version: 1)), world.teamVaultKeyV1)
+        XCTAssertEqual(try ringB.key(teamId: teamId, slot: .slug), world.teamSlugKey)
+        XCTAssertNil(
+            try ringB.pendingKey(teamId: teamId, slot: .vault(version: 1)),
+            "the discarded mint is DESTROYED, not parked where `requireKey`'s pending fallback could still find it"
+        )
+        XCTAssertNil(try ringB.pendingKey(teamId: teamId, slot: .slug))
+        XCTAssertEqual(
+            Set(bootstrap.discardedLocalMintSlots),
+            [.vault(version: 1), .slug],
+            "and the caller is told, so the member can be told"
+        )
+
+        // 2. Exactly ONE key exists for the generation: every published envelope
+        //    opens to the same bytes this Mac now holds.
+        for device in [macA, macB] {
+            let envelope = try world.envelope(
+                id: "\(adminUid)_\(device.pin.deviceId)_\(device.pin.escrowKeyVersion)_v1"
+            )
+            XCTAssertEqual(try device.unwrapTeamKey(world.wrappedKey(in: envelope)), world.teamVaultKeyV1)
+        }
+        XCTAssertEqual(Set(world.envelopeIds()), idsBefore, "no rival envelope was published")
+        XCTAssertNotEqual(try ringB.key(teamId: teamId, slot: .vault(version: 1)), staleVaultMint)
+        XCTAssertNotEqual(try ringB.key(teamId: teamId, slot: .slug), staleSlugMint)
+
+        // 3. The roster records the SURVIVING key's fingerprint. `recordTeamSlugKeyId`
+        //    is write-once, so naming the discarded mint here would pin the whole
+        //    team's document space to a key only this Mac ever had.
+        XCTAssertEqual(bootstrap.slugKeyId, teamSlugKeyId)
+        XCTAssertEqual(world.callables.slugKeyRecords.map(\.slugKeyId), [teamSlugKeyId])
+        try assertOneKeyPerFoundingGeneration(world, ring: ringB, devices: [macA, macB])
+
+        // 4. LAST, AND DELIBERATELY NOT INSIDE AN ASSERTION: a fact sealed on B
+        //    opens on A. Under the fork this THROWS — an AEAD tag computed with
+        //    a key no other device holds — and a throwing test is the loudest
+        //    possible statement of "the generation carries two keys". Written as
+        //    a plain `try` so that failure is a hard stop rather than one more
+        //    line in a list, and placed last so nothing it aborts is hidden.
+        let aad = try CloudVaultAADContext(
+            uid: "team:\(teamId)",
+            collection: "team_memory_facts",
+            docID: "fact-after-recovery",
+            field: "sealedMemory"
+        )
+        let body = Data("a fact Mac B sealed after finishing setup".utf8)
+        let sealedOnB = try CloudVaultCrypto.sealBlob(
+            body,
+            keyData: try XCTUnwrap(try ringB.key(teamId: teamId, slot: .vault(version: 1))),
+            keyVersion: 1,
+            aadContext: aad
+        )
+        let openedOnA = try CloudVaultCrypto.openBlob(sealedOnB, keyData: world.teamVaultKeyV1, aadContext: aad)
+        XCTAssertEqual(openedOnA, body, "Mac A — and every other device — can read what Mac B seals")
+    }
+
+    /// A PENDING mint is a key this Mac invented, and it is not evidence that
+    /// this Mac founded the team (ruling clause 1: provenance, not presence).
+    ///
+    /// The fork guard used to return "nothing to refuse" the moment ANY key sat
+    /// in the ring, active or pending. So the state below — Mac A published its
+    /// own envelopes and died before covering Mac B, while Mac B holds an
+    /// abandoned mint of its own — walked straight past it. B then claimed A's
+    /// envelope through the same-uid B4 predicate and published its DIFFERENT
+    /// key to the ids A had not reached yet. Two keys, one `v1`, no repair.
+    func test_a_stale_local_mint_is_not_evidence_that_this_mac_founded_the_team() async throws {
+        let world = TeamKeyWorld()
+        let macA = world.enrolDevice(uid: adminUid, deviceId: "device-a", escrowKeyVersion: 1)
+        let macB = world.enrolDevice(uid: adminUid, deviceId: "device-b", escrowKeyVersion: 2)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1])
+        world.seedMember(uid: adminUid, pins: [macA.pin, macB.pin], role: "admin")
+        for (slot, key) in [("v1", world.teamVaultKeyV1), ("slug", world.teamSlugKey)] {
+            try world.seedEnvelope(
+                id: "\(adminUid)_device-a_1_\(slot)",
+                uid: adminUid,
+                deviceId: "device-a",
+                escrowKeyVersion: 1,
+                keySlot: slot,
+                fingerprint: macA.pin.publicKeyFingerprint,
+                wrappedBy: adminUid,
+                key: key,
+                recipientPublicKey: macA.publicKeyBase64
+            )
+        }
+        let idsBefore = Set(world.envelopeIds())
+
+        let ringB = InMemoryTeamVaultKeyRing()
+        let staleMint = TeamKeyWorld.randomKey()
+        try ringB.storePending(staleMint, teamId: teamId, slot: .vault(version: 1))
+        try ringB.storePending(TeamKeyWorld.randomKey(), teamId: teamId, slot: .slug)
+
+        do {
+            _ = try await world
+                .founderBootstrapper(deviceId: "device-b", keyRing: ringB, escrowDevice: macB)
+                .bootstrapKeys(teamID: teamId)
+            XCTFail("expected the second Mac to refuse: it adopted neither founding slot")
+        } catch let error as TeamFounderKeyBootstrapError {
+            XCTAssertEqual(error, .keysMintedOnAnotherDevice(teamID: teamId))
+        }
+
+        XCTAssertEqual(Set(world.envelopeIds()), idsBefore, "a refusal writes nothing")
+        XCTAssertNil(
+            try ringB.key(teamId: teamId, slot: .vault(version: 1)),
+            "and promotes nothing: an unpromoted mint seals no fact, so nothing unreadable is produced"
+        )
+        XCTAssertNil(try ringB.key(teamId: teamId, slot: .slug))
+    }
+
+    /// THE WINDOW IS CLOSED, NOT NARROWED (D16 founding-claim ruling, clause 1),
+    /// and this is the test that pins it.
+    ///
+    /// The adoption does not only happen before the bootstrap runs: this PR
+    /// wired `loadKeyRingFromEnvelopes` into the SYNC CYCLE, which reads the
+    /// same Keychain ring on its own schedule while the Settings action is
+    /// mid-publication. So a founding that was genuinely first-time when it
+    /// started — no envelopes, an empty ring, the fork guard satisfied — could
+    /// have the team's real key land in its ACTIVE slot after it had already
+    /// published wraps of its own mint. The previous round caught that at the
+    /// PROMOTION, which is one step too late to matter: the mint was discarded
+    /// and the adopted key recorded, while the envelopes on the server still
+    /// carried the discarded one. Ring and roster agreed with each other
+    /// perfectly and disagreed with every published wrap.
+    ///
+    /// Nothing is published before the roster's write-once `slugKeyId` claim is
+    /// won, so a team that already names a slug key refuses this Mac's rival
+    /// mint BEFORE the first envelope. The window the sync cycle used to land in
+    /// no longer exists on this path, and the assertion that says so is not a
+    /// count of documents but the write hook itself: it is still armed
+    /// afterwards, because there was never a document write to fire it.
+    ///
+    /// MUTATION: publish before claiming (the order this PR shipped for two
+    /// rounds) and this goes red — the hook fires, four wraps of the discarded
+    /// mint reach the server, and ``assertOneKeyPerFoundingGeneration(_:ring:devices:file:line:)``
+    /// opens one of them onto a key the ring does not hold.
+    func test_an_adoption_landing_mid_publication_still_beats_the_local_mint() async throws {
+        let world = TeamKeyWorld()
+        let macB = world.enrolDevice(uid: adminUid, deviceId: "device-b", escrowKeyVersion: 1)
+        let teamSlugKeyId = try CloudVaultCrypto.vaultKeyID(for: world.teamSlugKey)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1], slugKeyId: teamSlugKeyId)
+        world.seedMember(uid: adminUid, pins: [macB.pin], role: "admin")
+
+        // Nothing is published and the ring is empty: this pass mints, exactly
+        // like a first-time founder, and the fork guard has nothing to refuse.
+        let ringB = InMemoryTeamVaultKeyRing()
+
+        // The sync cycle's pickup, armed to complete while the first envelope is
+        // being written. It must never get the chance.
+        world.gateway.beforeNextDocumentWrite = { [teamId] in
+            try? ringB.store(world.teamVaultKeyV1, teamId: teamId, slot: .vault(version: 1))
+            try? ringB.store(world.teamSlugKey, teamId: teamId, slot: .slug)
+        }
+
+        do {
+            _ = try await world
+                .founderBootstrapper(deviceId: "device-b", keyRing: ringB, escrowDevice: macB)
+                .bootstrapKeys(teamID: teamId)
+            XCTFail("expected the rival founding to be refused before a single envelope was written")
+        } catch let error as TeamFounderKeyBootstrapError {
+            XCTAssertEqual(error, .keysMintedOnAnotherDevice(teamID: teamId))
+        }
+
+        XCTAssertNotNil(
+            world.gateway.beforeNextDocumentWrite,
+            "the mid-publication hook is still armed: this pass never reached a document write, so the window it "
+                + "used to open in does not exist"
+        )
+        XCTAssertTrue(world.envelopeIds().isEmpty, "and nothing was published")
+        XCTAssertEqual(
+            world.callables.recordedSlugKeyId,
+            teamSlugKeyId,
+            "the roster still names the founding key it always named"
+        )
+        XCTAssertNil(
+            try ringB.pendingKey(teamId: teamId, slot: .vault(version: 1)),
+            "the rival mint is destroyed rather than left where a later pass could publish it"
+        )
+        XCTAssertNil(try ringB.pendingKey(teamId: teamId, slot: .slug))
+        XCTAssertNil(try ringB.key(teamId: teamId, slot: .vault(version: 1)), "and nothing was promoted")
+        XCTAssertNil(try ringB.key(teamId: teamId, slot: .slug))
+    }
+
+    /// THE EMPTY-START RACE, WHICH NO PRE-CHECK CAN SEE (D16 founding-claim
+    /// ruling, clause 2).
+    ///
+    /// Two Macs of one account, a team with no envelopes and no recorded slug
+    /// key. `anotherDeviceAlreadyFounded` returns false on BOTH, and truthfully:
+    /// at the moment each one asks, neither has written anything. That is not a
+    /// bug in the pre-check, it is the ceiling on what a pre-check can do — so
+    /// publication is made to depend on WINNING the roster's write-once
+    /// `slugKeyId` claim instead, which two devices cannot both win because it
+    /// is decided inside the transaction that writes it.
+    ///
+    /// Mac B's ENTIRE bootstrap runs in the window before Mac A's first envelope
+    /// write, which is a point that exists in both the old order and the new
+    /// one — so this test is a fair question of either.
+    ///
+    /// MUTATION: publish before claiming and this goes red twice over — B writes
+    /// its own founding envelopes into the ids A is about to claim, and A's own
+    /// pass then dies on the roster refusing to name the key A published.
+    func test_two_macs_founding_from_an_empty_team_publish_exactly_one_key() async throws {
+        let world = TeamKeyWorld()
+        let macA = world.enrolDevice(uid: adminUid, deviceId: "device-a", escrowKeyVersion: 1)
+        let macB = world.enrolDevice(uid: adminUid, deviceId: "device-b", escrowKeyVersion: 2)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1])
+        world.seedMember(uid: adminUid, pins: [macA.pin, macB.pin], role: "admin")
+
+        let ringA = InMemoryTeamVaultKeyRing()
+        let ringB = InMemoryTeamVaultKeyRing()
+        let bootstrapperB = world.founderBootstrapper(deviceId: "device-b", keyRing: ringB, escrowDevice: macB)
+        let outcomeB = TestOutcomeBox<Error?>(nil)
+        world.gateway.beforeNextDocumentWriteAsync = { [teamId] in
+            do {
+                _ = try await bootstrapperB.bootstrapKeys(teamID: teamId)
+            } catch {
+                outcomeB.value = error
+            }
+        }
+
+        let bootstrapA = try await world
+            .founderBootstrapper(deviceId: "device-a", keyRing: ringA, escrowDevice: macA)
+            .bootstrapKeys(teamID: teamId)
+
+        // 1. The loser published NOTHING and kept NOTHING. It did not fail to
+        //    write because a document was in its way — it never got as far as a
+        //    document, because it did not own the generation.
+        XCTAssertEqual(
+            outcomeB.value as? TeamFounderKeyBootstrapError,
+            .keysMintedOnAnotherDevice(teamID: teamId),
+            "the second Mac is refused by the claim, not by a pre-check both Macs pass"
+        )
+        XCTAssertNil(try ringB.key(teamId: teamId, slot: .vault(version: 1)))
+        XCTAssertNil(try ringB.key(teamId: teamId, slot: .slug))
+        XCTAssertNil(try ringB.pendingKey(teamId: teamId, slot: .vault(version: 1)))
+        XCTAssertNil(try ringB.pendingKey(teamId: teamId, slot: .slug))
+
+        // 2. The winner published its own key to every pinned device of this
+        //    account, and exactly those ids exist.
+        XCTAssertEqual(
+            Set(world.envelopeIds()),
+            [
+                "\(adminUid)_device-a_1_v1", "\(adminUid)_device-a_1_slug",
+                "\(adminUid)_device-b_2_v1", "\(adminUid)_device-b_2_slug"
+            ],
+            "no rival founding was published beside the winner's"
+        )
+        XCTAssertEqual(Set(bootstrapA.envelopeIds), Set(world.envelopeIds()))
+
+        // 3. ONE fingerprint. Both Macs asked; one was recorded.
+        XCTAssertEqual(world.callables.slugKeyRecords.count, 2, "both Macs did claim — this race was real")
+        XCTAssertEqual(world.callables.recordedSlugKeyId, bootstrapA.slugKeyId)
+
+        // 4. And the invariant itself: every published envelope unwraps to the
+        //    key the ring holds and the roster names.
+        try assertOneKeyPerFoundingGeneration(world, ring: ringA, devices: [macA, macB])
+    }
+
+    /// THE POSTCONDITION THAT MAKES THE INVARIANT ENFORCED RATHER THAN ARGUED.
+    ///
+    /// The claim closes the window by construction, and a construction argument
+    /// is only as good as the next refactor. So the pass also CHECKS, at the
+    /// end, that the key its ring holds for each founding slot is the key it
+    /// published wraps of — and refuses to finish if it is not, rather than
+    /// recording a fingerprint for a key the envelopes do not carry.
+    ///
+    /// Staged here with the one thing that could still do it: a rogue key
+    /// landing in the ACTIVE half mid-publication, on a team whose slug key this
+    /// Mac legitimately claimed moments earlier. The discard machinery from the
+    /// previous round then throws this Mac's own published mint away — and that,
+    /// and only that, is the case where a discard is a fork rather than a
+    /// tidy-up.
+    ///
+    /// THE STATE IT LEAVES IS REPAIRABLE, which is why refusing is better than
+    /// carrying on: the envelopes and the roster both name the claimed key, so
+    /// the next pickup ACTIVEs that key over the rogue one and the following
+    /// press finishes cleanly. Only the ring was wrong, and the ring is the one
+    /// of the three that is not immutable.
+    func test_a_founding_whose_ring_ends_on_a_key_its_envelopes_do_not_carry_refuses_to_finish() async throws {
+        let world = TeamKeyWorld()
+        let mac = world.enrolDevice(uid: adminUid, deviceId: "device-admin", escrowKeyVersion: 1)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1])
+        world.seedMember(uid: adminUid, pins: [mac.pin], role: "admin")
+        let ring = InMemoryTeamVaultKeyRing()
+
+        // A key that is not this team's and not this Mac's mint, landing in the
+        // ACTIVE half after the claim and during the publication.
+        let rogueVaultKey = TeamKeyWorld.randomKey()
+        world.gateway.beforeNextDocumentWrite = { [teamId] in
+            try? ring.store(rogueVaultKey, teamId: teamId, slot: .vault(version: 1))
+        }
+
+        do {
+            _ = try await world
+                .founderBootstrapper(deviceId: "device-admin", keyRing: ring, escrowDevice: mac)
+                .bootstrapKeys(teamID: teamId)
+            XCTFail("expected the founding to refuse to finish on a ring its envelopes do not agree with")
+        } catch let error as TeamVaultKeyDistributionError {
+            XCTAssertEqual(error, .foundingGenerationForked(teamId: teamId, slot: "v1"))
+        }
+
+        // The RING is the one of the three that went wrong, and it is the only
+        // one of the three that can be corrected — which is why the pass
+        // refuses here instead of recording the ring's answer as the truth.
+        XCTAssertEqual(
+            try ring.key(teamId: teamId, slot: .vault(version: 1)),
+            rogueVaultKey,
+            "the rogue key did land: this is the state the postcondition exists to catch"
+        )
+        XCTAssertNotEqual(
+            try mac.unwrapTeamKey(world.wrappedKey(in: try world.envelope(id: "\(adminUid)_device-admin_1_v1"))),
+            rogueVaultKey,
+            "and the published wrap carries the key this pass CLAIMED, never the key that gatecrashed the ring"
+        )
+        // The slug half was never in doubt, and says what a healthy slot looks
+        // like: claimed, published and held are one key.
+        let heldSlugKey = try XCTUnwrap(try ring.key(teamId: teamId, slot: .slug))
+        XCTAssertEqual(world.callables.recordedSlugKeyId, try CloudVaultCrypto.vaultKeyID(for: heldSlugKey))
+        XCTAssertEqual(
+            try mac.unwrapTeamKey(world.wrappedKey(in: try world.envelope(id: "\(adminUid)_device-admin_1_slug"))),
+            heldSlugKey
+        )
+    }
+
+    /// WHAT GETS PUBLISHED IS DECIDED BEFORE THE CLAIM, NOT RE-READ AFTER IT
+    /// (D16 founding-claim ruling, clause 1).
+    ///
+    /// The claim is a network round trip, and the ring is shared with the sync
+    /// cycle: a key can land in the ACTIVE half while this pass is waiting for
+    /// the roster to answer. If the wrap pass then RE-READ the ring for its key
+    /// bytes — which is what it does for every other caller, correctly — it
+    /// would publish that key while the roster had just recorded a fingerprint
+    /// for a different one. Envelopes are create-only; that is unrepairable.
+    ///
+    /// So the founding hands its resolved bytes down to the wrap pass, and this
+    /// test lands a rogue key inside the claim's own window to prove it.
+    ///
+    /// MUTATION: make `wrapKeys` ignore `keys:` and read the ring in phase 1 —
+    /// "the ring is the source of truth for a key, surely" — and this goes red
+    /// alone: the published slug wrap stops matching the fingerprint the roster
+    /// recorded a moment earlier.
+    func test_a_key_landing_during_the_roster_claim_does_not_change_what_is_published() async throws {
+        let world = TeamKeyWorld()
+        let mac = world.enrolDevice(uid: adminUid, deviceId: "device-admin", escrowKeyVersion: 1)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1])
+        world.seedMember(uid: adminUid, pins: [mac.pin], role: "admin")
+        let ring = InMemoryTeamVaultKeyRing()
+
+        let rogueVaultKey = TeamKeyWorld.randomKey()
+        let rogueSlugKey = TeamKeyWorld.randomKey()
+        world.callables.interleaveDuringNextSlugKeyRecord { [teamId] in
+            try? ring.store(rogueVaultKey, teamId: teamId, slot: .vault(version: 1))
+            try? ring.store(rogueSlugKey, teamId: teamId, slot: .slug)
+        }
+
+        do {
+            _ = try await world
+                .founderBootstrapper(deviceId: "device-admin", keyRing: ring, escrowDevice: mac)
+                .bootstrapKeys(teamID: teamId)
+            XCTFail("expected the pass to refuse rather than complete on a ring it no longer agrees with")
+        } catch let error as TeamVaultKeyDistributionError {
+            XCTAssertEqual(error, .foundingGenerationForked(teamId: teamId, slot: "slug"))
+        }
+
+        // THE POINT: the envelopes carry the key the roster was told about, and
+        // the rogue key that gatecrashed the ring reached no document at all.
+        let claimed = try XCTUnwrap(world.callables.recordedSlugKeyId)
+        let publishedSlugKey = try mac.unwrapTeamKey(
+            world.wrappedKey(in: try world.envelope(id: "\(adminUid)_device-admin_1_slug"))
+        )
+        XCTAssertEqual(
+            try CloudVaultCrypto.vaultKeyID(for: publishedSlugKey),
+            claimed,
+            "the published slug wrap is the key this pass CLAIMED, not whatever the ring held when it resumed"
+        )
+        XCTAssertNotEqual(publishedSlugKey, rogueSlugKey)
+        XCTAssertNotEqual(
+            try mac.unwrapTeamKey(world.wrappedKey(in: try world.envelope(id: "\(adminUid)_device-admin_1_v1"))),
+            rogueVaultKey
+        )
+    }
+
+    /// The negative that keeps the guard from being a blanket refusal: a genuine
+    /// first-time founder, with nothing published and nothing to adopt, still
+    /// promotes the keys it just made.
+    func test_a_first_time_founder_still_promotes_the_keys_it_minted() async throws {
+        let world = TeamKeyWorld()
+        let mac = world.enrolDevice(uid: adminUid, deviceId: "device-admin", escrowKeyVersion: 1)
+        world.seedTeam(activeKeyVersion: 1, retainedKeyVersions: [1])
+        world.seedMember(uid: adminUid, pins: [mac.pin], role: "admin")
+
+        let bootstrap = try await world.founderBootstrapper(deviceId: "device-admin").bootstrapKeys(teamID: teamId)
+
+        XCTAssertTrue(bootstrap.discardedLocalMintSlots.isEmpty, "nothing was adopted, so nothing is discarded")
+        let vaultKey = try XCTUnwrap(try world.keyRing.key(teamId: teamId, slot: .vault(version: 1)))
+        let slugKey = try XCTUnwrap(try world.keyRing.key(teamId: teamId, slot: .slug))
+        XCTAssertEqual(
+            vaultKey,
+            try world.keyRing.pendingKey(teamId: teamId, slot: .vault(version: 1)),
+            "the ACTIVE slot holds this Mac's own mint — promoted, not refused"
+        )
+        XCTAssertEqual(slugKey, try world.keyRing.pendingKey(teamId: teamId, slot: .slug))
+        XCTAssertEqual(bootstrap.slugKeyId, try CloudVaultCrypto.vaultKeyID(for: slugKey))
+        XCTAssertEqual(
+            try mac.unwrapTeamKey(world.wrappedKey(in: try world.envelope(id: "\(adminUid)_device-admin_1_v1"))),
+            vaultKey,
+            "and the envelope carries it"
+        )
+        try assertOneKeyPerFoundingGeneration(world, ring: world.keyRing, devices: [mac])
+    }
+
     // MARK: - Helpers
+
+    /// THE FOUNDING INVARIANT, ASSERTED END TO END RATHER THAN BY PROXY (D16
+    /// founding-claim ruling, clause 3).
+    ///
+    /// *For any team key generation, the published envelopes, this device's key
+    /// ring, and the roster's recorded fingerprint must all name exactly ONE
+    /// key.* Ring state and fingerprints alone cannot see the failure this whole
+    /// round is about — a wrap published from a mint that was afterwards thrown
+    /// away — because the ring and the roster both end up naming the SURVIVING
+    /// key and agree with each other perfectly while the envelopes on the server
+    /// carry a different one. Only opening the envelopes says so.
+    ///
+    /// So every envelope the server holds for a founding slot is opened with the
+    /// device it is addressed to, using that device's real P-256 escrow key, and
+    /// the bytes that come out must equal the key `ring` holds for that slot —
+    /// and, for `.slug`, hash to the fingerprint the roster committed.
+    private func assertOneKeyPerFoundingGeneration(
+        _ world: TeamKeyWorld,
+        ring: any TeamVaultKeyRing,
+        devices: [TestEscrowDevice],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let devicesById = Dictionary(uniqueKeysWithValues: devices.map { ($0.pin.deviceId, $0) })
+        var opened = 0
+        for envelopeId in world.envelopeIds().sorted() {
+            let envelope = try world.envelope(id: envelopeId)
+            guard let slotRaw = envelope["keySlot"] as? String,
+                  let slot = TeamKeySlot(rawValue: slotRaw),
+                  let deviceId = envelope["deviceId"] as? String,
+                  let device = devicesById[deviceId] else { continue }
+            let held = try XCTUnwrap(
+                try ring.key(teamId: world.teamId, slot: slot),
+                "envelope \(envelopeId) publishes a key for \(slotRaw) that this ring does not hold at all",
+                file: file,
+                line: line
+            )
+            XCTAssertEqual(
+                try device.unwrapTeamKey(world.wrappedKey(in: envelope)),
+                held,
+                "envelope \(envelopeId) unwraps to a key this Mac's ring does not hold: one generation, two keys",
+                file: file,
+                line: line
+            )
+            if slot == .slug {
+                XCTAssertEqual(
+                    try CloudVaultCrypto.vaultKeyID(for: held),
+                    world.callables.recordedSlugKeyId,
+                    "the roster names a different slug key than \(envelopeId) publishes",
+                    file: file,
+                    line: line
+                )
+            }
+            opened += 1
+        }
+        XCTAssertGreaterThan(
+            opened,
+            0,
+            "no founding envelope was opened, so this assertion proved nothing",
+            file: file,
+            line: line
+        )
+    }
 
     private func assertThrows<T>(
         _ expected: TeamVaultKeyDistributionError,
@@ -2186,6 +2968,25 @@ final class InMemoryTeamVaultKeyRing: TeamVaultKeyRing, @unchecked Sendable {
         lock.withLock { pending[Self.account(teamId, slot)] = nil }
     }
 
+    /// The production ring takes ONE lock around the read of the active half and
+    /// the write that follows it, so an adoption cannot land between them. This
+    /// double does the same — the whole point of the primitive is that the
+    /// decision is not separable from the write, and a double that separated
+    /// them would let a test pass over an implementation that forked.
+    func promotePendingMintUnlessAdopted(teamId: String, slot: TeamKeySlot) throws -> TeamKeyMintPromotion {
+        lock.withLock {
+            let account = Self.account(teamId, slot)
+            guard let mint = pending[account] else { return .nothingPending }
+            guard let active = keys[account] else {
+                keys[account] = mint
+                return .promoted
+            }
+            if active == mint { return .alreadyActive }
+            pending[account] = nil
+            return .discardedInFavourOfAdoptedKey
+        }
+    }
+
     private static func account(_ teamId: String, _ slot: TeamKeySlot) -> String {
         "\(teamId)#\(slot.rawValue)"
     }
@@ -2234,12 +3035,27 @@ final class RecordingTeamRosterCallables: TeamRosterCallableInvoking, @unchecked
         let rewrapJobId: String
     }
 
+    /// The founding slug-key fingerprint, recorded so a test can prove the
+    /// bootstrap carries it back to the roster — without which every joiner's
+    /// slug envelope lands PENDING and the team lane stops at the founder.
+    struct SlugKeyRecord: Equatable {
+        let teamId: String
+        let slugKeyId: String
+    }
+
     private let lock = NSLock()
     private var recordedPromotions: [Promotion] = []
     private var recordedRotations: [Rotation] = []
     private var recordedAbandonments: [Abandonment] = []
     private var queuedRotationErrors: [Error] = []
     private var recordedCompletions: [RewrapCompletion] = []
+    private var recordedSlugKeyIds: [SlugKeyRecord] = []
+    private var queuedSlugKeyErrors: [Error] = []
+    /// The fingerprint the roster ACTUALLY holds. Distinct from
+    /// `recordedSlugKeyIds`, which is every ATTEMPT: a refusal and a transport
+    /// failure both leave this untouched, exactly as the server does.
+    private var committedSlugKeyId: String?
+    private var slugKeyRecordInterleave: (@Sendable () async -> Void)?
 
     var promotions: [Promotion] { lock.withLock { recordedPromotions } }
     /// Every generation the roster authority was asked to BURN, in order.
@@ -2248,6 +3064,49 @@ final class RecordingTeamRosterCallables: TeamRosterCallableInvoking, @unchecked
     /// the same envelope ids as the retry is the property the C-4 test asserts.
     var rotations: [Rotation] { lock.withLock { recordedRotations } }
     var rewrapCompletions: [RewrapCompletion] { lock.withLock { recordedCompletions } }
+    var slugKeyRecords: [SlugKeyRecord] { lock.withLock { recordedSlugKeyIds } }
+    /// The one fingerprint this roster names, or nil while the founding
+    /// generation is unclaimed. THE THIRD OF THE THREE THINGS the founding
+    /// invariant says must agree — the envelopes, the ring, and this.
+    var recordedSlugKeyId: String? { lock.withLock { committedSlugKeyId } }
+
+    /// Seed the fingerprint a roster document already carries, so the double and
+    /// the fake team document cannot disagree about whether this team's founding
+    /// generation is claimed. Called by ``TeamKeyWorld/seedTeam(activeKeyVersion:retainedKeyVersions:burnedKeyVersions:slugKeyId:)``.
+    func seedRecordedSlugKeyId(_ slugKeyId: String) {
+        lock.withLock { committedSlugKeyId = slugKeyId }
+    }
+
+    /// Run a writer INSIDE the claim's round trip — after the fingerprint is
+    /// committed, before the caller resumes. That is the one window between the
+    /// bootstrap resolving its keys and publishing them, and the window the
+    /// published-from-the-resolved-bytes rule exists to survive. One-shot.
+    func interleaveDuringNextSlugKeyRecord(_ hook: @escaping @Sendable () async -> Void) {
+        lock.withLock { slugKeyRecordInterleave = hook }
+    }
+
+    /// `functions/src/teamSlugKeyRecord.ts`'s one refusal, in the SDK shape the
+    /// client actually parses (`FunctionsErrorDomain` + `FunctionsErrorDetailsKey`),
+    /// so `TeamRosterReasonCode.read(from:)` is exercised here rather than
+    /// bypassed by a bespoke Swift error the production code would never meet.
+    static func differentSlugKeyRecorded() -> NSError {
+        NSError(
+            domain: FunctionsErrorDomain,
+            code: FunctionsErrorCode.failedPrecondition.rawValue,
+            userInfo: [
+                FunctionsErrorDetailsKey: ["reason": TeamRosterReasonCode.differentSlugKeyRecorded.rawValue]
+                    as NSDictionary,
+                NSLocalizedDescriptionKey:
+                    "This team already records a different document-naming key."
+            ]
+        )
+    }
+
+    /// Make the next `recordTeamSlugKeyId` record its attempt and then throw, so
+    /// a test can stage "the keys published and the roster note did not".
+    func failNextSlugKeyRecord(with error: Error) {
+        lock.withLock { queuedSlugKeyErrors.append(error) }
+    }
 
     /// Make the next `rotateTeamKey` call record its attempt and then throw.
     /// Queued, so one test can model "refused, then accepted on retry".
@@ -2280,6 +3139,33 @@ final class RecordingTeamRosterCallables: TeamRosterCallableInvoking, @unchecked
             )
         }
     }
+
+    /// WRITE-ONCE, LIKE THE SERVER — and that is not decoration. The founding
+    /// generation is serialised on THIS call (the D16 founding-claim ruling), so
+    /// a double that let two fingerprints land would make the race it serialises
+    /// unobservable and every test over it vacuous. Same fingerprint again: a
+    /// no-op that succeeds. A different one: `failed-precondition` +
+    /// `DIFFERENT_SLUG_KEY_RECORDED`, for ever.
+    func recordTeamSlugKeyId(teamId: String, slugKeyId: String) async throws {
+        var failure: Error?
+        var interleave: (@Sendable () async -> Void)?
+        lock.withLock {
+            recordedSlugKeyIds.append(SlugKeyRecord(teamId: teamId, slugKeyId: slugKeyId))
+            if !queuedSlugKeyErrors.isEmpty {
+                failure = queuedSlugKeyErrors.removeFirst()
+                return
+            }
+            if let committed = committedSlugKeyId, committed != slugKeyId {
+                failure = Self.differentSlugKeyRecorded()
+                return
+            }
+            committedSlugKeyId = slugKeyId
+            interleave = slugKeyRecordInterleave
+            slugKeyRecordInterleave = nil
+        }
+        if let failure { throw failure }
+        await interleave?()
+    }
 }
 
 /// One enrolled escrow device: a real P-256 key agreement keypair, its pinned
@@ -2293,6 +3179,27 @@ struct TestEscrowDevice: TeamEscrowPrivateKeyProviding, @unchecked Sendable {
 
     func unwrapTeamKey(_ wrapped: Data) throws -> Data {
         try CloudVaultCrypto.unwrapVaultKey(wrapped, privateKey: privateKey)
+    }
+}
+
+/// A named failure a test stages on one of the world's doubles, so a `catch`
+/// can prove WHICH step refused rather than swallowing anything thrown.
+enum TeamKeyWorldFailure: Error {
+    case refused
+}
+
+/// A cell a `@Sendable` interleave hook can report its outcome back through.
+/// The hook runs INSIDE the pass it interrupts, so what it saw cannot be
+/// returned; it is written here and asserted after the pass unwinds.
+final class TestOutcomeBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Value
+
+    init(_ value: Value) { self.stored = value }
+
+    var value: Value {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
     }
 }
 
@@ -2333,6 +3240,31 @@ final class TeamKeyWorld: @unchecked Sendable {
             keyRing: keyRing ?? self.keyRing,
             callables: callables,
             escrowPrivateKey: TestEscrowDevice(
+                privateKey: P256.KeyAgreement.PrivateKey(),
+                pin: TeamEscrowDevicePin(deviceId: deviceId, escrowKeyVersion: 1, publicKeyFingerprint: "")
+            )
+        )
+    }
+
+    /// The production founder seam over this world's fake Firestore, with a
+    /// test escrow device standing in for the Keychain-backed one.
+    ///
+    /// `escrowDevice` matters: `TeamVaultFounderKeyBootstrapper` runs
+    /// `loadKeyRingFromEnvelopes` before it mints, so the device that can open
+    /// this Mac's wraps is part of the behaviour under test rather than a
+    /// detail.
+    func founderBootstrapper(
+        deviceId: String,
+        keyRing: TeamVaultKeyRing? = nil,
+        escrowDevice: TeamEscrowPrivateKeyProviding? = nil
+    ) -> TeamVaultFounderKeyBootstrapper {
+        TeamVaultFounderKeyBootstrapper(
+            gateway: gateway,
+            uid: "pr2-admin",
+            deviceId: deviceId,
+            keyRing: keyRing ?? self.keyRing,
+            callables: callables,
+            escrowPrivateKey: escrowDevice ?? TestEscrowDevice(
                 privateKey: P256.KeyAgreement.PrivateKey(),
                 pin: TeamEscrowDevicePin(deviceId: deviceId, escrowKeyVersion: 1, publicKeyFingerprint: "")
             )
@@ -2413,7 +3345,14 @@ final class TeamKeyWorld: @unchecked Sendable {
             "keyRotationRequired": false,
             "schemaVersion": 1
         ]
-        if let slugKeyId { document["slugKeyId"] = slugKeyId }
+        if let slugKeyId {
+            document["slugKeyId"] = slugKeyId
+            // The roster document and the callable that guards it are ONE
+            // server. Seeding the field without telling the write-once
+            // authority would model a backend that has forgotten its own
+            // founding, and every claim test over it would pass vacuously.
+            callables.seedRecordedSlugKeyId(slugKeyId)
+        }
         gateway.setDocumentData(document, at: "team_rosters/\(teamId)")
     }
 

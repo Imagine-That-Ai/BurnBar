@@ -177,6 +177,8 @@ struct TeamMemorySection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            keyReadiness(row)
+
             // THIS team's counters or none (PR 4 review M3). A rotation pass
             // reports on one corpus, and the row for another team must not
             // repeat its numbers.
@@ -201,6 +203,43 @@ struct TeamMemorySection: View {
             }
         }
         .padding(.vertical, DesignSystem.Spacing.xs)
+    }
+
+    /// What THIS Mac holds for the team, and the founder's recovery when the
+    /// answer is "not the keys it minted".
+    ///
+    /// It is rendered for every state including the good one. Before the founder
+    /// bootstrap and the joiner pickup had callers, EVERY member was in the bad
+    /// state and the section said nothing at all — a switch that read available
+    /// above a lane that could not seal a single fact. A row that only speaks up
+    /// when something is wrong is a row a member cannot use to tell "working"
+    /// from "silently doing nothing".
+    @ViewBuilder
+    private func keyReadiness(_ row: TeamMemorySectionModel.TeamRow) -> some View {
+        if let readinessLine = row.keyReadiness.notice {
+            if row.keyReadiness == .ready {
+                Text(readinessLine)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                notice(readinessLine)
+            }
+        }
+        if model.canFinishTeamSetup(row: row) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text(TeamMemoryCopy.finishTeamSetupDetail)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(TeamMemoryCopy.finishTeamSetupAction) {
+                    Task { await model.finishTeamSetup(teamID: row.detail.teamID) }
+                }
+                .buttonStyle(.bordered)
+                .font(DesignSystem.Typography.caption)
+                .disabled(model.isLoading)
+            }
+        }
     }
 
     private func memberList(_ row: TeamMemorySectionModel.TeamRow) -> some View {

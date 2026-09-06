@@ -280,4 +280,5 @@ export {
   rotateTeamKey,
   abandonTeamKeyGeneration,
   recordTeamRewrapComplete,
+  recordTeamSlugKeyId,
 } from "./callables/teamRosterCallables.js";

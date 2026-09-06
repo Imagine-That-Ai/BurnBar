@@ -99,6 +99,15 @@ struct TeamRosterDetail: Equatable, Sendable {
     /// client copy of it would be a number this section could only render or
     /// misuse.
     let burnedKeyVersions: [Int]
+    /// Has the roster recorded WHICH document-naming key this team uses?
+    ///
+    /// A fingerprint (`CloudVaultCrypto.vaultKeyID`), never the key, and the
+    /// only thing that promotes a joiner's slug envelope out of the pending ring
+    /// (the B6 ruling). Mirrored as a Bool rather than the string because the
+    /// section's question is "is the founding finished", never "which key" — a
+    /// client that compared fingerprints would be re-implementing the check
+    /// `openTeamFact`'s AEAD tag already makes.
+    let slugKeyRecorded: Bool
     let keyRotationRequired: Bool
     /// The rotation-completion note, promoted from PR 2's local `UserDefaults`
     /// note to a roster field written by `recordTeamRewrapComplete` (PR 2 review
@@ -210,6 +219,112 @@ protocol TeamJoinerKeyIssuing: Sendable {
     func issueKeys(teamID: String, joinerUid: String, retainedKeyVersions: [Int]) async throws
 }
 
+// MARK: - Whether THIS Mac holds the team's keys
+
+/// What this device holds for a team, which is a different question from what
+/// the ROSTER says about the member — and the one the section could not answer
+/// at all before the founder bootstrap and the joiner pickup had callers.
+///
+/// A team key never reaches the server, so no roster field can report this. It
+/// is read from the local key ring, and the three live cases below are exactly
+/// the three states a member can be in, each naming who acts next: the member's
+/// own Mac (`setupIncomplete`), an admin's Mac (`awaitingKeys`), or nobody
+/// (`ready`).
+///
+/// `unknown` is the honest fourth: a build that was handed no ring — previews,
+/// and the roster-half tests — renders NOTHING rather than guessing, because a
+/// wrong "ready" here is precisely the silence this whole change is about.
+enum TeamKeyReadiness: Equatable {
+    case ready
+    /// This Mac minted the founding keys and their publication did not finish.
+    /// The signal is the PENDING ring slot the bootstrap writes before its first
+    /// network call — the same machinery that makes a resumed bootstrap reuse
+    /// the same bytes, rather than a second record of "I created this team".
+    case setupIncomplete
+    /// This Mac holds everything it needs and the TEAM's founding is still
+    /// unfinished: the roster has no `slugKeyId`, so a joiner's slug envelope
+    /// lands PENDING and nobody else can derive a document id (the B6 ruling).
+    /// The founder syncs perfectly and every member they admit gets nothing —
+    /// which is exactly the shape of failure this whole change exists to stop
+    /// being invisible.
+    ///
+    /// A NEW FOUNDING CANNOT PRODUCE THIS STATE ANY MORE, and the row is kept
+    /// rather than deleted because two other things still can. Since the D16
+    /// founding-claim ruling the roster is written BEFORE the envelopes and
+    /// before the promotion, so a Mac that holds both keys ACTIVE from its own
+    /// founding has, by construction, already recorded the fingerprint. What
+    /// reaches here instead is a team founded by a build that shipped the old
+    /// order, and a `TeamRosterDetail` that is simply stale — both of which want
+    /// exactly this copy, and neither of which the row may silently call
+    /// `.ready`.
+    case founderRecordNotPublished
+    case awaitingKeys
+    case unknown
+
+    var notice: String? {
+        switch self {
+        case .ready: TeamMemoryCopy.keysReadyNotice
+        case .setupIncomplete: TeamMemoryCopy.keysSetupIncompleteNotice
+        case .founderRecordNotPublished: TeamMemoryCopy.slugKeyNotRecordedNotice
+        case .awaitingKeys: TeamMemoryCopy.keysAwaitingAdminNotice
+        case .unknown: nil
+        }
+    }
+
+    /// Pure, so the state machine is testable without a Keychain.
+    ///
+    /// BOTH KEYS ARE REQUIRED BEFORE ANYTHING ELSE IS ASKED, not just one. The
+    /// slug key NAMES documents and the active generation SEALS them; a Mac
+    /// holding one of them contributes nothing and would be reporting a
+    /// readiness it does not have.
+    ///
+    /// AND HOLDING BOTH IS STILL NOT `ready` FOR THE TEAM. `rosterRecordedSlugKey`
+    /// is the roster's `slugKeyId`, and until it is set the founder is the only
+    /// member who can ever open the space — so the row says the founding is
+    /// unfinished rather than reporting a readiness that is true of one Mac and
+    /// false of the team.
+    static func resolve(
+        holdsSlugKey: Bool,
+        holdsActiveVaultKey: Bool,
+        hasPendingFoundingMint: Bool,
+        rosterRecordedSlugKey: Bool
+    ) -> TeamKeyReadiness {
+        guard holdsSlugKey, holdsActiveVaultKey else {
+            return hasPendingFoundingMint ? .setupIncomplete : .awaitingKeys
+        }
+        return rosterRecordedSlugKey ? .ready : .founderRecordNotPublished
+    }
+
+    /// The production reading, over a real ring.
+    ///
+    /// A ring that THROWS resolves to `unknown` rather than to `awaitingKeys`: a
+    /// Keychain that could not be read has told us nothing, and rendering "an
+    /// admin has to share your keys" on the strength of it would be inventing a
+    /// membership fact out of a storage failure.
+    static func resolve(ring: any TeamVaultKeyRing, detail: TeamRosterDetail) -> TeamKeyReadiness {
+        do {
+            let teamID = detail.teamID
+            let activeSlot = TeamKeySlot.vault(version: max(1, detail.activeKeyVersion))
+            let slugKey = try ring.key(teamId: teamID, slot: .slug)
+            let activeVaultKey = try ring.key(teamId: teamID, slot: activeSlot)
+            // The founding pair, and only the founding pair: a PENDING `v(N+1)`
+            // left by an interrupted ROTATION is not an unfinished team setup,
+            // and offering "finish setting up" for it would point an admin at
+            // the wrong recovery entirely.
+            let pendingSlug = try ring.pendingKey(teamId: teamID, slot: .slug)
+            let pendingFoundingVault = try ring.pendingKey(teamId: teamID, slot: .vault(version: 1))
+            return resolve(
+                holdsSlugKey: slugKey != nil,
+                holdsActiveVaultKey: activeVaultKey != nil,
+                hasPendingFoundingMint: pendingSlug != nil || pendingFoundingVault != nil,
+                rosterRecordedSlugKey: detail.slugKeyRecorded
+            )
+        } catch {
+            return .unknown
+        }
+    }
+}
+
 // MARK: - The gate the toggle shows
 
 /// Why the per-team switch is unavailable, in the member's terms.
@@ -276,7 +391,22 @@ final class TeamMemorySectionModel {
         let detail: TeamRosterDetail
         let optedIn: Bool
         let availability: TeamMemoryToggleAvailability
+        /// What THIS Mac holds for the team. Not derivable from `detail`: the
+        /// roster records membership, never key material.
+        let keyReadiness: TeamKeyReadiness
         var id: String { detail.teamID }
+
+        init(
+            detail: TeamRosterDetail,
+            optedIn: Bool,
+            availability: TeamMemoryToggleAvailability,
+            keyReadiness: TeamKeyReadiness = .unknown
+        ) {
+            self.detail = detail
+            self.optedIn = optedIn
+            self.availability = availability
+            self.keyReadiness = keyReadiness
+        }
     }
 
     private(set) var rows: [TeamRow] = []
@@ -341,11 +471,19 @@ final class TeamMemorySectionModel {
     private let admin: TeamMemoryAdministering
     private let rotator: TeamKeyRotating?
     private let joinerKeys: TeamJoinerKeyIssuing?
+    /// The founding half of design §3(b)1. Nil while signed out, exactly like the
+    /// rotator and the joiner issuer: all three wrap keys AS this account.
+    private let founderKeys: TeamFounderKeyBootstrapping?
     private let uidProvider: @MainActor () -> String?
     private let personalGateProvider: @MainActor () -> Bool
     private let remoteConfigProvider: @MainActor () -> (allowed: Bool, resolved: Bool)
     private let optInProvider: @MainActor () -> Set<String>
     private let optInWriter: @MainActor (Set<String>) -> Void
+    /// Reads the local key ring for one team. A closure rather than a protocol
+    /// for the same reason every other input here is one: the model owns no
+    /// Keychain, and a build without a ring answers `.unknown` instead of
+    /// pretending.
+    private let keyReadinessProvider: @MainActor (TeamRosterDetail) -> TeamKeyReadiness
     /// Retires this team's local sync records NOW — see `leaveTeam`. Defaults to
     /// a no-op so every seam that constructs this model without a sync domain
     /// (previews, tests of the roster half) keeps compiling; the production
@@ -359,11 +497,13 @@ final class TeamMemorySectionModel {
         admin: TeamMemoryAdministering,
         rotator: TeamKeyRotating? = nil,
         joinerKeys: TeamJoinerKeyIssuing? = nil,
+        founderKeys: TeamFounderKeyBootstrapping? = nil,
         uidProvider: @escaping @MainActor () -> String?,
         personalGateProvider: @escaping @MainActor () -> Bool,
         remoteConfigProvider: @escaping @MainActor () -> (allowed: Bool, resolved: Bool),
         optInProvider: @escaping @MainActor () -> Set<String>,
         optInWriter: @escaping @MainActor (Set<String>) -> Void,
+        keyReadinessProvider: @escaping @MainActor (TeamRosterDetail) -> TeamKeyReadiness = { _ in .unknown },
         invalidateTeamSync: @escaping @Sendable (String) async -> Void = { _ in }
     ) {
         self.directory = directory
@@ -371,11 +511,13 @@ final class TeamMemorySectionModel {
         self.admin = admin
         self.rotator = rotator
         self.joinerKeys = joinerKeys
+        self.founderKeys = founderKeys
         self.uidProvider = uidProvider
         self.personalGateProvider = personalGateProvider
         self.remoteConfigProvider = remoteConfigProvider
         self.optInProvider = optInProvider
         self.optInWriter = optInWriter
+        self.keyReadinessProvider = keyReadinessProvider
         self.invalidateTeamSync = invalidateTeamSync
     }
 
@@ -408,7 +550,12 @@ final class TeamMemorySectionModel {
                             remoteConfigAllowed: ceiling.allowed,
                             remoteConfigResolved: ceiling.resolved,
                             rosterStatus: detail.myStatus
-                        )
+                        ),
+                        // Read from the LOCAL ring against the roster's active
+                        // generation: "do I hold what this team is currently
+                        // sealing under" is the only useful form of the
+                        // question, and it moves every time an admin rotates.
+                        keyReadiness: keyReadinessProvider(detail)
                     )
                 )
             } catch {
@@ -430,18 +577,147 @@ final class TeamMemorySectionModel {
         optInWriter(opted)
         rows = rows.map { row in
             row.detail.teamID == teamID
-                ? TeamRow(detail: row.detail, optedIn: isOn, availability: row.availability)
+                ? TeamRow(
+                    detail: row.detail,
+                    optedIn: isOn,
+                    availability: row.availability,
+                    keyReadiness: row.keyReadiness
+                )
                 : row
         }
     }
 
     // MARK: Membership
 
+    /// Create the team AND mint its keys, in that order, because until this
+    /// method did both a created team had none at all.
+    ///
+    /// WHAT WAS BROKEN. `createTeam` used to call the callable, remember the id
+    /// and stop. `TeamVaultKeyDistributor.bootstrapTeamKeys` — design §3(b)1, the
+    /// method that generates `teamVaultKey_v1` and the non-rotating
+    /// `teamSlugKey`, self-wraps them and publishes the envelopes — had no
+    /// production caller anywhere in the app. So no founder ever held a team key:
+    /// `TeamMemorySyncDomain.prepareTeam` logged `team_memory_sync_awaiting_slug_key`
+    /// on every cycle for ever, "Share Team Keys" failed `missingKeyForSlot`
+    /// because the admin's own ring was empty, and the Settings section reported
+    /// none of it.
+    ///
+    /// THE ORDER IS DELIBERATE AND SO IS THE ERROR HANDLING. The id is remembered
+    /// BEFORE the keys are minted: the team is real on the server the instant the
+    /// callable returns, and a client that forgot it would strand a team nobody
+    /// can navigate to — `team_rosters` has no "list my teams" query
+    /// (`TeamMembershipDirectory`), so the id this call returns is the only handle
+    /// that will ever exist for it.
+    ///
+    /// A BOOTSTRAP THAT FAILS IS THEREFORE A RECOVERABLE STATE, NOT A LOST TEAM.
+    /// The row appears with `keyReadiness == .setupIncomplete` — read off the
+    /// PENDING ring slots the bootstrap writes before its first network call, the
+    /// same machinery that makes the resume reuse those exact bytes — and the
+    /// section offers ``finishTeamSetup(teamID:)``, which is a plain retry of the
+    /// idempotent bootstrap. The sync cycle meanwhile does what it already did:
+    /// finds no slug key, logs `team_memory_sync_awaiting_slug_key`, syncs
+    /// nothing, and asks again next beat. No second mechanism, and no half-team.
     func createTeam(named name: String) async {
-        await run {
-            let teamID = try await self.admin.createTeam(name: name)
-            self.directory.remember(teamID: teamID)
+        isLoading = true
+        errorMessage = nil
+        do {
+            let teamID = try await admin.createTeam(name: name)
+            directory.remember(teamID: teamID)
+            if let founderKeys {
+                do {
+                    report(discard: try await founderKeys.bootstrapKeys(teamID: teamID))
+                } catch {
+                    // The TEAM landed; only its keys did not. Saying "that team
+                    // action did not complete" here would be false in the one
+                    // direction that matters — the founder would create it a
+                    // second time. Neither founding refusal can arise on this
+                    // path — the id is seconds old, no envelope can predate it,
+                    // and `createTeam` seeds `slugKeyId` null so the generation
+                    // is unclaimed — so this says the one true thing and names
+                    // the recovery.
+                    errorMessage = TeamMemoryCopy.teamCreatedWithoutKeysNotice
+                }
+            }
+        } catch {
+            errorMessage = Self.message(for: error)
         }
+        isLoading = false
+        await refresh()
+    }
+
+    /// Whether the founding bootstrap can be run (or re-run) for this team from
+    /// this Mac.
+    ///
+    /// OFFERED TO ANY ADMIN WHOSE RING IS NOT READY, not only to a Mac showing
+    /// `.setupIncomplete`, and that is safe rather than loose. The pending slots
+    /// are lost if the process dies in the microseconds between `createTeam`
+    /// returning and the bootstrap's first mint, so a `.setupIncomplete`-only
+    /// button would leave that founder with no recovery at all. What makes the
+    /// wider offer safe is server-side, not UI-side:
+    /// `TeamVaultFounderKeyBootstrapper` reads this account's own envelopes first
+    /// and REFUSES to mint when another of this member's Macs already published
+    /// the founding pair. So the press is either a resume, a first run, or a
+    /// refusal that changes nothing — never a second, forking generation.
+    func canFinishTeamSetup(row: TeamRow) -> Bool {
+        founderKeys != nil && row.detail.isAdmin && row.keyReadiness != .ready
+    }
+
+    /// Publish this team's founding keys, resuming an interrupted bootstrap.
+    ///
+    /// Idempotent all the way down: `bootstrapTeamKeys` reuses the pending ring
+    /// slots rather than minting again, and every envelope an earlier attempt
+    /// published is claimed by the read-before-write pre-scan instead of
+    /// re-written — envelope documents are create-only, so a blind republication
+    /// would be denied outright.
+    func finishTeamSetup(teamID: String) async {
+        guard let founderKeys,
+              let row = rows.first(where: { $0.detail.teamID == teamID }),
+              canFinishTeamSetup(row: row)
+        else { return }
+        isLoading = true
+        errorMessage = nil
+        do {
+            report(discard: try await founderKeys.bootstrapKeys(teamID: teamID))
+        } catch {
+            errorMessage = Self.founderBootstrapMessage(for: error)
+        }
+        isLoading = false
+        // ALWAYS, success or failure: the row's key readiness is re-read from
+        // the ring by `refresh()`, and it is the only thing that tells the
+        // founder whether the press worked.
+        await refresh()
+    }
+
+    /// Say so when a founding threw this Mac's own minted keys away (D16
+    /// bootstrap-wiring ruling, clause 4).
+    ///
+    /// A SUCCESS THAT STILL OWES THE MEMBER A SENTENCE. The pass worked: this
+    /// Mac holds the team's real keys and the row below will read `.ready`. But
+    /// the keys it minted while doing so were destroyed, because the team's own
+    /// had already arrived from its published envelopes and one immutable
+    /// generation may never carry two — and a member who pressed a button that
+    /// makes keys is entitled to know which keys they ended up with. It rides on
+    /// `errorMessage` because that is the section's one notice slot; the copy
+    /// itself is worded as the good outcome it is, and names the next action as
+    /// nothing rather than another press.
+    private func report(discard bootstrap: TeamKeyBootstrap) {
+        guard !bootstrap.discardedLocalMintSlots.isEmpty else { return }
+        errorMessage = TeamMemoryCopy.foundingMintDiscardedNotice
+    }
+
+    /// Why the founding bootstrap did not complete, in the member's terms.
+    ///
+    /// Exactly one refusal gets its own copy, and it is the one with a DIFFERENT
+    /// remedy: a second Mac may not mint over a founding another Mac published,
+    /// and telling that member to "try again" would be telling them to press a
+    /// button that will refuse for ever. Everything else — no network, a rules
+    /// denial, a missing escrow key — is a retry, and says so.
+    private static func founderBootstrapMessage(for error: Error) -> String {
+        if let refusal = error as? TeamFounderKeyBootstrapError,
+           case .keysMintedOnAnotherDevice = refusal {
+            return TeamMemoryCopy.keysFoundedOnAnotherDeviceNotice
+        }
+        return TeamMemoryCopy.finishTeamSetupFailedNotice
     }
 
     /// Joining is the Semantic A moment: the confirmation the view puts in front

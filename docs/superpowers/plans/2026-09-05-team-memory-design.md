@@ -2,9 +2,9 @@
 Copied verbatim into the repo by memory-program D16 / P22, from the design
 session's own output. The "Requested return" preamble (a note about that
 session's tooling) is the only thing dropped; everything from the H1 below down
-to the one local block named at the end of this note is byte-identical to the
-source, INCLUDING all TEN amendment blocks. The first is the `##` parent; the
-other nine are the `###` blocks nested under it, in source order:
+to the FIRST of the local blocks named at the end of this note is byte-identical
+to the source, INCLUDING all TEN copied amendment blocks. The first is the `##`
+parent; the other nine are the `###` blocks nested under it, in source order:
 
   1. "Amendments from PR1 review (2026-09-05)"        (`##`, the parent block)
   2. "Round 2 (nits) — 2026-09-05"
@@ -28,18 +28,25 @@ same order. The header said NINE while block 10 was already in both the source
 and `main`, which is the same completeness defect the previous header was
 written to close (PR 4 review N1) — it is corrected here rather than carried.
 
-ONE BLOCK IN THIS FILE IS NOT FROM THE SOURCE, and it says so in its own first
-sentence:
+FOUR BLOCKS IN THIS FILE ARE NOT FROM THE SOURCE, and each says so in its own
+first sentence. All four are controller rulings issued after the source session
+had ended, on the two branches that were open when it did, and each ruling
+directed that it be recorded here. They are appended at the END, after every
+copied block and in the order they were ruled, so the byte-identical check runs
+cleanly over blocks 1–10 by stopping at the first of their headings:
 
  11. "D16 Cursor ruling — the link file is a committed, confirmed decision
-     (2026-09-06)" — a controller ruling issued on PR #2542 after the source
-     session had ended, which directed that it be recorded in this file. It is
-     appended at the END, after every copied block, so the byte-identical check
-     runs cleanly over blocks 1-10 by stopping at its heading.
+     (2026-09-06)" — PR #2542; it arrives here through `main`.
+ 12. "D16 bootstrap-wiring Cursor ruling (2026-09-06)" — PR #2546, first
+     security round.
+ 13. "D16 write-once `slugKeyId` ruling (2026-09-06)" — PR #2546, second round.
+ 14. "D16 founding-claim ruling — one generation, one key (2026-09-06)" —
+     PR #2546, third round, and the one that states the invariant the other two
+     were reaching for.
 
-     Naming it here rather than letting a reader discover it is the whole point
-     of the M2 -> N1 -> N1 lesson: an unannounced local insertion is what makes
-     the claim unverifiable. An announced one, placed last, does not.
+     Naming them here rather than letting a reader discover them is the whole
+     point of the M2 -> N1 -> N1 lesson: an unannounced local insertion is what
+     makes the claim unverifiable. Announced ones, placed last, do not.
 
 BYTE-IDENTICAL NOW MEANS BYTE-IDENTICAL. An earlier copy carried one paragraph
 that exists nowhere in the source — PR 4's own note about where the Team Fact
@@ -50,9 +57,7 @@ notes about its own code live in the PR body and in the code's doc comments,
 both of which say more; the controller's record is copied, never edited in
 place. The check is one command, and both sides stop at the first `### D16 `
 heading because BOTH files now carry local blocks under that prefix — this one
-carries block 11, and the source has since gained its own local block ("D16
-bootstrap-wiring Cursor ruling"), which belongs to the PR that copies it next
-and is deliberately absent here:
+carries blocks 11 through 14, and the source carries its own:
 
     diff <(awk '/^# Team Memory Implementation Design/{f=1}
                 /^### D16 /{exit} f' <source>) \
@@ -1512,3 +1517,194 @@ pre-ruling behaviour and names the test that goes red.
 project half, and the mutation target of the two-clone proof — now asks the
 engine's own reader instead of re-parsing the file, so that proof rides on the
 shipped eligibility rule rather than on a second implementation of it.
+
+### D16 bootstrap-wiring Cursor ruling (2026-09-06)
+
+Controller ruling issued after the Cursor security round on the D16 bootstrap
+wiring PR (one thread, HIGH, on `TeamRosterDirectory.swift`'s second-Mac fork
+guard). It **amends §3(b)1** and is binding. Where it contradicts the design text
+above, the ruling wins.
+
+**The defect.** The second-Mac fork guard returned false as soon as this Mac held
+a founding key in ACTIVE *or* PENDING. Against the adopt-then-bootstrap sequence
+that is two forks, not one. A Mac that adopted another Mac's published `v1` into
+ACTIVE skipped the guard because a key now existed, and `bootstrapTeamKeys` then
+promoted its own stale PENDING mint straight over the adopted key. And a Mac
+holding only a stale PENDING mint skipped the guard on that alone, then claimed
+the other Mac's envelopes — `wrappedBy` is the same uid for two Macs of one
+account, so the B4 predicate accepts them — and published a different key to the
+ids the first Mac had not reached. Either way one immutable `v1`/`slug`
+generation ends up carrying two keys: this Mac seals under key A while every
+published envelope and every other device hold key B. Create-only wraps cannot
+repair it. Silent, permanent team-vault split on the "Finish Setting Up Keys"
+recovery path.
+
+**The ruling.** A pending mint is only ever promotable if **this Mac minted it and
+no key for that slot has since arrived from anywhere else.** Concretely:
+
+1. **Provenance, not presence.** "This Mac minted this pending slot in this pass"
+   and "a key for this slot exists locally" are different facts and the guard
+   keys on the first. The signal is the slot list
+   `loadKeyRingFromEnvelopes` returns — the slots whose key came out of the
+   TEAM's published envelopes. Everything else on the ring is something this Mac
+   made up.
+2. **Adoption wins over a local pending mint, always.** If a key for a slot
+   arrives from published envelopes — any device, including another Mac of the
+   same account — any local PENDING mint for that slot is DISCARDED, never
+   promoted. Two different keys must never occupy one immutable generation.
+3. **The re-check is inside the promotion's critical section.** A check performed
+   earlier in the flow is not enough: the envelope pickup runs on the sync cycle
+   against the same Keychain ring while the founding is publishing, so the
+   adoption can land between an early check and the promotion.
+   `TeamVaultKeyRing.promotePendingMintUnlessAdopted` re-reads the ACTIVE half
+   and writes it under one process-wide lock.
+4. **A discard is disclosed.** The pass still succeeded and the member holds the
+   team's real keys, but the keys they made here were destroyed and they are
+   entitled to know. `TeamKeyBootstrap.discardedLocalMintSlots` carries it to the
+   Settings section, which says so, and the distributor logs it. The member's
+   next action is to continue with the adopted key, never to re-mint.
+
+**Neither shipped ruling is weakened.** B4 (a rotation pass never claims another
+writer's envelope for a key it minted) is untouched: `bootstrapTeamKeys` still
+passes both founding slots as `mintedInThisPass` unconditionally, which is the
+strict direction, and the fix acts only on the ring after the publication.
+B6 (a slot is ACTIVE only if the roster records it) is untouched: nothing here
+promotes an envelope-sourced slot, and the adopted slots reached the ring through
+the pickup's own roster-recorded test.
+
+**Mutation-proven.** Hoisting the adoption test out of the promotion and
+computing it once before `selfWrapKeys` turns
+`test_an_adoption_landing_mid_publication_still_beats_the_local_mint` red.
+
+### D16 write-once `slugKeyId` ruling (2026-09-06)
+
+Controller ruling issued after the second Cursor security round on the same PR
+(one thread, MEDIUM, on `functions/src/teamSlugKeyRecord.ts:91`). It **amends
+§3(b)3** — the roster's founding-fingerprint write — and is binding.
+
+**The defect.** `recordTeamSlugKeyId`'s write-once check ran on a snapshot taken
+BEFORE `commitGuardedByTeamState`, and that helper is a MOVEMENT guard: it aborts
+when `activeKeyVersion`, the retained/burned lists or `membershipEpoch` move, and
+a field going from unset to set moves none of them. Two concurrent first-writes
+with different fingerprints therefore both saw an empty field, both passed the
+guard, and the loser's merge landed last. The roster field that NAMES every
+team-memory document became last-writer-wins instead of write-once: joiners would
+activate slug envelopes against whichever fingerprint arrived last while the
+other founding key addressed a different document space — the same unrepairable
+tenant split the two-Mac founding case already makes realistic.
+
+**The ruling.** `slugKeyId` is write-once and the refusal is decided INSIDE the
+transaction that writes, on a value read within that transaction. Concretely:
+
+1. **Compare-and-set, not movement.** `commitGuardedByTeamState` grows one
+   optional hook, `decideOnFreshTeam`, evaluated on the team document the
+   transaction itself read: `"commit"` writes, `"skip"` is an idempotent no-op
+   that writes NOTHING (audit row included), and the callback may throw the
+   caller's own refusal. The movement guard is left exactly as it was; a
+   write-once field is a different question and gets a different instrument.
+2. **Both semantics survive, unchanged.** The same fingerprint again succeeds as
+   a no-op — the "Finish Setting Up Keys" recovery re-runs the whole idempotent
+   bootstrap and reaches this call again, mid-flight as well as sequentially —
+   and a DIFFERENT fingerprint is refused with `DIFFERENT_SLUG_KEY_RECORDED`,
+   the same distinct code the sequential refusal carries. One cause, one code,
+   whether the rival founding landed a minute ago or mid-transaction. No reason
+   code was added; the 46-code server/Swift mirror is untouched.
+3. **The pre-check stays, and is named as a pre-check.** It refuses the ordinary
+   sequential case without opening a transaction; the module now says in so many
+   words that it is not the authority.
+
+**Mutation-proven.** Pointing the hook back at the pre-commit snapshot — the
+literal "move the check back outside the transaction" — turns exactly the three
+new tests red (`test_a_second_founding_landing_mid_flight_cannot_overwrite_the_first`,
+`test_the_same_fingerprint_landing_mid_flight_is_still_a_no_op`,
+`test_two_concurrent_foundings_leave_exactly_one_fingerprint`) with the other six
+in the file green.
+
+### D16 founding-claim ruling — one generation, one key (2026-09-06)
+
+Controller ruling issued after the **third** Cursor security round on the same PR
+(one thread, HIGH, `PRRT_kwDORtgQYs6fukNo`, on
+`AgentLens/Services/CloudSync/TeamVaultKeyDistribution.swift:620`). It **amends
+§3(b)1** — the founder bootstrap — and is binding. It supersedes nothing: the
+two earlier rulings on this PR stand and are both load-bearing here.
+
+**The headline invariant, which is now this lane's contract:**
+
+> For any team key generation, the published envelopes, this device's key ring,
+> and the roster's recorded fingerprint must all name exactly ONE key. No path
+> may publish a wrap for a key that is not the key the ring and the roster end up
+> naming.
+
+**The defect, quoted.** *"`bootstrapTeamKeys` still publishes founding wraps from
+the mint snapshotted at the start of `selfWrapKeys`, then may discard that mint
+and record the adopted ring key as `slugKeyId`.
+`test_an_adoption_landing_mid_publication_still_beats_the_local_mint` injects
+that window and asserts only ring/fingerprint — not that written envelopes
+unwrap to the recorded key. The same empty-start race
+(`anotherDeviceAlreadyFounded` returns false before either Mac writes) lets two
+devices of this uid each create-only-publish a rival founding."*
+
+**Why it survived two rounds.** Both earlier fixes act on the RING, after the
+envelopes are already on the server. Round 1 stopped a stale mint being promoted
+over an adopted key; round 2 made `slugKeyId` a real in-transaction
+compare-and-set. Neither can reach a wrap that is already written — so the ring
+and the roster ended up agreeing with each other and disagreeing with every
+published envelope, which is the worst possible shape: it looks correct from
+every surface that reads state rather than ciphertext. The defect was being
+chased symptom by symptom instead of being stated once as an invariant and
+enforced everywhere it can break.
+
+**The ruling: claim the generation before publishing a byte of it.** The
+roster's write-once `slugKeyId` is the founding generation's CLAIM TOKEN.
+`bootstrapTeamKeys` resolves both founding keys, claims the generation for the
+key it is about to publish, and only then writes an envelope. One reordering,
+three holes:
+
+1. **Publish only what will survive.** The envelopes are written from the
+   RESOLVED bytes the claim named — `wrapKeys` grows a `keys:` seam the founding
+   uses and nobody else does — not from a fresh ring read. An adoption landing
+   during the claim's round trip therefore cannot change what is published.
+2. **The empty-start race is serialised where it can be.** Two Macs cannot both
+   win a write-once compare-and-set. The envelope pre-check
+   (`anotherDeviceAlreadyFounded`) stays, and is named in the code as a cheap
+   pre-check rather than the authority: both Macs pass it honestly, because at
+   the moment each asks, neither has written anything. Publication now depends on
+   having WON the claim.
+3. **Enforced, not argued.** A construction argument is worth what the next
+   refactor leaves of it, so the pass checks before it returns that the key its
+   ring holds for each founding slot is the key it published, and refuses with
+   `foundingGenerationForked` rather than recording a fingerprint for a key the
+   envelopes do not carry. That single postcondition is what separates the benign
+   discard (a stale mint shadowed at resolve time, never published — reported
+   through `discardedLocalMintSlots` exactly as round 1 shipped it) from the
+   fatal one (the mint this pass published, losing its slot).
+
+**The loser publishes and keeps nothing.** A `DIFFERENT_SLUG_KEY_RECORDED`
+refusal destroys this Mac's pending founding mints — nothing else in the world
+holds those bytes, no envelope carries them, and leaving them lets a later pass
+find them through `requireKey`'s pending fallback and publish the rival founding
+this refusal just prevented — and surfaces as the existing
+`keysFoundedOnAnotherDeviceNotice`: the remedy is identical to the pre-check's,
+so the member is not asked to tell two indistinguishable situations apart.
+
+**Neither shipped ruling is bent.** B4: both founding slots are still passed as
+`mintedInThisPass` unconditionally. B6: nothing here promotes an
+envelope-sourced slot the roster has not recorded; the claim is a roster write,
+which is precisely what B6 says makes a slot promotable.
+
+**Assertion by proxy is gone.** Every test in this area now opens the published
+envelopes with the real P-256 escrow key of the device they address and asserts
+the bytes equal the key the ring holds and hash to the fingerprint the roster
+records (`assertOneKeyPerFoundingGeneration`). The test double for
+`recordTeamSlugKeyId` enforces write-once the way the server does, refusing with
+the same `DIFFERENT_SLUG_KEY_RECORDED` shape the client parses, so the race it
+serialises is observable rather than assumed.
+
+**Mutation-proven, four guards, four disjoint verdicts:**
+
+| Mutation | Red |
+|---|---|
+| Claim moved back after publication (the shipped order) | `test_two_macs_founding_from_an_empty_team_publish_exactly_one_key`, `test_an_adoption_landing_mid_publication_still_beats_the_local_mint`, `test_a_key_landing_during_the_roster_claim_does_not_change_what_is_published`, `test_a_founding_whose_roster_claim_failed_published_nothing_and_is_repaired`, `test_a_founding_whose_ring_ends_on_a_key_its_envelopes_do_not_carry_refuses_to_finish` (5 of 44) |
+| `wrapKeys` ignores `keys:` and re-reads the ring | `test_a_key_landing_during_the_roster_claim_does_not_change_what_is_published` alone (1 of 44) |
+| The end-of-pass postcondition removed | `test_a_founding_whose_ring_ends_on_a_key_its_envelopes_do_not_carry_refuses_to_finish`, `test_a_key_landing_during_the_roster_claim_does_not_change_what_is_published` (2 of 44) |
+| The claim loser keeps its rival mint | `test_an_adoption_landing_mid_publication_still_beats_the_local_mint`, `test_two_macs_founding_from_an_empty_team_publish_exactly_one_key` (2 of 44) |

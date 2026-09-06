@@ -123,6 +123,86 @@ enum TeamMemoryCopy {
     static let shareKeysFailedNotice =
         "Sharing the team keys did not complete. No member was made active. Check your connection and try again."
 
+    // MARK: Whether THIS Mac holds the team's keys (design §3(b)1-2)
+    //
+    // A team key never reaches the server, so "am I set up" is a question only
+    // this device can answer, and before the founder bootstrap and the joiner
+    // pickup had production callers the honest answer for EVERY member was "no"
+    // — while the section said nothing at all and the toggle read available.
+    // These four lines are the whole state machine a member can be in, and each
+    // one names who acts next — including the one the founder cannot see from
+    // their own sync: this Mac keyed, the ROSTER's founding unfinished.
+
+    /// The ordinary state, said out loud rather than left as the absence of a
+    /// warning: a member who has just been promoted needs to see the moment
+    /// their Mac actually picked the keys up.
+    static let keysReadyNotice = "This Mac holds this team's keys."
+
+    /// Active on the roster, no keys here yet. The admin's Mac publishes the
+    /// envelopes and this Mac reads them on its next sync beat, so the member is
+    /// waiting on a machine rather than on an action of their own.
+    static let keysAwaitingAdminNotice =
+        "This Mac does not hold this team's keys yet. A team admin's Mac issues an encrypted copy to your device, "
+        + "and this Mac picks it up on its next sync. Until then this team syncs nothing."
+
+    /// The founder's interrupted bootstrap: the keys were minted here and their
+    /// publication did not finish, which is a state only this Mac can resolve.
+    static let keysSetupIncompleteNotice =
+        "This team's keys were created on this Mac but did not finish publishing, so nothing syncs yet."
+
+    /// The founding is unfinished on the TEAM even though it is finished on this
+    /// Mac: the roster has no record of which document-naming key the team uses,
+    /// so every member the founder admits receives keys their Mac will not use.
+    /// The founder sees nothing wrong from where they sit, which is exactly why
+    /// this line exists.
+    static let slugKeyNotRecordedNotice =
+        "This team's setup is not finished. The server has not recorded which key names this team's memories, so "
+        + "members you add cannot start syncing even after you share the keys with them."
+
+    static let finishTeamSetupAction = "Finish Setting Up Keys"
+
+    /// Pressed by an admin, so it says what it costs and what it will not do.
+    /// Both promises are properties of the code: the keys are held pending until
+    /// every envelope is published, and a second Mac's attempt refuses rather
+    /// than minting a rival set.
+    static let finishTeamSetupDetail =
+        "This publishes the team's founding keys to your own devices. Pressing it more than once is safe: it "
+        + "reuses the keys this Mac already made rather than making new ones, and it stops without changing "
+        + "anything if another of your Macs published them first."
+
+    /// The team exists and its keys do not. Said at the moment of creation,
+    /// because a founder who closes Settings believing the team is finished is
+    /// the person this whole state was invisible to.
+    static let teamCreatedWithoutKeysNotice =
+        "The team was created, but its keys did not finish publishing from this Mac. Nothing syncs until they "
+        + "do — use \"Finish Setting Up Keys\" on the team below."
+
+    static let finishTeamSetupFailedNotice =
+        "Setting up this team's keys did not complete. No key was published and no member was made active. "
+        + "Check your connection and try again."
+
+    /// The refusal that protects the team from a forked generation. It names the
+    /// remedy rather than the failure: the other Mac finishes, and this one then
+    /// picks the keys up like any other device.
+    /// The founding SUCCEEDED and this Mac's own minted keys were thrown away on
+    /// the way: the team's real keys had already arrived from its published
+    /// envelopes, and two keys may never occupy one generation.
+    ///
+    /// Said out loud rather than swallowed as a silent success, because the
+    /// member did press a button that made keys and those keys are now gone —
+    /// and because the ONE thing they must not do is press it again hoping to
+    /// get "their" keys back. So it reports the discard, states the good
+    /// outcome, and names the next action as "nothing".
+    static let foundingMintDiscardedNotice =
+        "This team's keys had already been set up elsewhere on your account, so the keys this Mac made were "
+        + "discarded and the team's own keys were kept. This Mac is set up and nothing else is needed — do not "
+        + "set the keys up again."
+
+    static let keysFoundedOnAnotherDeviceNotice =
+        "This team's keys were created on another of your Macs, and this one holds neither of them. Finish setting "
+        + "the team up there and this Mac will receive them. Making a second set here would leave the team's "
+        + "memories unreadable."
+
     // MARK: States
 
     static let pendingJoinNotice = "Waiting for a team admin to share the team keys."
@@ -300,6 +380,16 @@ enum TeamMemoryCopy {
         shareKeysFailedNotice,
         pendingJoinNotice,
         pendingJoinDetail,
+        keysReadyNotice,
+        keysAwaitingAdminNotice,
+        keysSetupIncompleteNotice,
+        slugKeyNotRecordedNotice,
+        finishTeamSetupAction,
+        finishTeamSetupDetail,
+        teamCreatedWithoutKeysNotice,
+        finishTeamSetupFailedNotice,
+        foundingMintDiscardedNotice,
+        keysFoundedOnAnotherDeviceNotice,
         personalGateClosedNotice,
         remoteConfigClosedNotice,
         rotationRequiredNotice,

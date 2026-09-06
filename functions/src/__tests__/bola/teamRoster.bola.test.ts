@@ -42,6 +42,7 @@ export const BOLA_MANIFEST = {
   rotateTeamKey: ["rotateTeamKey rejects cross-user object access"],
   abandonTeamKeyGeneration: ["abandonTeamKeyGeneration rejects cross-user object access"],
   recordTeamRewrapComplete: ["recordTeamRewrapComplete rejects cross-user object access"],
+  recordTeamSlugKeyId: ["recordTeamSlugKeyId rejects cross-user object access"],
 } as const;
 
 async function teamRosterCallables() {
@@ -113,6 +114,23 @@ describe("BOLA - team roster authority", () => {
       // is not on — a field every member of that team reads as "your memories
       // have actually been re-sealed".
       payload: { teamId: VICTIM_TEAM_ID, keyVersion: 1, rewrapJobId: "alice-job" },
+    });
+  });
+
+  it("recordTeamSlugKeyId rejects cross-user object access", async () => {
+    const mod = await teamRosterCallables();
+    await tier2CallableProof(bolaStore, {
+      exportedName: "recordTeamSlugKeyId",
+      run: callableRunner(mod.recordTeamSlugKeyId),
+      expectedOutcome: "throws",
+      expectedCode: CROSS_TENANT_DENIAL,
+      // The founding slug key NAMES every document this team will ever have,
+      // and the field is write-once. A stranger who could stamp it would
+      // decide where an entire tenant's memory lives — and on a team that has
+      // not recorded one yet, poison that namespace for ever, because the
+      // second, different value is exactly what the handler refuses. Built at
+      // runtime so no key-shaped literal ships in the tree.
+      payload: { teamId: VICTIM_TEAM_ID, slugKeyId: `v1_${"a".repeat(32)}` },
     });
   });
 

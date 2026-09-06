@@ -30,6 +30,7 @@ import {
   TEAM_ID_PATTERN,
   TeamRosterService,
 } from "../teamRoster.js";
+import { SLUG_KEY_ID_PATTERN, recordTeamSlugKeyId as recordSlugKeyId } from "../teamSlugKeyRecord.js";
 import { boundedTrimmedString, requireBoundedNumber, requireBoundedStringArray } from "./shared/validators.js";
 import {
   checkTeamInviteAcceptRateLimit,
@@ -224,5 +225,31 @@ export const abandonTeamKeyGeneration = onCallProduction(
     );
     await checkTeamRosterMutationRateLimit(callerUid);
     return TeamRosterService.abandonKeyGeneration(callerUid, teamId, version);
+  },
+);
+
+/**
+ * Record the founding `teamSlugKey`'s fingerprint, so joiners' slug envelopes
+ * land in the ACTIVE key ring instead of the pending one (design §3(b)1, B6).
+ *
+ * A DIGEST, NOT A KEY, and the validator is what makes that structural: the
+ * pattern admits exactly `CloudVaultCrypto.vaultKeyID`'s output and nothing
+ * else, so no key material — and no arbitrary bytes — can be smuggled into a
+ * document every member of the team reads.
+ */
+export const recordTeamSlugKeyId = onCallProduction(
+  "recordTeamSlugKeyId",
+  TEAM_CALLABLE_OPTIONS,
+  async (request: CallableRequest<{ teamId?: unknown; slugKeyId?: unknown }>) => {
+    const callerUid = requireAuthUid(request);
+    const teamId = requireTeamId(request.data?.teamId);
+    const slugKeyId = withRosterReason(REASON.INVALID_SLUG_KEY_ID, () =>
+      boundedTrimmedString(request.data?.slugKeyId, "slugKeyId", 64, true),
+    );
+    if (!SLUG_KEY_ID_PATTERN.test(slugKeyId)) {
+      throw rosterError(REASON.INVALID_SLUG_KEY_ID, "slugKeyId is not a valid key fingerprint.");
+    }
+    await checkTeamRosterMutationRateLimit(callerUid);
+    return recordSlugKeyId(callerUid, teamId, slugKeyId);
   },
 );

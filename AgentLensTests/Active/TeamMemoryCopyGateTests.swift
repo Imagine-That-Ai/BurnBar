@@ -232,4 +232,84 @@ final class TeamMemoryCopyGateTests: XCTestCase {
         XCTAssertTrue(notice.contains("Sync memories to my other devices"), "the device-sync sub-toggle")
         XCTAssertTrue(notice.contains("any of those"), "any one of them being off is enough to close the lane")
     }
+
+    // MARK: Whether THIS Mac holds the team's keys
+
+    /// The three key-readiness lines, and the two they must not be confused
+    /// with.
+    ///
+    /// Before the founder bootstrap and the joiner pickup had production
+    /// callers, EVERY member was permanently in the "no keys" state and the
+    /// section said nothing at all — a switch reading available above a lane
+    /// that could not seal a single fact. Each line therefore has to name who
+    /// acts next, and the two waiting states have to be distinguishable: one is
+    /// resolved by an admin's Mac, the other only by this one.
+    func test_the_key_readiness_copy_names_who_acts_next() {
+        XCTAssertEqual(TeamMemoryCopy.keysReadyNotice, "This Mac holds this team's keys.")
+
+        // Waiting on an ADMIN.
+        let awaiting = TeamMemoryCopy.keysAwaitingAdminNotice
+        XCTAssertTrue(awaiting.contains("does not hold this team's keys yet"))
+        XCTAssertTrue(awaiting.contains("A team admin's Mac"), "it names who acts, not just that nothing works")
+        XCTAssertTrue(awaiting.contains("this team syncs nothing"), "and it says what the silence costs")
+
+        // Waiting on THIS Mac.
+        let incomplete = TeamMemoryCopy.keysSetupIncompleteNotice
+        XCTAssertTrue(incomplete.contains("created on this Mac"))
+        XCTAssertTrue(incomplete.contains("did not finish publishing"))
+        XCTAssertNotEqual(incomplete, awaiting, "the two waiting states have different remedies")
+
+        // The creation-time report. It must never read as "the team was not
+        // created": a founder who believes that creates a second one.
+        let created = TeamMemoryCopy.teamCreatedWithoutKeysNotice
+        XCTAssertTrue(created.hasPrefix("The team was created"))
+        XCTAssertTrue(
+            created.contains(TeamMemoryCopy.finishTeamSetupAction),
+            "it points at the exact control that resumes the founding"
+        )
+
+        for line in [
+            TeamMemoryCopy.keysReadyNotice,
+            awaiting,
+            incomplete,
+            created,
+            TeamMemoryCopy.finishTeamSetupAction,
+            TeamMemoryCopy.finishTeamSetupDetail,
+            TeamMemoryCopy.finishTeamSetupFailedNotice,
+            TeamMemoryCopy.keysFoundedOnAnotherDeviceNotice
+        ] {
+            XCTAssertTrue(TeamMemoryCopy.allCopy.contains(line), "Missing from TeamMemoryCopy.allCopy: \(line)")
+        }
+    }
+
+    /// The founding action says what it costs and what it will not do, and the
+    /// second-Mac refusal never tells a member to retry something that refuses
+    /// for ever.
+    func test_the_founding_action_copy_is_honest_about_idempotence_and_refusal() {
+        XCTAssertEqual(TeamMemoryCopy.finishTeamSetupAction, "Finish Setting Up Keys")
+
+        let detail = TeamMemoryCopy.finishTeamSetupDetail
+        XCTAssertTrue(detail.contains("Pressing it more than once is safe"))
+        XCTAssertTrue(
+            detail.contains("reuses the keys this Mac already made"),
+            "the pending-slot guarantee, in the member's words"
+        )
+        XCTAssertTrue(
+            detail.contains("stops without changing anything"),
+            "the second-Mac refusal is disclosed before the press, not only after it"
+        )
+
+        // The ordinary failure is a retry, and says so.
+        XCTAssertTrue(TeamMemoryCopy.finishTeamSetupFailedNotice.contains("No key was published"))
+        XCTAssertTrue(TeamMemoryCopy.finishTeamSetupFailedNotice.contains("try again"))
+
+        // The fork refusal is NOT a retry, and must not be worded as one.
+        let refusal = TeamMemoryCopy.keysFoundedOnAnotherDeviceNotice
+        XCTAssertTrue(refusal.contains("created on another of your Macs"))
+        XCTAssertTrue(refusal.contains("Finish setting the team up there"), "it names the machine that can finish")
+        XCTAssertFalse(
+            refusal.lowercased().contains("try again"),
+            "pressing this Mac's button again refuses for ever, by design"
+        )
+    }
 }
