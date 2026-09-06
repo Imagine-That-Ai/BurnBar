@@ -820,7 +820,34 @@ def test_failed_signed_cli_write_never_falls_back_to_unsigned_socket(
         "/tmp/fixture",
     )
 
-    assert mirror == {"status": "rejected", "reason": "daemon unavailable"}
+    # The invariant under test is the absence of an unsigned-socket fallback
+    # (`unexpected_socket_write` fails the test if one is attempted). The status
+    # is `unreachable`, not `rejected`: "daemon unavailable" is a transport
+    # failure, so nothing judged this write on its merits. The daemon phrases its
+    # own refusals as `privacy_rpc_error …`, which is what maps to `rejected`.
+    assert mirror["status"] == "unreachable"
+    assert "daemon unavailable" in mirror["reason"]
+
+    monkeypatch.setattr(
+        server.subprocess,
+        "run",
+        lambda *args, **kwargs: types.SimpleNamespace(
+            returncode=1, stdout=b"", stderr=b"privacy_rpc_error code=-32602 message=policy says no"
+        ),
+    )
+    refused = server._memory_mirror_remember(
+        {
+            "event": "ADD",
+            "sensitivity": "none",
+            "reviewStatus": "approved",
+            "kind": "fact",
+            "scope": "project",
+            "text": "A write the daemon actually judged.",
+        },
+        "/tmp/fixture",
+    )
+    assert refused["status"] == "rejected"
+    assert "policy says no" in refused["reason"]
 
 
 def test_signed_cli_forget_uses_persisted_daemon_memory_id(server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
