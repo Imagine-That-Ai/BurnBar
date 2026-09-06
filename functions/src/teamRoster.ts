@@ -64,7 +64,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { HttpsError } from "firebase-functions/v2/https";
 
 import { auth, db } from "./adminRuntime.js";
 import { assertActiveBurnBarCloudProEntitlement } from "./callables/shared/entitlements.js";
@@ -77,6 +76,7 @@ import {
   readEscrowDeviceFingerprints,
   requiredTeamKeyEnvelopes,
 } from "./teamKeyEnvelopes.js";
+import { TEAM_ROSTER_REASON as REASON, rosterError } from "./teamRosterReasons.js";
 import {
   TEAM_ROSTER_SCHEMA_VERSION,
   auditEvent,
@@ -188,10 +188,10 @@ export class TeamRosterService {
   static async assertActiveAdmin(callerUid: string, teamId: string): Promise<void> {
     const memberSnap = await db.doc(`team_rosters/${teamId}/members/${callerUid}`).get();
     if (!memberSnap.exists) {
-      throw new HttpsError("permission-denied", "Caller is not a member of this team.");
+      throw rosterError(REASON.CALLER_NOT_A_TEAM_MEMBER, "Caller is not a member of this team.");
     }
     if (memberSnap.get("status") !== "active" || memberSnap.get("role") !== "admin") {
-      throw new HttpsError("permission-denied", "Caller must be an active team admin.");
+      throw rosterError(REASON.CALLER_NOT_AN_ACTIVE_ADMIN, "Caller must be an active team admin.");
     }
   }
 
@@ -241,16 +241,16 @@ export class TeamRosterService {
       return [{ deviceId, keyVersion, publicKeyFingerprint }];
     });
     if (fingerprints.length === 0) {
-      throw new HttpsError(
-        "failed-precondition",
+      throw rosterError(
+        REASON.CALLER_HAS_NO_TRUSTED_ESCROW_DEVICE,
         "Publish and trust at least one device escrow key before joining a team.",
       );
     }
     if (fingerprints.length > MAX_TEAM_MEMBER_DEVICES) {
       // Refuse rather than silently truncating: a dropped device would be a
       // device that can never open this team's documents.
-      throw new HttpsError(
-        "failed-precondition",
+      throw rosterError(
+        REASON.CALLER_HAS_TOO_MANY_TRUSTED_DEVICES,
         `Retire some trusted devices before joining a team: at most ${MAX_TEAM_MEMBER_DEVICES} may hold team keys.`,
       );
     }
@@ -361,18 +361,18 @@ export class TeamRosterService {
       const record = await auth.getUserByEmail(inviteeEmail);
       inviteeUid = record.uid;
     } catch {
-      throw new HttpsError(
-        "failed-precondition",
+      throw rosterError(
+        REASON.INVITEE_HAS_NO_ACCOUNT,
         "The invitee needs an OpenBurnBar account with that email address before they can be invited.",
       );
     }
     if (inviteeUid === callerUid) {
-      throw new HttpsError("invalid-argument", "You are already a member of this team.");
+      throw rosterError(REASON.CANNOT_INVITE_YOURSELF, "You are already a member of this team.");
     }
 
     const existingMember = await db.doc(`team_rosters/${teamId}/members/${inviteeUid}`).get();
     if (existingMember.exists && existingMember.get("status") !== "removed") {
-      throw new HttpsError("already-exists", "That account is already on this team.");
+      throw rosterError(REASON.INVITEE_ALREADY_ON_TEAM, "That account is already on this team.");
     }
 
     const inviteToken = newInviteToken();
@@ -418,25 +418,25 @@ export class TeamRosterService {
     inviteToken: string,
   ): Promise<{ teamId: string; role: TeamMemberRole; status: TeamMemberStatus }> {
     if (!emailVerified) {
-      throw new HttpsError("permission-denied", "Verify your email address before joining a team.");
+      throw rosterError(REASON.EMAIL_NOT_VERIFIED, "Verify your email address before joining a team.");
     }
 
     const tokenHash = sha256Hex(inviteToken);
     const inviteRef = db.doc(`team_rosters/${teamId}/invites/${tokenHash}`);
     const [inviteSnap, teamSnap] = await Promise.all([inviteRef.get(), db.doc(`team_rosters/${teamId}`).get()]);
     if (!inviteSnap.exists) {
-      throw new HttpsError("permission-denied", "This invite is not valid for your account.");
+      throw rosterError(REASON.INVITE_NOT_VALID_FOR_ACCOUNT, "This invite is not valid for your account.");
     }
     if (inviteSnap.get("inviteeUid") !== callerUid) {
-      throw new HttpsError("permission-denied", "This invite is not valid for your account.");
+      throw rosterError(REASON.INVITE_NOT_VALID_FOR_ACCOUNT, "This invite is not valid for your account.");
     }
     if (inviteSnap.get("status") !== "pending") {
-      throw new HttpsError("failed-precondition", "This invite has already been used.");
+      throw rosterError(REASON.INVITE_ALREADY_USED, "This invite has already been used.");
     }
     const expiresAt = inviteSnap.get("expiresAt");
     if (!(expiresAt instanceof Timestamp) || expiresAt.toMillis() < Date.now()) {
       await inviteRef.set({ status: "expired", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      throw new HttpsError("failed-precondition", "This invite has expired.");
+      throw rosterError(REASON.INVITE_EXPIRED, "This invite has expired.");
     }
     // ACCEPT MUST NEVER DEMOTE (PR1 review F4). `inviteMember` refuses to ISSUE
     // an invite over a live member row, but a second invite issued before the
@@ -456,7 +456,7 @@ export class TeamRosterService {
     const memberRef = db.doc(`team_rosters/${teamId}/members/${callerUid}`);
     const existingMember = await memberRef.get();
     if (isLiveMemberStatus(existingMember.exists ? existingMember.get("status") : undefined)) {
-      throw new HttpsError("already-exists", "You are already on this team.");
+      throw rosterError(REASON.ALREADY_ON_THIS_TEAM, "You are already on this team.");
     }
 
     const team = readTeam(teamSnap.data(), teamId);
@@ -479,11 +479,11 @@ export class TeamRosterService {
     await db.runTransaction(async (transaction) => {
       const freshInvite = await transaction.get(inviteRef);
       if (!freshInvite.exists || freshInvite.get("status") !== "pending") {
-        throw new HttpsError("failed-precondition", "This invite has already been used.");
+        throw rosterError(REASON.INVITE_ALREADY_USED, "This invite has already been used.");
       }
       const freshMember = await transaction.get(memberRef);
       if (isLiveMemberStatus(freshMember.exists ? freshMember.get("status") : undefined)) {
-        throw new HttpsError("already-exists", "You are already on this team.");
+        throw rosterError(REASON.ALREADY_ON_THIS_TEAM, "You are already on this team.");
       }
       transaction.set(
         inviteRef,
@@ -538,7 +538,7 @@ export class TeamRosterService {
     const memberRef = db.doc(`team_rosters/${teamId}/members/${targetUid}`);
     const [memberSnap, teamSnap] = await Promise.all([memberRef.get(), db.doc(`team_rosters/${teamId}`).get()]);
     if (!memberSnap.exists) {
-      throw new HttpsError("not-found", "That account has not accepted an invite to this team.");
+      throw rosterError(REASON.MEMBER_HAS_NOT_ACCEPTED_INVITE, "That account has not accepted an invite to this team.");
     }
     if (memberSnap.get("status") !== "pending") {
       // DOWNSTREAM READER: `TeamJoinerKeyIssueFailure.classify`
@@ -549,14 +549,17 @@ export class TeamRosterService {
       // the generic "nothing was shared" notice; changing the CODE is fine.
       // The permanent fix is a structured `details.reason` on both, mirrored in
       // `TeamRosterPromotionRefusal`.
-      throw new HttpsError("failed-precondition", "Only a pending member can be promoted.");
+      throw rosterError(REASON.MEMBER_NOT_PENDING, "Only a pending member can be promoted.");
     }
     const team = readTeam(teamSnap.data(), teamId);
     const devices = readEscrowDeviceFingerprints(memberSnap.get("escrowDeviceFingerprints"));
     if (devices.length === 0) {
       // DOWNSTREAM READER: the same `classify`, matching "escrow device". See
       // the note on the refusal above.
-      throw new HttpsError("failed-precondition", "That member has no trusted escrow device to receive team keys.");
+      throw rosterError(
+        REASON.MEMBER_HAS_NO_TRUSTED_ESCROW_DEVICE,
+        "That member has no trusted escrow device to receive team keys.",
+      );
     }
 
     const requirements = requiredTeamKeyEnvelopes({
@@ -620,7 +623,7 @@ export class TeamRosterService {
     const teamRef = db.doc(`team_rosters/${teamId}`);
     const memberSnap = await memberRef.get();
     if (!memberSnap.exists || memberSnap.get("status") === "removed") {
-      throw new HttpsError("not-found", "Member not found in team.");
+      throw rosterError(REASON.MEMBER_NOT_FOUND_IN_TEAM, "Member not found in team.");
     }
     // Candidate survivors, read here and RE-READ inside the transaction below.
     const activeAdmins = await db
@@ -648,14 +651,14 @@ export class TeamRosterService {
     await db.runTransaction(async (transaction) => {
       const [freshMember, freshTeam] = await Promise.all([transaction.get(memberRef), transaction.get(teamRef)]);
       if (!freshMember.exists || freshMember.get("status") === "removed") {
-        throw new HttpsError("not-found", "Member not found in team.");
+        throw rosterError(REASON.MEMBER_NOT_FOUND_IN_TEAM, "Member not found in team.");
       }
       const evictsAnActiveAdmin = freshMember.get("role") === "admin" && freshMember.get("status") === "active";
       if (evictsAnActiveAdmin) {
         const survivors = await Promise.all(survivorRefs.map((ref) => transaction.get(ref)));
         const stillActive = survivors.filter((snap) => snap.get("status") === "active" && snap.get("role") === "admin");
         if (stillActive.length === 0) {
-          throw new HttpsError("failed-precondition", "A team must keep at least one active admin.");
+          throw rosterError(REASON.LAST_ACTIVE_ADMIN, "A team must keep at least one active admin.");
         }
       }
       transaction.set(memberRef, { status: "removed", removedAt: now, updatedAt: now }, { merge: true });
@@ -737,15 +740,18 @@ export class TeamRosterService {
     const teamRef = db.doc(`team_rosters/${teamId}`);
     const team = readTeam((await teamRef.get()).data(), teamId);
     if (team.activeKeyVersion === version || team.retainedKeyVersions.includes(version)) {
-      throw new HttpsError("failed-precondition", `Key version ${version} is recorded by this team and is not abandoned.`);
+      throw rosterError(
+        REASON.KEY_VERSION_STILL_RECORDED,
+        `Key version ${version} is recorded by this team and is not abandoned.`,
+      );
     }
     if (team.burnedKeyVersions.includes(version)) {
       return { teamId, activeKeyVersion: team.activeKeyVersion, burnedKeyVersions: team.burnedKeyVersions };
     }
     const expectedVersion = nextRotatableKeyVersion(team);
     if (version !== expectedVersion) {
-      throw new HttpsError(
-        "invalid-argument",
+      throw rosterError(
+        REASON.KEY_VERSION_NOT_NEXT_UNCLAIMED,
         `Only the next unclaimed key version (${expectedVersion}) can be abandoned, got ${version}.`,
       );
     }
@@ -755,8 +761,8 @@ export class TeamRosterService {
       .limit(1)
       .get();
     if (published.empty) {
-      throw new HttpsError(
-        "failed-precondition",
+      throw rosterError(
+        REASON.NO_ABANDONED_ROTATION_TO_BURN,
         `No key envelope was ever published for version ${version}, so there is no abandoned rotation to burn.`,
       );
     }
@@ -800,13 +806,13 @@ export class TeamRosterService {
     // proves the version it burns was really claimed by an abandoned rotation.
     const expectedKeyVersion = nextRotatableKeyVersion(team);
     if (newKeyVersion !== expectedKeyVersion) {
-      throw new HttpsError(
-        "invalid-argument",
+      throw rosterError(
+        REASON.KEY_VERSION_NOT_SEQUENTIAL,
         `Expected newKeyVersion to be ${expectedKeyVersion}, got ${newKeyVersion}.`,
       );
     }
     if (newKeyVersion > MAX_TEAM_KEY_VERSION) {
-      throw new HttpsError("failed-precondition", "This team has exhausted its supported key versions.");
+      throw rosterError(REASON.KEY_VERSIONS_EXHAUSTED, "This team has exhausted its supported key versions.");
     }
 
     const activeMembers = await db.collection(`team_rosters/${teamId}/members`).where("status", "==", "active").get();
@@ -823,8 +829,8 @@ export class TeamRosterService {
       // the founder included, who is now pinned at createTeam — must have at
       // least one pinned device or the rotation is refused outright.
       if (devices.length === 0) {
-        throw new HttpsError(
-          "failed-precondition",
+        throw rosterError(
+          REASON.ACTIVE_MEMBER_HAS_NO_PINNED_DEVICE,
           `Active member ${memberDoc.id} has no pinned escrow device, so this rotation cannot cover them.`,
         );
       }
@@ -940,8 +946,8 @@ export class TeamRosterService {
     const teamRef = db.doc(`team_rosters/${teamId}`);
     const team = readTeam((await teamRef.get()).data(), teamId);
     if (keyVersion !== team.activeKeyVersion) {
-      throw new HttpsError(
-        "failed-precondition",
+      throw rosterError(
+        REASON.REWRAP_KEY_VERSION_NOT_CURRENT,
         `This team is on key version ${team.activeKeyVersion}; a completion for ${keyVersion} says nothing about it.`,
       );
     }

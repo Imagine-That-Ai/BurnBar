@@ -1224,6 +1224,17 @@ jobs:
           bash scripts/ci/verify-team-memory-copy-inventory.sh --self-test
           bash scripts/ci/verify-team-memory-copy-inventory.sh
 
+      # The team-roster refusal reasons are a wire contract maintained by hand on
+      # two sides in two languages (functions/src/teamRosterReasons.ts and
+      # TeamRosterReasonCode in TeamRosterDirectory.swift). This is the only thing
+      # that checks they still agree — a server code with no Swift case ships as
+      # generic copy, silently. Self-test first: a gate whose matcher is broken
+      # passes everything.
+      - name: Verify the team-roster reason-code mirror
+        run: |
+          bash scripts/ci/verify-team-roster-reason-codes.sh --self-test
+          bash scripts/ci/verify-team-roster-reason-codes.sh
+
   # ── Services: E2EE relay + paid hosted-MCP (tech-debt audit H4) ────────────
   # The hermes-realtime-relay and hosted-mcp packages (22 test files) ran in
   # zero CI lanes — a regression in the paid CLI's hosted-MCP path or the E2EE

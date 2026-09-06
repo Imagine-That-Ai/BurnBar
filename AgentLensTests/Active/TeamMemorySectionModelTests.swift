@@ -138,6 +138,27 @@ final class TeamMemorySectionModelTests: XCTestCase {
         NSError(domain: FunctionsErrorDomain, code: code.rawValue, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
+    /// A callable error shaped the way the Apple Functions SDK builds one: the
+    /// status code, the human message, and the server's `details` payload under
+    /// `FunctionsErrorDetailsKey`. `functions/src/teamRosterReasons.ts` puts the
+    /// reason there and `functions/src/__tests__/teamRosterReasonCodes.test.ts`
+    /// asserts the wire body carries it, so this is the same shape from the other
+    /// end of the wire.
+    private static func functionsError(
+        _ code: FunctionsErrorCode,
+        _ message: String,
+        reason: String
+    ) -> NSError {
+        NSError(
+            domain: FunctionsErrorDomain,
+            code: code.rawValue,
+            userInfo: [
+                NSLocalizedDescriptionKey: message,
+                FunctionsErrorDetailsKey: ["reason": reason] as NSDictionary
+            ]
+        )
+    }
+
     private final class FakeAdmin: TeamMemoryAdministering, @unchecked Sendable {
         var created: [String] = []
         var accepted: [(String, String)] = []
@@ -577,120 +598,15 @@ final class TeamMemorySectionModelTests: XCTestCase {
             ),
             .rosterStateMovedInFlight
         )
-        // Coverage cannot be built at all — client-side and server-side, which
-        // are two different errors for one situation.
+        // Coverage cannot be built at all, client-side: the distributor's own
+        // typed refusals, which never cross the wire.
         XCTAssertEqual(
             TeamJoinerKeyIssueFailure.classify(
                 TeamVaultKeyDistributionError.memberHasNoPinnedDevice(uid: "joiner")
             ),
             .joinerHasNoTrustedDevice
         )
-        XCTAssertEqual(
-            TeamJoinerKeyIssueFailure.classify(
-                Self.functionsError(
-                    .failedPrecondition,
-                    "That member has no trusted escrow device to receive team keys."
-                )
-            ),
-            .joinerHasNoTrustedDevice
-        )
-        // C-3: the row is re-read inside the writing transaction, so a member
-        // removed or promoted mid-pass is a precondition failure, not a wrap
-        // failure. The two `failed-precondition`s differ ONLY in their message.
-        XCTAssertEqual(
-            TeamJoinerKeyIssueFailure.classify(
-                Self.functionsError(.failedPrecondition, "Only a pending member can be promoted.")
-            ),
-            .memberNoLongerPending
-        )
-        XCTAssertEqual(
-            TeamJoinerKeyIssueFailure.classify(
-                Self.functionsError(.notFound, "That account has not accepted an invite to this team.")
-            ),
-            .memberNoLongerPending
-        )
         XCTAssertEqual(TeamJoinerKeyIssueFailure.classify(URLError(.notConnectedToInternet)), .other)
-
-        // AN UNRECOGNISED `failed-precondition` IS `.other`, NEVER "no longer
-        // pending" (PR 4 review M1). `promoteMember` raises at least five other
-        // refusals with this code, none of which carry either literal — and
-        // claiming "that member is no longer waiting to join" while the member
-        // list directly below still shows them PENDING is a specific false
-        // statement that also tells the admin to stop instead of retrying.
-        //
-        // The four coverage refusals, verbatim from
-        // `functions/src/teamKeyEnvelopes.ts:197/204/216/225`:
-        XCTAssertEqual(
-            TeamJoinerKeyIssueFailure.classify(
-                Self.functionsError(
-                    .failedPrecondition,
-                    "This team needs 220 key envelopes, above the 200 a single call may verify."
-                )
-            ),
-            .other,
-            "too many envelopes"
-        )
-        XCTAssertEqual(
-            TeamJoinerKeyIssueFailure.classify(
-                Self.functionsError(
-                    .failedPrecondition,
-                    "Key envelope coverage is incomplete: 3 envelope(s) were not supplied."
-                )
-            ),
-            .other,
-            "missing envelope ids"
-        )
-        XCTAssertEqual(
-            TeamJoinerKeyIssueFailure.classify(
-                Self.functionsError(
-                    .failedPrecondition,
-                    "Key envelope joiner_device-j_1_v2 has not been published yet."
-                )
-            ),
-            .other,
-            "an envelope this pass has not written yet"
-        )
-        XCTAssertEqual(
-            TeamJoinerKeyIssueFailure.classify(
-                Self.functionsError(
-                    .failedPrecondition,
-                    "Key envelope joiner_device-j_1_v2 is not addressed to the expected member device."
-                )
-            ),
-            .other,
-            "an envelope bound to a different device or key"
-        )
-        // And `readTeam`'s own refusal (`functions/src/teamRoster.ts:186`),
-        // reached from `promoteMember` before coverage is even computed.
-        XCTAssertEqual(
-            TeamJoinerKeyIssueFailure.classify(
-                Self.functionsError(.failedPrecondition, "Team roster is missing its key state.")
-            ),
-            .other,
-            "the roster has no key state"
-        )
-        // A refusal with a message this client has never seen is `.other` too:
-        // the default is generic copy, not a guess.
-        XCTAssertEqual(
-            TeamJoinerKeyIssueFailure.classify(
-                Self.functionsError(.failedPrecondition, "Some future refusal nobody has written yet.")
-            ),
-            .other
-        )
-        // The two literals that DO carry a specific meaning are matched
-        // positively, and both live in one place so a server reword has one
-        // Swift site to update.
-        XCTAssertTrue(
-            "That member has no trusted escrow device to receive team keys."
-                .lowercased()
-                .contains(TeamRosterPromotionRefusal.noTrustedEscrowDevice)
-        )
-        XCTAssertTrue(
-            "Only a pending member can be promoted."
-                .lowercased()
-                .contains(TeamRosterPromotionRefusal.memberNotPending)
-        )
-
         // Each one to its own copy, and both conflict shapes to the same line:
         // they mean the same thing to an admin and have the same remedy.
         XCTAssertEqual(
@@ -721,14 +637,133 @@ final class TeamMemorySectionModelTests: XCTestCase {
         )
     }
 
+    /// Every reason the server can send, driven through the classifier.
+    ///
+    /// `TeamRosterReasonCode` mirrors `functions/src/teamRosterReasons.ts` in
+    /// full (`scripts/ci/verify-team-roster-reason-codes.sh` and
+    /// `functions/src/__tests__/teamRosterReasonCodes.test.ts` both hold the two
+    /// enumerations together), so iterating `allCases` here IS the per-branch
+    /// test: a new server code arrives as a new case, and this loop asserts what
+    /// it renders before anybody has to think about it.
+    func test_every_reason_code_routes_to_its_branch_and_an_unknown_code_falls_back() {
+        // The refusals with an operator remedy. Everything else is `.other` —
+        // deliberately: "Share Team Keys" publishes envelopes and promotes, so a
+        // payload or caller-authority refusal on this surface is a client bug,
+        // and a coverage refusal means "nothing landed, try again", which is
+        // exactly what the generic notice says.
+        let specific: [TeamRosterReasonCode: TeamJoinerKeyIssueFailure] = [
+            .memberHasNoTrustedEscrowDevice: .joinerHasNoTrustedDevice,
+            .memberNotPending: .memberNoLongerPending,
+            .memberHasNotAcceptedInvite: .memberNoLongerPending,
+            .memberNotFoundInTeam: .memberNoLongerPending,
+            .rosterStateMovedInFlight: .rosterStateMovedInFlight
+        ]
+        for code in TeamRosterReasonCode.allCases {
+            XCTAssertEqual(
+                TeamJoinerKeyIssueFailure.classify(
+                    // The STATUS CODE is deliberately the same for every case and
+                    // deliberately wrong for most of them: the reason decides now,
+                    // not the code and not the message.
+                    Self.functionsError(.failedPrecondition, "server prose", reason: code.rawValue)
+                ),
+                specific[code] ?? .other,
+                code.rawValue
+            )
+        }
+        // The mirror is total, not a subset. If this number moves, a server code
+        // was added or removed and the gate above should have said so first.
+        XCTAssertEqual(TeamRosterReasonCode.allCases.count, 44)
+
+        // A code from a server newer than this build: ONE explicit fallback, and
+        // it renders the generic copy rather than guessing at a neighbour.
+        XCTAssertEqual(
+            TeamJoinerKeyIssueFailure.classify(
+                Self.functionsError(.failedPrecondition, "server prose", reason: "SOME_REFUSAL_FROM_THE_FUTURE")
+            ),
+            .other
+        )
+        // A reason that is not even a string is the same fallback, not a crash.
+        XCTAssertEqual(
+            TeamJoinerKeyIssueFailure.classify(
+                NSError(
+                    domain: FunctionsErrorDomain,
+                    code: FunctionsErrorCode.failedPrecondition.rawValue,
+                    userInfo: [FunctionsErrorDetailsKey: ["reason": 7] as NSDictionary]
+                )
+            ),
+            .other
+        )
+    }
+
+    /// THE MESSAGE IS NOT READ ANY MORE, and this is the test that would fail if
+    /// somebody put the substring matching back.
+    func test_the_server_message_no_longer_decides_the_copy() {
+        // Both of the literals the old classifier matched, now carrying a reason
+        // that CONTRADICTS them. The reason wins; the prose is inert.
+        XCTAssertEqual(
+            TeamJoinerKeyIssueFailure.classify(
+                Self.functionsError(
+                    .failedPrecondition,
+                    "That member has no trusted escrow device to receive team keys.",
+                    reason: TeamRosterReasonCode.memberNotPending.rawValue
+                )
+            ),
+            .memberNoLongerPending
+        )
+        XCTAssertEqual(
+            TeamJoinerKeyIssueFailure.classify(
+                Self.functionsError(
+                    .failedPrecondition,
+                    "Only a pending member can be promoted.",
+                    reason: TeamRosterReasonCode.memberHasNoTrustedEscrowDevice.rawValue
+                )
+            ),
+            .joinerHasNoTrustedDevice
+        )
+        // And with NO reason at all, the same two messages are `.other`. That is
+        // the deletion: a `failed-precondition` whose cause this client cannot
+        // identify gets generic-but-true copy, never specific-and-possibly-wrong.
+        // It is also what a Mac talking to a backend older than
+        // `functions/src/teamRosterReasons.ts` sees.
+        for prose in [
+            "That member has no trusted escrow device to receive team keys.",
+            "Only a pending member can be promoted.",
+            "Key envelope coverage is incomplete: 3 envelope(s) were not supplied.",
+            "Team roster is missing its key state."
+        ] {
+            XCTAssertEqual(
+                TeamJoinerKeyIssueFailure.classify(Self.functionsError(.failedPrecondition, prose)),
+                .other,
+                prose
+            )
+        }
+        // Two status codes still carry meaning on their own when no reason is
+        // attached, and they were never message matching: `aborted` has exactly
+        // one producer in this lane, and a missing row means the same thing to an
+        // admin as "not pending".
+        XCTAssertEqual(
+            TeamJoinerKeyIssueFailure.classify(Self.functionsError(.aborted, "prose")),
+            .rosterStateMovedInFlight
+        )
+        XCTAssertEqual(
+            TeamJoinerKeyIssueFailure.classify(Self.functionsError(.notFound, "prose")),
+            .memberNoLongerPending
+        )
+        // An error from outside the Functions domain carries no reason and no
+        // meaning here.
+        XCTAssertEqual(TeamJoinerKeyIssueFailure.classify(URLError(.timedOut)), .other)
+    }
+
     func test_a_failed_share_reaches_the_member_as_copy_and_never_as_the_raw_error() async {
         let start = Self.pendingJoinerDetail()
         let joinerKeys = FakeJoinerKeys()
         joinerKeys.error = Self.functionsError(
             .failedPrecondition,
-            // A real callable message, carrying a real identifier: this is why
-            // the raw text is classified and never rendered.
-            "That member has no trusted escrow device to receive team keys. (joiner@example.com)"
+            // A real callable message, carrying a real identifier. It is no
+            // longer classified either — the reason below is — but it is still
+            // the thing that must never reach the screen.
+            "That member has no trusted escrow device to receive team keys. (joiner@example.com)",
+            reason: TeamRosterReasonCode.memberHasNoTrustedEscrowDevice.rawValue
         )
         let (model, _, _, _) = makeModel(detail: start, joinerKeys: joinerKeys)
         await model.refresh()

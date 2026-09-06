@@ -16,9 +16,8 @@
  * pinned from the member's own `users/{uid}/escrow_public_keys` namespace.
  */
 
-import { HttpsError } from "firebase-functions/v2/https";
-
 import { db } from "./adminRuntime.js";
+import { TEAM_ROSTER_REASON as REASON, rosterError } from "./teamRosterReasons.js";
 
 /**
  * Envelope coverage is verified with one existence read per required envelope,
@@ -93,11 +92,7 @@ export function readEscrowDeviceFingerprints(raw: unknown): TeamEscrowDeviceFing
  * joiner is only promoted once it can both DECRYPT (vault key) and NAME (slug
  * key) team documents.
  */
-function teamKeyEnvelopeId(
-  uid: string,
-  device: TeamEscrowDeviceFingerprint,
-  keyVersion: number | "slug",
-): string {
+function teamKeyEnvelopeId(uid: string, device: TeamEscrowDeviceFingerprint, keyVersion: number | "slug"): string {
   const slot = keyVersion === "slug" ? "slug" : `v${keyVersion}`;
   return `${uid}_${device.deviceId}_${device.keyVersion}_${slot}`;
 }
@@ -194,15 +189,15 @@ export async function assertTeamKeyEnvelopeCoverage(
   authorizedWrapperUids: Set<string>,
 ): Promise<void> {
   if (requirements.length > MAX_ENVELOPE_IDS) {
-    throw new HttpsError(
-      "failed-precondition",
+    throw rosterError(
+      REASON.TOO_MANY_KEY_ENVELOPES,
       `This team needs ${requirements.length} key envelopes, above the ${MAX_ENVELOPE_IDS} a single call may verify.`,
     );
   }
   const missing = requirements.filter((requirement) => !claimedIds.has(requirement.id));
   if (missing.length > 0) {
-    throw new HttpsError(
-      "failed-precondition",
+    throw rosterError(
+      REASON.KEY_ENVELOPE_COVERAGE_INCOMPLETE,
       `Key envelope coverage is incomplete: ${missing.length} envelope(s) were not supplied.`,
     );
   }
@@ -213,7 +208,10 @@ export async function assertTeamKeyEnvelopeCoverage(
     const requirement = requirements[index];
     if (!requirement) return;
     if (!snapshot.exists) {
-      throw new HttpsError("failed-precondition", `Key envelope ${requirement.id} has not been published yet.`);
+      throw rosterError(
+        REASON.KEY_ENVELOPE_NOT_PUBLISHED,
+        `Key envelope ${requirement.id} has not been published yet.`,
+      );
     }
     if (
       snapshot.get("teamId") !== teamId ||
@@ -222,21 +220,21 @@ export async function assertTeamKeyEnvelopeCoverage(
       snapshot.get("escrowKeyVersion") !== requirement.escrowKeyVersion ||
       snapshot.get("keySlot") !== requirement.keySlot
     ) {
-      throw new HttpsError(
-        "failed-precondition",
+      throw rosterError(
+        REASON.KEY_ENVELOPE_ADDRESSED_ELSEWHERE,
         `Key envelope ${requirement.id} is not addressed to the expected member device.`,
       );
     }
     if (snapshot.get("recipientPublicKeyFingerprint") !== requirement.publicKeyFingerprint) {
-      throw new HttpsError(
-        "failed-precondition",
+      throw rosterError(
+        REASON.KEY_ENVELOPE_WRAPPED_TO_UNKNOWN_KEY,
         `Key envelope ${requirement.id} is wrapped to a key this member never published.`,
       );
     }
     const wrappedBy = snapshot.get("wrappedBy");
     if (typeof wrappedBy !== "string" || !(authorizedWrapperUids.has(wrappedBy) || wrappedBy === requirement.uid)) {
-      throw new HttpsError(
-        "failed-precondition",
+      throw rosterError(
+        REASON.KEY_ENVELOPE_WRAPPER_NOT_AUTHORIZED,
         `Key envelope ${requirement.id} was not published by a team admin or by its recipient.`,
       );
     }

@@ -35,9 +35,8 @@
 import { randomUUID } from "node:crypto";
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { HttpsError } from "firebase-functions/v2/https";
-
 import { db } from "./adminRuntime.js";
+import { TEAM_ROSTER_REASON as REASON, rosterError } from "./teamRosterReasons.js";
 
 export const TEAM_ROSTER_SCHEMA_VERSION = 1;
 /** Firestore batches cap at 500 writes; leave headroom for the roster + audit row. */
@@ -136,12 +135,12 @@ export function nextRotatableKeyVersion(team: { activeKeyVersion: number; burned
 
 export function readTeam(raw: FirebaseFirestore.DocumentData | undefined, teamId: string): TeamDocument {
   if (!raw) {
-    throw new HttpsError("not-found", "Team not found.");
+    throw rosterError(REASON.TEAM_NOT_FOUND, "Team not found.");
   }
   const activeKeyVersion = typeof raw.activeKeyVersion === "number" ? raw.activeKeyVersion : 0;
   const retained = readKeyVersionList(raw.retainedKeyVersions);
   if (activeKeyVersion < 1 || retained.length === 0) {
-    throw new HttpsError("failed-precondition", "Team roster is missing its key state.");
+    throw rosterError(REASON.TEAM_KEY_STATE_MISSING, "Team roster is missing its key state.");
   }
   return {
     teamId,
@@ -152,8 +151,7 @@ export function readTeam(raw: FirebaseFirestore.DocumentData | undefined, teamId
     slugKeyId: typeof raw.slugKeyId === "string" ? raw.slugKeyId : null,
     keyRotationRequired: raw.keyRotationRequired === true,
     membershipEpoch: readMembershipEpoch(raw),
-    rewrapCompletedKeyVersion:
-      typeof raw.rewrapCompletedKeyVersion === "number" ? raw.rewrapCompletedKeyVersion : null,
+    rewrapCompletedKeyVersion: typeof raw.rewrapCompletedKeyVersion === "number" ? raw.rewrapCompletedKeyVersion : null,
     rewrapJobId: typeof raw.rewrapJobId === "string" ? raw.rewrapJobId : null,
     createdBy: typeof raw.createdBy === "string" ? raw.createdBy : "",
     schemaVersion: typeof raw.schemaVersion === "number" ? raw.schemaVersion : TEAM_ROSTER_SCHEMA_VERSION,
@@ -270,15 +268,15 @@ export async function commitGuardedByTeamState(options: {
     const fresh = await transaction.get(teamRef);
     const freshData = fresh.data();
     if (teamStateMoved(freshData, options.expected)) {
-      throw new HttpsError(
-        "aborted",
+      throw rosterError(
+        REASON.ROSTER_STATE_MOVED_IN_FLIGHT,
         "This team's roster or key state changed while the call was in flight; retry against the current state.",
       );
     }
     if (options.stillPendingMemberRef) {
       const member = await transaction.get(options.stillPendingMemberRef);
       if (!member.exists || member.get("status") !== "pending") {
-        throw new HttpsError("failed-precondition", "Only a pending member can be promoted.");
+        throw rosterError(REASON.MEMBER_NOT_PENDING, "Only a pending member can be promoted.");
       }
     }
     for (const write of options.writes) {

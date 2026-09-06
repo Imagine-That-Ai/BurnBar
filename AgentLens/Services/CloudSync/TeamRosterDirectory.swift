@@ -224,28 +224,107 @@ struct TeamVaultJoinerKeyIssuer: TeamJoinerKeyIssuing {
     }
 }
 
-/// The two `promoteTeamMember` refusals this client is able to tell apart, as
-/// the SERVER words them.
+/// The server's refusal enumeration, mirrored.
 ///
-/// SOURCE OF TRUTH IS `functions/src/teamRoster.ts` — `promoteMember` raises
-/// both, three lines apart, as bare `HttpsError("failed-precondition", …)` with
-/// no `details` payload. There is nothing structured to switch on, so the
-/// message text is the only separator, and these are the two fragments that
-/// separate it. Kept HERE, in one place, rather than inline in `classify`, so a
-/// server reword has exactly one Swift site to update.
+/// SOURCE OF TRUTH IS `functions/src/teamRosterReasons.ts`. Every `HttpsError`
+/// the eight team-roster callables raise carries `details.reason` set to one of
+/// these strings, and `scripts/ci/verify-team-roster-reason-codes.sh` fails the
+/// build if this enum and that file stop agreeing in EITHER direction — a server
+/// code with no Swift case, or a Swift case for a code the server no longer
+/// raises. There is no runtime discovery here and no partial mirror: the whole
+/// enumeration is present so `switch` can be exhaustive and so the gate has
+/// something total to compare against.
 ///
-/// FOLLOW-UP, and it is the real fix: have `promoteMember` attach a structured
-/// reason (`details.reason = "no_trusted_device" | "member_not_pending"`) and
-/// switch on that instead. PR 2 round 3 owns the roster service; whoever lands
-/// it should carry this. Until then a server-side reword degrades the
-/// classification to `.other` — generic, honest copy, never wrong-specific copy
-/// — which is why `classify` matches POSITIVELY on both and defaults to
-/// `.other` rather than guessing.
-enum TeamRosterPromotionRefusal {
-    /// `teamRoster.ts`: "That member has no trusted escrow device to receive team keys."
-    static let noTrustedEscrowDevice = "escrow device"
-    /// `teamRoster.ts`: "Only a pending member can be promoted."
-    static let memberNotPending = "pending member can be promoted"
+/// WHY A FULL MIRROR WHEN ONLY FIVE CODES DRIVE COPY. The alternative — mirror
+/// only the codes this screen reacts to — makes the completeness question
+/// unanswerable: nothing could then tell a NEW server code that should drive
+/// copy from one that should not. With the mirror total, adding a server code
+/// breaks the gate, and adding a case here breaks `classify`'s exhaustive
+/// switch, so a human decides which copy it deserves. Both breaks are the point.
+///
+/// This is the replacement for the message-substring matching that used to live
+/// in `TeamRosterPromotionRefusal`: two of these refusals share a status code
+/// and differed only in their English, so the English was the separator. It is
+/// not any more.
+enum TeamRosterReasonCode: String, CaseIterable {
+    // Callable payload validation.
+    case unauthenticated = "UNAUTHENTICATED"
+    case invalidTeamID = "INVALID_TEAM_ID"
+    case invalidTeamName = "INVALID_TEAM_NAME"
+    case invalidAccountID = "INVALID_ACCOUNT_ID"
+    case invalidRole = "INVALID_ROLE"
+    case invalidInviteeEmail = "INVALID_INVITEE_EMAIL"
+    case invalidEnvelopeID = "INVALID_ENVELOPE_ID"
+    case invalidEnvelopeIDs = "INVALID_ENVELOPE_IDS"
+    case invalidKeyVersion = "INVALID_KEY_VERSION"
+    case invalidInviteToken = "INVALID_INVITE_TOKEN"
+    case invalidRewrapJobID = "INVALID_REWRAP_JOB_ID"
+
+    // Caller authority.
+    case callerNotATeamMember = "CALLER_NOT_A_TEAM_MEMBER"
+    case callerNotAnActiveAdmin = "CALLER_NOT_AN_ACTIVE_ADMIN"
+
+    // The caller's own escrow devices.
+    case callerHasNoTrustedEscrowDevice = "CALLER_HAS_NO_TRUSTED_ESCROW_DEVICE"
+    case callerHasTooManyTrustedDevices = "CALLER_HAS_TOO_MANY_TRUSTED_DEVICES"
+
+    // Invites.
+    case inviteeHasNoAccount = "INVITEE_HAS_NO_ACCOUNT"
+    case cannotInviteYourself = "CANNOT_INVITE_YOURSELF"
+    case inviteeAlreadyOnTeam = "INVITEE_ALREADY_ON_TEAM"
+    case emailNotVerified = "EMAIL_NOT_VERIFIED"
+    case inviteNotValidForAccount = "INVITE_NOT_VALID_FOR_ACCOUNT"
+    case inviteAlreadyUsed = "INVITE_ALREADY_USED"
+    case inviteExpired = "INVITE_EXPIRED"
+    case alreadyOnThisTeam = "ALREADY_ON_THIS_TEAM"
+
+    // Promotion and removal.
+    case memberHasNotAcceptedInvite = "MEMBER_HAS_NOT_ACCEPTED_INVITE"
+    case memberNotPending = "MEMBER_NOT_PENDING"
+    case memberHasNoTrustedEscrowDevice = "MEMBER_HAS_NO_TRUSTED_ESCROW_DEVICE"
+    case memberNotFoundInTeam = "MEMBER_NOT_FOUND_IN_TEAM"
+    case lastActiveAdmin = "LAST_ACTIVE_ADMIN"
+
+    // Key generations.
+    case keyVersionStillRecorded = "KEY_VERSION_STILL_RECORDED"
+    case keyVersionNotNextUnclaimed = "KEY_VERSION_NOT_NEXT_UNCLAIMED"
+    case noAbandonedRotationToBurn = "NO_ABANDONED_ROTATION_TO_BURN"
+    case keyVersionNotSequential = "KEY_VERSION_NOT_SEQUENTIAL"
+    case keyVersionsExhausted = "KEY_VERSIONS_EXHAUSTED"
+    case activeMemberHasNoPinnedDevice = "ACTIVE_MEMBER_HAS_NO_PINNED_DEVICE"
+    case rewrapKeyVersionNotCurrent = "REWRAP_KEY_VERSION_NOT_CURRENT"
+
+    // Envelope coverage.
+    case tooManyKeyEnvelopes = "TOO_MANY_KEY_ENVELOPES"
+    case keyEnvelopeCoverageIncomplete = "KEY_ENVELOPE_COVERAGE_INCOMPLETE"
+    case keyEnvelopeNotPublished = "KEY_ENVELOPE_NOT_PUBLISHED"
+    case keyEnvelopeAddressedElsewhere = "KEY_ENVELOPE_ADDRESSED_ELSEWHERE"
+    case keyEnvelopeWrappedToUnknownKey = "KEY_ENVELOPE_WRAPPED_TO_UNKNOWN_KEY"
+    case keyEnvelopeWrapperNotAuthorized = "KEY_ENVELOPE_WRAPPER_NOT_AUTHORIZED"
+
+    // Team document and in-flight state.
+    case teamNotFound = "TEAM_NOT_FOUND"
+    case teamKeyStateMissing = "TEAM_KEY_STATE_MISSING"
+    case rosterStateMovedInFlight = "ROSTER_STATE_MOVED_IN_FLIGHT"
+
+    /// Read the reason a roster callable attached, or `nil` when there is none.
+    ///
+    /// `nil` covers three real cases and they are all handled the same way by the
+    /// caller — generic copy, never a guess: an error from outside this lane
+    /// (App Check, a rate limit, the entitlement check, a transport failure); a
+    /// deployed backend older than this enumeration; and a code this build has
+    /// never heard of, which `init(rawValue:)` rejects.
+    ///
+    /// `NSDictionary`, not `[String: Any]`: the Apple Functions SDK decodes the
+    /// wire body's `details` with `JSONSerialization`, so the bridged dictionary
+    /// is what arrives, and reading it this way keeps the untyped-boundary
+    /// ratchet (`scripts/debt/check-string-any-boundary-budget.sh`) unmoved.
+    static func read(from error: NSError) -> TeamRosterReasonCode? {
+        guard error.domain == FunctionsErrorDomain,
+              let details = error.userInfo[FunctionsErrorDetailsKey] as? NSDictionary,
+              let raw = details["reason"] as? String else { return nil }
+        return TeamRosterReasonCode(rawValue: raw)
+    }
 }
 
 /// Why "Share Team Keys" did not complete, in terms an admin can act on.
@@ -254,10 +333,14 @@ enum TeamRosterPromotionRefusal {
 /// two-admin fork refusal ends "PR 4 owns … the operator-facing wording for
 /// `rotationConflict`".
 ///
-/// It CLASSIFIES, it does not render. A callable's message can carry a uid or an
-/// email, so the raw text is read for exactly one purpose — telling the roster's
-/// two different `failed-precondition`s apart, which share a status code and
-/// differ only in their message — and is never put on screen.
+/// It CLASSIFIES, it does not render, and IT NO LONGER READS THE MESSAGE. Two
+/// roster refusals share `failed-precondition` and used to be told apart by
+/// matching substrings of the server's English, which made every operator
+/// message a wire contract: rewording one silently changed the admin's copy.
+/// `classify` now switches on `details.reason`
+/// (`functions/src/teamRosterReasons.ts`, mirrored in `TeamRosterReasonCode`),
+/// and the message — which can carry a uid or an email — is neither parsed nor
+/// put on screen.
 enum TeamJoinerKeyIssueFailure: Equatable, Sendable {
     /// A second admin's wrap already occupies an envelope id this pass needs, or
     /// occupies it addressed to a different device or key. Envelope documents
@@ -342,41 +425,116 @@ enum TeamJoinerKeyIssueFailure: Equatable, Sendable {
             }
         }
         let nsError = error as NSError
+        if let reason = TeamRosterReasonCode.read(from: nsError) {
+            return classify(reason: reason)
+        }
+        // NO REASON ON THE ERROR. Three shapes reach here and none of them is a
+        // roster refusal this build understands: an error from outside the lane
+        // (App Check, a rate limit, the entitlement check, a transport failure),
+        // a deployed backend older than `functions/src/teamRosterReasons.ts`, or
+        // a reason string this build has never seen.
+        //
+        // THE MESSAGE IS NOT READ. It used to be — two refusals shared
+        // `failed-precondition` and differed only in their English — and that is
+        // exactly the contract this change removes, so the fallback is decided
+        // by STATUS CODE alone. `aborted` and `not-found` each have one meaning
+        // in this lane whoever produced them, so they keep their copy; every
+        // other status, `failed-precondition` very much included, gets the
+        // generic notice. Generic-but-true beats specific-and-possibly-wrong:
+        // printing "that member is no longer waiting to join" while the member
+        // list directly below still shows them PENDING is a false claim that
+        // also tells the admin to stop instead of retry (PR 4 review M1).
         guard nsError.domain == FunctionsErrorDomain else { return .other }
         switch FunctionsErrorCode(rawValue: nsError.code) {
         case .aborted:
             return .rosterStateMovedInFlight
-        case .failedPrecondition:
-            // POSITIVE MATCHES ONLY, AND `.other` FOR EVERYTHING ELSE (PR 4
-            // review M1). Two roster refusals share this code and differ only in
-            // wording, so the message is READ here — and rendered nowhere.
-            //
-            // But they are not the only two. `promoteMember` also reaches
-            // `readTeam` ("Team roster is missing its key state.") and
-            // `assertTeamKeyEnvelopeCoverage`, which raises four more
-            // `failed-precondition`s of its own — too many envelopes, missing
-            // envelope ids, an envelope not published yet, an envelope addressed
-            // to a different device or key (`functions/src/teamKeyEnvelopes.ts`).
-            // A partial or stale coverage failure is the single most likely
-            // refusal an admin will meet, and defaulting it to "no longer
-            // pending" would print a specific claim the member list directly
-            // below contradicts, and would tell them to stop instead of retry.
-            // An unrecognised refusal is `.other`, whose copy says only that
-            // nothing was shared and to try again.
-            let text = nsError.localizedDescription.lowercased()
-            if text.contains(TeamRosterPromotionRefusal.noTrustedEscrowDevice) {
-                return .joinerHasNoTrustedDevice
-            }
-            if text.contains(TeamRosterPromotionRefusal.memberNotPending) {
-                return .memberNoLongerPending
-            }
-            return .other
         case .notFound:
-            // "That account has not accepted an invite to this team." The row
-            // is gone, which is the same thing to an admin as "not pending".
+            // The roster row or the team is gone, which is the same thing to an
+            // admin as "not pending".
             return .memberNoLongerPending
         default:
             return .other
+        }
+    }
+
+    /// Route one server reason to the copy an admin can act on.
+    ///
+    /// EXHAUSTIVE, WITH NO `default`. A new `TeamRosterReasonCode` case must
+    /// break this build so somebody decides what an admin should be told, rather
+    /// than the code quietly becoming "unknown failure". The unrecognised-code
+    /// fallback is NOT here — it is `TeamRosterReasonCode.read` returning `nil`
+    /// above, which is the single explicit place a code this build does not know
+    /// becomes generic copy.
+    ///
+    /// Most of the enumeration lands on `.other`, and that is correct rather
+    /// than lazy: "Share Team Keys" publishes envelopes and calls
+    /// `promoteTeamMember`, so a caller-authority refusal or a malformed-payload
+    /// refusal on this surface is a client bug, not something the admin in front
+    /// of the screen can do anything about. Only the refusals with a real
+    /// operator remedy get their own line.
+    private static func classify(reason: TeamRosterReasonCode) -> TeamJoinerKeyIssueFailure {
+        switch reason {
+        case .memberHasNoTrustedEscrowDevice:
+            // The joiner has published no trusted device, so nothing can be
+            // wrapped for them. Their move, not this admin's.
+            return .joinerHasNoTrustedDevice
+        case .memberNotPending, .memberHasNotAcceptedInvite, .memberNotFoundInTeam:
+            // C-3: the row is re-read inside the writing transaction, so a
+            // member removed or already promoted mid-pass is a precondition
+            // failure. A row that is simply GONE means the same thing to an
+            // admin — the member is not waiting to join any more.
+            return .memberNoLongerPending
+        case .rosterStateMovedInFlight:
+            // `commitGuardedByTeamState` re-read the team inside the writing
+            // transaction and the key state or the membership epoch had moved.
+            // Nothing landed; the retry is against a fresh snapshot.
+            return .rosterStateMovedInFlight
+        case .unauthenticated,
+             .invalidTeamID,
+             .invalidTeamName,
+             .invalidAccountID,
+             .invalidRole,
+             .invalidInviteeEmail,
+             .invalidEnvelopeID,
+             .invalidEnvelopeIDs,
+             .invalidKeyVersion,
+             .invalidInviteToken,
+             .invalidRewrapJobID,
+             .callerNotATeamMember,
+             .callerNotAnActiveAdmin,
+             .callerHasNoTrustedEscrowDevice,
+             .callerHasTooManyTrustedDevices,
+             .inviteeHasNoAccount,
+             .cannotInviteYourself,
+             .inviteeAlreadyOnTeam,
+             .emailNotVerified,
+             .inviteNotValidForAccount,
+             .inviteAlreadyUsed,
+             .inviteExpired,
+             .alreadyOnThisTeam,
+             .lastActiveAdmin,
+             .keyVersionStillRecorded,
+             .keyVersionNotNextUnclaimed,
+             .noAbandonedRotationToBurn,
+             .keyVersionNotSequential,
+             .keyVersionsExhausted,
+             .activeMemberHasNoPinnedDevice,
+             .rewrapKeyVersionNotCurrent,
+             .tooManyKeyEnvelopes,
+             .keyEnvelopeCoverageIncomplete,
+             .keyEnvelopeNotPublished,
+             .keyEnvelopeAddressedElsewhere,
+             .keyEnvelopeWrappedToUnknownKey,
+             .keyEnvelopeWrapperNotAuthorized,
+             .teamNotFound,
+             .teamKeyStateMissing:
+            // Everything else: a coverage refusal (the most likely one an admin
+            // will meet — a partial or stale pass), a roster the caller may not
+            // act on, or a payload this client should never have sent. All of
+            // them mean "nothing was shared, try again"; none of them has a
+            // more specific instruction that would be TRUE on this screen.
+            return .other
+        // NO `default`. See the note above.
         }
     }
 }
