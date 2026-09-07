@@ -115,13 +115,27 @@ final class MemoryExportCanonicalJSONTests: XCTestCase {
     func test_theVerbsAndFlagsParse() throws {
         let command = try MemoryExportCommand.parse([
             "export", "--out", "/tmp/bundle", "--recipient", "/tmp/recipient.json",
-            "--since-audit-seq", "4120", "--snapshot", "sqlcipher_export", "--json"
+            "--since-audit-seq", "4120", "--since-updated-at-ms", "1767225600000",
+            "--snapshot", "sqlcipher_export", "--json"
         ])
         XCTAssertEqual(command.verb, .export)
         XCTAssertEqual(command.out, "/tmp/bundle")
         XCTAssertEqual(command.snapshot, .sqlcipherExport)
-        XCTAssertEqual(command.mode, .delta(sinceAuditSeq: 4_120))
+        XCTAssertEqual(command.mode, .delta(sinceAuditSeq: 4_120, sinceUpdatedAtMS: 1_767_225_600_000))
         XCTAssertTrue(command.json)
+    }
+
+    /// §5's delta predicate has two halves, so half of it is a refusal rather
+    /// than a full export wearing a delta's manifest (review F-4).
+    func test_aDeltaNeedsBothHalvesOfItsWindow() {
+        for half in [["--since-audit-seq", "10"], ["--since-updated-at-ms", "1767225600000"]] {
+            XCTAssertThrowsError(
+                try MemoryExportCommand.parse(
+                    ["export", "--out", "/tmp/b", "--recipient", "/tmp/r.json", "--allow-long-read"] + half
+                ),
+                half.joined(separator: " ")
+            )
+        }
     }
 
     func test_exportNeedsAnOutputAndReadTxnNeedsAskingFor() {

@@ -32,7 +32,8 @@ extension BurnBarCLIRunner {
       --out PATH            bundle directory to write
       --recipient PATH      the importer's recipient descriptor JSON (required)
       --dry-run             classify and dereference, write nothing
-      --since-audit-seq N   delta export from an audit head
+      --since-audit-seq N   delta export from an audit head (needs the watermark too)
+      --since-updated-at-ms N  the previous bundle's delta_watermarks.agent_memories
       --snapshot MODE       vacuum | sqlcipher_export | backup_api | read_txn
       --allow-long-read     required for --snapshot read_txn
       --carry-orphans       carry body rows no authority row references (default off)

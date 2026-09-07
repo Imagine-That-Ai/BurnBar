@@ -39,6 +39,10 @@ public struct MemoryExportCommand: Sendable, Equatable {
     public var dryRun = false
     public var resume = false
     public var sinceAuditSeq: Int?
+    /// The previous bundle's `delta_watermarks["agent_memories"]`. §5's delta
+    /// predicate is `audit_seq > since` OR `updated_at > watermark`, and without
+    /// the second half a delta is a full export wearing a delta's manifest.
+    public var sinceUpdatedAtMS: Int?
     public var snapshot: MIFSnapshotMode = .readTxn
     public var allowLongRead = false
     public var carryOrphans = false
@@ -50,7 +54,9 @@ public struct MemoryExportCommand: Sendable, Equatable {
 
     public var mode: MemoryExportMode {
         if dryRun { return .dryRun }
-        if let sinceAuditSeq { return .delta(sinceAuditSeq: sinceAuditSeq) }
+        if let sinceAuditSeq, let sinceUpdatedAtMS {
+            return .delta(sinceAuditSeq: sinceAuditSeq, sinceUpdatedAtMS: sinceUpdatedAtMS)
+        }
         return .full
     }
 
@@ -88,7 +94,8 @@ public struct MemoryExportCommand: Sendable, Equatable {
             case "--rehearsal": command.rehearsal = true
             case "--deterministic-nonces": command.deterministicNonces = true
             case "--json": command.json = true
-            case "--out", "--recipient", "--source", "--since-audit-seq", "--snapshot", "--max-section-bytes":
+            case "--out", "--recipient", "--source", "--since-audit-seq", "--since-updated-at-ms",
+                 "--snapshot", "--max-section-bytes":
                 index += 1
                 guard index < arguments.count else {
                     throw MemoryExportCommandError.usage("\(argument) needs a value")
@@ -117,6 +124,11 @@ public struct MemoryExportCommand: Sendable, Equatable {
                 throw MemoryExportCommandError.usage("--since-audit-seq must be a non-negative integer")
             }
             sinceAuditSeq = parsed
+        case "--since-updated-at-ms":
+            guard let parsed = Int(value), parsed >= 0 else {
+                throw MemoryExportCommandError.usage("--since-updated-at-ms must be a non-negative integer")
+            }
+            sinceUpdatedAtMS = parsed
         case "--snapshot":
             guard let parsed = MIFSnapshotMode(rawValue: value) else {
                 throw MemoryExportCommandError.usage(
@@ -147,6 +159,17 @@ public struct MemoryExportCommand: Sendable, Equatable {
                 "\(MIFExportRefusal.recipientRequired.rawValue): memory export needs --recipient "
                     + "<descriptor.json>, published by `memoryctl memory export-recipient`. "
                     + "A bundle sealed to no recipient can never be opened."
+            )
+        }
+        // A delta needs BOTH halves of §5's predicate. Accepting `--since-audit-seq`
+        // alone and quietly exporting everything is worse than refusing: the
+        // manifest would say `"delta"`, the operator would believe P4's catch-up
+        // had run, and the P5 final delta would carry the whole store.
+        if (sinceAuditSeq == nil) != (sinceUpdatedAtMS == nil) {
+            throw MemoryExportCommandError.usage(
+                "a delta needs both --since-audit-seq and --since-updated-at-ms; take them from the "
+                    + "previous bundle's manifest (`since_audit_seq` is its audit head, "
+                    + "`delta_watermarks.agent_memories` the watermark)."
             )
         }
         // `read_txn` pins the WAL against a live 8.4 GB file, so it is never the

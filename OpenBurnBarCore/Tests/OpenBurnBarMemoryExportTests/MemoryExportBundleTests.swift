@@ -538,20 +538,104 @@ final class MemoryExportBundleTests: XCTestCase {
 
     // MARK: - Delta
 
-    func test_deltaCarriesOnlyAuditRowsAboveTheWatermark() throws {
+    /// The old version of this test asserted a digest INEQUALITY and one zero
+    /// count, and both held with the memory window fully open — which is why
+    /// F-4 stayed green while every delta was a full export. It counts rows now.
+    func test_aDeltaCarriesOnlyRowsAboveBothHalvesOfTheWindow() throws {
         let snapshot = try MemoryExportFixtureStore.snapshot(try makeStore())
         let key = MemoryExportCrypto.deterministicBundleKey(seed: "delta")
         let full = try makeExporter().export(snapshot, mode: .full, to: nil, bundleKey: key)
-        let delta = try makeExporter().export(
+        XCTAssertGreaterThan(full.sectionBuffers[.memories]?.records.count ?? 0, 1)
+
+        // Everything in the fixture is at or below both halves of this window,
+        // so a real delta carries no memory at all.
+        let watermark = Int(Date(timeIntervalSince1970: 4_102_444_800).timeIntervalSince1970 * 1000)
+        let empty = try makeExporter().export(
             snapshot,
-            mode: .delta(sinceAuditSeq: snapshot.auditHeadSeq),
+            mode: .delta(sinceAuditSeq: snapshot.auditHeadSeq, sinceUpdatedAtMS: watermark),
             to: nil,
             bundleKey: key
         )
-        XCTAssertNotEqual(full.contentDigest, delta.contentDigest)
-        // The delete sits at or below the watermark, so the delta neither
-        // carries it nor trips the delete obligation.
-        XCTAssertEqual(delta.report.deleteWithoutTombstoneSynthesized, 0)
+        XCTAssertEqual(empty.sectionBuffers[.memories]?.records.count, 0, "a delta past the head carries nothing")
+        XCTAssertEqual(empty.report.deleteWithoutTombstoneSynthesized, 0)
+        let outOfWindow = empty.report.tables
+            .first { $0.name == "agent_memories" }?
+            .notExported[.outOfWindow] ?? 0
+        XCTAssertEqual(outOfWindow, snapshot.memories.count, "every row is recorded as out of window")
+
+        // And a window that opens just before the newest row carries exactly it.
+        // `label-only` and the daemon row sit at 2026-01-01; `proven-human` was
+        // updated a day later.
+        let dayOne = MemoryExportTimestamp.parse("2026-01-01T12:00:00.000Z")
+        let one = try makeExporter().export(
+            snapshot,
+            mode: .delta(
+                sinceAuditSeq: snapshot.auditHeadSeq,
+                // swiftlint:disable:next force_unwrapping reason: a literal ISO timestamp
+                sinceUpdatedAtMS: Int((dayOne!.timeIntervalSince1970 * 1000).rounded())
+            ),
+            to: nil,
+            bundleKey: key
+        )
+        let carried = (one.sectionBuffers[.memories]?.records ?? []).compactMap { record -> String? in
+            guard case .object(let fields) = record,
+                  case .string(let id) = fields["memory_id"] ?? .null else { return nil }
+            return id
+        }
+        XCTAssertEqual(carried.count, 1, "only the row updated after the watermark")
+        XCTAssertEqual(
+            carried.first,
+            MemoryExportIdentity.canonicalMemoryID("proven-human", storeID: storeID)
+        )
+    }
+
+    /// M-20, and F-10. A delta drops audit rows at or below the watermark, but a
+    /// carried row proven `human` cites one by `audit_seq`, and the importer
+    /// verifies that seq exists in section 09, re-hashes it, and REFUSES the
+    /// human claim otherwise. Dropping it downgrades exactly the verdicts the
+    /// migration exists to preserve.
+    func test_aDeltaKeepsTheAuditRowItsOwnReviewEventNames() throws {
+        let snapshot = try MemoryExportFixtureStore.snapshot(try makeStore())
+        // A window that excludes every audit row, but whose memory half still
+        // carries `proven-human` — the exact shape that lost the evidence.
+        let dayOne = try XCTUnwrap(MemoryExportTimestamp.parse("2026-01-01T12:00:00.000Z"))
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try makeExporter().export(
+            snapshot,
+            mode: .delta(
+                sinceAuditSeq: snapshot.auditHeadSeq,
+                sinceUpdatedAtMS: Int((dayOne.timeIntervalSince1970 * 1000).rounded())
+            ),
+            to: directory,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "m20")
+        )
+        XCTAssertEqual(result.report.auditProvenHuman, 1)
+
+        let cited = (result.sectionBuffers[.memories]?.records ?? []).compactMap { record -> Int? in
+            guard case .object(let fields) = record,
+                  case .int(let seq) = fields["verdict_audit_seq"] ?? .null else { return nil }
+            return seq
+        }
+        XCTAssertEqual(cited.count, 1)
+        let carriedSeqs = Set((result.sectionBuffers[.auditEvidence]?.records ?? []).compactMap { record -> Int? in
+            guard case .object(let fields) = record,
+                  case .int(let seq) = fields["peer_seq"] ?? .null else { return nil }
+            return seq
+        })
+        XCTAssertTrue(
+            carriedSeqs.isSuperset(of: cited),
+            "section 09 must carry every audit_seq a human-origin row names, window or no window"
+        )
+        // And the manifest marks 09 `required: true` the moment any record claims
+        // human origin, so an importer that does not know the section refuses
+        // the bundle rather than applying an unproven verdict.
+        let manifest = try XCTUnwrap(try json(at: directory.appendingPathComponent("manifest.json")) as? [String: Any])
+        let headers = try XCTUnwrap(manifest["sections"] as? [[String: Any]])
+        let nine = try XCTUnwrap(headers.first { $0["name"] as? String == MIFSection.auditEvidence.rawValue })
+        XCTAssertEqual(nine["required"] as? Bool, true)
+        XCTAssertEqual(nine["row_count"] as? Int, carriedSeqs.count)
     }
 
     // MARK: - Helpers

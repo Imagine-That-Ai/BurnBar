@@ -23,12 +23,18 @@ public enum MemoryExportMode: Sendable, Equatable {
     /// §5, P4. The completeness predicate is NOT `since_audit_seq` alone: the
     /// oracle's chain has payload-seq divergence and a `prev_hash` race, so the
     /// delta selects `audit_seq > since` OR `updated_at > watermark`.
-    case delta(sinceAuditSeq: Int)
+    ///
+    /// The watermark is a REQUIRED parameter, not an optional the caller can
+    /// forget. It is the previous bundle's `delta_watermarks["agent_memories"]`,
+    /// and without it the second disjunct has nothing to compare against — which
+    /// is how every delta silently became a full export while the manifest still
+    /// said `"delta"` (review F-4).
+    case delta(sinceAuditSeq: Int, sinceUpdatedAtMS: Int)
 
     var manifestValue: String { self == .full || self == .dryRun ? "full" : "delta" }
 
     var sinceAuditSeq: Int? {
-        if case .delta(let seq) = self { return seq }
+        if case .delta(let seq, _) = self { return seq }
         return nil
     }
 }
@@ -173,6 +179,12 @@ public struct MemoryExporter: Sendable {
         /// memory, or the delete is undone by the same bundle that carried it.
         var emittedTombstoneSubjects: Set<String> = []
         var carriedMemoryIDs: Set<String> = []
+        /// M-20: rows 1-3 are the only `human` exits and "each names an
+        /// `audit_seq` that section 09 must carry". The importer verifies each
+        /// cited seq exists in 09, re-hashes it, and REFUSES the human claim
+        /// otherwise — so a delta that dropped the row it cites would downgrade
+        /// exactly the verdicts the migration exists to preserve.
+        var auditSeqsSectionNineOwes: Set<Int> = []
         var quarantineStoreBodies = 0
 
         // §3.3(a) defines an orphan as "a body-snapshot row referenced by no
@@ -197,13 +209,15 @@ public struct MemoryExporter: Sendable {
 
         // ---- 05 / 06 / 07: memories, bodies, provenance --------------------
         let windowed = snapshot.memories.filter { memory in
-            guard case .delta(let since) = mode else { return true }
+            guard case .delta(let since, let watermark) = mode else { return true }
             let auditSeqs = auditBySubject[memory.id]?.map(\.seq) ?? []
-            // Either predicate suffices. `updated_at` is what catches the row
-            // mutated with no audit row at all, which rehearsal `p4-window`
-            // asserts the delta carries anyway.
-            return auditSeqs.contains { $0 > since }
-                || MemoryExportTimestamp.parse(memory.updatedAt) != nil
+            if auditSeqs.contains(where: { $0 > since }) { return true }
+            // The second disjunct catches the row mutated with no audit row at
+            // all. A row whose `updated_at` does not parse is carried: the
+            // window cannot place it, and carrying too much is idempotent at
+            // import while carrying too little loses data.
+            guard let updatedAt = MemoryExportTimestamp.parse(memory.updatedAt) else { return true }
+            return Int((updatedAt.timeIntervalSince1970 * 1000).rounded()) > watermark
         }
         memoriesTable.sourceRows = snapshot.memories.count
         memoriesTable.note(.outOfWindow, snapshot.memories.count - windowed.count)
@@ -321,6 +335,7 @@ public struct MemoryExporter: Sendable {
             ) {
                 sections[.reviewEvents]?.append(event)
                 report.auditProvenHuman += 1
+                if let seq = classification.verdictAuditSeq { auditSeqsSectionNineOwes.insert(seq) }
             } else if memory.reviewStatus == MIFReviewStatus.approved.rawValue {
                 report.approvedToQuarantined[classification.importOriginDetail, default: 0] += 1
             } else if classification.reviewStatus == .quarantined,
@@ -407,7 +422,7 @@ public struct MemoryExporter: Sendable {
         // and a delete with no tombstone is an EXPORT FAILURE, not a warning.
         let deleteRows = snapshot.auditRows.filter { $0.action == "memory.delete" && $0.subjectID != nil }
         for delete in deleteRows.sorted(by: { $0.seq < $1.seq }) {
-            if case .delta(let since) = mode, delete.seq <= since { continue }
+            if case .delta(let since, _) = mode, delete.seq <= since { continue }
             // swiftlint:disable:next force_unwrapping reason: filtered above
             let subjectID = delete.subjectID!
             let id = MemoryExportIdentity.tombstoneID(
@@ -444,10 +459,18 @@ public struct MemoryExporter: Sendable {
             report.tombstonesWithoutContentKey += 1
             record(.deleteWithoutTombstoneSynthesized, sample: subjectID)
         }
-        guard report.deleteWithoutTombstoneSynthesized == deleteRows.filter({
-            if case .delta(let since) = mode { return $0.seq > since }
-            return true
-        }).count else {
+        // M-04's obligation, as a SET difference rather than a running count.
+        // The old guard compared a counter incremented once per loop iteration
+        // against the same filter the loop ran, so it was true by construction —
+        // and it fired falsely when two `memory.delete` rows named one subject,
+        // because the tombstone id is keyed on the subject, not on the delete's
+        // seq, and the first tombstone had already met the obligation for both
+        // (review F-13).
+        let owedDeleteSubjects = Set(deleteRows.compactMap { delete -> String? in
+            if case .delta(let since, _) = mode, delete.seq <= since { return nil }
+            return delete.subjectID.map { MemoryExportIdentity.canonicalMemoryID($0, storeID: storeID) }
+        })
+        guard owedDeleteSubjects.subtracting(emittedTombstoneSubjects).isEmpty else {
             throw MemoryExporterError.export(.deleteWithoutTombstone)
         }
 
@@ -484,7 +507,11 @@ public struct MemoryExporter: Sendable {
 
         // ---- 09: audit evidence --------------------------------------------
         for row in snapshot.auditRows.sorted(by: { $0.seq < $1.seq }) {
-            if case .delta(let since) = mode, row.seq <= since { continue }
+            if case .delta(let since, _) = mode,
+               row.seq <= since,
+               auditSeqsSectionNineOwes.contains(row.seq) == false {
+                continue
+            }
             let built = MemoryExportRecords.auditEvidenceRecord(row: row, chain: chain, context: context)
             sections[.auditEvidence]?.append(built.record)
             report.auditLabelsStripped += built.strippedLabels.count
