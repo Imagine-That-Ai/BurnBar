@@ -484,6 +484,198 @@ export const BOUNDARY: BoundaryLane[] = [
 ];
 
 /* ------------------------------------------------------------------
+   5b · What you have to do. The four questions a reader asks before
+   they will touch the setup block, answered per surface.
+
+   Sources, one per lane:
+     on      — tools/openburnbar-mcp/server.py `_memory_write_enabled()`;
+               tools/openburnbar-mcp/README.md § Local memory engine;
+               OpenBurnBarDaemon/…/PensieveKnowledgeWatcher.swift
+     install — AgentLens/Views/Settings/MCPInstallCard.swift;
+               AgentLens/Services/CLIBridge/MCPClientWiring.swift
+     collect — tools/openburnbar-mcp/README.md § Automatic collection
+     prune   — memory_engine/_util.py `_is_expired`; _lifecycle.py `forget`;
+               _admin.py `doctor`
+------------------------------------------------------------------- */
+
+/** The repo how-to this section is the short form of. */
+export const HOWTO_DOC = "docs/HOW_TO_MEMORY_MCP.md";
+export const HOWTO_URL =
+  "https://github.com/Imagine-That-Ai/BurnBar/blob/main/docs/HOW_TO_MEMORY_MCP.md";
+
+export type DutyLane = {
+  id: string;
+  /** The question in the reader's words. */
+  question: string;
+  /** Maps to the boundary lanes' visual language: on / opt-in / no. */
+  status: "always" | "opt-in" | "no";
+  statusLabel: string;
+  /** One sentence. The answer, before the detail. */
+  answer: string;
+  rows: { item: string; note: string }[];
+  source: string;
+};
+
+export const DUTIES: DutyLane[] = [
+  {
+    id: "on",
+    question: "Is it on by default?",
+    status: "always",
+    statusLabel: "On · and empty",
+    answer:
+      "The engine is on and writes are enabled for the memory toolset — but nothing is collected and no database exists until something writes the first memory.",
+    rows: [
+      {
+        item: "The engine and its store",
+        note: "Created on the first write, not at install: the sealed SQLite store and its 0600 key file. Before that there is nothing on disk to read."
+      },
+      {
+        item: "Writes",
+        note: "memory_write is granted by BURNBAR_MCP_TOOLSET=memory — what the one-click installer and the repo's own .mcp.json set. An explicit OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE=false always wins."
+      },
+      {
+        item: "Every other capability",
+        note: "Off. Cloud decrypt, cloud sync, full plaintext conversation reads, code-index writes and process spawn each need their own environment variable for the session that wants them."
+      },
+      {
+        item: "The daemon's session watcher",
+        note: "Runs with the daemon and watches ~/.claude/projects — and stops immediately without a signed-in vault key. When it does run it writes one sentinel file per settled session: a path, an mtime, a schema version. It reads no transcript, extracts nothing, and never writes to this store."
+      }
+    ],
+    source: "server.py `_memory_write_enabled()`; PensieveKnowledgeWatcher.swift"
+  },
+  {
+    id: "install",
+    question: "Do I have to install it into my coding agents?",
+    status: "opt-in",
+    statusLabel: "You do this · once per agent",
+    answer:
+      "Yes. Installing BurnBar does not give your agents memory; pointing each agent at this server does. Three clients are one click in the app; the rest take a config block.",
+    rows: [
+      {
+        item: "One click",
+        note: "Settings → Agents → CLIs, the “Agent memory (MCP)” card. It probes each client's real config file for the current state and names the exact file the button will modify."
+      },
+      {
+        item: "By hand",
+        note: "Claude Desktop and Hermes take the blocks below. Same server, same launcher, absolute paths."
+      },
+      {
+        item: "Everything else",
+        note: "Not wired by the installer today. If your tool speaks MCP, give it the same command and env by hand — we do not publish config paths we have not verified."
+      },
+      {
+        item: "What the installer writes",
+        note: `BURNBAR_MCP_TOOLSET=memory, so the client sees the ${MEMORY_TOOL_COUNT}-tool memory surface rather than every tool the server registers.`
+      }
+    ],
+    source: "MCPInstallCard.swift; MCPClientWiring.swift `MCPClientWiringTarget`"
+  },
+  {
+    id: "collect",
+    question: "Once installed, does it collect automatically?",
+    status: "opt-in",
+    statusLabel: "Partly · the automatic lane is opt-in",
+    answer:
+      "Memories exist because a tool call made them exist. Collecting without being asked is a separate hook you add yourself.",
+    rows: [
+      {
+        item: "The agent calls the tools",
+        note: "On from the moment the server is installed. Your agent decides a fact is durable and calls burnbar_remember, or hands a conversation to burnbar_memorize. Nothing is scheduled."
+      },
+      {
+        item: "The SessionEnd hook",
+        note: "Opt-in, and off until you add the block below to your own ~/.claude/settings.json. Then every Claude Code session ends by feeding its transcript through the same pipeline."
+      },
+      {
+        item: "The daemon watcher",
+        note: "Notices a session file settled and drops a sentinel. Nothing is extracted until the app's own extractor runs behind consent, and nothing from this lane reaches the local store. If you are waiting for memories because “the daemon is watching”, you are waiting for the wrong thing."
+      }
+    ],
+    source: "README.md § Automatic collection from Claude Code sessions"
+  },
+  {
+    id: "prune",
+    question: "Does it prune itself?",
+    status: "no",
+    statusLabel: "No · nothing runs on a timer",
+    answer:
+      "There is no retention sweep, no TTL job, no size cap that starts deleting. A memory written today is there in a year unless something explicitly removes it.",
+    rows: [
+      {
+        item: "expiresAt",
+        note: "A read-time filter, not a deletion. Past its timestamp a memory stops appearing in recall, lists and packs — and stays in the database. Re-remembering the same fact reactivates it."
+      },
+      {
+        item: "Supersession",
+        note: "A replacing fact retires the old row with valid_to and superseded_by. It leaves recall and stays readable in history."
+      },
+      {
+        item: "Review",
+        note: "Approve, quarantine, reject. Rejected is a decision, not a delete: the row stays, excluded from recall."
+      },
+      {
+        item: "forget",
+        note: "The hard delete, and the only one. burnbar_forget removes the row, its vectors, its history, its relations, its vault entry and its aliases; burnbar_forget_all does a project in two confirmed steps."
+      },
+      {
+        item: "The doctor's --apply",
+        note: "Prunes exactly two housekeeping classes — aged orphan bodies from the legacy daemon store, and aged parked supersedes. It never deletes a memory, and never deletes a finding."
+      }
+    ],
+    source: "memory_engine/_util.py `_is_expired`; _lifecycle.py `forget`; _admin.py `doctor`"
+  }
+];
+
+export type InstallRoute = {
+  client: string;
+  how: string;
+  where: string;
+  route: "one-click" | "by-hand" | "unwired";
+};
+
+/** Exactly the three targets MCPClientWiring builds a config for, then the
+ *  two the README documents by hand, then the honest remainder. */
+export const INSTALL_ROUTES: InstallRoute[] = [
+  {
+    client: "Claude Code",
+    how: "One click in the app",
+    where: "~/.claude.json",
+    route: "one-click"
+  },
+  {
+    client: "Cursor",
+    how: "One click in the app",
+    where: "~/.cursor/mcp.json",
+    route: "one-click"
+  },
+  {
+    client: "Codex CLI",
+    how: "One click in the app",
+    where: "~/.codex/config.toml",
+    route: "one-click"
+  },
+  {
+    client: "Claude Desktop",
+    how: "By hand — block below",
+    where: "~/Library/Application Support/Claude/claude_desktop_config.json",
+    route: "by-hand"
+  },
+  {
+    client: "Hermes",
+    how: "By hand — block below",
+    where: "~/.hermes/config.yaml",
+    route: "by-hand"
+  },
+  {
+    client: "Droid · Muse · Agy",
+    how: "Not wired by the installer today",
+    where: "Manual config, if the tool supports MCP",
+    route: "unwired"
+  }
+];
+
+/* ------------------------------------------------------------------
    6 · Setup. One server, five clients, exact paths.
    Source: tools/openburnbar-mcp/README.md §§ Setup / Cursor / Codex CLI /
            Hermes Agent / Claude Desktop; the repo's own .mcp.json;
