@@ -92,6 +92,13 @@ if !buildForLinuxBoundary {
     ])
     daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
     daemonTargetDependencies.append(.product(name: "SQLCipher", package: "SQLCipher.swift"))
+    // Release BB-E — `openburnbar-cli memory export` (docs/MEMORY_EXPORT_MIF.md).
+    // macOS-only and non-boundary-only, matching where OpenBurnBarCore vends the
+    // product: the store this reads lives under ~/Library, and the Linux daemon
+    // lane has no memory to export. The define gates the CLI source, so the
+    // Linux graph compiles as if BB-E did not exist.
+    daemonTargetDependencies.append(.product(name: "OpenBurnBarMemoryExport", package: "OpenBurnBarCore"))
+    daemonSwiftSettings.append(.define("OPENBURNBAR_MEMORY_EXPORT"))
     daemonLinkerSettings = [.unsafeFlags(["-framework", "Network", "-framework", "CoreServices"])]
     daemonExecutableDependencies.append(.product(name: "Sentry", package: "sentry-cocoa"))
 } else {
