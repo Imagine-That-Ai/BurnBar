@@ -567,12 +567,24 @@ final class MemoryExportClassifierTests: XCTestCase {
         XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
     }
 
-    /// R2. §3.1 compares `ts` **lexicographically** and says it "is not
+    /// R2, and it is a **WHITE-BOX** test — deliberately, and F-6 asked for the
+    /// label. §3.1 compares `ts` **lexicographically** and says it "is not
     /// otherwise treated as a clock". These two stamps order one way as strings
     /// and the other way as instants: `+09:00` makes the reject the EARLIER
     /// instant and the LATER string. Parsing them made the approve the case-2
     /// winner — the unsafe direction, decided by an offset the writing row
     /// supplies.
+    ///
+    /// It cannot be pinned through an exported field, and the second half of
+    /// this test says why: the case-2 comparator only ever runs when the regime
+    /// is NOT intact, and every such row exits at §3.1 row 7, which discards the
+    /// winner (`quarantined`, `import`, `verdict_on_broken_chain`, no
+    /// `verdict_audit_seq`). So whichever candidate the comparator picks, the
+    /// classification is the same — which is the safe shape, and it means the
+    /// only place the rule is observable is `selectVerdict` itself. BB-E carries
+    /// §3.1's selection rule faithfully anyway, because the rule is the spec's
+    /// and a consumer of `selectVerdict` (the report's verdict conflicts, a
+    /// later surface) would inherit the divergence. D-BB-E-16 records this.
     func test_acrossABrokenBoundaryTheTimestampIsComparedAsAString() throws {
         var memory = row(id: "A17")
         memory.reviewStatus = "approved"
@@ -606,6 +618,24 @@ final class MemoryExportClassifierTests: XCTestCase {
         ))
         XCTAssertEqual(selection.row.seq, 99, "the lexicographically later row wins")
         XCTAssertFalse(selection.regimeIsIntact)
+
+        // And the exported classification is row 7 either way — the sentence
+        // above, asserted rather than claimed. Both orderings of the same two
+        // candidates classify identically, so no exported field can pin the
+        // comparator and this test is white-box of necessity.
+        let chain = MemoryExportChainVerification(verifiedThroughSeq: 99, brokenAt: [100], rowsWalked: 2)
+        for rows in [[approve, reject], [reject, approve]] {
+            let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+                memory: memory,
+                auditRows: rows,
+                bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
+                chain: chain
+            ))
+            XCTAssertEqual(result.reviewStatus, .quarantined)
+            XCTAssertEqual(result.originKind, .importOrigin)
+            XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
+            XCTAssertNil(result.verdictAuditSeq)
+        }
     }
 
     /// R2, M-13. A tie on `(ts, seq)` is won by `rejected` — and which row that

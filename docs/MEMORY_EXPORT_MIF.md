@@ -449,6 +449,25 @@ the two tables against one tombstone record, and **checkable on the wire**:
 `not_exported.<reason>` when the manifest disagrees with it. That is also what
 makes an edited `not_exported` a NAMED failure rather than only a broken digest.
 
+### D-BB-E-16 — the case-2 comparator is pinned WHITE-BOX, and cannot be pinned otherwise
+
+§3.1 case 2 orders candidates across a broken or forked boundary by the `ts`
+**string** (R2). In BB-E that rule has **no exported consequence**, and the
+reason is structural: the comparator only runs when the regime is not intact, and
+every such row exits at §3.1 row 7, which discards the winner — `quarantined`,
+`import`, `verdict_on_broken_chain`, no `verdict_audit_seq`. Whichever candidate
+the comparator picks, the classification is identical.
+
+So `MemoryExportClassifierTests.test_acrossABrokenBoundaryTheTimestampIsComparedAsAString`
+asserts on `selectVerdict` directly, and the test now says so in its own header
+and proves the claim beside it: both orderings of the same two candidates
+classify identically (F-6). BB-E implements §3.1's selection faithfully anyway —
+the rule is the spec's, not this exporter's, and a later consumer of
+`selectVerdict` (a verdict-conflicts surface, say) would inherit any divergence
+silently. The risk the review named is real and stated rather than papered over:
+a refactor that drops `selectVerdict`'s visibility drops the pin, and nothing
+downstream would go red.
+
 ### D-BB-E-14 — the `key_derivation` const still names the pre-D-0031 tree (spec-owner item)
 
 D-0031 ruling 1 pins the hash-tree key as salted HKDF (`salt =
@@ -720,3 +739,4 @@ Against `docs/memory/reviews/REVIEW-BB-EXPORTER-3.md` (verdict
 | F-3 | three of eleven sections ship a 0-byte `.seg` no AEAD can open | **fixed** — an empty section seals the empty string: `{bytes: 28, segments: 1}` and one real segment that opens to zero plaintext bytes, so every declared segment of every bundle opens. `{bytes: 0, segments: 0}` was refused by the contract (`segments` is `minimum: 1`) and §3 says so. `verify` accepts the bundle and now NAMES a segment shorter than an AEAD seal |
 | F-4 | `manifest.not_exported` double-counts across tables | **fixed as a definition, pinned as arithmetic** — the manifest's `not_exported` is the per-reason sum of every table's not-exported SOURCE ROWS (§10's sum is per table), so one forgotten memory is two rows in two tables against one tombstone record. D-BB-E-15 states it, a test asserts 1 + 1 = 2 with one record, and `verify` names `not_exported.<reason>` when the manifest and `report.json` disagree |
 | F-5 | row 7 exports `rejected` where §3.1 says `quarantined` | **fixed** — row 7 is `quarantined` + `verdict_on_broken_chain`, as written. The candidate-label lowering is gone and its vector is closed by a test: a writer who appends a rejection and breaks the chain around it can no longer force a row to `rejected`. Restoring the scan turns five classifier tests red |
+| F-6 | R2's case-2 comparator no longer affects any exported field | **labelled, and the label is proved** — D-BB-E-16 states that the comparator has no exported consequence because every case-2 row exits at row 7, which discards the winner; the test header says it is white-box and the test asserts that both orderings classify identically. The rule is kept because it is §3.1's, and the refactor risk is recorded |
