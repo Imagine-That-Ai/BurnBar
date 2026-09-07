@@ -355,6 +355,20 @@ clone clones it — with the audit chain's genesis hash as the fallback for a
 store predating that migration. A store carrying neither is refused rather than
 given an invented identity.
 
+What the row actually contributes is narrower than that paragraph used to say
+(R9): migration v22 reads `deviceId` from `UserDefaults "openburnbar.device.id"`,
+and nothing in the tree writes that key — the live installation identity lives
+under the Kernel key `com.openburnbar.deviceId`, which the migration cannot see
+(it compiles inside `OpenBurnBarData`, which never imports Kernel, so the
+module-local stub wins). Every migrated store therefore carries the literal
+`"unknown"`, and the row's `createdAt` is the **only** varying input: two stores
+migrated in the same millisecond collide. That is a pre-existing migration
+defect BB-E inherits and states, not an installation identity. `report.json`'s
+`source` block carries no derivation sentence because it cannot: it is
+`additionalProperties: false` in the Po'dex-owned contract, so the derivation
+lives here instead of smuggled into a member that means something else — adding
+a member needs a Po'dex-side contract change.
+
 That a byte copy of the store yields the **same** id is correct, not a weakness:
 a restored store is the same store, and the migration's idempotency rests on it.
 
@@ -548,7 +562,7 @@ in review order, one commit per finding.
 | R6 | p5-check invents a store id; `concurrent_writes` stays false | **fixed** — both lanes refuse an identity-less store with `EXPORT_STORE_IDENTITY_ABSENT` via one shared `requireStoreID`; `run` sets `report.concurrent_writes` from the head assertion, and the moved-head test pins it |
 | R7 | seven classification tests can skip green | **fixed** — the shared helper `XCTFail`s and throws instead of `XCTSkip` (proved red by pointing one test at a missing row); M-20 pins the real seq; the tie test asserts each chain state separately |
 | R8 | rows 1/5/10/15 uncovered; `isCloudOnly` unwired; absent label raises stored-`rejected` | **fixed** — row 1 asserts `human`/`human_verdict`; rows 5/10/15 and both row-11 raisings have tests; `isCloudOnly` is passed explicitly (`false`: authority-store rows are local by construction, D-BB-E-8) |
-| R9 | `store_id` comment claims an installation identity | open |
+| R9 | `store_id` comment claims an installation identity | **fixed** — the comment says what the row contributes (`deviceId` is `"unknown"`, `createdAt` is the only varying input, same-millisecond migrations collide); D-BB-E-13 states the migration defect; `report.json` gains no member (closed contract) and the doc says why |
 
 D-0031 layout alignment (segment names, hash-tree domains, `manifest.sig`
 preimage and rendering, per-type roll-up tuples) and the re-vendor at the

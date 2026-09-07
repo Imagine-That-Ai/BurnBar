@@ -213,6 +213,34 @@ final class MemoryExportChainAndP5Tests: XCTestCase {
         XCTAssertNotEqual(try other.read { try MemoryExportStoreReader.storeIdentity($0) }, identity)
     }
 
+    /// R9 — migration v22 reads `deviceId` from a `UserDefaults` key nothing
+    /// writes, so every migrated store carries the literal `"unknown"` and
+    /// `createdAt` is the only varying input. Same millisecond, same identity.
+    func test_createdAtIsTheOnlyVaryingInputInPractice() throws {
+        func identity(deviceID: String, createdAt: String) throws -> String? {
+            let queue = try DatabaseQueue(path: ":memory:")
+            try queue.write { db in
+                try db.execute(
+                    sql: "CREATE TABLE devices (deviceId TEXT PRIMARY KEY, isLocal INTEGER, createdAt TEXT)"
+                )
+                try db.execute(
+                    sql: "INSERT INTO devices (deviceId, isLocal, createdAt) VALUES (?, 1, ?)",
+                    arguments: [deviceID, createdAt]
+                )
+            }
+            return try queue.read { try MemoryExportStoreReader.storeIdentity($0) }
+        }
+        let first = try XCTUnwrap(identity(deviceID: "unknown", createdAt: "2026-01-01 00:00:00.000"))
+        let second = try XCTUnwrap(identity(deviceID: "unknown", createdAt: "2026-01-01 00:00:00.000"))
+        XCTAssertEqual(
+            first,
+            second,
+            "two stores migrated in the same millisecond collide — documented in D-BB-E-13, not fixed here"
+        )
+        let later = try XCTUnwrap(identity(deviceID: "unknown", createdAt: "2026-01-02 00:00:00.000"))
+        XCTAssertNotEqual(first, later, "createdAt is the input that varies")
+    }
+
     /// A store carrying nothing that identifies it from the inside returns nil,
     /// and the CLI refuses. Inventing one would mint ids nothing else can
     /// reproduce.

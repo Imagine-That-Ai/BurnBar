@@ -236,12 +236,30 @@ public enum MemoryExportStoreReader {
     /// duplicated every app-lane row in the target instead of updating it
     /// (review F-11).
     ///
-    /// The local `devices` row is written once, by migration v22, from the
-    /// app's own installation identity, and it is a row — so it is copied
-    /// verbatim by a restore, rewritten in place by a `VACUUM`, and cloned by an
-    /// APFS clone. That a byte copy of the store therefore yields the SAME id is
-    /// correct, not a weakness: a restored store is the same store, and the
-    /// migration's whole idempotency rests on it.
+    /// The local `devices` row is written once, by migration v22, and it is a
+    /// row — so it is copied verbatim by a restore, rewritten in place by a
+    /// `VACUUM`, and cloned by an APFS clone. That a byte copy of the store
+    /// therefore yields the SAME id is correct, not a weakness: a restored
+    /// store is the same store, and the migration's whole idempotency rests
+    /// on it.
+    ///
+    /// What the row actually contributes (R9 — the old comment called this
+    /// "the app's own installation identity", which is false as built):
+    /// migration v22 reads the `deviceId` from
+    /// `UserDefaults "openburnbar.device.id"`, and NOTHING in the tree writes
+    /// that key — the live installation identity lives under the Kernel key
+    /// `com.openburnbar.deviceId`, which the migration cannot see: it compiles
+    /// inside `OpenBurnBarData`, which never imports Kernel, so the
+    /// module-local stub wins. Every migrated store therefore carries the
+    /// literal `unknown`, and the row's `createdAt` is the ONLY varying
+    /// input: two stores migrated in the same millisecond collide. That is a
+    /// pre-existing migration defect this exporter inherits, stated here
+    /// rather than hidden. This is database-file lineage, not an installation
+    /// identity — and `report.json`'s `source` block says so by saying nothing
+    /// else: it is `additionalProperties: false` in the Po'dex-owned contract,
+    /// so no derivation sentence can travel in it without a contract change;
+    /// the derivation lives here and in D-BB-E-13 instead of smuggled into a
+    /// member that means something else.
     ///
     /// The audit chain's genesis hash is the fallback for a store predating that
     /// migration: it is equally in-file and equally immutable. A store with
