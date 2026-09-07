@@ -550,11 +550,11 @@ export const DUTIES: DutyLane[] = [
     status: "opt-in",
     statusLabel: "You do this · once per agent",
     answer:
-      "Yes. Installing BurnBar does not give your agents memory; pointing each agent at this server does. Three clients are one click in the app; the rest take a config block.",
+      "Yes. Installing BurnBar does not give your agents memory; pointing each agent at this server does. The clients listed below are one click in the app; the rest take a config block.",
     rows: [
       {
         item: "One click",
-        note: "Settings → Agents → CLIs, the “Agent memory (MCP)” card. It probes each client's real config file for the current state and names the exact file the button will modify."
+        note: "Settings → Agents → CLIs, the “Agent memory (MCP)” card. One row per client: Claude Code, Cursor, Codex CLI, Factory Droid, Antigravity CLI, Gemini CLI and Muse. Each row probes that client's real config file for the current state and names the exact file the button will modify."
       },
       {
         item: "By hand",
@@ -634,8 +634,10 @@ export type InstallRoute = {
   route: "one-click" | "by-hand" | "unwired";
 };
 
-/** Exactly the three targets MCPClientWiring builds a config for, then the
- *  two the README documents by hand, then the honest remainder. */
+/** Exactly the targets `MCPClientWiringTarget` builds a config for — pinned
+ *  case-for-case against AgentLens/Services/CLIBridge/MCPClientWiring.swift by
+ *  scripts/test-memory-copy.mjs — then the two the README documents by hand,
+ *  then the honest remainder. */
 export const INSTALL_ROUTES: InstallRoute[] = [
   {
     client: "Claude Code",
@@ -656,6 +658,30 @@ export const INSTALL_ROUTES: InstallRoute[] = [
     route: "one-click"
   },
   {
+    client: "Factory Droid",
+    how: "One click in the app",
+    where: "~/.factory/mcp.json",
+    route: "one-click"
+  },
+  {
+    client: "Antigravity CLI",
+    how: "One click in the app",
+    where: "~/.gemini/config/mcp_config.json",
+    route: "one-click"
+  },
+  {
+    client: "Gemini CLI",
+    how: "One click in the app",
+    where: "~/.gemini/settings.json",
+    route: "one-click"
+  },
+  {
+    client: "Muse",
+    how: "One click in the app",
+    where: "~/.config/muse/settings.json",
+    route: "one-click"
+  },
+  {
     client: "Claude Desktop",
     how: "By hand — block below",
     where: "~/Library/Application Support/Claude/claude_desktop_config.json",
@@ -668,12 +694,16 @@ export const INSTALL_ROUTES: InstallRoute[] = [
     route: "by-hand"
   },
   {
-    client: "Droid · Muse · Agy",
+    client: "Agy, and anything else",
     how: "Not wired by the installer today",
     where: "Manual config, if the tool supports MCP",
     route: "unwired"
   }
 ];
+
+/** How many clients the app wires with one click. Derived, never typed, so the
+ *  sentence on the page cannot fall behind `MCPClientWiringTarget`. */
+export const ONE_CLICK_COUNT = INSTALL_ROUTES.filter((r) => r.route === "one-click").length;
 
 /* ------------------------------------------------------------------
    6 · Setup. One server, five clients, exact paths.
