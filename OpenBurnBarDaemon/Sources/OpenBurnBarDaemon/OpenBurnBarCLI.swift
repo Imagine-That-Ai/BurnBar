@@ -476,6 +476,44 @@ public struct BurnBarCLIRunner {
         }
     }
 
+    /// The project-code-memory subcommands the signed courier carries: one JSON
+    /// request on stdin, one JSON response on stdout.
+    ///
+    /// `@main` owns stdin, stdout and `exit`; everything *decidable* lives here —
+    /// which names the courier answers, the byte cap each enforces before a
+    /// daemon socket is opened, and which runner method carries which command —
+    /// so the dispatch can be asserted in a unit test instead of only by
+    /// spawning the binary. The seven pre-existing stdin-JSON commands still
+    /// carry their own copy of this shape in `@main`; folding them in is a
+    /// separate change.
+    public enum ProjectCodeCourierCommand: String, CaseIterable, Sendable {
+        case indexProject = "code-index-project"
+        case watchProject = "code-watch-project"
+        case explore = "code-explore"
+
+        /// The same 256 KiB stdin cap `search-sql` and `memory-remember` enforce.
+        public static let maxInputBytes = 256 * 1024
+
+        /// Enforce the cap, then carry the request. The cap is checked before the
+        /// runner is asked for anything, so an oversized request is refused by the
+        /// courier itself and never reaches the daemon socket.
+        public func run(_ runner: BurnBarCLIRunner, input: Data) throws -> String {
+            guard input.count <= Self.maxInputBytes else {
+                throw BurnBarCLIError.missingArgument(
+                    "\(rawValue) request exceeds \(Self.maxInputBytes / 1024) KiB"
+                )
+            }
+            switch self {
+            case .indexProject:
+                return try runner.runCodeIndexProject(input: input)
+            case .watchProject:
+                return try runner.runCodeWatchProject(input: input)
+            case .explore:
+                return try runner.runCodeExplore(input: input)
+            }
+        }
+    }
+
     /// `memory-forget`: stdin JSON `BurnBarProjectMemoryForgetRequest` -> stdout JSON result.
     public func runMemoryForget(input: Data) throws -> String {
         let request: BurnBarProjectMemoryForgetRequest

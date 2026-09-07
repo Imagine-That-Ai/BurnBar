@@ -492,6 +492,149 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertThrowsError(try runner.runCodeExplore(input: Data(#"{"query":"sprocket"}"#.utf8)))
     }
 
+    // MARK: - The courier's project-code-memory dispatch
+    //
+    // `@main` used to carry a hand-copied `if arguments == ["code-…"]` block per
+    // command: the name check, the 256 KiB cap and the runner call all lived
+    // inside an `exit()`-terminated entry point where no test could observe
+    // them. `BurnBarCLIRunner.ProjectCodeCourierCommand` is that dispatch,
+    // moved somewhere it can be asserted. The tests below are the assertions.
+
+    /// The command table is the whole contract between the Python MCP and this
+    /// binary: a name the table does not carry is a tool that falls back to a raw
+    /// socket the daemon refuses with `code=-32001`. Pin the set, and pin it
+    /// against the startup-preflight list that admits these names under every
+    /// canonical executable path.
+    func testProjectCodeCourierTableCarriesExactlyTheThreeCodeCommands() {
+        XCTAssertEqual(
+            BurnBarCLIRunner.ProjectCodeCourierCommand.allCases.map(\.rawValue),
+            ["code-index-project", "code-watch-project", "code-explore"]
+        )
+        for command in BurnBarCLIRunner.ProjectCodeCourierCommand.allCases {
+            XCTAssertTrue(
+                BurnBarCLIRunner.directCommandNames.contains(command.rawValue),
+                "\(command.rawValue) is dispatched but not admitted by startup preflight"
+            )
+        }
+        // The table is scoped to project code memory. It must not shadow the
+        // memory/search commands `@main` still dispatches itself, and it must not
+        // match on a prefix.
+        XCTAssertNil(BurnBarCLIRunner.ProjectCodeCourierCommand(rawValue: "memory-remember"))
+        XCTAssertNil(BurnBarCLIRunner.ProjectCodeCourierCommand(rawValue: "search-sql"))
+        XCTAssertNil(BurnBarCLIRunner.ProjectCodeCourierCommand(rawValue: "code-explore-please"))
+    }
+
+    /// Each name must reach its own daemon method. A table that answered
+    /// `code-explore` by indexing would still be "green" on output shape alone,
+    /// so the journal — not the JSON — is the assertion that matters here.
+    func testProjectCodeCourierDispatchesEachNameToItsOwnDaemonMethod() throws {
+        let expectedMethod: [BurnBarCLIRunner.ProjectCodeCourierCommand: String] = [
+            .indexProject: "codeIndex",
+            .watchProject: "codeWatch",
+            .explore: "codeExplore"
+        ]
+
+        for command in BurnBarCLIRunner.ProjectCodeCourierCommand.allCases {
+            let journal = CLIClientCallJournal()
+            let runner = BurnBarCLIRunner(client: FakeCLIClient(codeJournal: journal))
+            let output = try command.run(runner, input: Data(Self.courierFixturePayload(for: command).utf8))
+
+            XCTAssertEqual(
+                journal.calls,
+                [expectedMethod[command]],
+                "\(command.rawValue) reached the wrong daemon method"
+            )
+            XCTAssertNotNil(
+                try? JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any],
+                "\(command.rawValue) must answer with a JSON object on stdout"
+            )
+        }
+    }
+
+    /// The 256 KiB stdin cap is a *courier-side* refusal: an over-cap request has
+    /// to die here, before a daemon socket is opened. `journal.calls` empty is the
+    /// proof that it did.
+    func testProjectCodeCourierRefusesOverCapInputBeforeDialingTheDaemon() {
+        let oversized = Data(repeating: UInt8(ascii: "x"), count: 256 * 1024 + 1)
+
+        for command in BurnBarCLIRunner.ProjectCodeCourierCommand.allCases {
+            let journal = CLIClientCallJournal()
+            let runner = BurnBarCLIRunner(client: FakeCLIClient(codeJournal: journal))
+
+            XCTAssertThrowsError(try command.run(runner, input: oversized)) { error in
+                XCTAssertEqual(
+                    (error as? BurnBarCLIError)?.errorDescription,
+                    "\(command.rawValue) request exceeds 256 KiB"
+                )
+            }
+            XCTAssertTrue(
+                journal.calls.isEmpty,
+                "\(command.rawValue) dialled the daemon with an over-cap request"
+            )
+        }
+    }
+
+    /// The cap is `<=`, not `<`. A request of exactly 256 KiB is carried, so the
+    /// boundary cannot silently shrink by a byte under a later edit.
+    func testProjectCodeCourierCarriesInputOfExactlyTheCap() throws {
+        let prefix = #"{"projectPath":"/tmp/fixture","limit":5,"maxBytes":2048,"query":""#
+        let suffix = #""}"#
+        let padding = String(
+            repeating: "q",
+            count: 256 * 1024 - prefix.utf8.count - suffix.utf8.count
+        )
+        let input = Data((prefix + padding + suffix).utf8)
+        XCTAssertEqual(input.count, 256 * 1024)
+
+        let journal = CLIClientCallJournal()
+        let runner = BurnBarCLIRunner(client: FakeCLIClient(codeJournal: journal))
+        _ = try BurnBarCLIRunner.ProjectCodeCourierCommand.explore.run(runner, input: input)
+
+        XCTAssertEqual(journal.calls, ["codeExplore"])
+    }
+
+    /// A daemon refusal must reach the caller as `privacy_rpc_error code=… message=…`
+    /// with the daemon's own code and text intact. That string is what the Python
+    /// MCP surfaces as the `reason` of a `DAEMON_WRITE_REJECTED`, and the entire
+    /// point of this fix is that it now names a real daemon verdict instead of
+    /// `peer failed first-party code-signature verification`.
+    func testProjectCodeCourierPreservesTheDaemonsRefusalCodeAndMessage() {
+        let refusalMessage = "OpenBurnBar RPC method 'daemon.code.explore' is outside this peer's capability scope."
+        let refusal = NSError(
+            domain: "OpenBurnBarCLI",
+            code: -32001,
+            userInfo: [NSLocalizedDescriptionKey: refusalMessage]
+        )
+
+        for command in BurnBarCLIRunner.ProjectCodeCourierCommand.allCases {
+            let runner = BurnBarCLIRunner(client: FakeCLIClient(codeFailure: refusal))
+            let input = Data(Self.courierFixturePayload(for: command).utf8)
+
+            XCTAssertThrowsError(try command.run(runner, input: input)) { error in
+                guard case .privacyRPCError(let code, let message)? = error as? BurnBarCLIError else {
+                    XCTFail("\(command.rawValue) leaked a raw NSError instead of a privacy_rpc_error: \(error)")
+                    return
+                }
+                XCTAssertEqual(code, -32001)
+                XCTAssertEqual(message, refusalMessage)
+            }
+        }
+    }
+
+    /// The smallest request body each courier command accepts on the wire.
+    private static func courierFixturePayload(
+        for command: BurnBarCLIRunner.ProjectCodeCourierCommand
+    ) -> String {
+        switch command {
+        case .indexProject:
+            return #"{"projectPath":"/tmp/fixture","maxFiles":10,"maxFileBytes":1024,"storageBudgetBytes":null}"#
+        case .watchProject:
+            return #"{"projectPath":"/tmp/fixture","maxFiles":10,"maxFileBytes":1024,"pollIntervalSeconds":5}"#
+        case .explore:
+            return #"{"projectPath":"/tmp/fixture","query":"sprocket","limit":5,"maxBytes":2048}"#
+        }
+    }
+
     func testChatQueryCommandsEmitStableJSON() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let threads = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try runner.run(arguments: ["chat", "threads", "--query", "release", "--limit", "7"]).utf8)) as? [String: Any])
@@ -546,7 +689,40 @@ final class BurnBarCLITests: XCTestCase {
     }
 }
 
+/// Records which daemon method a courier command actually reached, so a
+/// dispatch test can prove `code-explore` did not quietly land on `codeIndex`
+/// — and that an over-cap request never reached the daemon at all.
+final class CLIClientCallJournal: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [String] = []
+
+    var calls: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    func record(_ method: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        recorded.append(method)
+    }
+}
+
 struct FakeCLIClient: BurnBarCLIClient {
+    /// Call recorder; `nil` for the many tests that only care about the output.
+    let codeJournal: CLIClientCallJournal?
+    /// When set, the three project-code-memory methods throw it instead of
+    /// answering. `NSError` in the `OpenBurnBarCLI` domain is the shape
+    /// `BurnBarCLISocketClient.unwrap` gives a daemon refusal, so this is how a
+    /// `-32001` capability/signature denial actually arrives at the runner.
+    let codeFailure: NSError?
+
+    init(codeJournal: CLIClientCallJournal? = nil, codeFailure: NSError? = nil) {
+        self.codeJournal = codeJournal
+        self.codeFailure = codeFailure
+    }
+
     func health() throws -> BurnBarHealthResponse {
         BurnBarHealthResponse(ok: true, daemonVersion: "0.1.0", protocolVersion: 1, socketPath: "/tmp/openburnbar.sock")
     }
@@ -774,7 +950,9 @@ struct FakeCLIClient: BurnBarCLIClient {
     }
 
     func codeIndex(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?) throws -> BurnBarProjectCodeIndexProjectResponse {
-        BurnBarProjectCodeIndexProjectResponse(
+        codeJournal?.record("codeIndex")
+        if let codeFailure { throw codeFailure }
+        return BurnBarProjectCodeIndexProjectResponse(
             traceID: "trace-test",
             projectID: "proj_fixture",
             projectRoot: projectPath ?? "/tmp/fixture",
@@ -794,7 +972,9 @@ struct FakeCLIClient: BurnBarCLIClient {
         storageBudgetBytes: Int?,
         pollIntervalSeconds: Double
     ) throws -> BurnBarProjectCodeWatchProjectResponse {
-        BurnBarProjectCodeWatchProjectResponse(
+        codeJournal?.record("codeWatch")
+        if let codeFailure { throw codeFailure }
+        return BurnBarProjectCodeWatchProjectResponse(
             traceID: "trace-test",
             projectID: "proj_fixture",
             projectRoot: projectPath ?? "/tmp/fixture",
@@ -821,7 +1001,9 @@ struct FakeCLIClient: BurnBarCLIClient {
     }
 
     func codeExplore(_ request: BurnBarProjectCodeExploreRequest) throws -> BurnBarProjectCodeExploreResponse {
-        BurnBarProjectCodeExploreResponse(
+        codeJournal?.record("codeExplore")
+        if let codeFailure { throw codeFailure }
+        return BurnBarProjectCodeExploreResponse(
             traceID: "trace-test",
             projectID: "proj_fixture",
             files: [
