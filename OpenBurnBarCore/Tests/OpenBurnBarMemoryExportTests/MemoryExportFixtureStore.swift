@@ -33,7 +33,7 @@ enum MemoryExportFixtureStore {
 
     /// One `agent_memories` row plus its `memory_body_snapshots` body, exactly
     /// as the app's authority write path lays them out.
-    // swiftlint:disable:next function_parameter_count function_default_parameter_at_end
+    // swiftlint:disable:next function_parameter_count function_default_parameter_at_end reason: a fixture writer's parameters are the row's columns
     static func insertAppMemory(
         _ db: Database,
         id: String,
@@ -85,7 +85,7 @@ enum MemoryExportFixtureStore {
 
     /// One daemon `code` row: a bare `sha256(body)` ref, the locator in
     /// `body_redacted`, and the body inside the project snapshot.
-    // swiftlint:disable:next function_default_parameter_at_end
+    // swiftlint:disable:next function_default_parameter_at_end reason: a fixture writer's parameters are the row's columns
     static func insertDaemonMemory(
         _ db: Database,
         id: String,
@@ -139,7 +139,7 @@ enum MemoryExportFixtureStore {
         )
     }
 
-    // swiftlint:disable:next function_parameter_count
+    // swiftlint:disable:next function_parameter_count reason: a fixture writer's parameters are the row's columns
     static func insertMemoryRow(
         _ db: Database,
         id: String,
@@ -171,7 +171,7 @@ enum MemoryExportFixtureStore {
     /// Append an audit row with a correctly chained hash — the same payload the
     /// app hashes, so the fixture chain verifies for the production reason.
     @discardableResult
-    // swiftlint:disable:next function_default_parameter_at_end
+    // swiftlint:disable:next function_default_parameter_at_end reason: a fixture writer's parameters are the row's columns
     static func appendAudit(
         _ db: Database,
         action: String,

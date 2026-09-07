@@ -276,6 +276,38 @@ final class MemoryExportBundleTests: XCTestCase {
         }
     }
 
+    // MARK: - Orphans
+
+    func test_orphansAreCountedAlwaysAndCarriedOnlyWhenAsked() throws {
+        let snapshot = try MemoryExportFixtureStore.snapshot(try makeStore())
+        let key = MemoryExportCrypto.deterministicBundleKey(seed: "orphans")
+
+        let notCarried = try makeExporter().export(snapshot, mode: .dryRun, to: nil, bundleKey: key)
+        XCTAssertEqual(notCarried.report.orphanBodies, 1, "an orphan is ALWAYS counted")
+        XCTAssertTrue(notCarried.report.findings.contains { $0.code == .orphanBody })
+        let carriedByDefault = notCarried.sectionBuffers[.memories]?.records.count ?? 0
+
+        var exporter = makeExporter()
+        exporter.options.carryOrphans = true
+        let carried = try exporter.export(snapshot, mode: .dryRun, to: nil, bundleKey: key)
+        XCTAssertEqual(carried.report.orphanBodies, 1)
+        // A carried orphan BECOMES a synthetic row — it cannot exist in the
+        // target any other way, and the record says so.
+        XCTAssertEqual(carried.sectionBuffers[.memories]?.records.count, carriedByDefault + 1)
+
+        let validator = try MIFSchemaValidator(schemaData: try contractData())
+        for section in [MIFSection.memories, .bodies, .provenance] {
+            let plaintext = MemoryExportBundleWriter.ndjson(sectionBuffer(carried, section: section))
+            for line in String(decoding: plaintext, as: UTF8.self).split(separator: "\n") {
+                let record = try JSONSerialization.jsonObject(with: Data(line.utf8))
+                XCTAssertNoThrow(
+                    try validator.validate(record, against: section.recordTypePointer),
+                    "a synthetic orphan record must satisfy the same contract"
+                )
+            }
+        }
+    }
+
     // MARK: - Delta
 
     func test_deltaCarriesOnlyAuditRowsAboveTheWatermark() throws {

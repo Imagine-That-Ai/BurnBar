@@ -363,7 +363,7 @@ public struct MemoryExporter: Sendable {
                     projectFingerprint: nil,
                     isPseudoProject: true
                 ),
-                reason: .userForget,
+                reason: MemoryExportRecords.tombstoneReason(tombstone.reason, default: .userForget),
                 originLabel: .local,
                 synthesisReason: nil,
                 auditSeq: nil,
@@ -472,11 +472,40 @@ public struct MemoryExporter: Sendable {
         if chain.seqDivergence { record(.seqDivergence) }
 
         // ---- orphans -------------------------------------------------------
+        // §3.3(a): a body-snapshot row no authority row references is ALWAYS
+        // counted, and carried only with `--carry-orphans` (default OFF). A
+        // carried orphan BECOMES a synthetic quarantined row with
+        // `origin_kind: 'import'`, `dedup_partition: 'import'` and a single
+        // body-only provenance marker — it cannot exist in the target any other
+        // way, and saying so is the point.
         bodiesTable.sourceRows = snapshot.bodySnapshots.count
         for snapshotRow in snapshot.bodySnapshots where bodySnapshotsReferenced.contains(snapshotRow.memoryID) == false {
             report.orphanBodies += 1
             record(.orphanBody, sample: snapshotRow.memoryID)
-            bodiesTable.note(.orphanBodyNotCarried)
+            guard options.carryOrphans, let orphanBody = snapshotRow.body else {
+                bodiesTable.note(.orphanBodyNotCarried)
+                continue
+            }
+            let gate = options.gate.apply(to: orphanBody)
+            report.gateClasses.record(gate)
+            if gate.isHeld { record(.secretGateHeld, sample: snapshotRow.memoryID) }
+            let canonicalID = MemoryExportIdentity.canonicalMemoryID(snapshotRow.memoryID, storeID: storeID)
+            if canonicalID != snapshotRow.memoryID {
+                idMappings.append(MemoryExportIDMapping(sourceID: snapshotRow.memoryID, bundleID: canonicalID))
+            }
+            let synthetic = MemoryExportRecords.orphanBodyMemoryRecord(
+                snapshot: snapshotRow,
+                gate: gate,
+                context: context,
+                userID: userID
+            )
+            let normDigest = MemoryExportCrypto.bodyNormDigest(bundleKey: bundleKey, body: gate.body)
+            sections[.memories]?.append(synthetic.memory, rollup: [canonicalID, normDigest, ""])
+            sections[.bodies]?.append(synthetic.body, rollup: [canonicalID, normDigest, synthetic.joinKey])
+            sections[.provenance]?.append(synthetic.provenance)
+            bodiesTable.exported += 1
+            memoriesTable.exported += 1
+            memoriesTable.sourceRows += 1
         }
         provenanceTable.sourceRows = snapshot.provenance.count
         for citation in snapshot.provenance where carriedMemoryIDs.contains(citation.memoryID) == false {

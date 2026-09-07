@@ -33,7 +33,6 @@ public enum MemoryExportStoreReader {
         if try tableExists(db, "memory_audit") {
             snapshot.auditRows = try auditRows(db)
             snapshot.auditHeadSeq = snapshot.auditRows.map(\.seq).max() ?? 0
-            snapshot.auditHeadHash = snapshot.auditRows.max { $0.seq < $1.seq }?.hash
         } else {
             // Row 16 — undecidable, so everything quarantines.
             snapshot.auditTableAvailable = false

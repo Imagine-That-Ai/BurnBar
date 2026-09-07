@@ -176,7 +176,17 @@ That test is not in this release. The CLI therefore accepts only
 `EXPORT_SNAPSHOT_UNAVAILABLE` — the spec's own instruction, rather than falling
 through to an unpinned copy. `snapshot_mode` in a shipped manifest stays a fact.
 
-### D-BB-E-7 — sources BB-E does not read
+### D-BB-E-7 — `--resume` is refused, not ignored
+
+§3's flag set includes `--resume`. BB-E's writer builds a bundle in one pass
+rather than streaming it, so there is no partial bundle to resume onto, and the
+flag is **refused with a message** rather than accepted and silently ignored —
+which would leave an operator believing a half-written bundle had been
+completed. Streaming and per-section resume are what an 8.4 GB source needs and
+are owed before the real store is exported; the section rotation
+(`--max-section-bytes`) is already in place for it.
+
+### D-BB-E-8 — sources BB-E does not read
 
 `--source legacy|cloud|all` records the unread source in `partial_sources` with a
 reason and exports the authority store. Never a silent skip. The cloud vault
@@ -184,14 +194,14 @@ reader (§8) and the legacy plaintext readers (§1 S2/S2b) are later releases; t
 classifier already carries the `cloud` branch (§3.1 row 15) so wiring the reader
 does not touch classification.
 
-### D-BB-E-8 — section 02 carries proven verdicts only
+### D-BB-E-9 — section 02 carries proven verdicts only
 
 `record_review_event` is emitted only for §3.1 rows 1–3. An **unproven** verdict
 is represented by the memory's `import_origin_detail` plus its finding, and no
 event is minted for it: an `automatic` event would enter §4's merge as a verdict
 nobody made.
 
-### D-BB-E-9 — a gate hit the scanner cannot locate
+### D-BB-E-10 — a gate hit the scanner cannot locate
 
 D-0008's hold class covers "any body where redaction cannot be located exactly".
 When `MemorySecretPIIGate` returns `.reject` for a located-span failure, no part
@@ -202,7 +212,7 @@ text does not survive, and the report says so. A corpus that will not load is a
 different case: it refuses the whole export with `GATE_UNAVAILABLE`, because
 fail-closed must not mean "placeholder every body in the store".
 
-### D-BB-E-10 — `content_digest` is per-bundle-key
+### D-BB-E-11 — `content_digest` is per-bundle-key
 
 `body_join_key` and `body_norm_digest` are HMACs under the per-export bundle key
 and live in the plaintext `content_digest` covers, so two exports of one
@@ -231,7 +241,7 @@ permanent, unrecallable rejection. Among candidate rows, latest wins on
 
 ## 6. Tests
 
-`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, 52 tests, run on the
+`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, 53 tests, run on the
 Swift door by `scripts/test-openburnbar-swift.sh`:
 
 ```
@@ -242,7 +252,10 @@ Fixtures are built by **BurnBar's own migrator** (`OpenBurnBarDatabase.migrator`
 the `OpenBurnBarData` mirror), so the schema under test is the one production
 has. Every store is `:memory:`; **nothing under `~/Library` is ever opened**.
 
-Covered: the §3.1 table including a proven human approve, approve-then-mutated,
+Covered: `--carry-orphans` (always counted; carried only when asked, and a
+carried orphan becomes a synthetic `quarantined` row with a body-only provenance
+marker that satisfies the same contract) · the §3.1 table including a proven
+human approve, approve-then-mutated,
 a daemon `code` row approved by default, a label-only approval, a forged
 `actor: "app"`, a verdict on a broken chain, and both absent-column and
 absent-table base cases · the chain walk's break, fork and payload-seq-divergence

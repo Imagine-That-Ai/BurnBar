@@ -144,6 +144,22 @@ public enum MIFAliasKind: String, Sendable, CaseIterable {
     case repoSlug = "repo_slug"
 }
 
+public enum MIFAliasSourceLabel: String, Sendable, CaseIterable {
+    case observed
+    case migrationBurnBar = "migration:burnbar"
+    case migrationPodex = "migration:podex"
+    case importBundle = "import:bundle"
+}
+
+/// Where a carried `valid_to_ms` came from. M-30: the oracle's dedup merge sets
+/// it unconditionally on the loser, while the target sets it only when the
+/// edge's scope matches — so the origin travels and the importer decides.
+public enum MIFValidToOrigin: String, Sendable, CaseIterable {
+    case scoped
+    case oracleUnconditionalDedup = "oracle_unconditional_dedup"
+    case none
+}
+
 public enum MIFSourceType: String, Sendable, CaseIterable {
     case conversation
     case agentMessage = "agent_message"

@@ -356,7 +356,6 @@ public struct MemoryExportSourceSnapshot: Sendable {
     /// fail-closed base case (row 16).
     public var auditTableAvailable: Bool
     public var auditHeadSeq: Int
-    public var auditHeadHash: String?
     public var sourceQuickCheck: String?
 
     public init(
@@ -372,7 +371,6 @@ public struct MemoryExportSourceSnapshot: Sendable {
         embeddingLanes: [MemoryExportEmbeddingLane] = [],
         auditTableAvailable: Bool = true,
         auditHeadSeq: Int = 0,
-        auditHeadHash: String? = nil,
         sourceQuickCheck: String? = "ok"
     ) {
         self.memories = memories
@@ -387,7 +385,6 @@ public struct MemoryExportSourceSnapshot: Sendable {
         self.embeddingLanes = embeddingLanes
         self.auditTableAvailable = auditTableAvailable
         self.auditHeadSeq = auditHeadSeq
-        self.auditHeadHash = auditHeadHash
         self.sourceQuickCheck = sourceQuickCheck
     }
 }

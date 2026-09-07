@@ -147,10 +147,10 @@ public enum MemoryExportRecords {
         // with its origin named and the importer decides.
         if let validTo = memory.validTo, let ms = MemoryExportTimestamp.parse(validTo) {
             fields["valid_to_ms"] = .int(Int((ms.timeIntervalSince1970 * 1000).rounded()))
-            fields["valid_to_origin"] = .string("oracle_unconditional_dedup")
+            fields["valid_to_origin"] = .string(MIFValidToOrigin.oracleUnconditionalDedup.rawValue)
         } else {
             fields["valid_to_ms"] = .null
-            fields["valid_to_origin"] = .string("none")
+            fields["valid_to_origin"] = .string(MIFValidToOrigin.none.rawValue)
         }
 
         if classification.isProvenHumanVerdict, let seq = classification.verdictAuditSeq {
@@ -210,6 +210,125 @@ public enum MemoryExportRecords {
             "summary": .null,
             "recovered_from": .string(body.recoveredFrom.rawValue)
         ])
+    }
+
+    /// §3.3(a): a carried orphan BECOMES a synthetic row. It cannot exist in
+    /// the target any other way — there is no authority row behind it — and the
+    /// three records say exactly that: `origin_kind: import`,
+    /// `dedup_partition: import`, and one body-only provenance marker.
+    public static func orphanBodyMemoryRecord(
+        snapshot: MemoryExportBodySnapshotRow,
+        gate: MemoryExportGateOutcome,
+        context: MemoryExportRecordContext,
+        userID: String?
+    ) -> (memory: MIFJSON, body: MIFJSON, provenance: MIFJSON, joinKey: String) {
+        let canonicalID = MemoryExportIdentity.canonicalMemoryID(snapshot.memoryID, storeID: context.storeID)
+        let createdMS = MemoryExportTimestamp.milliseconds(snapshot.createdAt)
+        let updatedMS = MemoryExportTimestamp.milliseconds(snapshot.updatedAt, fallback: createdMS)
+        let joinKey = MemoryExportCrypto.bodyJoinKey(bundleKey: context.bundleKey, body: gate.body)
+        let normDigest = MemoryExportCrypto.bodyNormDigest(bundleKey: context.bundleKey, body: gate.body)
+        let scopeKey = userID ?? "migration:unscoped"
+
+        let memory = MIFJSON.object([
+            "profile": .string(MIFProfile.migration.rawValue),
+            "memory_id": .string(canonicalID),
+            "schema_version": .int(context.schemaVersion),
+            "store_id": .string(context.storeID),
+            "memory_type": .string(MIFMemoryType.observation.rawValue),
+            "memory_type_source": .string("unknown_defaulted"),
+            "scope_kind": .string(MIFScopeKind.user.rawValue),
+            "scope_key": .string(scopeKey),
+            "project_fingerprint": .null,
+            "user_id": .string(userID),
+            "session_id": .null,
+            "agent_id": .null,
+            "device_id": .null,
+            "org_id": .null,
+            "origin_kind": .string(MIFOriginKind.importOrigin.rawValue),
+            "origin_actor_id": .null,
+            "origin_client_id": .null,
+            "origin_ingest": .string("migration"),
+            // No authority row means no recorded confidence. Half is the only
+            // honest placeholder, and `import` origin says where it came from.
+            "confidence": .double(0.5),
+            "confidence_bits": .string(String(format: "%016llx", Double(0.5).bitPattern)),
+            "classification": .string(MIFClassification.internalClass.rawValue),
+            "sensitivity_labels": .strings(gate.sensitivityLabels),
+            "redaction_state": .string(gate.redactionState.rawValue),
+            "review_status": .string(MIFReviewStatus.quarantined.rawValue),
+            "review_policy_id": .null,
+            "dedup_partition": .string(MIFDedupPartition.importPartition.rawValue),
+            "body_join_key": .string(joinKey),
+            "body_norm_digest": .string(normDigest),
+            "byte_len": .int(gate.body.utf8.count),
+            "tags": .array([]),
+            "valid_from_ms": .int(createdMS),
+            "valid_to_ms": .null,
+            "valid_to_origin": .string(MIFValidToOrigin.none.rawValue),
+            "deletion_state": .string(MIFDeletionState.live.rawValue),
+            "forgotten_at_ms": .null,
+            "body_purged_at_ms": .null,
+            "lamport": .int(0),
+            "wall_ms": .int(updatedMS),
+            "origin_device_id": .string(context.originDeviceID),
+            "created_at_ms": .int(createdMS),
+            "updated_at_ms": .int(updatedMS),
+            "original_review_status": .null,
+            "import_origin_detail": .string(MIFImportOriginDetail.unknown.rawValue),
+            "body_ref_convention": .string(MIFBodyRefConvention.snapshotSlug.rawValue),
+            "body_integrity": .string(
+                MemoryExportDigest.sha256Hex(gate.body) == snapshot.bodyHash
+                    ? MIFBodyIntegrity.verified.rawValue
+                    : MIFBodyIntegrity.mismatch.rawValue
+            ),
+            "source_kind_inferred": .string(snapshot.sourceKind),
+            "verdict_audit_seq": .null,
+            "verdict_event_id": .null
+        ])
+
+        let body = MIFJSON.object([
+            "profile": .string(MIFProfile.migration.rawValue),
+            "body_join_key": .string(joinKey),
+            "body_norm_digest": .string(normDigest),
+            "byte_len": .int(gate.body.utf8.count),
+            "body": .string(gate.body),
+            "summary": .null,
+            "recovered_from": .string(MIFRecoveredFrom.memoryBodySnapshots.rawValue)
+        ])
+
+        let provenance = MIFJSON.object([
+            "profile": .string(MIFProfile.migration.rawValue),
+            "memory_id": .string(canonicalID),
+            "citation_id": .string(MemoryExportIdentity.citationID(
+                storeID: context.storeID,
+                provenanceID: "body_only:\(snapshot.memoryID)"
+            )),
+            "schema_version": .int(context.schemaVersion),
+            "source_type": .string(MIFSourceType.artifact.rawValue),
+            "citation_state": .string(MIFCitationState.unknown.rawValue),
+            "thread_id": .null,
+            "message_id": .null,
+            "role": .null,
+            "occurrence": .int(0),
+            "repo_origin_normalized": .null,
+            "file_path": .null,
+            "commit_sha": .null,
+            "pr_number": .null,
+            "issue_key": .null,
+            // The marker §3.3(a) asks for: this row exists because a body did,
+            // and nothing else.
+            "artifact_digest": .string("migration:body_only"),
+            "release_id": .null,
+            "deployment_id": .null,
+            "source_uri": .null,
+            "source_content_hash": .null,
+            "origin_kind": .string(MIFOriginKind.importOrigin.rawValue),
+            "origin_actor_id": .null,
+            "origin_client_id": .null,
+            "authored_at_ms": .null,
+            "created_at_ms": .int(createdMS)
+        ])
+        return (memory, body, provenance, joinKey)
     }
 
     // MARK: - 02 review_events
@@ -335,7 +454,7 @@ public enum MemoryExportRecords {
             "project_fingerprint": .null,
             "user_id": .string(row.userID ?? context.userID),
             "scope_key": .string(row.userID ?? context.userID ?? "migration:unscoped"),
-            "reason": .string(MIFTombstoneReason.sourceDeleted.rawValue),
+            "reason": .string(tombstoneReason(row.reason, default: .sourceDeleted).rawValue),
             "origin_label": .string(MIFTombstoneOriginLabel.local.rawValue),
             "synthesis_reason": .string(MIFSynthesisReason.sourceTombstone.rawValue),
             "actor_kind": .string("human"),
@@ -350,6 +469,21 @@ public enum MemoryExportRecords {
             "created_at_ms": .int(createdMS),
             "origin_store": .string(context.storeID)
         ])
+    }
+
+    /// The oracle's `reason` columns are free text written by three call sites
+    /// (`user_delete`, `review_status_rejected`, `source_deleted`, …); MIF's is
+    /// a closed six. Map what maps and fall back to the caller's default, so a
+    /// `legal` or `retention` reason the oracle already records is not flattened
+    /// into `user_forget` on the way out.
+    public static func tombstoneReason(_ raw: String, default fallback: MIFTombstoneReason) -> MIFTombstoneReason {
+        if let exact = MIFTombstoneReason(rawValue: raw) { return exact }
+        return switch raw {
+        case "user_delete", "user_forget": .userForget
+        case let value where value.hasPrefix("review_status_"): .userForget
+        case "secret", "secret_leak": .secretLeak
+        default: fallback
+        }
     }
 
     // MARK: - 01 tombstone_receipts
@@ -396,7 +530,7 @@ public enum MemoryExportRecords {
                 "alias_value": .string(project.projectID),
                 "first_seen_ms": .int(MemoryExportTimestamp.milliseconds(project.createdAt)),
                 "last_seen_ms": .int(MemoryExportTimestamp.milliseconds(project.updatedAt)),
-                "source_label": .string(MIFAliasSourceLabel.migrationBurnBar)
+                "source_label": .string(MIFAliasSourceLabel.migrationBurnBar.rawValue)
             ])]),
             "created_at_ms": .int(MemoryExportTimestamp.milliseconds(project.createdAt)),
             "updated_at_ms": .int(MemoryExportTimestamp.milliseconds(project.updatedAt))
@@ -573,8 +707,4 @@ public enum MemoryExportRecords {
             "reason_detail": .string(reasonDetail)
         ])
     }
-}
-
-enum MIFAliasSourceLabel {
-    static let migrationBurnBar = "migration:burnbar"
 }

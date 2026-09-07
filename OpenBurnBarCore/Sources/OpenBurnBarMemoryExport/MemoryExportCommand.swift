@@ -153,6 +153,16 @@ public struct MemoryExportCommand: Sendable, Equatable {
         if deterministicNonces, rehearsal == false {
             throw MemoryExportCommandError.usage("--deterministic-nonces requires --rehearsal")
         }
+        // BB-E's writer builds a bundle in one pass rather than streaming it,
+        // so there is no partial bundle to resume onto. Accepting the flag and
+        // silently ignoring it would be worse than not offering it: the
+        // operator would believe a half-written bundle had been completed.
+        if resume {
+            throw MemoryExportCommandError.usage(
+                "--resume is not available in release BB-E: the bundle is written in one pass, "
+                    + "so there is no partial bundle to resume. Re-run the export."
+            )
+        }
     }
 }
 
