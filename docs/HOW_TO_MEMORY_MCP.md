@@ -328,9 +328,9 @@ network call, and no BurnBar server in the path. Memory bodies, the
 transcripts they were extracted from, your vectors, retained secrets,
 quarantined rows and repository knowledge all stay on this Mac.
 
-Two features can send something, each off by default, each needing its own
-consent in the app, each fail-closed — no entitlement, no consent, or no daemon
-means zero network calls and unchanged local behaviour:
+Three features can send or receive something, each off by default, each needing
+its own consent in the app, each fail-closed — no entitlement, no consent, or no
+daemon means zero network calls and unchanged local behaviour:
 
 - **Cloud models for memory.** Redacted memory facts and your questions go from
   your Mac to the provider you picked, on your own key or your own CLI
@@ -340,9 +340,16 @@ means zero network calls and unchanged local behaviour:
   replicate to your own namespace, sealed. The stored document holds a sealed
   blob, an opaque id, keyed source hashes, a kind, a review status and three
   timestamps — and the server's own rules forbid the rest.
+- **Sync to your other Macs.** A second switch under the backup one, off even
+  once backup is on. With both on, this Mac also reads your own sealed facts
+  back down and parks what verifies; the engine folds them into recall when
+  something calls `burnbar_memory_sync_pull` — an agent, the opt-in
+  `OPENBURNBAR_MEMORY_SYNC_HOOK` session-start hook, or you by hand. Nothing
+  runs on a timer, and there is no memory engine on iOS, so the device on the
+  other end is another Mac.
 
-The full field-by-field breakdown, including the tier language and what is
-**not shipped yet**, is on [burnbar.ai/memory](https://burnbar.ai/memory) under
+The full field-by-field breakdown, including the tier language and the two
+gaps that remain, is on [burnbar.ai/memory](https://burnbar.ai/memory) under
 "The boundary", and in [`docs/PRIVACY.md`](PRIVACY.md) § Optional Memory Backup
 and Device Sync.
 
