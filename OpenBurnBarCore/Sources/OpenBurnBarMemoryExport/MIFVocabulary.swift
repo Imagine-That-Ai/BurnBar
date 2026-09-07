@@ -316,24 +316,24 @@ public enum MIFExportError: String, Sendable, CaseIterable, Error {
     /// §3.3 M-04: a `memory.delete` seq inside the window with no emitted
     /// tombstone. An exporter obligation, not a warning.
     case deleteWithoutTombstone = "EXPORT_DELETE_WITHOUT_TOMBSTONE"
-}
-
-/// Refusals D-0021 and D-0025 name that the v1.2 contract's `export_error`
-/// closed set does **not** yet carry.
-///
-/// They are deliberately a separate type rather than two more `MIFExportError`
-/// cases: `reconciliation_report.export_error` validates against that closed
-/// set, so a code the contract has never heard of would turn a refusal into an
-/// unvalidatable report. Both fire before any bundle or report is written, so
-/// nothing is lost by keeping them out of the wire vocabulary — and when the
-/// contract grows them, the two enums merge and this comment goes.
-public enum MIFExportRefusal: String, Sendable, CaseIterable, Error {
     /// D-0021 ruling 1. HPKE is the only admitted wrap; below its floor the
     /// export refuses rather than falling back to a construction of its own.
+    /// Added to the contract's closed set by Q-24.
     case hpkeUnavailable = "EXPORT_HPKE_UNAVAILABLE"
     /// D-0025 ruling 3. A sealed bundle whose key exists nowhere is never
-    /// written.
+    /// written. Added to the contract's closed set by D-0025.
     case recipientRequired = "EXPORT_RECIPIENT_REQUIRED"
+    /// The store carries neither a local `devices` row nor an audit chain, so it
+    /// has nothing that identifies it from the inside. Every canonical id is
+    /// seeded from that value and the exporter will not invent one.
+    ///
+    /// The one code here the contract does NOT carry — it is BurnBar's own
+    /// precondition, not a MIF concept, and like the two above it fires before
+    /// any report is written, so it never reaches
+    /// `reconciliation_report.export_error`. It is in this enum rather than a
+    /// bare string literal so both lanes that refuse can name the same value
+    /// (review R6).
+    case storeIdentityAbsent = "EXPORT_STORE_IDENTITY_ABSENT"
 }
 
 public enum MIFFindingCode: String, Sendable, CaseIterable {

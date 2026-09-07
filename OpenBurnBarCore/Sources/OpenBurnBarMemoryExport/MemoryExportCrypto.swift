@@ -319,7 +319,7 @@ public enum MemoryExportCrypto {
             // The suite is fixed and the key was validated when the descriptor
             // was read, so the only way this fails is a platform that cannot
             // offer the construction. That is a refusal, not a fallback.
-            throw MIFExportRefusal.hpkeUnavailable
+            throw MIFExportError.hpkeUnavailable
         }
         let ciphertext = try sender.seal(
             bundleKey.withUnsafeBytes { Data($0) },

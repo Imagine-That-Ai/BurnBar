@@ -159,6 +159,60 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         }
     }
 
+    // MARK: - The recipient binding (R4)
+
+    /// D-0021 ruling 1 makes `recipient_key_id` the HPKE `aad`, and D-0025
+    /// makes it the `rcp_` id. So `manifest.recipient_key_id` is not merely
+    /// typed by the schema — it is the string an importer must feed the wrap.
+    ///
+    /// The manifest used to carry `sha256(public_key)` while the wrap was sealed
+    /// under `rcp_<first 32 hex of it>`: the sole schema failure at HEAD, and a
+    /// bundle the addressed store could not open, because an importer reading
+    /// the manifest field as the aad has the wrong bytes.
+    func test_theManifestNamesTheKeyIDTheWrapWasSealedUnder() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        _ = try export(maxSectionBytes: 256 * 1024 * 1024, to: directory, seed: "recipient")
+
+        let manifest = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: try Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+            ) as? [String: Any]
+        )
+        let declared = try XCTUnwrap(manifest["recipient_key_id"] as? String)
+        XCTAssertEqual(
+            declared.range(of: "^rcp_[0-9a-f]{32}$", options: .regularExpression),
+            declared.startIndex..<declared.endIndex,
+            "D-0025's id grammar, which the vendored contract now types"
+        )
+        XCTAssertEqual(declared, recipient.keyID)
+        XCTAssertEqual(manifest["recipient_store_id"] as? String, "target-store-fixture")
+
+        // And it opens the wrap — the only test of this field that would have
+        // caught the old value.
+        let wire = try String(
+            contentsOf: directory.appendingPathComponent("keys/wrapped-bundle-key"),
+            encoding: .utf8
+        )
+        let parts = wire.split(separator: ".", omittingEmptySubsequences: false)
+        var opener = try HPKE.Recipient(
+            privateKey: Self.recipientPrivateKey,
+            ciphersuite: .Curve25519_SHA256_ChachaPoly,
+            info: MemoryExportCrypto.keywrapInfo,
+            encapsulatedKey: try XCTUnwrap(MemoryExportBase64URL.decode(String(parts[0])))
+        )
+        let unwrapped = try opener.open(
+            try XCTUnwrap(MemoryExportBase64URL.decode(String(parts[1]))),
+            authenticating: Data(declared.utf8)
+        )
+        XCTAssertEqual(
+            SymmetricKey(data: unwrapped),
+            MemoryExportCrypto.deterministicBundleKey(seed: "recipient"),
+            "the manifest's id is the aad the bundle key was actually sealed under"
+        )
+    }
+
     // MARK: - Determinism, on disk
 
     /// The determinism tests export `to: nil`, so byte identity was only ever

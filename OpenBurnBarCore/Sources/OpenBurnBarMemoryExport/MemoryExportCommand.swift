@@ -176,7 +176,7 @@ public struct MemoryExportCommand: Sendable, Equatable {
         // exception, and it mints a throwaway recipient that report.json names.
         if verb == .export, recipient == nil, rehearsal == false {
             throw MemoryExportCommandError.usage(
-                "\(MIFExportRefusal.recipientRequired.rawValue): memory export needs --recipient "
+                "\(MIFExportError.recipientRequired.rawValue): memory export needs --recipient "
                     + "<descriptor.json>, published by `memoryctl memory export-recipient`. "
                     + "A bundle sealed to no recipient can never be opened."
             )

@@ -6,12 +6,28 @@
 // -------------------------------------------
 //   Source repo:    Po'dex, memory-consolidation-gauntlet branch
 //   Source path:    docs/memory/contracts/mif-v1.schema.json
-//   Source commit:  439c8d3d425a46b2895c20050eca3bf3d508a90e
-//                   ("docs(memory): apply D-0018 — the human-verdict key drops
-//                    the clamp; ±72 h moves to admission")
-//   sha256:         fc1a4a267809272ab9fd5e21449b72b055505301e285bab13eba5ecc57be2228
+//   Source commit:  3332bd5b750e41e398e752e42daca294e79a47db
+//                   ("docs(memory): Q-24 — the exporter's two refusals are both
+//                    in the contract, and a randomized signature is not a broken
+//                    determinism claim")
+//   sha256:         a008cdefcdf9d90d5936674cb6ab3c686fdba6047395f4fe639d7f6ea1132723
 //   Copied:         2026-09-07, byte for byte, no local edit of any kind
 //   Contract level: MIF v1, minor 2 [D-0021]
+//
+// Re-vendored from fc1a4a2678… (commit 439c8d3d, D-0018) — three contract
+// passes in one file:
+//   * D-0025 retyped `manifest.recipient_key_id` from `hex64_null` to
+//     `recipient_key_id_null` (`^rcp_[0-9a-f]{32}$`) and added
+//     `EXPORT_RECIPIENT_REQUIRED`. The stale typing was the exporter's only
+//     schema failure at HEAD and an interop break, because `aad =
+//     recipient_key_id` (review R4);
+//   * Q-16 added `reconciliation_report.{write_lease_taken,
+//     staging_files_created, clients_drained}`, Q-18 `record_tombstone`'s five
+//     `retired_*` members and their `dependentRequired`;
+//   * Q-24 added `EXPORT_HPKE_UNAVAILABLE`, so `MIFExportError`'s two refusal codes
+//     are now both in the contract's closed set.
+// Every move was additive, so `mif_minor` stays 2 and a bundle written against
+// the old copy still validates.
 //
 // D-0021 ruling 5 requires the Po'dex copy and this one to be byte-identical
 // "with the sha256 pinned by a test on each side". This is that test. It exists
@@ -42,7 +58,7 @@ import Crypto
 final class MIFContractPinTests: XCTestCase {
 
     private static let pinnedSHA256 =
-        "fc1a4a267809272ab9fd5e21449b72b055505301e285bab13eba5ecc57be2228"
+        "a008cdefcdf9d90d5936674cb6ab3c686fdba6047395f4fe639d7f6ea1132723"
 
     private func contractData() throws -> Data {
         let url = try XCTUnwrap(

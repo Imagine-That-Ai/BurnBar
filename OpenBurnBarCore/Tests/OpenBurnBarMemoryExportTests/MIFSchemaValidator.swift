@@ -13,8 +13,8 @@
 // `$ref`, `type`, `enum`, `const`, `required`, `properties`,
 // `additionalProperties: false`, `propertyNames`, `pattern`, `not`, `minimum`,
 // `maximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `items`,
-// `allOf`, `oneOf`, `anyOf`, `if`/`then`/`else`. An UNKNOWN keyword is a hard
-// failure rather than a silent skip.
+// `allOf`, `oneOf`, `anyOf`, `if`/`then`/`else`, `dependentRequired`. An UNKNOWN
+// keyword is a hard failure rather than a silent skip.
 //
 // That guard alone is weaker than it reads, because `check` only visits a
 // sub-schema when the instance carries the property it sits under — so an
@@ -44,7 +44,7 @@ final class MIFSchemaValidator {
         "type", "enum", "const", "required", "properties", "additionalProperties",
         "propertyNames", "pattern", "not", "minimum", "maximum", "minLength",
         "maxLength", "minItems", "maxItems", "items", "allOf", "oneOf", "anyOf",
-        "if", "then", "else", "$defs"
+        "if", "then", "else", "$defs", "dependentRequired"
     ]
 
     /// The keywords whose values are themselves schemas. The evaluator recurses
@@ -208,6 +208,18 @@ final class MIFSchemaValidator {
         if let required = schema["required"] as? [String] {
             for key in required where object[key] == nil {
                 throw MIFSchemaViolation(path: path, message: "missing required property '\(key)'")
+            }
+        }
+        // Q-18's `tombstone_retire_ck` at the bundle boundary: the five
+        // `retired_*` members travel together or not at all.
+        if let dependents = schema["dependentRequired"] as? [String: [String]] {
+            for (trigger, required) in dependents where object[trigger] != nil {
+                for key in required where object[key] == nil {
+                    throw MIFSchemaViolation(
+                        path: path,
+                        message: "'\(trigger)' is present, so '\(key)' is required with it"
+                    )
+                }
             }
         }
         let properties = schema["properties"] as? [String: Any] ?? [:]

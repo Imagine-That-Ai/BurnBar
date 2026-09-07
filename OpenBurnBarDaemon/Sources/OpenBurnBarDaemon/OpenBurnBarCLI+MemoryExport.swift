@@ -283,7 +283,7 @@ extension BurnBarCLIRunner {
         return MemoryExportRecipient.rehearsalThrowaway()
         #else
         throw BurnBarCLIError.missingArgument(
-            "\(MIFExportRefusal.recipientRequired.rawValue): memory export needs --recipient <descriptor.json>."
+            "\(MIFExportError.recipientRequired.rawValue): memory export needs --recipient <descriptor.json>."
         )
         #endif
     }

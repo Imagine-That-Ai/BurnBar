@@ -163,7 +163,7 @@ final class MemoryExportCanonicalJSONTests: XCTestCase {
             guard case MemoryExportCommandError.usage(let message) = error else {
                 return XCTFail("expected a usage refusal, got \(error)")
             }
-            XCTAssertTrue(message.contains(MIFExportRefusal.recipientRequired.rawValue), message)
+            XCTAssertTrue(message.contains(MIFExportError.recipientRequired.rawValue), message)
         }
         // Rehearsal is the one exception, and it mints a throwaway recipient
         // that report.json names.

@@ -74,14 +74,17 @@ public struct MemoryExportRecipient: Sendable {
         "rcp_" + String(MemoryExportDigest.sha256Hex(publicKey.rawRepresentation).prefix(32))
     }
 
-    /// `manifest.recipient_key_id` is `hex64_null` in `mif-v1.schema.json`, so
-    /// the `rcp_` id cannot go in it verbatim. What travels is the full
-    /// `sha256(public_key)` the id is a prefix of, which an importer checks
-    /// against its own id in one comparison. See the schema conflict recorded
-    /// in `docs/MEMORY_EXPORT_MIF.md` §6.
-    public var manifestKeyID: String {
-        MemoryExportDigest.sha256Hex(publicKey.rawRepresentation)
-    }
+    /// `manifest.recipient_key_id` is the `rcp_` id itself, and nothing else can
+    /// be correct: D-0021 ruling 1 makes that string the HPKE `aad`, so an
+    /// importer that reads this field and uses it to open the wrap must find the
+    /// same bytes the wrap was sealed with. Emitting `sha256(public_key)` here
+    /// while sealing under `rcp_…` produced bundles the addressed store could
+    /// not open (review R4).
+    ///
+    /// The `hex64_null` typing that justified the old value is gone: D-0025
+    /// retyped the member to `recipient_key_id_null` (`^rcp_[0-9a-f]{32}$`), and
+    /// the schema vendored beside this file carries it.
+    public var manifestKeyID: String { keyID }
 
     public enum DescriptorError: Error, Equatable {
         case malformed(String)

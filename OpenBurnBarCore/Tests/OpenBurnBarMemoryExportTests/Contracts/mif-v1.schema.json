@@ -30,6 +30,8 @@
     "ts_ms_null":     { "type": ["integer", "null"], "minimum": 0 },
     "hex64":          { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "hex64_null":     { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "recipient_key_id_null": { "type": ["string", "null"], "pattern": "^rcp_[0-9a-f]{32}$",
+      "$comment": "D-0025: recipient_key_id = \"rcp_\" + sha256(public_key)[0..32] - the first 16 bytes as 32 lowercase hex, in the wire s1.4 `rcp_` id grammar. v1.1 typed this hex64 and MEMORY_MIGRATION_SPEC s2 wrote `sha256(pubkey)`; one form now, because `aad = recipient_key_id` in the HPKE wrap (D-0021 ruling 1) makes the exact string load-bearing - two implementations that disagree about it produce bundles neither can open. The exporter recomputes it from `public_key` in the recipient descriptor and REFUSES on mismatch." },
     "lamport":        { "type": "integer", "minimum": 0 },
     "b64url":         { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
     "memory_id":      { "type": "string", "pattern": "^mem_[0-9a-f]{32}$" },
@@ -88,7 +90,8 @@
       "enum": ["RECONCILIATION_MISMATCH","ROLLUP_DIGEST_MISMATCH","UNMIGRATABLE_SOURCE_PRESENT","RECIPIENT_KEY_UNAVAILABLE","SOURCE_INTEGRITY_FAILED","SIGNATURE_UNVERIFIED","HASHTREE_MISMATCH","EXPORTER_KEY_UNPINNED","TARGET_NOT_KEYED","GATE_UNAVAILABLE","MIF_VERSION_UNSUPPORTED","MIF_PROFILE_UNSUPPORTED","MIF_REQUIRED_SECTION_MISSING","MIF_REHEARSAL_BUNDLE_REFUSED","UNSCOPED_ROWS_NO_USER","P5_SOURCE_NOT_QUIESCED","P5_SOURCE_BUILD_TOO_OLD","MIGRATION_WINDOW_EXPIRED","VERDICT_WALL_MS_IN_FUTURE"]
     },
     "export_error": {
-      "enum": ["EXPORT_KEY_UNAVAILABLE","EXPORT_SOURCE_NOT_KEYED","EXPORT_SOURCE_ROOT_OVERRIDDEN","EXPORT_RECIPIENT_UNVERIFIED","EXPORT_DISK_SPACE","EXPORT_SNAPSHOT_UNAVAILABLE","EXPORT_DELETE_WITHOUT_TOMBSTONE"]
+      "enum": ["EXPORT_KEY_UNAVAILABLE","EXPORT_SOURCE_NOT_KEYED","EXPORT_SOURCE_ROOT_OVERRIDDEN","EXPORT_RECIPIENT_UNVERIFIED","EXPORT_DISK_SPACE","EXPORT_SNAPSHOT_UNAVAILABLE","EXPORT_DELETE_WITHOUT_TOMBSTONE","EXPORT_RECIPIENT_REQUIRED","EXPORT_HPKE_UNAVAILABLE"],
+      "$comment": "The closed set of export refusals. `EXPORT_RECIPIENT_REQUIRED` (D-0025 ruling 3) and `EXPORT_HPKE_UNAVAILABLE` (D-0021 ruling 1: CryptoKit HPKE is macOS 14 / iOS 17, and below it the exporter refuses rather than falling back to a construction no importer can open) both fire BEFORE any bundle or report is written, so neither is ever observed in `reconciliation_report.export_error` on a real run - they are here because this enum is the contract's list of the names an exporter may print, and a name an exporter uses that this set does not carry is a divergence (Q-24)."
     },
     "finding_code": {
       "enum": ["body_hash_mismatch","body_divergent_stores","body_ref_unknown_convention","body_unreconstructible","body_recovered_legacy_plaintext","orphan_body","orphan_provenance","dangling_supersession","alias_conflict","fingerprint_downgraded","review_status_unknown_value","verdict_on_broken_chain","approved_body_mutated_after_verdict","chain_broken","chain_fork","seq_divergence","partition_pseudo_project","tombstone_content_key_unknown","secret_gate_held","record_too_large","source_unreadable","spool_not_carried","receipt_unknown_peer","valid_to_dropped_scope_mismatch","audit_label_stripped","unknown_fields_ignored","concurrent_writes","snapshot_mode_degraded","mas_container_store_present","content_conflict","verdict_orphaned_discarded","source_tombstone_suppressor_armed","delete_without_tombstone_synthesized","forged_human_verdict_refused","unmigratable_source_present","staged_verdict_bundle_scoped"]
@@ -159,7 +162,7 @@
           }
         },
         "rehearsal": { "type": "boolean" },
-        "recipient_key_id": { "$ref": "#/$defs/hex64_null" },
+        "recipient_key_id": { "$ref": "#/$defs/recipient_key_id_null" },
         "recipient_store_id": { "type": ["string","null"] },
         "exporter_device_key_id": { "type": ["string","null"] },
         "export_mode": { "enum": ["full","delta"] },
@@ -281,6 +284,20 @@
         "actor_id": { "type": ["string","null"] },
         "verdict_kind": { "$ref": "#/$defs/verdict_kind" },
         "hard_delete_after_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "retired_at_ms": {
+          "$comment": "The retirement, carried so it can cross a bundle at all [Q-18, from sync R-10 divergence 4]. Named for the DDL's own columns — `memory_tombstones.retired_at_ms`, `retired_by_memory_id`, `retired_lamport`, `retired_wall_ms`, `retired_device_id` — because a MIF record's job here is to move those five values, not to describe them again. There is no retirement REASON and no retirement ACTOR column in the DDL, so neither is minted: S-04 makes the retiring act self-describing (a retirement names the memory it revives, and revival is a new human write with a new memory_id), and `record_review_event` carries the human act itself. Optional from MIF minor 2: an un-retired tombstone omits all five, which is `memory_tombstones`'s NULL leg.",
+          "$ref": "#/$defs/ts_ms"
+        },
+        "retired_by_memory_id": {
+          "$comment": "S-04: a retirement must NAME the row it revives, and the importer rejects one whose name is not the tombstone's own `subject_memory_id`. A content-key-only tombstone can never be retired (trigger `memory_tombstones_retire_bu`), which is why this is the subject and not a free choice.",
+          "$ref": "#/$defs/memory_id"
+        },
+        "retired_lamport": { "$ref": "#/$defs/lamport" },
+        "retired_wall_ms": {
+          "$comment": "The retirement carries its OWN HLC triple because it merges on its own key: schema §5's retirement comparison is (retired_wall_ms, retired_lamport, retired_device_id) with a final tombstone_id tie-break [D-0018]. The creation triple below cannot order two retirements of the same tombstone.",
+          "$ref": "#/$defs/ts_ms"
+        },
+        "retired_device_id": { "type": "string", "minLength": 1 },
         "audit_chain_epoch": { "type": ["integer","null"], "minimum": 1 },
         "audit_seq": { "type": ["integer","null"], "minimum": 1 },
         "lamport": { "$ref": "#/$defs/lamport" },
@@ -289,9 +306,19 @@
         "created_at_ms": { "$ref": "#/$defs/ts_ms" },
         "origin_store": { "type": "string" }
       },
+      "dependentRequired": {
+        "retired_at_ms":        ["retired_by_memory_id","retired_lamport","retired_wall_ms","retired_device_id"],
+        "retired_by_memory_id": ["retired_at_ms","retired_lamport","retired_wall_ms","retired_device_id"],
+        "retired_lamport":      ["retired_at_ms","retired_by_memory_id","retired_wall_ms","retired_device_id"],
+        "retired_wall_ms":      ["retired_at_ms","retired_by_memory_id","retired_lamport","retired_device_id"],
+        "retired_device_id":    ["retired_at_ms","retired_by_memory_id","retired_lamport","retired_wall_ms"]
+      },
       "allOf": [
         { "if": { "properties": { "tombstone_kind": { "const": "fact" } }, "required": ["tombstone_kind"] },
           "then": { "required": ["subject_memory_id"], "properties": { "subject_memory_id": { "$ref": "#/$defs/memory_id" } } } },
+        { "$comment": "`tombstone_retire_ck` and `memory_tombstones_retire_bu`, at the bundle boundary: the five retired_* members travel together or not at all (dependentRequired above), and only a `fact` tombstone can carry them — a content-key-only tombstone is never retired [S-04].",
+          "if": { "required": ["retired_at_ms"] },
+          "then": { "properties": { "tombstone_kind": { "const": "fact" } }, "required": ["subject_memory_id"] } },
         { "if": { "properties": { "tombstone_kind": { "const": "source" } }, "required": ["tombstone_kind"] },
           "then": { "required": ["subject_source_refs"], "properties": { "subject_source_refs": { "minItems": 1 } } } },
         { "if": { "properties": { "verdict_kind": { "const": "human_verdict" } }, "required": ["verdict_kind"] },
@@ -751,6 +778,9 @@
             "quiesced": { "type": "boolean" }
           }
         },
+        "write_lease_taken": { "$comment": "A-CD-02: a run that holds before it takes the single-writer lease reports false, so 'no lease was taken' is measurable rather than inferred from an absent field.", "type": "boolean" },
+        "staging_files_created": { "$comment": "A-CD-02: true iff the run wrote at least one staging file under the target's staging root. The rehearsal fixture counts them (`eval/migration-profiles.json` variants[].observed.staging_files_created); this member is that count > 0.", "type": "boolean" },
+        "clients_drained": { "$comment": "A-CD-02: true iff at least one connected client was drained. The rehearsal fixture counts them; this member is that count > 0.", "type": "boolean" },
         "tables": { "type": "array", "items": { "$ref": "#/$defs/table_reconciliation" } },
         "reclassifications": {
           "type": "object", "additionalProperties": false,

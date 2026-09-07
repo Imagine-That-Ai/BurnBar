@@ -316,8 +316,12 @@ final class MemoryExportCryptoTests: XCTestCase {
         ))
         XCTAssertEqual(good.keyID, honest)
         XCTAssertEqual(good.storeID, "target-store")
-        XCTAssertEqual(good.manifestKeyID.count, 64, "the manifest field is hex64")
-        XCTAssertTrue(good.manifestKeyID.hasPrefix(String(honest.dropFirst(4))))
+        // R4. `manifest.recipient_key_id` IS the `rcp_` id — D-0025 retyped the
+        // member to `^rcp_[0-9a-f]{32}$` — and it has to be, because D-0021
+        // ruling 1 makes that same string the HPKE `aad`. Emitting
+        // `sha256(public_key)` here while sealing under `rcp_…` gave the
+        // addressed importer a field it could not open the wrap with.
+        XCTAssertEqual(good.manifestKeyID, honest, "the manifest field and the aad are one string")
 
         XCTAssertThrowsError(
             try MemoryExportRecipient.parse(descriptor: Self.descriptor(
