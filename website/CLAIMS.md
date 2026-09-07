@@ -529,6 +529,39 @@ daemon produce, and on a signed install that database is SQLCipher-encrypted,
 so those tools go through the daemon socket or report that they cannot. The
 memory engine itself still needs none of that, and the page keeps saying so.
 
+### Films round — five silent films above Part one
+
+`/memory#films` publishes five rendered films (`website/public/films/`,
+6.2 MB total: five faststart H.264 MP4s and five WebP posters). They are a
+prologue to the register, not a sixteenth section: each card names the
+numbered section it is a doorway into.
+
+**Nothing on screen in a film is a new claim.** Every frame restates something
+the sections below already carry with a source line, so the films add no
+evidence surface of their own — with one exception, which the page prints
+rather than hides.
+
+| Claim                                                                                                                                                                                 | Source                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| *What it is* · one memory carried between two sessions in different clients, out of a local SQLite store sealed with a key only your devices hold                                      | Restates the hero and § 01; `tools/openburnbar-mcp/README.md` § Local memory engine, § Encrypted at rest                                                                             |
+| *Remember, then recall* · a stored fact returned for a question sharing none of its words — `bm25` no lexical overlap, `vector 0.86`, `rrf rank 1`                                     | Restates § 03; `docs/superpowers/2026-09-02-memory-mcp-v2-design.md` §4.2. The 0.86 is the film's illustration of a fused rank, not a published measurement, and is not in `MEASUREMENTS` — the bench in § 12 remains the only place this page publishes a number as a number |
+| *The gate* · a credential shape `REFUSED · SECRET_DETECTED` with nothing stored; steering text `QUARANTINED · INJECTION_SUSPECT`, stored but never returned to an agent, never synced  | Restates § 02; `README.md` § Secrets and PII, § Untrusted recall boundary                                                                                                           |
+| *Forget is real* · body, vector, history and relations struck in one transaction                                                                                                       | Restates § 05; `memory_engine/_read.py` `forget`                                                                                                                                    |
+| **exception** · *Forget is real* also shows a forget receipt reaching a second device and emptying it                                                                                  | **This is the designed shape, not `main`.** The push half (backup) ships; pull-and-merge is in review — `docs/superpowers/plans/2026-09-03-memory-blind-sync.md` § Shipping shape. The card prints an "In review, not shipped" correction next to the player and links to § 13, and the `Not shipped` lane in § 13 is unchanged. `scripts/test-memory-copy.mjs` invariant 7 still passes |
+| *Team memory* · the server holds a sealed body, an opaque `docID`, the kind, the review status and timestamps — no text, no body, no vector                                            | `website/src/data/trust.generated.ts` — `team_pensieve` `serverSees`; `docs/PRIVACY.md` § Team spaces                                                                                |
+| *Team memory* · "every active member can read every team memory", a contribution and display control rather than a boundary between members                                            | `docs/PRIVACY.md:111` verbatim in substance; `trust.generated.ts` `team_pensieve.blurb`. The film states the limit on screen and the card's copy restates it — the page never says a team space keeps one member's memories from another |
+
+**Accessibility.** The films are silent and carry their whole meaning in text
+burned into the frame, which makes a caption `<track>` the wrong instrument:
+a caption track paints type over type the reader can already see, and gives a
+reader who cannot see the frame nothing at all. Each film ships a **full
+transcript in the DOM** instead — WCAG 2.2 SC 1.2.1's text alternative for
+prerecorded video-only content (techniques G159/G166) — reachable with the
+player collapsed, plus a one-line description the `<video>` names through
+`aria-describedby`. `Film.transcript` in `src/data/memory.ts` is the
+equivalent of the frame in reading order, not a summary of it; keep it that
+way if a film is re-cut.
+
 ---
 
 ## MCP integration (`/mcp`)

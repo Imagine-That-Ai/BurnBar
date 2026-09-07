@@ -25,6 +25,7 @@ import {
   CODE_LIMIT,
   CODE_TIERS,
   EMBEDDING_LINES,
+  FILMS,
   FORGET_LIMIT,
   FORGET_PURGED,
   FORGET_STEPS,
@@ -68,6 +69,11 @@ const pinnedCount = MEASUREMENTS.filter((m) => m.pin !== null).length;
    markup, so a tool added to a group re-writes the sentence above it rather
    than leaving a stale numeral behind. */
 const refusingStages = WRITE_PIPELINE.filter((stage) => stage.role === "gate").length;
+
+/* The films' combined runtime, printed rather than typed — adding a sixth
+   film re-writes the eyebrow instead of leaving "1 min 32 s" behind. */
+const filmSeconds = FILMS.reduce((total, film) => total + film.seconds, 0);
+const filmRuntime = `${Math.floor(filmSeconds / 60)} min ${filmSeconds % 60} s`;
 const groupSize = (id: string) => TOOL_ATLAS.filter((t) => t.group === id).length;
 
 /* The capability id → human label map the atlas prints on each tool. */
@@ -167,6 +173,7 @@ const PARTS = [
         <a class="btn btn--ember" href="#setup"
           >Set it up <span class="btn-arrow" aria-hidden="true">→</span></a
         >
+        <a class="btn btn--ghost" href="#films">Watch the {FILMS.length} films</a>
         <a class="btn btn--ghost" href="#proof">See the measurements</a>
         <a class="btn btn--ghost" href={REPO_MCP} target="_blank" rel="noopener noreferrer"
           >Read the source</a
@@ -196,6 +203,104 @@ const PARTS = [
           ))
         }
       </nav>
+    </div>
+  </section>
+
+  {/* ══════════════════════ THE FILMS ══════════════════════
+
+     A prologue, not a sixteenth section: the register below is the
+     argument, and these are five doorways into it. Each card names the
+     numbered section it belongs to, so the films index the page rather
+     than sitting beside it.
+
+     Nothing here downloads a film until the reader asks for one.
+     `preload="none"`, not `"metadata"`: metadata was measured in Chrome
+     139 against this build and it buffered 5.7s of a 19s film — about a
+     third of the file, ~450 KB each, ~2 MB across the five, on every
+     visit, with nobody pressing play. `none` fetches zero video bytes
+     (readyState 0) and costs only the duration in the scrubber before
+     first play, which the card prints beside the title anyway. What does
+     load is the poster: a ~20 KB WebP of the film's own closing card, so
+     a reader who never presses play still reads the point. Five posters,
+     101 KB, and that is the whole cost of this section.
+     ═══════════════════════════════════════════════════════ */}
+  <section class="films" id="films" aria-labelledby="films-h">
+    <div class="container container--wide">
+      <header class="films__head">
+        <span class="eyebrow eyebrow--ember"
+          >{FILMS.length} films · silent · {filmRuntime} in total</span
+        >
+        <h2 id="films-h">Watch it happen, then read why.</h2>
+        <p class="lead">
+          Each one is under half a minute and shows a single mechanic end to end — the store, the
+          gate, a recall that shares no words with what it found, a delete that is a delete, and the
+          team lane with its limit on the screen. They are silent and every word is on the frame, so
+          each carries a full transcript below it.
+        </p>
+      </header>
+
+      <ol class="films__grid">
+        {
+          FILMS.map((film) => (
+            <li>
+              <figure class="film">
+                <video
+                  class="film__player"
+                  src={film.video}
+                  poster={film.poster}
+                  preload="none"
+                  controls
+                  playsinline
+                  width="1920"
+                  height="1080"
+                  aria-label={`${film.title} — a silent ${film.seconds}-second film. Its transcript follows.`}
+                  aria-describedby={`film-${film.id}-blurb`}
+                />
+
+                <figcaption class="film__cap">
+                  <p class="film__meta mono">
+                    <span class="film__time">{film.seconds}s</span>
+                    <span class="film__sep" aria-hidden="true">·</span>
+                    <span class="film__silent">no sound</span>
+                  </p>
+                  <h3 class="film__h">{film.title}</h3>
+                  <p class="film__blurb" id={`film-${film.id}-blurb`}>
+                    {film.blurb}
+                  </p>
+                  {film.caveat && (
+                    <p class="film__caveat">
+                      <span class="tag tag--review">In review, not shipped</span>
+                      {film.caveat.note}{" "}
+                      <a href={film.caveat.href}>Read the boundary</a>.
+                    </p>
+                  )}
+                  <details class="film__tx">
+                    <summary>
+                      <span class="film__txlab">Transcript</span>
+                      <span class="film__txhint mono">every word on the screen</span>
+                    </summary>
+                    <ol class="film__txlist">
+                      {film.transcript.map((line) => (
+                        <li>{line}</li>
+                      ))}
+                    </ol>
+                  </details>
+                  <a class="film__jump mono" href={`#${film.section.id}`}>
+                    <span class="film__jumpn" aria-hidden="true">{film.section.n}</span>
+                    In full · {film.section.label}
+                    <span class="btn-arrow" aria-hidden="true">→</span>
+                  </a>
+                </figcaption>
+              </figure>
+            </li>
+          ))
+        }
+      </ol>
+
+      <p class="reg__foot mono">
+        Rendered from <code>docs/superpowers/2026-09-02-memory-mcp-v2-design.md</code> and the
+        sections below · every frame's copy is in the transcripts
+      </p>
     </div>
   </section>
 
@@ -3886,6 +3991,273 @@ const PARTS = [
     font-size: var(--t-eyebrow);
     color: var(--text-dim);
     --opsz: var(--opsz-caption);
+  }
+
+
+  /* ---------- the films ----------
+     A prologue band between the hero and Part one. It borrows the
+     register's rules and eyebrows but takes no numeral: these are
+     doorways into the numbered sections, not one of them.
+
+     No autoplay, no sound, no motion the reader did not ask for — so
+     there is nothing here for prefers-reduced-motion to switch off
+     except the hover lift, which is opted into under no-preference the
+     way globals.css does it. */
+
+  .films {
+    border-top: 1px solid var(--ink-line-bright);
+    background: linear-gradient(180deg, var(--mercury-wash), transparent 45%);
+    scroll-margin-top: 5rem;
+  }
+
+  .films__head {
+    display: grid;
+    gap: var(--s-3);
+    justify-items: start;
+    margin-bottom: var(--s-7);
+  }
+
+  .films__head h2 {
+    max-width: 22ch;
+    margin: 0;
+  }
+
+  .films__head .lead {
+    max-width: 62ch;
+  }
+
+  /* Two up on a wide screen, one up below — stated as a count rather than
+     an auto-fit minimum, because auto-fit found room for three at 1440px
+     and three across puts the films' burned-in 1080p type under 400px of
+     frame, where it stops being readable. The films exist to be read.
+     Five cards then land 2 + 2 + 1; the fifth keeps its column width
+     instead of stretching, so every frame on the page is the same size. */
+  .films__grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-6) var(--s-5);
+  }
+
+  @media (min-width: 62rem) {
+    .films__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .film {
+    margin: 0;
+    display: grid;
+    gap: var(--s-4);
+    align-content: start;
+    height: 100%;
+    padding: var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-lg);
+    background: var(--glass-bg);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .film {
+      transition:
+        border-color var(--dur-fast) ease,
+        box-shadow var(--dur-fast) ease;
+    }
+  }
+
+  .film:hover,
+  .film:focus-within {
+    border-color: color-mix(in oklab, var(--ember-core) 34%, var(--ink-line));
+    box-shadow: var(--shadow-glass-soft);
+  }
+
+  /* The player carries the poster until the reader presses play. Both are
+     16:9, so the ratio is declared rather than inferred — the card must
+     not reflow when the metadata lands. */
+  .film__player {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--r-md);
+    border: 1px solid var(--ink-line-bright);
+    background: var(--ink-void);
+    /* The posters are letterboxed frames of the film itself: contain, so a
+       card wider than 16:9 never crops the type out of the frame. */
+    object-fit: contain;
+  }
+
+  .film__player:focus-visible {
+    outline: 2px solid var(--ember-core);
+    outline-offset: 2px;
+  }
+
+  .film__cap {
+    display: grid;
+    gap: var(--s-3);
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .film__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-2);
+    margin: 0;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  .film__time {
+    color: var(--ember-bright);
+  }
+
+  .film__h {
+    margin: 0;
+    font-size: var(--t-h4);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+    --opsz: var(--opsz-lead);
+  }
+
+  .film__blurb {
+    margin: 0;
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  /* A film that shows more than `main` ships says so on the card, above
+     the fold of the transcript. */
+  .film__caveat {
+    margin: 0;
+    padding: var(--s-3);
+    border: 1px solid color-mix(in oklab, var(--status-estimated) 34%, var(--ink-line));
+    border-radius: var(--r-sm);
+    background: var(--ink-surface);
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .film__caveat .tag {
+    margin-right: var(--s-2);
+  }
+
+  /* The text alternative. These films are silent and every word is burned
+     into the frame, so a caption track would only re-draw type the reader
+     can already see and would still leave a reader who cannot see the
+     frame with nothing. The transcript is the alternative (WCAG 2.2
+     SC 1.2.1), it is in the DOM whether or not it is open, and the
+     player's accessible description points at the line above it. */
+  .film__tx {
+    width: 100%;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-sm);
+    background: var(--ink-surface);
+  }
+
+  .film__tx summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-3);
+    padding: var(--s-3);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .film__tx summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .film__tx summary:focus-visible {
+    outline: 2px solid var(--ember-core);
+    outline-offset: -2px;
+    border-radius: var(--r-sm);
+  }
+
+  .film__txlab {
+    font-size: var(--t-caption);
+    font-weight: var(--wght-semibold);
+    color: var(--text-bright);
+  }
+
+  .film__txlab::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: var(--s-2);
+    color: var(--ember-bright);
+  }
+
+  .film__tx[open] .film__txlab::before {
+    content: "▾";
+  }
+
+  .film__txhint {
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--text-dim);
+    --opsz: var(--opsz-caption);
+  }
+
+  /* Block, not grid. A grid container makes its children grid items,
+     which stops them being `display: list-item`, which silently deletes
+     every marker — and the numbers are the half that says "in this
+     order". Spacing comes from a margin between siblings instead. */
+  .film__txlist {
+    margin: 0;
+    /* globals.css resets every list to `list-style: none`, so the numbers
+       have to be asked for back by name. */
+    list-style: decimal;
+    padding: 0 var(--s-3) var(--s-3) calc(var(--s-3) + 1.6rem);
+    font-size: var(--t-caption);
+    line-height: var(--leading-base);
+    color: var(--text-mute);
+  }
+
+  .film__txlist li + li {
+    margin-top: var(--s-2);
+  }
+
+  .film__txlist li::marker {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: var(--t-eyebrow);
+  }
+
+  .film__jump {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--s-2);
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--text-mute);
+    text-decoration: none;
+    --opsz: var(--opsz-caption);
+  }
+
+  .film__jump:hover {
+    color: var(--ember-bright);
+  }
+
+  .film__jumpn {
+    color: var(--ember-bright);
+  }
+
+  @media (max-width: 720px) {
+    .film {
+      padding: var(--s-3);
+    }
   }
 
   /* ---------- 11 · the atlas ----------
