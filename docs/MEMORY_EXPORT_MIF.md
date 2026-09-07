@@ -296,7 +296,12 @@ are written as they are produced rather than joined first.
 reason and exports the authority store. Never a silent skip. The cloud vault
 reader (§8) and the legacy plaintext readers (§1 S2/S2b) are later releases; the
 classifier already carries the `cloud` branch (§3.1 row 15) so wiring the reader
-does not touch classification.
+does not touch classification. The exporter passes `isCloudOnly: false`
+explicitly at the classify call site — wired, not defaulted: every row BB-E
+classifies comes from the authority store, which is local by construction, so
+row 15's shape cannot arise from these sources and no cloud-only approved row
+can be mislabelled `v51_backfill`. The row-15 tests pin the branch the future
+vault reader will feed.
 
 ### D-BB-E-9 — section 02 carries proven verdicts only
 
@@ -542,7 +547,7 @@ in review order, one commit per finding.
 | R5 | `verify` does not detect a modified segment | **fixed** — `hashtree.json` carries one unkeyed `sha256` per 4 MiB chunk of every segment file (`segment_sha256`, over ciphertext, so it leaks nothing); `verify` recomputes the stream and names the segment file and chunk on mismatch. A one-bit flip fails |
 | R6 | p5-check invents a store id; `concurrent_writes` stays false | **fixed** — both lanes refuse an identity-less store with `EXPORT_STORE_IDENTITY_ABSENT` via one shared `requireStoreID`; `run` sets `report.concurrent_writes` from the head assertion, and the moved-head test pins it |
 | R7 | seven classification tests can skip green | **fixed** — the shared helper `XCTFail`s and throws instead of `XCTSkip` (proved red by pointing one test at a missing row); M-20 pins the real seq; the tie test asserts each chain state separately |
-| R8 | rows 1/5/10/15 uncovered; `isCloudOnly` unwired; absent label raises stored-`rejected` | open |
+| R8 | rows 1/5/10/15 uncovered; `isCloudOnly` unwired; absent label raises stored-`rejected` | **fixed** — row 1 asserts `human`/`human_verdict`; rows 5/10/15 and both row-11 raisings have tests; `isCloudOnly` is passed explicitly (`false`: authority-store rows are local by construction, D-BB-E-8) |
 | R9 | `store_id` comment claims an installation identity | open |
 
 D-0031 layout alignment (segment names, hash-tree domains, `manifest.sig`

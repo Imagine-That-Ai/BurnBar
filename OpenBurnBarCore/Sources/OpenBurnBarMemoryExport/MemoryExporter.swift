@@ -269,7 +269,16 @@ public struct MemoryExporter: Sendable {
                 auditRows: auditBySubject[memory.id] ?? [],
                 bodySnapshotUpdatedAt: MemoryExportTimestamp.parse(stores.snapshotsByMemoryID[memory.id]?.updatedAt),
                 chain: chain,
-                auditTableAvailable: snapshot.auditTableAvailable
+                auditTableAvailable: snapshot.auditTableAvailable,
+                // R8 — wired, not defaulted. Every row BB-E classifies comes
+                // from the authority store, which is local by construction, so
+                // no row here can be cloud-only (§3.1 row 15's shape cannot
+                // arise from these sources). The cloud vault is an unread
+                // `partial_sources` entry (D-BB-E-8); when its reader lands it
+                // supplies `true` for vault rows no local row 1-3 names — the
+                // branch it feeds is pinned by the row-15 tests, so the wiring
+                // will not touch classification.
+                isCloudOnly: false
             ))
             if memory.reviewStatus == MIFReviewStatus.approved.rawValue { report.approvedRowsInSource += 1 }
             for finding in classification.findings { record(finding, sample: memory.id) }

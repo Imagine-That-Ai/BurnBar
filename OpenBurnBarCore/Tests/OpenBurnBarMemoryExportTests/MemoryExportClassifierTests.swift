@@ -48,6 +48,39 @@ final class MemoryExportClassifierTests: XCTestCase {
         XCTAssertEqual(result.verdictAuditSeq, 1)
     }
 
+    // MARK: - Row 1: proven human reject
+
+    /// The review's uncovered exit: nothing asserted `originKind` or
+    /// `importOriginDetail` on it. A stored `approved` the human rejected
+    /// exports `rejected` + `human`, naming the audit row section 09 carries.
+    func test_provenHumanReject_isRowOne() throws {
+        let queue = try MemoryExportFixtureStore.makeQueue()
+        try queue.write { db in
+            try MemoryExportFixtureStore.insertAppMemory(
+                db,
+                id: "R1",
+                body: "Alberto killed the auto-tagging experiment.",
+                reviewStatus: "approved",
+                createdAt: bodyTime,
+                updatedAt: verdictTime
+            )
+            try MemoryExportFixtureStore.appendAudit(
+                db,
+                action: "memory.reject",
+                projectID: "chat:user-1",
+                subjectID: "R1",
+                labels: ["memory_id:R1", "review_status:rejected", "source_kind:chat"],
+                ts: verdictTime
+            )
+        }
+        let result = try classify(queue, id: "R1")
+        XCTAssertEqual(result.reviewStatus, .rejected)
+        XCTAssertEqual(result.originKind, .human)
+        XCTAssertEqual(result.importOriginDetail, .humanVerdict)
+        XCTAssertEqual(result.verdictAuditSeq, 1)
+        XCTAssertEqual(result.originalReviewStatus, "approved")
+    }
+
     // MARK: - Row 8: approve, then the body was rewritten under it
 
     func test_bodyMutatedAfterVerdict_quarantinesAndSaysWhy() throws {
@@ -662,6 +695,129 @@ final class MemoryExportClassifierTests: XCTestCase {
                 XCTAssertEqual(result.verdictAuditSeq, 7)
             }
         }
+    }
+
+    // MARK: - Rows 5, 10, 15 and 11: the uncovered exits (R8)
+
+    /// §3.1 row 5 — a label-only MCP approval is nobody's verdict.
+    func test_mcpLabelOnlyApproval_isRowFive() {
+        var memory = row(id: "A5")
+        memory.reviewStatus = "approved"
+        let audit = MemoryExportAuditRow(
+            seq: 3,
+            ts: "2026-01-02T00:00:00.000Z",
+            actor: "local-mcp",
+            action: "memory.approve",
+            subjectID: "A5",
+            labels: ["review_status:approved"]
+        )
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [audit],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse(bodyTime),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 1)
+        ))
+        XCTAssertEqual(result.reviewStatus, .quarantined)
+        XCTAssertEqual(result.originKind, .importOrigin)
+        XCTAssertEqual(result.importOriginDetail, .mcpDefault)
+    }
+
+    /// §3.1 row 10 — stored `quarantined` with no verdict evidence stays put.
+    func test_storedQuarantined_isRowTen() {
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: row(id: "A10"),
+            auditRows: [],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse(bodyTime),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 0)
+        ))
+        XCTAssertEqual(result.reviewStatus, .quarantined)
+        XCTAssertEqual(result.originKind, .importOrigin)
+        XCTAssertEqual(result.importOriginDetail, .asStored)
+    }
+
+    /// §3.1 row 15 — a cloud-only approved row is a rules invariant, not a
+    /// verdict — unless a local row 1–3 names the same memory, in which case
+    /// the verdict wins.
+    func test_cloudOnlyApproved_isRowFifteen() {
+        var memory = row(id: "A15c")
+        memory.reviewStatus = "approved"
+        let cloudOnly = MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse(bodyTime),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 0),
+            isCloudOnly: true
+        )
+        let held = MemoryExportClassifier.classify(cloudOnly)
+        XCTAssertEqual(held.reviewStatus, .quarantined)
+        XCTAssertEqual(held.originKind, .importOrigin)
+        XCTAssertEqual(held.importOriginDetail, .cloud)
+
+        // ...unless a local row 1–3 names the same memory.
+        var proven = cloudOnly
+        proven.auditRows = [MemoryExportAuditRow(
+            seq: 5,
+            ts: "2026-01-02T00:00:00.000Z",
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A15c",
+            labels: ["review_status:approved"]
+        )]
+        let verdict = MemoryExportClassifier.classify(proven)
+        XCTAssertEqual(verdict.reviewStatus, .approved)
+        XCTAssertEqual(verdict.originKind, .human)
+        XCTAssertEqual(verdict.importOriginDetail, .humanVerdict)
+    }
+
+    /// §3.1 row 11 — an absent verdict label on a stored-`rejected` memory
+    /// exports `rejected`, never quarantined: quarantining it would put a
+    /// memory the user rejected back in the review queue.
+    func test_storedRejectedWithAnAbsentLabel_isNeverRaised() {
+        var memory = row(id: "A11")
+        memory.reviewStatus = "rejected"
+        let audit = MemoryExportAuditRow(
+            seq: 4,
+            ts: "2026-01-02T00:00:00.000Z",
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A11",
+            labels: ["memory_id:A11"]
+        )
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [audit],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse(bodyTime),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 1)
+        ))
+        XCTAssertEqual(result.reviewStatus, .rejected)
+        XCTAssertEqual(result.originKind, .importOrigin)
+        XCTAssertEqual(result.importOriginDetail, .unknownValue)
+        XCTAssertTrue(result.findings.contains(.reviewStatusUnknownValue))
+    }
+
+    /// Rows 7/8/9 raise nothing either: a stored `rejected` under a broken
+    /// chain stays `rejected`, with the broken-chain finding.
+    func test_storedRejectedOnABrokenChain_isNeverRaised() {
+        var memory = row(id: "A11b")
+        memory.reviewStatus = "rejected"
+        let audit = MemoryExportAuditRow(
+            seq: 9,
+            ts: "2026-01-03T00:00:00.000Z",
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A11b",
+            labels: ["review_status:approved"]
+        )
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [audit],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse(bodyTime),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 0, brokenAt: [9], rowsWalked: 1)
+        ))
+        XCTAssertEqual(result.reviewStatus, .rejected)
+        XCTAssertEqual(result.originKind, .importOrigin)
+        XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
+        XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
     }
 
     // MARK: - Helpers
