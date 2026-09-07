@@ -596,7 +596,16 @@ Code-index write tools are explicit, daemon-scoped, and disabled until
 `OPENBURNBAR_LOCAL_MCP_PROFILE=operator` is set. Code writes are
 fail-closed: `burnbar_index_project`, `burnbar_watch_project`, and
 `burnbar_explore` require the daemon socket and do not fall back to direct
-SQLite writes. Memory writes (`burnbar_remember`, `burnbar_memorize`,
+SQLite writes. On a signed install the daemon admits only first-party signed
+peers, so those three travel the signed courier as
+`openburnbar-cli code-index-project | code-watch-project | code-explore` — the
+same route `search-sql` and `memory-remember` take. Code index *reads* were
+always covered, because they are plain SELECTs served by `search-sql`; these
+three are not, and before those subcommands existed they fell through to a
+direct socket connection the daemon refuses with
+`code=-32001 … peer failed first-party code-signature verification`.
+`tests/test_signed_courier_command_parity.py` holds the two command tables
+together. Memory writes (`burnbar_remember`, `burnbar_memorize`,
 `burnbar_forget`, …) go to the MCP-owned memory engine store described above
 and never touch the app database; the daemon mirror is best-effort.
 `burnbar_record_hermes_usage` never touches the SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is

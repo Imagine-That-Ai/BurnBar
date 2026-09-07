@@ -249,7 +249,8 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .health,
         // The signed CLI courier the Python MCP uses on signed installs
         // (`openburnbar-cli search-sql|memory-remember|memory-forget|
-        // memory-model-policy|memory-sync-inbox-list|memory-sync-inbox-ack`).
+        // memory-model-policy|memory-sync-inbox-list|memory-sync-inbox-ack|
+        // code-index-project|code-watch-project|code-explore`).
         // `BurnBarCLISocketClient` implements every entry below.
         .searchSQL,
         .memoryRemember,
@@ -272,6 +273,11 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .codeWatchProject,
         .codeSearch,
         .codeIndexStatus,
+        // `code-explore` courier command. `codeExplore` is `codeRead` — the
+        // daemon's explore never indexes on demand, it reports `degraded` when
+        // no checkpoint exists — so admitting it here grants the CLI peer no
+        // authority it did not already have through `codeSearch`.
+        .codeExplore,
         .clientAttach,
         .clientClaimControl,
         .runCreate,

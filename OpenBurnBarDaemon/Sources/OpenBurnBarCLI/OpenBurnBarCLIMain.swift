@@ -134,6 +134,25 @@ struct BurnBarCLIExecutable {
             }
         }
 
+        // Project code memory. Reads already reached the daemon through
+        // `search-sql`; these are the three operations that could not, and so
+        // died at the first-party peer gate on every signed install. The name
+        // table, the 256 KiB cap and the runner dispatch live in
+        // `BurnBarCLIRunner.ProjectCodeCourierCommand`, where they are unit
+        // tested; this block owns only stdin, stdout and the exit code — the
+        // three things `@main` cannot hand to a test.
+        if arguments.count == 1,
+           let courierCommand = BurnBarCLIRunner.ProjectCodeCourierCommand(rawValue: arguments[0]) {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                writeLine(try courierCommand.run(BurnBarCLIRunner(client: client), input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
         if arguments == ["privacy-rpc"] {
             do {
                 let input = FileHandle.standardInput.readDataToEndOfFile()

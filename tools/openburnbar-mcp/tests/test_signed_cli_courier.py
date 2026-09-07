@@ -557,7 +557,7 @@ def test_courier_transport_failure_is_reported_unreachable_not_rejected(
         )
 
     monkeypatch.setattr(server.subprocess, "run", dead_socket)
-    outcome = server._signed_memory_write_authority("daemon.memory.remember", {})
+    outcome = server._signed_daemon_write_authority("daemon.memory.remember", {})
     assert outcome is not None
     assert outcome["code"] == "DAEMON_WRITE_REQUIRED"
 
@@ -565,6 +565,6 @@ def test_courier_transport_failure_is_reported_unreachable_not_rejected(
         return types.SimpleNamespace(returncode=1, stdout=b"", stderr=b"privacy_rpc_error code=-32602 message=nope\n")
 
     monkeypatch.setattr(server.subprocess, "run", daemon_refusal)
-    refused = server._signed_memory_write_authority("daemon.memory.remember", {})
+    refused = server._signed_daemon_write_authority("daemon.memory.remember", {})
     assert refused is not None
     assert refused["code"] == "DAEMON_WRITE_REJECTED"
