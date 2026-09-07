@@ -505,6 +505,20 @@ from the action verb — BurnBar writes `memory.reject` for `approved →
 quarantined` too, and reading the verb would turn "send back to review" into a
 permanent, unrecallable rejection.
 
+**An unproven verdict decides nothing, in either direction.** §3.1 row 7 —
+`memory.approve` exists but conjunct 5 fails — exports `quarantined` + the
+finding `verdict_on_broken_chain`, and that is now literally what BB-E exports.
+It used to LOWER the row to `rejected` whenever any candidate in the unverifiable
+span carried a `review_status:rejected` label. Safe in direction, and an invented
+rule with a cost in the other one (F-5): `memory_audit` is a three-writer table
+with no lock and a self-declared `actor`, so a writer who can append a rejection
+and break or fork the chain around it could force **any** memory to `rejected` —
+and §4's merge makes a rejection permanent and unrecallable, which is the exact
+sentence M-13 uses about the mirror-image defect. Two clamps remain and no third:
+a stored `rejected` is never raised (row 11), and row 8's winner — a placeable
+verdict on an intact chain whose body was rewritten under it — still clamps on
+its own label, because a body rewrite does not un-reject a rejection.
+
 **Latest-wins is segment-aware**, which is one rule with two cases. Inside one
 intact segment — every candidate chain-verified, in no `chain_broken_at[]` span
 and in no `chain_forks[]` member — order by **`seq DESC`**, because `seq` is the
@@ -679,7 +693,7 @@ in review order, one commit per finding.
 
 | # | Finding | Status |
 |---|---|---|
-| R1 | `latest_verdict` promotes a clock-skewed approve when a sibling audit row is untrustworthy | **fixed** — the regime is decided from the row's own candidates and conjunct 5 is checked on every candidate that can win; the review's end-to-end case exports `rejected`. Test fails before, passes after |
+| R1 | `latest_verdict` promotes a clock-skewed approve when a sibling audit row is untrustworthy | **fixed** — the regime is decided from the row's own candidates and conjunct 5 is checked on every candidate that can win; the review's end-to-end case exports `quarantined` + `verdict_on_broken_chain` (it exported `rejected` until F-5 removed the candidate-label lowering — the R1 property, that the clock-skewed approve is never promoted and nothing unplaceable leaves as `human`, is unchanged). Test fails before, passes after |
 | R2 | `ts` parsed as an instant; tie-break reads the action verb | **fixed** — `ts` compared as the lexicographic string §3.1 specifies; the tie is won by the `review_status:` label, never the verb (M-13). Divergence and tie tests |
 | R3 | reconciliation cannot fail | **fixed** — `source_rows` is measured once at the source query and never touched again; a row counted but not held fails its table with `source_unreadable` and holds the bundle. A test drives `balanced == false` |
 | R4 | `manifest.recipient_key_id` is the wrong string, and the HPKE aad | **fixed** — emits the `rcp_` id (D-0025); the manifest field is the string the wrap was sealed under, proved by opening the wrap with it. Schema re-vendored at `3332bd5b` (`a008cdef…`), validation at HEAD → 0 failures |
@@ -705,3 +719,4 @@ Against `docs/memory/reviews/REVIEW-BB-EXPORTER-3.md` (verdict
 | F-2 | the bundle root is not D-0031 ruling 1's fold, and no test pins it | **fixed** — the section subroots fold with the same `HMAC(key, 0x01 ‖ l ‖ r)` and last-node promotion as the tree beneath them, over the RAW 32 bytes in section order (stated in D-BB-E-5). Pinned to the review's own independently computed value `a3d92105…`; mutating the fold domain byte fails it |
 | F-3 | three of eleven sections ship a 0-byte `.seg` no AEAD can open | **fixed** — an empty section seals the empty string: `{bytes: 28, segments: 1}` and one real segment that opens to zero plaintext bytes, so every declared segment of every bundle opens. `{bytes: 0, segments: 0}` was refused by the contract (`segments` is `minimum: 1`) and §3 says so. `verify` accepts the bundle and now NAMES a segment shorter than an AEAD seal |
 | F-4 | `manifest.not_exported` double-counts across tables | **fixed as a definition, pinned as arithmetic** — the manifest's `not_exported` is the per-reason sum of every table's not-exported SOURCE ROWS (§10's sum is per table), so one forgotten memory is two rows in two tables against one tombstone record. D-BB-E-15 states it, a test asserts 1 + 1 = 2 with one record, and `verify` names `not_exported.<reason>` when the manifest and `report.json` disagree |
+| F-5 | row 7 exports `rejected` where §3.1 says `quarantined` | **fixed** — row 7 is `quarantined` + `verdict_on_broken_chain`, as written. The candidate-label lowering is gone and its vector is closed by a test: a writer who appends a rejection and breaks the chain around it can no longer force a row to `rejected`. Restoring the scan turns five classifier tests red |

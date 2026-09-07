@@ -267,7 +267,13 @@ final class MemoryExportClassifierTests: XCTestCase {
         XCTAssertFalse(chain.isTrustworthy(seq: 5), "the rejection is not")
 
         let result = try classify(queue, id: "row-leak")
-        XCTAssertEqual(result.reviewStatus, .rejected, "the chain-later human rejection is not discarded")
+        // §3.1 row 7 to the letter: `quarantined` + `verdict_on_broken_chain`.
+        // The R1 property is unchanged and is the one that matters — the
+        // clock-skewed approve is NOT promoted, and nothing in an unverifiable
+        // span leaves as `human` — while the row itself goes back in the review
+        // queue rather than being lowered by a verdict nobody could place (F-5).
+        XCTAssertEqual(result.reviewStatus, .quarantined, "an unplaceable verdict decides nothing")
+        XCTAssertNotEqual(result.reviewStatus, .approved, "the clock-skewed approve is never promoted")
         XCTAssertEqual(result.originKind, .importOrigin, "no verdict in an unverifiable span is `human`")
         XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
         XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
@@ -483,7 +489,7 @@ final class MemoryExportClassifierTests: XCTestCase {
             bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
             chain: MemoryExportChainVerification(verifiedThroughSeq: 99, brokenAt: [100], rowsWalked: 2)
         ))
-        XCTAssertEqual(result.reviewStatus, .rejected)
+        XCTAssertEqual(result.reviewStatus, .quarantined, "§3.1 row 7's own word")
         XCTAssertEqual(result.originKind, .importOrigin)
         XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
         XCTAssertNil(result.verdictAuditSeq)
@@ -552,10 +558,10 @@ final class MemoryExportClassifierTests: XCTestCase {
             bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
             chain: MemoryExportChainVerification(verifiedThroughSeq: 99, brokenAt: [100], rowsWalked: 2)
         ))
-        // Not `quarantined`: the sibling rejection is unrefuted too, and §3.1
-        // row 11's "never raised" is the direction that cannot promote text no
-        // human read.
-        XCTAssertEqual(result.reviewStatus, .rejected)
+        // `quarantined`, which is what §3.1 row 7 says and all it says: neither
+        // candidate can be placed, so neither decides anything. Lowering the row
+        // on the sibling's label was the invented rule F-5 removed.
+        XCTAssertEqual(result.reviewStatus, .quarantined)
         XCTAssertEqual(result.originKind, .importOrigin)
         XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
         XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
@@ -681,8 +687,9 @@ final class MemoryExportClassifierTests: XCTestCase {
             ))
             if broken {
                 // The tie still picks the reject label — but case 2 decides
-                // only WHICH finding is reported, so it leaves as row 7.
-                XCTAssertEqual(result.reviewStatus, .rejected)
+                // only WHICH finding is reported, so it leaves as row 7, and
+                // row 7 is `quarantined` whichever candidate won (F-5).
+                XCTAssertEqual(result.reviewStatus, .quarantined)
                 XCTAssertEqual(result.originKind, .importOrigin)
                 XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
                 XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
@@ -818,6 +825,74 @@ final class MemoryExportClassifierTests: XCTestCase {
         XCTAssertEqual(result.originKind, .importOrigin)
         XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
         XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
+    }
+
+    // MARK: - F-5: breaking a chain cannot lower a row
+
+    /// The cost of the rule F-5 removed, as a test.
+    ///
+    /// `unprovenStatus` used to return `rejected` whenever ANY candidate in the
+    /// span carried a `review_status:rejected` label. `memory_audit` is a
+    /// three-writer table with no lock and a self-declared `actor`, so a writer
+    /// who can append a `memory.reject{review_status:rejected}` row and break or
+    /// fork the chain around it could force **any** memory to `rejected` — and
+    /// §4's merge makes a rejection permanent and unrecallable, which is the
+    /// exact sentence M-13 uses about the mirror-image defect.
+    ///
+    /// §3.1 row 7 exports `quarantined`, so the vector closes: the forged
+    /// rejection is unplaceable, it decides nothing, and the row goes back in
+    /// the review queue carrying its finding.
+    func test_aChainBreakerCannotLowerAQuarantinedRowToRejected() {
+        var memory = row(id: "A19")
+        memory.reviewStatus = "quarantined"
+        let approve = MemoryExportAuditRow(
+            seq: 40,
+            ts: "2026-01-01T00:00:00.000Z",
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A19",
+            labels: ["review_status:approved"]
+        )
+        // The appended row, inside the span the same writer broke.
+        let forgedReject = MemoryExportAuditRow(
+            seq: 41,
+            ts: "2026-01-02T00:00:00.000Z",
+            actor: "app",
+            action: "memory.reject",
+            subjectID: "A19",
+            labels: ["review_status:rejected"]
+        )
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [approve, forgedReject],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 39, brokenAt: [41], rowsWalked: 2)
+        ))
+        XCTAssertEqual(result.reviewStatus, .quarantined, "a verdict nobody can place lowers nothing")
+        XCTAssertEqual(result.originKind, .importOrigin)
+        XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
+        XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
+        XCTAssertEqual(result.originalReviewStatus, "quarantined", "nothing is silently rewritten")
+
+        // And the two clamps that remain are unmoved: a stored `rejected` is
+        // never raised (row 11), and row 8's winner still clamps on its own
+        // label.
+        var stored = memory
+        stored.reviewStatus = "rejected"
+        XCTAssertEqual(
+            MemoryExportClassifier.classify(MemoryExportClassifierInput(
+                memory: stored,
+                auditRows: [approve, forgedReject],
+                bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
+                chain: MemoryExportChainVerification(verifiedThroughSeq: 39, brokenAt: [41], rowsWalked: 2)
+            )).reviewStatus,
+            .rejected
+        )
+        XCTAssertEqual(
+            MemoryExportClassifier.unprovenStatus(stored: "quarantined", winner: forgedReject),
+            .rejected,
+            "row 8's winner is a placeable verdict on an intact chain, and its label still clamps"
+        )
     }
 
     // MARK: - Helpers
