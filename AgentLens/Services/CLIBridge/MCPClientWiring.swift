@@ -7,9 +7,20 @@ import Foundation
 // agent". BurnBar has safely rewritten eight agent config formats for gateway
 // routing (`RoutingClientWiring`); this points the same discipline at MCP:
 //
-//   Claude Code — `~/.claude.json`, top-level `mcpServers` object
-//   Cursor      — `~/.cursor/mcp.json`, `mcpServers` object
-//   Codex CLI   — `~/.codex/config.toml`, sentinel-fenced `[mcp_servers.*]` block
+//   Claude Code    — `~/.claude.json`, top-level `mcpServers` object
+//   Cursor         — `~/.cursor/mcp.json`, `mcpServers` object
+//   Codex CLI      — `~/.codex/config.toml`, sentinel-fenced `[mcp_servers.*]` block
+//   Factory Droid  — `~/.factory/mcp.json`, `mcpServers` object with `type: "stdio"`
+//   Antigravity    — `~/.gemini/config/mcp_config.json`, `mcpServers` object
+//   Gemini CLI     — `~/.gemini/settings.json`, top-level `mcpServers` object
+//   Muse           — `$XDG_CONFIG_HOME/muse/settings.json`, top-level `mcpServers`
+//                    object with `transport: "stdio"` (and a required
+//                    `schema_version` at the root)
+//
+// Every path and key above is pinned to the client's own documentation or, for
+// Muse, to the schema embedded in the shipped binary; the citation lives next
+// to the code that writes it (`configURL(for:)`, `serverEntryJSON(for:target:)`,
+// `requiredRootKeys(for:)`).
 //
 // Rules, identical in spirit to the routing wirer:
 //   * Surgical edits only: every unrelated key in the user's config survives
@@ -27,12 +38,20 @@ enum MCPClientWiringTarget: String, CaseIterable, Sendable {
     case claudeCode
     case cursor
     case codex
+    case droid
+    case antigravity
+    case geminiCLI
+    case muse
 
     var displayName: String {
         switch self {
         case .claudeCode: return "Claude Code"
         case .cursor: return "Cursor"
         case .codex: return "Codex CLI"
+        case .droid: return "Factory Droid"
+        case .antigravity: return "Antigravity CLI"
+        case .geminiCLI: return "Gemini CLI"
+        case .muse: return "Muse"
         }
     }
 }
@@ -77,13 +96,28 @@ struct MCPClientWiring {
 
     let fileManager: FileManager
     let home: URL
+    /// XDG config root. Muse reads its settings from
+    /// `$XDG_CONFIG_HOME/muse/settings.json`, falling back to `~/.config`;
+    /// every other client here is anchored at `home`.
+    let configHome: URL
 
     init(
         fileManager: FileManager = .default,
-        home: URL = FileManager.default.homeDirectoryForCurrentUser
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        configHome: URL? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.fileManager = fileManager
         self.home = home
+        self.configHome = configHome ?? Self.resolvedConfigHome(home: home, environment: environment)
+    }
+
+    static func resolvedConfigHome(home: URL, environment: [String: String]) -> URL {
+        guard let raw = environment["XDG_CONFIG_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              raw.isEmpty == false else {
+            return home.appendingPathComponent(".config")
+        }
+        return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath)
     }
 
     /// Returns the path the wirer would modify — for the UI's
@@ -93,6 +127,24 @@ struct MCPClientWiring {
         case .claudeCode: return home.appendingPathComponent(".claude.json")
         case .cursor: return home.appendingPathComponent(".cursor/mcp.json")
         case .codex: return home.appendingPathComponent(".codex/config.toml")
+        // Factory: "User-level: `~/.factory/mcp.json`" with an `mcpServers`
+        // object — https://docs.factory.ai/cli/configuration/mcp
+        case .droid: return home.appendingPathComponent(".factory/mcp.json")
+        // Google Antigravity: "Global: `~/.gemini/config/mcp_config.json`"
+        // (workspace-local `.agents/mcp_config.json` is deliberately not
+        // touched) — https://antigravity.google/docs/cli/mcp/
+        case .antigravity: return home.appendingPathComponent(".gemini/config/mcp_config.json")
+        // Gemini CLI: "Location: `~/.gemini/settings.json`", `mcpServers.<name>`
+        // — https://geminicli.com/docs/reference/configuration
+        case .geminiCLI: return home.appendingPathComponent(".gemini/settings.json")
+        // Muse: `SettingsFile` is loaded from `$XDG_CONFIG_HOME/muse/settings.json`
+        // (default `~/.config/muse/settings.json`) and carries an `mcpServers`
+        // member. Verified against the shipped `muse` binary's own schema
+        // (`struct SettingsFile { … mcpServers, mcp_servers … }`,
+        // `struct McpServerSettings { enabled, mode, transport, command, args,
+        // env, framing, url, headers }`) and by round-tripping a written entry
+        // through `muse exec --provider echo`.
+        case .muse: return configHome.appendingPathComponent("muse/settings.json")
         }
     }
 
@@ -102,7 +154,7 @@ struct MCPClientWiring {
     func isWired(target: MCPClientWiringTarget) -> Bool {
         let url = configURL(for: target)
         switch target {
-        case .claudeCode, .cursor:
+        case .claudeCode, .cursor, .droid, .antigravity, .geminiCLI, .muse:
             guard let root = (try? readJSONObject(at: url)) ?? nil, // try?-ok(read probe; unreadable config reads as not-wired)
                   let servers = root["mcpServers"] as? UntypedJSONObject else { return false }
             return servers[Self.serverKey] != nil
@@ -115,7 +167,7 @@ struct MCPClientWiring {
     @discardableResult
     func wire(target: MCPClientWiringTarget, launch: MCPServerLaunch) throws -> MCPClientWiringChange {
         switch target {
-        case .claudeCode, .cursor:
+        case .claudeCode, .cursor, .droid, .antigravity, .geminiCLI, .muse:
             return try wireJSON(target: target, launch: launch)
         case .codex:
             return try wireCodexTOML(launch: launch)
@@ -125,32 +177,70 @@ struct MCPClientWiring {
     @discardableResult
     func unwire(target: MCPClientWiringTarget) throws -> MCPClientWiringChange {
         switch target {
-        case .claudeCode, .cursor:
+        case .claudeCode, .cursor, .droid, .antigravity, .geminiCLI, .muse:
             return try unwireJSON(target: target)
         case .codex:
             return try unwireCodexTOML()
         }
     }
 
-    // MARK: - JSON targets (Claude Code, Cursor)
+    // MARK: - JSON targets (Claude Code, Cursor, Droid, Antigravity, Gemini CLI, Muse)
 
-    private func serverEntryJSON(for launch: MCPServerLaunch) -> UntypedJSONObject {
-        [
+    /// Every JSON client above takes the same `command` / `args` / `env`
+    /// triple under `mcpServers.<name>`; these are the extra keys each
+    /// client's own schema wants on top of it.
+    private func serverEntryJSON(for launch: MCPServerLaunch, target: MCPClientWiringTarget) -> UntypedJSONObject {
+        var entry: UntypedJSONObject = [
             "command": launch.command,
             "args": launch.arguments,
             "env": ["BURNBAR_MCP_TOOLSET": launch.toolset]
         ]
+        switch target {
+        // Factory documents `"type": "stdio"` on local-process servers
+        // (optional, defaults to stdio) — https://docs.factory.ai/cli/configuration/mcp
+        case .droid:
+            entry["type"] = "stdio"
+        // Muse's `McpServerSettings` rejects an entry whose transport cannot be
+        // inferred ("transport requires command or url"); naming it removes the
+        // ambiguity the validator complains about.
+        case .muse:
+            entry["transport"] = "stdio"
+        case .claudeCode, .cursor, .codex, .antigravity, .geminiCLI:
+            break
+        }
+        return entry
+    }
+
+    /// Keys the client's schema requires at the ROOT of a file we might be
+    /// creating from nothing.
+    ///
+    /// Muse refuses to load a settings file without `schema_version` —
+    /// "malformed settings file at …: missing field `schema_version`" — so a
+    /// bare `{"mcpServers": …}` would break the CLI we were trying to help.
+    /// Existing values are never overwritten.
+    private func requiredRootKeys(for target: MCPClientWiringTarget) -> UntypedJSONObject {
+        switch target {
+        case .muse:
+            return ["schema_version": 1]
+        case .claudeCode, .cursor, .codex, .droid, .antigravity, .geminiCLI:
+            return [:]
+        }
     }
 
     private func wireJSON(target: MCPClientWiringTarget, launch: MCPServerLaunch) throws -> MCPClientWiringChange {
         let url = configURL(for: target)
         var root = try readJSONObject(at: url) ?? [:]
         var servers = (root["mcpServers"] as? UntypedJSONObject) ?? [:]
-        let entry = serverEntryJSON(for: launch)
+        let entry = serverEntryJSON(for: launch, target: target)
 
+        let required = requiredRootKeys(for: target)
+        let rootIsComplete = required.allSatisfy { root[$0.key] != nil }
         let existing = servers[Self.serverKey] as? UntypedJSONObject
-        if let existing, NSDictionary(dictionary: existing).isEqual(to: entry) {
+        if let existing, rootIsComplete, NSDictionary(dictionary: existing).isEqual(to: entry) {
             return MCPClientWiringChange(target: target, configPath: url.path, didMutate: false)
+        }
+        for (key, value) in required where root[key] == nil {
+            root[key] = value
         }
         servers[Self.serverKey] = entry
         root["mcpServers"] = servers
