@@ -142,6 +142,38 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         XCTAssertEqual(rejoined, String(decoding: expected, as: UTF8.self))
     }
 
+    /// M-9: `report.json`'s `bundle.mif_version` / `mif_minor` are the
+    /// manifest's, read from the two files side by side.
+    ///
+    /// Interop run 1 found `manifest.mif_minor = 2` and
+    /// `report.bundle.mif_minor = 1` in one bundle. One of the two was wrong,
+    /// nothing in the contract cross-checks them, and no reader could tell
+    /// which. Both now come from `MIFFormatVersion`, and this compares the
+    /// artefacts rather than the constant.
+    func test_theReportsFormatVersionIsTheManifests() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        _ = try export(maxSectionBytes: 256 * 1024 * 1024, to: directory, seed: "mif-minor")
+
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: try Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+        ) as? [String: Any])
+        let report = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: try Data(contentsOf: directory.appendingPathComponent("report.json"))
+        ) as? [String: Any])
+        let bundle = try XCTUnwrap(report["bundle"] as? [String: Any])
+
+        XCTAssertEqual(bundle["mif_minor"] as? Int, manifest["mif_minor"] as? Int)
+        XCTAssertEqual(bundle["mif_version"] as? Int, manifest["mif_version"] as? Int)
+        XCTAssertEqual(manifest["mif_minor"] as? Int, MIFFormatVersion.minor)
+        XCTAssertEqual(manifest["mif_version"] as? Int, MIFFormatVersion.major)
+        // The bundle's own identity is the third thing that must agree, and it
+        // is what an importer keys idempotency on.
+        XCTAssertEqual(bundle["bundle_id"] as? String, manifest["bundle_id"] as? String)
+        XCTAssertEqual(bundle["content_digest"] as? String, manifest["content_digest"] as? String)
+    }
+
     /// M-6 + D-0038 ruling 2: `record_body.body` is base64url, unpadded, of the
     /// canonical body bytes — read back off the sealed segment rather than off
     /// the buffer the writer held.

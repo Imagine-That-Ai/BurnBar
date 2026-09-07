@@ -217,8 +217,10 @@ public struct MemoryExportReport: Sendable {
     private var bundleJSON: MIFJSON {
         .object([
             "bundle_id": .string(bundleID),
-            "mif_version": .int(1),
-            "mif_minor": .int(1),
+            // The manifest's two numbers, from the one constant that holds
+            // them. This said `mif_minor: 1` beside a manifest saying 2 (M-9).
+            "mif_version": .int(MIFFormatVersion.major),
+            "mif_minor": .int(MIFFormatVersion.minor),
             "profile": .string(MIFProfile.migration.rawValue),
             "content_digest": .string(contentDigest),
             "exporter_device_key_id": .string(exporterDeviceKeyID),

@@ -10,6 +10,23 @@
 
 import Foundation
 
+/// The format version this build writes, in ONE place.
+///
+/// `manifest.mif_version` / `manifest.mif_minor` and `report.bundle.mif_version`
+/// / `report.bundle.mif_minor` are the same two numbers about the same bundle,
+/// and nothing in the contract cross-checks them. Interop run 1 found the
+/// manifest saying minor 2 and the report beside it saying 1 (M-9), because
+/// each was typed as a literal where it was needed. D-0039 ruling 5 requires
+/// them equal; one constant is how that stays true.
+///
+/// Minor 2 is D-0021 ruling 4's: `memory_quarantine_bodies` as a
+/// `recovered_from` value, and `record_project`'s identity pair. Both additive,
+/// so `min_importer_mif_version` stays 1.
+public enum MIFFormatVersion {
+    public static let major = 1
+    public static let minor = 2
+}
+
 public enum MIFProfile: String, Sendable, CaseIterable {
     case sync
     case migration

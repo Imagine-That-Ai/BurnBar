@@ -345,8 +345,8 @@ public enum MemoryExportBundleWriter {
         }
 
         var fields: [String: MIFJSON] = [
-            "mif_version": .int(1),
-            "mif_minor": .int(2),
+            "mif_version": .int(MIFFormatVersion.major),
+            "mif_minor": .int(MIFFormatVersion.minor),
             "profile": .string(MIFProfile.migration.rawValue),
             "prev_bundle_id": .null,
             "producer_store_id": .string(inputs.context.storeID),
