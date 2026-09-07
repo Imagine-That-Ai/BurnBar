@@ -390,6 +390,92 @@ public struct BurnBarCLIRunner {
         }
     }
 
+    // MARK: - Project code memory courier commands
+    //
+    // Code index *reads* already travelled this binary, because they are served
+    // by `search-sql` against the daemon's keyed store. The three code
+    // operations that are not plain SELECTs — building an index, enlisting the
+    // daemon's watcher, and the repo-map/context `explore` — had no signed
+    // command at all, so on a signed install with the first-party peer gate on
+    // they fell through to a direct socket connection the daemon refuses with
+    // `code=-32001 … peer failed first-party code-signature verification`.
+    // These three commands are that missing route. They add a courier, never
+    // new authority: the daemon still classifies `index_project` and
+    // `watch_project` as `codeWrite` and `explore` as `codeRead`, and still
+    // checks them against the CLI peer's attenuated method allowlist.
+
+    /// `code-index-project`: stdin JSON `BurnBarProjectCodeIndexProjectRequest`
+    /// -> stdout JSON `BurnBarProjectCodeIndexProjectResponse`.
+    public func runCodeIndexProject(input: Data) throws -> String {
+        let request: BurnBarProjectCodeIndexProjectRequest
+        do {
+            request = try JSONDecoder().decode(BurnBarProjectCodeIndexProjectRequest.self, from: input)
+        } catch {
+            throw BurnBarCLIError.missingArgument(
+                "code-index-project input must be a JSON object with `maxFiles` and `maxFileBytes` integers "
+                    + "(optional `projectPath`, `storageBudgetBytes`)"
+            )
+        }
+        do {
+            return try Self.jsonString(client.codeIndex(
+                projectPath: request.projectPath,
+                maxFiles: request.maxFiles,
+                maxFileBytes: request.maxFileBytes,
+                storageBudgetBytes: request.storageBudgetBytes
+            ))
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
+    /// `code-watch-project`: stdin JSON `BurnBarProjectCodeWatchProjectRequest`
+    /// -> stdout JSON `BurnBarProjectCodeWatchProjectResponse`.
+    ///
+    /// The daemon owns the polling; this call is an ordinary request/response
+    /// that registers the watcher and returns, so it is no longer-lived on the
+    /// courier than an index is.
+    public func runCodeWatchProject(input: Data) throws -> String {
+        let request: BurnBarProjectCodeWatchProjectRequest
+        do {
+            request = try JSONDecoder().decode(BurnBarProjectCodeWatchProjectRequest.self, from: input)
+        } catch {
+            throw BurnBarCLIError.missingArgument(
+                "code-watch-project input must be a JSON object with `maxFiles`, `maxFileBytes` and "
+                    + "`pollIntervalSeconds` (optional `projectPath`, `storageBudgetBytes`)"
+            )
+        }
+        do {
+            return try Self.jsonString(client.codeWatch(
+                projectPath: request.projectPath,
+                maxFiles: request.maxFiles,
+                maxFileBytes: request.maxFileBytes,
+                storageBudgetBytes: request.storageBudgetBytes,
+                pollIntervalSeconds: request.pollIntervalSeconds
+            ))
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
+    /// `code-explore`: stdin JSON `BurnBarProjectCodeExploreRequest`
+    /// -> stdout JSON `BurnBarProjectCodeExploreResponse`.
+    public func runCodeExplore(input: Data) throws -> String {
+        let request: BurnBarProjectCodeExploreRequest
+        do {
+            request = try JSONDecoder().decode(BurnBarProjectCodeExploreRequest.self, from: input)
+        } catch {
+            throw BurnBarCLIError.missingArgument(
+                "code-explore input must be a JSON object with `limit` and `maxBytes` integers "
+                    + "(optional `projectPath`, `query`)"
+            )
+        }
+        do {
+            return try Self.jsonString(client.codeExplore(request))
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
     /// `memory-forget`: stdin JSON `BurnBarProjectMemoryForgetRequest` -> stdout JSON result.
     public func runMemoryForget(input: Data) throws -> String {
         let request: BurnBarProjectMemoryForgetRequest
@@ -1116,6 +1202,9 @@ public struct BurnBarCLIRunner {
         "memory-sync-inbox-list",
         "memory-sync-inbox-ack",
         "memory-model-policy",
+        "code-index-project",
+        "code-watch-project",
+        "code-explore",
         "privacy-rpc",
         "install-shell-shims"
     ]

@@ -33,6 +33,9 @@ public protocol BurnBarCLIClient: Sendable {
     func codeWatch(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?, pollIntervalSeconds: Double) throws -> BurnBarProjectCodeWatchProjectResponse
     func codeSearch(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectCodeSearchResponse
     func codeIndexStatus(projectPath: String?) throws -> BurnBarProjectCodeIndexStatusResponse
+    /// Repo map + optional context pack over an already-built index. Carried by
+    /// the signed courier so `burnbar_explore` has a route on signed installs.
+    func codeExplore(_ request: BurnBarProjectCodeExploreRequest) throws -> BurnBarProjectCodeExploreResponse
     func attachRunClient(clientID: BurnBarClientID, sessionID: BurnBarSessionID) throws
     func createRun(_ request: BurnBarRunCreateRequest) throws -> BurnBarRunCreateResponse
     func listRuns(_ request: BurnBarRunListRequest) throws -> BurnBarRunListResponse
@@ -329,6 +332,21 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
                 method: .codeIndexStatus,
                 authToken: authToken,
                 params: BurnBarProjectCodeIndexStatusRequest(projectPath: projectPath)
+            )
+        )
+    }
+
+    /// `daemon.code.explore` over the SIGNED CLI route. The daemon's explore is
+    /// read-only — it reports a `degraded` status when no checkpoint exists
+    /// rather than indexing on demand — but the Python MCP tool that calls it
+    /// has no other way through the first-party peer gate, so it travels the
+    /// same courier as `codeIndexProject`.
+    public func codeExplore(_ request: BurnBarProjectCodeExploreRequest) throws -> BurnBarProjectCodeExploreResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .codeExplore,
+                authToken: authToken,
+                params: request
             )
         )
     }

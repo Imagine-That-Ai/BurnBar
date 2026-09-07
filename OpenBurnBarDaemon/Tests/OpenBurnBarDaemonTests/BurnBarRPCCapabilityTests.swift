@@ -154,6 +154,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
             .codeWatchProject,
             .codeSearch,
             .codeIndexStatus,
+            .codeExplore,
             .clientAttach,
             .clientClaimControl,
             .runCreate,
@@ -211,6 +212,35 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         // Read-only and run-client peers still may not write memory.
         XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.memoryRemember))
         XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.memoryRemember))
+    }
+
+    /// Project code memory. Index *reads* already travelled the courier as plain
+    /// SELECTs through `search-sql`; building an index, enlisting the watcher and
+    /// `explore` are not SELECTs, so they need their own commands AND their own
+    /// entries here. Without the profile entry the courier passes the signature
+    /// gate and dies at the capability gate instead — a different refusal for the
+    /// same broken tool.
+    func test_theCodeIndexCourierMethodsArePermittedAndKeepTheirWriteClassification() {
+        let profile = BurnBarPeerCapabilityProfile.cliSupport
+        XCTAssertTrue(profile.permits(.codeIndexProject))
+        XCTAssertTrue(profile.permits(.codeWatchProject))
+        XCTAssertTrue(profile.permits(.codeExplore))
+
+        // Building or watching an index writes; explore only reads.
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeIndexProject), .codeWrite)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeWatchProject), .codeWrite)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeExplore), .codeRead)
+
+        // Admitting `codeExplore` widened nothing: read-only peers already had it
+        // through `codeRead`, and the write half stays out of their reach.
+        XCTAssertTrue(BurnBarPeerCapabilityProfile.readOnly.permits(.codeExplore))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.readOnly.permits(.codeIndexProject))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.codeIndexProject))
+        XCTAssertFalse(BurnBarPeerCapabilityProfile.runClient.permits(.codeWatchProject))
+        // The operator surface stays off the courier entirely.
+        XCTAssertFalse(profile.permits(.codeOpsDiagnostics))
+        XCTAssertFalse(profile.permits(.codeDatabaseSnapshot))
+        XCTAssertFalse(profile.permits(.codeDatabaseRestore))
     }
 
     /// Memory Blind Sync PR-2. The engine holds no keys and no network: draining

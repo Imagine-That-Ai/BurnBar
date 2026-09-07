@@ -80,7 +80,10 @@ final class BurnBarCLITests: XCTestCase {
                 "memory-forget",
                 "memory-model-policy",
                 "memory-sync-inbox-list",
-                "memory-sync-inbox-ack"
+                "memory-sync-inbox-ack",
+                "code-index-project",
+                "code-watch-project",
+                "code-explore"
             ] {
                 XCTAssertNil(
                     BurnBarCLIRunner.startupPreflightResult(arguments: [command], invokedExecutablePath: executable),
@@ -434,6 +437,61 @@ final class BurnBarCLITests: XCTestCase {
         XCTAssertThrowsError(try runner.runMemorySyncInboxAck(input: Data(#"{"docIDs":"not-an-array"}"#.utf8)))
     }
 
+    /// Project code memory over the courier. On a signed install the Python MCP
+    /// cannot dial the control socket, so before these commands existed
+    /// `burnbar_index_project`, `burnbar_watch_project` and `burnbar_explore`
+    /// fell through to a direct connection the daemon refuses with
+    /// `code=-32001 … peer failed first-party code-signature verification`.
+    func testCodeIndexProjectReadsJSONAndReturnsTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runCodeIndexProject(
+            input: Data(#"{"projectPath":"/tmp/fixture","maxFiles":10,"maxFileBytes":1024,"storageBudgetBytes":null}"#.utf8)
+        )
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+
+        XCTAssertEqual(object["projectRoot"] as? String, "/tmp/fixture")
+        XCTAssertEqual(object["indexedFiles"] as? Int, 1)
+        XCTAssertEqual(object["auditHash"] as? String, "audit")
+    }
+
+    func testCodeWatchProjectReadsJSONAndReturnsTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runCodeWatchProject(
+            input: Data(#"{"projectPath":"/tmp/fixture","maxFiles":10,"maxFileBytes":1024,"pollIntervalSeconds":5}"#.utf8)
+        )
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+
+        XCTAssertEqual(object["watching"] as? Bool, true)
+        XCTAssertEqual(
+            object["pollIntervalSeconds"] as? Double,
+            5,
+            "the poll interval the caller asked for must reach the daemon, not a courier default"
+        )
+    }
+
+    func testCodeExploreReadsJSONAndReturnsTypedResult() throws {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        let output = try runner.runCodeExplore(
+            input: Data(#"{"projectPath":"/tmp/fixture","query":"sprocket","limit":5,"maxBytes":2048}"#.utf8)
+        )
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+
+        XCTAssertEqual(object["projectID"] as? String, "proj_fixture")
+        XCTAssertEqual((object["files"] as? [[String: Any]])?.first?["filePath"] as? String, "Sources/App.swift")
+        XCTAssertEqual(object["context"] as? String, "sprocket")
+    }
+
+    /// Malformed input is refused by the courier before the socket is opened, so
+    /// the caller sees a usage error rather than an `unauthorized` from the daemon.
+    func testCodeCourierCommandsRejectMalformedInput() {
+        let runner = BurnBarCLIRunner(client: FakeCLIClient())
+        XCTAssertThrowsError(try runner.runCodeIndexProject(input: Data("not json".utf8)))
+        // `maxFiles` and `maxFileBytes` are non-optional on the wire contract.
+        XCTAssertThrowsError(try runner.runCodeIndexProject(input: Data(#"{"projectPath":"/tmp/fixture"}"#.utf8)))
+        XCTAssertThrowsError(try runner.runCodeWatchProject(input: Data(#"{"maxFiles":10}"#.utf8)))
+        XCTAssertThrowsError(try runner.runCodeExplore(input: Data(#"{"query":"sprocket"}"#.utf8)))
+    }
+
     func testChatQueryCommandsEmitStableJSON() throws {
         let runner = BurnBarCLIRunner(client: FakeCLIClient())
         let threads = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try runner.run(arguments: ["chat", "threads", "--query", "release", "--limit", "7"]).utf8)) as? [String: Any])
@@ -759,6 +817,25 @@ struct FakeCLIClient: BurnBarCLIClient {
                     rank: nil
                 )
             ]
+        )
+    }
+
+    func codeExplore(_ request: BurnBarProjectCodeExploreRequest) throws -> BurnBarProjectCodeExploreResponse {
+        BurnBarProjectCodeExploreResponse(
+            traceID: "trace-test",
+            projectID: "proj_fixture",
+            files: [
+                BurnBarProjectCodeExploreFile(filePath: "Sources/App.swift", lang: "swift", symbolCount: 1)
+            ],
+            repoMap: BurnBarProjectCodeRepoMap(
+                artifactCount: 1,
+                symbolCount: 1,
+                languages: [BurnBarProjectCodeRepoLanguage(lang: "swift", fileCount: 1, byteCount: 128)],
+                topFiles: []
+            ),
+            context: request.query,
+            hits: [],
+            truncated: false
         )
     }
 

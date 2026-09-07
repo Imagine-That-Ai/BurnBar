@@ -134,6 +134,51 @@ struct BurnBarCLIExecutable {
             }
         }
 
+        // Project code memory. Reads already reached the daemon through
+        // `search-sql`; these are the three operations that could not, and so
+        // died at the first-party peer gate on every signed install.
+        if arguments == ["code-index-project"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("code-index-project request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runCodeIndexProject(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        if arguments == ["code-watch-project"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("code-watch-project request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runCodeWatchProject(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        if arguments == ["code-explore"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("code-explore request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runCodeExplore(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
         if arguments == ["privacy-rpc"] {
             do {
                 let input = FileHandle.standardInput.readDataToEndOfFile()
