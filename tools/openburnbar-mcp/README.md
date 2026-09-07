@@ -2,6 +2,15 @@
 
 Default read-only access to your **OpenBurnBar SQLite** database (`conversations`, `token_usage`, `chat_messages`) so MCP-capable clients can search transcript indexes and usage without the in-app assistant’s trimmed system prompt.
 
+> **New here?** Two shorter reads before this one.
+> [`docs/HOW_TO_MEMORY_MCP.md`](../../docs/HOW_TO_MEMORY_MCP.md) answers the six
+> questions people actually ask — what is on by default, what you must install
+> into each coding agent, what collects automatically, whether anything prunes
+> itself (it does not), how to test the whole loop in ten minutes, and what
+> leaves the machine. [burnbar.ai/memory](https://burnbar.ai/memory) is the same
+> story with the measurements and the tool atlas. This README is the reference
+> they both point back to.
+
 The local server now fails closed for higher-risk capabilities. By default it blocks cloud decrypt, cloud sync, local writes, full plaintext reads, and process spawn. Enable a capability only for the shell session that needs it:
 
 ```bash
