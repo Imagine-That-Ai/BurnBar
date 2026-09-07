@@ -9,8 +9,16 @@
 // must never be given one. What the exporter emits instead lives INSIDE the
 // sealed segment and is meaningless outside one bundle:
 //
-//   * `body_join_key`     = HMAC(HKDF(bundle_key,"mif1/join/v1"), body)
-//   * `body_norm_digest`  = the same HMAC over `normalize(body)`
+//   * `body_join_key`     = HMAC(K_join, canonical body bytes)
+//   * `body_norm_digest`  = HMAC(K_join, UTF-8(normalize(body)))
+//
+// with `K_join = HKDF-SHA256(salt = HKDF_SALT, ikm = bundle_key,
+// info = "mif1/join/v1", L = 32)` — D-0038 as amended, and D-0039 ruling 3.
+// The two values differ BY CONSTRUCTION: one is keyed over the exact stored
+// bytes (so a body record reproduces its own join key), the other over the
+// schema's `normalize`. They used to be equal on every row of every bundle,
+// which made section 05's `(memory_id, body_join_key, body_norm_digest)`
+// roll-up two members wide instead of three (M-7).
 //
 // `body_join_key` is deliberately NOT `sha256(body)`: a raw body hash is a
 // dictionary-invertible oracle, and the oracle's own 64-hex `body_ref` never
@@ -67,20 +75,11 @@ public enum MemoryExportCrypto {
     /// by both derivations in every language.
     public static let hkdfSalt = Data("imaginethat.memory.hkdf.v1".utf8)
 
-    /// The exporter's OWN derivation — the join key — which is BurnBar-internal
-    /// and named in the manifest rather than in §2.1. It keeps the unsalted
-    /// shape it had. Everything §2.1 governs (`seg_key`, the nonce, and since
-    /// D-0031 the hash-tree key) goes through `derive(salted:)` below.
-    public static func derive(from bundleKey: SymmetricKey, info: String, bytes: Int = 32) -> SymmetricKey {
-        HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: bundleKey,
-            info: Data(info.utf8),
-            outputByteCount: bytes
-        )
-    }
-
     /// `HKDF-SHA256(salt = HKDF_SALT, ikm, info, L)` — the `mif1-hkdf-v1` key
-    /// schedule, exactly as §2.1 writes it.
+    /// schedule, exactly as §2.1 writes it. Every derivation in MIF goes
+    /// through it, the join key included: an unsalted HKDF for one value was
+    /// M-5 of interop run 1, and a workspace with one salt constant cannot
+    /// spell it two ways.
     static func derive(salted ikm: SymmetricKey, info: String, bytes: Int) -> SymmetricKey {
         HKDF<SHA256>.deriveKey(
             inputKeyMaterial: ikm,
@@ -96,24 +95,73 @@ public enum MemoryExportCrypto {
             .joined()
     }
 
-    /// `body_join_key` — links 05 <-> 06 and binds a verdict to a body.
+    /// `K_join = HKDF-SHA256(salt = HKDF_SALT, ikm = bundle_key,
+    /// info = "mif1/join/v1", L = 32)` [D-0038 as amended, D-0039 ruling 3].
+    /// One key for both body digests, and the same salt as every other
+    /// derivation in the schedule.
+    static func joinKey(bundleKey: SymmetricKey) -> SymmetricKey {
+        derive(salted: bundleKey, info: "mif1/join/v1", bytes: 32)
+    }
+
+    /// The **canonical body bytes**: the body exactly as the bundle carries it,
+    /// UTF-8, with no normalisation of any kind.
+    ///
+    /// D-0038's amendment is explicit about why — "the join must reproduce the
+    /// body". `record_body.body` is the base64url of these bytes, so a reader
+    /// that decodes the record and re-HMACs it gets `body_join_key` back; a
+    /// normalised preimage would make the join key uncheckable from the record
+    /// that carries it.
+    public static func canonicalBodyBytes(_ body: String) -> Data { Data(body.utf8) }
+
+    /// `body_join_key = HMAC-SHA256(K_join, canonical body bytes)` — links
+    /// 05 <-> 06 and binds a verdict to a body. Content-keyed and carrying no
+    /// `memory_id`, so two memories with identical bodies share one body
+    /// record, which is the join's purpose.
     public static func bodyJoinKey(bundleKey: SymmetricKey, body: String) -> String {
-        hmacHex(key: derive(from: bundleKey, info: "mif1/join/v1"), data: Data(body.utf8))
+        hmacHex(key: joinKey(bundleKey: bundleKey), data: canonicalBodyBytes(body))
     }
 
-    /// `body_norm_digest` — the mis-attachment check and the roll-up input.
+    /// `body_norm_digest = HMAC-SHA256(K_join, UTF-8(normalize(body)))` — the
+    /// mis-attachment check and the third member of section 05's roll-up tuple.
     public static func bodyNormDigest(bundleKey: SymmetricKey, body: String) -> String {
-        hmacHex(key: derive(from: bundleKey, info: "mif1/join/v1"), data: Data(normalize(body).utf8))
+        hmacHex(key: joinKey(bundleKey: bundleKey), data: Data(normalize(body).utf8))
     }
 
-    /// The normalisation `body_norm_digest` is taken over. Deliberately modest:
-    /// two bodies that differ only in trailing whitespace or line endings are
-    /// the same fact, and anything more aggressive would let a real edit hide.
+    /// `normalize`, and there is exactly one: `MEMORY_SCHEMA.md` §0.1's, the
+    /// same function `content_key` is taken over —
+    ///
+    ///     NFKC -> casefold -> collapse runs of whitespace to one U+0020
+    ///          -> strip trailing `.,;:!?`
+    ///
+    /// D-0038's first ruling minted a second, gentler one (CRLF folding and a
+    /// trim) and its amendment withdrew it minutes later: "the schema already
+    /// defines `normalize`". This is that definition and nothing else.
+    ///
+    /// Two readings the wording leaves open are settled here by the D-0038
+    /// vector `"Hello\r\n  world  \r\n"` -> `"hello world"`: collapsing a run
+    /// of whitespace also removes a LEADING or TRAILING run (otherwise the
+    /// vector would end in a space), and the trailing-punctuation strip takes
+    /// the whole run rather than one character. Both are pinned by tests
+    /// against values computed outside this code.
+    ///
+    /// `folding(options: .caseInsensitive)` is genuine Unicode case folding,
+    /// not `lowercased()`: it agrees with Python's `str.casefold()` byte for
+    /// byte on the cases where the two differ (`"Straße"` and `"STRASSE"` both
+    /// fold to `"strasse"`), which is what makes a Swift exporter and a Rust
+    /// importer able to agree on a digest.
     public static func normalize(_ body: String) -> String {
-        body
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let folded = body
+            .precomposedStringWithCompatibilityMapping
+            .folding(options: [.caseInsensitive], locale: nil)
+        var collapsed = Substring(folded.split(whereSeparator: \.isWhitespace).joined(separator: " "))
+        while let last = collapsed.last, trailingPunctuation.contains(last) {
+            collapsed = collapsed.dropLast()
+        }
+        return String(collapsed)
     }
+
+    /// §0.1's five characters, in one place so the set cannot drift.
+    static let trailingPunctuation: Set<Character> = [".", ",", ";", ":", "!", "?"]
 
     // MARK: - Segment sealing
 

@@ -284,6 +284,119 @@ final class MemoryExportCryptoTests: XCTestCase {
         )
     }
 
+    // MARK: - The body join key and `normalize`
+
+    /// M-5 + D-0039 ruling 3: `K_join` is derived with the WORKSPACE SALT, like
+    /// every other key in `mif1-hkdf-v1`.
+    ///
+    /// The exporter used to derive this one value with an unsalted HKDF, which
+    /// migration §2 permitted by naming no salt at all — so the importer, which
+    /// salts, computed a different key for the same body and the join could
+    /// never have matched across the boundary. The salted derivation is
+    /// recomputed here from `HKDF<SHA256>` directly, so this fails if the
+    /// argument is dropped again.
+    func test_theJoinKeyIsDerivedWithTheWorkspaceSalt() {
+        let bundleKey = SymmetricKey(data: Data(repeating: 0x01, count: 32))
+        let salted = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: bundleKey,
+            salt: MemoryExportCrypto.hkdfSalt,
+            info: Data("mif1/join/v1".utf8),
+            outputByteCount: 32
+        )
+        XCTAssertEqual(MemoryExportCrypto.joinKey(bundleKey: bundleKey), salted)
+
+        let unsalted = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: bundleKey,
+            info: Data("mif1/join/v1".utf8),
+            outputByteCount: 32
+        )
+        XCTAssertNotEqual(MemoryExportCrypto.joinKey(bundleKey: bundleKey), unsalted)
+    }
+
+    /// M-7: `body_join_key` and `body_norm_digest` differ BY CONSTRUCTION.
+    ///
+    /// Both were one construction over one preimage, so all five memory rows of
+    /// the interop fixture carried the same value twice and section 05's
+    /// three-member roll-up tuple was two members wide — a body/verdict swap it
+    /// claims to catch would have balanced. The join key is over the exact
+    /// stored bytes; the digest is over `normalize`. They coincide only for a
+    /// body that is already its own normal form, so this drives one that is not
+    /// AND one that is.
+    func test_theJoinKeyAndTheNormDigestAreNotTheSameValue() {
+        let bundleKey = MemoryExportCrypto.deterministicBundleKey(seed: "join-vs-norm")
+        let body = "Hello\r\n  world  \r\n"
+        XCTAssertNotEqual(
+            MemoryExportCrypto.bodyJoinKey(bundleKey: bundleKey, body: body),
+            MemoryExportCrypto.bodyNormDigest(bundleKey: bundleKey, body: body)
+        )
+
+        // The join key is over the CANONICAL bytes, so a reader that b64url-
+        // decodes `record_body.body` and re-HMACs it reproduces the field.
+        XCTAssertEqual(
+            MemoryExportCrypto.canonicalBodyBytes(body),
+            Data(body.utf8)
+        )
+        XCTAssertEqual(
+            MemoryExportCrypto.bodyJoinKey(bundleKey: bundleKey, body: body),
+            Self.hexString(Data(HMAC<SHA256>.authenticationCode(
+                for: Data(body.utf8),
+                using: MemoryExportCrypto.joinKey(bundleKey: bundleKey)
+            )))
+        )
+
+        // A body that IS its own normal form is the one case where the two
+        // agree, and that is a property of the body rather than of the code.
+        let alreadyNormal = "hello world"
+        XCTAssertEqual(MemoryExportCrypto.normalize(alreadyNormal), alreadyNormal)
+        XCTAssertEqual(
+            MemoryExportCrypto.bodyJoinKey(bundleKey: bundleKey, body: alreadyNormal),
+            MemoryExportCrypto.bodyNormDigest(bundleKey: bundleKey, body: alreadyNormal)
+        )
+
+        // And two memories with identical bodies share one join key — the whole
+        // point of a content-keyed join, and what a `memory_id` in the preimage
+        // would destroy.
+        XCTAssertEqual(
+            MemoryExportCrypto.bodyJoinKey(bundleKey: bundleKey, body: body),
+            MemoryExportCrypto.bodyJoinKey(bundleKey: bundleKey, body: "Hello\r\n  world  \r\n")
+        )
+    }
+
+    /// `normalize` is `MEMORY_SCHEMA.md` §0.1's, and only that one: NFKC ->
+    /// casefold -> collapse whitespace runs to one U+0020 -> strip trailing
+    /// `.,;:!?`.
+    ///
+    /// Every expectation below was computed with CPython
+    /// (`unicodedata.normalize("NFKC", s).casefold()`, `" ".join(s.split())`,
+    /// `rstrip(".,;:!?")`) and is byte-identical there — including the two
+    /// cases where a `lowercased()` implementation would diverge from a
+    /// case-FOLDING one, which is the difference a second language would find
+    /// the hard way.
+    func test_normalizeIsTheSchemasAndAgreesWithAnIndependentImplementation() {
+        XCTAssertEqual(MemoryExportCrypto.normalize("Hello\r\n  world  \r\n"), "hello world")
+        // Casefold, not lowercase: "ß" folds to "ss", so these two are the same
+        // fact. `lowercased()` leaves "straße" and fails this line.
+        XCTAssertEqual(MemoryExportCrypto.normalize("Straße"), "strasse")
+        XCTAssertEqual(MemoryExportCrypto.normalize("STRASSE"), "strasse")
+        // NFKC: the ligature and the fullwidth forms are compatibility
+        // equivalents, and it runs BEFORE the fold.
+        XCTAssertEqual(MemoryExportCrypto.normalize("\u{FB01}le"), "file")
+        XCTAssertEqual(MemoryExportCrypto.normalize("\u{FF28}\u{FF45}\u{FF4C}\u{FF4C}\u{FF4F}"), "hello")
+        // NFKC maps NBSP to U+0020, so it collapses like any other whitespace.
+        XCTAssertEqual(MemoryExportCrypto.normalize("a\u{00A0}b"), "a b")
+        // The trailing strip takes the whole run, and only the five characters
+        // §0.1 names.
+        XCTAssertEqual(MemoryExportCrypto.normalize("Hi!!?"), "hi")
+        XCTAssertEqual(MemoryExportCrypto.normalize("a-b-"), "a-b-")
+        // Interior whitespace collapses to exactly one space; the ends lose it.
+        XCTAssertEqual(MemoryExportCrypto.normalize("  a \t\n b  "), "a b")
+        XCTAssertEqual(MemoryExportCrypto.normalize(""), "")
+        XCTAssertEqual(MemoryExportCrypto.normalize("   "), "")
+        // İ (U+0130) folds to "i" + U+0307, which is where a naive lowercase
+        // and a fold part company in a locale-sensitive implementation.
+        XCTAssertEqual(MemoryExportCrypto.normalize("\u{0130}stanbul"), "i\u{0307}stanbul")
+    }
+
     // MARK: - The chunk AAD
 
     func test_theChunkAADIsSectionSlashIndexAndBindsBothOfThem() throws {
