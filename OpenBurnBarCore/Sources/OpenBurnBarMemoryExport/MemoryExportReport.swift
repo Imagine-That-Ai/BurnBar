@@ -138,6 +138,8 @@ public struct MemoryExportReport: Sendable {
 
     public var findings: [MemoryExportFinding] = []
     public var idSetDiff: MIFJSON?
+    /// Only the P5 check fills this in: an export writes no target.
+    public var target: MemoryExportReportTarget?
 
     public var memoriesIn = 0
     public var memoriesOut = 0
@@ -175,6 +177,14 @@ public struct MemoryExportReport: Sendable {
         ]
         if let exportError { fields["export_error"] = .string(exportError.rawValue) }
         if let idSetDiff { fields["id_set_diff"] = idSetDiff }
+        if let target {
+            fields["target"] = .object([
+                "store_fingerprint_before": .null,
+                "store_fingerprint_after": .null,
+                "keyed": .bool(true),
+                "quiesced": .bool(target.quiesced)
+            ])
+        }
         return .object(fields)
     }
 
