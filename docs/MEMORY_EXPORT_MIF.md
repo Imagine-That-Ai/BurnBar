@@ -201,7 +201,26 @@ there is not a MIF bundle*. What BB-E emits, item by item:
 | `manifest.crypto{aead, compression, wrap, key_schedule}`, required | emitted, with `wrap` and `key_schedule` the contract's `const` values — which the wrap above is the only construction able to satisfy honestly |
 | Hash tree (D-0031 ruling 1): `ht_key = HKDF-SHA256(salt = "imaginethat.memory.hkdf.v1", bundle_key, "mif1/hashtree/v1")`, leaves `HMAC(key, 0x00 ‖ chunk)`, folds `HMAC(key, 0x01 ‖ l ‖ r)`, 4 MiB chunks over ciphertext | as stated. One salt constant, not two; pinned outside the code path by a test that recomputes a leaf straight from CryptoKit |
 | `manifest.sig` (D-0031 ruling 1): Ed25519 over the 32 raw bytes of `content_digest`, b64url unpadded | as stated. `verify` shares the preimage through one `sign`/`verifySignature` pair, and **recomputes `content_digest` from the manifest on disk**, so the signature is a signature over the manifest (F-1, stated once below) |
-| Segment files `sections/<NN-name>/<index:05>.seg`; root computed once, carried in `manifest.hashtree.root` and `hashtree.json`, input to `content_digest` | as stated. The one deliberate gap: `key_derivation` still emits the contract's pre-D-0031 `const` (D-BB-E-14) |
+| Segment files `sections/<NN-name>/<index:05>.seg`; root computed once, carried in `manifest.hashtree.root` and `hashtree.json`, input to `content_digest` | as stated. The bundle root is **the same fold**, applied to the eleven raw 32-byte section subroots in section order with an odd tail carried up (F-2, pinned to a value below). The one deliberate gap: `key_derivation` still emits the contract's pre-D-0031 `const` (D-BB-E-14) |
+
+**The bundle root, stated once.** §2's tree is `leaf = HMAC-SHA256(ht_key,
+0x00 ‖ chunk)` and `fold = HMAC-SHA256(ht_key, 0x01 ‖ left ‖ right)   with
+last-node promotion`, and BB-E folds the **section subroots into the bundle root
+with that same fold**: the eleven raw 32-byte subroots, pairwise in section
+order, an odd node at any level carried up unchanged rather than paired with
+itself. `manifest.hashtree.root` is that value, `hashtree.json` carries the same
+bytes, and it is a member of the manifest `content_digest` covers.
+
+Until F-2 the subroots were joined as ASCII **hex** separated by U+001F and
+HMAC'd in one message — a construction D-0031 does not describe, which no
+importer folding per ruling 1 could reproduce: a different root, a different
+`content_digest`, a different bundle identity for the same bytes. Nothing pinned
+it either. It is pinned to a **value** now:
+`MemoryExportCryptoTests.test_theBundleRootIsTheD0031FoldOverTheRawSubroots`
+carries the eleven subroots and the bundle key REVIEW-BB-EXPORTER-3 recomputed
+independently in Python, and asserts the root that reference produced
+(`a3d92105…`, against the old join's `e9bdcabd…`). Mutating the fold's domain
+byte turns it red with three assertions.
 
 **What `content_digest` is a digest of, stated once.** §2's determinism claim —
 *"Determinism is claimed on `content_digest` and on the manifest minus
@@ -646,3 +665,4 @@ Against `docs/memory/reviews/REVIEW-BB-EXPORTER-3.md` (verdict
 | # | Finding | Status |
 |---|---|---|
 | F-1 | `manifest.sig` signs eleven section digests, not the manifest | **fixed** — `content_digest` is `sha256(JCS(manifest minus {created_at_ms, recipient_key_id, bundle_id, content_digest}))`, the preimage §2 and D-0031 ruling 1 both rest on (stated once in D-BB-E-5). `verify` recomputes it from the manifest bytes on disk and names the member wherever a second witness in the bundle can. Each of the review's six edits — `recipient_store_id`, `crypto.aead`, `user_id`, `not_exported`, `sections[5].row_count`, `rollups[0].rollup_digest` — now fails verification; the test drives all six, and reverting the digest to a tree-root-only preimage turns it red with 13 assertions |
+| F-2 | the bundle root is not D-0031 ruling 1's fold, and no test pins it | **fixed** — the section subroots fold with the same `HMAC(key, 0x01 ‖ l ‖ r)` and last-node promotion as the tree beneath them, over the RAW 32 bytes in section order (stated in D-BB-E-5). Pinned to the review's own independently computed value `a3d92105…`; mutating the fold domain byte fails it |

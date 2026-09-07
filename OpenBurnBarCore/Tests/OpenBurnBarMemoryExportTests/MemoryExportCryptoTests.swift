@@ -332,6 +332,84 @@ final class MemoryExportCryptoTests: XCTestCase {
         XCTAssertNotEqual(leaf, fold)
     }
 
+    /// **The bundle root, pinned to a VALUE** (review F-2).
+    ///
+    /// D-0031 ruling 1 pins one tree — leaves `HMAC(key, 0x00 ‖ chunk)`, fold
+    /// `HMAC(key, 0x01 ‖ l ‖ r)` with last-node promotion — and the bundle root
+    /// is that same fold applied to the eleven raw 32-byte section subroots in
+    /// section order. BB-E used to join them as ASCII hex separated by U+001F
+    /// and HMAC the result: an importer folding per ruling 1 got a different
+    /// root, a different `content_digest` and a different bundle identity for
+    /// the same bytes, and **nothing pinned it** — mutating the separator left
+    /// the whole suite green.
+    ///
+    /// The inputs below are the ones REVIEW-BB-EXPORTER-3 recomputed
+    /// independently, in Python, from the fixture bundle's own `.seg` files and
+    /// bundle key (§1 F-2's table). The expected root is the value that
+    /// reference produced. So this test pins the construction against a number
+    /// computed outside this code base, not against itself: change the order,
+    /// the domain byte, the promotion rule or the raw-vs-hex reading and it goes
+    /// red.
+    func test_theBundleRootIsTheD0031FoldOverTheRawSubroots() throws {
+        let bundleKey = SymmetricKey(data: try XCTUnwrap(
+            MemoryExportBase64URL.decode("AkjLhaevat16vaJtPq_HtjWNJq_rguGBB-j98aMsZio")
+        ))
+        let subroots = [
+            "96813e36f8bf3b73edfb143bfc839bc462902ea369bdb6a114a32422f5548e84", // 00-tombstones
+            "169c18299c5bb6b07abd3097da9f8c7576b171285f6f83eb986d824f45ad94f9", // 01-tombstone_receipts
+            "233209ea857e188b9b82a83f1061ca9ffe8b00fcb8bb4e254788ef0e49742876", // 02-review_events
+            "169c18299c5bb6b07abd3097da9f8c7576b171285f6f83eb986d824f45ad94f9", // 03-supersessions
+            "68351a04b23eea5102c8408b04e189ef5f02cb72373060db5e2a1ef5d4256e8b", // 04-projects
+            "538d9703e7632882330bd472c1e1370ac771ccf584e328adfc43e5ef0c654562", // 05-memories
+            "419a1a984224a0bd6a28c91d837cf209ed79af4ec1fad7429ce1de59665ecb16", // 06-bodies
+            "d17e5e7d72f55ba72025c8c8e367687cdd303e7e6901f509757592947a3663ca", // 07-provenance
+            "169c18299c5bb6b07abd3097da9f8c7576b171285f6f83eb986d824f45ad94f9", // 08-embeddings
+            "2a0ae9ab788e38b363a7821d309291492a37d27a2edb8ff5ee1a231ebbd05a8e", // 09-audit_evidence
+            "306227b25aa4ab9462d333e2802732bd48de98403c31e0c210e6e05db1e36c65"  // 10-findings
+        ]
+        XCTAssertEqual(subroots.count, MIFSection.allCases.count, "one subroot per section, in section order")
+        XCTAssertEqual(
+            MemoryExportCrypto.combineSubroots(bundleKey: bundleKey, subroots: subroots),
+            "a3d921051628f1000c197c95684542e80f313b0614b50fe0c9126f6b23136964"
+        )
+        // The value the pre-F-2 join produced for the same inputs, kept so the
+        // regression is a comparison rather than a memory.
+        XCTAssertNotEqual(
+            MemoryExportCrypto.combineSubroots(bundleKey: bundleKey, subroots: subroots),
+            "e9bdcabd192d93607f8bdcd91d27e1f61e6881f7db33905898d22d2d7585f697"
+        )
+
+        // Eleven is odd at three of the four levels, so the odd-tail rule is
+        // exercised by the vector above; here it is stated as a property. A
+        // node that rises unchanged is not re-HMAC'd, and order is part of the
+        // construction.
+        let swapped = Array(subroots.reversed())
+        XCTAssertNotEqual(
+            MemoryExportCrypto.combineSubroots(bundleKey: bundleKey, subroots: swapped),
+            MemoryExportCrypto.combineSubroots(bundleKey: bundleKey, subroots: subroots),
+            "section order is part of the root"
+        )
+        let key = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: bundleKey,
+            salt: Data("imaginethat.memory.hkdf.v1".utf8),
+            info: Data("mif1/hashtree/v1".utf8),
+            outputByteCount: 32
+        )
+        let single = Data(repeating: 7, count: 32)
+        XCTAssertEqual(
+            MemoryExportCrypto.fold([single], key: key),
+            single,
+            "one node folds to itself — last-node promotion, not a self-pair"
+        )
+        let pair = Data(HMAC<SHA256>.authenticationCode(for: Data([0x01]) + single + single, using: key))
+        XCTAssertEqual(MemoryExportCrypto.fold([single, single], key: key), pair)
+        XCTAssertEqual(
+            MemoryExportCrypto.fold([single, single, single], key: key),
+            Data(HMAC<SHA256>.authenticationCode(for: Data([0x01]) + pair + single, using: key)),
+            "an odd tail is carried up unchanged and folded at the next level"
+        )
+    }
+
     /// `manifest.sig` is Ed25519 over the 32 RAW bytes of `content_digest`,
     /// rendered b64url unpadded — not over the 64 ASCII hex characters and not
     /// over the manifest file. Signing the hex instead would sign 64 different

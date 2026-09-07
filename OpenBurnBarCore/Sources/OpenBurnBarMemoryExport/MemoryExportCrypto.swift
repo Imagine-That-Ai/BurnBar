@@ -249,6 +249,16 @@ public enum MemoryExportCrypto {
         if level.isEmpty {
             level = [Data(HMAC<SHA256>.authenticationCode(for: hashTreeLeafDomain + Data(), using: key))]
         }
+        return fold(level, key: key).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// §2's `fold = HMAC-SHA256(ht_key, 0x01 ‖ left ‖ right)   with last-node
+    /// promotion`, over raw 32-byte nodes. One implementation, used for the
+    /// leaves of a section and for the section subroots alike, because two
+    /// spellings of one fold is how Wave 13 produced bundles that verified
+    /// against neither side.
+    static func fold(_ nodes: [Data], key: SymmetricKey) -> Data {
+        var level = nodes
         while level.count > 1 {
             var next: [Data] = []
             var index = 0
@@ -269,21 +279,31 @@ public enum MemoryExportCrypto {
             }
             level = next
         }
-        return level[0].map { String(format: "%02x", $0) }.joined()
+        return level.first ?? Data(repeating: 0, count: 32)
     }
 
     /// Combine per-section subroots into the bundle root, in section order.
     /// D-0031 computes the root once and carries it once: this is that one
-    /// computation, over the same salted key as the tree itself. The join is
-    /// the exporter's fold of section subroots (D-0031 pins leaf and fold, not
-    /// this join); what matters is that there is exactly one root and it is an
-    /// input to `content_digest`.
+    /// computation, over the same salted key as the tree itself.
+    ///
+    /// It is **the same fold as the tree below it** — §2's `fold =
+    /// HMAC-SHA256(ht_key, 0x01 ‖ left ‖ right)   with last-node promotion` —
+    /// applied pairwise to the RAW 32-byte subroots in section order, with an
+    /// odd tail carried up unchanged. Until F-2 this joined the subroots as
+    /// ASCII hex separated by U+001F and HMAC'd the result: a construction
+    /// D-0031 does not describe, which an importer folding per ruling 1 could
+    /// only disagree with — a different root, a different `content_digest` and a
+    /// different bundle identity for the same bytes. Nothing pinned it, either:
+    /// mutating the separator left 113 tests green. The vector in
+    /// `MemoryExportCryptoTests` pins it to a VALUE now, computed outside this
+    /// code path.
     public static func combineSubroots(bundleKey: SymmetricKey, subroots: [String]) -> String {
         let key = derive(salted: bundleKey, info: "mif1/hashtree/v1", bytes: 32)
-        let joined = Data(subroots.joined(separator: "\u{1F}").utf8)
-        return HMAC<SHA256>.authenticationCode(for: joined, using: key)
-            .map { String(format: "%02x", $0) }
-            .joined()
+        // A subroot the writer could not supply is 32 zero bytes — the same
+        // placeholder the section header carries — and never a node dropped from
+        // the tree, which would change the fold's SHAPE and not just a value.
+        let nodes = subroots.map { MemoryExportCrypto.hexToData($0) ?? Data(repeating: 0, count: 32) }
+        return fold(nodes, key: key).map { String(format: "%02x", $0) }.joined()
     }
 
     static func chunks(of data: Data, size: Int) -> [Data] {
