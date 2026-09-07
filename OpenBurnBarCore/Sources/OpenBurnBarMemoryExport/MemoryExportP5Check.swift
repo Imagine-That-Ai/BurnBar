@@ -120,6 +120,10 @@ public enum MemoryExportP5Check {
             "empty": .bool(empty)
         ])
         report.target = MemoryExportReportTarget(quiesced: quiesced)
+        // R6 — the boolean is the report, not the finding. A reader keying on
+        // `report.concurrent_writes` missed a survived writer before, because
+        // only the finding was emitted and this stayed false.
+        report.concurrentWrites = quiesced == false
         report.holdReasons = holds
         report.decision = holds.isEmpty ? .exported : .held
         report.findings = quiesced ? [] : [MemoryExportFinding(
@@ -130,6 +134,18 @@ public enum MemoryExportP5Check {
                 + "The fix is the version gate; the LaunchAgent stays up and the file mode stays as it is."
         )]
         return MemoryExportP5Result(report: report, passed: holds.isEmpty, holdReasons: holds)
+    }
+
+    /// The p5 lane refuses an identity-less store rather than seeding every
+    /// canonical id from the literal `"unknown"` — which matches no bundle and
+    /// collides across every such store (review R6). The export lane throws the
+    /// same refusal from the CLI; this is the shared, unit-testable spelling so
+    /// both lanes name the same code (`MIFExportError.storeIdentityAbsent`,
+    /// BurnBar's own precondition — it fires before any report is written, so
+    /// it never reaches `reconciliation_report.export_error`).
+    public static func requireStoreID(_ storeID: String?) throws -> String {
+        guard let storeID else { throw MIFExportError.storeIdentityAbsent }
+        return storeID
     }
 
     /// Dotted numeric compare with a non-numeric tail ignored, so `1.0.41-beta`

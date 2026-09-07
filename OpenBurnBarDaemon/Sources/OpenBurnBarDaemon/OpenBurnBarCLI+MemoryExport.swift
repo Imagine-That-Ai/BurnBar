@@ -198,6 +198,20 @@ extension BurnBarCLIRunner {
                 .filter { $0.isEmpty == false }
         )
 
+        // R6 — the export lane refuses above; this lane refused nothing and
+        // seeded every canonical id from the literal `"unknown"`. Same code,
+        // same sentence, refused the same way.
+        let p5StoreID: String
+        do {
+            p5StoreID = try MemoryExportP5Check.requireStoreID(storeID)
+        } catch {
+            throw BurnBarCLIError.missingArgument(
+                "\(MIFExportError.storeIdentityAbsent.rawValue): this store carries neither a local `devices` row nor an "
+                    + "audit chain, so it has nothing that identifies it from the inside. Every canonical "
+                    + "id is seeded from that value, and the p5 check will not invent one."
+            )
+        }
+
         let result = MemoryExportP5Check.run(
             gates: MemoryExportP5Gates(
                 sourceVersion: BurnBarDaemonVersion.current,
@@ -210,7 +224,7 @@ extension BurnBarCLIRunner {
             headAfter: headAfter.seq,
             sourceLiveIDs: sourceLiveIDs,
             targetLiveIDs: targetLiveIDs,
-            storeID: storeID ?? "unknown"
+            storeID: p5StoreID
         )
         if command.json {
             return MIFCanonicalJSON.serialize(result.report.json)

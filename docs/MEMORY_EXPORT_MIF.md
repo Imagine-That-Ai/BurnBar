@@ -540,7 +540,7 @@ in review order, one commit per finding.
 | R3 | reconciliation cannot fail | **fixed** — `source_rows` is measured once at the source query and never touched again; a row counted but not held fails its table with `source_unreadable` and holds the bundle. A test drives `balanced == false` |
 | R4 | `manifest.recipient_key_id` is the wrong string, and the HPKE aad | **fixed** — emits the `rcp_` id (D-0025); the manifest field is the string the wrap was sealed under, proved by opening the wrap with it. Schema re-vendored at `3332bd5b` (`a008cdef…`), validation at HEAD → 0 failures |
 | R5 | `verify` does not detect a modified segment | **fixed** — `hashtree.json` carries one unkeyed `sha256` per 4 MiB chunk of every segment file (`segment_sha256`, over ciphertext, so it leaks nothing); `verify` recomputes the stream and names the segment file and chunk on mismatch. A one-bit flip fails |
-| R6 | p5-check invents a store id; `concurrent_writes` stays false | open |
+| R6 | p5-check invents a store id; `concurrent_writes` stays false | **fixed** — both lanes refuse an identity-less store with `EXPORT_STORE_IDENTITY_ABSENT` via one shared `requireStoreID`; `run` sets `report.concurrent_writes` from the head assertion, and the moved-head test pins it |
 | R7 | seven classification tests can skip green | open |
 | R8 | rows 1/5/10/15 uncovered; `isCloudOnly` unwired; absent label raises stored-`rejected` | open |
 | R9 | `store_id` comment claims an installation identity | open |

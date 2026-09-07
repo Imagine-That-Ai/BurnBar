@@ -108,6 +108,8 @@ final class MemoryExportChainAndP5Tests: XCTestCase {
         XCTAssertTrue(result.passed)
         XCTAssertEqual(result.report.phase, .p5Reconcile)
         XCTAssertEqual(result.report.target?.quiesced, true)
+        // R6 — the boolean travels with the report, not only the finding.
+        XCTAssertFalse(result.report.concurrentWrites)
     }
 
     func test_aMovedAuditHeadMeansAWriterSurvivedTheGates() {
@@ -121,6 +123,10 @@ final class MemoryExportChainAndP5Tests: XCTestCase {
         )
         XCTAssertFalse(result.passed)
         XCTAssertEqual(result.holdReasons, [.p5SourceNotQuiesced])
+        // R6 — `headBefore: 5, headAfter: 6` used to leave
+        // `report.concurrent_writes == false` while holding on a finding a
+        // reader keying on the boolean never saw.
+        XCTAssertTrue(result.report.concurrentWrites)
         // The fix is the version gate, never a process kill — the finding says
         // so, because that is what D-0007 rules out.
         XCTAssertTrue(result.report.findings.contains { $0.code == .concurrentWrites })
@@ -155,6 +161,22 @@ final class MemoryExportChainAndP5Tests: XCTestCase {
         XCTAssertFalse(result.passed)
         XCTAssertEqual(result.holdReasons, [.reconciliationMismatch])
     }
+    // MARK: - p5 store refusal (R6)
+
+    /// The p5 lane seeded every canonical id from the literal `"unknown"` when
+    /// the store carried no identity — matching no bundle and colliding across
+    /// every identity-less store. Now both lanes refuse with the same code.
+    func test_aP5CheckWithoutAStoreIdentityIsARefusalNotAnUnknown() throws {
+        XCTAssertEqual(try MemoryExportP5Check.requireStoreID("store-1"), "store-1")
+        XCTAssertThrowsError(try MemoryExportP5Check.requireStoreID(nil)) { error in
+            XCTAssertEqual(error as? MIFExportError, .storeIdentityAbsent)
+            XCTAssertEqual(
+                (error as? MIFExportError)?.rawValue,
+                "EXPORT_STORE_IDENTITY_ABSENT"
+            )
+        }
+    }
+
     // MARK: - Store identity (F-11)
 
     /// Every canonical id is `sha256(store_id ‖ …)`, so `store_id` has to
