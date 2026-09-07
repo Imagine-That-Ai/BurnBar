@@ -422,6 +422,13 @@ def resolve_project_id(conn: sqlite3.Connection, root: Path) -> str:
     else:
         project_id = preferred_project_id
 
+    if connection_is_read_only(conn):
+        # Everything below is bookkeeping: refreshing `pcm_projects`, recording
+        # the alias for this folder, re-pointing a checkpoint's root. The id was
+        # already decided by the reads above, and a reader may not write. The
+        # daemon records the same rows itself whenever it indexes this project.
+        return project_id
+
     can_update_fingerprint = existing is None or str(existing[0]) == project_id
     if can_update_fingerprint:
         conn.execute(
@@ -656,7 +663,84 @@ def current_commit(root: Path) -> str:
     return _git_output(root, ["rev-parse", "HEAD"])
 
 
+class ReadOnlySchemaError(RuntimeError):
+    """A read-only handle was pointed at a store without the code-memory schema."""
+
+
+# What every code-memory read path joins against. The daemon's own store creates
+# all of these in one migration (`OpenBurnBarDatabase+DataMigrationsV41toV51`
+# for the `pcm_*`/`code_*` set, V1toV20/V21toV40 for the `search_*` set), so a
+# store missing one is a store missing the migration, not a partial schema.
+REQUIRED_READ_TABLES = frozenset(
+    {
+        "code_artifacts",
+        "code_index_checkpoints",
+        "code_symbols",
+        "pcm_project_aliases",
+        "pcm_projects",
+        "search_chunks",
+        "search_documents",
+    }
+)
+
+
+def connection_is_read_only(conn: sqlite3.Connection) -> bool:
+    """
+    True when this handle refuses everything but SELECT.
+
+    The connection declares it (`burnbar_read_only = True`); this module never
+    sniffs the type, so it stays independent of the server that supplies the
+    daemon-backed transport, and a future read transport opts in the same way.
+    """
+    return bool(getattr(conn, "burnbar_read_only", False))
+
+
+def verify_schema(conn: sqlite3.Connection) -> None:
+    """
+    Prove the code-memory schema is present using only SELECT.
+
+    The bootstrap in `_bootstrap_schema` is the writer's job — PRAGMAs, CREATE
+    TABLE, an ALTER or two, and a DROP. None of it can travel a read-only
+    handle, and none of it needs to: the daemon that owns an encrypted store
+    runs the Swift migrations that create exactly these tables. What a reader
+    owes the caller is not a silent skip but a truthful failure when the store
+    really is missing the schema, named rather than surfacing later as an
+    opaque `no such table` from the middle of a join.
+    """
+    if getattr(conn, "_burnbar_schema_verified", False):
+        return
+    wanted = sorted(REQUIRED_READ_TABLES)
+    placeholders = ",".join("?" for _ in wanted)
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master "
+        f"WHERE type IN ('table', 'virtual table') AND name IN ({placeholders})",
+        tuple(wanted),
+    ).fetchall()
+    present = {str(row[0]) for row in rows}
+    missing = sorted(REQUIRED_READ_TABLES - present)
+    if missing:
+        raise ReadOnlySchemaError(
+            "code memory is unavailable: this store is missing "
+            f"{', '.join(missing)}. Reads run against the daemon's store, which "
+            "creates these in its own migrations — open OpenBurnBar once so the "
+            "store migrates, then retry."
+        )
+    try:
+        conn._burnbar_schema_verified = True  # type: ignore[attr-defined]
+    except AttributeError:
+        # A handle that refuses attributes just re-verifies; one SELECT.
+        pass
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
+    """Bring the schema up to date, or — on a read-only handle — prove it is."""
+    if connection_is_read_only(conn):
+        verify_schema(conn)
+        return
+    _bootstrap_schema(conn)
+
+
+def _bootstrap_schema(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
     conn.execute(

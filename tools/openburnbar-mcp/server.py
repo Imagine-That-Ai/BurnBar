@@ -465,6 +465,13 @@ class _DaemonReadConnection:
 
     row_factory: Any = None
 
+    # Capability declaration, read by `project_code_memory.connection_is_read_only`.
+    # Code memory keeps its schema bootstrap and its project-alias bookkeeping —
+    # both writes — off this handle, and proves the schema by SELECT instead. An
+    # attribute rather than an isinstance check, so `project_code_memory` never has
+    # to import the server and any future read transport opts in the same way.
+    burnbar_read_only: bool = True
+
     def execute(self, sql: str, params: Any = ()) -> _DaemonCursor:
         wire_args = [_sql_value_to_wire(value) for value in params]
         payload = {"sql": sql, "args": wire_args, "maxRows": 2000}
