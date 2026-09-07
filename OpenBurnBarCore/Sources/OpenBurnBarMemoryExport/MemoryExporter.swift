@@ -160,6 +160,12 @@ public struct MemoryExporter: Sendable {
         // checking it.
         var edgesTable = MemoryExportTableReconciliation(name: "agent_memories.superseded_by")
         var aliasesTable = MemoryExportTableReconciliation(name: "pcm_project_aliases")
+        // R3: a synthesized tombstone is not a `memory_fact_tombstones` row, and
+        // adding one to that table's `source_rows` on the same edge that added
+        // it to `exported` is how its closed sum became `N == N`. The
+        // `memory.delete` audit rows are their own logical table with their own
+        // obligation (M-04), so they get their own row.
+        var deletesTable = MemoryExportTableReconciliation(name: "memory_audit.delete")
 
         let stores = MemoryExportBodyStores(
             snapshotsByMemoryID: Dictionary(
@@ -248,7 +254,7 @@ public struct MemoryExporter: Sendable {
             guard let updatedAt = MemoryExportTimestamp.parse(memory.updatedAt) else { return true }
             return Int((updatedAt.timeIntervalSince1970 * 1000).rounded()) > watermark
         }
-        memoriesTable.sourceRows = snapshot.memories.count
+        memoriesTable.sourceRows = snapshot.sourceRows("agent_memories", observed: snapshot.memories.count)
         memoriesTable.note(.outOfWindow, snapshot.memories.count - windowed.count)
         report.memoriesIn = snapshot.memories.count
 
@@ -294,8 +300,6 @@ public struct MemoryExporter: Sendable {
                         createdAtMS: MemoryExportTimestamp.milliseconds(memory.updatedAt),
                         context: context
                     ))
-                    tombstonesTable.sourceRows += 1
-                    tombstonesTable.exported += 1
                     report.tombstonesWithoutContentKey += 1
                 }
                 continue
@@ -394,7 +398,6 @@ public struct MemoryExporter: Sendable {
             // empty and every edge is recomputed locally by the importer.
             if let target = memory.supersededBy {
                 report.derivedDedupEdges += 1
-                edgesTable.sourceRows += 1
                 if snapshot.memories.contains(where: { $0.id == target }) {
                     edgesTable.note(.derivedEdgeRecomputedLocally)
                 } else {
@@ -405,7 +408,10 @@ public struct MemoryExporter: Sendable {
         }
 
         // ---- 00 / 01: tombstones and receipts ------------------------------
-        tombstonesTable.sourceRows += snapshot.factTombstones.count
+        tombstonesTable.sourceRows = snapshot.sourceRows(
+            "memory_fact_tombstones",
+            observed: snapshot.factTombstones.count
+        )
         for tombstone in snapshot.factTombstones.sorted(by: { $0.id < $1.id }) {
             let subject = canonical(tombstone.memoryID)
             let id = MemoryExportIdentity.tombstoneID(
@@ -452,8 +458,12 @@ public struct MemoryExporter: Sendable {
         // count balanced. Every delete in the window synthesizes a tombstone,
         // and a delete with no tombstone is an EXPORT FAILURE, not a warning.
         let deleteRows = snapshot.auditRows.filter { $0.action == "memory.delete" && $0.subjectID != nil }
+        deletesTable.sourceRows = snapshot.sourceRows("memory_audit.delete", observed: deleteRows.count)
         for delete in deleteRows.sorted(by: { $0.seq < $1.seq }) {
-            if case .delta(let since, _) = mode, delete.seq <= since { continue }
+            if case .delta(let since, _) = mode, delete.seq <= since {
+                deletesTable.note(.outOfWindow)
+                continue
+            }
             // swiftlint:disable:next force_unwrapping reason: filtered above
             let subjectID = delete.subjectID!
             let id = MemoryExportIdentity.tombstoneID(
@@ -461,7 +471,13 @@ public struct MemoryExporter: Sendable {
                 sourceTable: "memory_audit.delete",
                 sourceID: subjectID
             )
-            guard emittedTombstoneIDs.insert(id).inserted else { continue }
+            guard emittedTombstoneIDs.insert(id).inserted else {
+                // A second `memory.delete` naming the same subject: the
+                // obligation was discharged by the first, and the tombstone id
+                // is keyed on the subject rather than on the delete's seq.
+                deletesTable.note(.forgottenToTombstone)
+                continue
+            }
             emittedTombstoneSubjects.insert(
                 canonical(subjectID)
             )
@@ -484,8 +500,7 @@ public struct MemoryExporter: Sendable {
                 createdAtMS: MemoryExportTimestamp.milliseconds(delete.ts),
                 context: context
             ))
-            tombstonesTable.sourceRows += 1
-            tombstonesTable.exported += 1
+            deletesTable.exported += 1
             report.deleteWithoutTombstoneSynthesized += 1
             report.tombstonesWithoutContentKey += 1
             record(.deleteWithoutTombstoneSynthesized, sample: subjectID)
@@ -505,7 +520,10 @@ public struct MemoryExporter: Sendable {
             throw MemoryExporterError.export(.deleteWithoutTombstone)
         }
 
-        sourceTombstonesTable.sourceRows = snapshot.sourceTombstones.count
+        sourceTombstonesTable.sourceRows = snapshot.sourceRows(
+            "memory_source_tombstones",
+            observed: snapshot.sourceTombstones.count
+        )
         for tombstone in snapshot.sourceTombstones.sorted(by: { $0.id < $1.id }) {
             sections[.tombstones]?.append(
                 MemoryExportRecords.sourceTombstoneRecord(row: tombstone, context: context)
@@ -516,7 +534,7 @@ public struct MemoryExporter: Sendable {
         }
 
         // ---- 04: projects --------------------------------------------------
-        projectsTable.sourceRows = snapshot.projects.count
+        projectsTable.sourceRows = snapshot.sourceRows("pcm_projects", observed: snapshot.projects.count)
         for project in snapshot.projects.sorted(by: { $0.projectID < $1.projectID }) {
             sections[.projects]?.append(MemoryExportRecords.projectRecord(project: project, context: context))
             projectsTable.exported += 1
@@ -526,7 +544,6 @@ public struct MemoryExporter: Sendable {
             report.fingerprintDowngraded += 1
             record(.fingerprintDowngraded, sample: project.projectID)
             if project.pathAliasCount > 0 {
-                aliasesTable.sourceRows += project.pathAliasCount
                 aliasesTable.note(.pathAliasNotTransported, project.pathAliasCount)
             }
         }
@@ -608,7 +625,10 @@ public struct MemoryExporter: Sendable {
         // balance and the fixture bundle was `held` without anyone noticing.
         // Every row lands in exactly one bucket here, by construction of the
         // if/else and not by adjusting `source_rows`.
-        bodiesTable.sourceRows = snapshot.bodySnapshots.count
+        bodiesTable.sourceRows = snapshot.sourceRows(
+            "memory_body_snapshots",
+            observed: snapshot.bodySnapshots.count
+        )
         for row in snapshot.bodySnapshots {
             if referencedBodySnapshots.contains(row.memoryID) == false {
                 if carriedOrphanIDs.contains(row.memoryID) {
@@ -634,10 +654,43 @@ public struct MemoryExporter: Sendable {
         // plus any synthetic orphan — so it is set after the orphan pass.
         report.memoriesOut = memoriesTable.exported + report.syntheticOrphanMemories
 
-        provenanceTable.sourceRows = snapshot.provenance.count
+        provenanceTable.sourceRows = snapshot.sourceRows("memory_provenance", observed: snapshot.provenance.count)
         for citation in snapshot.provenance where carriedMemoryIDs.contains(citation.memoryID) == false {
             record(.orphanProvenance, sample: citation.memoryID)
             provenanceTable.note(.orphanProvenanceNoMemory)
+        }
+
+        // The two logical tables that are a predicate over another one: an edge
+        // the walk never reached (its owning memory fell outside the window) and
+        // an alias whose project row is missing are both real losses, and both
+        // were invisible while these counted themselves.
+        let edgesInSnapshot = snapshot.memories.count { $0.supersededBy != nil }
+        edgesTable.sourceRows = snapshot.sourceRows(
+            "agent_memories.superseded_by",
+            observed: edgesInSnapshot
+        )
+        // An edge whose owning memory the delta window excluded is out of
+        // window, exactly as the memory is. What is left unbucketed after this
+        // is a row the reader counted and the snapshot did not hold.
+        edgesTable.note(.outOfWindow, max(0, edgesInSnapshot - report.derivedDedupEdges))
+        aliasesTable.sourceRows = snapshot.sourceRows(
+            "pcm_project_aliases",
+            observed: snapshot.projects.reduce(0) { $0 + $1.pathAliasCount }
+        )
+        report.tables = [
+            memoriesTable, bodiesTable, provenanceTable,
+            tombstonesTable, sourceTombstonesTable, projectsTable,
+            edgesTable, aliasesTable, deletesTable
+        ]
+        // A table that does not balance is a row the source held and this bundle
+        // cannot account for — the reader counted it, the export never saw it.
+        // It is NOT given a bucket: a bucket would close the sum again, and the
+        // point of the sum is that it can fail.
+        for table in report.tables where table.isBalanced == false {
+            record(
+                .sourceUnreadable,
+                sample: "\(table.name): counted \(table.sourceRows), accounted \(table.accountedRows)"
+            )
         }
 
         // ---- 10: findings ---------------------------------------------------
@@ -686,11 +739,6 @@ public struct MemoryExporter: Sendable {
             return emittedTombstoneSubjects.contains(id) == false
         }
 
-        report.tables = [
-            memoriesTable, bodiesTable, provenanceTable,
-            tombstonesTable, sourceTombstonesTable, projectsTable,
-            edgesTable, aliasesTable
-        ]
         report.partialSources = options.partialSources
         report.recipientKeyID = recipient.keyID
         report.recipientStoreID = recipient.storeID

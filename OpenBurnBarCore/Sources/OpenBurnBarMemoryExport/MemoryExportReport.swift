@@ -31,10 +31,16 @@ public struct MemoryExportTableReconciliation: Sendable, Equatable {
         rejected[reason, default: 0] += count
     }
 
-    /// The closed sum: every source row lands in exactly one bucket.
-    public var isBalanced: Bool {
-        sourceRows == exported + notExported.values.reduce(0, +) + rejected.values.reduce(0, +)
+    /// The rows this export accounted for, each in exactly one bucket. The
+    /// other side of the closed sum, and it is computed from the buckets alone —
+    /// `sourceRows` is measured by the READER, on its own edge, and nothing on
+    /// this side may touch it.
+    public var accountedRows: Int {
+        exported + notExported.values.reduce(0, +) + rejected.values.reduce(0, +)
     }
+
+    /// The closed sum: every source row lands in exactly one bucket.
+    public var isBalanced: Bool { sourceRows == accountedRows }
 
     var json: MIFJSON {
         var fields: [String: MIFJSON] = [

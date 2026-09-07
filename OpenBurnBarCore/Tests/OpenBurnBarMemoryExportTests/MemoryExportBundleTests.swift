@@ -675,7 +675,13 @@ final class MemoryExportBundleTests: XCTestCase {
         // The numbers are the source tables' own row counts, unadjusted.
         XCTAssertEqual(try table("agent_memories").sourceRows, snapshot.memories.count)
         XCTAssertEqual(try table("memory_body_snapshots").sourceRows, snapshot.bodySnapshots.count)
-        XCTAssertEqual(try table("memory_fact_tombstones").sourceRows, 1, "the synthesized delete tombstone")
+        // R3. The fixture inserts NO `memory_fact_tombstones` row, and this
+        // used to read 1 because the synthesized delete tombstone bumped both
+        // sides of that table's sum on one edge. The delete lane is its own
+        // logical table now, counted over the `memory.delete` audit rows.
+        XCTAssertEqual(try table("memory_fact_tombstones").sourceRows, 0, "the fixture writes none")
+        XCTAssertEqual(try table("memory_audit.delete").sourceRows, 1)
+        XCTAssertEqual(try table("memory_audit.delete").exported, 1, "the synthesized delete tombstone")
 
         // A carried orphan is a `memory_body_snapshots` row that was exported,
         // and a synthetic section-05 record. It is not an `agent_memories` row,
@@ -690,6 +696,55 @@ final class MemoryExportBundleTests: XCTestCase {
         // exercises them.
         XCTAssertNotNil(result.report.tables.first { $0.name == "agent_memories.superseded_by" })
         XCTAssertNotNil(result.report.tables.first { $0.name == "pcm_project_aliases" })
+    }
+
+    /// R3. A row the reader COUNTED and the export never saw.
+    ///
+    /// The reader takes `SELECT COUNT(*)` on its own edge, before the rows; a
+    /// concurrent `DELETE` between the two leaves the export one row short. The
+    /// shortfall is deliberately given NO bucket — a bucket would close the sum
+    /// again, which is exactly how `balanced` became true for any input — so the
+    /// table fails its closed sum, a `source_unreadable` finding names it, and
+    /// the bundle is `held` rather than `exported`.
+    ///
+    /// The delete is simulated by handing the exporter the count the reader
+    /// would have taken a moment earlier, because both halves happen inside one
+    /// GRDB read transaction and a fixture cannot slip a writer between them.
+    func test_aRowCountedByTheReaderAndMissingFromTheRowsFailsTheClosedSum() throws {
+        var snapshot = try MemoryExportFixtureStore.snapshot(try makeStore())
+        XCTAssertEqual(
+            snapshot.sourceRowCounts["agent_memories"],
+            snapshot.memories.count,
+            "the reader's count and its rows agree on an undisturbed store"
+        )
+        snapshot.sourceRowCounts["agent_memories"] = snapshot.memories.count + 1
+
+        let result = try makeExporter().export(
+            snapshot,
+            mode: .full,
+            to: nil,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "vanished")
+        )
+        let memories = try XCTUnwrap(result.report.tables.first { $0.name == "agent_memories" })
+        XCTAssertFalse(memories.isBalanced, "the closed sum is short by the vanished row")
+        XCTAssertEqual(memories.sourceRows, memories.accountedRows + 1)
+        XCTAssertFalse(result.report.reconciles)
+        XCTAssertEqual(result.report.decision, .held)
+        XCTAssertTrue(result.report.holdReasons.contains(.reconciliationMismatch))
+        XCTAssertTrue(
+            result.report.findings.contains { $0.code == .sourceUnreadable },
+            "the report names the table that did not balance"
+        )
+        // And it reaches the artefact a reader actually opens.
+        guard case .object(let json) = result.report.json,
+              case .array(let tables) = json["tables"] ?? .null else {
+            return XCTFail("the report has no tables array")
+        }
+        XCTAssertTrue(tables.contains { table in
+            guard case .object(let fields) = table,
+                  case .string("agent_memories") = fields["name"] ?? .null else { return false }
+            return fields["balanced"] == .bool(false)
+        }, "report.json carries balanced: false for agent_memories")
     }
 
     /// F-12. `lost.csv` names a row by its CANONICAL id, and that id used to

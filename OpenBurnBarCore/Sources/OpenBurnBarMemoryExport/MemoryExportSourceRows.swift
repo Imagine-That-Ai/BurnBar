@@ -366,6 +366,16 @@ public struct MemoryExportSourceSnapshot: Sendable {
     /// transaction, and a move means a writer ran while the export read. A
     /// finding, never a failure — the LaunchAgent stays up (D-0007).
     public var concurrentWrites: Bool
+    /// `SELECT COUNT(*)` per source table, taken by the READER on its own edge
+    /// before the rows are fetched.
+    ///
+    /// §10's closed sum is "every source row lands in exactly one bucket", and
+    /// it is only a check if the two sides are measured separately. Deriving
+    /// `source_rows` from the same array the export walks makes the identity
+    /// hold for any input — which is what it did, so `balanced` could not be
+    /// false and no test could make it false (review R3). Absent for a table the
+    /// reader did not reach, and the array count is then the honest fallback.
+    public var sourceRowCounts: [String: Int]
 
     public init(
         memories: [MemoryExportMemoryRow] = [],
@@ -382,7 +392,8 @@ public struct MemoryExportSourceSnapshot: Sendable {
         auditHeadSeq: Int = 0,
         sourceQuickCheck: String? = "ok",
         storeIdentity: String? = nil,
-        concurrentWrites: Bool = false
+        concurrentWrites: Bool = false,
+        sourceRowCounts: [String: Int] = [:]
     ) {
         self.memories = memories
         self.auditRows = auditRows
@@ -399,6 +410,13 @@ public struct MemoryExportSourceSnapshot: Sendable {
         self.sourceQuickCheck = sourceQuickCheck
         self.storeIdentity = storeIdentity
         self.concurrentWrites = concurrentWrites
+        self.sourceRowCounts = sourceRowCounts
+    }
+
+    /// What the reader counted for `table`, or what this snapshot actually
+    /// holds when the count was never taken.
+    public func sourceRows(_ table: String, observed: Int) -> Int {
+        sourceRowCounts[table] ?? observed
     }
 }
 

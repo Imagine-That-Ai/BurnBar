@@ -29,6 +29,11 @@ public enum MemoryExportStoreReader {
 
         let memoryColumns = try columnNames(db, table: "agent_memories")
         guard memoryColumns.isEmpty == false else { return snapshot }
+        // Counted BEFORE the rows are read, and never again: §10's closed sum is
+        // only a check when the two sides of it are measured on their own edges
+        // (review R3). A row deleted between the count and the SELECT leaves the
+        // sum short by one, which is exactly the fact worth reporting.
+        snapshot.sourceRowCounts = try rowCounts(db)
         snapshot.memories = try memories(db, columns: memoryColumns)
 
         if try tableExists(db, "memory_audit") {
@@ -178,6 +183,46 @@ public enum MemoryExportStoreReader {
                 }
         }
         return snapshot
+    }
+
+    /// The tables whose `source_rows` the report declares, and the count each
+    /// one answered on its own edge. A table that does not exist is absent
+    /// rather than zero, so "no such table" and "no rows" stay distinguishable.
+    static let countedTables = [
+        "agent_memories", "memory_body_snapshots", "memory_provenance",
+        "memory_fact_tombstones", "memory_source_tombstones", "pcm_projects"
+    ]
+
+    static func rowCounts(_ db: Database) throws -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for table in countedTables where try tableExists(db, table) {
+            // The table names are this file's own literals, never a caller's.
+            counts[table] = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(table)") ?? 0
+        }
+        // The three logical tables that are a PREDICATE over a table rather than
+        // a table: the edges, the path aliases and the delete lane. Each is a
+        // row of the report with its own closed sum, so each is counted here
+        // rather than tallied by the loop that walks it.
+        if try tableExists(db, "agent_memories"),
+           try columnNames(db, table: "agent_memories").contains("superseded_by") {
+            counts["agent_memories.superseded_by"] = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM agent_memories WHERE superseded_by IS NOT NULL"
+            ) ?? 0
+        }
+        if try tableExists(db, "pcm_project_aliases") {
+            counts["pcm_project_aliases"] = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM pcm_project_aliases"
+            ) ?? 0
+        }
+        if try tableExists(db, "memory_audit") {
+            counts["memory_audit.delete"] = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM memory_audit WHERE action = 'memory.delete' AND subject_id IS NOT NULL"
+            ) ?? 0
+        }
+        return counts
     }
 
     /// The store's identity, read from INSIDE the database.
