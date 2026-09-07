@@ -211,7 +211,10 @@ In order, because each is cheap and rules out the next:
 4. **Did the artifact expire?** Domain-core protected verification artifacts
    expire after **7 days**; the hosting gate demands exactly one unexpired
    match and fail-closes at zero.
-5. **Is the standing ops issue already screaming?** Recurring deploy failures
+5. **Is it the Functions promotion gate?** A `prepare=failure, deploy=skipped,
+   health=skipped` production Functions run that ends in
+   `HTTP 404 … /attestations/sha256:…` is §10, and another tag will not fix it.
+6. **Is the standing ops issue already screaming?** Recurring deploy failures
    comment on a standing issue rather than opening new ones — 55 comments
    accumulated during the outage. Search open issues before diagnosing.
 
@@ -321,3 +324,110 @@ git diff config/domain-core-control-plane-manifest.json
 
 The diff should name **only files you edited**. Any other filename means `main`
 was already stale before you started — do not assume it is your change.
+
+---
+
+## 10. The production Cloud Functions promotion gate
+
+Between 2026-08-20 and 2026-09-02, **39 consecutive `v1.0.40+repair.N` tags
+shipped nothing.** Every run ended `prepare=failure, deploy=skipped,
+health=skipped`, and every failure was the same line:
+
+```
+Failed to download the artifact's bundle(s): failed to fetch attestations:
+HTTP 404: Not Found (https://api.github.com/repos/Imagine-That-Ai/BurnBar/attestations/sha256:a2d4583c…)
+```
+
+That is `gh attestation download "$candidate"` inside **Verify protected
+promotion and exact rollback before build**. It is not a tag problem, not a
+SemVer-build-metadata problem, and not a transient one. Read §7: *do not cut a
+new version tag to work around a failing gate.*
+
+### 10.1 What the gate actually asserts
+
+`prepare-functions-deploy` resolves candidate **C** from the committed
+activation authority, locates the one successful `domain-core.yml` push run for
+C, downloads that run's `domain-core-candidate-bundle.json`, and demands a
+SLSA provenance attestation over **those exact bytes**, signed by
+`domain-core-promotion-proof.yml` on `refs/heads/main`.
+
+No attestation for that digest ⇒ 404 ⇒ the job dies before the build.
+
+### 10.2 The inactive lane
+
+gen-3 was annulled in **#2173** (2026-08-11), so
+`resolve-domain-core-activation.mjs` reports `active: false`, every governed
+domain in `public-production` is `legacy`, and `domainCorePricing.ts` returns
+the TypeScript path without ever touching the vendored WASM. Nothing
+domain-core executes in production.
+
+**#2322** taught the native release gate that lane and **#2329** taught
+hosting — but the Functions lane was never taught, so it kept demanding a
+promotion proof for a candidate no promotion-proof run had signed. That gap is
+the whole outage.
+
+`scripts/ci/resolve-functions-promotion-gate.mjs` now decides it, fail-closed:
+
+| activation | profile | protected proof |
+| --- | --- | --- |
+| `true` | `public-production` | **required** |
+| `true` / `false` | `public-production-rollback` | **required** — the manual protected profile never takes the shortcut |
+| `false` | `public-production`, every mode `legacy` | not required |
+| anything else (`""`, `"TRUE"`, `1`, a non-legacy mode) | any | **error** |
+
+On the inactive lane the deploy proof records `domainCoreInactive: true` and
+`releaseGate: null`. A proof that drops the gate *without* that declaration, or
+declares it over a rollback/non-legacy profile, is rejected by both the proof
+writer and `create-domain-core-functions-deployment-evidence.mjs`.
+
+Tag-bound Functions release evidence is **not dispatched** on the inactive
+lane: that workflow exists only to re-verify the promotion chain, and there is
+none. The run records a `::notice::` and a job-summary line saying so.
+
+### 10.3 Minting a promotion proof — the part that gets done wrong
+
+```bash
+gh workflow run domain-core-promotion-proof.yml \
+  --repo Imagine-That-Ai/BurnBar --ref main \
+  --field candidate_commit=<candidate C>
+```
+
+`candidate_commit` is **candidate C from the activation resolver**, not `HEAD`
+and not the release commit:
+
+```bash
+node scripts/ci/resolve-domain-core-activation.mjs --release-commit HEAD --format json
+```
+
+The successful proof runs on 2026-08-17 and 2026-08-18 were dispatched with
+release commits (`f0142f71`, `103db8bb`) instead of C. They minted attestations
+for bundles nothing consumes while the deploy kept 404ing on C's bundle.
+
+### 10.4 The proof itself can go permanently unmintable
+
+`verify-domain-core-control-plane.mjs` requires candidate C's ~320 control-plane
+files to be **byte-identical to current main**. Any control-plane change landing
+on main after C makes that unsatisfiable forever:
+
+```
+candidate control-plane file differs from trusted main: .github/workflows/burnbar-ci-gate.yml
+```
+
+That is what killed all three promotion-proof attempts on 2026-09-01 — C is
+from 2026-08-11 and `burnbar-ci-gate.yml` had moved three times since.
+
+**The invariant is correct and must not be relaxed**: it is what stops a
+candidate that carried a modified pipeline from being promoted. The consequence
+is operational: **promote a candidate promptly.** Once main's control plane
+drifts past C, the only recovery is a new activation commit that advances C,
+followed immediately by a promotion proof.
+
+### 10.5 Before you tag
+
+```bash
+node scripts/ops/preflight-functions-release.mjs
+```
+
+GO / NO-GO with the candidate, the bundle digest, whether the attestation
+exists, and the exact remediation. Read-only. Run it instead of cutting the
+next tag.
