@@ -28,7 +28,7 @@ AGPL-3.0-only like the rest of BurnBar, linked by **both** the Xcode app target
 
 | File | Spec | What it owns |
 |---|---|---|
-| `MIFCanonicalJSON.swift` | §2 determinism | RFC 8785 (JCS). One serializer owns every byte the bundle emits. |
+| `MIFCanonicalJSON.swift` | §2 determinism | RFC 8785 (JCS). One serializer owns every byte the bundle emits, and one reader parses a manifest back into the same closed value tree so `verify` can re-canonicalise it. |
 | `MIFVocabulary.swift` | §2 record types | A typed mirror of every closed set in the contract; section order **is** merge order. |
 | `MemoryExportSourceRows.swift` | §3 | Plain values for every oracle table read, plus the timestamp parser. |
 | `MemoryExportAuditChain.swift` | §7 | The `openburnbar.memory_audit.v2` recompute, `chain_verified_through_seq`, `chain_broken_at[]`, `chain_forks[]`, `seq_divergence`. |
@@ -36,6 +36,7 @@ AGPL-3.0-only like the rest of BurnBar, linked by **both** the Xcode app target
 | `MemoryExportBodyResolver.swift` | §3.2 | Dual `body_ref` resolution, recovery, and loss. |
 | `MemoryExportCrypto.swift` | §2.1 | Bundle key, `body_join_key` / `body_norm_digest`, the `mif1-hkdf-v1` key schedule, the segment seal and its AAD, the keyed hash tree, the RFC 9180 HPKE wrap, the Ed25519 signature. |
 | `MemoryExportRecipient.swift` | D-0025 | The recipient descriptor, its recomputed id, and unpadded base64url. |
+| `MemoryExportManifestDigest.swift` | §2, D-0031 r.1 | What `content_digest` is a digest OF, in one place: the manifest minus its four excluded members, JCS. The writer and `verify` share it. |
 | `MemoryExportIdentity.swift` | §2, §4 | Every deterministic id. |
 | `MemoryExportRecords.swift` | §2 | One builder per MIF record type. |
 | `MemoryExportGate.swift` | D-0008 | The three gate classes, over BurnBar's own `MemorySecretPIIGate`. |
