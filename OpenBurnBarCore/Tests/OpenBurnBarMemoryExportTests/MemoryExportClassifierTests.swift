@@ -42,8 +42,10 @@ final class MemoryExportClassifierTests: XCTestCase {
         XCTAssertEqual(result.originKind, .human)
         XCTAssertEqual(result.importOriginDetail, .humanVerdict)
         XCTAssertEqual(result.bodyVerdictBinding, .bound)
-        // M-20: a human exit must NAME the audit row section 09 has to carry.
-        XCTAssertNotNil(result.verdictAuditSeq)
+        // M-20: a human exit must NAME the audit row section 09 has to carry —
+        // the approve above is the fixture's only audit row, so seq 1. A bare
+        // non-nil assert passed for any path that happened to set the field.
+        XCTAssertEqual(result.verdictAuditSeq, 1)
     }
 
     // MARK: - Row 8: approve, then the body was rewritten under it
@@ -611,10 +613,14 @@ final class MemoryExportClassifierTests: XCTestCase {
     /// §3.1 case 3, in both segment cases: a genuine tie resolves to the safe
     /// side, which is the only one that cannot promote text no human read.
     func test_aTieOnSeqAndTimestampIsWonByTheReject() {
-        for chain in [
-            MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 2),
-            MemoryExportChainVerification(verifiedThroughSeq: 0, brokenAt: [7], rowsWalked: 2)
-        ] {
+        // R7 — this looped both chains under one `XCTAssertNotEqual(.approved)`
+        // that quarantine also satisfies, so the second iteration proved
+        // nothing about the tie rule. Each chain now asserts its own outcome.
+        let chains: [(chain: MemoryExportChainVerification, broken: Bool)] = [
+            (MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 2), false),
+            (MemoryExportChainVerification(verifiedThroughSeq: 0, brokenAt: [7], rowsWalked: 2), true)
+        ]
+        for (chain, broken) in chains {
             var memory = row(id: "A16")
             memory.reviewStatus = "approved"
             let shared = "2026-01-02T00:00:00.000Z"
@@ -640,7 +646,21 @@ final class MemoryExportClassifierTests: XCTestCase {
                 bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
                 chain: chain
             ))
-            XCTAssertNotEqual(result.reviewStatus, .approved, "a tie never resolves to approved")
+            if broken {
+                // The tie still picks the reject label — but case 2 decides
+                // only WHICH finding is reported, so it leaves as row 7.
+                XCTAssertEqual(result.reviewStatus, .rejected)
+                XCTAssertEqual(result.originKind, .importOrigin)
+                XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
+                XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
+            } else {
+                // Intact: the reject wins the tie and all six conjuncts hold,
+                // so this is §3.1 row 1 — rejected, human, named seq.
+                XCTAssertEqual(result.reviewStatus, .rejected)
+                XCTAssertEqual(result.originKind, .human)
+                XCTAssertEqual(result.importOriginDetail, .humanVerdict)
+                XCTAssertEqual(result.verdictAuditSeq, 7)
+            }
         }
     }
 
@@ -649,7 +669,13 @@ final class MemoryExportClassifierTests: XCTestCase {
     private func classify(_ queue: DatabaseQueue, id: String) throws -> MemoryExportClassification {
         let snapshot = try MemoryExportFixtureStore.snapshot(queue)
         guard let memory = snapshot.memories.first(where: { $0.id == id }) else {
-            throw XCTSkip("fixture row \(id) was not written")
+            // R7 — this was `throw XCTSkip`, which XCTest reports GREEN. Had
+            // `insertAppMemory` ever stopped writing (renamed column, schema
+            // drift), rows 2, 3, 4, 6, 7, 8 and 9 would silently stop testing
+            // while the suite still read "0 failures". A fixture that cannot
+            // be built is a failing test.
+            XCTFail("fixture row \(id) was not written — the fixture drifted, not the classifier")
+            throw MemoryExportFixtureError.rowMissing(id)
         }
         return MemoryExportClassifier.classify(MemoryExportClassifierInput(
             memory: memory,
@@ -663,6 +689,7 @@ final class MemoryExportClassifierTests: XCTestCase {
     }
 
     private func row(id: String) -> MemoryExportMemoryRow {
+
         MemoryExportMemoryRow(
             id: id,
             projectID: "chat:user-1",
@@ -674,4 +701,10 @@ final class MemoryExportClassifierTests: XCTestCase {
             appID: "app-1"
         )
     }
+}
+
+/// R7 — thrown after `XCTFail` when a fixture row is absent, so the seven
+/// classifier tests that share `classify(queue:id:)` run or fail, never skip.
+enum MemoryExportFixtureError: Error {
+    case rowMissing(String)
 }

@@ -541,7 +541,7 @@ in review order, one commit per finding.
 | R4 | `manifest.recipient_key_id` is the wrong string, and the HPKE aad | **fixed** — emits the `rcp_` id (D-0025); the manifest field is the string the wrap was sealed under, proved by opening the wrap with it. Schema re-vendored at `3332bd5b` (`a008cdef…`), validation at HEAD → 0 failures |
 | R5 | `verify` does not detect a modified segment | **fixed** — `hashtree.json` carries one unkeyed `sha256` per 4 MiB chunk of every segment file (`segment_sha256`, over ciphertext, so it leaks nothing); `verify` recomputes the stream and names the segment file and chunk on mismatch. A one-bit flip fails |
 | R6 | p5-check invents a store id; `concurrent_writes` stays false | **fixed** — both lanes refuse an identity-less store with `EXPORT_STORE_IDENTITY_ABSENT` via one shared `requireStoreID`; `run` sets `report.concurrent_writes` from the head assertion, and the moved-head test pins it |
-| R7 | seven classification tests can skip green | open |
+| R7 | seven classification tests can skip green | **fixed** — the shared helper `XCTFail`s and throws instead of `XCTSkip` (proved red by pointing one test at a missing row); M-20 pins the real seq; the tie test asserts each chain state separately |
 | R8 | rows 1/5/10/15 uncovered; `isCloudOnly` unwired; absent label raises stored-`rejected` | open |
 | R9 | `store_id` comment claims an installation identity | open |
 
