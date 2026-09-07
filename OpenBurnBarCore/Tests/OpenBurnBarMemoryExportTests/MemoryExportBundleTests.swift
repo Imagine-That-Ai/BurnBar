@@ -25,7 +25,8 @@ final class MemoryExportBundleTests: XCTestCase {
         MemoryExportRecipient(
             keyID: MemoryExportRecipient.keyID(for: Self.recipientPrivateKey.publicKey),
             publicKey: Self.recipientPrivateKey.publicKey,
-            storeID: "target-store-fixture"
+            // A store id of the DDL's own shape: `sto_` + 32 lowercase hex (M-10).
+            storeID: "sto_" + String(repeating: "b", count: 32)
         )
     }
 

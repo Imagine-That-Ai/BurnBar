@@ -16,10 +16,21 @@
 //     a refusal, so a descriptor whose id was edited to look like somebody
 //     else's cannot be used to address a bundle. It is also the HPKE `aad`, so
 //     the binding is cryptographic rather than advisory.
-//   * `store_id` is the TARGET store's fingerprint. It reaches
-//     `manifest.recipient_store_id` and the export confirmation, which is what
-//     makes a substituted `--recipient` file visible to the operator rather
-//     than merely honoured (migration review rec 5).
+//   * `store_id` is the TARGET store's id — `sto_` and 32 lowercase hex, the
+//     shape `schema/memory-v1.sql` CHECKs (`GLOB 'sto_[0-9a-f]*' AND length =
+//     36`). It reaches `manifest.recipient_store_id` and the export
+//     confirmation, which is what makes a substituted `--recipient` file
+//     visible to the operator rather than merely honoured (migration review
+//     rec 5).
+//
+// The shape is enforced HERE, on the way in, because the contract does not:
+// `$defs/manifest` types `recipient_store_id` as a bare
+// `["string", "null"]`, so interop run 1's fixture sealed to the id
+// `importer-store-fixture` and validated — against a target store that could
+// not exist, which made `RECIPIENT_MISMATCH` unavoidable at whatever importer
+// (M-10). D-0039 ruling 7 types the member; until the vendored schema carries
+// the pattern, a descriptor this exporter cannot address is refused rather
+// than sealed to.
 
 import Foundation
 #if canImport(CryptoKit)
@@ -74,6 +85,26 @@ public struct MemoryExportRecipient: Sendable {
         "rcp_" + String(MemoryExportDigest.sha256Hex(publicKey.rawRepresentation).prefix(32))
     }
 
+    /// `^sto_[0-9a-f]{32}$` — 36 characters, which is `schema/memory-v1.sql`
+    /// line 32's CHECK on `schema_meta.store_id` written as a pattern
+    /// [D-0039 ruling 7]. Hand-rolled rather than `NSRegularExpression`: the
+    /// set is four characters and thirty-two hex digits, and a regex engine is
+    /// a dependency for a `hasPrefix` and a scan.
+    public static func isValidStoreID(_ storeID: String) -> Bool {
+        guard storeID.count == 36, storeID.hasPrefix("sto_") else { return false }
+        return storeID.dropFirst(4).allSatisfy { $0.isHexDigit && ($0.isNumber || $0.isLowercase) }
+    }
+
+    /// Mint one, from 16 random bytes. `memoryctl memory export-recipient`
+    /// mints the real one on the importer's side; this is what
+    /// `memory recipient-keypair` uses when the operator names no store, so a
+    /// fixture cannot be addressed to a string no store can hold.
+    public static func mintStoreID() -> String {
+        var bytes = Data(count: 16)
+        for index in bytes.indices { bytes[index] = UInt8.random(in: 0...255) }
+        return "sto_" + bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
     /// `manifest.recipient_key_id` is the `rcp_` id itself, and nothing else can
     /// be correct: D-0021 ruling 1 makes that string the HPKE `aad`, so an
     /// importer that reads this field and uses it to open the wrap must find the
@@ -89,6 +120,10 @@ public struct MemoryExportRecipient: Sendable {
     public enum DescriptorError: Error, Equatable {
         case malformed(String)
         case keyIDMismatch(declared: String, recomputed: String)
+        /// A descriptor naming a store id no store can hold. Its own case
+        /// because the operator's next step differs: the key is fine, the
+        /// importer published the wrong id.
+        case storeIDNotAStoreID(String)
     }
 
     /// Read a descriptor, and refuse one whose id does not follow from its key.
@@ -110,6 +145,13 @@ public struct MemoryExportRecipient: Sendable {
         let recomputed = keyID(for: publicKey)
         guard recomputed == declaredID else {
             throw DescriptorError.keyIDMismatch(declared: declaredID, recomputed: recomputed)
+        }
+        // M-10: a bundle sealed to a store id the target's DDL forbids is a
+        // bundle no store can accept — `RECIPIENT_MISMATCH` at the far end,
+        // after the whole export. It is cheaper and clearer to refuse the
+        // descriptor.
+        guard isValidStoreID(storeID) else {
+            throw DescriptorError.storeIDNotAStoreID(storeID)
         }
         return MemoryExportRecipient(keyID: recomputed, publicKey: publicKey, storeID: storeID)
     }
@@ -174,15 +216,24 @@ public struct MemoryExportRecipient: Sendable {
         }
     }
 
-    /// Mint one. `storeID` is the fixture importer's store fingerprint, which is
-    /// what `manifest.recipient_store_id` will carry.
-    public static func generateKeypair(storeID: String) -> Keypair {
+    /// Mint one. `storeID` is the store the bundle will be addressed to, and it
+    /// is what `manifest.recipient_store_id` carries; passing `nil` mints one.
+    ///
+    /// A store id that is not `^sto_[0-9a-f]{32}$` is refused here rather than
+    /// carried: the descriptor this writes is fed straight back to `export`, so
+    /// an id the target cannot hold would otherwise reach the manifest and the
+    /// bundle would be unimportable everywhere (M-10, M-11).
+    public static func generateKeypair(storeID: String? = nil) throws -> Keypair {
+        let resolved = storeID ?? mintStoreID()
+        guard isValidStoreID(resolved) else {
+            throw DescriptorError.storeIDNotAStoreID(resolved)
+        }
         let privateKey = Curve25519.KeyAgreement.PrivateKey()
         return Keypair(
             recipient: MemoryExportRecipient(
                 keyID: keyID(for: privateKey.publicKey),
                 publicKey: privateKey.publicKey,
-                storeID: storeID
+                storeID: resolved
             ),
             privateKey: privateKey
         )

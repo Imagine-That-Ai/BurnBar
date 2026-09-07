@@ -53,11 +53,18 @@ public struct MemoryExportCommand: Sendable, Equatable {
     /// `daemon.memory.*` handler and no `agent_memories` writer. No default —
     /// inventing a version number here would turn the gate into a formality.
     public var requiredVersion: String?
-    /// `recipient-keypair`: the store fingerprint the fixture's importer will
-    /// present, which is what `manifest.recipient_store_id` carries and what an
-    /// importer compares against its own store id to answer "was this bundle
-    /// sealed to me?".
-    public var storeID = "importer-store-fixture"
+    /// `recipient-keypair`: the store id the fixture's importer will present,
+    /// which is what `manifest.recipient_store_id` carries and what an importer
+    /// compares against its own store id to answer "was this bundle sealed to
+    /// me?".
+    ///
+    /// `nil` means MINT one (`MemoryExportRecipient.mintStoreID()`), and that is
+    /// the default: it used to default to the literal `importer-store-fixture`,
+    /// which `schema/memory-v1.sql`'s CHECK on `schema_meta.store_id` forbids —
+    /// so interop run 1's fixture was addressed to a store that could not exist
+    /// and `RECIPIENT_MISMATCH` was unavoidable at any importer (M-10, M-11).
+    /// A value supplied here is validated against the same pattern.
+    public var storeID: String?
     /// Step 0(b) and 0(c). Operator assertions, defaulting to FALSE, so an
     /// operator who does not make them gets `P5_SOURCE_NOT_QUIESCED` rather
     /// than a pass.
@@ -194,6 +201,15 @@ public struct MemoryExportCommand: Sendable, Equatable {
                 "\(MIFExportError.recipientRequired.rawValue): memory export needs --recipient "
                     + "<descriptor.json>, published by `memoryctl memory export-recipient`. "
                     + "A bundle sealed to no recipient can never be opened."
+            )
+        }
+        // D-0039 ruling 7's shape, checked before an export is built on top of
+        // it rather than after a bundle has been sealed to it.
+        if let storeID, MemoryExportRecipient.isValidStoreID(storeID) == false {
+            throw MemoryExportCommandError.usage(
+                "--store-id must be the target store's own id, `sto_` followed by 32 lowercase hex "
+                    + "digits (36 characters) — `memoryctl memory export-recipient` prints it. Omit the "
+                    + "flag to mint one. A bundle sealed to any other string is refused by every store."
             )
         }
         if verb == .recipientKeypair, out == nil {

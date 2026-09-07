@@ -23,7 +23,8 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         MemoryExportRecipient(
             keyID: MemoryExportRecipient.keyID(for: Self.recipientPrivateKey.publicKey),
             publicKey: Self.recipientPrivateKey.publicKey,
-            storeID: "target-store-fixture"
+            // A store id of the DDL's own shape: `sto_` + 32 lowercase hex (M-10).
+            storeID: "sto_" + String(repeating: "b", count: 32)
         )
     }
 
@@ -355,7 +356,8 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
             "D-0025's id grammar, which the vendored contract now types"
         )
         XCTAssertEqual(declared, recipient.keyID)
-        XCTAssertEqual(manifest["recipient_store_id"] as? String, "target-store-fixture")
+        XCTAssertEqual(manifest["recipient_store_id"] as? String, recipient.storeID)
+        XCTAssertTrue(MemoryExportRecipient.isValidStoreID(recipient.storeID), "M-10: a real store id")
 
         // And it opens the wrap — the only test of this field that would have
         // caught the old value.
@@ -521,7 +523,8 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         )
         XCTAssertTrue(verification.isIntact, verification.problems.joined(separator: "; "))
         XCTAssertTrue(verification.signatureVerified)
-        XCTAssertEqual(verification.recipientStoreID, "target-store-fixture")
+        XCTAssertEqual(verification.recipientStoreID, recipient.storeID)
+        XCTAssertTrue(verification.checksRun.contains("recipient_store_id shape"))
         XCTAssertGreaterThanOrEqual(verification.checksRun.count, 5)
 
         let rendered = MemoryExportBundleVerifier.format(verification, at: directory)

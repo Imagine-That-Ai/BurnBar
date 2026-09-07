@@ -285,6 +285,19 @@ public enum MemoryExportBundleVerifier {
         //    the exporter's memory of it.
         result.recipientKeyID = manifest["recipient_key_id"] as? String
         result.recipientStoreID = manifest["recipient_store_id"] as? String
+        // M-10: a `recipient_store_id` the target's DDL forbids is a bundle no
+        // store can accept, and the contract's `["string", "null"]` typing does
+        // not catch it. A rehearsal bundle is exempt: it is sealed to nobody by
+        // design, says so in its manifest, and an importer refuses it outright.
+        result.checksRun.append("recipient_store_id shape")
+        if (manifest["rehearsal"] as? Bool) != true,
+           let storeID = result.recipientStoreID,
+           MemoryExportRecipient.isValidStoreID(storeID) == false {
+            result.problems.append(
+                "recipient_store_id \(storeID) is not a store id (`sto_` + 32 lowercase hex): no store "
+                    + "can exist under it, so every importer answers RECIPIENT_MISMATCH"
+            )
+        }
         if let recipient {
             result.checksRun.append("recipient binding")
             if result.recipientKeyID != recipient.manifestKeyID {

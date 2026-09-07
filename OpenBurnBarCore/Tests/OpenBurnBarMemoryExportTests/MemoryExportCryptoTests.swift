@@ -624,7 +624,10 @@ final class MemoryExportCryptoTests: XCTestCase {
             .appendingPathComponent("mif-keys-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let keypair = MemoryExportRecipient.generateKeypair(storeID: "importer-store-fixture")
+        // No `--store-id`: the verb MINTS one, which is what stops a fixture
+        // being addressed to a string no store can hold (M-10, M-11).
+        let keypair = try MemoryExportRecipient.generateKeypair()
+        XCTAssertTrue(MemoryExportRecipient.isValidStoreID(keypair.recipient.storeID))
         let written = try MemoryExportRecipient.writeKeypair(keypair, to: directory)
 
         // The descriptor is the D-0025 three-field file, and it parses through
@@ -632,7 +635,7 @@ final class MemoryExportCryptoTests: XCTestCase {
         let parsed = try MemoryExportRecipient.parse(descriptor: try Data(contentsOf: written.descriptor))
         XCTAssertEqual(parsed.keyID, keypair.recipient.keyID)
         XCTAssertEqual(parsed.keyID, MemoryExportRecipient.keyID(for: keypair.privateKey.publicKey))
-        XCTAssertEqual(parsed.storeID, "importer-store-fixture")
+        XCTAssertEqual(parsed.storeID, keypair.recipient.storeID)
         XCTAssertFalse(parsed.isRehearsalThrowaway, "a fixture recipient is not a rehearsal throwaway")
 
         // The private half is beside it, at 0600, and it is the half that opens
@@ -678,10 +681,10 @@ final class MemoryExportCryptoTests: XCTestCase {
         let good = try MemoryExportRecipient.parse(descriptor: Self.descriptor(
             keyID: honest,
             publicKey: publicKey,
-            storeID: "target-store"
+            storeID: Self.targetStoreID
         ))
         XCTAssertEqual(good.keyID, honest)
-        XCTAssertEqual(good.storeID, "target-store")
+        XCTAssertEqual(good.storeID, Self.targetStoreID)
         // R4. `manifest.recipient_key_id` IS the `rcp_` id — D-0025 retyped the
         // member to `^rcp_[0-9a-f]{32}$` — and it has to be, because D-0021
         // ruling 1 makes that same string the HPKE `aad`. Emitting
@@ -693,13 +696,71 @@ final class MemoryExportCryptoTests: XCTestCase {
             try MemoryExportRecipient.parse(descriptor: Self.descriptor(
                 keyID: "rcp_" + String(repeating: "0", count: 32),
                 publicKey: publicKey,
-                storeID: "target-store"
+                storeID: Self.targetStoreID
             ))
         ) { error in
             guard case MemoryExportRecipient.DescriptorError.keyIDMismatch = error else {
                 return XCTFail("expected a key id mismatch, got \(error)")
             }
         }
+    }
+
+    /// M-10 + D-0039 ruling 7: a descriptor naming a store id no store can hold
+    /// is refused, rather than sealed to.
+    ///
+    /// `$defs/manifest` types `recipient_store_id` as a bare
+    /// `["string", "null"]`, so interop run 1's bundle carried
+    /// `importer-store-fixture` and validated — while
+    /// `schema/memory-v1.sql` CHECKs `store_id GLOB 'sto_[0-9a-f]*' AND
+    /// length(store_id) = 36`, so the addressed store could not exist and
+    /// `RECIPIENT_MISMATCH` was certain at whatever importer. The refusal
+    /// happens here, before a bundle is built on top of it.
+    func test_aDescriptorWhoseStoreIDNoStoreCouldHoldIsRefused() throws {
+        let publicKey = Curve25519.KeyAgreement.PrivateKey().publicKey
+        let keyID = MemoryExportRecipient.keyID(for: publicKey)
+
+        for bad in [
+            "importer-store-fixture",              // interop run 1's own value
+            "sto_" + String(repeating: "a", count: 31),  // 35 characters
+            "sto_" + String(repeating: "a", count: 33),  // 37
+            "sto_" + String(repeating: "A", count: 32),  // upper-case hex
+            "sto_" + String(repeating: "g", count: 32),  // not hex
+            "STO_" + String(repeating: "a", count: 32),  // wrong prefix
+            ""
+        ] {
+            XCTAssertFalse(MemoryExportRecipient.isValidStoreID(bad), bad)
+            XCTAssertThrowsError(
+                try MemoryExportRecipient.parse(
+                    descriptor: Self.descriptor(keyID: keyID, publicKey: publicKey, storeID: bad)
+                ),
+                bad
+            ) { error in
+                guard case MemoryExportRecipient.DescriptorError.storeIDNotAStoreID = error else {
+                    return XCTFail("expected a store-id refusal for \(bad), got \(error)")
+                }
+            }
+        }
+
+        // 36 characters, `sto_` and lowercase hex: the DDL's own shape.
+        XCTAssertTrue(MemoryExportRecipient.isValidStoreID(Self.targetStoreID))
+        XCTAssertEqual(Self.targetStoreID.count, 36)
+        let minted = MemoryExportRecipient.mintStoreID()
+        XCTAssertTrue(MemoryExportRecipient.isValidStoreID(minted))
+        XCTAssertNotEqual(minted, MemoryExportRecipient.mintStoreID(), "each mint is its own store id")
+
+        // The CLI refuses the same strings before an export can be built on one.
+        for bad in ["importer-store-fixture", "sto_nothex"] {
+            XCTAssertThrowsError(
+                try MemoryExportCommand.parse(["recipient-keypair", "--out", "/tmp/k", "--store-id", bad]),
+                bad
+            )
+        }
+        XCTAssertNoThrow(
+            try MemoryExportCommand.parse(["recipient-keypair", "--out", "/tmp/k", "--store-id", minted])
+        )
+        // And omitting it is legal, because the verb mints one.
+        let minting = try MemoryExportCommand.parse(["recipient-keypair", "--out", "/tmp/k"])
+        XCTAssertNil(minting.storeID)
     }
 
     func test_aDescriptorMissingAFieldIsRefusedRatherThanDefaulted() {
@@ -745,6 +806,9 @@ final class MemoryExportCryptoTests: XCTestCase {
     private static func hexString(_ data: Data) -> String {
         data.map { String(format: "%02x", $0) }.joined()
     }
+
+    /// A store id of the DDL's own shape, for the descriptors these tests read.
+    private static let targetStoreID = "sto_" + String(repeating: "a", count: 32)
 
     private static func descriptor(
         keyID: String,
