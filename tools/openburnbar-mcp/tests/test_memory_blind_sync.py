@@ -1572,7 +1572,7 @@ def test_the_pull_tool_prefers_the_signed_courier_for_both_halves(
     result = json.loads(server.burnbar_memory_sync_pull(project_path=repo))
     assert result["status"] == "ok" and result["applied"] == 1 and result["acked"] == 1
     assert commands == ["memory-sync-inbox-list", "memory-sync-inbox-ack"]
-    assert "daemon.memory.sync.inbox.ack" in server._SIGNED_MEMORY_COMMANDS
+    assert "daemon.memory.sync.inbox.ack" in server._SIGNED_DAEMON_COMMANDS
 
 
 def test_the_pull_tool_is_a_no_op_when_the_inbox_is_empty(server_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
