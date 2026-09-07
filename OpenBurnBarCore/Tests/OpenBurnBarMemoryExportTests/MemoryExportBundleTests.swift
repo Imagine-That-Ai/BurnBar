@@ -848,6 +848,51 @@ final class MemoryExportBundleTests: XCTestCase {
         XCTAssertNotNil(result.report.tables.first { $0.name == "pcm_project_aliases" })
     }
 
+    /// A rehearsal bundle is addressed to NO store, and D-0039 ruling 7's
+    /// pattern is what makes that visible: `recipient_store_id` is the `null`
+    /// the member admits rather than a `sto_` id no store holds.
+    ///
+    /// `--rehearsal` mints a throwaway recipient and discards the private half,
+    /// so the bundle cannot be imported anywhere and `report.json` says so. Its
+    /// store id used to be the literal `rehearsal:no-target-store`, which the
+    /// re-vendored contract rejects — and minting one would be a bundle
+    /// claiming a target that does not exist.
+    func test_aRehearsalBundleNamesNoRecipientStore() throws {
+        let validator = try MIFSchemaValidator(schemaData: try contractData())
+        var exporter = makeExporter()
+        exporter.recipient = MemoryExportRecipient.rehearsalThrowaway()
+        exporter.options.rehearsal = true
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try exporter.export(
+            try MemoryExportFixtureStore.snapshot(try makeStore()),
+            mode: .full,
+            to: directory,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "rehearsal-store")
+        )
+
+        let manifest = try XCTUnwrap(
+            try json(at: directory.appendingPathComponent("manifest.json")) as? [String: Any]
+        )
+        XCTAssertTrue(manifest["recipient_store_id"] is NSNull, "addressed to no store")
+        XCTAssertEqual(manifest["rehearsal"] as? Bool, true)
+        try validator.validate(manifest, against: "#/$defs/manifest")
+        XCTAssertTrue(result.report.recipientIsRehearsalThrowaway)
+
+        // …and `verify` does not complain about a store id that is not there.
+        // (No signing key is passed, so it reports the signature it cannot
+        // check; the assertion below is about the store id alone.)
+        let verification = try MemoryExportBundleVerifier.verify(
+            bundleAt: directory,
+            signingPublicKey: nil
+        )
+        XCTAssertFalse(
+            verification.problems.contains { $0.contains("recipient_store_id") },
+            "\(verification.problems)"
+        )
+    }
+
     /// M-8 + D-0039 ruling 5: §10's closed sum covers all ELEVEN sections.
     ///
     /// Interop run 1 found three sections carrying rows that no lane in

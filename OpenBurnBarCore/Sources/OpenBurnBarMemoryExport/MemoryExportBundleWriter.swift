@@ -438,10 +438,18 @@ public enum MemoryExportBundleWriter {
                 "key_schedule": .string(MemoryExportCrypto.keyScheduleName)
             ]),
             "recipient_key_id": .string(inputs.recipient.manifestKeyID),
-            // The TARGET store's fingerprint, from the recipient descriptor —
-            // not the producer's, which is `source.store_fingerprint` below.
-            // An importer asks "is this bundle addressed to me?" here.
-            "recipient_store_id": .string(inputs.recipient.storeID),
+            // The TARGET store's id, from the recipient descriptor — not the
+            // producer's, which is `source.store_fingerprint` below. An importer
+            // asks "is this bundle addressed to me?" here, and D-0039 ruling 7
+            // types the member as the DDL's `sto_` + 32 hex.
+            //
+            // A rehearsal throwaway is addressed to NO store — that is what
+            // makes it a rehearsal — so it carries the `null` the member admits
+            // rather than a `sto_` id no store holds. The alternative, a minted
+            // id, would be a bundle claiming a target that does not exist.
+            "recipient_store_id": inputs.recipient.isRehearsalThrowaway
+                ? .null
+                : .string(inputs.recipient.storeID),
             "exporter_device_key_id": .string(deviceKeyID),
             "export_mode": .string(inputs.exportMode),
             "since_audit_seq": .int(inputs.sinceAuditSeq),
