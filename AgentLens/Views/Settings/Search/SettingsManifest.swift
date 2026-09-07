@@ -319,8 +319,8 @@ enum SettingsManifest {
             pageRoute: .indexing,
             anchorID: SettingsAnchor.indexingToggle,
             title: "Indexing & Search",
-            subtitle: "Local conversation indexing and embeddings",
-            keywords: ["search", "index", "embeddings", "rag", "rerank"],
+            subtitle: "Local conversation indexing and embeddings, on the Search & Memory page",
+            keywords: ["search", "index", "embeddings", "rag", "rerank", "search & memory"],
             helpText: "Indexed transcripts never leave this Mac unless cloud backup is enabled."
         ),
         SettingsItem(
@@ -334,16 +334,6 @@ enum SettingsManifest {
             helpText: "Opens the on-device Memory controls. Free on this Mac — no Cloud plan required; sealed cloud backup of approved memories is a separate opt-in."
         ),
         SettingsItem(
-            id: "general.indexing.memoryDeviceSync",
-            tab: .general,
-            pageRoute: .indexing,
-            anchorID: SettingsAnchor.indexingMemoryDeviceSync,
-            title: "Sync Memories to My Other Devices",
-            subtitle: "Opt-in sub-toggle of cloud backup: read your own approved memories back down onto this Mac from your other signed-in devices",
-            keywords: ["memory", "sync", "device sync", "cross-device", "pull", "download", "data vault", "pensieve", "backup", "other devices"],
-            helpText: "Requires \"Back up approved memories\" and the Data Vault plan (Pro Max or Ultra). Off by default even when backup is already on."
-        ),
-        SettingsItem(
             id: "general.indexing.memoryCloudModels",
             tab: .general,
             pageRoute: .indexing,
@@ -354,34 +344,14 @@ enum SettingsManifest {
             helpText: "Pro. Off by default. Providers you consent to receive redacted memory text directly from this Mac; BurnBar never receives your memory data."
         ),
         SettingsItem(
-            id: "general.indexing.teamMemory",
+            id: "general.indexing.memorySyncLink",
             tab: .general,
             pageRoute: .indexing,
-            anchorID: SettingsAnchor.indexingTeamMemory,
-            title: "Team Memory",
-            subtitle: "Opt-in per team: share approved project memories with a team space, see the roster, rotate the team key",
-            keywords: ["team", "team memory", "shared memory", "roster", "invite", "join team", "leave team", "rotate key", "members", "blind", "pensieve"],
-            helpText: "Off for every team by default, and a strict subset of your own memory sync. Joining a team grants access to the team's existing history; leaving protects future memories only. Every active member holds the team key and can read every team fact."
-        ),
-        SettingsItem(
-            id: "general.indexing.memoryHealth",
-            tab: .general,
-            pageRoute: .indexing,
-            anchorID: SettingsAnchor.indexingMemoryHealth,
-            title: "Memory Health",
-            subtitle: "Per-project memory counters, audit-chain integrity, sync ages and the checks this Mac can run itself",
-            keywords: ["memory", "health", "audit", "chain", "integrity", "counters", "analytics", "sync", "watermark", "marker", "pending review", "doctor", "diagnostics"],
-            helpText: "Counters come from the local daemon; the checks are run on this Mac. Engine doctor findings are not measured here."
-        ),
-        SettingsItem(
-            id: "general.indexing.memorySyncStatus",
-            tab: .general,
-            pageRoute: .indexing,
-            anchorID: SettingsAnchor.indexingMemorySyncStatus,
-            title: "Memory Sync Status",
-            subtitle: "Both transport cursors, the device-sync consent marker's age, and what is parked in the inbox",
-            keywords: ["memory", "sync", "status", "watermark", "cursor", "marker", "stale", "inbox", "parked", "forget receipts", "diagnostics", "debug"],
-            helpText: "Read from this Mac's own database and never sent anywhere. Rejected and skipped counts come from the memory engine and are not measured here."
+            anchorID: SettingsAnchor.indexingMemorySyncLink,
+            title: "Memory Sync (from the Memory controls)",
+            subtitle: "The signpost on this page. The switches themselves live in Devices & Sync → Memory Sync.",
+            keywords: ["memory", "sync", "backup", "other devices", "where", "signpost"],
+            helpText: "One canonical pane, two ways in. This row opens the same screen the Devices & Sync tab does."
         ),
 
         // MARK: General → Session summaries
@@ -776,6 +746,66 @@ enum SettingsManifest {
             keywords: ["sync", "cloud", "firebase", "backup", "ios", "android"]
         ),
         SettingsItem(
+            id: "devices.memorySync",
+            tab: .devicesAndSync,
+            pageRoute: .memorySync,
+            anchorID: SettingsAnchor.memorySyncOverview,
+            title: "Memory Sync",
+            subtitle: "Back up approved memories, and pull them back down onto your other signed-in devices",
+            keywords: ["memory", "sync", "memory sync", "pensieve", "devices", "cross-device", "other devices", "backup", "pull", "merge", "second mac", "laptop"],
+            helpText: "Off by default. Approved memories are sealed on this Mac before they leave it; BurnBar holds no key."
+        ),
+        SettingsItem(
+            id: "devices.memorySync.backup",
+            tab: .devicesAndSync,
+            pageRoute: .memorySync,
+            anchorID: SettingsAnchor.memorySyncBackup,
+            title: "Back Up Approved Memories",
+            subtitle: "Replicate only the memories you approved to your own cloud vault, end-to-end sealed",
+            keywords: ["memory", "backup", "cloud", "vault", "sealed", "approved", "sync", "pensieve", "replicate", "egress"],
+            helpText: "Off by default. The prerequisite for \"Sync memories to my other devices\" — turning it off stops downloads too."
+        ),
+        SettingsItem(
+            id: "devices.memorySync.deviceToggle",
+            tab: .devicesAndSync,
+            pageRoute: .memorySync,
+            anchorID: SettingsAnchor.memorySyncDeviceToggle,
+            title: "Sync Memories to My Other Devices",
+            subtitle: "Opt-in sub-toggle of cloud backup: read your own approved memories back down onto this Mac from your other signed-in devices",
+            keywords: ["memory", "sync", "device sync", "cross-device", "pull", "download", "data vault", "pensieve", "backup", "other devices"],
+            helpText: "Requires \"Back up approved memories\" and the Data Vault plan (Pro Max or Ultra). Off by default even when backup is already on."
+        ),
+        SettingsItem(
+            id: "devices.memorySync.team",
+            tab: .devicesAndSync,
+            pageRoute: .memorySync,
+            anchorID: SettingsAnchor.memorySyncTeam,
+            title: "Team Memory",
+            subtitle: "Opt-in per team: share approved project memories with a team space, see the roster, rotate the team key",
+            keywords: ["team", "team memory", "shared memory", "roster", "invite", "join team", "leave team", "rotate key", "members", "blind", "pensieve"],
+            helpText: "Off for every team by default, and a strict subset of your own memory sync. Joining a team grants access to the team's existing history; leaving protects future memories only. Every active member holds the team key and can read every team fact."
+        ),
+        SettingsItem(
+            id: "devices.memorySync.health",
+            tab: .devicesAndSync,
+            pageRoute: .memorySync,
+            anchorID: SettingsAnchor.memorySyncHealth,
+            title: "Memory Health",
+            subtitle: "Per-project memory counters, audit-chain integrity, sync ages and the checks this Mac can run itself",
+            keywords: ["memory", "health", "audit", "chain", "integrity", "counters", "analytics", "sync", "watermark", "marker", "pending review", "doctor", "diagnostics"],
+            helpText: "Counters come from the local daemon; the checks are run on this Mac. Engine doctor findings are not measured here."
+        ),
+        SettingsItem(
+            id: "devices.memorySync.status",
+            tab: .devicesAndSync,
+            pageRoute: .memorySync,
+            anchorID: SettingsAnchor.memorySyncStatus,
+            title: "Memory Sync Status",
+            subtitle: "Both transport cursors, the device-sync consent marker's age, and what is parked in the inbox",
+            keywords: ["memory", "sync", "status", "watermark", "cursor", "marker", "stale", "inbox", "parked", "forget receipts", "diagnostics", "debug"],
+            helpText: "Read from this Mac's own database and never sent anywhere. Rejected and skipped counts come from the memory engine and are not measured here."
+        ),
+        SettingsItem(
             id: "devices.trusted",
             tab: .devicesAndSync,
             pageRoute: .devicesAndSyncRoot,
@@ -1071,11 +1101,14 @@ enum SettingsManifest {
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
         SettingsAnchor.indexingMemory,
-        SettingsAnchor.indexingMemoryDeviceSync,
         SettingsAnchor.indexingMemoryCloudModels,
-        SettingsAnchor.indexingTeamMemory,
-        SettingsAnchor.indexingMemoryHealth,
-        SettingsAnchor.indexingMemorySyncStatus,
+        SettingsAnchor.indexingMemorySyncLink,
+        SettingsAnchor.memorySyncOverview,
+        SettingsAnchor.memorySyncBackup,
+        SettingsAnchor.memorySyncDeviceToggle,
+        SettingsAnchor.memorySyncTeam,
+        SettingsAnchor.memorySyncHealth,
+        SettingsAnchor.memorySyncStatus,
         SettingsAnchor.summariesAuto,
         SettingsAnchor.aiInboxOverview,
         SettingsAnchor.aiInboxEnable,
