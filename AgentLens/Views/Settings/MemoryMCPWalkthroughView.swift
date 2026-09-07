@@ -89,7 +89,7 @@ enum MemoryWalkthroughContent {
             body: "Memory runs on this Mac, no account needed. Nothing is read until you allow it: OpenBurnBar asks first, then I distill the useful facts — decisions, fixes, preferences — and keep them sealed locally. On/off, high-recall, review, and reset live here, free for everyone.",
             chips: [],
             tourAnchor: SettingsAnchor.indexingMemory,
-            findPath: "Settings › General › Indexing",
+            findPath: "Settings › General › Search & Memory",
             previewIcon: "brain.head.profile",
             previewTitle: "Memory controls",
             previewSubtitle: "On-device · consent first · review or reset anytime"
@@ -128,8 +128,9 @@ enum MemoryWalkthroughContent {
             eyebrow: "Control",
             title: "You're in control.",
             body: """
-            Everything I keep is yours to inspect. Review pending memories, reset them, \
-            or opt into sealed cloud backup in Settings › General › Indexing — free for everyone. \
+            Everything I keep is yours to inspect. Review pending memories or reset them in \
+            Settings › General › Search & Memory, and opt into sealed cloud backup in \
+            Settings › Devices & Sync › Memory Sync — the on-device half is free for everyone. \
             With Cloud Pro, Settings › Data & Privacy opens the full Pensieve workbench: \
             every record with a live \"% sealed\" gauge, JSON export, forgetting, and Panic. \
             The same control lives on the web at app.burnbar.ai.
