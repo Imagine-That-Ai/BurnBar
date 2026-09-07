@@ -447,6 +447,18 @@
       "type": "object", "additionalProperties": false,
       "$comment": "D-0033 ruling 1: project identity is the DDL pair (project_id PRIMARY KEY, fingerprint UNIQUE) - matching is on the computed fingerprint, and neither a root commit alone (merges vela with velafork) nor an origin alone (not unique-indexed on projects) is identity. Both members travel together or neither does: set when the exporter computed them, absent when it carries inputs only.",
       "required": ["profile","identity_version","display_name","aliases","created_at_ms","updated_at_ms","fingerprint_inputs_available"],
+      "dependentRequired": { "project_id": ["fingerprint"], "fingerprint": ["project_id"] },
+      "allOf": [
+        {
+          "$comment": "D-0033 ruling 1, enforced after audit B F-2: the pair travels together or not at all, and a null beside a set value is not the inputs-only form - it is a half-computed identity. `dependentRequired` closes the presence half; these two branches close the null half. Before F-2 the rule was stated in this $def's $comment, in I-30 and in D-0033, and enforced by nothing: `project_id` alone, `fingerprint` alone and `{project_id: null, fingerprint: \"fp3:...\"}` all validated.",
+          "if": { "properties": { "project_id": { "type": "null" } }, "required": ["project_id"] },
+          "then": { "properties": { "fingerprint": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "project_id": { "type": "string" } }, "required": ["project_id"] },
+          "then": { "properties": { "fingerprint": { "type": "string" } } }
+        }
+      ],
       "properties": {
         "profile": { "$ref": "#/$defs/profile" },
         "identity_version": { "type": "integer", "minimum": 1 },

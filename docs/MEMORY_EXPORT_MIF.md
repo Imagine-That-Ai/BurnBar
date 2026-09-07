@@ -560,19 +560,20 @@ authority as `approved` with `origin_kind: human`.
 
 ## 6. Tests
 
-`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, **113 tests**, run on the
+`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, **121 tests**, run on the
 Swift door by `scripts/test-openburnbar-swift.sh`:
 
 ```
 swift test --package-path OpenBurnBarCore --filter MemoryExport
-→ Executed 113 tests, with 0 failures (0 unexpected)
+→ Executed 121 tests, with 0 failures (0 unexpected)
 ```
 
 The count reconciles: `grep -h "func test"` over the target's files sums to
-113, and there is no swift-testing `@Test` anywhere in it, so 113 declared is
-113 executed (94 at the second review + 19: R4's recipient binding, R5's
-bit-flip, R6's refusal, six R8 row exits, R9's entropy, the D-0031 leaf/sig/
-roll-up/root pins, and the held-report contract check).
+121, and there is no swift-testing `@Test` anywhere in it, so 121 declared is
+121 executed (113 at the third review + 8: the manifest-digest preimage and the
+six-member tamper drive, the empty-section seal, `not_exported`'s row
+arithmetic, the chain-breaker lowering vector, the pinned bundle root, the
+audit-genesis rung, and the fixture keypair's two halves).
 
 Fixtures are built by **BurnBar's own migrator** (`OpenBurnBarDatabase.migrator`,
 the `OpenBurnBarData` mirror), so the schema under test is the one production
@@ -638,14 +639,18 @@ test mutated before.
 
 **The vendored contract is pinned.** `MIFContractPinTests.swift` carries its
 provenance in the file header — source commit
-`e591e7c8e8a71fdd50a562f4d63f14e30e13462b` (Q-30), sha256
-`1107c3ec56feb70fa704f49d97f3ac9cf098ea3d97b89afc13e04858db1be487`, MIF v1
+`d456c4678648a772e00eb027e9bf6e55c8c49b50` (the document's seventh pass, audit B
+F-2), sha256
+`810fc38bee7ee91676819b7526938aacfe4f4e5a27fad8a1da15b6db9516b1aa`, MIF v1
 minor 2, copied byte for byte with no local edit — and asserts that digest, as
-D-0021 ruling 5 requires of each side. Both re-vendor moves since Q-24 were
-additive (Q-26's closed hold vocabulary, Q-30's reason/project members), and a
-produced bundle plus one record of every emitted type validates against the
-new copy out of process (`jsonschema` 4.26.0, draft 2020-12) with **0 failing
-assertions over 12 instances**. The two copies had drifted inside one
+D-0021 ruling 5 requires of each side. Every re-vendor move since Q-24 has been
+additive (Q-26's closed hold vocabulary, Q-30's reason/project members, and now
+`record_project`'s identity pair under `dependentRequired` plus two `if`/`then`
+branches — a constraint rather than a member, which BB-E's inputs-only project
+record satisfies vacuously and the evaluator already implements). A produced
+bundle plus one record of every emitted type validates against the new copy out
+of process (`jsonschema` 4.26.0, draft 2020-12) with **0 failing assertions over
+20 instances**. The two copies had drifted inside one
 working day and neither side noticed, because the in-process validator was
 passing against the stale one; a failure here now says which of the two things
 happened and how to fix it. The licence question for vendoring an interchange
@@ -730,7 +735,7 @@ in review order, one commit per finding.
 | R9 | `store_id` comment claims an installation identity | **fixed** — the comment says what the row contributes (`deviceId` is `"unknown"`, `createdAt` is the only varying input, same-millisecond migrations collide); D-BB-E-13 states the migration defect; `report.json` gains no member (closed contract) and the doc says why |
 
 | D-0031 | layout alignment: segment names, hash-tree domains, `manifest.sig`, roll-up tuples | **fixed** — `<index:05>.seg`; salted key with `0x00`/`0x01` domains; signature over the 32 raw digest bytes, b64url; root computed once, carried twice, input to the digest; 05/02 tuples as ruled, JCS-ordered; the rest transcribed but unemitted per §15 item 8. One open const (`key_derivation`, D-BB-E-14) is the spec owner's |
-| re-vendor | schema at HEAD | **fixed** — byte-identical to `e591e7c8e` (Q-30), digest `1107c3ec…`, pin updated; in-process suite green; out-of-process validation 0 failures over 12 instances; the held-report test exercises the new `hold_reason` anyOf |
+| re-vendor | schema at HEAD | **fixed twice** — at `e591e7c8e` (Q-30, `1107c3ec…`) for the second review, and re-vendored at the end of the third at `d456c467` (`810fc38b…`), the document's seventh pass. Pin and provenance updated; in-process suite green; out-of-process validation 0 failures over 20 instances |
 
 ---
 

@@ -6,14 +6,25 @@
 // -------------------------------------------
 //   Source repo:    Po'dex, memory-consolidation-gauntlet branch
 //   Source path:    docs/memory/contracts/mif-v1.schema.json
-//   Source commit:  e591e7c8e8a71fdd50a562f4d63f14e30e13462b
-//                   ("docs(memory): Q-30 — D-0033: project identity is the DDL
-//                    pair; the narrow reason vocabularies close")
-//   sha256:         1107c3ec56feb70fa704f49d97f3ac9cf098ea3d97b89afc13e04858db1be487
+//   Source commit:  d456c4678648a772e00eb027e9bf6e55c8c49b50
+//                   ("docs(memory): enforce record_project's identity pair
+//                    (audit B F-2)")
+//   sha256:         810fc38bee7ee91676819b7526938aacfe4f4e5a27fad8a1da15b6db9516b1aa
 //   Copied:         2026-09-07, byte for byte, no local edit of any kind
 //   Contract level: MIF v1, minor 2 [D-0021]
 //
-// Re-vendored from a008cdef… (commit 3332bd5b, Q-24) — two contract passes in
+// Re-vendored from 1107c3ec… (commit e591e7c8, Q-30) at the end of the third
+// review's fix pass — the document's seventh pass put `record_project`'s
+// identity pair under `dependentRequired` both ways plus two `if`/`then`
+// branches, so D-0033 ruling 1's "together or not at all" is ENFORCED rather
+// than stated in a `$comment`. Additive as a constraint, not as a member, so
+// `mif_minor` stays 2; BB-E emits the inputs-only form (neither `project_id`
+// nor `fingerprint`, D-BB-E's §3 row for section 04), which satisfies every new
+// branch vacuously, and the evaluator already implements all three keywords —
+// so this re-vendor is a digest move and nothing else. The out-of-process
+// validation was re-run against this copy: 20 instances, 0 failing assertions.
+//
+// Before that, from a008cdef… (commit 3332bd5b, Q-24) — two contract passes in
 // one file, both additive, so `mif_minor` stays 2 and a bundle written against
 // the old copy still validates:
 //   * Q-26 closed the hold vocabulary (D-0031 ruling 3): `hold_reason` stops
@@ -57,7 +68,7 @@ import Crypto
 final class MIFContractPinTests: XCTestCase {
 
     private static let pinnedSHA256 =
-        "1107c3ec56feb70fa704f49d97f3ac9cf098ea3d97b89afc13e04858db1be487"
+        "810fc38bee7ee91676819b7526938aacfe4f4e5a27fad8a1da15b6db9516b1aa"
 
     private func contractData() throws -> Data {
         let url = try XCTUnwrap(
