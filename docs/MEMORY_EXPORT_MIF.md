@@ -384,13 +384,20 @@ are written as they are produced rather than joined first.
 `--source legacy|cloud|all` records the unread source in `partial_sources` with a
 reason and exports the authority store. Never a silent skip. The cloud vault
 reader (§8) and the legacy plaintext readers (§1 S2/S2b) are later releases; the
-classifier already carries the `cloud` branch (§3.1 row 15) so wiring the reader
-does not touch classification. The exporter passes `isCloudOnly: false`
-explicitly at the classify call site — wired, not defaulted: every row BB-E
-classifies comes from the authority store, which is local by construction, so
-row 15's shape cannot arise from these sources and no cloud-only approved row
-can be mislabelled `v51_backfill`. The row-15 tests pin the branch the future
-vault reader will feed.
+classifier already carries the `cloud` branch (§3.1 row 15) so landing the reader
+does not touch classification.
+
+**`isCloudOnly` is a constant `false`, not a wiring — correcting a commit
+subject.** Commit `b7f7941f18` is titled "… `isCloudOnly` is wired", and it is
+not: the exporter passes the literal `false` at its one classify call site. The
+argument for the value is sound — every row BB-E classifies comes from the
+authority store, which is local by construction, so row 15's shape cannot arise
+from these sources and no cloud-only approved row can be mislabelled
+`v51_backfill` — but the claim was wrong, and its consequence is worth stating
+plainly (F-7): **§3.1 row 15 is unreachable in a real export today and
+`MIFImportOriginDetail.cloud` is production-dead.** The row-15 tests pin the
+branch the future vault reader will feed; the wiring itself is that reader's
+work.
 
 ### D-BB-E-9 — section 02 carries proven verdicts only
 
@@ -719,7 +726,7 @@ in review order, one commit per finding.
 | R5 | `verify` does not detect a modified segment | **fixed** — `hashtree.json` carries one unkeyed `sha256` per 4 MiB chunk of every segment file (`segment_sha256`, over ciphertext, so it leaks nothing); `verify` recomputes the stream and names the segment file and chunk on mismatch. A one-bit flip fails |
 | R6 | p5-check invents a store id; `concurrent_writes` stays false | **fixed** — both lanes refuse an identity-less store with `EXPORT_STORE_IDENTITY_ABSENT` via one shared `requireStoreID`; `run` sets `report.concurrent_writes` from the head assertion, and the moved-head test pins it |
 | R7 | seven classification tests can skip green | **fixed** — the shared helper `XCTFail`s and throws instead of `XCTSkip` (proved red by pointing one test at a missing row); M-20 pins the real seq; the tie test asserts each chain state separately |
-| R8 | rows 1/5/10/15 uncovered; `isCloudOnly` unwired; absent label raises stored-`rejected` | **fixed** — row 1 asserts `human`/`human_verdict`; rows 5/10/15 and both row-11 raisings have tests; `isCloudOnly` is passed explicitly (`false`: authority-store rows are local by construction, D-BB-E-8) |
+| R8 | rows 1/5/10/15 uncovered; `isCloudOnly` unwired; absent label raises stored-`rejected` | **partly fixed** — row 1 asserts `human`/`human_verdict`; rows 5/10/15 and both row-11 raisings have tests. `isCloudOnly` is passed explicitly as the constant `false` and is **still unwired**: this row's commit subject overclaimed it, corrected in D-BB-E-8 and F-7 below |
 | R9 | `store_id` comment claims an installation identity | **fixed** — the comment says what the row contributes (`deviceId` is `"unknown"`, `createdAt` is the only varying input, same-millisecond migrations collide); D-BB-E-13 states the migration defect; `report.json` gains no member (closed contract) and the doc says why |
 
 | D-0031 | layout alignment: segment names, hash-tree domains, `manifest.sig`, roll-up tuples | **fixed** — `<index:05>.seg`; salted key with `0x00`/`0x01` domains; signature over the 32 raw digest bytes, b64url; root computed once, carried twice, input to the digest; 05/02 tuples as ruled, JCS-ordered; the rest transcribed but unemitted per §15 item 8. One open const (`key_derivation`, D-BB-E-14) is the spec owner's |
@@ -740,3 +747,4 @@ Against `docs/memory/reviews/REVIEW-BB-EXPORTER-3.md` (verdict
 | F-4 | `manifest.not_exported` double-counts across tables | **fixed as a definition, pinned as arithmetic** — the manifest's `not_exported` is the per-reason sum of every table's not-exported SOURCE ROWS (§10's sum is per table), so one forgotten memory is two rows in two tables against one tombstone record. D-BB-E-15 states it, a test asserts 1 + 1 = 2 with one record, and `verify` names `not_exported.<reason>` when the manifest and `report.json` disagree |
 | F-5 | row 7 exports `rejected` where §3.1 says `quarantined` | **fixed** — row 7 is `quarantined` + `verdict_on_broken_chain`, as written. The candidate-label lowering is gone and its vector is closed by a test: a writer who appends a rejection and breaks the chain around it can no longer force a row to `rejected`. Restoring the scan turns five classifier tests red |
 | F-6 | R2's case-2 comparator no longer affects any exported field | **labelled, and the label is proved** — D-BB-E-16 states that the comparator has no exported consequence because every case-2 row exits at row 7, which discards the winner; the test header says it is white-box and the test asserts that both orderings classify identically. The rule is kept because it is §3.1's, and the refactor risk is recorded |
+| F-7 | `isCloudOnly` is reasoned, not wired | **claim corrected** — commit `b7f7941f18`'s subject says it is wired and it is not; D-BB-E-8, the §9 R8 row and the call site now say it is a constant `false`, that §3.1 row 15 is unreachable in a real export, and that `MIFImportOriginDetail.cloud` is production-dead until the vault reader lands. The value itself is unchanged and the reason for it stands |

@@ -270,14 +270,18 @@ public struct MemoryExporter: Sendable {
                 bodySnapshotUpdatedAt: MemoryExportTimestamp.parse(stores.snapshotsByMemoryID[memory.id]?.updatedAt),
                 chain: chain,
                 auditTableAvailable: snapshot.auditTableAvailable,
-                // R8 — wired, not defaulted. Every row BB-E classifies comes
-                // from the authority store, which is local by construction, so
-                // no row here can be cloud-only (§3.1 row 15's shape cannot
-                // arise from these sources). The cloud vault is an unread
-                // `partial_sources` entry (D-BB-E-8); when its reader lands it
-                // supplies `true` for vault rows no local row 1-3 names — the
-                // branch it feeds is pinned by the row-15 tests, so the wiring
-                // will not touch classification.
+                // A CONSTANT `false`, not a wiring — and the correction matters
+                // because commit b7f7941f18's subject said "isCloudOnly is
+                // wired" and it never was (review F-7). There is no source to
+                // wire it to yet: every row BB-E classifies comes from the
+                // authority store, which is local by construction, so §3.1 row
+                // 15's shape cannot arise from these sources, and the cloud
+                // vault is an unread `partial_sources` entry (D-BB-E-8). The
+                // consequence, stated: **row 15 is unreachable in a real export
+                // and `MIFImportOriginDetail.cloud` is production-dead** until
+                // the vault reader lands and passes `true` for vault rows no
+                // local row 1-3 names. The row-15 tests pin the branch that
+                // reader will feed, so landing it will not touch classification.
                 isCloudOnly: false
             ))
             if memory.reviewStatus == MIFReviewStatus.approved.rawValue { report.approvedRowsInSource += 1 }
