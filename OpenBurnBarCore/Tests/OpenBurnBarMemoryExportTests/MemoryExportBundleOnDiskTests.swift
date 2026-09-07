@@ -142,6 +142,63 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         XCTAssertEqual(rejoined, String(decoding: expected, as: UTF8.self))
     }
 
+    /// M-6 + D-0038 ruling 2: `record_body.body` is base64url, unpadded, of the
+    /// canonical body bytes — read back off the sealed segment rather than off
+    /// the buffer the writer held.
+    ///
+    /// The schema types the member `{"type": "string"}` and says nothing more,
+    /// so the exporter wrote plaintext, `mifgen` wrote plaintext, and the
+    /// importer decoded — every body in interop run 1 was unreadable at the far
+    /// end. This drives the whole path: seal, open, parse, decode, and re-HMAC
+    /// the decoded bytes into the record's own `body_join_key`, which is what an
+    /// importer does and what the plaintext form makes impossible.
+    func test_theBodyMemberIsBase64URLOfTheCanonicalBytes() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let seed = "b64url-bodies"
+        _ = try export(maxSectionBytes: 256 * 1024 * 1024, to: directory, seed: seed)
+
+        let bundleKey = MemoryExportCrypto.deterministicBundleKey(seed: seed)
+        let sealed = try Data(contentsOf: directory
+            .appendingPathComponent("sections/06-bodies/00000.seg"))
+        let ndjson = try MemoryExportCrypto.open(
+            sealedChunk: sealed,
+            section: .bodies,
+            segmentKey: MemoryExportCrypto.segmentKey(bundleKey: bundleKey, section: .bodies),
+            index: 0
+        )
+        let lines = String(decoding: ndjson, as: UTF8.self)
+            .split(separator: "\n")
+            .map(String.init)
+        XCTAssertEqual(lines.count, 12, "twelve carried bodies")
+
+        for line in lines {
+            let record = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+            )
+            let encoded = try XCTUnwrap(record["body"] as? String)
+            XCTAssertFalse(encoded.contains("="), "base64url is unpadded")
+            XCTAssertFalse(encoded.contains("+") || encoded.contains("/"), "the URL alphabet")
+
+            let decoded = try XCTUnwrap(MemoryExportBase64URL.decode(encoded))
+            let text = String(decoding: decoded, as: UTF8.self)
+            XCTAssertTrue(text.hasPrefix("Body number "), "the canonical bytes came back")
+            // The member is NOT the plaintext — the failure this replaced.
+            XCTAssertNotEqual(encoded, text)
+            // `byte_len` describes the body, not its envelope.
+            XCTAssertEqual(record["byte_len"] as? Int, decoded.count)
+            XCTAssertNotEqual(record["byte_len"] as? Int, encoded.utf8.count)
+
+            // And the record proves its own join key from the bytes it carries.
+            XCTAssertEqual(
+                record["body_join_key"] as? String,
+                MemoryExportCrypto.bodyJoinKey(bundleKey: bundleKey, body: text)
+            )
+            XCTAssertNotEqual(record["body_join_key"] as? String, record["body_norm_digest"] as? String)
+        }
+    }
+
     func test_anUnrotatedSectionIsStillOneFileNamedZeroZeroZero() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("mif-\(UUID().uuidString)")

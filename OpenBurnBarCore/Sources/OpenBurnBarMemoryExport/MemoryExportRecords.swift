@@ -206,6 +206,22 @@ public enum MemoryExportRecords {
 
     // MARK: - 06 bodies
 
+    /// `record_body.body` — **base64url, unpadded, of the canonical body
+    /// bytes** [D-0038 ruling 2, D-0039 ruling 4].
+    ///
+    /// The section AEAD seals the record, so the encoding is not privacy: it is
+    /// what makes the member well defined for a body that is not valid text in
+    /// the reader's sense, and it is what the importer decodes. Writing the
+    /// plaintext was M-6 — the exporter and the Rust `mifgen` independently
+    /// read the bare `{"type": "string"}` as plaintext while the importer read
+    /// it as base64url, so every body arrived as garbage or not at all.
+    ///
+    /// `byte_len` stays the length of the CANONICAL bytes, not of this
+    /// rendering: it describes the body, not its envelope.
+    static func encodedBody(_ canonical: String) -> MIFJSON {
+        .string(MemoryExportBase64URL.encode(MemoryExportCrypto.canonicalBodyBytes(canonical)))
+    }
+
     public static func bodyRecord(
         body: MemoryExportResolvedBody,
         gate: MemoryExportGateOutcome,
@@ -217,7 +233,7 @@ public enum MemoryExportRecords {
             "body_join_key": .string(MemoryExportCrypto.bodyJoinKey(bundleKey: context.bundleKey, body: carried)),
             "body_norm_digest": .string(MemoryExportCrypto.bodyNormDigest(bundleKey: context.bundleKey, body: carried)),
             "byte_len": .int(carried.utf8.count),
-            "body": .string(carried),
+            "body": encodedBody(carried),
             "summary": .null,
             "recovered_from": .string(body.recoveredFrom.rawValue)
         ])
@@ -302,7 +318,7 @@ public enum MemoryExportRecords {
             "body_join_key": .string(joinKey),
             "body_norm_digest": .string(normDigest),
             "byte_len": .int(gate.body.utf8.count),
-            "body": .string(gate.body),
+            "body": encodedBody(gate.body),
             "summary": .null,
             "recovered_from": .string(MIFRecoveredFrom.memoryBodySnapshots.rawValue)
         ])
