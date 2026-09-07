@@ -59,7 +59,7 @@ enum OnboardingMemoryContent {
     ]
 
     /// The step is optional; say where everything on it lives afterwards.
-    static let skipNote = "Skip this and nothing is lost \u{2014} the same installer lives in Settings \u{203A} Connections \u{203A} Apps, and memory collection is switched on in Settings \u{203A} General \u{203A} Indexing."
+    static let skipNote = "Skip this and nothing is lost \u{2014} the same installer lives in Settings \u{203A} Agents \u{203A} CLIs, and memory collection is switched on in Settings \u{203A} General \u{203A} Indexing."
 }
 
 // MARK: - First-run memory step
