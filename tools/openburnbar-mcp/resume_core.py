@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,13 @@ SECRET_PATTERNS = [
 class ResumeEnvironment:
     db_path: Path | None = None
     home: Path | None = None
+    # How to open the store for reading. The MCP server injects
+    # `server._connect_ro`, which probes the file and routes an encrypted store
+    # through the daemon's SELECT-only handle instead of opening it here. Left
+    # unset (the standalone CLI, and the plaintext fixtures in the suite) it is
+    # `connect_ro`, which opens plaintext directly and refuses ciphertext with
+    # an actionable message rather than sqlite's "file is not a database".
+    connect: Callable[[Path], Any] | None = None
 
     @property
     def resolved_home(self) -> Path:
@@ -49,6 +57,17 @@ class ResumeEnvironment:
     @property
     def resolved_db_path(self) -> Path:
         return self.db_path or default_db_path()
+
+    def open_read(self) -> Any:
+        opener = self.connect or connect_ro
+        conn = opener(self.resolved_db_path)
+        # Every read here addresses columns by name. An injected opener hands
+        # back a bare connection (`server._connect_ro` leaves the factory to its
+        # callers, the way the other tool wrappers set it themselves), and the
+        # daemon shim accepts the assignment and ignores it — its rows are
+        # already `sqlite3.Row`-alike.
+        conn.row_factory = sqlite3.Row
+        return conn
 
 
 _HANDLE_CACHE: dict[tuple[str, str, str], str | None] = {}
@@ -79,11 +98,48 @@ def default_db_path() -> Path:
     return support / "OpenBurnBar" / "openburnbar.sqlite"
 
 
+SQLITE_PLAINTEXT_MAGIC = b"SQLite format 3\x00"
+
+
+def store_is_encrypted(path: Path) -> bool:
+    """
+    True when the file on disk is not a plaintext SQLite database (SQLCipher at rest).
+
+    A zero-byte file is a store SQLite has not written a header into yet, not
+    ciphertext — `sqlite3` opens it happily, and calling it encrypted would put
+    a "start the daemon" hint on unrelated schema errors.
+    """
+    try:
+        with open(path, "rb") as handle:
+            header = handle.read(len(SQLITE_PLAINTEXT_MAGIC))
+    except OSError:
+        return False
+    if not header:
+        return False
+    return header != SQLITE_PLAINTEXT_MAGIC
+
+
+ENCRYPTED_STORE_RECOVERY = (
+    "The OpenBurnBar store is SQLCipher-encrypted and resume reads travel through the "
+    "OpenBurnBar daemon, which holds the key. Start OpenBurnBar (or the daemon) and retry."
+)
+
+
 def connect_ro(path: Path) -> sqlite3.Connection:
+    """
+    Direct read-only handle on a *plaintext* store.
+
+    An encrypted store is refused here rather than opened: sqlite3 has no key and
+    the honest answer names the daemon instead of surfacing "file is not a
+    database". Callers that must read an encrypted store pass a daemon-backed
+    opener through `ResumeEnvironment.connect`.
+    """
     if not path.is_file():
         raise FileNotFoundError(
             f"OpenBurnBar database not found at {path}. Open OpenBurnBar once or set BURNBAR_DB_PATH."
         )
+    if store_is_encrypted(path):
+        raise sqlite3.DatabaseError(f"{path} cannot be read directly. {ENCRYPTED_STORE_RECOVERY}")
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=1.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 1000")
@@ -133,9 +189,12 @@ def normalize_provider(raw_or_none: str | None) -> str | None:
 
 
 def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    # `pragma_table_info` as a table-valued SELECT, not `PRAGMA table_info(x)`:
+    # the daemon's read surface runs `sqlite3_stmt_readonly` over every statement
+    # and admits only SELECT, so the PRAGMA form is refused outright there.
     try:
-        return column in {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-    except sqlite3.Error:
+        return column in {str(row[0]) for row in conn.execute("SELECT name FROM pragma_table_info(?)", (table,))}
+    except (sqlite3.Error, RuntimeError):
         return False
 
 
@@ -210,7 +269,7 @@ def _resolve_trail(conn: sqlite3.Connection, conv: sqlite3.Row, k: int = SEARCH_
         """
         try:
             rows = conn.execute(sql, (source_id, search_chunks_source_kind(), k)).fetchall()
-        except sqlite3.Error:
+        except (sqlite3.Error, RuntimeError):
             rows = []
         if rows:
             messages = [
@@ -314,7 +373,7 @@ def _token_summary(conn: sqlite3.Connection, provider: str, session_id: str) -> 
             """,
             args,
         ).fetchone()
-    except sqlite3.Error:
+    except (sqlite3.Error, RuntimeError):
         row = None
     return {
         "input": int(row["input"] or 0) if row else 0,
@@ -373,7 +432,7 @@ def materialize_ccm(
 
 def build_ccm(session_id_input: str, env: ResumeEnvironment | None = None) -> dict[str, Any] | None:
     resolved_env = env or ResumeEnvironment()
-    with connect_ro(resolved_env.resolved_db_path) as conn:
+    with resolved_env.open_read() as conn:
         rows = _conversation_lookup(conn, session_id_input)
         if not rows:
             return None
@@ -733,7 +792,7 @@ def list_resumable_conversations(
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     safe_limit = max(1, min(int(limit), MAX_LIST_LIMIT))
     safe_offset = max(0, int(offset))
-    with connect_ro(resolved_env.resolved_db_path) as conn:
+    with resolved_env.open_read() as conn:
         has_working_dir = _has_column(conn, "conversations", "workingDirectory")
         rows = conn.execute(
             # S608: where is assembled only from fixed clauses with bound parameters.
