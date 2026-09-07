@@ -68,8 +68,35 @@ final class BurnBarProjectMemoryRememberContractTests: XCTestCase {
         XCTAssertEqual(request.kind, "note")
         XCTAssertEqual(request.scope, "personal")
         XCTAssertEqual(request.confidence, 1.0)
-        XCTAssertEqual(request.reviewStatus, .approved)
+        XCTAssertEqual(request.reviewStatus, .quarantined)
         XCTAssertNil(request.engineMemoryID)
+    }
+
+    /// The agent lane lands in review. `daemon.memory.remember` has no human
+    /// caller: `burnbar_remember` reaches it through the engine's mirror, which
+    /// sends no `reviewStatus` at all, so what an absent field means IS the
+    /// review posture of every agent-autonomous write. It means `quarantined`
+    /// (ADR R10, decision D-0005), and this test is the pin — flipping it back
+    /// re-creates a second memory authority that writes past the review inbox.
+    func testAbsentReviewStatusLandsInReviewRatherThanApproved() throws {
+        let json = Data(
+            #"{"text":"prefers ripgrep","engineMemoryID":"mem_\#(String(repeating: "c", count: 32))"}"#.utf8
+        )
+
+        let request = try JSONDecoder().decode(BurnBarProjectMemoryRememberRequest.self, from: json)
+
+        XCTAssertEqual(request.reviewStatus, .quarantined)
+    }
+
+    /// The default is fail-closed, not a ceiling: a caller that carries a human
+    /// verdict — the review lane re-mirroring an already-approved row — still
+    /// says so on the wire and is still believed.
+    func testExplicitApprovedIsStillHonoured() throws {
+        let json = Data(#"{"text":"prefers ripgrep","reviewStatus":"approved"}"#.utf8)
+
+        let request = try JSONDecoder().decode(BurnBarProjectMemoryRememberRequest.self, from: json)
+
+        XCTAssertEqual(request.reviewStatus, .approved)
     }
 
     func testBlindSyncFieldRoundTrips() throws {

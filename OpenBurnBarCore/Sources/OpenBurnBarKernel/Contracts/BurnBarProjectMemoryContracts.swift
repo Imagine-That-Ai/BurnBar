@@ -8,6 +8,14 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
     public let tags: [String]
     public let confidence: Double
     public let sourcePath: String?
+    /// Where the written row lands in review. The default is `quarantined`, and
+    /// that is the whole point: `daemon.memory.remember` has no human caller —
+    /// every request on this wire is an agent write (the Memory MCP engine's
+    /// mirror, the signed CLI courier it speaks through, a `burnbar_remember`
+    /// turn). ADR R10 / decision D-0005 say a write whose origin is not a person
+    /// lands `quarantined`, so a caller that omits the field gets review, not
+    /// trust. A caller that genuinely carries a human verdict — the review lane
+    /// re-mirroring an already-approved row — says `approved` explicitly.
     public let reviewStatus: MemoryReviewStatus
     /// Present means the `agent` partition and keys its blind-sync document; `nil` keeps `"code"`.
     public let engineMemoryID: String?
@@ -20,7 +28,7 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         tags: [String] = [],
         confidence: Double = 1.0,
         sourcePath: String? = nil,
-        reviewStatus: MemoryReviewStatus = .approved,
+        reviewStatus: MemoryReviewStatus = .quarantined,
         engineMemoryID: String? = nil
     ) {
         self.text = text
@@ -47,7 +55,7 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         self.tags = try values.decodeIfPresent([String].self, forKey: .tags) ?? []
         self.confidence = try values.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
         self.sourcePath = try values.decodeIfPresent(String.self, forKey: .sourcePath)
-        self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .approved
+        self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .quarantined
         self.engineMemoryID = try values.decodeIfPresent(String.self, forKey: .engineMemoryID)
     }
 }

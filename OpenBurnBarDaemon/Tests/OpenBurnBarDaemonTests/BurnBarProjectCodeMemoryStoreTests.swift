@@ -471,7 +471,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             BurnBarProjectMemoryRememberRequest(
                 text: "Use the project code memory store for lexical symbol fallback.",
                 projectPath: fixture.project.path,
-                tags: ["architecture"]
+                tags: ["architecture"],
+                reviewStatus: .approved
             )
         )
         XCTAssertTrue(remembered.memoryID.hasPrefix("mem_"))
@@ -536,14 +537,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             BurnBarProjectMemoryRememberRequest(
                 text: "signed bridge signed bridge signed bridge daemon",
                 projectPath: fixture.project.path,
-                kind: "note"
+                kind: "note",
+                reviewStatus: .approved
             )
         )
         let weak = try store.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "signed bridge daemon plus unrelated filler words that dilute the document",
                 projectPath: fixture.project.path,
-                kind: "note"
+                kind: "note",
+                reviewStatus: .approved
             )
         )
         try sqliteExecute(
@@ -580,14 +583,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 text: "Always compile Swift code before pushing to main branch.",
                 projectPath: fixture.project.path,
                 kind: "procedure",
-                sourcePath: "docs/superpowers/rules.md"
+                sourcePath: "docs/superpowers/rules.md",
+                reviewStatus: .approved
             )
         )
         _ = try store.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "Python memory engine maintains under 1500 lines per module.",
                 projectPath: fixture.project.path,
-                kind: "fact"
+                kind: "fact",
+                reviewStatus: .approved
             )
         )
 
@@ -673,7 +678,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                     BurnBarProjectMemoryRememberRequest(
                         text: text,
                         projectPath: fixture.project.path,
-                        kind: index.isMultiple(of: 2) ? "procedure" : "fact"
+                        kind: index.isMultiple(of: 2) ? "procedure" : "fact",
+                        reviewStatus: .approved
                     )
                 ).memoryID
             )
@@ -793,14 +799,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 text: "Cut the tag after the smoke checks pass.",
                 projectPath: fixture.project.path,
                 kind: "procedure",
-                sourcePath: "docs/release/runbook.md"
+                sourcePath: "docs/release/runbook.md",
+                reviewStatus: .approved
             )
         )
         _ = try store.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "Use purple accents for the dashboard.",
                 projectPath: fixture.project.path,
-                kind: "preference"
+                kind: "preference",
+                reviewStatus: .approved
             )
         )
 
@@ -822,14 +830,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             BurnBarProjectMemoryRememberRequest(
                 text: "Reattempt the failed connection with progressive delays.",
                 projectPath: fixture.project.path,
-                kind: "procedure"
+                kind: "procedure",
+                reviewStatus: .approved
             )
         )
         _ = try store.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "Use purple accents for the dashboard.",
                 projectPath: fixture.project.path,
-                kind: "preference"
+                kind: "preference",
+                reviewStatus: .approved
             )
         )
 
@@ -852,10 +862,18 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             embeddingProvider: DisabledEmbeddingProvider()
         )
         let first = try store.remember(
-            BurnBarProjectMemoryRememberRequest(text: "rollout alpha", projectPath: fixture.project.path)
+            BurnBarProjectMemoryRememberRequest(
+                text: "rollout alpha",
+                projectPath: fixture.project.path,
+                reviewStatus: .approved
+            )
         )
         let second = try store.remember(
-            BurnBarProjectMemoryRememberRequest(text: "rollout bravo", projectPath: fixture.project.path)
+            BurnBarProjectMemoryRememberRequest(
+                text: "rollout bravo",
+                projectPath: fixture.project.path,
+                reviewStatus: .approved
+            )
         )
         let highSalienceID = max(first.memoryID, second.memoryID)
         let lowSalienceID = min(first.memoryID, second.memoryID)
@@ -1134,7 +1152,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let candidate = try original.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "Reattempt the failed connection with progressive delays.",
-                projectPath: fixture.project.path
+                projectPath: fixture.project.path,
+                reviewStatus: .approved
             )
         )
         XCTAssertEqual(try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM memory_embedding_refs"), 0)
@@ -1191,7 +1210,12 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let body = "Use snapshot canonical storage for the agent memory raw body boundary."
 
         let remembered = try store.remember(
-            BurnBarProjectMemoryRememberRequest(text: body, projectPath: fixture.project.path, tags: ["boundary"])
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                tags: ["boundary"],
+                reviewStatus: .approved
+            )
         )
 
         let agentIndex = try sqliteStrings(database: fixture.database, sql: "SELECT body_redacted FROM agent_memories")
@@ -1322,8 +1346,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
         let repoAIndex = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: repoA.path, maxFiles: 20))
         _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: repoB.path, maxFiles: 20))
-        _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "alpha memory alphaonlymemoryterm.", projectPath: repoA.path))
-        _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "beta memory betaonlymemoryterm.", projectPath: repoB.path))
+        _ = try store.remember(BurnBarProjectMemoryRememberRequest(
+                text: "alpha memory alphaonlymemoryterm.",
+                projectPath: repoA.path,
+                reviewStatus: .approved
+            ))
+        _ = try store.remember(BurnBarProjectMemoryRememberRequest(
+                text: "beta memory betaonlymemoryterm.",
+                projectPath: repoB.path,
+                reviewStatus: .approved
+            ))
 
         // Hybrid semantic search returns repoA's OWN nearest chunks for any query (a general
         // embedder rates even unrelated short code as somewhat similar), so the bleed invariant
@@ -2804,6 +2836,140 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
 
     // MARK: - Blind sync
 
+    /// The agent lane waits for a person. `burnbar_remember` reaches this store
+    /// through the Memory MCP engine's mirror, which sends `engineMemoryID` and
+    /// NO `reviewStatus` (`tools/openburnbar-mcp/server.py`, `_memory_mirror_remember`),
+    /// so the request is built here the way the wire builds it — from that JSON —
+    /// rather than from the memberwise initialiser a test controls. Before the
+    /// contract default flipped it landed `approved` and went straight into
+    /// recall: a second memory authority with no review step (baseline BL-1).
+    func testAgentLaneRememberLandsInReviewInsteadOfRecall() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "agent-lane-quarantine-test")
+        )
+        let engineID = "mem_0123456789abcdef0123456789abcdef"
+        let body = "The release branch is cut on Thursdays."
+        let wirePayload = Data("""
+        {"text": "\(body)",
+         "projectPath": "\(fixture.project.path)",
+         "kind": "fact",
+         "scope": "project",
+         "engineMemoryID": "\(engineID)"}
+        """.utf8)
+        let request = try JSONDecoder().decode(
+            BurnBarProjectMemoryRememberRequest.self,
+            from: wirePayload
+        )
+        XCTAssertEqual(request.reviewStatus, .quarantined, "the wire default is the whole fix")
+
+        let written = try store.remember(request)
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT source_kind || '|' || review_status FROM agent_memories \
+                WHERE id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            ["agent|quarantined"],
+            "an agent-lane write lands quarantined under the agent source kind (D-0005)"
+        )
+        XCTAssertTrue(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(query: "release branch", projectPath: fixture.project.path)
+            ).hits.isEmpty,
+            "default recall serves approved rows only, so nothing is injected before review"
+        )
+        XCTAssertEqual(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(
+                    query: "release branch",
+                    projectPath: fixture.project.path,
+                    includeQuarantined: true
+                )
+            ).hits.first?.reviewStatus,
+            .quarantined,
+            "and the row is waiting in the review feed, not lost"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT engine_memory_id || '|' || body FROM agent_memory_bodies \
+                WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            ["\(engineID)|"],
+            """
+            the sync lane's table keeps the engine id — the sealed cloud document \
+            keys on it, so approval later has something to address — and no body, \
+            because unapproved content must never reach that lane
+            """
+        )
+    }
+
+    /// The other half: review is a round trip, not a dead end. Approving the row
+    /// the previous test parked republishes it to recall AND restores the body
+    /// blind sync seals, so a memory that waited for its member is not silently
+    /// dropped from the cloud copy the way an unrestored mapping would drop it.
+    func testApprovingAnAgentLaneMemoryRepublishesItAndItsSyncBody() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "agent-lane-approval-test")
+        )
+        let engineID = "mem_fedcba9876543210fedcba9876543210"
+        let body = "The release branch is cut on Thursdays."
+        let written = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                kind: "fact",
+                scope: "project",
+                engineMemoryID: engineID
+            )
+        )
+
+        let approved = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: written.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
+        )
+
+        XCTAssertEqual(approved.status, .approved)
+        XCTAssertFalse(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(query: "release branch", projectPath: fixture.project.path)
+            ).hits.isEmpty,
+            "an approved agent memory is recallable like any other"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT engine_memory_id || '|' || body FROM agent_memory_bodies \
+                WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            ["\(engineID)|\(body)"],
+            "approval refills the syncable body under the engine id it was parked with"
+        )
+        let audit = try store.auditTrail(
+            BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path)
+        )
+        XCTAssertTrue(
+            audit.events.contains {
+                $0.action == "memory.review_status" && $0.labels.contains("review_status:approved")
+            },
+            "the approval is audited in the same shape the review lane already writes"
+        )
+    }
+
     func testEngineMirroredMemoriesKeepAnApprovedBodyForBlindSync() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
@@ -2814,6 +2980,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 text: "We deploy from the release branch on Fridays.",
                 projectPath: fixture.project.path,
                 tags: ["release"],
+                reviewStatus: .approved,
                 engineMemoryID: engineID
             )
         )

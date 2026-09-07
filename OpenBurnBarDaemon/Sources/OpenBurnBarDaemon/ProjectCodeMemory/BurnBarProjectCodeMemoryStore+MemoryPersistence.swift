@@ -169,6 +169,20 @@ extension BurnBarProjectCodeMemoryStore {
                     )
                     try upsertMemoryEmbedding(memoryID: memoryID, body: body, now: now)
                     try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                    // A mirrored row that waited in review gets its syncable body back:
+                    // `remember` recorded the engine id with an empty body, and blind
+                    // sync seals whatever is in this table. Rows with no mapping (plain
+                    // repository knowledge) are untouched.
+                    if let engineMemoryID = try engineMemoryID(projectID: projectID, memoryID: memoryID) {
+                        try upsertAgentMemoryBody(
+                            projectID: projectID,
+                            memoryID: memoryID,
+                            engineMemoryID: engineMemoryID,
+                            body: body,
+                            bodyHash: Self.sha256Hex(body),
+                            now: now
+                        )
+                    }
                     bodyReference = Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
                 } else {
                     try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
@@ -178,6 +192,10 @@ extension BurnBarProjectCodeMemoryStore {
                         memoryID: memoryID,
                         now: now
                     )
+                    // The other half of the same invariant: a row leaving `approved`
+                    // must not leave approved content behind in the sync lane's table.
+                    // The engine id stays so the sealed cloud copy is still deletable.
+                    try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: now)
                     bodyReference = Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)
                 }
                 try execute(
