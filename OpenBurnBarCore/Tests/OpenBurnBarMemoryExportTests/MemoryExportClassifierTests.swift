@@ -174,6 +174,72 @@ final class MemoryExportClassifierTests: XCTestCase {
         XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
     }
 
+    // MARK: - R1: an untrustworthy SIBLING decides the regime, not the winner
+
+    /// The review's end-to-end case, built from BurnBar's own migrator and its
+    /// own chain expression.
+    ///
+    /// `row-leak` is stored `quarantined`. Two app verdicts name it: an
+    /// `approve` at seq 2 with a LATER wall clock, and the user's `reject` at
+    /// seq 5 — chain-later, and the only row whose stored hash is corrupted. The
+    /// walk therefore reports `verified_through 4`, `broken [5]`.
+    ///
+    /// Deciding the regime over the whole candidate set while checking conjunct
+    /// 5 on the WINNER ALONE exported this as `review_status: approved`,
+    /// `origin_kind: human`, `import_origin_detail: human_verdict`,
+    /// `verdict_audit_seq: 2` — a verdict no human gave, promoted over the human
+    /// rejection that outranks it in the chain, with `chain_verified: true`
+    /// stamped on the minted review event and §4's merge making it permanent.
+    func test_anUntrustworthySiblingCannotPromoteAClockSkewedApprove() throws {
+        let queue = try MemoryExportFixtureStore.makeQueue()
+        try queue.write { db in
+            try MemoryExportFixtureStore.insertAppMemory(
+                db,
+                id: "row-leak",
+                body: "The one the user threw away.",
+                reviewStatus: "quarantined",
+                updatedAt: "2026-01-10T00:00:00.000Z"
+            )
+            try MemoryExportFixtureStore.appendAudit(
+                db, action: "memory.add", projectID: "chat:user-1", subjectID: "row-leak",
+                labels: ["memory_id:row-leak"], ts: "2026-01-01T00:00:00.000Z"
+            )
+            // seq 2 — the approve, with the later wall clock.
+            try MemoryExportFixtureStore.appendAudit(
+                db, action: "memory.approve", projectID: "chat:user-1", subjectID: "row-leak",
+                labels: ["memory_id:row-leak", "review_status:approved", "source_kind:chat"],
+                ts: "2026-01-10T00:00:00.000Z"
+            )
+            for filler in 3...4 {
+                try MemoryExportFixtureStore.appendAudit(
+                    db, action: "memory.add", projectID: "chat:user-1", subjectID: "other-\(filler)",
+                    labels: [], ts: "2026-01-02T00:00:00.000Z"
+                )
+            }
+            // seq 5 — the human's rejection, chain-later and inside the break.
+            try MemoryExportFixtureStore.appendAudit(
+                db, action: "memory.reject", projectID: "chat:user-1", subjectID: "row-leak",
+                labels: ["memory_id:row-leak", "review_status:rejected", "source_kind:chat"],
+                ts: "2026-01-05T00:00:00.000Z"
+            )
+            try MemoryExportFixtureStore.breakChain(db, atSeq: 5)
+        }
+        let snapshot = try MemoryExportFixtureStore.snapshot(queue)
+        let chain = MemoryExportAuditChain.verify(rows: snapshot.auditRows)
+        XCTAssertEqual(chain.verifiedThroughSeq, 4)
+        XCTAssertEqual(chain.brokenAt, [5])
+        XCTAssertTrue(chain.isTrustworthy(seq: 2), "the approve is inside the verified span, on its own account")
+        XCTAssertFalse(chain.isTrustworthy(seq: 5), "the rejection is not")
+
+        let result = try classify(queue, id: "row-leak")
+        XCTAssertEqual(result.reviewStatus, .rejected, "the chain-later human rejection is not discarded")
+        XCTAssertEqual(result.originKind, .importOrigin, "no verdict in an unverifiable span is `human`")
+        XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
+        XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
+        XCTAssertNil(result.verdictAuditSeq, "an unproven verdict names no seq for section 09 to carry")
+        XCTAssertEqual(result.originalReviewStatus, "quarantined")
+    }
+
     // MARK: - Row 9: a forged `actor: "app"`
 
     func test_forgedAppActorOnDaemonRow_isRefused() throws {
@@ -349,10 +415,14 @@ final class MemoryExportClassifierTests: XCTestCase {
         XCTAssertEqual(result.verdictAuditSeq, 100)
     }
 
-    /// §3.1 case 2. When the candidates straddle a broken span `seq` is
-    /// undefined between them, so the timestamp decides — and the selected row
-    /// still has to pass conjunct 5 on its own account.
-    func test_acrossABrokenBoundaryTheTimestampDecides() {
+    /// §3.1 case 2, and the sentence that governs its OUTCOME: "Rows selected
+    /// under case 2 additionally fail conjunct 5 and therefore export
+    /// `quarantined` with `verdict_on_broken_chain` (row 7)". The timestamp
+    /// still decides which row is selected; it never decides that the selection
+    /// is proof. A `human` exit from a straddling candidate set is what R1
+    /// closed, and this test asserts `origin_kind` so swapping the two verbs
+    /// cannot quietly turn it into one.
+    func test_acrossABrokenBoundaryTheSelectionIsNeverHuman() {
         var memory = row(id: "A14")
         memory.reviewStatus = "approved"
         let approve = MemoryExportAuditRow(
@@ -379,7 +449,44 @@ final class MemoryExportClassifierTests: XCTestCase {
             chain: MemoryExportChainVerification(verifiedThroughSeq: 99, brokenAt: [100], rowsWalked: 2)
         ))
         XCTAssertEqual(result.reviewStatus, .rejected)
-        XCTAssertEqual(result.verdictAuditSeq, 99)
+        XCTAssertEqual(result.originKind, .importOrigin)
+        XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
+        XCTAssertNil(result.verdictAuditSeq)
+    }
+
+    /// The same shape with the two verbs swapped — the review's swap, which used
+    /// to export `approved` + `human` because only `reviewStatus` and
+    /// `verdictAuditSeq` were asserted above. The approve now wins the case-2
+    /// order on its later timestamp and still leaves as row 7, and the sibling
+    /// rejection nobody refuted keeps the row out of the approved set.
+    func test_acrossABrokenBoundaryTheSwappedVerbsAreNotHumanEither() {
+        var memory = row(id: "A14b")
+        memory.reviewStatus = "approved"
+        let reject = MemoryExportAuditRow(
+            seq: 100,
+            ts: "2026-01-02T00:00:00.000Z",
+            actor: "app",
+            action: "memory.reject",
+            subjectID: "A14b",
+            labels: ["review_status:rejected"]
+        )
+        let approve = MemoryExportAuditRow(
+            seq: 99,
+            ts: "2026-01-03T00:00:00.000Z",
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A14b",
+            labels: ["review_status:approved"]
+        )
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [reject, approve],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 99, brokenAt: [100], rowsWalked: 2)
+        ))
+        XCTAssertNotEqual(result.reviewStatus, .approved)
+        XCTAssertEqual(result.originKind, .importOrigin)
+        XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
     }
 
     /// And when the unverified row is the one the timestamp picks, case 2
@@ -410,7 +517,11 @@ final class MemoryExportClassifierTests: XCTestCase {
             bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
             chain: MemoryExportChainVerification(verifiedThroughSeq: 99, brokenAt: [100], rowsWalked: 2)
         ))
-        XCTAssertEqual(result.reviewStatus, .quarantined)
+        // Not `quarantined`: the sibling rejection is unrefuted too, and §3.1
+        // row 11's "never raised" is the direction that cannot promote text no
+        // human read.
+        XCTAssertEqual(result.reviewStatus, .rejected)
+        XCTAssertEqual(result.originKind, .importOrigin)
         XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
         XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
     }

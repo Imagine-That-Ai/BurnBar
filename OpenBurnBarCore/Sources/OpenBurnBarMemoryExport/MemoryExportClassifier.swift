@@ -106,8 +106,8 @@ public enum MemoryExportClassifier {
             return base(stored: nil, status: .quarantined, detail: .absentColumn)
         }
 
-        if let verdict = latestVerdictRow(for: input.memory, in: input.auditRows, chain: input.chain) {
-            return classifyAgainst(verdict: verdict, input: input, stored: stored)
+        if let selection = selectVerdict(for: input.memory, in: input.auditRows, chain: input.chain) {
+            return classifyAgainst(selection: selection, input: input, stored: stored)
         }
 
         // No verdict row for this subject. What the row says about itself is all
@@ -135,10 +135,11 @@ public enum MemoryExportClassifier {
     // MARK: - The six conjuncts
 
     private static func classifyAgainst(
-        verdict: MemoryExportAuditRow,
+        selection: VerdictSelection,
         input: MemoryExportClassifierInput,
         stored: String
     ) -> MemoryExportClassification {
+        let verdict = selection.row
         let memory = input.memory
 
         // Conjunct 2 — an app-owned `source_kind`.
@@ -150,22 +151,37 @@ public enum MemoryExportClassifier {
 
         guard appOwnedKind, appConvention, appIdentified else {
             // Row 9 — a forged `actor: "app"`. The row still travels; only the
-            // claim is refused.
+            // claim is refused. The forged row's own label carries no weight
+            // here — the app-ness of the whole row is what was refused — so only
+            // the STORED value clamps the safe direction.
             return base(
                 stored: stored,
-                status: .quarantined,
+                status: unprovenStatus(stored: stored, candidates: []),
                 detail: .unknown,
                 findings: [.forgedHumanVerdictRefused],
                 binding: .unprovable
             )
         }
 
-        // Conjunct 5 — the audit row is chain-trustworthy.
-        guard input.chain.isTrustworthy(seq: verdict.seq) else {
-            // Row 7.
+        // Conjunct 5, checked on every candidate that CAN WIN — which under a
+        // case-2 regime is all of them, because the order across a broken or
+        // forked boundary is not itself proof. §3.1: "Rows selected under case 2
+        // additionally fail conjunct 5 and therefore export `quarantined` with
+        // `verdict_on_broken_chain` (row 7)".
+        //
+        // Checking it on the WINNER ALONE is the R1 defect: one untrustworthy
+        // SIBLING flipped the whole selection into wall-clock order while the
+        // winner — an older approve the chain had already been overtaken by —
+        // passed conjunct 5 on its own seq and left as `human`. A chain-later
+        // human REJECTION was discarded for sitting in the broken span, and §4's
+        // merge made the promotion permanent.
+        guard selection.regimeIsIntact, input.chain.isTrustworthy(seq: verdict.seq) else {
+            // Row 7, in the safe direction: no candidate in an unverifiable span
+            // is refuted either, so every one of them is still live evidence and
+            // §3.1 row 11's "never raised" governs the outcome.
             return base(
                 stored: stored,
-                status: .quarantined,
+                status: unprovenStatus(stored: stored, candidates: selection.candidates),
                 detail: .verdictOnBrokenChain,
                 findings: [.verdictOnBrokenChain],
                 binding: .unprovable
@@ -183,10 +199,11 @@ public enum MemoryExportClassifier {
         }
         guard bound else {
             // Row 8 — the worst finding in the attack, and the reason conjunct
-            // 6 exists at all.
+            // 6 exists at all. A body rewritten under a REJECTION does not
+            // un-reject it, so the winner's own label still clamps.
             return base(
                 stored: stored,
-                status: .quarantined,
+                status: unprovenStatus(stored: stored, candidates: [verdict]),
                 detail: .approvedBodyMutatedAfterVerdict,
                 findings: [.approvedBodyMutatedAfterVerdict],
                 binding: input.bodySnapshotUpdatedAt == nil ? .unprovable : .bodyMutatedAfterVerdict
@@ -198,10 +215,13 @@ public enum MemoryExportClassifier {
               let status = MIFReviewStatus(rawValue: label),
               status != .forgotten else {
             // A proven-shaped row whose label is missing or unknown is not a
-            // proven verdict; it is an unknown value, and it quarantines.
+            // proven verdict; it is an unknown value. It never RAISES the row,
+            // though: §3.1 row 11 says a stored `rejected` is "never raised —
+            // the safe direction", and quarantining one would put a memory the
+            // user rejected back in the review queue (R8).
             return base(
                 stored: stored,
-                status: .quarantined,
+                status: unprovenStatus(stored: stored, candidates: []),
                 detail: .unknownValue,
                 findings: [.reviewStatusUnknownValue],
                 binding: .bound
@@ -222,7 +242,9 @@ public enum MemoryExportClassifier {
         classification.verdictFromStatus = previousStatus(
             before: verdict,
             in: input.auditRows,
-            withinIntactSegment: input.chain.isTrustworthy(seq: verdict.seq)
+            // The same regime the winner was selected under, so `from_status`
+            // is read in the order the verdict was.
+            withinIntactSegment: selection.regimeIsIntact
         )
         return classification
     }
@@ -250,18 +272,57 @@ public enum MemoryExportClassifier {
     /// `ts` there would let a wrong clock reorder rows the chain has already
     /// ordered".
     ///
+    /// The regime is chosen from THIS row's own candidate set, and conjunct 5 is
+    /// then checked on every candidate that can win rather than on the winner
+    /// alone (R1). Deciding the regime over the whole set while proving only the
+    /// winner is what let an untrustworthy SIBLING flip the selection into
+    /// wall-clock order — the order §3.1 case 1 exists to ignore — and hand the
+    /// exit to an older approve that passed conjunct 5 on its own seq.
+    ///
     /// This is the exporter's per-row SELECTION among oracle rows; it is not a
     /// merge rule and does not compete with §4.
-    static func latestVerdictRow(
+    static func selectVerdict(
         for memory: MemoryExportMemoryRow,
         in rows: [MemoryExportAuditRow],
         chain: MemoryExportChainVerification
-    ) -> MemoryExportAuditRow? {
+    ) -> VerdictSelection? {
+        // "This rule is **the exporter's per-row selection among oracle audit
+        // rows**" — so the regime is decided from THIS row's own candidate set,
+        // and a candidate set is intact only when every member of it is
+        // chain-trustworthy. Nothing about another memory's rows reaches here.
         let candidates = rows
             .filter { verdictActions.contains($0.action) && $0.actor == "app" && $0.subjectID == memory.id }
         guard candidates.isEmpty == false else { return nil }
         let intact = candidates.allSatisfy { chain.isTrustworthy(seq: $0.seq) }
-        return candidates.max { lhs, rhs in orderedBefore(lhs, rhs, withinIntactSegment: intact) }
+        guard let winner = candidates.max(by: { lhs, rhs in
+            orderedBefore(lhs, rhs, withinIntactSegment: intact)
+        }) else { return nil }
+        return VerdictSelection(row: winner, candidates: candidates, regimeIsIntact: intact)
+    }
+
+    /// One row's verdict selection, and the regime that produced it.
+    struct VerdictSelection {
+        var row: MemoryExportAuditRow
+        /// Every candidate for this memory, in source order. Under a case-2
+        /// regime each of them could have won, so each is still live evidence.
+        var candidates: [MemoryExportAuditRow]
+        /// True when §3.1 case 1 decided the order: every candidate for THIS row
+        /// was chain-trustworthy, so `seq DESC` is the fact the chain proves.
+        var regimeIsIntact: Bool
+    }
+
+    /// The exported status for a verdict that exists but is not proof.
+    ///
+    /// §3.1 row 11: a stored `rejected` is "**never raised** — the safe
+    /// direction". The same sentence governs a rejection the chain cannot
+    /// place: quarantining it puts a memory the user rejected back in the review
+    /// queue, and `quarantined` is a step TOWARDS `approved`, which is the one
+    /// direction this classifier may never take. `approved` is unreachable from
+    /// here by construction — an unproven approve always quarantines.
+    static func unprovenStatus(stored: String, candidates: [MemoryExportAuditRow]) -> MIFReviewStatus {
+        if stored == MIFReviewStatus.rejected.rawValue { return .rejected }
+        let rejects = candidates.contains { $0.reviewStatusLabelValue == MIFReviewStatus.rejected.rawValue }
+        return rejects ? .rejected : .quarantined
     }
 
     /// A total order. Inside an intact segment it is `seq` then the reject
