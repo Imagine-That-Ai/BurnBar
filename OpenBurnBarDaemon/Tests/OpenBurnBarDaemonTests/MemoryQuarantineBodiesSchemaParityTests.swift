@@ -159,33 +159,13 @@ final class MemoryQuarantineBodiesSchemaParityTests: XCTestCase {
     }
 
     // MARK: - Source reading
-
-    /// Walks up from this file to the repository root. Deliberately fails rather
-    /// than skipping when it cannot find one: a parity test that goes green
-    /// because its reference tree is missing is worse than no parity test.
-    private func repositoryRoot(file: StaticString = #filePath, line: UInt = #line) throws -> URL {
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0..<8 {
-            url = url.deletingLastPathComponent()
-            if FileManager.default.fileExists(atPath: url.appendingPathComponent("AGENTS.md").path) {
-                return url
-            }
-        }
-        XCTFail("Could not locate the repository root from \(#filePath)", file: file, line: line)
-        throw CocoaError(.fileNoSuchFile)
-    }
-
-    private func source(at relativePath: String) throws -> String {
-        let url = try repositoryRoot().appendingPathComponent(relativePath)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            XCTFail("Missing source file: \(relativePath)")
-            throw CocoaError(.fileNoSuchFile)
-        }
-        return try String(contentsOf: url, encoding: .utf8)
-    }
+    //
+    // Reading a checkout file is `MemorySchemaSource`
+    // (`MemoryReviewStatusDefaultParityTests.swift`), shared with the suite that
+    // pins the `agent_memories.review_status` default the same way.
 
     private func tableStatement(inFileAt relativePath: String) throws -> String {
-        let text = try source(at: relativePath)
+        let text = try MemorySchemaSource.text(at: relativePath)
         return try XCTUnwrap(
             Self.multilineLiteral(containing: Self.tableMarker, in: text),
             "Could not find the CREATE TABLE literal in \(relativePath)"
@@ -197,7 +177,7 @@ final class MemoryQuarantineBodiesSchemaParityTests: XCTestCase {
     /// multiline scan started from a line that is not inside a multiline literal
     /// happily walks to the nearest unrelated delimiters and returns nonsense.
     private func indexStatement(inFileAt relativePath: String) throws -> String {
-        let text = try source(at: relativePath)
+        let text = try MemorySchemaSource.text(at: relativePath)
         if let literal = Self.singleLineLiteral(containing: Self.indexMarker, in: text) {
             return literal
         }

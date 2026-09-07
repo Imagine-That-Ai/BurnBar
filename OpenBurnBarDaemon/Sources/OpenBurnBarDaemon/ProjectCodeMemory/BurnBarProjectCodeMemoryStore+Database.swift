@@ -226,17 +226,35 @@ extension BurnBarProjectCodeMemoryStore {
                 valid_from TEXT NOT NULL,
                 valid_to TEXT,
                 superseded_by TEXT,
-                review_status TEXT NOT NULL DEFAULT 'approved',
+                review_status TEXT NOT NULL DEFAULT 'quarantined',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
             """,
             []
         )
-        // Older daemon databases predate the review lifecycle. Existing rows were
-        // already durable memories, so they are approved when upgraded; newly
-        // extracted candidates explicitly opt into quarantined status.
-        try ensureColumn(table: "agent_memories", column: "review_status", definition: "TEXT NOT NULL DEFAULT 'approved'")
+        // The column default is the last thing that decides where a memory lands,
+        // and it used to say `approved` — the same fail-open default one layer
+        // below the wire's, which D-0005 closed. Every writer in the tree names
+        // the column explicitly, so no row that exists today changes; what changes
+        // is where a future writer that FORGETS to name it lands, and review is
+        // the honest answer for a memory nobody has vouched for. The canonical
+        // GRDB migrator has said `quarantined` since v51 and this is the bootstrap
+        // catching up (I-57).
+        //
+        // Older daemon databases predate the review lifecycle entirely: they were
+        // written before the agent lane existed, so every row in them is
+        // repository knowledge this daemon has been recalling all along. The
+        // column arrives fail-closed and those rows are stamped `approved` in the
+        // same breath — the same shape the app's v51 migration uses — so an
+        // upgrade changes no memory's meaning either.
+        let hadReviewStatus = try queryRows("PRAGMA table_info(agent_memories)", [])
+            .compactMap { $0.optionalString(1) }
+            .contains("review_status")
+        try ensureColumn(table: "agent_memories", column: "review_status", definition: "TEXT NOT NULL DEFAULT 'quarantined'")
+        if hadReviewStatus == false {
+            try execute("UPDATE agent_memories SET review_status = 'approved'", [])
+        }
         // Mirrors the canonical migrator's v51 column. `code` is the shipped
         // default: only rows the Memory MCP engine mirrors are marked `agent`,
         // and only those may reach the blind sync lane.
