@@ -582,18 +582,36 @@ def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
     return _signed_cli_read("search-sql", payload)
 
 
-_SIGNED_MEMORY_COMMANDS = {
+# Every daemon method this server reaches through `_memory_write_authority`
+# MUST appear here, mapped to the signed CLI subcommand that carries it.
+#
+# A method missing from this table does not degrade — it falls through to a
+# direct socket connection, which on a signed install with the first-party peer
+# gate enforced is refused outright:
+#
+#     daemon rejected daemon.code.index_project: code=-32001
+#     message='OpenBurnBar RPC peer failed first-party code-signature verification.'
+#
+# `tests/test_signed_courier_command_parity.py` asserts this table covers every
+# such call site and that the Swift CLI carries every command named here.
+_SIGNED_DAEMON_COMMANDS = {
     "daemon.memory.remember": "memory-remember",
     "daemon.memory.forget": "memory-forget",
     # Blind sync: marking an inbox document merged is a write, so it travels the
     # same trusted-courier path a remember does.
     "daemon.memory.sync.inbox.ack": "memory-sync-inbox-ack",
+    # Project code memory. The index *reads* travel `search-sql` (they are plain
+    # SELECTs against the daemon's keyed store); these three are not SELECTs and
+    # had no route at all until the CLI grew the matching subcommands.
+    "daemon.code.index_project": "code-index-project",
+    "daemon.code.watch_project": "code-watch-project",
+    "daemon.code.explore": "code-explore",
 }
 
 
-def _signed_memory_write_authority(method: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Use the trusted CLI courier for daemon memory writes on signed installs."""
-    command = _SIGNED_MEMORY_COMMANDS.get(method)
+def _signed_daemon_write_authority(method: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Use the trusted CLI courier for daemon writes on signed installs."""
+    command = _SIGNED_DAEMON_COMMANDS.get(method)
     if command is None:
         return None
     cli = _signed_cli_path()
@@ -634,7 +652,7 @@ def _signed_memory_write_authority(method: str, payload: dict[str, Any]) -> dict
 
 
 def _memory_write_authority(method: str, params: dict[str, Any]) -> dict[str, Any]:
-    signed = _signed_memory_write_authority(method, params)
+    signed = _signed_daemon_write_authority(method, params)
     if signed is not None:
         return signed
     return pcm.write_authority(method, params)
