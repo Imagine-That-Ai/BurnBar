@@ -6,28 +6,27 @@
 // -------------------------------------------
 //   Source repo:    Po'dex, memory-consolidation-gauntlet branch
 //   Source path:    docs/memory/contracts/mif-v1.schema.json
-//   Source commit:  3332bd5b750e41e398e752e42daca294e79a47db
-//                   ("docs(memory): Q-24 — the exporter's two refusals are both
-//                    in the contract, and a randomized signature is not a broken
-//                    determinism claim")
-//   sha256:         a008cdefcdf9d90d5936674cb6ab3c686fdba6047395f4fe639d7f6ea1132723
+//   Source commit:  e591e7c8e8a71fdd50a562f4d63f14e30e13462b
+//                   ("docs(memory): Q-30 — D-0033: project identity is the DDL
+//                    pair; the narrow reason vocabularies close")
+//   sha256:         1107c3ec56feb70fa704f49d97f3ac9cf098ea3d97b89afc13e04858db1be487
 //   Copied:         2026-09-07, byte for byte, no local edit of any kind
 //   Contract level: MIF v1, minor 2 [D-0021]
 //
-// Re-vendored from fc1a4a2678… (commit 439c8d3d, D-0018) — three contract
-// passes in one file:
-//   * D-0025 retyped `manifest.recipient_key_id` from `hex64_null` to
-//     `recipient_key_id_null` (`^rcp_[0-9a-f]{32}$`) and added
-//     `EXPORT_RECIPIENT_REQUIRED`. The stale typing was the exporter's only
-//     schema failure at HEAD and an interop break, because `aad =
-//     recipient_key_id` (review R4);
-//   * Q-16 added `reconciliation_report.{write_lease_taken,
-//     staging_files_created, clients_drained}`, Q-18 `record_tombstone`'s five
-//     `retired_*` members and their `dependentRequired`;
-//   * Q-24 added `EXPORT_HPKE_UNAVAILABLE`, so `MIFExportError`'s two refusal codes
-//     are now both in the contract's closed set.
-// Every move was additive, so `mif_minor` stays 2 and a bundle written against
-// the old copy still validates.
+// Re-vendored from a008cdef… (commit 3332bd5b, Q-24) — two contract passes in
+// one file, both additive, so `mif_minor` stays 2 and a bundle written against
+// the old copy still validates:
+//   * Q-26 closed the hold vocabulary (D-0031 ruling 3): `hold_reason` stops
+//     being a bare enum and becomes an `anyOf` of the closed enum plus the
+//     closed `INVARIANT_FAILED:<inv>` pattern branch, gaining
+//     `RECIPIENT_MISMATCH` and `BUNDLE_CLOCK_SKEW`. The held-report test
+//     validates a held bundle so this `anyOf` is exercised, not merely
+//     implemented — an `anyOf` no failing instance ever touches is the
+//     fail-open mode this pin exists to prevent.
+//   * Q-30 closed the narrow reason vocabularies (D-0033 ruling 2):
+//     `skipped_reason` gains four sync-slice values, `rejected_reason` gains
+//     the two retirement cases, and `record_project` gains the optional
+//     `project_id` + `fingerprint` DDL pair (together or neither).
 //
 // D-0021 ruling 5 requires the Po'dex copy and this one to be byte-identical
 // "with the sha256 pinned by a test on each side". This is that test. It exists
@@ -58,7 +57,7 @@ import Crypto
 final class MIFContractPinTests: XCTestCase {
 
     private static let pinnedSHA256 =
-        "a008cdefcdf9d90d5936674cb6ab3c686fdba6047395f4fe639d7f6ea1132723"
+        "1107c3ec56feb70fa704f49d97f3ac9cf098ea3d97b89afc13e04858db1be487"
 
     private func contractData() throws -> Data {
         let url = try XCTUnwrap(

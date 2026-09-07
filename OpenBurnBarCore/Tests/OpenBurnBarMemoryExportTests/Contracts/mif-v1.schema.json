@@ -81,13 +81,20 @@
       "enum": ["forgotten_to_tombstone","restricted_classification","source_unreadable","cloud_already_local","out_of_window","orphan_body_not_carried","orphan_provenance_no_memory","dangling_supersession","unmigratable_source","extraction_job_outbox","embedding_vector_disposable","path_alias_not_transported","derived_edge_recomputed_locally"]
     },
     "skipped_reason": {
-      "enum": ["already_present_same_id","duplicate_bundle_row","tombstoned","superseded_by_local","local_human_verdict_wins","receipt_unknown_peer","verdict_orphaned_discarded"]
+      "$comment": "D-0033 ruling 2: the four sync-slice values with no contract spelling join here - all four are rows seen and set aside, never malformed (memory_not_applied: a row the importer read and deliberately did not apply; path_alias_dropped: a path alias that could not be minted; receipt_unknown_tombstone: a tombstone receipt naming no tombstone carried or held; reverse_edge_exists: a supersession edge whose reverse already stands).",
+      "enum": ["already_present_same_id","duplicate_bundle_row","tombstoned","superseded_by_local","local_human_verdict_wins","receipt_unknown_peer","verdict_orphaned_discarded","memory_not_applied","path_alias_dropped","receipt_unknown_tombstone","reverse_edge_exists"]
     },
     "rejected_reason": {
-      "enum": ["body_unreconstructible","body_norm_digest_mismatch","record_too_large","schema_version_too_new","malformed_record","human_origin_without_audit_evidence","verdict_on_broken_chain_claimed_human","unknown_required_section"]
+      "$comment": "D-0033 ruling 2: the two Q-18 retirement cases gain names - retired_by_non_subject_memory (retired_by_memory_id is not the tombstone's own subject_memory_id) and retirement_on_content_key_tombstone (a retirement carried where no memory can be retired from). Both folded into malformed_record before; the importer that knows more says more.",
+      "enum": ["body_unreconstructible","body_norm_digest_mismatch","record_too_large","schema_version_too_new","malformed_record","human_origin_without_audit_evidence","verdict_on_broken_chain_claimed_human","unknown_required_section","retired_by_non_subject_memory","retirement_on_content_key_tombstone"]
     },
     "hold_reason": {
-      "enum": ["RECONCILIATION_MISMATCH","ROLLUP_DIGEST_MISMATCH","UNMIGRATABLE_SOURCE_PRESENT","RECIPIENT_KEY_UNAVAILABLE","SOURCE_INTEGRITY_FAILED","SIGNATURE_UNVERIFIED","HASHTREE_MISMATCH","EXPORTER_KEY_UNPINNED","TARGET_NOT_KEYED","GATE_UNAVAILABLE","MIF_VERSION_UNSUPPORTED","MIF_PROFILE_UNSUPPORTED","MIF_REQUIRED_SECTION_MISSING","MIF_REHEARSAL_BUNDLE_REFUSED","UNSCOPED_ROWS_NO_USER","P5_SOURCE_NOT_QUIESCED","P5_SOURCE_BUILD_TOO_OLD","MIGRATION_WINDOW_EXPIRED","VERDICT_WALL_MS_IN_FUTURE"]
+      "$comment": "D-0031 ruling 3: THE hold vocabulary, and it is closed - every one of these is a HELD REPORT carrying the reason, never an Err that produces no report, and the importer's enum is generated from this list or pinned by a test against it. `INVARIANT_FAILED:<inv>` is the one parameterised member and it is closed too: `<inv>` is one of the eight names of `reconciliation_report.integrity.invariants`, so a reader of a hold reason can always find the boolean it refers to. `BUNDLE_CLOCK_SKEW` is D-0032 ruling 3 - the ONLY reason that reads the importer's local clock, and it holds the whole bundle. `RECIPIENT_MISMATCH` is `manifest.recipient_store_id` not naming this store: right key, wrong store (sync review F-7), which the HPKE `aad` does not cover.",
+      "type": "string",
+      "anyOf": [
+        { "enum": ["RECONCILIATION_MISMATCH","ROLLUP_DIGEST_MISMATCH","UNMIGRATABLE_SOURCE_PRESENT","RECIPIENT_KEY_UNAVAILABLE","SOURCE_INTEGRITY_FAILED","SIGNATURE_UNVERIFIED","HASHTREE_MISMATCH","EXPORTER_KEY_UNPINNED","TARGET_NOT_KEYED","GATE_UNAVAILABLE","MIF_VERSION_UNSUPPORTED","MIF_PROFILE_UNSUPPORTED","MIF_REQUIRED_SECTION_MISSING","MIF_REHEARSAL_BUNDLE_REFUSED","UNSCOPED_ROWS_NO_USER","P5_SOURCE_NOT_QUIESCED","P5_SOURCE_BUILD_TOO_OLD","MIGRATION_WINDOW_EXPIRED","VERDICT_WALL_MS_IN_FUTURE","RECIPIENT_MISMATCH","BUNDLE_CLOCK_SKEW"] },
+        { "pattern": "^INVARIANT_FAILED:(no_unproven_approved|no_resurrected_tombstone|all_bodies_digest_match|rollup_digests_match|no_keyed_field_in_bundle|target_keyed|audit_evidence_present_for_human_origin|no_orphan_verdict_applied)$" }
+      ]
     },
     "export_error": {
       "enum": ["EXPORT_KEY_UNAVAILABLE","EXPORT_SOURCE_NOT_KEYED","EXPORT_SOURCE_ROOT_OVERRIDDEN","EXPORT_RECIPIENT_UNVERIFIED","EXPORT_DISK_SPACE","EXPORT_SNAPSHOT_UNAVAILABLE","EXPORT_DELETE_WITHOUT_TOMBSTONE","EXPORT_RECIPIENT_REQUIRED","EXPORT_HPKE_UNAVAILABLE"],
@@ -438,17 +445,29 @@
 
     "record_project": {
       "type": "object", "additionalProperties": false,
+      "$comment": "D-0033 ruling 1: project identity is the DDL pair (project_id PRIMARY KEY, fingerprint UNIQUE) - matching is on the computed fingerprint, and neither a root commit alone (merges vela with velafork) nor an origin alone (not unique-indexed on projects) is identity. Both members travel together or neither does: set when the exporter computed them, absent when it carries inputs only.",
       "required": ["profile","identity_version","display_name","aliases","created_at_ms","updated_at_ms","fingerprint_inputs_available"],
       "properties": {
         "profile": { "$ref": "#/$defs/profile" },
         "identity_version": { "type": "integer", "minimum": 1 },
         "display_name": { "type": "string", "minLength": 1 },
+        "project_id": {
+          "$comment": "D-0033 ruling 1: the importer's computed id (`prj_` + 32 hex, DDL projects.project_id) when the exporter could compute it; null with fingerprint when it carries inputs only.",
+          "type": ["string","null"], "pattern": "^prj_[0-9a-f]{32}$"
+        },
+        "fingerprint": {
+          "$comment": "D-0033 ruling 1: the v3 fingerprint when computed, else null beside a null project_id. Matching key; the D-0031 ruling 2 roll-up tuple already reads (project_id, fingerprint, \"\").",
+          "type": ["string","null"], "minLength": 1
+        },
         "primary_path": { "type": ["string","null"] },
         "fingerprint_v3": {
           "$comment": "review item 15: the v3 fingerprint must be RECOMPUTED under v3 normalization (normalized remote + ALL sorted root commits), which needs a live checkout. The exporter carries the INPUTS; the importer computes project_id. Unreachable checkout => path-fallback + `fingerprint_downgraded`.",
           "type": ["string","null"]
         },
-        "origin_normalized": { "type": ["string","null"] },
+        "origin_normalized": {
+          "$comment": "D-0033 ruling 1: repo_origin_normalized is a carried input and an alias, NEVER a project match key. It is the identity of repos (repos_origin_idx), not of projects.",
+          "type": ["string","null"]
+        },
         "root_commits": { "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{40}$" } },
         "fingerprint_inputs_available": { "type": "boolean" },
         "aliases": {

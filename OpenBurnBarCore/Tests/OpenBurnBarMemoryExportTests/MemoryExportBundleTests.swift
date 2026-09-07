@@ -737,6 +737,19 @@ final class MemoryExportBundleTests: XCTestCase {
                   case .string("agent_memories") = fields["name"] ?? .null else { return false }
             return fields["balanced"] == .bool(false)
         }, "report.json carries balanced: false for agent_memories")
+
+        // And the HELD report validates: its `hold_reasons` exercise the
+        // re-vendored `hold_reason` anyOf (Q-26), which an always-clean
+        // fixture bundle never reaches — an anyOf no failing instance ever
+        // touches is the fail-open mode the pin test exists to prevent.
+        let validator = try MIFSchemaValidator(schemaData: try contractData())
+        let heldReport = try JSONSerialization.jsonObject(
+            with: Data(MIFCanonicalJSON.serialize(result.report.json).utf8)
+        )
+        XCTAssertNoThrow(
+            try validator.validate(heldReport, against: "#/$defs/reconciliation_report"),
+            "a held report's RECONCILIATION_MISMATCH must satisfy the contract's hold vocabulary"
+        )
     }
 
     /// F-12. `lost.csv` names a row by its CANONICAL id, and that id used to
