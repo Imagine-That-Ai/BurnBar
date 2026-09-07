@@ -162,12 +162,12 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
     /// F-3. Three of the eleven sections are empty in every fixture bundle
     /// (`01-tombstone_receipts`, `03-supersessions`, `08-embeddings`), and each
     /// declared `{bytes: 0, segments: 1}` over a **0-byte** `00000.seg`. A
-    /// ChaCha20-Poly1305 segment is never shorter than its 12-byte nonce and
-    /// 16-byte tag, so an importer that opens every segment the manifest
-    /// declares failed on three sections of every bundle while one that
-    /// special-cased `bytes == 0` did not.
+    /// ChaCha20-Poly1305 segment is never shorter than its 16-byte tag, so an
+    /// importer that opens every segment the manifest declares failed on three
+    /// sections of every bundle while one that special-cased `bytes == 0` did
+    /// not.
     ///
-    /// An empty section now seals the empty string: one real segment, 28 bytes,
+    /// An empty section now seals the empty string: one real segment, 16 bytes,
     /// which opens to zero plaintext bytes and therefore to zero records. The
     /// other option the review offered — `{bytes: 0, segments: 0}` and no file —
     /// the contract cannot express: `section_header.segments` is `{"type":
@@ -194,7 +194,7 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
             XCTAssertEqual(
                 header["bytes"] as? Int,
                 MemoryExportCrypto.sealOverheadBytes,
-                "\(name): an empty section is the sealed empty string, nonce + tag"
+                "\(name): an empty section is the sealed empty string — the tag alone"
             )
             let file = directory
                 .appendingPathComponent("sections")

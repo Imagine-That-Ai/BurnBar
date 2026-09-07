@@ -105,14 +105,15 @@ public enum MemoryExportBundleWriter {
             let plaintext = plaintexts[buffer.section]!
             let key = MemoryExportCrypto.segmentKey(bundleKey: inputs.context.bundleKey, section: buffer.section)
             // §2 rotates a section at `max_section_bytes` of CIPHERTEXT, and
-            // each sealed segment carries a 12-byte nonce and a 16-byte tag, so
-            // the plaintext cut is that much shorter. Getting this backwards
-            // writes segments slightly over the declared limit.
+            // each sealed segment carries a 16-byte tag (the nonce is derived,
+            // §2.1, and never written), so the plaintext cut is that much
+            // shorter. Getting this backwards writes segments slightly over the
+            // declared limit.
             let pieces = MemoryExportCrypto
                 .chunks(of: plaintext, size: max(1, inputs.maxSectionBytes - MemoryExportCrypto.sealOverheadBytes))
-            // An EMPTY section seals the empty string — one real 28-byte AEAD
-            // segment that opens to zero bytes and therefore to zero records
-            // (review F-3). It used to declare `{bytes: 0, segments: 1}` and
+            // An EMPTY section seals the empty string — one real 16-byte AEAD
+            // segment (the tag alone) that opens to zero bytes and therefore to
+            // zero records (review F-3). It used to declare `{bytes: 0, segments: 1}` and
             // write a 0-byte `00000.seg`, which no AEAD can open: an importer
             // that opens every segment the manifest declares failed on three
             // sections of every bundle, and one that special-cased `bytes == 0`

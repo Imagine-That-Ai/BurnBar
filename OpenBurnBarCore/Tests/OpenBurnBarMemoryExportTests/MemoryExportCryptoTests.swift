@@ -201,6 +201,63 @@ final class MemoryExportCryptoTests: XCTestCase {
         XCTAssertNotEqual(Data(one), Data(nonce))
     }
 
+    /// M-4 of interop run 1: a sealed segment is `ciphertext ‖ tag` and the
+    /// nonce is NOT in it.
+    ///
+    /// The exporter used to write CryptoKit's `ChaChaPoly.SealedBox.combined`,
+    /// which prefixes the 12 nonce bytes. §2.1 derives the nonce and says so
+    /// twice, so the Rust importer derived it, read the ciphertext 12 bytes off
+    /// and could open nothing — the 28-byte empty segments were the tell. This
+    /// pins the framing by LENGTH and by the derived-nonce open, so a return to
+    /// `.combined` is a failure here rather than at the next interop run.
+    func test_aSealedSegmentIsCiphertextAndTagWithNoPrependedNonce() throws {
+        let bundleKey = MemoryExportCrypto.deterministicBundleKey(seed: "framing")
+        let key = MemoryExportCrypto.segmentKey(bundleKey: bundleKey, section: .memories)
+        let plaintext = Data("{\"id\":\"mem-00\"}\n".utf8)
+        let sealed = try MemoryExportCrypto.seal(
+            chunk: plaintext,
+            section: .memories,
+            segmentKey: key,
+            index: 0
+        )
+
+        // Exactly the tag is added. 28 bytes of overhead would be the nonce
+        // riding along.
+        XCTAssertEqual(sealed.count, plaintext.count + MemoryExportCrypto.tagBytes)
+        XCTAssertEqual(MemoryExportCrypto.sealOverheadBytes, MemoryExportCrypto.tagBytes)
+
+        // And the segment does not START with the nonce, which is the byte-level
+        // form of the same claim.
+        let nonce = Data(try MemoryExportCrypto.segmentNonce(segmentKey: key, index: 0))
+        XCTAssertNotEqual(sealed.prefix(MemoryExportCrypto.nonceBytes), nonce)
+
+        // A reader that DERIVES the nonce opens it, which is what the importer
+        // does.
+        let box = try ChaChaPoly.SealedBox(
+            nonce: try ChaChaPoly.Nonce(data: nonce),
+            ciphertext: sealed.prefix(sealed.count - MemoryExportCrypto.tagBytes),
+            tag: sealed.suffix(MemoryExportCrypto.tagBytes)
+        )
+        XCTAssertEqual(
+            try ChaChaPoly.open(box, using: key, authenticating: Data("memories/0".utf8)),
+            plaintext
+        )
+        XCTAssertEqual(
+            try MemoryExportCrypto.open(sealedChunk: sealed, section: .memories, segmentKey: key, index: 0),
+            plaintext
+        )
+
+        // The old framing is not merely different, it is unreadable to a spec
+        // reader: `combined` parsed out of these bytes takes the first 12 as a
+        // nonce they are not.
+        let asCombined = try? ChaChaPoly.SealedBox(combined: sealed)
+        if let asCombined {
+            XCTAssertThrowsError(
+                try ChaChaPoly.open(asCombined, using: key, authenticating: Data("memories/0".utf8))
+            )
+        }
+    }
+
     /// D-0025 ruling 1: the segment is keyed by the BARE name. `00-tombstones`
     /// is the directory, and the two readings fail as a silent decryption error
     /// at import rather than as anything a reader can see.

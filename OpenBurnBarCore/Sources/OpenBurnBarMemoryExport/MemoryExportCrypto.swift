@@ -121,9 +121,20 @@ public enum MemoryExportCrypto {
     /// it. Declared in `manifest.crypto.aead`, never inferred by a reader.
     public static let aead = "chacha20poly1305"
     public static let nonceBytes = 12
-    /// What one sealed segment adds to its plaintext: the 12-byte nonce
-    /// `ChaChaPoly.combined` prefixes, plus the 16-byte Poly1305 tag.
-    public static let sealOverheadBytes = 28
+    /// Poly1305's tag, the only thing appended to a segment's ciphertext.
+    public static let tagBytes = 16
+    /// What one sealed segment adds to its plaintext: the 16-byte Poly1305 tag,
+    /// and nothing else.
+    ///
+    /// The nonce is DERIVED (`segmentNonce` below, §2.1) and therefore never
+    /// travels: a reader recomputes it from the segment key and the segment
+    /// index, which are both things it already has. CryptoKit's
+    /// `ChaChaPoly.SealedBox.combined` prefixes the 12 nonce bytes, and writing
+    /// that was M-4 of interop run 1 — the importer derived the nonce per spec,
+    /// found the ciphertext shifted by 12 bytes and could open nothing. A
+    /// segment is `ciphertext ‖ tag`, so an empty section's segment is exactly
+    /// 16 bytes.
+    public static let sealOverheadBytes = tagBytes
     /// No zstd is vendored here, and §2.1's rule is that silently ignoring a
     /// *declared* codec is what is illegal — declaring `none` is not.
     public static let compression = "none"
@@ -167,12 +178,17 @@ public enum MemoryExportCrypto {
         segmentKey: SymmetricKey,
         index: Int
     ) throws -> Data {
-        try ChaChaPoly.seal(
+        // `.combined` is deliberately NOT used: it prepends the nonce, and
+        // §2.1 says the nonce is derived and says it twice. What travels is the
+        // ciphertext and its tag, in that order — the concatenation every AEAD
+        // implementation can rebuild a sealed box from without a convention.
+        let box = try ChaChaPoly.seal(
             chunk,
             using: segmentKey,
             nonce: try segmentNonce(segmentKey: segmentKey, index: index),
             authenticating: segmentAAD(section: section, index: index)
-        ).combined
+        )
+        return box.ciphertext + box.tag
     }
 
     /// The inverse, for the tests that must read a sealed segment back to prove
@@ -183,8 +199,17 @@ public enum MemoryExportCrypto {
         segmentKey: SymmetricKey,
         index: Int
     ) throws -> Data {
-        try ChaChaPoly.open(
-            try ChaChaPoly.SealedBox(combined: sealedChunk),
+        // The nonce is not in the file; it is re-derived from the same two
+        // inputs the sealer used. A reader that looked for it in the first 12
+        // bytes would be reading ciphertext.
+        let tagStart = sealedChunk.index(sealedChunk.endIndex, offsetBy: -tagBytes)
+        let box = try ChaChaPoly.SealedBox(
+            nonce: try segmentNonce(segmentKey: segmentKey, index: index),
+            ciphertext: sealedChunk[sealedChunk.startIndex..<tagStart],
+            tag: sealedChunk[tagStart...]
+        )
+        return try ChaChaPoly.open(
+            box,
             using: segmentKey,
             authenticating: segmentAAD(section: section, index: index)
         )
