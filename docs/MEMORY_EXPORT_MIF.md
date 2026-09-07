@@ -525,3 +525,26 @@ required for a dry run too, since a dry run holds the same long read.
   recipient and never kept, so `memory verify` checks the signature, the
   manifest and the files on disk, says so, and points at the importer for the
   rest.
+
+---
+
+## 9. Review response — R-1 … R-9 (second review)
+
+Against `docs/memory/reviews/REVIEW-BB-EXPORTER-2.md` (verdict `return`), fixed
+in review order, one commit per finding.
+
+| # | Finding | Status |
+|---|---|---|
+| R1 | `latest_verdict` promotes a clock-skewed approve when a sibling audit row is untrustworthy | **fixed** — the regime is decided from the row's own candidates and conjunct 5 is checked on every candidate that can win; the review's end-to-end case exports `rejected`. Test fails before, passes after |
+| R2 | `ts` parsed as an instant; tie-break reads the action verb | **fixed** — `ts` compared as the lexicographic string §3.1 specifies; the tie is won by the `review_status:` label, never the verb (M-13). Divergence and tie tests |
+| R3 | reconciliation cannot fail | **fixed** — `source_rows` is measured once at the source query and never touched again; a row counted but not held fails its table with `source_unreadable` and holds the bundle. A test drives `balanced == false` |
+| R4 | `manifest.recipient_key_id` is the wrong string, and the HPKE aad | **fixed** — emits the `rcp_` id (D-0025); the manifest field is the string the wrap was sealed under, proved by opening the wrap with it. Schema re-vendored at `3332bd5b` (`a008cdef…`), validation at HEAD → 0 failures |
+| R5 | `verify` does not detect a modified segment | **fixed** — `hashtree.json` carries one unkeyed `sha256` per 4 MiB chunk of every segment file (`segment_sha256`, over ciphertext, so it leaks nothing); `verify` recomputes the stream and names the segment file and chunk on mismatch. A one-bit flip fails |
+| R6 | p5-check invents a store id; `concurrent_writes` stays false | open |
+| R7 | seven classification tests can skip green | open |
+| R8 | rows 1/5/10/15 uncovered; `isCloudOnly` unwired; absent label raises stored-`rejected` | open |
+| R9 | `store_id` comment claims an installation identity | open |
+
+D-0031 layout alignment (segment names, hash-tree domains, `manifest.sig`
+preimage and rendering, per-type roll-up tuples) and the re-vendor at the
+newest committed schema digest land after R9, each as its own commit.

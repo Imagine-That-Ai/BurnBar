@@ -3,11 +3,14 @@
 // MemoryExportBundleVerifier — what `openburnbar-cli memory verify` can honestly
 // check on the operator's own disk, before a bundle is handed over.
 //
-// It cannot decrypt anything and it cannot recompute the hash tree: both need
-// the bundle key, which is ephemeral, wrapped to the recipient, and never
-// retained here. `verify` used to return a sentence pointing at the importer for
-// that reason — which left a corrupted or truncated bundle undetectable until
-// it reached the other side (review F-16).
+// It cannot decrypt anything and it cannot recompute the KEYED hash tree:
+// both need the bundle key, which is ephemeral, wrapped to the recipient, and
+// never retained here. `verify` used to return a sentence pointing at the
+// importer for that reason — which left a corrupted or truncated bundle
+// undetectable until it reached the other side (review F-16). What it CAN
+// recompute is the UNKEYED per-chunk `sha256` sidecar in `hashtree.json`
+// (review R5): the tree is over ciphertext, so a plain hash leaks nothing and
+// a flipped bit names its segment and chunk without any key.
 //
 // Everything below needs no key at all:
 //
@@ -20,6 +23,8 @@
 //   * every section directory holds exactly the `segments` files the manifest
 //     declares, summing to the declared `bytes` — which catches a truncated,
 //     partly-copied or partly-deleted bundle;
+//   * every segment file's 4 MiB chunks hash to `hashtree.json`'s unkeyed
+//     sidecar — which catches a MODIFIED segment, naming the file and chunk;
 //   * `keys/wrapped-bundle-key` is the two-part b64url form §2.1 states, with a
 //     32-byte encapsulated key;
 //   * given the recipient descriptor, `recipient_key_id` and
@@ -27,8 +32,9 @@
 //     substituted-`--recipient` check, run against the artefact rather than
 //     against the exporter's memory.
 //
-// What it deliberately does NOT claim: that the plaintext is intact. Only the
-// importer can say that, and `verify` says so rather than implying otherwise.
+// What it deliberately does NOT claim: that the plaintext is intact, or that
+// the keyed tree verifies. Only the importer holds the bundle key, so only it
+// can say those — and `verify` says so rather than implying otherwise.
 
 import Foundation
 #if canImport(CryptoKit)
@@ -152,6 +158,55 @@ public enum MemoryExportBundleVerifier {
             }
         }
 
+        // 4b. The segment bytes themselves, against the unkeyed sidecar. Sizes
+        //     (check 4) catch truncation; this catches modification at the same
+        //     size — the one-bit flip check 4 is blind to (review R5). Streamed
+        //     in small reads against 4 MiB chunk boundaries, so a large segment
+        //     never sits whole in memory here.
+        result.checksRun.append("segment_sha256 \u{2194} files on disk")
+        if let treeData = try? Data(contentsOf: url.appendingPathComponent("hashtree.json")),
+           let tree = try? JSONSerialization.jsonObject(with: treeData) as? [String: Any],
+           let sidecar = tree["segment_sha256"] as? [String: [String]] {
+            let chunkBytes = MemoryExportCrypto.hashTreeChunkBytes
+            for path in sidecar.keys.sorted() {
+                let expected = sidecar[path] ?? []
+                let file = url.appendingPathComponent(path)
+                guard let handle = try? FileHandle(forReadingFrom: file) else {
+                    result.problems.append("\(path): segment file is missing")
+                    continue
+                }
+                var index = 0
+                var matched = true
+                while matched {
+                    // `readData(ofLength:)` is the portable read: `read(upToCount:)`
+                    // is unavailable on the Linux corelibs this package still builds.
+                    let data = handle.readData(ofLength: chunkBytes)
+                    if data.isEmpty { break }
+                    if index >= expected.count
+                        || MemoryExportDigest.sha256Hex(data) != expected[index] {
+                        result.problems.append(
+                            "\(path): chunk \(index) (byte offset \(index * chunkBytes)) "
+                                + "does not match hashtree.json — the segment was modified after sealing"
+                        )
+                        matched = false
+                    }
+                    index += 1
+                }
+                try? handle.close()
+                if matched, index != expected.count {
+                    result.problems.append(
+                        "\(path): \(index) chunks on disk, \(expected.count) in hashtree.json "
+                            + "— the segment was truncated or extended after sealing"
+                    )
+                }
+            }
+        } else {
+            result.problems.append(
+                "hashtree.json carries no per-segment hashes; segment tampering is undetectable "
+                    + "— the bundle predates tamper-evident segments, re-export it"
+            )
+        }
+
         // 5. The wrapped key's shape. Its CONTENT cannot be checked here; that
         //    the recipient can open it is the importer's first act.
         result.checksRun.append("keys/wrapped-bundle-key")
@@ -202,9 +257,9 @@ public enum MemoryExportBundleVerifier {
             lines.append(contentsOf: verification.problems.map { "  - \($0)" })
         }
         lines.append(
-            "not checked: the plaintext. The bundle key is wrapped to the recipient and never kept here, "
-                + "so the records and the keyed hash tree can only be verified by "
-                + "`memoryctl memory import --dry-run <bundle>`."
+            "not checked: the plaintext. Segment BYTES are checked — one unkeyed sha256 per 4 MiB chunk "
+                + "of every segment file — but the records and the keyed hash tree can only be verified by "
+                + "`memoryctl memory import --dry-run <bundle>, which holds the bundle key."
         )
         return lines.joined(separator: "\n")
     }

@@ -509,7 +509,15 @@ public enum MemoryExportBundleWriter {
             )),
             "sections": .object(Dictionary(uniqueKeysWithValues: ordered.map {
                 ($0.section.rawValue, MIFJSON.string(subroots[$0.section] ?? ""))
-            }))
+            })),
+            // R5 — one UNKEYED `sha256` per 4 MiB chunk of every segment file,
+            // over the ciphertext, so `verify` detects a modified segment
+            // without the bundle key. The keyed tree cannot do that: it needs
+            // the ephemeral bundle key, which this side never retains. Over
+            // ciphertext a plain hash leaks nothing (review R5), and this is
+            // an additive sidecar beside the root and subroots — not a second
+            // root, so D-0031's "computed once" still holds.
+            "segment_sha256": segmentChunkHashes(segments: segments, ordered: ordered)
         ])
         try MIFCanonicalJSON.data(tree).write(to: destination.appendingPathComponent("hashtree.json"))
 
@@ -526,6 +534,43 @@ public enum MemoryExportBundleWriter {
                 try segment.write(to: directory.appendingPathComponent(Self.segmentFilename(index)))
             }
         }
+    }
+
+    /// Unkeyed per-chunk hashes for `hashtree.json` (R5). Keys are bundle-
+    /// relative segment paths; values are one `sha256` hex per 4 MiB chunk of
+    /// the sealed file. An empty section's placeholder file hashes to no chunks
+    /// at all — its emptiness is covered by the manifest's `bytes` count, and
+    /// any byte added to it surfaces as a chunk-count mismatch.
+    static func segmentChunkHashes(
+        segments: [MIFSection: [Data]],
+        ordered: [MemoryExportSectionBuffer]
+    ) -> MIFJSON {
+        var files: [String: MIFJSON] = [:]
+        for buffer in ordered {
+            let sealed = segments[buffer.section] ?? []
+            for (index, segment) in (sealed.isEmpty ? [Data()] : sealed).enumerated() {
+                files["sections/" + buffer.section.rawValue + "/" + segmentFilename(index)] =
+                    .strings(chunkHashes(segment))
+            }
+        }
+        return .object(files)
+    }
+
+    /// One `sha256` hex per 4 MiB chunk — the same chunking as the keyed tree,
+    /// so a mismatch names the same offset either side would investigate.
+    static func chunkHashes(_ data: Data) -> [String] {
+        var out: [String] = []
+        var offset = data.startIndex
+        while offset < data.endIndex {
+            let end = data.index(
+                offset,
+                offsetBy: MemoryExportCrypto.hashTreeChunkBytes,
+                limitedBy: data.endIndex
+            ) ?? data.endIndex
+            out.append(MemoryExportDigest.sha256Hex(Data(data[offset..<end])))
+            offset = end
+        }
+        return out
     }
 
     /// `000.ndjson.seal`, `001.ndjson.seal`, … The index is the segment index

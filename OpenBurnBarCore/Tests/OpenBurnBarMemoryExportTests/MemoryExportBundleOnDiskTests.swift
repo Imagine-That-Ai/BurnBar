@@ -373,6 +373,39 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         XCTAssertTrue(unopenable.problems.contains { $0.contains("b64url(enc)") })
     }
 
+    /// R5 — the corruption `verify` could not see: one flipped bit mid-file,
+    /// at the same size, so the manifest's `bytes` count still agrees. Before,
+    /// `isIntact` stayed true with no problems; now the unkeyed per-chunk
+    /// sidecar names the segment file and the chunk (with its byte offset).
+    func test_verifyDetectsAModifiedSegmentAndNamesIt() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        _ = try export(maxSectionBytes: 512, to: directory, seed: "bitflip")
+
+        let victim = directory.appendingPathComponent("sections/06-bodies/001.ndjson.seal")
+        var bytes = try Data(contentsOf: victim)
+        XCTAssertGreaterThan(bytes.count, 32, "the victim segment must be long enough to flip mid-file")
+        bytes[17] ^= 0x01
+        try bytes.write(to: victim)
+
+        let verification = try MemoryExportBundleVerifier.verify(
+            bundleAt: directory,
+            signingPublicKey: Self.signingKey.publicKey,
+            recipient: recipient
+        )
+        XCTAssertFalse(verification.isIntact, "a one-bit flip must fail verification")
+        XCTAssertTrue(
+            verification.problems.contains {
+                $0.contains("sections/06-bodies/001.ndjson.seal") && $0.contains("chunk 0")
+            },
+            "the problem names the segment and chunk, got: \(verification.problems)"
+        )
+        // The size check still agrees — this failure is the content check's alone.
+        XCTAssertFalse(verification.problems.contains { $0.contains("bytes on disk") })
+        XCTAssertTrue(verification.checksRun.contains { $0.contains("segment_sha256") })
+    }
+
     /// The substituted-recipient check, run against the artefact on disk rather
     /// than against the exporter's memory of what it sealed.
     func test_verifyRefusesABundleAddressedToSomebodyElse() throws {
