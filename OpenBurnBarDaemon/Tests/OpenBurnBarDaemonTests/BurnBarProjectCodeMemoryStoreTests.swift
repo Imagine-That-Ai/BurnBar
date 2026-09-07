@@ -2970,6 +2970,113 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         )
     }
 
+    /// I-56: the macOS app approves in ITS half of this shared database and then
+    /// calls `daemon.memory.review_status`, so the daemon stays the single
+    /// publisher.
+    ///
+    /// That ordering is the whole test. `ControlPlaneStore.setMemoryReviewStatus`
+    /// flips `review_status` in `agent_memories` and writes its `memory.approve`
+    /// audit row; it never touches a body. So by the time this call arrives the
+    /// row already SAYS approved while its body is still parked in
+    /// `memory_quarantine_bodies` and its syncable `body_hash` is still empty —
+    /// which is exactly the state the residual describes, and which the daemon
+    /// must publish out of rather than refuse.
+    func testAnAppApprovedAgentLaneMemoryIsPublishedWhenTheAppCallsTheDaemon() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "agent-lane-app-approval-test")
+        )
+        let engineID = "mem_9f8e7d6c5b4a39281706f5e4d3c2b1a0"
+        let body = "Staging deploys are cut from the release branch."
+        // Quarantined by the mirror: no `reviewStatus` on the wire at all.
+        let request = try JSONDecoder().decode(
+            BurnBarProjectMemoryRememberRequest.self,
+            from: Data("""
+            {"text": "\(body)",
+             "projectPath": "\(fixture.project.path)",
+             "kind": "fact",
+             "scope": "project",
+             "engineMemoryID": "\(engineID)"}
+            """.utf8)
+        )
+        XCTAssertEqual(request.reviewStatus, .quarantined)
+        let written = try store.remember(request)
+
+        // The app's half, byte for byte the UPDATE
+        // `ControlPlaneStore+MemoryWrite.setMemoryReviewStatus` issues: the
+        // verdict, and nothing else.
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            UPDATE agent_memories SET review_status = 'approved' \
+            WHERE id = \(sqlLiteral(written.memoryID)) AND source_kind = 'agent'
+            """
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body_hash FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(written.memoryID))"
+            ),
+            [""],
+            "the residual: an app-approved row syncs with an empty hash until the daemon publishes it"
+        )
+        XCTAssertTrue(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(query: "staging deploys", projectPath: fixture.project.path)
+            ).hits.isEmpty,
+            "and the agent's own recall does not serve it yet"
+        )
+
+        // The call the app now makes right after its own approval.
+        let published = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: written.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
+        )
+
+        XCTAssertEqual(published.status, .approved)
+        let expectedHash = SHA256.hash(data: Data(body.utf8)).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT engine_memory_id || '|' || body_hash FROM agent_memory_bodies \
+                WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            ["\(engineID)|\(expectedHash)"],
+            "the sync body is refilled under the engine id, so the convergence fold can dedupe it"
+        )
+        XCTAssertEqual(
+            try sqliteInt(
+                database: fixture.database,
+                sql: """
+                SELECT COUNT(*) FROM memory_quarantine_bodies \
+                WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            0,
+            "the body left quarantine — one home, and it is now the project snapshot"
+        )
+        XCTAssertEqual(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(query: "staging deploys", projectPath: fixture.project.path)
+            ).hits.first?.memoryID,
+            written.memoryID,
+            "and the daemon's own recall serves it, which is what the residual asked for"
+        )
+        let reviewEvents = try store.auditTrail(
+            BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path)
+        ).events.filter {
+            $0.action == "memory.review_status" && $0.subjectID == written.memoryID
+        }
+        XCTAssertEqual(reviewEvents.count, 1, "one publication, one audit row — the app's call is not a second verdict")
+        XCTAssertTrue(try XCTUnwrap(reviewEvents.first).labels.contains("review_status:approved"))
+    }
+
     func testEngineMirroredMemoriesKeepAnApprovedBodyForBlindSync() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))

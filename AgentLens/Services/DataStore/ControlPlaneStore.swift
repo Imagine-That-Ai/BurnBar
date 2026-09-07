@@ -19,8 +19,20 @@ final class ControlPlaneStore: Sendable {
     /// purpose: the daemon never publishes, and no enforcement outlives the app.
     let memoryDeviceSyncGeneration = Locked<UInt64>(0)
 
-    init(dbQueue: any DatabaseWriter) {
+    /// How an agent-lane review verdict reaches the daemon, which is the only
+    /// process that may publish a quarantined body (I-56). Injected rather than
+    /// called straight through, so a test can drive a reachable and an
+    /// unreachable daemon; production takes the default, which is one socket
+    /// RPC. See `ControlPlaneStore+MemoryPublication.swift`.
+    let publishAgentMemoryReviewStatus: AgentMemoryReviewPublishing
+
+    init(
+        dbQueue: any DatabaseWriter,
+        publishAgentMemoryReviewStatus: @escaping AgentMemoryReviewPublishing =
+            ControlPlaneStore.liveAgentMemoryReviewPublisher
+    ) {
         self.dbQueue = dbQueue
+        self.publishAgentMemoryReviewStatus = publishAgentMemoryReviewStatus
     }
 
     // MARK: - Operating Action History

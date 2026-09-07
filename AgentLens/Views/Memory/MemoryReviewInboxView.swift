@@ -437,6 +437,9 @@ struct MemoryReviewRow: View {
                     if let sourceTag {
                         sourceTagView(sourceTag)
                     }
+                    if item.isAwaitingPublication {
+                        sourceTagView(Self.pendingPublicationTag)
+                    }
                     confidenceHint
                     Spacer(minLength: 0)
                 }
@@ -506,6 +509,13 @@ struct MemoryReviewRow: View {
         case .chat, .code: nil
         }
     }
+
+    /// Shown beside "Coding agent" while the member's verdict is taken and the
+    /// daemon has not published the body (I-56): the daemon was unreachable at
+    /// the moment of approval, the decision is kept, and the next launch retries
+    /// it. Saying nothing here would make an in-app approval look complete while
+    /// the agent's own recall still could not serve the memory.
+    private static let pendingPublicationTag = (label: "Pending publication", icon: "clock.arrow.circlepath")
 
     private func sourceTagView(_ tag: (label: String, icon: String)) -> some View {
         HStack(spacing: DesignSystem.Spacing.xxs) {

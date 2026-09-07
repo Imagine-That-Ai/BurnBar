@@ -168,6 +168,17 @@ extension ControlPlaneStore {
                 nowString: nowString
             )
         }
+        // The verdict is durable and audited above; publishing the BODY is the
+        // daemon's, so an agent-lane verdict is handed to
+        // `daemon.memory.review_status` and the daemon stays the single
+        // publisher (I-56). The call never throws and never undoes the verdict:
+        // an unreachable daemon leaves the row in the derived
+        // pending-publication state the inbox shows and the next launch
+        // retries. Chat and usage rows keep their bodies in the app's own
+        // snapshot table and have nothing to hand over.
+        if existing.sourceKind == .agent {
+            await publishAgentMemoryReview(id: id, status: status, projectID: existing.scope.projectID)
+        }
         return true
     }
 

@@ -52,6 +52,14 @@ final class MemoryReviewInboxModel {
             bodyLoadState == .loaded &&
                 body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         }
+        /// The verdict on this row is taken and the daemon has not published the
+        /// body yet (I-56) — where an in-app approval lands when the daemon is
+        /// unreachable. Derived from the row itself
+        /// (`ControlPlaneStore.isAwaitingDaemonPublication`), so it clears the
+        /// moment the retry lands and no reload can show it stale.
+        var isAwaitingPublication: Bool {
+            ControlPlaneStore.isAwaitingDaemonPublication(memory)
+        }
 
         init(
             memory: Memory,

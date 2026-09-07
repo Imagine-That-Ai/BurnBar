@@ -391,6 +391,55 @@ enum OpenBurnBarDaemonSocketClient {
         return result
     }
 
+    /// Hand one review verdict to the daemon so IT publishes the body.
+    ///
+    /// The app writes its own `memory.approve` / `memory.reject` audit row and
+    /// flips `review_status` in the shared `agent_memories` table, but moving a
+    /// quarantined body into the project-memory snapshot and refilling the
+    /// syncable `body_hash` is the daemon's `setReviewStatus` and nothing else's
+    /// (I-56: the daemon stays the single publisher). This is the call that asks
+    /// it to, and it is the same RPC the Linux desktop's review surface and the
+    /// `burnbar_memory_review` MCP tool already use — no new RPC id, no new
+    /// contract, no new capability (`memory_write` is already `.full` for the
+    /// `.app` peer).
+    ///
+    /// `projectPath` is the root the DAEMON itself recorded in `pcm_projects`,
+    /// read back out of the shared database: the daemon resolves a path through
+    /// the WRITING resolver, so any other string would register a project rather
+    /// than address one.
+    ///
+    /// A refusing or unreachable daemon THROWS. The approval itself already
+    /// happened — the caller keeps it and shows the row as awaiting publication
+    /// — but this method never reports a publication that did not occur.
+    static func memoryReviewStatus(
+        memoryID: String,
+        projectPath: String,
+        status: MemoryReviewStatus,
+        at socketURL: URL
+    ) throws -> BurnBarProjectMemoryReviewStatusResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarProjectMemoryReviewStatusResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryReviewStatus,
+                params: BurnBarProjectMemoryReviewStatusRequest(
+                    memoryID: memoryID,
+                    projectPath: projectPath,
+                    status: status
+                )
+            ),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+        }
+
+        guard let result = envelope.result else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+
+        return result
+    }
+
     static func proxyRouteLog(
         at socketURL: URL,
         limit: Int = 50

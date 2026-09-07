@@ -33,14 +33,88 @@ final class AgentLaneMemoryReviewInboxTests: XCTestCase {
     private let engineMemoryID = "mem_00112233445566778899aabbccddeeff"
     private let agentMemoryID = "mem_a1b2c3d4e5f60718293a4b5c6d7e8f90"
     private let agentBody = "The release branch is cut on Thursdays."
+    /// The root the daemon recorded for that checkout in `pcm_projects`, which
+    /// is the only string the app may hand back to `daemon.memory.review_status`.
+    private let projectRoot = "/tmp/FixtureProject"
 
     // MARK: - Fixtures
 
-    private func makeStore() throws -> (DatabaseQueue, ControlPlaneStore) {
+    /// Stands in for the daemon on the other end of
+    /// `daemon.memory.review_status` (I-56): records every verdict handed over,
+    /// and can refuse the way an unreachable daemon does. A test store is ALWAYS
+    /// built with one of these — the shipping default opens the real control
+    /// socket, and a unit test must never reach the member's daemon.
+    private final class DaemonPublisherSpy: @unchecked Sendable {
+        struct Call: Equatable {
+            let memoryID: MemoryID
+            let projectPath: String
+            let status: MemoryReviewStatus
+        }
+
+        enum Outcome { case reachable, unreachable }
+
+        private let lock = NSLock()
+        private var storedCalls: [Call] = []
+        private var storedOutcome: Outcome
+
+        init(outcome: Outcome = .reachable) { self.storedOutcome = outcome }
+
+        var calls: [Call] { lock.withLock { storedCalls } }
+
+        func set(outcome: Outcome) { lock.withLock { storedOutcome = outcome } }
+
+        func publish(_ memoryID: MemoryID, _ projectPath: String, _ status: MemoryReviewStatus) throws {
+            let outcome: Outcome = lock.withLock {
+                storedCalls.append(Call(memoryID: memoryID, projectPath: projectPath, status: status))
+                return storedOutcome
+            }
+            if outcome == .unreachable {
+                throw OpenBurnBarDaemonManagerError.rpcError("daemon unreachable")
+            }
+        }
+    }
+
+    private func makeStore(
+        publisher: DaemonPublisherSpy = DaemonPublisherSpy()
+    ) throws -> (DatabaseQueue, ControlPlaneStore) {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        return (queue, ControlPlaneStore(dbQueue: queue))
+        let store = ControlPlaneStore(
+            dbQueue: queue,
+            publishAgentMemoryReviewStatus: { memoryID, projectPath, status in
+                try publisher.publish(memoryID, projectPath, status)
+            }
+        )
+        return (queue, store)
+    }
+
+    /// What the daemon publishes on behalf of a verdict it accepted: the body
+    /// leaves quarantine, the sync body is refilled under the engine id, and
+    /// `body_redacted` names the snapshot instead of the quarantine copy. The
+    /// spy cannot do this itself — it has no store — so a test that wants the
+    /// published end state calls this after it.
+    private func simulateDaemonPublication(on queue: DatabaseQueue) throws {
+        let bodyHash = SHA256.hash(data: Data(agentBody.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        try queue.write { db in
+            try db.execute(
+                sql: "DELETE FROM memory_quarantine_bodies WHERE memory_id = ?",
+                arguments: [self.agentMemoryID]
+            )
+            try db.execute(
+                sql: "UPDATE agent_memory_bodies SET body = ?, body_hash = ? WHERE memory_id = ?",
+                arguments: [self.agentBody, bodyHash, self.agentMemoryID]
+            )
+            try db.execute(
+                sql: "UPDATE agent_memories SET body_redacted = ? WHERE id = ?",
+                arguments: [
+                    "Project Memory snapshot ref:agent-\(self.daemonProjectID)#\(self.agentMemoryID)",
+                    self.agentMemoryID
+                ]
+            )
+        }
     }
 
     /// Mirrors `MemoryReviewInboxHost`'s closure wiring over the real store,
@@ -87,7 +161,7 @@ final class AgentLaneMemoryReviewInboxTests: XCTestCase {
             BurnBarProjectMemoryRememberRequest.self,
             from: Data("""
             {"text": "\(agentBody)",
-             "projectPath": "/tmp/FixtureProject",
+             "projectPath": "\(projectRoot)",
              "kind": "fact",
              "scope": "project",
              "engineMemoryID": "\(engineMemoryID)"}
@@ -108,6 +182,26 @@ final class AgentLaneMemoryReviewInboxTests: XCTestCase {
         let storedKind = MemoryKind(rawValue: request.kind)?.rawValue ?? MemoryKind.other.rawValue
 
         try queue.write { db in
+            // The daemon's own project registry. The app reads `primary_path`
+            // back out of it to address the row over `daemon.memory.review_status`
+            // (I-56) — it never guesses a path, because the daemon resolves one
+            // through the WRITING resolver.
+            try db.execute(
+                sql: """
+                INSERT INTO pcm_projects
+                    (project_id, identity_version, identity_fingerprint, project_name,
+                     primary_path, created_at, updated_at)
+                VALUES (?, 2, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    self.daemonProjectID,
+                    "fingerprint:\(self.daemonProjectID)",
+                    "FixtureProject",
+                    self.projectRoot,
+                    timestamp,
+                    timestamp
+                ]
+            )
             try db.execute(
                 sql: """
                 INSERT INTO agent_memories
@@ -263,6 +357,125 @@ final class AgentLaneMemoryReviewInboxTests: XCTestCase {
             model.approved.contains { $0.id == agentMemoryID },
             "and the reload moves it into the approved bucket"
         )
+    }
+
+    // MARK: - Publication (I-56)
+
+    /// The residual I-56 names: the app's approval flips `review_status` and
+    /// audits it, but only the daemon may move the body out of
+    /// `memory_quarantine_bodies` and refill the `body_hash` the convergence
+    /// fold dedupes on. So the app hands the verdict straight back to
+    /// `daemon.memory.review_status` — once, for the row it acted on, addressed
+    /// by the root the DAEMON recorded.
+    func testApprovingAnAgentLaneMemoryHandsThePublicationToTheDaemon() async throws {
+        let publisher = DaemonPublisherSpy()
+        let (queue, store) = try makeStore(publisher: publisher)
+        try seedMirroredAgentMemory(on: queue, now: Date(timeIntervalSince1970: 1_800_000_000))
+
+        let model = makeModel(store: store)
+        await model.load()
+        await model.approve(agentMemoryID)
+
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(
+            publisher.calls,
+            [.init(memoryID: agentMemoryID, projectPath: projectRoot, status: .approved)],
+            "one verdict, one hand-off, addressed by the daemon's own recorded root"
+        )
+    }
+
+    /// An unreachable daemon must not cost the member their decision, and must
+    /// not be reported as a publication that happened. The verdict stays
+    /// approved and audited, the row says so on its card — `isAwaitingPublication`
+    /// is what draws the "Pending publication" tag — and the inbox shows no
+    /// error, because nothing the member did failed.
+    func testAnUnreachableDaemonLeavesTheApprovalAwaitingPublication() async throws {
+        let publisher = DaemonPublisherSpy(outcome: .unreachable)
+        let (queue, store) = try makeStore(publisher: publisher)
+        try seedMirroredAgentMemory(on: queue, now: Date(timeIntervalSince1970: 1_800_000_000))
+
+        let model = makeModel(store: store)
+        await model.load()
+        await model.approve(agentMemoryID)
+
+        XCTAssertNil(model.errorMessage, "the approval itself succeeded; only the publication is owed")
+        XCTAssertEqual(publisher.calls.count, 1, "it was attempted, not skipped")
+        let status = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT review_status FROM agent_memories WHERE id = ?",
+                arguments: [self.agentMemoryID]
+            )
+        }
+        XCTAssertEqual(
+            status,
+            MemoryReviewStatus.approved.rawValue,
+            "the member's verdict is durable whatever the daemon did"
+        )
+        let approvedRow = try XCTUnwrap(model.approved.first { $0.id == agentMemoryID })
+        XCTAssertTrue(
+            approvedRow.isAwaitingPublication,
+            "so the card says the body has not been published yet"
+        )
+        let backlog = try await store.pendingAgentMemoryPublications()
+        XCTAssertEqual(
+            backlog.map(\.memoryID),
+            [agentMemoryID],
+            "and the backlog the next launch drains holds exactly that row"
+        )
+    }
+
+    /// The retry the deferred state promises. `startMemoryProConcierge` drains
+    /// the backlog once the daemon is healthy on the next launch; a row the
+    /// daemon has published stops matching, so the drain is idempotent and the
+    /// pending tag clears itself.
+    func testTheNextLaunchRetriesAPendingPublicationAndThenStops() async throws {
+        let publisher = DaemonPublisherSpy(outcome: .unreachable)
+        let (queue, store) = try makeStore(publisher: publisher)
+        try seedMirroredAgentMemory(on: queue, now: Date(timeIntervalSince1970: 1_800_000_000))
+
+        let model = makeModel(store: store)
+        await model.load()
+        await model.approve(agentMemoryID)
+        XCTAssertEqual(publisher.calls.count, 1)
+
+        // Next launch: the daemon is up.
+        publisher.set(outcome: .reachable)
+        let published = await store.retryPendingAgentMemoryPublications()
+        XCTAssertEqual(published, 1)
+        XCTAssertEqual(publisher.calls.count, 2, "the retry is the second hand-off of the same verdict")
+        XCTAssertEqual(publisher.calls.last?.status, .approved)
+
+        // The daemon does its half; the row leaves the backlog and the tag goes.
+        try simulateDaemonPublication(on: queue)
+        let republished = await store.retryPendingAgentMemoryPublications()
+        XCTAssertEqual(republished, 0)
+        XCTAssertEqual(publisher.calls.count, 2, "nothing left to publish, so nothing is asked")
+        await model.load()
+        let approvedRow = try XCTUnwrap(model.approved.first { $0.id == agentMemoryID })
+        XCTAssertFalse(approvedRow.isAwaitingPublication, "a published row carries no pending tag")
+    }
+
+    /// The lane boundary: chat and usage memories keep their bodies in the app's
+    /// own snapshot table, so approving one hands the daemon nothing at all.
+    func testApprovingAChatMemoryNeverCallsTheDaemon() async throws {
+        let publisher = DaemonPublisherSpy()
+        let (queue, store) = try makeStore(publisher: publisher)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        try seedMirroredAgentMemory(on: queue, now: now)
+        _ = try await store.addChatMemoryAuthorityRecord(
+            MemoryAddRequest(text: "Prefers dark mode in every editor.", kind: .preference, scope: scope),
+            id: "mem-chat",
+            now: now.addingTimeInterval(60),
+            enabled: true
+        )
+
+        let model = makeModel(store: store)
+        await model.load()
+        await model.approve("mem-chat")
+
+        XCTAssertNil(model.errorMessage)
+        XCTAssertTrue(publisher.calls.isEmpty, "no agent row was acted on, so the daemon is not asked")
     }
 
     // MARK: - Schema

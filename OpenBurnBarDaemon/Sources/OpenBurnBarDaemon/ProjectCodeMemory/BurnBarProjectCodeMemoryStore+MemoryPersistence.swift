@@ -144,11 +144,24 @@ extension BurnBarProjectCodeMemoryStore {
                     throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
                 }
                 let currentStatus = MemoryReviewStatus(rawValue: row.string(4)) ?? .approved
+                // Where the body IS depends on where the row has been, not only on
+                // what `review_status` says right now. The macOS app writes its own
+                // approval into this shared table and THEN calls
+                // `daemon.memory.review_status` so the daemon stays the single
+                // publisher (I-56), so an app-approved row reads `approved` while its
+                // body is still parked in `memory_quarantine_bodies` — which is the
+                // publication this call exists to perform. Each status still looks in
+                // its own home first, so every daemon-side transition reads exactly
+                // the row it read before; the fallback is what makes the app's
+                // follow-up call publish instead of throwing `memoryNotFound`, in
+                // both directions (an app-side reject leaves the body published).
                 let body: String?
                 if currentStatus == .approved {
                     body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID)
+                        ?? quarantineMemoryBody(projectID: projectID, memoryID: memoryID)
                 } else {
                     body = try quarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                        ?? projectMemorySectionBody(projectID: projectID, memoryID: memoryID)
                 }
                 guard let body else {
                     throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
