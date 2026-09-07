@@ -114,6 +114,97 @@ public struct MemoryExportRecipient: Sendable {
         return MemoryExportRecipient(keyID: recomputed, publicKey: publicKey, storeID: storeID)
     }
 
+    /// A recipient keypair with **both halves kept**, for the D-0021 ruling 6
+    /// interop fixture and nothing else.
+    ///
+    /// The importer publishes its own descriptor with `memoryctl memory
+    /// export-recipient` and BurnBar never sees that private key; this exists
+    /// because the interop gate needs a bundle the Rust importer can actually
+    /// open before either side has run the other's tooling, and the two ways of
+    /// getting one are both wrong:
+    ///
+    ///   * `--rehearsal` mints a throwaway and **discards the private half by
+    ///     design** (`rehearsalThrowaway` below), so a rehearsal bundle is
+    ///     sealed to a key nobody holds — correct for what it is for, useless as
+    ///     a courier fixture, and marked `rehearsal: true`, which an importer
+    ///     refuses outright (`MIF_REHEARSAL_BUNDLE_REFUSED`);
+    ///   * hand-rolling an X25519 key beside the export is how two
+    ///     implementations end up disagreeing about `recipient_key_id`.
+    ///
+    /// So the keypair is minted here, through the same `keyID(for:)` the
+    /// exporter and the descriptor parser use, and the private half is written
+    /// beside the descriptor as a file the fixture's consumer feeds its
+    /// importer. It protects nothing of the user's: the bundle key it will
+    /// unwrap belongs to a bundle built from GRDB fixtures.
+    public struct Keypair: Sendable {
+        public var recipient: MemoryExportRecipient
+        public var privateKey: Curve25519.KeyAgreement.PrivateKey
+
+        /// Public so a fixture generator can seed both halves and reproduce a
+        /// bundle byte for byte, which `generateKeypair` deliberately cannot.
+        public init(recipient: MemoryExportRecipient, privateKey: Curve25519.KeyAgreement.PrivateKey) {
+            self.recipient = recipient
+            self.privateKey = privateKey
+        }
+
+        /// D-0025's three-field descriptor, exactly as an importer publishes it.
+        public var descriptorJSON: MIFJSON {
+            .object([
+                "recipient_key_id": .string(recipient.keyID),
+                "public_key": .string(MemoryExportBase64URL.encode(recipient.publicKey.rawRepresentation)),
+                "store_id": .string(recipient.storeID)
+            ])
+        }
+
+        /// The half that never travels with the bundle. Named for what it is, so
+        /// a file that leaks into a bundle directory is obvious on sight.
+        public var secretJSON: MIFJSON {
+            .object([
+                "recipient_key_id": .string(recipient.keyID),
+                "recipient_private_key_b64url": .string(
+                    MemoryExportBase64URL.encode(privateKey.rawRepresentation)
+                ),
+                "store_id": .string(recipient.storeID),
+                "purpose": .string(
+                    "interop fixture only (D-0021 ruling 6). Feed this to the importer; never ship it "
+                        + "inside a bundle, and never use it for a real export — the importer publishes "
+                        + "its own descriptor with `memoryctl memory export-recipient`."
+                )
+            ])
+        }
+    }
+
+    /// Mint one. `storeID` is the fixture importer's store fingerprint, which is
+    /// what `manifest.recipient_store_id` will carry.
+    public static func generateKeypair(storeID: String) -> Keypair {
+        let privateKey = Curve25519.KeyAgreement.PrivateKey()
+        return Keypair(
+            recipient: MemoryExportRecipient(
+                keyID: keyID(for: privateKey.publicKey),
+                publicKey: privateKey.publicKey,
+                storeID: storeID
+            ),
+            privateKey: privateKey
+        )
+    }
+
+    /// Write the descriptor and the private half into `directory`, returning
+    /// both paths. The secret is written `0600`, and the two files are named so
+    /// that neither can be mistaken for the other.
+    @discardableResult
+    public static func writeKeypair(
+        _ keypair: Keypair,
+        to directory: URL
+    ) throws -> (descriptor: URL, secret: URL) {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let descriptor = directory.appendingPathComponent("recipient.json")
+        let secret = directory.appendingPathComponent("recipient-secret.json")
+        try MIFCanonicalJSON.data(keypair.descriptorJSON).write(to: descriptor)
+        try MIFCanonicalJSON.data(keypair.secretJSON).write(to: secret)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: secret.path)
+        return (descriptor, secret)
+    }
+
     /// D-0025 ruling 3's one exception: rehearsal may mint a recipient nobody
     /// holds the private half of — and `report.json` says it did, so a
     /// rehearsal bundle can never be mistaken for one addressed to a store.

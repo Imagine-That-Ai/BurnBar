@@ -23,6 +23,14 @@ public struct MemoryExportCommand: Sendable, Equatable {
         /// D-0007's memory-lane check. Deliberately its own verb: it proves
         /// something the export cannot, and it must be runnable without one.
         case p5Check = "p5-check"
+        /// The D-0021 ruling 6 interop fixture's missing half: an X25519
+        /// recipient keypair with BOTH halves written to disk, so a sealed
+        /// bundle exists that the Rust importer can actually open. Its own verb
+        /// rather than a flag on `export`, because D-0025 ruling 3 requires
+        /// `--recipient` whenever a bundle is sealed and this must not become a
+        /// second way around that: the export that follows takes the descriptor
+        /// this verb wrote, like any other.
+        case recipientKeypair = "recipient-keypair"
     }
 
     public enum SourceSelection: String, Sendable, CaseIterable {
@@ -45,6 +53,11 @@ public struct MemoryExportCommand: Sendable, Equatable {
     /// `daemon.memory.*` handler and no `agent_memories` writer. No default —
     /// inventing a version number here would turn the gate into a formality.
     public var requiredVersion: String?
+    /// `recipient-keypair`: the store fingerprint the fixture's importer will
+    /// present, which is what `manifest.recipient_store_id` carries and what an
+    /// importer compares against its own store id to answer "was this bundle
+    /// sealed to me?".
+    public var storeID = "importer-store-fixture"
     /// Step 0(b) and 0(c). Operator assertions, defaulting to FALSE, so an
     /// operator who does not make them gets `P5_SOURCE_NOT_QUIESCED` rather
     /// than a pass.
@@ -112,7 +125,8 @@ public struct MemoryExportCommand: Sendable, Equatable {
             case "--socket-token-rotated": command.socketTokenRotated = true
             case "--memory-write-withdrawn": command.memoryWriteWithdrawn = true
             case "--out", "--recipient", "--source", "--since-audit-seq", "--since-updated-at-ms",
-                 "--snapshot", "--max-section-bytes", "--bundle", "--target-ids", "--required-version":
+                 "--snapshot", "--max-section-bytes", "--bundle", "--target-ids", "--required-version",
+                 "--store-id":
                 index += 1
                 guard index < arguments.count else {
                     throw MemoryExportCommandError.usage("\(argument) needs a value")
@@ -133,6 +147,7 @@ public struct MemoryExportCommand: Sendable, Equatable {
         case "--recipient": recipient = value
         case "--bundle": bundle = value
         case "--target-ids": targetIDs = value
+        case "--store-id": storeID = value
         case "--required-version": requiredVersion = value
         case "--source":
             guard let parsed = SourceSelection(rawValue: value) else {
@@ -179,6 +194,12 @@ public struct MemoryExportCommand: Sendable, Equatable {
                 "\(MIFExportError.recipientRequired.rawValue): memory export needs --recipient "
                     + "<descriptor.json>, published by `memoryctl memory export-recipient`. "
                     + "A bundle sealed to no recipient can never be opened."
+            )
+        }
+        if verb == .recipientKeypair, out == nil {
+            throw MemoryExportCommandError.usage(
+                "memory recipient-keypair needs --out <dir>: it writes recipient.json (the D-0025 "
+                    + "descriptor) and recipient-secret.json (the private half) there."
             )
         }
         if verb == .verify, bundle == nil {

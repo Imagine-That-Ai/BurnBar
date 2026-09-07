@@ -49,6 +49,17 @@ extension BurnBarCLIRunner {
                             bundle key from a fixture seed so the bundle reproduces
       --json                emit the reconciliation report as JSON
 
+    recipient-keypair --out DIR [--store-id ID]
+      Mints an X25519 recipient keypair and writes BOTH halves into DIR:
+      recipient.json (the D-0025 descriptor, to pass to `export --recipient`) and
+      recipient-secret.json (the private half, 0600, to hand to the importer).
+      For the D-0021 ruling 6 interop fixture only — a real migration uses the
+      descriptor the IMPORTER publishes with `memoryctl memory export-recipient`,
+      and BurnBar never sees that private key. It exists because `--rehearsal`
+      cannot serve here: it discards the private half by design, so a rehearsal
+      bundle is sealed to a key nobody holds and is refused as a rehearsal
+      bundle besides.
+
     verify --bundle DIR [--recipient PATH]
       Checks the signature, the manifest's self-consistency and the section
       files on disk. It cannot check the plaintext: the bundle key is wrapped to
@@ -78,6 +89,8 @@ extension BurnBarCLIRunner {
             return try runMemoryP5Check(command)
         case .export:
             return try runMemoryExport(command)
+        case .recipientKeypair:
+            return try runMemoryRecipientKeypair(command)
         }
     }
 
@@ -160,6 +173,42 @@ extension BurnBarCLIRunner {
             return MIFCanonicalJSON.serialize(result.report.json)
         }
         return Self.formatMemoryExport(result)
+    }
+
+    /// The interop fixture's missing half (D-0021 ruling 6). Two commands make a
+    /// bundle the Rust importer can open:
+    ///
+    ///     openburnbar-cli memory recipient-keypair --out ./fixture-keys
+    ///     openburnbar-cli memory export --out ./fixture-bundle \\
+    ///         --recipient ./fixture-keys/recipient.json \\
+    ///         --snapshot read_txn --allow-long-read
+    ///
+    /// The export is an ordinary sealed export taking an ordinary descriptor, so
+    /// D-0025 ruling 3 is satisfied rather than worked around, and the private
+    /// half sits in `./fixture-keys/recipient-secret.json` for the importer.
+    private func runMemoryRecipientKeypair(_ command: MemoryExportCommand) throws -> String {
+        // swiftlint:disable:next force_unwrapping reason: validate() refuses recipient-keypair without --out
+        let directory = URL(fileURLWithPath: command.out!)
+        let keypair = MemoryExportRecipient.generateKeypair(storeID: command.storeID)
+        let written = try MemoryExportRecipient.writeKeypair(keypair, to: directory)
+        if command.json {
+            return MIFCanonicalJSON.serialize(.object([
+                "recipient_key_id": .string(keypair.recipient.keyID),
+                "store_id": .string(keypair.recipient.storeID),
+                "descriptor": .string(written.descriptor.path),
+                "secret": .string(written.secret.path)
+            ]))
+        }
+        return """
+        recipient:   \(keypair.recipient.keyID)
+        store:       \(keypair.recipient.storeID)
+        descriptor:  \(written.descriptor.path)   (pass to `memory export --recipient`)
+        private key: \(written.secret.path)   (0600 — hand to the IMPORTER, never ship it in a bundle)
+
+        This keypair exists for the D-0021 ruling 6 interop fixture. A real
+        migration seals to the descriptor the importer publishes with
+        `memoryctl memory export-recipient`, and BurnBar never holds that key.
+        """
     }
 
     /// F-16. Decryption needs the recipient private key and this side holds

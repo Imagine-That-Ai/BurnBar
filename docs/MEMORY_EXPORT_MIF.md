@@ -749,3 +749,64 @@ Against `docs/memory/reviews/REVIEW-BB-EXPORTER-3.md` (verdict
 | F-6 | R2's case-2 comparator no longer affects any exported field | **labelled, and the label is proved** — D-BB-E-16 states that the comparator has no exported consequence because every case-2 row exits at row 7, which discards the winner; the test header says it is white-box and the test asserts that both orderings classify identically. The rule is kept because it is §3.1's, and the refactor risk is recorded |
 | F-7 | `isCloudOnly` is reasoned, not wired | **claim corrected** — commit `b7f7941f18`'s subject says it is wired and it is not; D-BB-E-8, the §9 R8 row and the call site now say it is a constant `false`, that §3.1 row 15 is unreachable in a real export, and that `MIFImportOriginDetail.cloud` is production-dead until the vault reader lands. The value itself is unchanged and the reason for it stands |
 | F-8 | smaller: a bare `EXPORT_STORE_IDENTITY_ABSENT` literal, flags missing from usage, the audit-genesis rung untested | **fixed** — the export lane names `MIFExportError.storeIdentityAbsent.rawValue` like the p5 lane; `memoryUsage` lists every flag the parser accepts (`--source`, `--accept-degraded-source`, `--max-section-bytes`, `--rehearsal`, `--deterministic-nonces`), with the rehearsal entry saying in as many words that a rehearsal bundle is not an interop fixture; and R9's genesis fallback has a test that recomputes the digest outside the reader and proves the seed is the GENESIS row, not the moving head |
+
+---
+
+## 11. The interop fixture, and the two commands that make one
+
+D-0021 ruling 6's interop gate needs a bundle the Rust importer can **open**.
+Neither obvious route produces one:
+
+* **`--rehearsal` is the wrong flag.** `MemoryExportRecipient.rehearsalThrowaway()`
+  mints `Curve25519.KeyAgreement.PrivateKey().publicKey` and **discards the
+  private half by design** — that is what makes a rehearsal a rehearsal. The
+  bundle is sealed to a key nobody holds, `report.json` says so in `next_action`,
+  and it is stamped `rehearsal: true`, which an importer refuses outright
+  (`MIF_REHEARSAL_BUNDLE_REFUSED`). Correct for what it is for; useless as a
+  courier fixture.
+* **A real `memory export`** reads the store under `~/Library` and seals to the
+  descriptor the importer published — and at fixture time the importer has not
+  published one.
+
+So BB-E gains one verb, and the recipe is two commands:
+
+```
+openburnbar-cli memory recipient-keypair --out ./fixture-keys
+openburnbar-cli memory export --out ./fixture-bundle \
+    --recipient ./fixture-keys/recipient.json \
+    --snapshot read_txn --allow-long-read
+```
+
+`recipient-keypair` mints an X25519 keypair and writes **both halves** into
+`--out`: `recipient.json` — the D-0025 three-field descriptor, byte-comparable
+with what `memoryctl memory export-recipient` prints — and
+`recipient-secret.json`, the private half, `0600`, which is what the interop run
+hands its importer. `--store-id` sets the fingerprint the fixture's importer will
+present, which becomes `manifest.recipient_store_id`.
+
+It is **its own verb rather than a flag on `export`** on purpose: D-0025 ruling 3
+requires `--recipient` whenever a bundle is sealed, and an export that minted its
+own recipient would be a second way around that rule. The export above is an
+ordinary sealed export taking an ordinary descriptor.
+
+**The fixture handed to the interop run** is built the same way through the
+public library API — the CLI's export lane reads the real store, and D-0021
+ruling 6 wants a bundle from fixtures — with both key halves and the bundle key
+seeded, so it regenerates byte for byte:
+
+```
+bundle_id       bnd_95ee02b1f83ca2347422459f3198a411
+recipient       rcp_3005b65cea91bf2755860ad621af8cea   store `importer-store-fixture`
+contents        6 memories in (one `forgotten` → a tombstone, one proven human
+                rejection), 5 memory records, 5 bodies, 1 project, 1 citation,
+                2 audit rows, 2 findings; 11 sections, 11 segment files
+verify          intact, signature verified, 8 checks, 0 problems
+schema at HEAD  20 instances (manifest, report, 18 records), 0 failing assertions
+```
+
+Recomputed out of process from the bundle's own files (venv `cryptography` +
+`jsonschema` 4.26.0): all eleven subroots, the D-0031 ruling 1 fold root
+(`51ff2138…`, equal to `manifest.hashtree.root` and to `hashtree.json`'s), the
+unkeyed per-chunk sidecar, `sha256(JCS(manifest minus the four))` equal to
+`content_digest`, `bundle_id` following from it, and the Ed25519 signature over
+its 32 raw bytes.

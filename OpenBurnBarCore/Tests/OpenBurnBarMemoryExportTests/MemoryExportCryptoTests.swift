@@ -442,6 +442,63 @@ final class MemoryExportCryptoTests: XCTestCase {
 
     // MARK: - The recipient descriptor
 
+    /// The interop fixture's missing half (D-0021 ruling 6). `--rehearsal` mints
+    /// a recipient and **discards the private half by design**, so a rehearsal
+    /// bundle is sealed to a key nobody holds — correct for a rehearsal, useless
+    /// as a courier fixture, and refused by an importer as a rehearsal bundle
+    /// besides. `recipient-keypair` writes both halves: the descriptor an
+    /// ordinary `--recipient` export takes, and the private key the importer
+    /// opens the wrap with.
+    func test_aGeneratedRecipientKeypairWritesADescriptorItsPrivateHalfCanOpen() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-keys-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let keypair = MemoryExportRecipient.generateKeypair(storeID: "importer-store-fixture")
+        let written = try MemoryExportRecipient.writeKeypair(keypair, to: directory)
+
+        // The descriptor is the D-0025 three-field file, and it parses through
+        // the same reader `--recipient` uses — id recomputed from the key.
+        let parsed = try MemoryExportRecipient.parse(descriptor: try Data(contentsOf: written.descriptor))
+        XCTAssertEqual(parsed.keyID, keypair.recipient.keyID)
+        XCTAssertEqual(parsed.keyID, MemoryExportRecipient.keyID(for: keypair.privateKey.publicKey))
+        XCTAssertEqual(parsed.storeID, "importer-store-fixture")
+        XCTAssertFalse(parsed.isRehearsalThrowaway, "a fixture recipient is not a rehearsal throwaway")
+
+        // The private half is beside it, at 0600, and it is the half that opens
+        // a bundle sealed to the descriptor — which is the whole point.
+        let attributes = try FileManager.default.attributesOfItem(atPath: written.secret.path)
+        XCTAssertEqual(attributes[.posixPermissions] as? Int, 0o600)
+        let secret = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try Data(contentsOf: written.secret)) as? [String: Any]
+        )
+        let rawPrivate = try XCTUnwrap(
+            MemoryExportBase64URL.decode(try XCTUnwrap(secret["recipient_private_key_b64url"] as? String))
+        )
+        let recovered = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: rawPrivate)
+
+        let bundleKey = MemoryExportCrypto.randomBundleKey()
+        let wrapped = try MemoryExportCrypto.wrap(bundleKey: bundleKey, recipient: parsed)
+        var receiver = try HPKE.Recipient(
+            privateKey: recovered,
+            ciphersuite: .Curve25519_SHA256_ChachaPoly,
+            info: MemoryExportCrypto.keywrapInfo,
+            encapsulatedKey: wrapped.encapsulatedKey
+        )
+        XCTAssertEqual(
+            try receiver.open(wrapped.ciphertext, authenticating: Data(parsed.keyID.utf8)),
+            bundleKey.withUnsafeBytes { Data($0) },
+            "the fixture's private half opens a bundle sealed to its own descriptor"
+        )
+
+        // And the descriptor carries nothing else: it is the three fields
+        // D-0025 names, so it is byte-comparable with what an importer prints.
+        let descriptor = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try Data(contentsOf: written.descriptor)) as? [String: Any]
+        )
+        XCTAssertEqual(Set(descriptor.keys), ["recipient_key_id", "public_key", "store_id"])
+    }
+
     func test_aDescriptorWhoseKeyIDDoesNotFollowFromItsKeyIsRefused() throws {
         let publicKey = Curve25519.KeyAgreement.PrivateKey().publicKey
         let honest = MemoryExportRecipient.keyID(for: publicKey)
