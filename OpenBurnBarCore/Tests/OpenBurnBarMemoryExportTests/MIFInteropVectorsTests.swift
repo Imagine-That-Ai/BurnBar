@@ -121,82 +121,114 @@ final class MIFInteropVectorsTests: XCTestCase {
 
     // MARK: - The manifest: content_digest and the bundle id
 
-    /// D-0039 ruling 10's fourth value, over the minimal manifest defined in
-    /// `docs/MEMORY_EXPORT_MIF.md` §12 — eight members, one of them the bundle
-    /// root above, and the four the digest excludes present so that the
-    /// exclusion is exercised rather than assumed.
+    /// D-0039 ruling 10's fourth value, **V4**, over the minimal manifest
+    /// `MEMORY_MIGRATION_SPEC.md` §2 publishes member for member.
     ///
-    /// **A discrepancy this test records rather than resolves.** D-0039 ruling 1
-    /// writes the preimage as `sha256(JCS(manifest minus the four) ‖
-    /// hashtree_root_raw32)` and calls it "the exporter's form" — but the
-    /// exporter has never appended the raw root, and it is the exporter's form
-    /// that reproduced `95ee02b1…` for interop run 1's fixture. The root is
-    /// already inside the JCS through `hashtree.root`, so the concatenation adds
-    /// nothing but a second spelling. This pins the implemented form and states
-    /// the other value, so the document pass can settle it against one number
-    /// instead of a sentence:
+    /// The manifest below is that block copied verbatim and parsed, rather than
+    /// rebuilt from Swift literals: a vector whose input is retyped is a vector
+    /// that drifts from the document it is supposed to agree with. It is a
+    /// VECTOR, not a bundle — one section header instead of eleven, a crypto
+    /// profile this build does not seal with — and it carries V3 as its
+    /// `hashtree.root`, so an implementation that folds the subroots
+    /// differently fails V4 too. The two numbers chain deliberately.
     ///
-    ///     sha256(JCS(preimage))            63a06c3d…   <- this build, and the
-    ///                                                     value below
-    ///     sha256(JCS(preimage) ‖ root32)   6d08ba85…   <- ruling 1 read literally
-    func test_vectorTheContentDigestOfTheMinimalManifest() {
-        let root = "5446dab5850a3e16851fc9d13baff4856a93b1a40e230f65e51ff6a83ddcfbef"
-        let manifest = MIFJSON.object([
-            "bundle_id": .string("bnd_" + String(repeating: "0", count: 32)),
-            "content_digest": .string(String(repeating: "0", count: 64)),
-            "created_at_ms": .int(1_770_000_000_000),
-            "recipient_key_id": .string("rcp_a364a736169c5781e983f011125569db"),
-            "mif_version": .int(MIFFormatVersion.major),
-            "mif_minor": .int(MIFFormatVersion.minor),
-            "profile": .string(MIFProfile.migration.rawValue),
-            "producer_store_id": .string("burnbar-vector-store"),
-            "user_id": .string("user-1"),
-            "recipient_store_id": .string("sto_a3275b6eabd68d815d60a61e1eee24e2"),
-            "hashtree": .object([
-                "alg": .string("hmac-sha256"),
-                "over": .string("ciphertext"),
-                "chunk_bytes": .int(MemoryExportCrypto.hashTreeChunkBytes),
-                "root": .string(root),
-                "key_derivation": .string("HKDF(bundle_key,'mif1/hashtree/v1')")
-            ])
-        ])
+    /// The preimage is 1,763 bytes and `sha256` of it ALONE is
+    /// `048e80ad…` — the document calls that a bisection point rather than a
+    /// contract value, and it is what this exporter used to publish before
+    /// D-0039 ruling 1 appended the tree root's 32 raw bytes.
+    func test_vectorTheContentDigestOfTheSpecsMinimalManifest() throws {
+        let manifest = try XCTUnwrap(MIFCanonicalJSON.parse(Data(Self.vectorManifestJSON.utf8)))
 
-        // The JCS preimage, byte for byte — sorted keys, no whitespace, and the
-        // four excluded members gone.
-        let preimage = MIFCanonicalJSON.serialize(MemoryExportManifestDigest.preimage(manifest))
+        let preimage = MIFCanonicalJSON.data(MemoryExportManifestDigest.preimage(manifest))
+        XCTAssertEqual(preimage.count, 1_763)
         XCTAssertEqual(
-            preimage,
-            #"{"hashtree":{"alg":"hmac-sha256","chunk_bytes":4194304,"#
-                + #""key_derivation":"HKDF(bundle_key,'mif1/hashtree/v1')","over":"ciphertext","#
-                + #""root":"\#(root)"},"mif_minor":2,"mif_version":1,"#
-                + #""producer_store_id":"burnbar-vector-store","profile":"migration","#
-                + #""recipient_store_id":"sto_a3275b6eabd68d815d60a61e1eee24e2","user_id":"user-1"}"#
-        )
-        XCTAssertEqual(preimage.utf8.count, 379)
-
-        let digest = MemoryExportManifestDigest.digest(of: manifest)
-        XCTAssertEqual(digest, "63a06c3d060ae06a5580f92b2355e3dc9e159380e874b6dc30339dc5e195308e")
-        XCTAssertEqual(
-            MemoryExportIdentity.bundleID(contentDigest: digest),
-            "bnd_63a06c3d060ae06a5580f92b2355e3dc"
+            MemoryExportDigest.sha256Hex(preimage),
+            "048e80ad60cbe665719037942fe3029c3425f9afb29d1022c0988ba6ecb1440f",
+            "the JCS alone, before the root is appended"
         )
 
-        // The exclusion is a property of the preimage, not of these values:
-        // moving either excluded member leaves the digest where it is.
+        let v4 = MemoryExportManifestDigest.digest(of: manifest)
+        XCTAssertEqual(v4, "cc7c8866b05adf30d64bc74b85700dbef667c377880ba9f914b0db74d01a8cd6")
+        XCTAssertEqual(MemoryExportIdentity.bundleID(contentDigest: v4), "bnd_cc7c8866b05adf30d64bc74b85700dbe")
+
+        // The document is self-consistent, and this reads its own declarations
+        // back rather than trusting the two constants above.
+        guard case .object(let fields) = manifest else { return XCTFail("not an object") }
+        XCTAssertEqual(fields["content_digest"], .string(v4))
+        XCTAssertEqual(fields["bundle_id"], .string("bnd_" + v4.prefix(32)))
+        XCTAssertEqual(
+            fields["hashtree"].flatMap { tree -> MIFJSON? in
+                guard case .object(let members) = tree else { return nil }
+                return members["root"]
+            },
+            .string("5446dab5850a3e16851fc9d13baff4856a93b1a40e230f65e51ff6a83ddcfbef"),
+            "V4's manifest carries V3, which is what chains the two"
+        )
+
+        // The suffix is the ROOT's 32 RAW bytes and not its 64 characters,
+        // which is the one way a second implementation could read the ruling
+        // and land on a different number.
+        let root = try XCTUnwrap(MemoryExportManifestDigest.hashtreeRoot(of: manifest))
+        XCTAssertNotEqual(MemoryExportDigest.sha256Hex(preimage + Data(root.utf8)), v4)
+
+        // And the exclusion is a property of the preimage: moving either
+        // excluded member leaves V4 where it is, moving a covered one does not.
         var moved = manifest
-        if case .object(var fields) = moved {
-            fields["created_at_ms"] = .int(1_780_000_000_000)
-            fields["recipient_key_id"] = .string("rcp_" + String(repeating: "f", count: 32))
-            moved = .object(fields)
+        if case .object(var members) = moved {
+            members["created_at_ms"] = .int(1_780_000_000_000)
+            members["recipient_key_id"] = .string("rcp_" + String(repeating: "f", count: 32))
+            moved = .object(members)
         }
-        XCTAssertEqual(MemoryExportManifestDigest.digest(of: moved), digest)
+        XCTAssertEqual(MemoryExportManifestDigest.digest(of: moved), v4)
 
-        // …and a member that IS covered moves it.
         var edited = manifest
-        if case .object(var fields) = edited {
-            fields["user_id"] = .string("user-2")
-            edited = .object(fields)
+        if case .object(var members) = edited {
+            members["user_id"] = .string("usr_00000000000000000000000000000000")
+            edited = .object(members)
         }
-        XCTAssertNotEqual(MemoryExportManifestDigest.digest(of: edited), digest)
+        XCTAssertNotEqual(MemoryExportManifestDigest.digest(of: edited), v4)
     }
+
+    /// `MEMORY_MIGRATION_SPEC.md` §2's minimal manifest, verbatim.
+    private static let vectorManifestJSON = """
+        {
+          "mif_version": 1, "mif_minor": 2, "profile": "migration",
+          "bundle_id": "bnd_cc7c8866b05adf30d64bc74b85700dbe",
+          "producer_store_id": "sto_11111111111111111111111111111111",
+          "producer_device_id": "dev_22222222222222222222222222222222",
+          "user_id": "usr_33333333333333333333333333333333",
+          "created_at_ms": 1788739200000,
+          "window": { "from_lamport": 0, "to_lamport": 0 },
+          "schema_version": 1,
+          "sections": [ { "name": "05-memories", "rank": 5, "required": true, "mergeable": true,
+                          "row_count": 1, "record_type": "#/$defs/record_memory",
+                          "subroot": "cc511923ff13160176ec59580d1211f8ee8759d6442f33b43287d8ac1133b2e7",
+                          "bytes": 1024, "segments": 1,
+                          "rollup_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } ],
+          "min_importer_mif_version": 1,
+          "content_digest": "cc7c8866b05adf30d64bc74b85700dbef667c377880ba9f914b0db74d01a8cd6",
+          "crypto": { "aead": "xchacha20poly1305", "compression": "zstd",
+                      "wrap": "hpke-base-x25519-hkdf-sha256-chacha20poly1305",
+                      "key_schedule": "mif1-hkdf-v1" },
+          "hashtree": { "alg": "hmac-sha256", "over": "ciphertext", "chunk_bytes": 4194304,
+                        "root": "5446dab5850a3e16851fc9d13baff4856a93b1a40e230f65e51ff6a83ddcfbef",
+                        "key_derivation": "HKDF(bundle_key,'mif1/hashtree/v1')" },
+          "determinism": { "canonicalization": "JCS", "sort_keys": {} },
+          "rehearsal": false,
+          "source": { "product": "OpenBurnBar", "version": "1.4.0", "build_kind": "rehearsal_fixture",
+                      "store_kind": "authority",
+                      "store_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                      "platform": "macos", "keyed": true },
+          "source_integrity": "ok", "concurrent_writes": false, "partial_sources": [],
+          "not_exported": {}, "export_mode": "full", "snapshot_mode": "sqlcipher_export",
+          "recipient_key_id": "rcp_44444444444444444444444444444444",
+          "recipient_store_id": "sto_55555555555555555555555555555555",
+          "exporter_device_key_id": "edk_66666666666666666666666666666666",
+          "rollups": [ { "section": "05-memories",
+                         "tuple": ["memory_id", "body_join_key", "body_norm_digest"],
+                         "rollup_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                         "row_count": 1 } ],
+          "findings_summary": {}
+        }
+        """
 }

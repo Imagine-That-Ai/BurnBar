@@ -13,10 +13,19 @@
 // is Ed25519 over the 32 raw bytes of `content_digest` (the digest already binds
 // the manifest minus the four excluded members, §2 line 244)".
 //
-// So the preimage is the manifest itself:
+// D-0039 ruling 1 states it once and in full, and the spec's §2 now carries
+// exactly this:
 //
-//     content_digest = sha256(JCS(manifest minus {created_at_ms, recipient_key_id,
-//                                                 bundle_id, content_digest}))
+//     content_digest = sha256( JCS(manifest minus {created_at_ms, recipient_key_id,
+//                                                  bundle_id, content_digest})
+//                              ‖ hashtree_root_raw32 )
+//
+// The root is appended as its 32 RAW bytes, hex-decoded — never as its 64 ASCII
+// characters. It is also a member of the manifest inside the JCS, so the suffix
+// adds no new binding; what it adds is a second implementation's ability to
+// check the digest without agreeing about where in the object the root sits,
+// and the ruling pins it, so this build appends it. Until Q-53 this hashed the
+// JCS alone, which is the value interop run 1 measured (`95ee02b1…`).
 //
 // Two of §2's four excluded members are not manifest members at all — the
 // wrapped key is `keys/wrapped-bundle-key` and the signature is `manifest.sig` —
@@ -64,10 +73,31 @@ public enum MemoryExportManifestDigest {
         return .object(fields)
     }
 
-    /// `sha256(JCS(preimage))`, as hex — the value `manifest.content_digest`
-    /// carries and `manifest.sig` signs the 32 raw bytes of.
+    /// `sha256(JCS(preimage) ‖ hashtree_root_raw32)`, as hex — the value
+    /// `manifest.content_digest` carries and `manifest.sig` signs the 32 raw
+    /// bytes of.
+    ///
+    /// The root is read out of the manifest being digested (`hashtree.root`),
+    /// so there is one root in one place and no second value to pass in. A
+    /// manifest with no root, or one that is not 64 hex characters, contributes
+    /// no suffix rather than a guess: the digest is then the JCS alone, which
+    /// is a value that will not match any conforming bundle — a refusal by
+    /// mismatch rather than by silently hashing zeroes.
     public static func digest(of manifest: MIFJSON) -> String {
-        MemoryExportDigest.sha256Hex(MIFCanonicalJSON.data(preimage(manifest)))
+        var preimageBytes = MIFCanonicalJSON.data(preimage(manifest))
+        if let root = hashtreeRoot(of: manifest), let raw = MemoryExportCrypto.hexToData(root) {
+            preimageBytes.append(raw)
+        }
+        return MemoryExportDigest.sha256Hex(preimageBytes)
+    }
+
+    /// `manifest.hashtree.root`, the one member D-0039 ruling 1 appends.
+    static func hashtreeRoot(of manifest: MIFJSON) -> String? {
+        guard case .object(let fields) = manifest,
+              case .object(let tree)? = fields["hashtree"],
+              case .string(let root)? = tree["root"],
+              root.count == 64 else { return nil }
+        return root
     }
 
     /// The same digest, recomputed from a `manifest.json` as it sits on disk.
