@@ -13,7 +13,7 @@ rather than trust it.
 > no sign-in, `burnbar_remember` / `burnbar_recall` / `burnbar_forget`.
 > The **hosted**, end-to-end-encrypted Pensieve memory (`mcp.burnbar.ai`, Cloud
 > Pro) is a separate surface with its own guide:
-> [`docs/MEMORY_MCP_GUIDE.md`](MEMORY_MCP_GUIDE.md). The marketing tour of this
+> [`docs/MEMORY_MCP_GUIDE.md`](MEMORY_MCP_GUIDE.md). The illustrated tour of this
 > one is [burnbar.ai/memory](https://burnbar.ai/memory).
 
 Reference material, not duplicated here: the full behaviour contract and every
@@ -25,6 +25,12 @@ CLI scope, recovery paths and bearer-token handling live in
 ---
 
 ## The short version
+
+The same four questions are answered with per-surface detail, diagrams and the
+live tool atlas at
+[burnbar.ai/memory#duties](https://burnbar.ai/memory#duties) — and that section
+is where the app's first-run memory step sends you. This page is the long form:
+it names the file behind each answer so you can check it in this checkout.
 
 | Question | Answer |
 | --- | --- |
