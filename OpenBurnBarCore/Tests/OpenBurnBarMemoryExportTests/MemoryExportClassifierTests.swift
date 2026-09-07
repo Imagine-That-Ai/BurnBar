@@ -526,6 +526,88 @@ final class MemoryExportClassifierTests: XCTestCase {
         XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
     }
 
+    /// R2. §3.1 compares `ts` **lexicographically** and says it "is not
+    /// otherwise treated as a clock". These two stamps order one way as strings
+    /// and the other way as instants: `+09:00` makes the reject the EARLIER
+    /// instant and the LATER string. Parsing them made the approve the case-2
+    /// winner — the unsafe direction, decided by an offset the writing row
+    /// supplies.
+    func test_acrossABrokenBoundaryTheTimestampIsComparedAsAString() throws {
+        var memory = row(id: "A17")
+        memory.reviewStatus = "approved"
+        let approve = MemoryExportAuditRow(
+            seq: 100,
+            ts: "2026-01-01T20:00:00.000Z",
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A17",
+            labels: ["review_status:approved"]
+        )
+        let reject = MemoryExportAuditRow(
+            seq: 99,
+            // Later as a string, EARLIER as an instant (11:00Z on the 1st).
+            ts: "2026-01-02T00:00:00.000+09:00",
+            actor: "app",
+            action: "memory.reject",
+            subjectID: "A17",
+            labels: ["review_status:rejected"]
+        )
+        XCTAssertLessThan(approve.ts, reject.ts, "the reject is the later STRING")
+        XCTAssertGreaterThan(
+            try XCTUnwrap(MemoryExportTimestamp.parse(approve.ts)),
+            try XCTUnwrap(MemoryExportTimestamp.parse(reject.ts)),
+            "and the later INSTANT is the approve — the divergence this pins"
+        )
+        let selection = try XCTUnwrap(MemoryExportClassifier.selectVerdict(
+            for: memory,
+            in: [approve, reject],
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 99, brokenAt: [100], rowsWalked: 2)
+        ))
+        XCTAssertEqual(selection.row.seq, 99, "the lexicographically later row wins")
+        XCTAssertFalse(selection.regimeIsIntact)
+    }
+
+    /// R2, M-13. A tie on `(ts, seq)` is won by `rejected` — and which row that
+    /// is comes from the `review_status:` label, never from the verb. BurnBar
+    /// writes `memory.reject` for approved→quarantined too, so ranking on the
+    /// verb picks the row below whose LABEL says `approved`.
+    func test_aTieIsBrokenByTheLabelAndNeverByTheActionVerb() throws {
+        var memory = row(id: "A18")
+        memory.reviewStatus = "approved"
+        let shared = "2026-01-02T00:00:00.000Z"
+        let rejectVerbApprovedLabel = MemoryExportAuditRow(
+            seq: 7,
+            ts: shared,
+            actor: "app",
+            action: "memory.reject",
+            subjectID: "A18",
+            labels: ["review_status:approved"]
+        )
+        let approveVerbRejectedLabel = MemoryExportAuditRow(
+            seq: 7,
+            ts: shared,
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A18",
+            labels: ["review_status:rejected"]
+        )
+        let selection = try XCTUnwrap(MemoryExportClassifier.selectVerdict(
+            for: memory,
+            in: [rejectVerbApprovedLabel, approveVerbRejectedLabel],
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 2)
+        ))
+        XCTAssertEqual(selection.row.action, "memory.approve", "the tie went to the row LABELLED rejected")
+
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [rejectVerbApprovedLabel, approveVerbRejectedLabel],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 2)
+        ))
+        XCTAssertEqual(result.reviewStatus, .rejected, "ranking on the verb exports `approved` here")
+        XCTAssertEqual(result.originKind, .human)
+    }
+
     /// §3.1 case 3, in both segment cases: a genuine tie resolves to the safe
     /// side, which is the only one that cannot promote text no human read.
     func test_aTieOnSeqAndTimestampIsWonByTheReject() {

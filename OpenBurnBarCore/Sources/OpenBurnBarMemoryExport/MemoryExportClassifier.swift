@@ -325,30 +325,43 @@ public enum MemoryExportClassifier {
         return rejects ? .rejected : .quarantined
     }
 
-    /// A total order. Inside an intact segment it is `seq` then the reject
-    /// tie-break; across a boundary it is timestamp, then `seq`, then the same
-    /// tie-break. `reject` sorts above `approve` so a genuine tie resolves to
-    /// the safe side, which is the only direction that cannot promote text no
-    /// human read.
+    /// A total order. Inside an intact segment it is `seq` then the tie rule;
+    /// across a boundary it is the timestamp STRING, then `seq`, then the same
+    /// tie rule.
     static func orderedBefore(
         _ lhs: MemoryExportAuditRow,
         _ rhs: MemoryExportAuditRow,
         withinIntactSegment intact: Bool
     ) -> Bool {
         if intact == false {
-            // `ts` is ISO TEXT in the oracle and is compared lexicographically,
-            // which is well-defined for its fixed-width UTC format. It is not
-            // otherwise treated as a clock.
-            let lhsTime = MemoryExportTimestamp.parse(lhs.ts) ?? .distantPast
-            let rhsTime = MemoryExportTimestamp.parse(rhs.ts) ?? .distantPast
-            if lhsTime != rhsTime { return lhsTime < rhsTime }
+            // §3.1: "`ts` is **ISO TEXT** in the oracle and is compared
+            // **lexicographically**, which is well-defined for its fixed-width
+            // UTC format and is not otherwise treated as a clock."
+            //
+            // A `Date` compare is not that compare. It honours a `±HH:MM` offset
+            // and truncates sub-millisecond digits, so `approve` at
+            // "2026-01-01T20:00:00.000Z" beat `reject` at
+            // "2026-01-02T00:00:00.000+09:00" as instants while the spec's
+            // compare puts the reject later — the unsafe direction, decided by a
+            // field the writing row supplies.
+            if lhs.ts != rhs.ts { return lhs.ts < rhs.ts }
         }
         if lhs.seq != rhs.seq { return lhs.seq < rhs.seq }
         return rejectRank(lhs) < rejectRank(rhs)
     }
 
+    /// §3.1 case 3: "Either way, a tie is won by `rejected`" — the safe
+    /// direction, and the only one that cannot promote text no human read.
+    ///
+    /// WHICH row is the rejection is read from the `review_status:<raw>` label,
+    /// never from the action verb (M-13): BurnBar writes `memory.reject` for
+    /// every non-approved transition, including approved→quarantined, so ranking
+    /// on the verb hands a tie between `memory.reject{review_status:approved}`
+    /// and `memory.approve{review_status:rejected}` to the reject-VERB row and
+    /// then exports `approved` from its label — the tie rule inverted by the one
+    /// field §3.1 says never to read.
     private static func rejectRank(_ row: MemoryExportAuditRow) -> Int {
-        row.action == "memory.reject" ? 1 : 0
+        row.reviewStatusLabelValue == MIFReviewStatus.rejected.rawValue ? 1 : 0
     }
 
     /// The status this memory held before the winning verdict, read from the
