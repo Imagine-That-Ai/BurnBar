@@ -306,16 +306,16 @@ public enum MemoryExportClassifier {
         guard let winner = candidates.max(by: { lhs, rhs in
             orderedBefore(lhs, rhs, withinIntactSegment: intact)
         }) else { return nil }
-        return VerdictSelection(row: winner, candidates: candidates, regimeIsIntact: intact)
+        return VerdictSelection(row: winner, regimeIsIntact: intact)
     }
 
     /// One row's verdict selection, and the regime that produced it.
+    ///
+    /// The candidate SET used to travel here too, for the row-7 rule that read
+    /// every candidate's label. That rule is gone (F-5), and carrying the set
+    /// for nobody would be an invitation to invent another one.
     struct VerdictSelection {
         var row: MemoryExportAuditRow
-        /// Every candidate for this memory, in source order — the set the
-        /// regime was decided from, and what a caller inspecting the selection
-        /// (or a test) needs to see why.
-        var candidates: [MemoryExportAuditRow]
         /// True when §3.1 case 1 decided the order: every candidate for THIS row
         /// was chain-trustworthy, so `seq DESC` is the fact the chain proves.
         var regimeIsIntact: Bool
