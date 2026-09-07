@@ -152,9 +152,29 @@ extension ControlPlaneStore {
     /// Memories the Memory MCP engine mirrored keep their approved body in
     /// `agent_memory_bodies` (written by the daemon) rather than in the app's
     /// snapshot table, so the sync lane resolves a body from either home.
+    ///
+    /// A mirrored row that is still in review has no body there: since the wire
+    /// default became `quarantined`, `remember` records the engine id with an
+    /// EMPTY body in `agent_memory_bodies` (so the sealed cloud document keeps
+    /// its key) and parks the content in `memory_quarantine_bodies` instead.
+    /// The review inbox has to show that content to be a review surface at all,
+    /// so the resolution is: approved body first, quarantined body second. The
+    /// order matters — it is what keeps the sync lane on approved content, since
+    /// an approved row's quarantine copy is deleted the moment it is published.
     func openAgentMemoryBody(id: MemoryID) async throws -> String? {
-        try await dbQueue.read { db in
-            try String.fetchOne(db, sql: "SELECT body FROM agent_memory_bodies WHERE memory_id = ?", arguments: [id])
+        try await dbQueue.read { db -> String? in
+            if let published = try String.fetchOne(
+                db,
+                sql: "SELECT body FROM agent_memory_bodies WHERE memory_id = ?",
+                arguments: [id]
+            ), published.isEmpty == false {
+                return published
+            }
+            return try String.fetchOne(
+                db,
+                sql: "SELECT body FROM memory_quarantine_bodies WHERE memory_id = ?",
+                arguments: [id]
+            )
         }
     }
 
@@ -257,7 +277,17 @@ extension ControlPlaneStore {
                 predicates.append("kind = ?")
                 arguments.append(kind.rawValue)
             }
-            if let scope {
+            // The agent partition is deliberately unscoped. Those rows are the
+            // daemon's: it writes them under its own per-project `project_id`
+            // (which is not an app bucket) and knows no Firebase identity, so
+            // `user_id`/`app_id` are NULL until the sync lane claims them
+            // (`claimUnownedAgentMemories`). Applying either predicate would
+            // return nothing, which is exactly why the review inbox could not see
+            // a quarantined agent memory. This lane is per-Mac by construction —
+            // one engine store per macOS user — so every mirrored row is in scope
+            // for the one review surface, and `cloudSyncCandidateChatMemories`
+            // has always read it the same unscoped way.
+            if let scope, partition != .agent {
                 predicates.append("project_id = ?")
                 arguments.append(Self.memoryStorageProjectID(for: scope, partition: partition))
                 Self.appendScopePredicates(scope, to: &predicates, arguments: &arguments)
@@ -339,6 +369,17 @@ extension ControlPlaneStore {
     /// `usage:` partition.
     func pendingUsageMemoryReviewCount(scope: MemoryScope) async throws -> Int {
         try await fetchActiveMemoryAuthorityRecords(sourceKinds: MemorySourceKind.usageKinds, scope: scope)
+            .filter { $0.reviewStatus == .quarantined }
+            .count
+    }
+
+    /// Pending (quarantined) agent-lane rows — the agent share of the dashboard
+    /// Memory badge, so the badge and the inbox's own pill count the same rows.
+    /// It takes no scope on purpose: the daemon writes these rows under its own
+    /// project id and no app scope columns, and the review inbox reads them the
+    /// same unscoped way (`fetchActiveMemoryAuthorityRecords`).
+    func pendingAgentMemoryReviewCount() async throws -> Int {
+        try await fetchActiveMemoryAuthorityRecords(sourceKinds: [.agent])
             .filter { $0.reviewStatus == .quarantined }
             .count
     }

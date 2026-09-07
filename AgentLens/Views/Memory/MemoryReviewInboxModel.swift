@@ -11,10 +11,13 @@ import OpenBurnBarCore
 /// lifetime of the view.
 ///
 /// U7: the inbox serves usage memories (`.safariAsk` / `.agentSession`) alongside
-/// chat. Each bucket is loaded once per storage partition — chat with the exact
-/// pre-U7 request/paging semantics, usage kinds with the same semantics over the
-/// `usage:` partition — and merged in page order, so the chat lane stays
-/// byte-identical and neither lane can crowd the other out of its page cap.
+/// chat, and `.agent` — memories the Memory MCP engine mirrors for a coding agent
+/// — joined them once that lane started landing quarantined (D-0005). Each bucket
+/// is loaded once per storage partition — chat with the exact pre-U7
+/// request/paging semantics, usage kinds with the same semantics over the
+/// `usage:` partition, agent rows over the daemon's unscoped partition — and
+/// merged in page order, so the chat lane stays byte-identical and no lane can
+/// crowd another out of its page cap.
 /// A second filter axis (`SourceFilter`) narrows the visible rows by source, and
 /// every review action routes through the source-kind-guarded store methods with
 /// the acted-on row's own kind.
@@ -105,10 +108,13 @@ final class MemoryReviewInboxModel {
     /// fail-closed branch, which is otherwise process-wide corpus state.
     typealias GateScan = (String) -> Item.GateState
 
-    /// Every source kind the inbox serves. Daemon-owned `.code` rows are not
-    /// review-inbox material and stay invisible here.
+    /// Every source kind the inbox serves. `.agent` joined the set when the
+    /// agent-autonomous lane started landing in review (D-0005): a memory a
+    /// coding agent asks BurnBar to remember is now quarantined on arrival, and
+    /// this is the surface that approves it. Daemon-owned `.code` rows are
+    /// repository knowledge, not review-inbox material, and stay invisible here.
     static let servedSourceKinds: Set<MemorySourceKind> =
-        Set([MemorySourceKind.chat]).union(MemorySourceKind.usageKinds)
+        Set([MemorySourceKind.chat, MemorySourceKind.agent]).union(MemorySourceKind.usageKinds)
 
     private(set) var pending: [Item] = []
     private(set) var approved: [Item] = []
@@ -158,10 +164,11 @@ final class MemoryReviewInboxModel {
     }
 
     /// Loads both buckets: pending keeps only `.quarantined` (requesting quarantined
-    /// rows), approved keeps only `.approved`. Each bucket loads chat and usage
-    /// partitions separately — the chat call is the exact pre-U7 fetch — and merges
-    /// them in page order. Each kept memory's sealed body is opened best-effort for
-    /// display. Drives `isLoading` and surfaces failures via `errorMessage`.
+    /// rows), approved keeps only `.approved`. Each bucket loads the chat, usage and
+    /// agent partitions separately — the chat call is the exact pre-U7 fetch — and
+    /// merges them in page order. Each kept memory's sealed body is opened
+    /// best-effort for display. Drives `isLoading` and surfaces failures via
+    /// `errorMessage`.
     func load() async {
         isLoading = true
         errorMessage = nil
@@ -178,6 +185,11 @@ final class MemoryReviewInboxModel {
                 includeQuarantined: true,
                 keep: .quarantined
             )
+            let pendingAgent = try await loadBucket(
+                sourceKinds: [.agent],
+                includeQuarantined: true,
+                keep: .quarantined
+            )
             let approvedChat = try await loadBucket(
                 sourceKinds: [.chat],
                 includeQuarantined: false,
@@ -188,8 +200,13 @@ final class MemoryReviewInboxModel {
                 includeQuarantined: false,
                 keep: .approved
             )
-            pending = Self.mergedInPageOrder(pendingChat, pendingUsage)
-            approved = Self.mergedInPageOrder(approvedChat, approvedUsage)
+            let approvedAgent = try await loadBucket(
+                sourceKinds: [.agent],
+                includeQuarantined: false,
+                keep: .approved
+            )
+            pending = Self.mergedInPageOrder(pendingChat, pendingUsage, pendingAgent)
+            approved = Self.mergedInPageOrder(approvedChat, approvedUsage, approvedAgent)
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
@@ -243,11 +260,11 @@ final class MemoryReviewInboxModel {
             .map { [$0.memory.sourceKind] } ?? Self.servedSourceKinds
     }
 
-    /// Merge two per-partition bucket loads back into page order (updatedAt DESC,
+    /// Merge the per-partition bucket loads back into page order (updatedAt DESC,
     /// id ASC) — the same comparator `memoryPage` serves pages in, so a chat-only
     /// merge is exactly the pre-U7 chat list.
-    private static func mergedInPageOrder(_ lhs: [Item], _ rhs: [Item]) -> [Item] {
-        (lhs + rhs).sorted { a, b in
+    private static func mergedInPageOrder(_ buckets: [Item]...) -> [Item] {
+        buckets.flatMap { $0 }.sorted { a, b in
             if a.memory.updatedAt == b.memory.updatedAt { return a.id < b.id }
             return a.memory.updatedAt > b.memory.updatedAt
         }
