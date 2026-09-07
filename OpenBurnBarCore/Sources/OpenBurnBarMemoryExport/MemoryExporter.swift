@@ -206,23 +206,32 @@ public struct MemoryExporter: Sendable {
             if memory.reviewStatus == MIFReviewStatus.approved.rawValue { report.approvedRowsInSource += 1 }
             for finding in classification.findings { record(finding, sample: memory.id) }
 
-            // Row 12 — a `forgotten` row is a delete that happened.
+            // Row 12 — a `forgotten` row is a delete that happened, so it leaves
+            // as a tombstone and never appears in section 05.
             if classification.isTombstoneOnly {
                 memoriesTable.note(.forgottenToTombstone)
-                appendFactTombstone(
-                    into: &sections,
-                    emitted: &emittedTombstoneIDs,
-                    table: &tombstonesTable,
-                    memory: memory,
-                    scope: scope,
-                    reason: .userForget,
-                    originLabel: .daemonForgotten,
-                    synthesis: .forgottenStatus,
-                    auditSeq: nil,
-                    createdAtMS: MemoryExportTimestamp.milliseconds(memory.updatedAt),
-                    context: context
+                let tombstoneID = MemoryExportIdentity.tombstoneID(
+                    storeID: storeID,
+                    sourceTable: "agent_memories.forgotten",
+                    sourceID: memory.id
                 )
-                report.tombstonesWithoutContentKey += 1
+                if emittedTombstoneIDs.insert(tombstoneID).inserted {
+                    sections[.tombstones]?.append(MemoryExportRecords.factTombstoneRecord(
+                        tombstoneID: tombstoneID,
+                        subjectMemoryID: MemoryExportIdentity.canonicalMemoryID(memory.id, storeID: storeID),
+                        userID: scope.userID,
+                        scope: scope,
+                        reason: .userForget,
+                        originLabel: .daemonForgotten,
+                        synthesisReason: .forgottenStatus,
+                        auditSeq: nil,
+                        createdAtMS: MemoryExportTimestamp.milliseconds(memory.updatedAt),
+                        context: context
+                    ))
+                    tombstonesTable.sourceRows += 1
+                    tombstonesTable.exported += 1
+                    report.tombstonesWithoutContentKey += 1
+                }
                 continue
             }
 

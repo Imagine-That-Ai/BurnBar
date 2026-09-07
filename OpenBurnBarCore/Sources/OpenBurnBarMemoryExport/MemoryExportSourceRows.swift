@@ -394,25 +394,76 @@ public struct MemoryExportSourceSnapshot: Sendable {
 
 // MARK: - Timestamps
 
-/// The oracle stores ISO-8601 strings written by two different formatters (the
-/// app emits fractional seconds, the daemon does not). Sorting or comparing
-/// them as strings works only while both formats agree on width, so parse.
+/// Timestamp parsing for a store written by three different code paths.
+///
+/// `memory_audit.ts` is ISO-8601 with a `T`, fractional seconds and a `Z`
+/// (`ControlPlaneStore.iso8601String`); the daemon's `isoNow()` omits the
+/// fraction; and GRDB binds a `Date` as `"YYYY-MM-DD HH:MM:SS.SSS"` with a SPACE
+/// and no zone, which is what most `agent_memories` columns actually hold. A
+/// formatter configured for one of those silently returns nil for the others,
+/// and a nil timestamp here would break conjunct 6 the wrong way — a body whose
+/// time cannot be read would look "not newer than the verdict".
+///
+/// So this is a hand-rolled parser over the field layout, which also keeps the
+/// type free of the non-`Sendable` `ISO8601DateFormatter` and free of any
+/// locale or default-timezone influence on a value the bundle's determinism
+/// depends on.
 public enum MemoryExportTimestamp {
-    private static let withFraction: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
 
-    private static let withoutFraction: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
+    /// Accepts `YYYY-MM-DD` followed by `T` or a space, `HH:MM:SS`, an optional
+    /// `.fff`, and an optional `Z` or `±HH:MM`. A missing zone is UTC, which is
+    /// what every writer in the store actually means.
     public static func parse(_ text: String?) -> Date? {
-        guard let text, text.isEmpty == false else { return nil }
-        return withFraction.date(from: text) ?? withoutFraction.date(from: text)
+        guard let text, text.count >= 19 else { return nil }
+        let scalars = Array(text.utf8)
+        func number(_ range: Range<Int>) -> Int? {
+            var value = 0
+            for index in range {
+                guard index < scalars.count, scalars[index] >= 48, scalars[index] <= 57 else { return nil }
+                value = value * 10 + Int(scalars[index] - 48)
+            }
+            return value
+        }
+        guard scalars[4] == UInt8(ascii: "-"), scalars[7] == UInt8(ascii: "-"),
+              scalars[10] == UInt8(ascii: "T") || scalars[10] == UInt8(ascii: " "),
+              scalars[13] == UInt8(ascii: ":"), scalars[16] == UInt8(ascii: ":"),
+              let year = number(0..<4), let month = number(5..<7), let day = number(8..<10),
+              let hour = number(11..<13), let minute = number(14..<16), let second = number(17..<19),
+              (1...12).contains(month), (1...31).contains(day),
+              hour < 24, minute < 60, second <= 60 else {
+            return nil
+        }
+
+        var index = 19
+        var milliseconds = 0
+        if index < scalars.count, scalars[index] == UInt8(ascii: ".") {
+            index += 1
+            var digits = 0
+            while index < scalars.count, scalars[index] >= 48, scalars[index] <= 57, digits < 3 {
+                milliseconds = milliseconds * 10 + Int(scalars[index] - 48)
+                index += 1
+                digits += 1
+            }
+            // Pad a shorter fraction: ".5" is 500 ms, not 5.
+            while digits < 3 { milliseconds *= 10; digits += 1 }
+            // Ignore any remaining sub-millisecond digits.
+            while index < scalars.count, scalars[index] >= 48, scalars[index] <= 57 { index += 1 }
+        }
+
+        var offsetSeconds = 0
+        if index < scalars.count, scalars[index] == UInt8(ascii: "+") || scalars[index] == UInt8(ascii: "-") {
+            let sign = scalars[index] == UInt8(ascii: "-") ? -1 : 1
+            guard let offsetHour = number((index + 1)..<(index + 3)) else { return nil }
+            let offsetMinuteStart = scalars.count > index + 3 && scalars[index + 3] == UInt8(ascii: ":")
+                ? index + 4
+                : index + 3
+            let offsetMinute = number(offsetMinuteStart..<(offsetMinuteStart + 2)) ?? 0
+            offsetSeconds = sign * (offsetHour * 3600 + offsetMinute * 60)
+        }
+
+        let epochDays = daysFromCivil(year: year, month: month, day: day)
+        let seconds = Double(epochDays * 86_400 + hour * 3600 + minute * 60 + second - offsetSeconds)
+        return Date(timeIntervalSince1970: seconds + Double(milliseconds) / 1000)
     }
 
     /// Milliseconds since the epoch, the unit every `ts_ms` field in MIF uses.
@@ -421,7 +472,41 @@ public enum MemoryExportTimestamp {
         return Int((date.timeIntervalSince1970 * 1000).rounded())
     }
 
+    /// The app's own wire format, for a value this target writes back out.
     public static func string(_ date: Date) -> String {
-        withFraction.string(from: date)
+        let total = Int((date.timeIntervalSince1970 * 1000).rounded())
+        let (days, msOfDay) = total >= 0
+            ? (total / 86_400_000, total % 86_400_000)
+            : ((total - 86_399_999) / 86_400_000, total - ((total - 86_399_999) / 86_400_000) * 86_400_000)
+        let civil = civilFromDays(days)
+        return String(
+            format: "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+            civil.year, civil.month, civil.day,
+            msOfDay / 3_600_000, (msOfDay / 60_000) % 60, (msOfDay / 1000) % 60, msOfDay % 1000
+        )
+    }
+
+    // Howard Hinnant's civil-from-days pair, which is exact for every date the
+    // store can hold and needs no calendar object.
+    static func daysFromCivil(year: Int, month: Int, day: Int) -> Int {
+        let y = year - (month <= 2 ? 1 : 0)
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yoe = y - era * 400
+        let doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        return era * 146_097 + doe - 719_468
+    }
+
+    static func civilFromDays(_ days: Int) -> (year: Int, month: Int, day: Int) {
+        let z = days + 719_468
+        let era = (z >= 0 ? z : z - 146_096) / 146_097
+        let doe = z - era * 146_097
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365
+        let y = yoe + era * 400
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+        let mp = (5 * doy + 2) / 153
+        let day = doy - (153 * mp + 2) / 5 + 1
+        let month = mp + (mp < 10 ? 3 : -9)
+        return (y + (month <= 2 ? 1 : 0), month, day)
     }
 }

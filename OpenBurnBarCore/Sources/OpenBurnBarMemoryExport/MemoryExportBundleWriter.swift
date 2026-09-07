@@ -200,14 +200,16 @@ public enum MemoryExportBundleWriter {
     /// line.
     static func ndjson(_ buffer: MemoryExportSectionBuffer) -> Data {
         let keys = buffer.section.sortKeys
-        let lines = buffer.records
-            .map { (sortKey: sortValue($0, keys: keys), text: MIFCanonicalJSON.serialize($0)) }
-            .sorted { lhs, rhs in
-                lhs.sortKey == rhs.sortKey ? lhs.text < rhs.text : lhs.sortKey < rhs.sortKey
-            }
-            .map(\.text)
-        guard lines.isEmpty == false else { return Data() }
-        return Data((lines.joined(separator: "\n") + "\n").utf8)
+        var keyed: [(sortKey: String, text: String)] = []
+        keyed.reserveCapacity(buffer.records.count)
+        for record in buffer.records {
+            keyed.append((sortValue(record, keys: keys), MIFCanonicalJSON.serialize(record)))
+        }
+        keyed.sort { lhs, rhs in
+            lhs.sortKey == rhs.sortKey ? lhs.text < rhs.text : lhs.sortKey < rhs.sortKey
+        }
+        guard keyed.isEmpty == false else { return Data() }
+        return Data((keyed.map(\.text).joined(separator: "\n") + "\n").utf8)
     }
 
     private static func sortValue(_ record: MIFJSON, keys: [String]) -> String {
