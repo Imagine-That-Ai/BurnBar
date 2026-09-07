@@ -304,9 +304,7 @@ public struct MemoryExporter: Sendable {
             let joinKey = MemoryExportCrypto.bodyJoinKey(bundleKey: bundleKey, body: gate.body)
             let normDigest = MemoryExportCrypto.bodyNormDigest(bundleKey: bundleKey, body: gate.body)
             let citations = (provenanceByMemory[memory.id] ?? []).sorted { $0.id < $1.id }
-            let provenanceDigest = MemoryExportDigest.sha256Hex(
-                citations.map(\.contentHash).sorted().joined(separator: "\u{1F}")
-            )
+            let provenanceDigest = Self.provenanceDigest(of: citations)
             sections[.memories]?.append(memoryRecord, rollup: [canonicalID, normDigest, provenanceDigest])
             sections[.bodies]?.append(
                 MemoryExportRecords.bodyRecord(body: body, gate: gate, context: context),
@@ -534,7 +532,15 @@ public struct MemoryExporter: Sendable {
                 userID: userID
             )
             let normDigest = MemoryExportCrypto.bodyNormDigest(bundleKey: bundleKey, body: gate.body)
-            sections[.memories]?.append(synthetic.memory, rollup: [canonicalID, normDigest, ""])
+            // The declared 05 tuple's third element is the provenance digest, so
+            // a carried orphan computes it the same way every other row does.
+            // Its one `body_only` marker carries no `source_content_hash`, so
+            // that is the digest over an empty citation list — a value, not the
+            // empty string the roll-up used to be handed (review F-3).
+            sections[.memories]?.append(
+                synthetic.memory,
+                rollup: [canonicalID, normDigest, Self.provenanceDigest(of: [])]
+            )
             sections[.bodies]?.append(synthetic.body, rollup: [canonicalID, normDigest, synthetic.joinKey])
             sections[.provenance]?.append(synthetic.provenance)
             bodiesTable.exported += 1
@@ -629,6 +635,24 @@ public struct MemoryExporter: Sendable {
     }
 
     // MARK: - Helpers
+
+    /// `manifest.rollups[]`'s third element for section 05, and the only place
+    /// it is computed — the importer recomputes it from the declared tuple and
+    /// HOLDS on a mismatch, so two call sites computing it two ways is a bundle
+    /// nobody can import.
+    ///
+    /// It digests exactly the `source_content_hash` values section 07 CARRIES.
+    /// A citation whose oracle hash is not 64 hex is emitted with a null hash
+    /// (the target's `provenance_live_hash_ck` refuses a `live` citation with
+    /// no hash), so digesting the raw column here would declare a value no
+    /// importer could reproduce from the bundle.
+    static func provenanceDigest(of citations: [MemoryExportProvenanceRow]) -> String {
+        let carried = citations
+            .map(\.contentHash)
+            .filter(MemoryExportBodyResolver.isHex64)
+            .sorted()
+        return MemoryExportDigest.sha256Hex(carried.joined(separator: "\u{1F}"))
+    }
 
     private func baseReport(mode: MemoryExportMode, snapshot: MemoryExportSourceSnapshot) -> MemoryExportReport {
         var report = MemoryExportReport(phase: mode == .dryRun ? .dryRun : .export)

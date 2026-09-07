@@ -242,6 +242,96 @@ final class MemoryExportBundleTests: XCTestCase {
         XCTAssertNoThrow(try validator.validate(record, against: "#/$defs/record_memory"))
     }
 
+    /// F-3. `manifest.rollups[].tuple` is what a conforming importer recomputes
+    /// from post-apply, and it HOLDS on `ROLLUP_DIGEST_MISMATCH`. One hardcoded
+    /// triple was declared for every section while 05 and 06 digest different
+    /// third values, so an importer that did the recompute failed on 06 for
+    /// every bundle this exporter had ever produced.
+    func test_eachSectionDeclaresTheTupleItActuallyDigested() throws {
+        let snapshot = try MemoryExportFixtureStore.snapshot(try makeStore())
+        var exporter = makeExporter()
+        exporter.options.carryOrphans = true
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try exporter.export(
+            snapshot,
+            mode: .full,
+            to: directory,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "rollups")
+        )
+
+        let manifest = try XCTUnwrap(try json(at: directory.appendingPathComponent("manifest.json")) as? [String: Any])
+        let rollups = try XCTUnwrap(manifest["rollups"] as? [[String: Any]])
+        XCTAssertFalse(rollups.isEmpty)
+
+        for rollup in rollups {
+            let name = try XCTUnwrap(rollup["section"] as? String)
+            let section = try XCTUnwrap(MIFSection(rawValue: name))
+            let tuple = try XCTUnwrap(rollup["tuple"] as? [String])
+            XCTAssertEqual(tuple, section.rollupTuple, name)
+
+            // Recompute the digest the way an IMPORTER would: resolve each
+            // declared name against the bundle's own records, joining across
+            // sections exactly where the importer has to. If the tuple named a
+            // value the bundle cannot reproduce, this is where it would hold.
+            let rows = (result.sectionBuffers[section]?.records ?? []).map { record in
+                tuple.map { key in Self.rollupValue(key, of: record, in: result) }
+            }
+            XCTAssertEqual(rows.count, rollup["row_count"] as? Int, name)
+            XCTAssertEqual(
+                MemoryExportBundleWriter.rollupDigest(rows),
+                rollup["rollup_digest"] as? String,
+                "\(name): the declared tuple does not reproduce the declared digest"
+            )
+        }
+    }
+
+    /// One declared tuple element, resolved the way an importer resolves it.
+    /// `memory_id` and `body_norm_digest` are literal fields where the record
+    /// has them; a body record has no `memory_id`, so it is reached by the
+    /// `body_join_key` join that section 06 exists for, and `provenance_digest`
+    /// is derived from the section-07 rows that name the memory.
+    private static func rollupValue(
+        _ key: String,
+        of record: MIFJSON,
+        in result: MemoryExportBundleResult
+    ) -> String {
+        guard case .object(let fields) = record else { return "" }
+        if case .string(let value) = fields[key] ?? .null { return value }
+        switch key {
+        case "memory_id":
+            guard case .string(let joinKey) = fields["body_join_key"] ?? .null else { return "" }
+            return string("memory_id", ofFirst: result.sectionBuffers[.memories]) {
+                if case .string(let candidate) = $0["body_join_key"] ?? .null { return candidate == joinKey }
+                return false
+            }
+        case "provenance_digest":
+            guard case .string(let memoryID) = fields["memory_id"] ?? .null else { return "" }
+            let hashes = (result.sectionBuffers[.provenance]?.records ?? []).compactMap { citation -> String? in
+                guard case .object(let citationFields) = citation,
+                      case .string(let owner) = citationFields["memory_id"] ?? .null, owner == memoryID,
+                      case .string(let hash) = citationFields["source_content_hash"] ?? .null else { return nil }
+                return hash
+            }
+            return MemoryExportDigest.sha256Hex(hashes.sorted().joined(separator: "\u{1F}"))
+        default:
+            return ""
+        }
+    }
+
+    private static func string(
+        _ key: String,
+        ofFirst buffer: MemoryExportSectionBuffer?,
+        where matches: ([String: MIFJSON]) -> Bool
+    ) -> String {
+        for record in buffer?.records ?? [] {
+            guard case .object(let fields) = record, matches(fields) else { continue }
+            if case .string(let value) = fields[key] ?? .null { return value }
+        }
+        return ""
+    }
+
     // MARK: - The delete obligation and the gate
 
     func test_deleteOfAQuarantinedRowSynthesizesATombstone() throws {
