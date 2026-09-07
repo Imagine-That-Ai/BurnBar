@@ -200,8 +200,47 @@ there is not a MIF bundle*. What BB-E emits, item by item:
 | Compression ∈ {`none`, `zstd`}, declared | **`none`**. BurnBar vendors no zstd. Declaring `none` is legal; silently ignoring a *declared* `zstd` is not |
 | `manifest.crypto{aead, compression, wrap, key_schedule}`, required | emitted, with `wrap` and `key_schedule` the contract's `const` values — which the wrap above is the only construction able to satisfy honestly |
 | Hash tree (D-0031 ruling 1): `ht_key = HKDF-SHA256(salt = "imaginethat.memory.hkdf.v1", bundle_key, "mif1/hashtree/v1")`, leaves `HMAC(key, 0x00 ‖ chunk)`, folds `HMAC(key, 0x01 ‖ l ‖ r)`, 4 MiB chunks over ciphertext | as stated. One salt constant, not two; pinned outside the code path by a test that recomputes a leaf straight from CryptoKit |
-| `manifest.sig` (D-0031 ruling 1): Ed25519 over the 32 raw bytes of `content_digest`, b64url unpadded | as stated. `verify` shares the preimage through one `sign`/`verifySignature` pair |
+| `manifest.sig` (D-0031 ruling 1): Ed25519 over the 32 raw bytes of `content_digest`, b64url unpadded | as stated. `verify` shares the preimage through one `sign`/`verifySignature` pair, and **recomputes `content_digest` from the manifest on disk**, so the signature is a signature over the manifest (F-1, stated once below) |
 | Segment files `sections/<NN-name>/<index:05>.seg`; root computed once, carried in `manifest.hashtree.root` and `hashtree.json`, input to `content_digest` | as stated. The one deliberate gap: `key_derivation` still emits the contract's pre-D-0031 `const` (D-BB-E-14) |
+
+**What `content_digest` is a digest of, stated once.** §2's determinism claim —
+*"Determinism is claimed on `content_digest` and on the manifest minus
+`{created_at_ms, recipient_key_id, wrapped key, signature}` — JCS
+canonicalisation, fixed sort keys …"* — and D-0031 ruling 1's *"the digest
+already binds the manifest minus the four excluded members, §2 line 244"* fix one
+preimage, and BB-E computes exactly it:
+
+```
+content_digest = sha256( JCS( manifest minus {created_at_ms, recipient_key_id,
+                                              bundle_id, content_digest} ) )
+manifest.sig   = Ed25519(the 32 raw bytes of that digest), b64url unpadded
+```
+
+Two of §2's four excluded members are not manifest members at all — the wrapped
+key is `keys/wrapped-bundle-key` and the signature is `manifest.sig` — so
+removing them from a manifest is a no-op and the two that remain are §2's.
+`bundle_id` and `content_digest` come off because a digest cannot bind itself,
+and `bundle_id` is `"bnd_" + content_digest[0..<32]` (§4), so it carries nothing
+the digest does not. **Everything else is inside it**, `hashtree.root` and every
+per-section `subroot` included — which is D-0031's "the root is an input to
+`content_digest`" — so the section plaintexts are bound transitively through the
+keyed tree over the ciphertext that seals them, and the crypto profile, the
+recipient binding, `user_id`, `not_exported` and the roll-up digests are bound
+directly.
+
+Until F-1 the digest was `sha256(JCS({<section>: sha256(plaintext), …,
+hashtree_root}))` — the plaintexts and the tree and nothing else — so every
+manifest member above could be rewritten on the wire under a signature that
+still verified, and `verify` never recomputed the digest to notice. It does now,
+from the manifest bytes on disk; and because the claim is about MEMBERS rather
+than bytes, a manifest reformatted by another JSON writer still reproduces its
+digest while a changed value never does. Where the bundle carries a second,
+independent witness of the same fact — `rollups[]` against the section headers,
+`not_exported` against `report.json`'s per-table view, the recipient members
+against the descriptor — `verify` also NAMES the member; `crypto`, `user_id` and
+the other members the bundle witnesses once are named by the digest failure as a
+group, because naming them individually would need a second copy of the manifest
+that a verifier on the operator's own disk does not have.
 
 **Three departures, all forced, all here rather than in the code's head —
 all three now CLOSED, kept for the archaeology:**
@@ -596,3 +635,14 @@ in review order, one commit per finding.
 
 | D-0031 | layout alignment: segment names, hash-tree domains, `manifest.sig`, roll-up tuples | **fixed** — `<index:05>.seg`; salted key with `0x00`/`0x01` domains; signature over the 32 raw digest bytes, b64url; root computed once, carried twice, input to the digest; 05/02 tuples as ruled, JCS-ordered; the rest transcribed but unemitted per §15 item 8. One open const (`key_derivation`, D-BB-E-14) is the spec owner's |
 | re-vendor | schema at HEAD | **fixed** — byte-identical to `e591e7c8e` (Q-30), digest `1107c3ec…`, pin updated; in-process suite green; out-of-process validation 0 failures over 12 instances; the held-report test exercises the new `hold_reason` anyOf |
+
+---
+
+## 10. Review response — F-1 … F-8 (third review)
+
+Against `docs/memory/reviews/REVIEW-BB-EXPORTER-3.md` (verdict
+`merge-with-fixes`), fixed in review order, one commit per finding.
+
+| # | Finding | Status |
+|---|---|---|
+| F-1 | `manifest.sig` signs eleven section digests, not the manifest | **fixed** — `content_digest` is `sha256(JCS(manifest minus {created_at_ms, recipient_key_id, bundle_id, content_digest}))`, the preimage §2 and D-0031 ruling 1 both rest on (stated once in D-BB-E-5). `verify` recomputes it from the manifest bytes on disk and names the member wherever a second witness in the bundle can. Each of the review's six edits — `recipient_store_id`, `crypto.aead`, `user_id`, `not_exported`, `sections[5].row_count`, `rollups[0].rollup_digest` — now fails verification; the test drives all six, and reverting the digest to a tree-root-only preimage turns it red with 13 assertions |

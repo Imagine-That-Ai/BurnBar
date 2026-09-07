@@ -118,6 +118,40 @@ public enum MemoryExportBundleVerifier {
             result.problems.append("the manifest is missing bundle_id or content_digest")
         }
 
+        // 2b. And the digest itself, RECOMPUTED from the manifest on disk
+        //     (review F-1). Without this the signature proved only that the
+        //     declared digest was signed by this device, never that the manifest
+        //     beside it is the one that was signed: an editor could rewrite the
+        //     crypto profile, the recipient binding or any count and `verify`
+        //     still reported `intact=true signature_verified=true`.
+        //
+        //     `manifest.sig` signs the 32 raw bytes of `content_digest`, and
+        //     `content_digest` is `sha256(JCS(manifest minus {created_at_ms,
+        //     recipient_key_id, bundle_id, content_digest}))` — so this check is
+        //     the link that makes the signature a signature OVER THE MANIFEST.
+        result.checksRun.append("content_digest ↔ manifest members")
+        let parsedManifest = MIFCanonicalJSON.parse(manifestData)
+        if let parsedManifest {
+            if let contentDigest {
+                let recomputed = MemoryExportManifestDigest.digest(of: parsedManifest)
+                if recomputed != contentDigest {
+                    let covered = MemoryExportManifestDigest.coveredMembers(of: parsedManifest)
+                    result.problems.append(
+                        "manifest.json does not reproduce its declared content_digest "
+                            + "(declared \(contentDigest), recomputed \(recomputed)) — one of the "
+                            + "\(covered.count) members manifest.sig covers was edited after signing: "
+                            + covered.joined(separator: ", ")
+                    )
+                    // WHICH one, wherever the bundle carries a second,
+                    // independent witness of the same fact. The digest can only
+                    // say THAT a member moved.
+                    result.problems.append(contentsOf: namedManifestEdits(parsedManifest, bundleAt: url))
+                }
+            }
+        } else {
+            result.problems.append("manifest.json is not JSON this format can canonicalise")
+        }
+
         // 3. `hashtree.json` against the manifest. The tree is keyed, so this is
         //    an agreement check between two documents rather than a recompute —
         //    which is exactly what it is worth, and all it claims to be.
@@ -245,6 +279,54 @@ public enum MemoryExportBundleVerifier {
         }
 
         return result
+    }
+
+    /// The manifest members a second artefact in the same bundle can
+    /// contradict. Every one of these is inside `content_digest`, so a
+    /// disagreement here always arrives beside the digest problem above — this
+    /// exists to NAME the member, not to detect the edit.
+    ///
+    /// `crypto`, `user_id` and the other members the bundle witnesses only once
+    /// are caught by the digest and named by it as a group; naming those
+    /// individually would need a second copy of the manifest, which a verifier
+    /// on the operator's own disk does not have.
+    static func namedManifestEdits(_ manifest: MIFJSON, bundleAt url: URL) -> [String] {
+        guard case .object(let fields) = manifest else { return [] }
+        var problems: [String] = []
+
+        // `rollups[]` and `sections[]` carry the same two facts per section: the
+        // writer computes each roll-up digest once and puts it in both, and a
+        // section's `row_count` is the number of roll-up tuples it digested.
+        var headerDigests: [String: String] = [:]
+        var headerRowCounts: [String: Int] = [:]
+        if case .array(let headers)? = fields["sections"] {
+            for header in headers {
+                guard case .object(let member) = header,
+                      case .string(let name)? = member["name"] else { continue }
+                if case .string(let digest)? = member["rollup_digest"] { headerDigests[name] = digest }
+                if case .int(let rows)? = member["row_count"] { headerRowCounts[name] = rows }
+            }
+        }
+        if case .array(let rollups)? = fields["rollups"] {
+            for (index, rollup) in rollups.enumerated() {
+                guard case .object(let member) = rollup,
+                      case .string(let name)? = member["section"] else { continue }
+                if case .string(let digest)? = member["rollup_digest"], let header = headerDigests[name],
+                   digest != header {
+                    problems.append(
+                        "rollups[\(index)].rollup_digest disagrees with sections[\(name)].rollup_digest"
+                    )
+                }
+                if case .int(let rows)? = member["row_count"], let header = headerRowCounts[name],
+                   rows != header {
+                    problems.append(
+                        "sections[\(name)].row_count is \(header) but rollups[\(index)] digested "
+                            + "\(rows) rows"
+                    )
+                }
+            }
+        }
+        return problems
     }
 
     /// The operator-facing rendering. It says what was checked AND what was not,

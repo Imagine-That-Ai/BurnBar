@@ -135,35 +135,30 @@ public enum MemoryExportBundleWriter {
             subroots: MIFSection.allCases.map { subroots[$0] ?? "" }
         )
 
-        // 4. `content_digest` is over the PLAINTEXT section digests — which is
-        //    what makes it stable across two exports whose ciphertext differs —
-        //    AND the hash-tree root, which is what binds the manifest to the
-        //    one tree (D-0031 ruling 1: the root is an input to the digest).
-        let contentDigest = MemoryExportDigest.sha256Hex(MIFCanonicalJSON.data(.object(
-            Dictionary(uniqueKeysWithValues: ordered.map { buffer in
-                // swiftlint:disable:next force_unwrapping reason: every section was written above
-                (buffer.section.rawValue, MIFJSON.string(MemoryExportDigest.sha256Hex(plaintexts[buffer.section]!)))
-            })
-            .merging(["hashtree_root": .string(hashtreeRoot)]) { _, new in new }
-        )))
-        let bundleID = MemoryExportIdentity.bundleID(contentDigest: contentDigest)
-
-        // 5. Wrap the content key and sign the raw digest (D-0031).
+        // 4. Wrap the content key. The wrap is not an input to anything below —
+        //    §2 excludes it from the determinism claim precisely because HPKE's
+        //    encapsulated key is random.
         let wrapped = try MemoryExportCrypto.wrap(
             bundleKey: inputs.context.bundleKey,
             recipient: inputs.recipient
         )
         let deviceKeyID = inputs.signingKey.map { MemoryExportCrypto.deviceKeyID($0.publicKey) }
 
-        report.bundleID = bundleID
-        report.contentDigest = contentDigest
-        report.exporterDeviceKeyID = deviceKeyID
-        report.rehearsal = inputs.rehearsal
-
-        let manifest = manifestJSON(
+        // 5. `content_digest` is over the MANIFEST — `sha256(JCS(manifest minus
+        //    {created_at_ms, recipient_key_id, bundle_id, content_digest}))`,
+        //    which is the preimage §2's determinism claim and D-0031 ruling 1
+        //    both rest on ("the digest already binds the manifest minus the four
+        //    excluded members"). The tree's root and every section subroot are
+        //    members of that manifest, so the root is an input to the digest as
+        //    D-0031 requires, and the plaintexts are bound through the subroots
+        //    that seal them. It used to be a digest of the section plaintexts and
+        //    the root alone, which left the crypto profile, the recipient
+        //    binding and every count rewritable under a valid signature
+        //    (review F-1).
+        let unsignedManifest = manifestJSON(
             inputs: inputs,
-            bundleID: bundleID,
-            contentDigest: contentDigest,
+            bundleID: nil,
+            contentDigest: nil,
             hashtreeRoot: hashtreeRoot,
             sections: ordered,
             subroots: subroots,
@@ -171,6 +166,14 @@ public enum MemoryExportBundleWriter {
             deviceKeyID: deviceKeyID,
             findingsSummary: report.findings
         )
+        let contentDigest = MemoryExportManifestDigest.digest(of: unsignedManifest)
+        let bundleID = MemoryExportIdentity.bundleID(contentDigest: contentDigest)
+        let manifest = withIdentity(unsignedManifest, bundleID: bundleID, contentDigest: contentDigest)
+
+        report.bundleID = bundleID
+        report.contentDigest = contentDigest
+        report.exporterDeviceKeyID = deviceKeyID
+        report.rehearsal = inputs.rehearsal
         let manifestData = MIFCanonicalJSON.data(manifest)
         let determinismDigest = MemoryExportDigest.sha256Hex(MIFCanonicalJSON.data(
             stripVolatile(manifest)
@@ -260,8 +263,8 @@ public enum MemoryExportBundleWriter {
     // swiftlint:disable:next function_parameter_count reason: the manifest is a wide record by construction
     static func manifestJSON(
         inputs: MemoryExportBundleInputs,
-        bundleID: String,
-        contentDigest: String,
+        bundleID: String?,
+        contentDigest: String?,
         hashtreeRoot: String,
         sections: [MemoryExportSectionBuffer],
         subroots: [MIFSection: String],
@@ -329,7 +332,6 @@ public enum MemoryExportBundleWriter {
             "mif_version": .int(1),
             "mif_minor": .int(2),
             "profile": .string(MIFProfile.migration.rawValue),
-            "bundle_id": .string(bundleID),
             "prev_bundle_id": .null,
             "producer_store_id": .string(inputs.context.storeID),
             "producer_device_id": .string(inputs.context.originDeviceID),
@@ -341,7 +343,6 @@ public enum MemoryExportBundleWriter {
             "schema_version": .int(inputs.context.schemaVersion),
             "sections": .array(headers),
             "min_importer_mif_version": .int(1),
-            "content_digest": .string(contentDigest),
             "hashtree": .object([
                 "alg": .string("hmac-sha256"),
                 "over": .string("ciphertext"),
@@ -409,6 +410,21 @@ public enum MemoryExportBundleWriter {
             "rollups": .array(rollups)
         ]
         if inputs.exportMode == "full" { fields["since_audit_seq"] = .null }
+        // Both are absent while the digest is being taken over this object and
+        // are put back by `withIdentity` — a digest cannot bind itself, and
+        // `bundle_id` is `"bnd_" + content_digest[0..<32]`, so neither carries
+        // anything the other members do not.
+        if let contentDigest { fields["content_digest"] = .string(contentDigest) }
+        if let bundleID { fields["bundle_id"] = .string(bundleID) }
+        return .object(fields)
+    }
+
+    /// The manifest as it is written: the digest of everything else, and the
+    /// bundle id that follows from it.
+    static func withIdentity(_ manifest: MIFJSON, bundleID: String, contentDigest: String) -> MIFJSON {
+        guard case .object(var fields) = manifest else { return manifest }
+        fields["content_digest"] = .string(contentDigest)
+        fields["bundle_id"] = .string(bundleID)
         return .object(fields)
     }
 
@@ -446,6 +462,12 @@ public enum MemoryExportBundleWriter {
         fields["created_at_ms"] = .null
         fields["recipient_key_id"] = .null
         fields["exporter_device_key_id"] = .null
+        // Both follow from the members blanked here — `content_digest` is the
+        // digest of the manifest itself now (F-1) and `bundle_id` is its first
+        // 32 hex characters — so leaving them in would compare the volatile
+        // members through the back door.
+        fields["content_digest"] = .null
+        fields["bundle_id"] = .null
         // `recipient_store_id` is NOT blanked. §2's determinism claim excludes
         // exactly `{created_at_ms, recipient_key_id, wrapped key, signature}`,
         // and blanking a deterministic field here is how the source-fingerprint

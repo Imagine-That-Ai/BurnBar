@@ -380,9 +380,9 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         // 1. The signed value edited after signing. D-0031 signs the 32 raw
         //    bytes of `content_digest`, not the manifest file — so this flips a
         //    hex digit of the digest itself, the thing the signature covers.
-        //    (A bare metadata edit is not covered by the signature under this
-        //    construction — that is D-0031's stated trade for a fixed-length
-        //    preimage no canonicaliser can move.)
+        //    A bare metadata edit is caught too, one check further down: the
+        //    digest is the manifest's own members, so it no longer reproduces
+        //    (F-1, and the six-member test below).
         let edited = try bundle("edited") { url in
             let path = url.appendingPathComponent("manifest.json")
             var manifest = try XCTUnwrap(
@@ -476,6 +476,132 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         XCTAssertTrue(verification.problems.contains { $0.contains("different recipient key") })
         XCTAssertTrue(verification.problems.contains { $0.contains("different target store") })
     }
+    // MARK: - content_digest binds the manifest (F-1)
+
+    /// §2, the determinism claim: "Determinism is claimed on `content_digest`
+    /// and on the manifest minus `{created_at_ms, recipient_key_id, wrapped
+    /// key, signature}`", and D-0031 ruling 1 signs the digest *because* of it:
+    /// "the digest already binds the manifest minus the four excluded members".
+    ///
+    /// So the digest has to be recomputable from `manifest.json` itself. It used
+    /// to be `sha256(JCS({<section>: sha256(plaintext), …, hashtree_root}))`,
+    /// which bound the section plaintexts and the tree and nothing else — the
+    /// crypto profile, the recipient binding and every count were rewritable on
+    /// the wire under a signature that still verified.
+    func test_theContentDigestIsTheManifestMinusItsExcludedMembers() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try export(maxSectionBytes: 512, to: directory, seed: "digest-preimage")
+
+        let manifestData = try Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+        let parsed = try XCTUnwrap(MIFCanonicalJSON.parse(manifestData))
+        XCTAssertEqual(
+            MemoryExportManifestDigest.digest(of: parsed),
+            result.contentDigest,
+            "the digest is recomputable from the manifest on disk"
+        )
+
+        // The preimage is the manifest minus exactly four members: §2's two that
+        // a manifest carries, plus the two a digest cannot bind because they are
+        // derived from it.
+        guard case .object(let preimage) = MemoryExportManifestDigest.preimage(parsed),
+              case .object(let all) = parsed else { return XCTFail("the manifest is a JSON object") }
+        XCTAssertEqual(
+            Set(all.keys).subtracting(preimage.keys),
+            ["created_at_ms", "recipient_key_id", "bundle_id", "content_digest"]
+        )
+        for member in ["crypto", "recipient_store_id", "user_id", "not_exported", "rollups", "hashtree", "sections"] {
+            XCTAssertNotNil(preimage[member], "\(member) is inside the signature")
+        }
+        // D-0031: the root is an input to `content_digest` — here, as a member
+        // of the manifest the digest is taken over.
+        guard case .object(let tree)? = preimage["hashtree"] else { return XCTFail("no hashtree member") }
+        let sidecar = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try Data(contentsOf: directory.appendingPathComponent("hashtree.json"))
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(tree["root"], .string(try XCTUnwrap(sidecar["root"] as? String)))
+
+        // And the claim is about MEMBERS, not bytes: a manifest reformatted by
+        // another JSON writer still reproduces its digest, which is why
+        // re-canonicalising is the check rather than hashing the file.
+        let reformatted = try JSONSerialization.data(
+            withJSONObject: try XCTUnwrap(JSONSerialization.jsonObject(with: manifestData) as? [String: Any]),
+            options: [.prettyPrinted]
+        )
+        XCTAssertEqual(MemoryExportManifestDigest.digest(ofManifestBytes: reformatted), result.contentDigest)
+    }
+
+    /// The review's own six edits, one bundle each. Every one of them left
+    /// `intact=true signature_verified=true checks=6 problems=[]` before:
+    /// the declared crypto profile, the recipient binding D-0025 ruling 2 exists
+    /// to make checkable, and the roll-up digest M-19 exists to make swaps
+    /// visible were all rewritable under a valid signature.
+    func test_editingAnyManifestMemberTheSignatureCoversFailsVerify() throws {
+        // Each case: what to change, and the member name `verify` can also NAME
+        // from a second witness inside the bundle (nil where the bundle carries
+        // only one copy of the fact — those are caught by the digest and named
+        // by it as a group).
+        let edits: [(name: String, edit: (inout [String: Any]) -> Void, named: String?)] = [
+            ("recipient_store_id", { $0["recipient_store_id"] = "attacker-store" }, "different target store"),
+            ("crypto.aead", { manifest in
+                var crypto = manifest["crypto"] as? [String: Any] ?? [:]
+                crypto["aead"] = "xchacha20poly1305"
+                manifest["crypto"] = crypto
+            }, nil),
+            ("user_id", { $0["user_id"] = "someone-else" }, nil),
+            ("not_exported", { $0["not_exported"] = ["forgotten_to_tombstone": 99, "out_of_window": 41] }, nil),
+            ("sections[5].row_count", { manifest in
+                var sections = manifest["sections"] as? [[String: Any]] ?? []
+                sections[5]["row_count"] = 999
+                manifest["sections"] = sections
+            }, "row_count"),
+            ("rollups[0].rollup_digest", { manifest in
+                var rollups = manifest["rollups"] as? [[String: Any]] ?? []
+                rollups[0]["rollup_digest"] = String(repeating: "0", count: 64)
+                manifest["rollups"] = rollups
+            }, "rollups[0].rollup_digest")
+        ]
+
+        for (name, edit, named) in edits {
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("mif-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            _ = try export(maxSectionBytes: 512, to: directory, seed: "tamper")
+
+            let path = directory.appendingPathComponent("manifest.json")
+            var manifest = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: try Data(contentsOf: path)) as? [String: Any]
+            )
+            edit(&manifest)
+            try JSONSerialization.data(withJSONObject: manifest).write(to: path)
+
+            let verification = try MemoryExportBundleVerifier.verify(
+                bundleAt: directory,
+                signingPublicKey: Self.signingKey.publicKey,
+                recipient: recipient
+            )
+            XCTAssertFalse(verification.isIntact, "editing \(name) must fail verification")
+            XCTAssertTrue(
+                verification.problems.contains {
+                    $0.contains("does not reproduce its declared content_digest")
+                },
+                "editing \(name) must break the digest, got: \(verification.problems)"
+            )
+            // The signature still verifies — it always did, and that is the
+            // point: it signs the digest, and the digest is now the manifest.
+            XCTAssertTrue(verification.signatureVerified, "\(name): the signature is over the declared digest")
+            if let named {
+                XCTAssertTrue(
+                    verification.problems.contains { $0.contains(named) },
+                    "editing \(name) must be NAMED, got: \(verification.problems)"
+                )
+            }
+        }
+    }
+
     private static func relativeFiles(in root: URL) throws -> [String] {
         guard let walker = FileManager.default.enumerator(atPath: root.path) else { return [] }
         var names: [String] = []
