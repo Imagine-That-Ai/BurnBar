@@ -438,20 +438,48 @@ public enum MIFSection: String, Sendable, CaseIterable {
     /// `10 findings` is read for the report and never applied.
     public var isMergeable: Bool { self != .findings }
 
-    /// The `(id, digest, digest)` triple this section's roll-up is taken over,
-    /// as `manifest.rollups[].tuple` declares it. The importer recomputes the
-    /// digest from these three field names post-apply and **holds** on a
-    /// mismatch, so a tuple that names the wrong field is not a label error: it
-    /// is a bundle nobody can import.
+    /// This section's roll-up tuple, transcribed exactly from D-0031 ruling 2
+    /// (which §2's record table repeats as the table's third column). The
+    /// importer recomputes the digest from these member names post-apply and
+    /// **holds** on `ROLLUP_DIGEST_MISMATCH`, so a tuple that names the wrong
+    /// field is not a label error: it is a bundle nobody can import.
+    /// `manifest.rollups[].tuple` carries the names; the digest is over the
+    /// tuples ordered by their first member, as the JCS encoding of the array.
     ///
-    /// 05 and 06 differ in the third element. 05 binds a memory to the sources
-    /// it cites; 06 binds it to the body text itself. Only sections that push
-    /// roll-up tuples appear here.
+    /// Only sections whose tuple is computable from the records BB-E emits
+    /// push roll-up tuples (05 and 02 today). The rest are transcribed here so
+    /// the declaration matches the contract, but emit no digest — §15 item 8
+    /// names the consequence: until the member settlement it records, those
+    /// digests are uncomputable and `ROLLUP_DIGEST_MISMATCH` is unreachable
+    /// for those sections:
+    ///
+    ///   * 00 `subject_content_key` — §2 forbids that field by name and the
+    ///     record carries only `subject_content_key_known`; BB-E's source
+    ///     tombstones carry a null `subject_memory_id` too;
+    ///   * 01 `receipt_id` — the receipt record has no id, it is keyed
+    ///     `(tombstone_id, peer_label)`;
+    ///   * 03 `superseding_id` — the member is `superseded_by_id` (and BB-E
+    ///     leaves section 03 empty anyway, D-BB-E-2);
+    ///   * 04 `project_id`/`fingerprint` — the project record carries neither;
+    ///   * 06 `seal_generation` — not a `record_body` member;
+    ///   * 07 names real members throughout, but BB-E's carried orphan markers
+    ///     have a null `source_content_hash`;
+    ///   * 08 `partition`/`count` — the members are `lane_label`/`row_count`;
+    ///   * 09 `seq` — the member is `peer_seq`;
+    ///   * 10 `finding_id`/`memory_id` — the finding record carries neither.
     public var rollupTuple: [String] {
         switch self {
-        case .memories: ["memory_id", "body_norm_digest", "provenance_digest"]
-        case .bodies: ["memory_id", "body_norm_digest", "body_join_key"]
-        default: ["memory_id", "body_norm_digest", "provenance_digest"]
+        case .tombstones: ["tombstone_id", "subject_memory_id", "wall_ms"]
+        case .tombstoneReceipts: ["receipt_id", "tombstone_id", "acked_at_ms"]
+        case .reviewEvents: ["event_id", "memory_id", "to_status"]
+        case .supersessions: ["supersession_id", "superseded_id", "superseding_id"]
+        case .projects: ["project_id", "fingerprint", ""]
+        case .memories: ["memory_id", "body_join_key", "body_norm_digest"]
+        case .bodies: ["body_join_key", "seal_generation", "byte_len"]
+        case .provenance: ["citation_id", "memory_id", "source_content_hash"]
+        case .embeddings: ["partition", "model_id", "count"]
+        case .auditEvidence: ["chain_epoch", "seq", "hash"]
+        case .findings: ["finding_id", "code", "memory_id"]
         }
     }
 

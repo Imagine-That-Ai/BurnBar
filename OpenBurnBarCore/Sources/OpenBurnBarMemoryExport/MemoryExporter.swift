@@ -365,23 +365,35 @@ public struct MemoryExporter: Sendable {
             let joinKey = MemoryExportCrypto.bodyJoinKey(bundleKey: bundleKey, body: gate.body)
             let normDigest = MemoryExportCrypto.bodyNormDigest(bundleKey: bundleKey, body: gate.body)
             let citations = (provenanceByMemory[memory.id] ?? []).sorted { $0.id < $1.id }
-            let provenanceDigest = Self.provenanceDigest(of: citations)
-            sections[.memories]?.append(memoryRecord, rollup: [canonicalID, normDigest, provenanceDigest])
+            // D-0031 ruling 2: 05 is `(memory_id, body_join_key,
+            // body_norm_digest)` — the join key, not the provenance digest.
+            sections[.memories]?.append(memoryRecord, rollup: [canonicalID, joinKey, normDigest])
+            // ...and 06 emits no rollup at all: its tuple names
+            // `seal_generation`, which `record_body` has no member for (§15
+            // item 8). The 05 tuple above still binds every body to its id.
             sections[.bodies]?.append(
-                MemoryExportRecords.bodyRecord(body: body, gate: gate, context: context),
-                rollup: [canonicalID, normDigest, joinKey]
+                MemoryExportRecords.bodyRecord(body: body, gate: gate, context: context)
             )
             memoriesTable.exported += 1
 
-            if let event = MemoryExportRecords.reviewEventRecord(
-                memoryID: canonicalID,
-                classification: classification,
-                bodyJoinKey: joinKey,
-                context: context
-            ) {
-                sections[.reviewEvents]?.append(event)
+            if let seq = classification.verdictAuditSeq,
+               let event = MemoryExportRecords.reviewEventRecord(
+                   memoryID: canonicalID,
+                   classification: classification,
+                   bodyJoinKey: joinKey,
+                   context: context
+               ) {
+                // D-0031 ruling 2: 02 is `(event_id, memory_id, to_status)`.
+                // The record is only minted for proven rows (D-BB-E-9), so the
+                // seq this recomputes the id from is the audit row section 09
+                // owes — the same seq, named once.
+                sections[.reviewEvents]?.append(event, rollup: [
+                    MemoryExportIdentity.reviewEventID(storeID: storeID, auditSeq: seq),
+                    canonicalID,
+                    classification.reviewStatus.rawValue
+                ])
                 report.auditProvenHuman += 1
-                if let seq = classification.verdictAuditSeq { auditSeqsSectionNineOwes.insert(seq) }
+                auditSeqsSectionNineOwes.insert(seq)
             } else if memory.reviewStatus == MIFReviewStatus.approved.rawValue {
                 report.approvedToQuarantined[classification.importOriginDetail, default: 0] += 1
             } else if classification.reviewStatus == .quarantined,
@@ -613,16 +625,14 @@ public struct MemoryExporter: Sendable {
                 userID: userID
             )
             let normDigest = MemoryExportCrypto.bodyNormDigest(bundleKey: bundleKey, body: gate.body)
-            // The declared 05 tuple's third element is the provenance digest, so
-            // a carried orphan computes it the same way every other row does.
-            // Its one `body_only` marker carries no `source_content_hash`, so
-            // that is the digest over an empty citation list — a value, not the
-            // empty string the roll-up used to be handed (review F-3).
+            // A carried orphan rolls up the same 05 tuple every other row
+            // does: its synthetic memory record carries the join key and the
+            // norm digest literally.
             sections[.memories]?.append(
                 synthetic.memory,
-                rollup: [canonicalID, normDigest, Self.provenanceDigest(of: [])]
+                rollup: [canonicalID, synthetic.joinKey, normDigest]
             )
-            sections[.bodies]?.append(synthetic.body, rollup: [canonicalID, normDigest, synthetic.joinKey])
+            sections[.bodies]?.append(synthetic.body)
             sections[.provenance]?.append(synthetic.provenance)
             carriedOrphanIDs.insert(snapshotRow.memoryID)
             report.syntheticOrphanMemories += 1
@@ -780,24 +790,6 @@ public struct MemoryExporter: Sendable {
     }
 
     // MARK: - Helpers
-
-    /// `manifest.rollups[]`'s third element for section 05, and the only place
-    /// it is computed — the importer recomputes it from the declared tuple and
-    /// HOLDS on a mismatch, so two call sites computing it two ways is a bundle
-    /// nobody can import.
-    ///
-    /// It digests exactly the `source_content_hash` values section 07 CARRIES.
-    /// A citation whose oracle hash is not 64 hex is emitted with a null hash
-    /// (the target's `provenance_live_hash_ck` refuses a `live` citation with
-    /// no hash), so digesting the raw column here would declare a value no
-    /// importer could reproduce from the bundle.
-    static func provenanceDigest(of citations: [MemoryExportProvenanceRow]) -> String {
-        let carried = citations
-            .map(\.contentHash)
-            .filter(MemoryExportBodyResolver.isHex64)
-            .sorted()
-        return MemoryExportDigest.sha256Hex(carried.joined(separator: "\u{1F}"))
-    }
 
     private func baseReport(mode: MemoryExportMode, snapshot: MemoryExportSourceSnapshot) -> MemoryExportReport {
         var report = MemoryExportReport(phase: mode == .dryRun ? .dryRun : .export)

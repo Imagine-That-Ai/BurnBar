@@ -68,7 +68,7 @@ let result = try exporter.export(snapshot, mode: .full, to: bundleURL)
 key exists nowhere, and the type refuses to represent one.
 
 Producing `<out>/manifest.json`, `manifest.sig`, `keys/wrapped-bundle-key`,
-`hashtree.json`, `sections/<NN-name>/NNN.ndjson.seal`, `lost.csv`, `id-map.csv`
+`hashtree.json`, `sections/<NN-name>/<index:05>.seg`, `lost.csv`, `id-map.csv`
 and `report.json`.
 
 ---
@@ -105,9 +105,10 @@ those has its own row in the reconciliation report where it has source rows to
 account for, rather than being folded into another table's `source_rows` to make
 a sum come out.
 
-Each section is written as one `NNN.ndjson.seal` per sealed segment, rotating at
+Each section is written as one `<index:05>.seg` per sealed segment, rotating at
 `--max-section-bytes` of ciphertext (default 256 MiB). The file index is the
-segment index the nonce and the chunk AAD are derived from.
+segment index the nonce and the chunk AAD are derived from (D-0031 ruling 1:
+five decimal digits, zero-padded, from 0).
 
 ---
 
@@ -198,10 +199,18 @@ there is not a MIF bundle*. What BB-E emits, item by item:
 | AEAD ∈ {`xchacha20poly1305`, `chacha20poly1305`}, declared | **`chacha20poly1305`**, `nonce_len` 12. CryptoKit ships no XChaCha20; §2.1 admits the substitution and requires the declaration |
 | Compression ∈ {`none`, `zstd`}, declared | **`none`**. BurnBar vendors no zstd. Declaring `none` is legal; silently ignoring a *declared* `zstd` is not |
 | `manifest.crypto{aead, compression, wrap, key_schedule}`, required | emitted, with `wrap` and `key_schedule` the contract's `const` values — which the wrap above is the only construction able to satisfy honestly |
+| Hash tree (D-0031 ruling 1): `ht_key = HKDF-SHA256(salt = "imaginethat.memory.hkdf.v1", bundle_key, "mif1/hashtree/v1")`, leaves `HMAC(key, 0x00 ‖ chunk)`, folds `HMAC(key, 0x01 ‖ l ‖ r)`, 4 MiB chunks over ciphertext | as stated. One salt constant, not two; pinned outside the code path by a test that recomputes a leaf straight from CryptoKit |
+| `manifest.sig` (D-0031 ruling 1): Ed25519 over the 32 raw bytes of `content_digest`, b64url unpadded | as stated. `verify` shares the preimage through one `sign`/`verifySignature` pair |
+| Segment files `sections/<NN-name>/<index:05>.seg`; root computed once, carried in `manifest.hashtree.root` and `hashtree.json`, input to `content_digest` | as stated. The one deliberate gap: `key_derivation` still emits the contract's pre-D-0031 `const` (D-BB-E-14) |
 
-**Three departures, all forced, all here rather than in the code's head:**
+**Three departures, all forced, all here rather than in the code's head —
+all three now CLOSED, kept for the archaeology:**
 
-1. **`manifest.recipient_key_id` cannot hold D-0025's id.** D-0025 ruling 2
+1. ~~**`manifest.recipient_key_id` cannot hold D-0025's id.**~~ **CLOSED by R4.**
+   D-0025 retyped the field to `recipient_key_id_null` and the schema was
+   re-vendored; the manifest carries the `rcp_` id and the R4 test opens the
+   HPKE wrap with exactly that string as the aad. The struck paragraph below
+   is what the second review found stale. D-0025 ruling 2
    defines `recipient_key_id = "rcp_" + sha256(public_key)[0..32]` and says an
    exporter copies it into `manifest.recipient_key_id`. The contract types that
    field `hex64_null` (`^[0-9a-f]{64}$`), and the manifest is
@@ -212,13 +221,16 @@ there is not a MIF bundle*. What BB-E emits, item by item:
    of which the id is a prefix, so an importer checks
    `manifest.recipient_key_id[0..32] == recipient_key_id[4..]` in one
    comparison. **For the spec owner:** either widen the field or restate the id.
-2. **`EXPORT_HPKE_UNAVAILABLE` and `EXPORT_RECIPIENT_REQUIRED` are not in the
-   contract's `export_error` set,** which `reconciliation_report.export_error`
+2. ~~**`EXPORT_HPKE_UNAVAILABLE` and `EXPORT_RECIPIENT_REQUIRED` are not in the
+   contract's `export_error` set,**~~ **CLOSED by Q-24.** Both codes are in the
+   contract now and the two Swift enums are merged into `MIFExportError`. What
+   remains below is the history. which `reconciliation_report.export_error`
    validates against. They live in their own Swift enum so a refusal can never
    produce a report no validator accepts. Both fire before any bundle or report
    is written. **For the spec owner:** add them to the closed set.
-3. **`manifest.sig` is not byte-reproducible.** §2 calls the signature "Ed25519
-   (deterministic, RFC 8032)". CryptoKit's `Curve25519.Signing` is *randomized*,
+3. ~~**`manifest.sig` is not byte-reproducible.**~~ **CLOSED by Q-24**, which
+   restated the determinism claim around a randomized signature; CryptoKit's
+   `Curve25519.Signing` is still *randomized*,
    so two signings of identical bytes under one key differ — both valid, and the
    on-disk determinism test is the evidence. Nothing downstream breaks, because
    §2's determinism claim already excludes the signature along with
@@ -264,7 +276,7 @@ in place for it". It was not: `--max-section-bytes` was the chunk size and
 nothing else, every sealed chunk was concatenated into one file, and `segments`
 reported a re-chunking of the ciphertext at a boundary that corresponded to
 nothing on disk. That is fixed — a section is now written as one
-`NNN.ndjson.seal` per sealed segment, rotating at `max_section_bytes` of
+`<index:05>.seg` per sealed segment (D-0031), rotating at `max_section_bytes` of
 *ciphertext*, and the file index is the same number the nonce and the chunk AAD
 are derived from.
 
@@ -341,6 +353,18 @@ migrated conversational row and a Po'dex-native one from ever forming the
 supersession edge the rehearsal profile asserts. Harmless and additive, but it
 is a departure and the review was right that it belonged here.
 
+
+### D-BB-E-14 — the `key_derivation` const still names the pre-D-0031 tree (spec-owner item)
+
+D-0031 ruling 1 pins the hash-tree key as salted HKDF (`salt =
+"imaginethat.memory.hkdf.v1"`, the §2.1 salt) with `0x00`/`0x01` domain bytes,
+and BB-E implements exactly that. But the contract's
+`manifest.hashtree.key_derivation` is still `const:
+"HKDF(bundle_key,'mif1/hashtree/v1')"` — the unsalted spelling — at the newest
+committed digest, so emitting the salted spelling fails validation on both
+sides. BB-E emits the const verbatim and implements the prose; the const update
+is a Po'dex-side contract change, recorded here rather than smuggled into a
+bundle no importer would accept.
 
 ### D-BB-E-13 — `store_id` comes from a row, not from the file
 
@@ -564,6 +588,4 @@ in review order, one commit per finding.
 | R8 | rows 1/5/10/15 uncovered; `isCloudOnly` unwired; absent label raises stored-`rejected` | **fixed** — row 1 asserts `human`/`human_verdict`; rows 5/10/15 and both row-11 raisings have tests; `isCloudOnly` is passed explicitly (`false`: authority-store rows are local by construction, D-BB-E-8) |
 | R9 | `store_id` comment claims an installation identity | **fixed** — the comment says what the row contributes (`deviceId` is `"unknown"`, `createdAt` is the only varying input, same-millisecond migrations collide); D-BB-E-13 states the migration defect; `report.json` gains no member (closed contract) and the doc says why |
 
-D-0031 layout alignment (segment names, hash-tree domains, `manifest.sig`
-preimage and rendering, per-type roll-up tuples) and the re-vendor at the
-newest committed schema digest land after R9, each as its own commit.
+| D-0031 | layout alignment: segment names, hash-tree domains, `manifest.sig`, roll-up tuples | **fixed** — `<index:05>.seg`; salted key with `0x00`/`0x01` domains; signature over the 32 raw digest bytes, b64url; root computed once, carried twice, input to the digest; 05/02 tuples as ruled, JCS-ordered; the rest transcribed but unemitted per §15 item 8. One open const (`key_derivation`, D-BB-E-14) is the spec owner's |

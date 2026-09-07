@@ -301,6 +301,67 @@ final class MemoryExportCryptoTests: XCTestCase {
         }
     }
 
+    // MARK: - D-0031: the hash tree's key and domains, the signature preimage
+
+    /// The tree is `HKDF-SHA256(salt = "imaginethat.memory.hkdf.v1",
+    /// bundle_key, "mif1/hashtree/v1")` with `0x00` leaves and `0x01` folds —
+    /// recomputed here straight from CryptoKit, outside the code path, so a
+    /// drift in the salt, the info string or either domain byte goes red. A
+    /// single small segment is one leaf, so its root IS the leaf.
+    func test_theHashTreeLeafIsHMACOver00ChunkUnderTheSaltedKey() {
+        let bundleKey = MemoryExportCrypto.deterministicBundleKey(seed: "domains")
+        let chunk = Data("a ciphertext chunk".utf8)
+        let htKey = HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: bundleKey,
+            salt: Data("imaginethat.memory.hkdf.v1".utf8),
+            info: Data("mif1/hashtree/v1".utf8),
+            outputByteCount: 32
+        )
+        let leaf = Data(HMAC<SHA256>.authenticationCode(for: Data([0x00]) + chunk, using: htKey))
+            .map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(
+            MemoryExportCrypto.hashTreeRoot(bundleKey: bundleKey, segments: [chunk]),
+            leaf
+        )
+        // And the fold domain differs from the leaf domain: without the bytes
+        // a 64-byte leaf and a two-leaf fold would be the same message.
+        let fold = Data(HMAC<SHA256>.authenticationCode(
+            for: Data([0x01]) + Data(repeating: 0, count: 32) + Data(repeating: 1, count: 32),
+            using: htKey
+        )).map { String(format: "%02x", $0) }.joined()
+        XCTAssertNotEqual(leaf, fold)
+    }
+
+    /// `manifest.sig` is Ed25519 over the 32 RAW bytes of `content_digest`,
+    /// rendered b64url unpadded — not over the 64 ASCII hex characters and not
+    /// over the manifest file. Signing the hex instead would sign 64 different
+    /// bytes; this test proves which one verifies.
+    func test_theManifestSignatureIsOverTheRawDigestBytes() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let digest = String(repeating: "ab", count: 32)
+        let sigText = try MemoryExportCrypto.sign(contentDigest: digest, signingKey: signingKey)
+        XCTAssertTrue(
+            MemoryExportCrypto.verifySignature(
+                sigText: sigText,
+                contentDigest: digest,
+                publicKey: signingKey.publicKey
+            )
+        )
+        // The ASCII hex does NOT verify as the preimage.
+        let hexAsBytes = Data(digest.utf8)
+        let rawSig = try XCTUnwrap(MemoryExportBase64URL.decode(sigText))
+        XCTAssertFalse(signingKey.publicKey.isValidSignature(rawSig, for: hexAsBytes))
+        // Neither does a neighbouring digest, nor garbage.
+        XCTAssertFalse(MemoryExportCrypto.verifySignature(
+            sigText: sigText,
+            contentDigest: "cb" + digest.dropFirst(2),
+            publicKey: signingKey.publicKey
+        ))
+        XCTAssertThrowsError(try MemoryExportCrypto.sign(contentDigest: "not-hex", signingKey: signingKey)) {
+            XCTAssertEqual($0 as? MemoryExportCryptoError, .malformedContentDigest)
+        }
+    }
+
     // MARK: - The recipient descriptor
 
     func test_aDescriptorWhoseKeyIDDoesNotFollowFromItsKeyIsRefused() throws {

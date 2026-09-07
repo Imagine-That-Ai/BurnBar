@@ -3,10 +3,10 @@
 // MemoryExportBundleWriter — the on-disk MIF v1 `migration` bundle.
 //
 //   <bundle>/  manifest.json            plaintext, JCS, no bodies, no per-row digests
-//              manifest.sig             Ed25519 over sha256(manifest.json)
+//              manifest.sig             Ed25519 over the 32 raw bytes of content_digest, b64url (D-0031)
 //              keys/wrapped-bundle-key  content key wrapped to the recipient
-//              hashtree.json            per-section subroots + root, keyed, over CIPHERTEXT
-//              sections/<NN-name>/      NDJSON, sealed
+//              hashtree.json            per-section subroots + THE root + unkeyed per-chunk sidecar (R5)
+//              sections/<NN-name>/<index:05>.seg   NDJSON, sealed (D-0031)
 //              lost.csv                 every row whose body could not be reconstructed
 //              id-map.csv               every rewritten memory_id (deviation D-BB-E-1)
 //              report.json              §10, phase "export"
@@ -25,7 +25,8 @@ import Crypto
 public struct MemoryExportSectionBuffer: Sendable {
     public var section: MIFSection
     public var records: [MIFJSON] = []
-    /// `(id, digest)` pairs the roll-up is taken over. Never emitted per row.
+    /// One D-0031 roll-up tuple per row, in the member order the section's
+    /// `rollupTuple` declares. Never emitted per row — only the digest travels.
     public var rollupTuples: [[String]] = []
 
     public init(section: MIFSection) { self.section = section }
@@ -125,17 +126,29 @@ public enum MemoryExportBundleWriter {
             )
         }
 
-        // 3. `content_digest` is over the PLAINTEXT section digests, which is
-        //    what makes it stable across two exports whose ciphertext differs.
+        // 3. The hash-tree root, computed ONCE. `manifest.hashtree.root` is
+        //    this value, `hashtree.json`'s copy is the same bytes for a verifier
+        //    that has not parsed the manifest, and there is no second,
+        //    independently computed root (D-0031 ruling 1).
+        let hashtreeRoot = MemoryExportCrypto.combineSubroots(
+            bundleKey: inputs.context.bundleKey,
+            subroots: MIFSection.allCases.map { subroots[$0] ?? "" }
+        )
+
+        // 4. `content_digest` is over the PLAINTEXT section digests — which is
+        //    what makes it stable across two exports whose ciphertext differs —
+        //    AND the hash-tree root, which is what binds the manifest to the
+        //    one tree (D-0031 ruling 1: the root is an input to the digest).
         let contentDigest = MemoryExportDigest.sha256Hex(MIFCanonicalJSON.data(.object(
             Dictionary(uniqueKeysWithValues: ordered.map { buffer in
                 // swiftlint:disable:next force_unwrapping reason: every section was written above
                 (buffer.section.rawValue, MIFJSON.string(MemoryExportDigest.sha256Hex(plaintexts[buffer.section]!)))
             })
+            .merging(["hashtree_root": .string(hashtreeRoot)]) { _, new in new }
         )))
         let bundleID = MemoryExportIdentity.bundleID(contentDigest: contentDigest)
 
-        // 4. Wrap the content key and sign.
+        // 5. Wrap the content key and sign the raw digest (D-0031).
         let wrapped = try MemoryExportCrypto.wrap(
             bundleKey: inputs.context.bundleKey,
             recipient: inputs.recipient
@@ -151,6 +164,7 @@ public enum MemoryExportBundleWriter {
             inputs: inputs,
             bundleID: bundleID,
             contentDigest: contentDigest,
+            hashtreeRoot: hashtreeRoot,
             sections: ordered,
             subroots: subroots,
             segments: segments,
@@ -189,11 +203,12 @@ public enum MemoryExportBundleWriter {
             destination: destination,
             manifestData: manifestData,
             signature: try inputs.signingKey.map {
-                try MemoryExportCrypto.sign(manifestBytes: manifestData, signingKey: $0)
+                try MemoryExportCrypto.sign(contentDigest: contentDigest, signingKey: $0)
             },
             wrapped: wrapped,
             segments: segments,
             subroots: subroots,
+            hashtreeRoot: hashtreeRoot,
             ordered: ordered,
             bundleKey: inputs.context.bundleKey,
             lostCSV: lostCSV,
@@ -248,6 +263,7 @@ public enum MemoryExportBundleWriter {
         inputs: MemoryExportBundleInputs,
         bundleID: String,
         contentDigest: String,
+        hashtreeRoot: String,
         sections: [MemoryExportSectionBuffer],
         subroots: [MIFSection: String],
         segments: [MIFSection: [Data]],
@@ -270,7 +286,7 @@ public enum MemoryExportBundleWriter {
                 "record_type": .string(buffer.section.recordTypePointer),
                 "subroot": .string(subroots[buffer.section] ?? String(repeating: "0", count: 64)),
                 "bytes": .int(ciphertextBytes),
-                // The number of `NNN.ndjson.seal` FILES this section is written
+                // The number of `<index:05>.seg` FILES this section is written
                 // as. It used to be the ciphertext re-chunked at
                 // `max_section_bytes`, a boundary that corresponded to nothing
                 // on disk — every section was one file however large it was
@@ -331,10 +347,16 @@ public enum MemoryExportBundleWriter {
                 "alg": .string("hmac-sha256"),
                 "over": .string("ciphertext"),
                 "chunk_bytes": .int(MemoryExportCrypto.hashTreeChunkBytes),
-                "root": .string(MemoryExportCrypto.combineSubroots(
-                    bundleKey: inputs.context.bundleKey,
-                    subroots: MIFSection.allCases.map { subroots[$0] ?? "" }
-                )),
+                // D-0031 ruling 1: THE root — the one computation, carried in
+                // exactly this one member. `hashtree.json`'s copy is the same
+                // bytes, and a bundle whose two roots disagree is rejected.
+                "root": .string(hashtreeRoot),
+                // The contract's `const`, verbatim — even though it still names
+                // the pre-D-0031 unsalted derivation while the key above follows
+                // D-0031's prose (salted, §2 HKDF_SALT). Emitting the salted
+                // spelling fails this const on both sides, so the const update
+                // is a Po'dex-side contract change; flagged for the spec owner
+                // in D-BB-E-14 rather than smuggled in here.
                 "key_derivation": .string("HKDF(bundle_key,'mif1/hashtree/v1')")
             ]),
             "determinism": .object([
@@ -406,15 +428,16 @@ public enum MemoryExportBundleWriter {
     }
 
     /// M-19: counts cannot catch a body attached to the wrong id. One digest per
-    /// section over the sorted `(id, digest)` list; never the per-row values, so
-    /// nothing leaks. A hand-edited bundle with two bodies swapped balances
-    /// every count and still fails here.
+    /// section over that section's D-0031 roll-up tuple — one tuple per row,
+    /// ORDERED BY THE TUPLE'S FIRST MEMBER and digested as the JCS encoding of
+    /// the array; never the per-row values anywhere else, so nothing leaks. A
+    /// hand-edited bundle with two bodies swapped balances every count and
+    /// still fails here.
     static func rollupDigest(_ tuples: [[String]]) -> String {
-        let joined = tuples
-            .map { $0.joined(separator: "\u{1F}") }
-            .sorted()
-            .joined(separator: "\n")
-        return MemoryExportDigest.sha256Hex(joined)
+        let ordered = tuples.sorted { $0.first ?? "" < $1.first ?? "" }
+        return MemoryExportDigest.sha256Hex(MIFCanonicalJSON.data(
+            .array(ordered.map { .array($0.map(MIFJSON.string)) })
+        ))
     }
 
     /// Determinism is claimed on the manifest MINUS these fields, so this is
@@ -476,10 +499,11 @@ public enum MemoryExportBundleWriter {
     private static func write(
         destination: URL,
         manifestData: Data,
-        signature: Data?,
+        signature: String?,
         wrapped: MemoryExportCrypto.WrappedBundleKey,
         segments: [MIFSection: [Data]],
         subroots: [MIFSection: String],
+        hashtreeRoot: String,
         ordered: [MemoryExportSectionBuffer],
         bundleKey: SymmetricKey,
         lostCSV: String,
@@ -494,7 +518,9 @@ public enum MemoryExportBundleWriter {
         try Data(idMapCSV.utf8).write(to: destination.appendingPathComponent("id-map.csv"))
 
         if let signature {
-            try signature.write(to: destination.appendingPathComponent("manifest.sig"))
+            // D-0031 ruling 1: the file is the b64url rendering, not raw
+            // signature bytes — like every other binary in the format.
+            try Data(signature.utf8).write(to: destination.appendingPathComponent("manifest.sig"))
         }
         let keys = destination.appendingPathComponent("keys")
         try manager.createDirectory(at: keys, withIntermediateDirectories: true)
@@ -502,11 +528,10 @@ public enum MemoryExportBundleWriter {
         // concatenation is unreadable by anything but its own writer.
         try Data(wrapped.wireForm.utf8).write(to: keys.appendingPathComponent("wrapped-bundle-key"))
 
+        // D-0031 ruling 1: this copy is the SAME bytes as
+        // `manifest.hashtree.root` — passed in, never recomputed.
         let tree = MIFJSON.object([
-            "root": .string(MemoryExportCrypto.combineSubroots(
-                bundleKey: bundleKey,
-                subroots: MIFSection.allCases.map { subroots[$0] ?? "" }
-            )),
+            "root": .string(hashtreeRoot),
             "sections": .object(Dictionary(uniqueKeysWithValues: ordered.map {
                 ($0.section.rawValue, MIFJSON.string(subroots[$0.section] ?? ""))
             })),
@@ -527,7 +552,7 @@ public enum MemoryExportBundleWriter {
             let directory = sections.appendingPathComponent(buffer.section.rawValue)
             try manager.createDirectory(at: directory, withIntermediateDirectories: true)
             // One file per sealed segment. An empty section still writes
-            // `000.ndjson.seal`, so a reader never has to distinguish "no
+            // `00000.seg`, so a reader never has to distinguish "no
             // segments" from "directory not written".
             let sealed = segments[buffer.section] ?? []
             for (index, segment) in (sealed.isEmpty ? [Data()] : sealed).enumerated() {
@@ -573,10 +598,13 @@ public enum MemoryExportBundleWriter {
         return out
     }
 
-    /// `000.ndjson.seal`, `001.ndjson.seal`, … The index is the segment index
-    /// the nonce and the chunk AAD are derived from, so the filename and the
-    /// cryptographic position are the same number by construction.
+    /// D-0031 ruling 1: `sections/<NN-name>/<index:05>.seg` — five decimal
+    /// digits, zero-padded, from 0. `manifest.sections[].segments` is that
+    /// count, so a reader knows every path in the bundle from the manifest
+    /// alone. The index is the segment index the nonce and the chunk AAD are
+    /// derived from, so the filename and the cryptographic position are the
+    /// same number by construction.
     static func segmentFilename(_ index: Int) -> String {
-        String(format: "%03d.ndjson.seal", index)
+        String(format: "%05d.seg", index)
     }
 }

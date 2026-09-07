@@ -288,10 +288,10 @@ final class MemoryExportBundleTests: XCTestCase {
     }
 
     /// One declared tuple element, resolved the way an importer resolves it.
-    /// `memory_id` and `body_norm_digest` are literal fields where the record
-    /// has them; a body record has no `memory_id`, so it is reached by the
-    /// `body_join_key` join that section 06 exists for, and `provenance_digest`
-    /// is derived from the section-07 rows that name the memory.
+    /// D-0031's emitted tuples (05, 02) are literal members on every record
+    /// that rolls up, so resolution is a field read — and a null or absent
+    /// member resolves to "" rather than skipping the row, which is exactly
+    /// what would make the recompute silently diverge from the declaration.
     private static func rollupValue(
         _ key: String,
         of record: MIFJSON,
@@ -299,37 +299,29 @@ final class MemoryExportBundleTests: XCTestCase {
     ) -> String {
         guard case .object(let fields) = record else { return "" }
         if case .string(let value) = fields[key] ?? .null { return value }
-        switch key {
-        case "memory_id":
-            guard case .string(let joinKey) = fields["body_join_key"] ?? .null else { return "" }
-            return string("memory_id", ofFirst: result.sectionBuffers[.memories]) {
-                if case .string(let candidate) = $0["body_join_key"] ?? .null { return candidate == joinKey }
-                return false
-            }
-        case "provenance_digest":
-            guard case .string(let memoryID) = fields["memory_id"] ?? .null else { return "" }
-            let hashes = (result.sectionBuffers[.provenance]?.records ?? []).compactMap { citation -> String? in
-                guard case .object(let citationFields) = citation,
-                      case .string(let owner) = citationFields["memory_id"] ?? .null, owner == memoryID,
-                      case .string(let hash) = citationFields["source_content_hash"] ?? .null else { return nil }
-                return hash
-            }
-            return MemoryExportDigest.sha256Hex(hashes.sorted().joined(separator: "\u{1F}"))
-        default:
-            return ""
-        }
+        if case .int(let number) = fields[key] ?? .null { return String(number) }
+        return ""
     }
 
-    private static func string(
-        _ key: String,
-        ofFirst buffer: MemoryExportSectionBuffer?,
-        where matches: ([String: MIFJSON]) -> Bool
-    ) -> String {
-        for record in buffer?.records ?? [] {
-            guard case .object(let fields) = record, matches(fields) else { continue }
-            if case .string(let value) = fields[key] ?? .null { return value }
-        }
-        return ""
+    // MARK: - D-0031: roll-up order and encoding, the one root
+
+    /// The digest is over the tuples ORDERED BY THEIR FIRST MEMBER, as the JCS
+    /// encoding of the array — not over US-joined lines in arrival order. Row
+    /// emission order must not move the digest.
+    func test_rollupDigestOrdersByFirstMemberAndDigestsJCS() {
+        let shuffled = [["mem_b", "jk_b", "nd_b"], ["mem_a", "jk_a", "nd_a"]]
+        let ordered = [["mem_a", "jk_a", "nd_a"], ["mem_b", "jk_b", "nd_b"]]
+        XCTAssertEqual(
+            MemoryExportBundleWriter.rollupDigest(shuffled),
+            MemoryExportBundleWriter.rollupDigest(ordered)
+        )
+        XCTAssertEqual(
+            MemoryExportBundleWriter.rollupDigest(ordered),
+            MemoryExportDigest.sha256Hex(Data(#"[["mem_a","jk_a","nd_a"],["mem_b","jk_b","nd_b"]]"#.utf8))
+        )
+        // The declared 05 tuple is the ruling's, in the ruling's order.
+        XCTAssertEqual(MIFSection.memories.rollupTuple, ["memory_id", "body_join_key", "body_norm_digest"])
+        XCTAssertEqual(MIFSection.reviewEvents.rollupTuple, ["event_id", "memory_id", "to_status"])
     }
 
     // MARK: - The delete obligation and the gate
@@ -387,7 +379,7 @@ final class MemoryExportBundleTests: XCTestCase {
         // The sealed body must not contain the credential. Reading it back
         // through the segment key is the only way to prove that.
         let sealed = try Data(contentsOf: directory
-            .appendingPathComponent("sections/06-bodies/000.ndjson.seal"))
+            .appendingPathComponent("sections/06-bodies/00000.seg"))
         let opened = try MemoryExportCrypto.open(
             sealedChunk: sealed,
             section: .bodies,

@@ -35,6 +35,13 @@ import CryptoKit
 import Crypto
 #endif
 
+/// Errors from the exporter's own crypto preconditions.
+public enum MemoryExportCryptoError: Error, Equatable {
+    /// `manifest.content_digest` is not 64 hex characters, so there are no 32
+    /// raw bytes to sign. A corrupt manifest must refuse, never sign garbage.
+    case malformedContentDigest
+}
+
 public enum MemoryExportCrypto {
 
     // MARK: - Bundle key
@@ -60,10 +67,10 @@ public enum MemoryExportCrypto {
     /// by both derivations in every language.
     public static let hkdfSalt = Data("imaginethat.memory.hkdf.v1".utf8)
 
-    /// The exporter's OWN derivations — the join key and the hash-tree key —
-    /// which are BurnBar-internal and named in the manifest rather than in
-    /// §2.1. They keep the unsalted shape they had; §2.1 governs `seg_key` and
-    /// the nonce, and those go through `derive(salted:)` below.
+    /// The exporter's OWN derivation — the join key — which is BurnBar-internal
+    /// and named in the manifest rather than in §2.1. It keeps the unsalted
+    /// shape it had. Everything §2.1 governs (`seg_key`, the nonce, and since
+    /// D-0031 the hash-tree key) goes through `derive(salted:)` below.
     public static func derive(from bundleKey: SymmetricKey, info: String, bytes: Int = 32) -> SymmetricKey {
         HKDF<SHA256>.deriveKey(
             inputKeyMaterial: bundleKey,
@@ -185,11 +192,27 @@ public enum MemoryExportCrypto {
 
     // MARK: - Hash tree
 
-    /// Leaves are `HMAC(HKDF(bundle_key,"mif1/hashtree/v1"), 4 MiB chunk of the
-    /// CIPHERTEXT)`, internal nodes `HMAC(left || right)` with last-node
-    /// promotion. Keyed AND over ciphertext: the manifest is not a confirmation
+    /// D-0031 ruling 1, byte-pinned: one key, one salt, two domain-separated
+    /// messages, in both profiles:
+    ///
+    /// ```
+    /// ht_key = HKDF-SHA256(salt = HKDF_SALT, ikm = bundle_key, info = "mif1/hashtree/v1", L = 32)
+    /// leaf   = HMAC-SHA256(ht_key, 0x00 ‖ chunk)          chunk = 4 MiB of the CIPHERTEXT segment
+    /// fold   = HMAC-SHA256(ht_key, 0x01 ‖ left ‖ right)   with last-node promotion
+    /// ```
+    ///
+    /// `HKDF_SALT` is §2.1's `"imaginethat.memory.hkdf.v1"` — the SAME salt as
+    /// `seg_key` and the nonce, so this implementation carries one salt
+    /// constant and not two. The two prefix bytes are the point: without them a
+    /// 64-byte leaf and a two-leaf fold are the same message under the same
+    /// key. Keyed AND over ciphertext: the manifest is not a confirmation
     /// oracle over user text, and a section is verified BEFORE it is decrypted.
     public static let hashTreeChunkBytes = 4 * 1024 * 1024
+
+    /// The leaf domain byte: `HMAC(ht_key, 0x00 ‖ chunk)`.
+    static let hashTreeLeafDomain = Data([0x00])
+    /// The fold domain byte: `HMAC(ht_key, 0x01 ‖ left ‖ right)`.
+    static let hashTreeFoldDomain = Data([0x01])
 
     public static func hashTreeRoot(bundleKey: SymmetricKey, ciphertext: Data) -> String {
         hashTreeRoot(bundleKey: bundleKey, segments: [ciphertext])
@@ -203,7 +226,7 @@ public enum MemoryExportCrypto {
     /// section's ciphertext at the one point in the export where memory is
     /// already the constraint (§2's ≤ 512 MiB, and F-14).
     public static func hashTreeRoot(bundleKey: SymmetricKey, segments: [Data]) -> String {
-        let key = derive(from: bundleKey, info: "mif1/hashtree/v1")
+        let key = derive(salted: bundleKey, info: "mif1/hashtree/v1", bytes: 32)
         var level: [Data] = []
         var leaf = Data()
         leaf.reserveCapacity(hashTreeChunkBytes)
@@ -215,23 +238,26 @@ public enum MemoryExportCrypto {
                 leaf.append(segment[offset..<end])
                 offset = end
                 if leaf.count == hashTreeChunkBytes {
-                    level.append(Data(HMAC<SHA256>.authenticationCode(for: leaf, using: key)))
+                    level.append(Data(HMAC<SHA256>.authenticationCode(for: hashTreeLeafDomain + leaf, using: key)))
                     leaf.removeAll(keepingCapacity: true)
                 }
             }
         }
         if leaf.isEmpty == false {
-            level.append(Data(HMAC<SHA256>.authenticationCode(for: leaf, using: key)))
+            level.append(Data(HMAC<SHA256>.authenticationCode(for: hashTreeLeafDomain + leaf, using: key)))
         }
         if level.isEmpty {
-            level = [Data(HMAC<SHA256>.authenticationCode(for: Data(), using: key))]
+            level = [Data(HMAC<SHA256>.authenticationCode(for: hashTreeLeafDomain + Data(), using: key))]
         }
         while level.count > 1 {
             var next: [Data] = []
             var index = 0
             while index < level.count {
                 if index + 1 < level.count {
-                    next.append(Data(HMAC<SHA256>.authenticationCode(for: level[index] + level[index + 1], using: key)))
+                    next.append(Data(HMAC<SHA256>.authenticationCode(
+                        for: hashTreeFoldDomain + level[index] + level[index + 1],
+                        using: key
+                    )))
                     index += 2
                 } else {
                     // Last-node promotion: an odd node rises unchanged rather
@@ -247,8 +273,13 @@ public enum MemoryExportCrypto {
     }
 
     /// Combine per-section subroots into the bundle root, in section order.
+    /// D-0031 computes the root once and carries it once: this is that one
+    /// computation, over the same salted key as the tree itself. The join is
+    /// the exporter's fold of section subroots (D-0031 pins leaf and fold, not
+    /// this join); what matters is that there is exactly one root and it is an
+    /// input to `content_digest`.
     public static func combineSubroots(bundleKey: SymmetricKey, subroots: [String]) -> String {
-        let key = derive(from: bundleKey, info: "mif1/hashtree/v1")
+        let key = derive(salted: bundleKey, info: "mif1/hashtree/v1", bytes: 32)
         let joined = Data(subroots.joined(separator: "\u{1F}").utf8)
         return HMAC<SHA256>.authenticationCode(for: joined, using: key)
             .map { String(format: "%02x", $0) }
@@ -334,10 +365,46 @@ public enum MemoryExportCrypto {
 
     // MARK: - Signature
 
-    /// Ed25519 (deterministic, RFC 8032) over `sha256(manifest.json)`.
-    public static func sign(manifestBytes: Data, signingKey: Curve25519.Signing.PrivateKey) throws -> Data {
-        let digest = Data(SHA256.hash(data: manifestBytes))
-        return try signingKey.signature(for: digest)
+    /// D-0031 ruling 1: Ed25519 over the 32 RAW bytes of
+    /// `manifest.content_digest` — the digest hex-decoded, not its 64 ASCII
+    /// characters and not `sha256(manifest.json)` — rendered base64url
+    /// unpadded like every other binary in the format. `content_digest`
+    /// already binds the manifest minus the excluded members, so signing it
+    /// signs the manifest at a fixed 32-byte length no canonicaliser can move.
+    public static func sign(contentDigest: String, signingKey: Curve25519.Signing.PrivateKey) throws -> String {
+        guard contentDigest.count == 64,
+              let raw = hexToData(contentDigest) else {
+            throw MemoryExportCryptoError.malformedContentDigest
+        }
+        return MemoryExportBase64URL.encode(try signingKey.signature(for: raw))
+    }
+
+    /// Hex-decode a digest into its raw bytes. Internal so the verifier shares
+    /// the exact preimage the signer signed — two spellings of "the 32 raw
+    /// bytes" is how interop breaks.
+    static func hexToData(_ hex: String) -> Data? {
+        guard hex.count % 2 == 0 else { return nil }
+        var out = Data()
+        out.reserveCapacity(hex.count / 2)
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
+            out.append(byte)
+            index = next
+        }
+        return out
+    }
+
+    /// Verify a `manifest.sig` rendering against the manifest's
+    /// `content_digest`: the exact inverse of `sign`, so a test that signs and
+    /// verifies through these two functions proves the file's preimage.
+    public static func verifySignature(sigText: String, contentDigest: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
+        guard let raw = hexToData(contentDigest),
+              let signature = MemoryExportBase64URL.decode(sigText.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return false
+        }
+        return publicKey.isValidSignature(signature, for: raw)
     }
 
     /// The exporter device key id shown in the importer's TOFU confirmation.

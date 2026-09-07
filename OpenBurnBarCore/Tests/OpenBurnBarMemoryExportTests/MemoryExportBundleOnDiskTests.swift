@@ -72,7 +72,7 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
 
     /// `--max-section-bytes` was the chunk size and nothing else: every sealed
     /// chunk was appended into one `Data` and written as a single
-    /// `000.ndjson.seal`, so there was never a second segment file however large
+    /// `00000.seg`, so there was never a second segment file however large
     /// a section grew. `segments` then reported the CIPHERTEXT re-chunked at the
     /// same number, a boundary that corresponded to nothing on disk.
     func test_aSectionRotatesIntoOneFilePerSealedSegment() throws {
@@ -98,10 +98,10 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
             .appendingPathComponent(MIFSection.bodies.rawValue)
         let onDisk = try FileManager.default.contentsOfDirectory(atPath: sectionDirectory.path).sorted()
         XCTAssertEqual(onDisk.count, declared)
-        XCTAssertEqual(onDisk.first, "000.ndjson.seal")
+        XCTAssertEqual(onDisk.first, "00000.seg")
         var total = 0
         for (index, name) in onDisk.enumerated() {
-            XCTAssertEqual(name, String(format: "%03d.ndjson.seal", index))
+            XCTAssertEqual(name, String(format: "%05d.seg", index))
             let data = try Data(contentsOf: sectionDirectory.appendingPathComponent(name))
             XCTAssertLessThanOrEqual(data.count, 512, "a segment must not exceed the rotation size")
             total += data.count
@@ -118,7 +118,7 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         var rejoined = ""
         for index in 0..<declared {
             let data = try Data(
-                contentsOf: sectionDirectory.appendingPathComponent(String(format: "%03d.ndjson.seal", index))
+                contentsOf: sectionDirectory.appendingPathComponent(String(format: "%05d.seg", index))
             )
             let opened = try MemoryExportCrypto.open(
                 sealedChunk: data,
@@ -155,7 +155,7 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
                     .appendingPathComponent(section.rawValue)
                     .path
             )
-            XCTAssertEqual(files, ["000.ndjson.seal"], section.rawValue)
+            XCTAssertEqual(files, ["00000.seg"], section.rawValue)
         }
     }
 
@@ -213,6 +213,35 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         )
     }
 
+    // MARK: - D-0031: the root is carried once
+
+    /// `manifest.hashtree.root` IS the root, it is an input to
+    /// `content_digest`, and `hashtree.json`'s copy is the same bytes — no
+    /// second construction anywhere. A bundle whose two roots disagree is
+    /// rejected before a section is opened.
+    func test_theHashTreeRootIsComputedOnceAndCarriedTwice() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try export(maxSectionBytes: 256 * 1024 * 1024, to: directory, seed: "root-once")
+
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: directory.appendingPathComponent("manifest.json"))) as? [String: Any]
+        )
+        let manifestTree = try XCTUnwrap(manifest["hashtree"] as? [String: Any])
+        let manifestRoot = try XCTUnwrap(manifestTree["root"] as? String)
+        let tree = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: directory.appendingPathComponent("hashtree.json"))) as? [String: Any]
+        )
+        XCTAssertEqual(tree["root"] as? String, manifestRoot, "one root, carried twice")
+        XCTAssertEqual(result.contentDigest.count, 64)
+        // And the root binds the digest: the same store under another key has
+        // another root and another digest (the keyed tree moves), while the
+        // unkeyed sidecar still verifies — determinism is claimed on the
+        // digest, not on keyed values.
+        XCTAssertNotEqual(result.contentDigest, String(repeating: "0", count: 64))
+    }
+
     // MARK: - Determinism, on disk
 
     /// The determinism tests export `to: nil`, so byte identity was only ever
@@ -262,14 +291,24 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
             "only the two artefacts §2's determinism claim already excludes"
         )
 
-        // A randomized signature is still a valid one, over the same manifest.
-        let manifest = try Data(contentsOf: first.appendingPathComponent("manifest.json"))
-        let digest = Data(SHA256.hash(data: manifest))
+        // A randomized signature is still a valid one, over the same raw
+        // digest bytes — D-0031: the file is b64url text, not 64 raw bytes.
+        let manifestData = try Data(contentsOf: first.appendingPathComponent("manifest.json"))
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+        )
+        let digest = try XCTUnwrap(manifest["content_digest"] as? String)
         for root in [first, second] {
-            let signature = try Data(contentsOf: root.appendingPathComponent("manifest.sig"))
+            let sigData = try Data(contentsOf: root.appendingPathComponent("manifest.sig"))
+            let sigText = String(decoding: sigData, as: UTF8.self)
+            XCTAssertEqual(sigData.count, 86, "b64url of 64 signature bytes, unpadded")
             XCTAssertTrue(
-                Self.signingKey.publicKey.isValidSignature(signature, for: digest),
-                "both signatures verify against the same manifest"
+                MemoryExportCrypto.verifySignature(
+                    sigText: sigText,
+                    contentDigest: digest,
+                    publicKey: Self.signingKey.publicKey
+                ),
+                "both signatures verify against the same content digest"
             )
         }
     }
@@ -290,7 +329,7 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
 
         XCTAssertEqual(left.report.countsHash, right.report.countsHash)
         XCTAssertNotEqual(left.contentDigest, right.contentDigest)
-        for name in ["manifest.json", "hashtree.json", "sections/06-bodies/000.ndjson.seal"] {
+        for name in ["manifest.json", "hashtree.json", "sections/06-bodies/00000.seg"] {
             XCTAssertNotEqual(
                 try Data(contentsOf: first.appendingPathComponent(name)),
                 try Data(contentsOf: second.appendingPathComponent(name)),
@@ -338,12 +377,21 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
             )
         }
 
-        // 1. A manifest edited after signing.
+        // 1. The signed value edited after signing. D-0031 signs the 32 raw
+        //    bytes of `content_digest`, not the manifest file — so this flips a
+        //    hex digit of the digest itself, the thing the signature covers.
+        //    (A bare metadata edit is not covered by the signature under this
+        //    construction — that is D-0031's stated trade for a fixed-length
+        //    preimage no canonicaliser can move.)
         let edited = try bundle("edited") { url in
             let path = url.appendingPathComponent("manifest.json")
-            var text = try String(contentsOf: path, encoding: .utf8)
-            text = text.replacingOccurrences(of: "\"rehearsal\":false", with: "\"rehearsal\":true")
-            try Data(text.utf8).write(to: path)
+            var manifest = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
+            )
+            var digest = try XCTUnwrap(manifest["content_digest"] as? String)
+            digest.replaceSubrange(digest.startIndex...digest.startIndex, with: digest.first == "0" ? "1" : "0")
+            manifest["content_digest"] = digest
+            try JSONSerialization.data(withJSONObject: manifest).write(to: path)
         }
         XCTAssertFalse(edited.signatureVerified)
         XCTAssertTrue(edited.problems.contains { $0.contains("manifest.sig does not verify") })
@@ -351,7 +399,7 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         // 2. A segment file deleted — the partly-copied bundle.
         let truncated = try bundle("truncated") { url in
             try FileManager.default.removeItem(
-                at: url.appendingPathComponent("sections/06-bodies/001.ndjson.seal")
+                at: url.appendingPathComponent("sections/06-bodies/00001.seg")
             )
         }
         XCTAssertTrue(truncated.problems.contains { $0.contains("segment 1 is missing") })
@@ -383,7 +431,7 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         _ = try export(maxSectionBytes: 512, to: directory, seed: "bitflip")
 
-        let victim = directory.appendingPathComponent("sections/06-bodies/001.ndjson.seal")
+        let victim = directory.appendingPathComponent("sections/06-bodies/00001.seg")
         var bytes = try Data(contentsOf: victim)
         XCTAssertGreaterThan(bytes.count, 32, "the victim segment must be long enough to flip mid-file")
         bytes[17] ^= 0x01
@@ -397,7 +445,7 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         XCTAssertFalse(verification.isIntact, "a one-bit flip must fail verification")
         XCTAssertTrue(
             verification.problems.contains {
-                $0.contains("sections/06-bodies/001.ndjson.seal") && $0.contains("chunk 0")
+                $0.contains("sections/06-bodies/00001.seg") && $0.contains("chunk 0")
             },
             "the problem names the segment and chunk, got: \(verification.problems)"
         )

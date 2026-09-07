@@ -79,12 +79,20 @@ public enum MemoryExportBundleVerifier {
 
         // 1. The signature. An unsigned bundle is a finding, not a pass: the
         //    importer pins this key on first import and must reject one without.
+        //    D-0031 ruling 1: the preimage is the 32 RAW bytes of
+        //    `content_digest` and the file is its b64url rendering — shared
+        //    with the signer through `sign`/`verifySignature`, so there is one
+        //    spelling of the preimage, not two.
         result.checksRun.append("manifest.sig")
         let signatureURL = url.appendingPathComponent("manifest.sig")
-        if let signature = try? Data(contentsOf: signatureURL) {
+        let contentDigestForSig = manifest["content_digest"] as? String ?? ""
+        if let sigText = try? String(contentsOf: signatureURL, encoding: .utf8) {
             if let signingPublicKey {
-                let digest = Data(SHA256.hash(data: manifestData))
-                result.signatureVerified = signingPublicKey.isValidSignature(signature, for: digest)
+                result.signatureVerified = MemoryExportCrypto.verifySignature(
+                    sigText: sigText,
+                    contentDigest: contentDigestForSig,
+                    publicKey: signingPublicKey
+                )
                 if result.signatureVerified == false {
                     result.problems.append("manifest.sig does not verify against this device's export signing key")
                 }
