@@ -153,6 +153,13 @@ public struct MemoryExporter: Sendable {
         var tombstonesTable = MemoryExportTableReconciliation(name: "memory_fact_tombstones")
         var sourceTombstonesTable = MemoryExportTableReconciliation(name: "memory_source_tombstones")
         var projectsTable = MemoryExportTableReconciliation(name: "pcm_projects")
+        // F-18: edges and aliases get their own closed sums. They used to be
+        // added to `agent_memories.source_rows` and `pcm_projects.source_rows`
+        // AFTER the fact, which made those numbers stop meaning "rows in the
+        // source table" and closed the balance by construction instead of
+        // checking it.
+        var edgesTable = MemoryExportTableReconciliation(name: "agent_memories.superseded_by")
+        var aliasesTable = MemoryExportTableReconciliation(name: "pcm_project_aliases")
 
         let stores = MemoryExportBodyStores(
             snapshotsByMemoryID: Dictionary(
@@ -170,6 +177,7 @@ public struct MemoryExporter: Sendable {
 
         var lost: [(memoryID: String, createdAtMS: Int, tags: [String], reason: String)] = []
         var idMappings: [MemoryExportIDMapping] = []
+        var mappedSourceIDs: Set<String> = []
         var findingCounts: [MIFFindingCode: Int] = [:]
         var findingSamples: [MIFFindingCode: [String]] = [:]
         var emittedTombstoneIDs: Set<String> = []
@@ -179,6 +187,9 @@ public struct MemoryExporter: Sendable {
         /// memory, or the delete is undone by the same bundle that carried it.
         var emittedTombstoneSubjects: Set<String> = []
         var carriedMemoryIDs: Set<String> = []
+        var tombstonedMemoryIDs: Set<String> = []
+        var unreconstructibleMemoryIDs: Set<String> = []
+        var carriedOrphanIDs: Set<String> = []
         /// M-20: rows 1-3 are the only `human` exits and "each names an
         /// `audit_seq` that section 09 must carry". The importer verifies each
         /// cited seq exists in 09, re-hashes it, and REFUSES the human claim
@@ -205,6 +216,24 @@ public struct MemoryExporter: Sendable {
             if let sample, (findingSamples[code]?.count ?? 0) < 5 {
                 findingSamples[code, default: []].append(sample)
             }
+        }
+
+        /// Canonicalise an oracle id AND record the rewrite, in one place.
+        ///
+        /// M-29's rule is that a lost row is named "by id", and `lost.csv` names
+        /// the CANONICAL id. Recording the mapping only in the resolved-body
+        /// path meant an app-lane row (UUID id, so always rewritten) whose body
+        /// was unreconstructible appeared in `lost.csv` under an id that
+        /// appeared nowhere else in the bundle and nowhere in `id-map.csv`, so
+        /// the operator could not map it back to the oracle row — which is the
+        /// entire purpose of naming it (review F-12). Tombstone subjects were
+        /// rewritten and unmapped for the same reason.
+        func canonical(_ rawID: String) -> String {
+            let id = MemoryExportIdentity.canonicalMemoryID(rawID, storeID: storeID)
+            if id != rawID, mappedSourceIDs.insert(rawID).inserted {
+                idMappings.append(MemoryExportIDMapping(sourceID: rawID, bundleID: id))
+            }
+            return id
         }
 
         // ---- 05 / 06 / 07: memories, bodies, provenance --------------------
@@ -248,13 +277,14 @@ public struct MemoryExporter: Sendable {
                     sourceTable: "agent_memories.forgotten",
                     sourceID: memory.id
                 )
+                tombstonedMemoryIDs.insert(memory.id)
                 if emittedTombstoneIDs.insert(tombstoneID).inserted {
                     emittedTombstoneSubjects.insert(
-                        MemoryExportIdentity.canonicalMemoryID(memory.id, storeID: storeID)
+                        canonical(memory.id)
                     )
                     sections[.tombstones]?.append(MemoryExportRecords.factTombstoneRecord(
                         tombstoneID: tombstoneID,
-                        subjectMemoryID: MemoryExportIdentity.canonicalMemoryID(memory.id, storeID: storeID),
+                        subjectMemoryID: canonical(memory.id),
                         userID: scope.userID,
                         scope: scope,
                         reason: .userForget,
@@ -279,9 +309,10 @@ public struct MemoryExporter: Sendable {
                 // invented, nothing resurrects.
                 for finding in failure.findings { record(finding, sample: memory.id) }
                 memoriesTable.reject(.bodyUnreconstructible)
+                unreconstructibleMemoryIDs.insert(memory.id)
                 report.bodiesUnreconstructible += 1
                 lost.append((
-                    memoryID: MemoryExportIdentity.canonicalMemoryID(memory.id, storeID: storeID),
+                    memoryID: canonical(memory.id),
                     createdAtMS: MemoryExportTimestamp.milliseconds(memory.createdAt),
                     tags: memory.tags,
                     reason: failure.reasonDetail
@@ -301,10 +332,7 @@ public struct MemoryExporter: Sendable {
             }
             if body.integrity == .recoveredLegacyPlaintext { memoriesTable.recoveredLegacyPlaintext += 1 }
 
-            let canonicalID = MemoryExportIdentity.canonicalMemoryID(memory.id, storeID: storeID)
-            if canonicalID != memory.id {
-                idMappings.append(MemoryExportIDMapping(sourceID: memory.id, bundleID: canonicalID))
-            }
+            let canonicalID = canonical(memory.id)
             carriedMemoryIDs.insert(memory.id)
 
             let memoryRecord = MemoryExportRecords.memoryRecord(
@@ -325,7 +353,6 @@ public struct MemoryExporter: Sendable {
                 rollup: [canonicalID, normDigest, joinKey]
             )
             memoriesTable.exported += 1
-            bodiesTable.exported += 1
 
             if let event = MemoryExportRecords.reviewEventRecord(
                 memoryID: canonicalID,
@@ -361,22 +388,20 @@ public struct MemoryExporter: Sendable {
             // empty and every edge is recomputed locally by the importer.
             if let target = memory.supersededBy {
                 report.derivedDedupEdges += 1
+                edgesTable.sourceRows += 1
                 if snapshot.memories.contains(where: { $0.id == target }) {
-                    memoriesTable.note(.derivedEdgeRecomputedLocally)
-                    memoriesTable.sourceRows += 1
+                    edgesTable.note(.derivedEdgeRecomputedLocally)
                 } else {
                     record(.danglingSupersession, sample: memory.id)
-                    memoriesTable.note(.danglingSupersession)
-                    memoriesTable.sourceRows += 1
+                    edgesTable.note(.danglingSupersession)
                 }
             }
         }
-        report.memoriesOut = memoriesTable.exported
 
         // ---- 00 / 01: tombstones and receipts ------------------------------
         tombstonesTable.sourceRows += snapshot.factTombstones.count
         for tombstone in snapshot.factTombstones.sorted(by: { $0.id < $1.id }) {
-            let subject = MemoryExportIdentity.canonicalMemoryID(tombstone.memoryID, storeID: storeID)
+            let subject = canonical(tombstone.memoryID)
             let id = MemoryExportIdentity.tombstoneID(
                 storeID: storeID,
                 sourceTable: "memory_fact_tombstones",
@@ -432,12 +457,12 @@ public struct MemoryExporter: Sendable {
             )
             guard emittedTombstoneIDs.insert(id).inserted else { continue }
             emittedTombstoneSubjects.insert(
-                MemoryExportIdentity.canonicalMemoryID(subjectID, storeID: storeID)
+                canonical(subjectID)
             )
             let projectID = delete.projectID ?? "chat:unscoped"
             sections[.tombstones]?.append(MemoryExportRecords.factTombstoneRecord(
                 tombstoneID: id,
-                subjectMemoryID: MemoryExportIdentity.canonicalMemoryID(subjectID, storeID: storeID),
+                subjectMemoryID: canonical(subjectID),
                 userID: MemoryExportPartition.pseudoProjectUserID(projectID) ?? userID,
                 scope: MemoryExportScope(
                     kind: .user,
@@ -468,7 +493,7 @@ public struct MemoryExporter: Sendable {
         // (review F-13).
         let owedDeleteSubjects = Set(deleteRows.compactMap { delete -> String? in
             if case .delta(let since, _) = mode, delete.seq <= since { return nil }
-            return delete.subjectID.map { MemoryExportIdentity.canonicalMemoryID($0, storeID: storeID) }
+            return delete.subjectID.map { canonical($0) }
         })
         guard owedDeleteSubjects.subtracting(emittedTombstoneSubjects).isEmpty else {
             throw MemoryExporterError.export(.deleteWithoutTombstone)
@@ -495,8 +520,8 @@ public struct MemoryExporter: Sendable {
             report.fingerprintDowngraded += 1
             record(.fingerprintDowngraded, sample: project.projectID)
             if project.pathAliasCount > 0 {
-                projectsTable.note(.pathAliasNotTransported, project.pathAliasCount)
-                projectsTable.sourceRows += project.pathAliasCount
+                aliasesTable.sourceRows += project.pathAliasCount
+                aliasesTable.note(.pathAliasNotTransported, project.pathAliasCount)
             }
         }
 
@@ -517,6 +542,7 @@ public struct MemoryExporter: Sendable {
             report.auditLabelsStripped += built.strippedLabels.count
             if built.strippedLabels.isEmpty == false { record(.auditLabelStripped, sample: String(row.seq)) }
         }
+        if snapshot.concurrentWrites { record(.concurrentWrites) }
         if chain.brokenAt.isEmpty == false { record(.chainBroken, count: chain.brokenAt.count) }
         if chain.forks.isEmpty == false { record(.chainFork, count: chain.forks.count) }
         if chain.seqDivergence { record(.seqDivergence) }
@@ -528,12 +554,11 @@ public struct MemoryExporter: Sendable {
         // `origin_kind: 'import'`, `dedup_partition: 'import'` and a single
         // body-only provenance marker — it cannot exist in the target any other
         // way, and saying so is the point.
-        bodiesTable.sourceRows = snapshot.bodySnapshots.count
         for snapshotRow in snapshot.bodySnapshots
         where referencedBodySnapshots.contains(snapshotRow.memoryID) == false {
             report.orphanBodies += 1
             record(.orphanBody, sample: snapshotRow.memoryID)
-            let canonicalID = MemoryExportIdentity.canonicalMemoryID(snapshotRow.memoryID, storeID: storeID)
+            let canonicalID = canonical(snapshotRow.memoryID)
             // §13 AD-2, and the delete-wins invariant: a forget is not undone by
             // the bundle that carried it. Carrying this orphan would re-mint the
             // memory under the very id section 00 just tombstoned, and every
@@ -549,9 +574,6 @@ public struct MemoryExporter: Sendable {
             let gate = options.gate.apply(to: orphanBody)
             report.gateClasses.record(gate)
             if gate.isHeld { record(.secretGateHeld, sample: snapshotRow.memoryID) }
-            if canonicalID != snapshotRow.memoryID {
-                idMappings.append(MemoryExportIDMapping(sourceID: snapshotRow.memoryID, bundleID: canonicalID))
-            }
             let synthetic = MemoryExportRecords.orphanBodyMemoryRecord(
                 snapshot: snapshotRow,
                 gate: gate,
@@ -570,10 +592,42 @@ public struct MemoryExporter: Sendable {
             )
             sections[.bodies]?.append(synthetic.body, rollup: [canonicalID, normDigest, synthetic.joinKey])
             sections[.provenance]?.append(synthetic.provenance)
-            bodiesTable.exported += 1
-            memoriesTable.exported += 1
-            memoriesTable.sourceRows += 1
+            carriedOrphanIDs.insert(snapshotRow.memoryID)
+            report.syntheticOrphanMemories += 1
         }
+        // The body table's closed sum is over ITS OWN rows. It used to count
+        // every body that reached section 06 as `exported`, including bodies
+        // recovered from `project_memory_snapshots` and `memory_quarantine_bodies`
+        // — rows of two other tables — so `memory_body_snapshots` did not
+        // balance and the fixture bundle was `held` without anyone noticing.
+        // Every row lands in exactly one bucket here, by construction of the
+        // if/else and not by adjusting `source_rows`.
+        bodiesTable.sourceRows = snapshot.bodySnapshots.count
+        for row in snapshot.bodySnapshots {
+            if referencedBodySnapshots.contains(row.memoryID) == false {
+                if carriedOrphanIDs.contains(row.memoryID) {
+                    bodiesTable.exported += 1
+                } else {
+                    bodiesTable.note(.orphanBodyNotCarried)
+                }
+            } else if carriedMemoryIDs.contains(row.memoryID) {
+                // The referencing memory travelled with a body. Where a daemon
+                // convention won the lane, this row's text is the same fact and
+                // its purpose in the source is discharged.
+                bodiesTable.exported += 1
+            } else if tombstonedMemoryIDs.contains(row.memoryID) {
+                bodiesTable.note(.forgottenToTombstone)
+            } else if unreconstructibleMemoryIDs.contains(row.memoryID) {
+                bodiesTable.reject(.bodyUnreconstructible)
+            } else {
+                bodiesTable.note(.outOfWindow)
+            }
+        }
+
+        // `memories_out` is what section 05 carries — the exported source rows
+        // plus any synthetic orphan — so it is set after the orphan pass.
+        report.memoriesOut = memoriesTable.exported + report.syntheticOrphanMemories
+
         provenanceTable.sourceRows = snapshot.provenance.count
         for citation in snapshot.provenance where carriedMemoryIDs.contains(citation.memoryID) == false {
             record(.orphanProvenance, sample: citation.memoryID)
@@ -628,7 +682,8 @@ public struct MemoryExporter: Sendable {
 
         report.tables = [
             memoriesTable, bodiesTable, provenanceTable,
-            tombstonesTable, sourceTombstonesTable, projectsTable
+            tombstonesTable, sourceTombstonesTable, projectsTable,
+            edgesTable, aliasesTable
         ]
         report.partialSources = options.partialSources
         report.recipientKeyID = recipient.keyID
@@ -688,6 +743,7 @@ public struct MemoryExporter: Sendable {
         report.snapshotMode = options.snapshotMode
         report.sourceQuickCheck = snapshot.sourceQuickCheck
         report.sourceIntegrityOK = snapshot.sourceQuickCheck == "ok"
+        report.concurrentWrites = snapshot.concurrentWrites
         report.partialSources = options.partialSources
         report.inventoriedStores = [.object([
             "label": .string("authority"),

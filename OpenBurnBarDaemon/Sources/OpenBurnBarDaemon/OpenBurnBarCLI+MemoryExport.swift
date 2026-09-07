@@ -100,10 +100,25 @@ extension BurnBarCLIRunner {
         }
 
         let queue = try openMemoryStore()
-        let snapshot = try queue.read { try MemoryExportStoreReader.read($0) }
+        // §3: "`audit_head_seq` is recorded at start and end". Three separate
+        // reads, deliberately — inside one transaction the head cannot move, so
+        // a single read could never observe the writer it is meant to detect.
+        let headBefore = try queue.read { try MemoryExportStoreReader.auditHead($0) }
+        var snapshot = try queue.read { try MemoryExportStoreReader.read($0) }
+        let headAfter = try queue.read { try MemoryExportStoreReader.auditHead($0) }
+        let concurrentWrites = headBefore.seq != headAfter.seq || headBefore.hash != headAfter.hash
+
+        guard let storeID = snapshot.storeIdentity else {
+            throw BurnBarCLIError.missingArgument(
+                "EXPORT_STORE_IDENTITY_ABSENT: this store carries neither a local `devices` row nor an "
+                    + "audit chain, so it has nothing that identifies it from the inside. Every canonical "
+                    + "id is seeded from that value, and the exporter will not invent one."
+            )
+        }
+        snapshot.concurrentWrites = concurrentWrites
         let exporter = MemoryExporter(
-            storeID: try Self.memoryStoreID(),
-            storeFingerprint: try Self.memoryStoreFingerprint(),
+            storeID: storeID,
+            storeFingerprint: MemoryExportDigest.sha256Hex(storeID),
             sourceVersion: BurnBarDaemonVersion.current,
             userID: nil,
             recipient: try Self.resolveRecipient(command),
@@ -162,25 +177,15 @@ extension BurnBarCLIRunner {
                 )
             }
             configuration.prepareDatabase { db in
-                try db.execute(sql: "PRAGMA key = '\(key)'")
+                // The key never reaches the SQL text. `validatedKeyForGRDB()`
+                // makes injection unreachable in practice, but a quote in the
+                // key would break the open with a confusing SQL error on a path
+                // that is otherwise carefully defensive — and a read-only export
+                // is the last place to hand-build a statement (review F-19).
+                try db.execute(sql: "PRAGMA key = ?", arguments: [key])
             }
         }
         return try DatabaseQueue(path: path, configuration: configuration)
-    }
-
-    /// A store identity that is not a path: the same value two runs of the same
-    /// store produce, and that a copy of the file elsewhere does NOT.
-    static func memoryStoreID() throws -> String {
-        let attributes = try FileManager.default.attributesOfItem(atPath: memoryStoreURL.path)
-        let inode = (attributes[.systemFileNumber] as? Int) ?? 0
-        let created = (attributes[.creationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        return "burnbar-" + String(
-            MemoryExportDigest.sha256Hex("\(inode)\u{1F}\(Int(created))").prefix(24)
-        )
-    }
-
-    static func memoryStoreFingerprint() throws -> String {
-        MemoryExportDigest.sha256Hex(try memoryStoreID())
     }
 
     // MARK: - Keys

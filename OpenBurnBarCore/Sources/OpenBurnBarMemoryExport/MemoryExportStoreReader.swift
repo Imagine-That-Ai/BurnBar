@@ -25,6 +25,7 @@ public enum MemoryExportStoreReader {
     public static func read(_ db: Database) throws -> MemoryExportSourceSnapshot {
         var snapshot = MemoryExportSourceSnapshot()
         snapshot.sourceQuickCheck = try String.fetchOne(db, sql: "PRAGMA quick_check") ?? "ok"
+        snapshot.storeIdentity = try storeIdentity(db)
 
         let memoryColumns = try columnNames(db, table: "agent_memories")
         guard memoryColumns.isEmpty == false else { return snapshot }
@@ -177,6 +178,48 @@ public enum MemoryExportStoreReader {
                 }
         }
         return snapshot
+    }
+
+    /// The store's identity, read from INSIDE the database.
+    ///
+    /// It seeds every canonical id — `mem_`, `tmb_`, `rev_`, `cit_` are all
+    /// `sha256(store_id ‖ …)` — so it has to survive everything that leaves the
+    /// user's data intact but rewrites the file. The old value was
+    /// `sha256(inode ‖ creation date)`, and an inode survives none of a Time
+    /// Machine restore, a `VACUUM`, an APFS clone or a reinstall: after any of
+    /// those the same oracle rows minted DIFFERENT ids, so a follow-up delta
+    /// duplicated every app-lane row in the target instead of updating it
+    /// (review F-11).
+    ///
+    /// The local `devices` row is written once, by migration v22, from the
+    /// app's own installation identity, and it is a row — so it is copied
+    /// verbatim by a restore, rewritten in place by a `VACUUM`, and cloned by an
+    /// APFS clone. That a byte copy of the store therefore yields the SAME id is
+    /// correct, not a weakness: a restored store is the same store, and the
+    /// migration's whole idempotency rests on it.
+    ///
+    /// The audit chain's genesis hash is the fallback for a store predating that
+    /// migration: it is equally in-file and equally immutable. A store with
+    /// neither returns nil, and the caller refuses rather than inventing one.
+    public static func storeIdentity(_ db: Database) throws -> String? {
+        if try tableExists(db, "devices"),
+           let row = try Row.fetchOne(
+               db,
+               sql: "SELECT deviceId, createdAt FROM devices WHERE isLocal = 1 ORDER BY createdAt LIMIT 1"
+           ),
+           let deviceID: String = row["deviceId"] {
+            let created: String = row["createdAt"] ?? ""
+            return identity(from: "devices\u{1F}\(deviceID)\u{1F}\(created)")
+        }
+        if try tableExists(db, "memory_audit"),
+           let genesis = try String.fetchOne(db, sql: "SELECT hash FROM memory_audit ORDER BY seq LIMIT 1") {
+            return identity(from: "memory_audit.genesis\u{1F}\(genesis)")
+        }
+        return nil
+    }
+
+    private static func identity(from material: String) -> String {
+        "burnbar-" + String(MemoryExportDigest.sha256Hex(material).prefix(24))
     }
 
     /// §5, P5 step 1/2: the head, read before and after the final delta. An

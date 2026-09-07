@@ -357,6 +357,15 @@ public struct MemoryExportSourceSnapshot: Sendable {
     public var auditTableAvailable: Bool
     public var auditHeadSeq: Int
     public var sourceQuickCheck: String?
+    /// The store's own identity, read from INSIDE the file — never from
+    /// filesystem metadata. Nil only when the store carries nothing that
+    /// identifies it, which the exporter treats as a refusal rather than
+    /// inventing one. See `MemoryExportStoreReader.storeIdentity`.
+    public var storeIdentity: String?
+    /// §3: the audit head is read before and after the snapshot, OUTSIDE its
+    /// transaction, and a move means a writer ran while the export read. A
+    /// finding, never a failure — the LaunchAgent stays up (D-0007).
+    public var concurrentWrites: Bool
 
     public init(
         memories: [MemoryExportMemoryRow] = [],
@@ -371,7 +380,9 @@ public struct MemoryExportSourceSnapshot: Sendable {
         embeddingLanes: [MemoryExportEmbeddingLane] = [],
         auditTableAvailable: Bool = true,
         auditHeadSeq: Int = 0,
-        sourceQuickCheck: String? = "ok"
+        sourceQuickCheck: String? = "ok",
+        storeIdentity: String? = nil,
+        concurrentWrites: Bool = false
     ) {
         self.memories = memories
         self.auditRows = auditRows
@@ -386,6 +397,8 @@ public struct MemoryExportSourceSnapshot: Sendable {
         self.auditTableAvailable = auditTableAvailable
         self.auditHeadSeq = auditHeadSeq
         self.sourceQuickCheck = sourceQuickCheck
+        self.storeIdentity = storeIdentity
+        self.concurrentWrites = concurrentWrites
     }
 }
 

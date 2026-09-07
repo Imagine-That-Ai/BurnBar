@@ -638,6 +638,116 @@ final class MemoryExportBundleTests: XCTestCase {
         XCTAssertEqual(nine["row_count"] as? Int, carriedSeqs.count)
     }
 
+
+    // MARK: - Reconciliation
+
+    /// F-18. `source_rows` used to be incremented after the fact — once per
+    /// supersession edge, once per path alias, once per carried orphan — so it
+    /// stopped meaning "rows in the source table" and the closed sum was closed
+    /// by construction rather than checked. It also counted every body that
+    /// reached section 06 against `memory_body_snapshots`, including bodies
+    /// recovered from two other tables, so that row did NOT balance and the
+    /// fixture bundle was `held` the whole time without a test noticing.
+    func test_everyTableBalancesOverItsOwnSourceRows() throws {
+        let snapshot = try MemoryExportFixtureStore.snapshot(try makeStore())
+        var exporter = makeExporter()
+        exporter.options.carryOrphans = true
+        let result = try exporter.export(
+            snapshot,
+            mode: .full,
+            to: nil,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "reconcile")
+        )
+
+        for table in result.report.tables {
+            XCTAssertTrue(
+                table.isBalanced,
+                "\(table.name): \(table.sourceRows) source rows vs \(table.exported) exported "
+                    + "+ \(table.notExported) + \(table.rejected)"
+            )
+        }
+        XCTAssertTrue(result.report.reconciles)
+        XCTAssertEqual(result.report.decision, .exported)
+
+        func table(_ name: String) throws -> MemoryExportTableReconciliation {
+            try XCTUnwrap(result.report.tables.first { $0.name == name })
+        }
+        // The numbers are the source tables' own row counts, unadjusted.
+        XCTAssertEqual(try table("agent_memories").sourceRows, snapshot.memories.count)
+        XCTAssertEqual(try table("memory_body_snapshots").sourceRows, snapshot.bodySnapshots.count)
+        XCTAssertEqual(try table("memory_fact_tombstones").sourceRows, 1, "the synthesized delete tombstone")
+
+        // A carried orphan is a `memory_body_snapshots` row that was exported,
+        // and a synthetic section-05 record. It is not an `agent_memories` row,
+        // and it no longer pretends to be one.
+        XCTAssertEqual(result.report.syntheticOrphanMemories, 1)
+        XCTAssertEqual(
+            result.report.memoriesOut,
+            (result.sectionBuffers[.memories]?.records.count ?? 0),
+            "memories_out is what section 05 carries"
+        )
+        // Edges and aliases have their own rows now, whether or not this fixture
+        // exercises them.
+        XCTAssertNotNil(result.report.tables.first { $0.name == "agent_memories.superseded_by" })
+        XCTAssertNotNil(result.report.tables.first { $0.name == "pcm_project_aliases" })
+    }
+
+    /// F-12. `lost.csv` names a row by its CANONICAL id, and that id used to
+    /// appear nowhere else in the bundle — the mapping was only recorded in the
+    /// resolved-body path, which an unreconstructible row never reaches. The
+    /// operator could not map the name back to the oracle row, which is the
+    /// entire purpose of naming it (M-29).
+    func test_everyRewrittenIDIsInTheIDMapIncludingLostAndTombstonedRows() throws {
+        let queue = try MemoryExportFixtureStore.makeQueue()
+        try queue.write { db in
+            // An app-lane row (UUID id, so always rewritten) with no body row at
+            // all: unreconstructible, and named in lost.csv.
+            try MemoryExportFixtureStore.insertAppMemory(
+                db,
+                id: "78E5A7B2-0000-4000-8000-000000000001",
+                body: "never stored",
+                writeBodySnapshot: false
+            )
+            // A forgotten row, whose tombstone subject is rewritten too.
+            try MemoryExportFixtureStore.insertAppMemory(
+                db,
+                id: "78E5A7B2-0000-4000-8000-000000000002",
+                body: "forgotten",
+                reviewStatus: "forgotten"
+            )
+        }
+        let snapshot = try MemoryExportFixtureStore.snapshot(queue)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try makeExporter().export(
+            snapshot,
+            mode: .full,
+            to: directory,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "idmap")
+        )
+        XCTAssertEqual(result.report.bodiesUnreconstructible, 1)
+
+        let idMap = try String(contentsOf: directory.appendingPathComponent("id-map.csv"), encoding: .utf8)
+        let mapped = Set(idMap.split(separator: "\n").dropFirst().compactMap { line -> String? in
+            line.split(separator: ",").last.map(String.init)
+        })
+        let lost = try String(contentsOf: directory.appendingPathComponent("lost.csv"), encoding: .utf8)
+        let lostIDs = Set(lost.split(separator: "\n").dropFirst().compactMap { line -> String? in
+            line.split(separator: ",").first.map(String.init)
+        })
+        XCTAssertEqual(lostIDs.count, 1)
+        XCTAssertTrue(lostIDs.isSubset(of: mapped), "a lost id must be mappable back to its oracle row")
+
+        let tombstoned = Set((result.sectionBuffers[.tombstones]?.records ?? []).compactMap { record -> String? in
+            guard case .object(let fields) = record,
+                  case .string(let id) = fields["subject_memory_id"] ?? .null else { return nil }
+            return id
+        })
+        XCTAssertEqual(tombstoned.count, 1)
+        XCTAssertTrue(tombstoned.isSubset(of: mapped), "a rewritten tombstone subject is a rewrite too")
+    }
+
     // MARK: - Helpers
 
     private func contractData() throws -> Data {

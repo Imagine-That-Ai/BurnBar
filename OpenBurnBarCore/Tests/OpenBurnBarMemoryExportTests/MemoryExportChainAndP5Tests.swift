@@ -155,4 +155,48 @@ final class MemoryExportChainAndP5Tests: XCTestCase {
         XCTAssertFalse(result.passed)
         XCTAssertEqual(result.holdReasons, [.reconciliationMismatch])
     }
+    // MARK: - Store identity (F-11)
+
+    /// Every canonical id is `sha256(store_id ‖ …)`, so `store_id` has to
+    /// survive everything that leaves the user's data intact but rewrites the
+    /// file. It used to be `sha256(inode ‖ creation date)`, and an inode
+    /// survives none of a Time Machine restore, a `VACUUM`, an APFS clone or a
+    /// reinstall — after any of those the same oracle rows minted DIFFERENT ids
+    /// and a follow-up delta duplicated every app-lane row in the target.
+    func test_theStoreIdentityComesFromInsideTheDatabase() throws {
+        let queue = try MemoryExportFixtureStore.makeQueue()
+        let identity = try queue.read { try MemoryExportStoreReader.storeIdentity($0) }
+        let again = try queue.read { try MemoryExportStoreReader.storeIdentity($0) }
+        XCTAssertNotNil(identity)
+        XCTAssertEqual(identity, again, "two reads of one store agree")
+        XCTAssertTrue(try XCTUnwrap(identity).hasPrefix("burnbar-"))
+
+        // A VACUUM rewrites every page and renumbers the file; the identity is a
+        // ROW, so it comes through unchanged. (An inode would not.)
+        try queue.writeWithoutTransaction { try $0.execute(sql: "VACUUM") }
+        XCTAssertEqual(try queue.read { try MemoryExportStoreReader.storeIdentity($0) }, identity)
+
+        // A byte copy of the store is the SAME store, and must mint the same
+        // ids — that is what makes a restore-then-delta idempotent rather than
+        // a duplication of every row.
+        let copy = try DatabaseQueue(path: ":memory:")
+        try queue.backup(to: copy)
+        XCTAssertEqual(try copy.read { try MemoryExportStoreReader.storeIdentity($0) }, identity)
+
+        // A DIFFERENT store is a different identity.
+        let other = try MemoryExportFixtureStore.makeQueue()
+        try other.write { db in
+            try db.execute(sql: "UPDATE devices SET deviceId = 'another-install' WHERE isLocal = 1")
+        }
+        XCTAssertNotEqual(try other.read { try MemoryExportStoreReader.storeIdentity($0) }, identity)
+    }
+
+    /// A store carrying nothing that identifies it from the inside returns nil,
+    /// and the CLI refuses. Inventing one would mint ids nothing else can
+    /// reproduce.
+    func test_aStoreWithNoIdentityInsideItReturnsNil() throws {
+        let queue = try DatabaseQueue(path: ":memory:")
+        XCTAssertNil(try queue.read { try MemoryExportStoreReader.storeIdentity($0) })
+    }
+
 }

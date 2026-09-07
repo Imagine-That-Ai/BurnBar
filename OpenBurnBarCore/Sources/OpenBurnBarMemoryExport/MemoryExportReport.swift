@@ -140,6 +140,10 @@ public struct MemoryExportReport: Sendable {
     public var bodiesRecoveredLegacyPlaintext = 0
     public var bodiesUnreconstructible = 0
     public var orphanBodies = 0
+    /// Carried orphans, which become synthetic section-05 rows. They are NOT
+    /// `agent_memories` rows, so they are counted here rather than inflating
+    /// that table's `source_rows` to make its closed sum come out (review F-18).
+    public var syntheticOrphanMemories = 0
     public var derivedDedupEdges = 0
 
     public var noUnprovenApproved = true
