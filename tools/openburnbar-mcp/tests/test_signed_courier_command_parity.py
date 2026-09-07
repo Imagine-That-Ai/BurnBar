@@ -210,9 +210,53 @@ def _direct_command_names() -> set[str]:
     )
 
 
+# `@main` reaches a stdin-JSON command one of two ways. Seven of them are still
+# hand-written `if arguments == ["name"]` branches. The project-code-memory
+# family is dispatched through a table in the runner library, because the branch
+# body is unreachable from a test while it lives inside an `exit()`-terminated
+# entry point. Both shapes are a real route; neither is taken on faith.
+_COURIER_TABLE_DECLARATION = "public enum ProjectCodeCourierCommand: String, CaseIterable, Sendable {"
+_COURIER_TABLE_LOOKUP = "BurnBarCLIRunner.ProjectCodeCourierCommand(rawValue: arguments[0])"
+_COURIER_TABLE_INVOCATION = "courierCommand.run("
+
+
+def _courier_table_commands() -> set[str]:
+    """The raw values of `BurnBarCLIRunner.ProjectCodeCourierCommand`."""
+    source = _CLI_RUNNER_PATH.read_text(encoding="utf-8")
+    start = source.index(_COURIER_TABLE_DECLARATION)
+    open_brace = source.index("{", start)
+    depth = 0
+    for offset in range(open_brace, len(source)):
+        if source[offset] == "{":
+            depth += 1
+        elif source[offset] == "}":
+            depth -= 1
+            if depth == 0:
+                body = source[open_brace : offset + 1]
+                break
+    else:  # pragma: no cover - an unterminated enum is a compile error first
+        raise AssertionError("unterminated ProjectCodeCourierCommand declaration")
+    return set(re.findall(r'case \w+ = "([a-z0-9-]+)"', body))
+
+
+def _consults_courier_table(cli_main_source: str) -> bool:
+    """Whether `@main` looks a command up in the table AND runs what it returns.
+
+    A case added to the enum but never reached from `@main` is not a route, so
+    the table only counts while both halves of the wiring are present.
+    """
+    return _COURIER_TABLE_LOOKUP in cli_main_source and _COURIER_TABLE_INVOCATION in cli_main_source
+
+
+def _dispatch_commands_in(cli_main_source: str) -> set[str]:
+    dispatched = set(re.findall(r'arguments == \["([a-z0-9-]+)"\]', cli_main_source))
+    if _consults_courier_table(cli_main_source):
+        dispatched |= _courier_table_commands()
+    return dispatched
+
+
 def _cli_main_dispatch_commands() -> set[str]:
-    source = _CLI_MAIN_PATH.read_text(encoding="utf-8")
-    return set(re.findall(r'arguments == \["([a-z0-9-]+)"\]', source))
+    return _dispatch_commands_in(_CLI_MAIN_PATH.read_text(encoding="utf-8"))
 
 
 def _rpc_method_cases() -> dict[str, str]:
@@ -297,6 +341,24 @@ def test_every_courier_command_is_dispatched_as_stdin_json() -> None:
     dispatched = _cli_main_dispatch_commands()
     missing = sorted(declared - dispatched)
     assert not missing, f"Courier commands with no stdin-JSON dispatch branch in OpenBurnBarCLIMain.swift: {missing}"
+
+
+def test_the_dispatch_check_fails_when_main_stops_consulting_the_courier_table() -> None:
+    """The table is only a route while `@main` actually consults it.
+
+    Without this, moving the dispatch into a library table would have turned the
+    stdin-JSON check into a tautology: three enum cases asserting about
+    themselves. Unwire the lookup and the three code commands must go missing
+    again, exactly as they did before this fix existed.
+    """
+    source = _CLI_MAIN_PATH.read_text(encoding="utf-8")
+    assert _consults_courier_table(source)
+    assert _courier_table_commands() == {"code-index-project", "code-watch-project", "code-explore"}
+
+    unwired = source.replace(_COURIER_TABLE_LOOKUP, "nil as BurnBarCLIRunner.ProjectCodeCourierCommand?")
+    assert unwired != source
+    assert not _consults_courier_table(unwired)
+    assert _dispatch_commands_in(unwired) & _courier_table_commands() == set()
 
 
 def test_every_courier_method_is_permitted_by_the_cli_peer_profile() -> None:
