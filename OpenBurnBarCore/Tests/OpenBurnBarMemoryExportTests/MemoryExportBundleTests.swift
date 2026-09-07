@@ -364,6 +364,88 @@ final class MemoryExportBundleTests: XCTestCase {
         }
     }
 
+    /// F-2, the one that corrupts truth. A `forgotten` row leaves as a section-00
+    /// tombstone and never appears in 05 — but its `memory_body_snapshots` row
+    /// survives the forget, and it was counted as an orphan because the
+    /// referenced-set was only written inside the resolved-body path. With
+    /// `--carry-orphans` that orphan was then re-minted as a synthetic
+    /// `quarantined` memory under the SAME canonical id the tombstone names, and
+    /// because sections apply in rank order the tombstone landed first and the
+    /// memory after it. The forget was undone, and every count balanced.
+    func test_aForgottenMemoryStaysForgottenEvenWithCarryOrphans() throws {
+        let queue = try MemoryExportFixtureStore.makeQueue()
+        try queue.write { db in
+            try MemoryExportFixtureStore.insertAppMemory(
+                db,
+                id: "forgotten-but-bodied",
+                body: "A thing the user asked to forget.",
+                reviewStatus: "forgotten"
+            )
+        }
+        let snapshot = try MemoryExportFixtureStore.snapshot(queue)
+        var exporter = makeExporter()
+        exporter.options.carryOrphans = true
+        let result = try exporter.export(
+            snapshot,
+            mode: .full,
+            to: nil,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "forget")
+        )
+
+        let tombstoned = Set(
+            (result.sectionBuffers[.tombstones]?.records ?? []).compactMap { record -> String? in
+                guard case .object(let fields) = record,
+                      case .string(let id) = fields["subject_memory_id"] ?? .null else { return nil }
+                return id
+            }
+        )
+        XCTAssertEqual(tombstoned.count, 1, "the forgotten row leaves as a tombstone")
+
+        let carried = Set(
+            (result.sectionBuffers[.memories]?.records ?? []).compactMap { record -> String? in
+                guard case .object(let fields) = record,
+                      case .string(let id) = fields["memory_id"] ?? .null else { return nil }
+                return id
+            }
+        )
+        XCTAssertTrue(
+            carried.isDisjoint(with: tombstoned),
+            "a tombstoned id must never also arrive as a memory: sections apply in rank order, "
+                + "so the memory would land after the tombstone and undo the forget"
+        )
+        XCTAssertTrue(result.report.noResurrectedTombstone)
+
+        // The body row is not an orphan at all: an authority row references it.
+        // Orphanhood is a fact about `agent_memories`, not about whether this
+        // export happened to resolve a body from the row.
+        XCTAssertEqual(result.report.orphanBodies, 0)
+    }
+
+    /// The same store WITHOUT the forget: the row is carried, so the fix did not
+    /// simply stop carrying things.
+    func test_theSameRowIsCarriedWhenItWasNeverForgotten() throws {
+        let queue = try MemoryExportFixtureStore.makeQueue()
+        try queue.write { db in
+            try MemoryExportFixtureStore.insertAppMemory(
+                db,
+                id: "forgotten-but-bodied",
+                body: "A thing the user asked to forget.",
+                reviewStatus: "quarantined"
+            )
+        }
+        let snapshot = try MemoryExportFixtureStore.snapshot(queue)
+        var exporter = makeExporter()
+        exporter.options.carryOrphans = true
+        let result = try exporter.export(
+            snapshot,
+            mode: .full,
+            to: nil,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "kept")
+        )
+        XCTAssertEqual(result.sectionBuffers[.memories]?.records.count, 1)
+        XCTAssertEqual(result.report.orphanBodies, 0)
+    }
+
     // MARK: - Delta
 
     func test_deltaCarriesOnlyAuditRowsAboveTheWatermark() throws {

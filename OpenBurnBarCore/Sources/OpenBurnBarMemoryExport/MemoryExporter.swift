@@ -167,9 +167,26 @@ public struct MemoryExporter: Sendable {
         var findingCounts: [MIFFindingCode: Int] = [:]
         var findingSamples: [MIFFindingCode: [String]] = [:]
         var emittedTombstoneIDs: Set<String> = []
+        /// The canonical `subject_memory_id` of every tombstone this bundle
+        /// emits. §2 applies sections in rank order, so a tombstone in 00 lands
+        /// BEFORE any memory in 05: an id in this set must not also arrive as a
+        /// memory, or the delete is undone by the same bundle that carried it.
+        var emittedTombstoneSubjects: Set<String> = []
         var carriedMemoryIDs: Set<String> = []
         var quarantineStoreBodies = 0
-        var bodySnapshotsReferenced: Set<String> = []
+
+        // §3.3(a) defines an orphan as "a body-snapshot row referenced by no
+        // AUTHORITY row" — a fact about `agent_memories`, not about whether this
+        // export happened to resolve a body from it. The old set was written in
+        // one place, inside the resolved-body path, so a `forgotten` row, an
+        // unreconstructible row and any row the delta window excluded all left
+        // their snapshot looking unreferenced (review F-2).
+        let referencedBodySnapshots: Set<String> = snapshot.bodySnapshots.reduce(into: []) { seen, row in
+            let slugRef = MemoryExportClassifier.appBodyRefPrefix + row.id
+            if snapshot.memories.contains(where: { $0.id == row.memoryID || $0.bodyRef == slugRef }) {
+                seen.insert(row.memoryID)
+            }
+        }
 
         func record(_ code: MIFFindingCode, sample: String? = nil, count: Int = 1) {
             findingCounts[code, default: 0] += count
@@ -218,6 +235,9 @@ public struct MemoryExporter: Sendable {
                     sourceID: memory.id
                 )
                 if emittedTombstoneIDs.insert(tombstoneID).inserted {
+                    emittedTombstoneSubjects.insert(
+                        MemoryExportIdentity.canonicalMemoryID(memory.id, storeID: storeID)
+                    )
                     sections[.tombstones]?.append(MemoryExportRecords.factTombstoneRecord(
                         tombstoneID: tombstoneID,
                         subjectMemoryID: MemoryExportIdentity.canonicalMemoryID(memory.id, storeID: storeID),
@@ -258,7 +278,6 @@ public struct MemoryExporter: Sendable {
             if body.integrity == .recoveredLegacyPlaintext { report.bodiesRecoveredLegacyPlaintext += 1 }
             if body.integrity == .mismatch || body.integrity == .divergent { report.allBodiesDigestMatch = false }
             if body.fromQuarantineStore { quarantineStoreBodies += 1 }
-            if body.recoveredFrom == .memoryBodySnapshots { bodySnapshotsReferenced.insert(memory.id) }
 
             let gate = options.gate.apply(to: body.body)
             report.gateClasses.record(gate)
@@ -354,6 +373,7 @@ public struct MemoryExporter: Sendable {
                 tombstonesTable.note(.cloudAlreadyLocal)
                 continue
             }
+            emittedTombstoneSubjects.insert(subject)
             sections[.tombstones]?.append(MemoryExportRecords.factTombstoneRecord(
                 tombstoneID: id,
                 subjectMemoryID: subject,
@@ -398,6 +418,9 @@ public struct MemoryExporter: Sendable {
                 sourceID: subjectID
             )
             guard emittedTombstoneIDs.insert(id).inserted else { continue }
+            emittedTombstoneSubjects.insert(
+                MemoryExportIdentity.canonicalMemoryID(subjectID, storeID: storeID)
+            )
             let projectID = delete.projectID ?? "chat:unscoped"
             sections[.tombstones]?.append(MemoryExportRecords.factTombstoneRecord(
                 tombstoneID: id,
@@ -481,9 +504,19 @@ public struct MemoryExporter: Sendable {
         // body-only provenance marker — it cannot exist in the target any other
         // way, and saying so is the point.
         bodiesTable.sourceRows = snapshot.bodySnapshots.count
-        for snapshotRow in snapshot.bodySnapshots where bodySnapshotsReferenced.contains(snapshotRow.memoryID) == false {
+        for snapshotRow in snapshot.bodySnapshots
+        where referencedBodySnapshots.contains(snapshotRow.memoryID) == false {
             report.orphanBodies += 1
             record(.orphanBody, sample: snapshotRow.memoryID)
+            let canonicalID = MemoryExportIdentity.canonicalMemoryID(snapshotRow.memoryID, storeID: storeID)
+            // §13 AD-2, and the delete-wins invariant: a forget is not undone by
+            // the bundle that carried it. Carrying this orphan would re-mint the
+            // memory under the very id section 00 just tombstoned, and every
+            // count would still balance.
+            guard emittedTombstoneSubjects.contains(canonicalID) == false else {
+                bodiesTable.note(.orphanBodyNotCarried)
+                continue
+            }
             guard options.carryOrphans, let orphanBody = snapshotRow.body else {
                 bodiesTable.note(.orphanBodyNotCarried)
                 continue
@@ -491,7 +524,6 @@ public struct MemoryExporter: Sendable {
             let gate = options.gate.apply(to: orphanBody)
             report.gateClasses.record(gate)
             if gate.isHeld { record(.secretGateHeld, sample: snapshotRow.memoryID) }
-            let canonicalID = MemoryExportIdentity.canonicalMemoryID(snapshotRow.memoryID, storeID: storeID)
             if canonicalID != snapshotRow.memoryID {
                 idMappings.append(MemoryExportIDMapping(sourceID: snapshotRow.memoryID, bundleID: canonicalID))
             }
@@ -549,6 +581,16 @@ public struct MemoryExporter: Sendable {
                 sampleSourceIDs: finding.sampleSourceIDs,
                 lostRecords: lostForCode
             ))
+        }
+
+        // §13 AD-2, checked rather than claimed: no id this bundle tombstones in
+        // section 00 may also arrive as a memory in section 05. Read back off
+        // the records that were actually emitted, so it is a property of the
+        // bundle rather than a property of the code that built it.
+        report.noResurrectedTombstone = (sections[.memories]?.records ?? []).allSatisfy { record in
+            guard case .object(let fields) = record,
+                  case .string(let id) = fields["memory_id"] ?? .null else { return true }
+            return emittedTombstoneSubjects.contains(id) == false
         }
 
         report.tables = [

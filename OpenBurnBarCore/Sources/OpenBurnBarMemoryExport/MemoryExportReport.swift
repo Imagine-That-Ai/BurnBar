@@ -145,6 +145,12 @@ public struct MemoryExportReport: Sendable {
     public var noUnprovenApproved = true
     public var allBodiesDigestMatch = true
     public var noKeyedFieldInBundle = true
+    /// §13 AD-2. Computed from the records the bundle actually carries, not
+    /// asserted: it used to be a hardcoded `true` justified as "the writer
+    /// enforces this by construction", and the writer did not — a `--carry-orphans`
+    /// export re-minted a forgotten memory under its own tombstone's id
+    /// (review F-2).
+    public var noResurrectedTombstone = true
 
     public var findings: [MemoryExportFinding] = []
     public var idSetDiff: MIFJSON?
@@ -276,9 +282,7 @@ public struct MemoryExportReport: Sendable {
             "target_integrity_check": .null,
             "invariants": .object([
                 "no_unproven_approved": .bool(noUnprovenApproved),
-                // Nothing resurrects: a tombstoned id is never re-emitted as a
-                // memory record, which the writer enforces by construction.
-                "no_resurrected_tombstone": .bool(true),
+                "no_resurrected_tombstone": .bool(noResurrectedTombstone),
                 "all_bodies_digest_match": .bool(allBodiesDigestMatch),
                 "rollup_digests_match": .bool(true),
                 "no_keyed_field_in_bundle": .bool(noKeyedFieldInBundle),
@@ -374,6 +378,10 @@ public struct MemoryExportReport: Sendable {
 
     /// Every table balances, no invariant is false, and nothing is held.
     public var reconciles: Bool {
-        tables.allSatisfy(\.isBalanced) && noUnprovenApproved && noKeyedFieldInBundle && holdReasons.isEmpty
+        tables.allSatisfy(\.isBalanced)
+            && noUnprovenApproved
+            && noKeyedFieldInBundle
+            && noResurrectedTombstone
+            && holdReasons.isEmpty
     }
 }
