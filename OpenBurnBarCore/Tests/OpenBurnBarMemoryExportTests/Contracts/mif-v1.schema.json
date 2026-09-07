@@ -5,7 +5,8 @@
   "description": "Owned by MEMORY_MIGRATION_SPEC.md v1.1 §2. One vocabulary, two profiles ('sync' = device<->device over a pairing channel; 'migration' = one-shot BurnBar->core). Canonical column names come from MEMORY_SCHEMA.md §10 / schema/memory-v1.sql. INVARIANT ENFORCED BY THIS FILE: no record carries an authority-computed keyed field. 'content_key', 'body_hmac', 'xdevice_hmac' and 'subject_content_key' are absent from every record type and every record object sets additionalProperties:false, so a bundle carrying one fails validation (MEMORY_MIGRATION_SPEC v1.1 M-05, review item 1, SCHEMA INV-15). MIF MINOR 2 [D-0021]: the manifest declares its crypto profile in a required 'crypto' object; record_memory gains the optional 'source_memory_id'; record_tombstone gains the optional 'scope_kind'; record_body.recovered_from gains 'memory_quarantine_bodies'. Every addition is additive, so min_importer_mif_version stays 1.",
   "oneOf": [
     { "$ref": "#/$defs/manifest" },
-    { "$ref": "#/$defs/reconciliation_report" }
+    { "$ref": "#/$defs/reconciliation_report" },
+    { "$ref": "#/$defs/hashtree_file" }
   ],
   "$defs": {
     "section_record_map": {
@@ -89,11 +90,12 @@
       "enum": ["body_unreconstructible","body_norm_digest_mismatch","record_too_large","schema_version_too_new","malformed_record","human_origin_without_audit_evidence","verdict_on_broken_chain_claimed_human","unknown_required_section","retired_by_non_subject_memory","retirement_on_content_key_tombstone"]
     },
     "hold_reason": {
-      "$comment": "D-0031 ruling 3: THE hold vocabulary, and it is closed - every one of these is a HELD REPORT carrying the reason, never an Err that produces no report, and the importer's enum is generated from this list or pinned by a test against it. `INVARIANT_FAILED:<inv>` is the one parameterised member and it is closed too: `<inv>` is one of the eight names of `reconciliation_report.integrity.invariants`, so a reader of a hold reason can always find the boolean it refers to. `BUNDLE_CLOCK_SKEW` is D-0032 ruling 3 - the ONLY reason that reads the importer's local clock, and it holds the whole bundle. `RECIPIENT_MISMATCH` is `manifest.recipient_store_id` not naming this store: right key, wrong store (sync review F-7), which the HPKE `aad` does not cover.",
+      "$comment": "D-0031 ruling 3: THE hold vocabulary, and it is closed - every one of these is a HELD REPORT carrying the reason, never an Err that produces no report, and the importer's enum is generated from this list or pinned by a test against it. `INVARIANT_FAILED:<inv>` is the one parameterised member and it is closed too: `<inv>` is one of the eight names of `reconciliation_report.integrity.invariants`, so a reader of a hold reason can always find the boolean it refers to. `BUNDLE_CLOCK_SKEW` is D-0032 ruling 3 - the ONLY reason that reads the importer's local clock, and it holds the whole bundle. `RECIPIENT_MISMATCH` is `manifest.recipient_store_id` not naming this store: right key, wrong store (sync review F-7), which the HPKE `aad` does not cover. `MANIFEST_INVALID` is D-0039 ruling 6 (Q-53): a manifest - or `hashtree.json` - that does not parse or does not validate is a HELD REPORT, never a serde error with no report, which is where interop run 1 stopped. Its parameterised form `MANIFEST_INVALID:<path>` is spelled like INVARIANT_FAILED's and the path grammar is the wire's closed one (MEMORY_WIRE_CONTRACT_V1.md s4.1): rooted at `manifest`, dotted member names and [index] steps. An importer that cannot render the path emits the BARE member rather than escaping bundle text into a hold reason.",
       "type": "string",
       "anyOf": [
-        { "enum": ["RECONCILIATION_MISMATCH","ROLLUP_DIGEST_MISMATCH","UNMIGRATABLE_SOURCE_PRESENT","RECIPIENT_KEY_UNAVAILABLE","SOURCE_INTEGRITY_FAILED","SIGNATURE_UNVERIFIED","HASHTREE_MISMATCH","EXPORTER_KEY_UNPINNED","TARGET_NOT_KEYED","GATE_UNAVAILABLE","MIF_VERSION_UNSUPPORTED","MIF_PROFILE_UNSUPPORTED","MIF_REQUIRED_SECTION_MISSING","MIF_REHEARSAL_BUNDLE_REFUSED","UNSCOPED_ROWS_NO_USER","P5_SOURCE_NOT_QUIESCED","P5_SOURCE_BUILD_TOO_OLD","MIGRATION_WINDOW_EXPIRED","VERDICT_WALL_MS_IN_FUTURE","RECIPIENT_MISMATCH","BUNDLE_CLOCK_SKEW"] },
-        { "pattern": "^INVARIANT_FAILED:(no_unproven_approved|no_resurrected_tombstone|all_bodies_digest_match|rollup_digests_match|no_keyed_field_in_bundle|target_keyed|audit_evidence_present_for_human_origin|no_orphan_verdict_applied)$" }
+        { "enum": ["RECONCILIATION_MISMATCH","ROLLUP_DIGEST_MISMATCH","UNMIGRATABLE_SOURCE_PRESENT","RECIPIENT_KEY_UNAVAILABLE","SOURCE_INTEGRITY_FAILED","SIGNATURE_UNVERIFIED","HASHTREE_MISMATCH","EXPORTER_KEY_UNPINNED","TARGET_NOT_KEYED","GATE_UNAVAILABLE","MIF_VERSION_UNSUPPORTED","MIF_PROFILE_UNSUPPORTED","MIF_REQUIRED_SECTION_MISSING","MIF_REHEARSAL_BUNDLE_REFUSED","UNSCOPED_ROWS_NO_USER","P5_SOURCE_NOT_QUIESCED","P5_SOURCE_BUILD_TOO_OLD","MIGRATION_WINDOW_EXPIRED","VERDICT_WALL_MS_IN_FUTURE","RECIPIENT_MISMATCH","BUNDLE_CLOCK_SKEW","MANIFEST_INVALID"] },
+        { "pattern": "^INVARIANT_FAILED:(no_unproven_approved|no_resurrected_tombstone|all_bodies_digest_match|rollup_digests_match|no_keyed_field_in_bundle|target_keyed|audit_evidence_present_for_human_origin|no_orphan_verdict_applied)$" },
+        { "pattern": "^MANIFEST_INVALID:manifest(\\.[A-Za-z_][A-Za-z0-9_]{0,63}|\\[[0-9]{1,9}\\])*$" }
       ]
     },
     "export_error": {
@@ -170,7 +172,10 @@
         },
         "rehearsal": { "type": "boolean" },
         "recipient_key_id": { "$ref": "#/$defs/recipient_key_id_null" },
-        "recipient_store_id": { "type": ["string","null"] },
+        "recipient_store_id": {
+          "$comment": "D-0039 ruling 7 (Q-53): the IMPORTER's store id, in the DDL's own grammar - `stores.store_id` is CHECK(GLOB 'sto_[0-9a-f]*' AND length = 36), i.e. 'sto_' + 32 lowercase hex (schema/memory-v1.sql). v1.1 typed it as any string, so a bundle could carry a recipient store id no store could ever hold and still validate, while RECIPIENT_MISMATCH is the hold that compares it to this store. The BurnBar exporter filled it with the SOURCE fingerprint (D-0025 rule 2), which a real store id makes visible instead of plausible.",
+          "type": ["string","null"], "pattern": "^sto_[0-9a-f]{32}$"
+        },
         "exporter_device_key_id": { "type": ["string","null"] },
         "export_mode": { "enum": ["full","delta"] },
         "since_audit_seq": { "type": ["integer","null"], "minimum": 0 },
@@ -233,9 +238,10 @@
     },
 
     "section_header": {
+      "$comment": "D-0039 ruling 6 (Q-53): `rollup_digest` is REQUIRED on all eleven sections and is no longer nullable. Every tuple D-0031 ruling 2 names is computable from contract-legal members after the Q-51 reconciliation, so there is no section left that can honestly write null - and nullable is what made ROLLUP_DIGEST_MISMATCH unreachable for eight of them while the counts still balanced. This is the one NON-additive move in this file; a manifest written before it no longer validates, which costs nothing because no bundle written before D-0021 exists outside test fixtures.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["name","rank","required","row_count","record_type","subroot","bytes"],
+      "required": ["name","rank","required","row_count","record_type","subroot","bytes","rollup_digest"],
       "properties": {
         "name": { "enum": ["00-tombstones","01-tombstone_receipts","02-review_events","03-supersessions","04-projects","05-memories","06-bodies","07-provenance","08-embeddings","09-audit_evidence","10-findings"] },
         "rank": { "type": "integer", "minimum": 0, "maximum": 10 },
@@ -246,7 +252,24 @@
         "subroot": { "$ref": "#/$defs/hex64" },
         "bytes": { "type": "integer", "minimum": 0 },
         "segments": { "type": "integer", "minimum": 1 },
-        "rollup_digest": { "$ref": "#/$defs/hex64_null" }
+        "rollup_digest": { "$ref": "#/$defs/hex64" }
+      }
+    },
+
+    "hashtree_file": {
+      "$comment": "D-0039 ruling 8 (Q-53): `hashtree.json` is a file a streaming verifier reads BEFORE it has parsed the manifest, and until now it had no $def at all - so the one artefact whose whole purpose is to be checked was the one artefact nothing checked. It is validated exactly like the manifest, and a file that does not parse or does not validate is the same held report, MANIFEST_INVALID. `subroots` is keyed by SECTION ID (the section_header `name` enum, numeric prefix included), so a reader knows which section each digest belongs to without positional guessing; `root` is the fold over those subroots as RAW 32-byte values in section order (D-0039 ruling 2) and is the same bytes as `manifest.hashtree.root` - a bundle whose two roots disagree is rejected before a section is opened (MIGRATION SPEC s2).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg","leaf_key_derivation","subroots","root"],
+      "properties": {
+        "alg": { "const": "hmac-sha256" },
+        "leaf_key_derivation": { "const": "HKDF(bundle_key,'mif1/hashtree/v1')" },
+        "subroots": {
+          "type": "object",
+          "propertyNames": { "enum": ["00-tombstones","01-tombstone_receipts","02-review_events","03-supersessions","04-projects","05-memories","06-bodies","07-provenance","08-embeddings","09-audit_evidence","10-findings"] },
+          "additionalProperties": { "$ref": "#/$defs/hex64" }
+        },
+        "root": { "$ref": "#/$defs/hex64" }
       }
     },
 
@@ -589,14 +612,18 @@
     },
 
     "record_body": {
+      "$comment": "D-0038 as amended (Q-52): the join is CONTENT-KEYED and this record carries NO `memory_id` - two memories with identical bodies share one body record, which is the join's purpose. `body_join_key` = HMAC-SHA256(K_join, canonical body bytes) and `body_norm_digest` = HMAC-SHA256(K_join, UTF-8(normalize(body))) under the SAME K_join = HKDF-SHA256(salt 'imaginethat.memory.hkdf.v1', bundle_key, 'mif1/join/v1', 32); `normalize` is MEMORY_SCHEMA.md s0.1's, the only one. The importer's private LP64(memory_id, body) form is deleted, and additionalProperties:false is what refuses it.",
       "type": "object", "additionalProperties": false,
       "required": ["profile","body_join_key","body_norm_digest","byte_len"],
       "properties": {
         "profile": { "$ref": "#/$defs/profile" },
         "body_join_key": { "$ref": "#/$defs/bundle_digest" },
         "body_norm_digest": { "$ref": "#/$defs/bundle_digest" },
-        "byte_len": { "type": "integer", "minimum": 0 },
-        "body": { "type": "string" },
+        "byte_len": { "type": "integer", "minimum": 0, "$comment": "The length of the CANONICAL bytes - the body as stored - not of the base64url rendering in `body`." },
+        "body": {
+          "$comment": "D-0038 ruling 2 (Q-52): base64url of the canonical body bytes, UNPADDED (s0.1's rendering for every binary in this format). The section AEAD seals the record; the record itself stays text-safe. `contentEncoding` has no registered base64url value, so the alphabet is the fence: a generator that writes the PLAINTEXT body - which is what the Wave 13 generator did, and why every memory row was rejected body_unreconstructible - fails validation at the exporter rather than at the importer's digest check.",
+          "type": "string", "pattern": "^[A-Za-z0-9_-]*$"
+        },
         "body_object": { "$ref": "#/$defs/hex64" },
         "summary": { "type": ["string","null"] },
         "recovered_from": {
@@ -764,7 +791,10 @@
           "properties": {
             "bundle_id": { "$ref": "#/$defs/bundle_id" },
             "mif_version": { "type": "integer" },
-            "mif_minor": { "type": "integer" },
+            "mif_minor": {
+              "$comment": "D-0039 ruling 5 (Q-53): this value MUST EQUAL `manifest.mif_minor` for the same bundle. The two live in two files, so no JSON Schema keyword can express the equality - it is one of the very few rules in this format that is prose (MIGRATION SPEC s10) plus a check (eval/checks/validate_mif.py, which pairs a report with its manifest and refuses a disagreeing pair). Interop run 1's exporter wrote manifest 2 beside report 1 for one bundle (M-9) and every schema on both sides was satisfied.",
+              "type": "integer"
+            },
             "profile": { "$ref": "#/$defs/profile" },
             "content_digest": { "$ref": "#/$defs/hex64" },
             "exporter_device_key_id": { "type": ["string","null"] },

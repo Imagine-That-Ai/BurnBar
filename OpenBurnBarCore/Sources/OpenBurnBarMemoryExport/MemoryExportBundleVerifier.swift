@@ -8,7 +8,7 @@
 // never retained here. `verify` used to return a sentence pointing at the
 // importer for that reason — which left a corrupted or truncated bundle
 // undetectable until it reached the other side (review F-16). What it CAN
-// recompute is the UNKEYED per-chunk `sha256` sidecar in `hashtree.json`
+// recompute is the UNKEYED per-chunk `sha256` sidecar in `segments.sha256.json`
 // (review R5): the tree is over ciphertext, so a plain hash leaks nothing and
 // a flipped bit names its segment and chunk without any key.
 //
@@ -23,8 +23,8 @@
 //   * every section directory holds exactly the `segments` files the manifest
 //     declares, summing to the declared `bytes` — which catches a truncated,
 //     partly-copied or partly-deleted bundle;
-//   * every segment file's 4 MiB chunks hash to `hashtree.json`'s unkeyed
-//     sidecar — which catches a MODIFIED segment, naming the file and chunk;
+//   * every segment file's 4 MiB chunks hash to `segments.sha256.json` — which
+//     catches a MODIFIED segment, naming the file and chunk;
 //   * `keys/wrapped-bundle-key` is the two-part b64url form §2.1 states, with a
 //     32-byte encapsulated key;
 //   * given the recipient descriptor, `recipient_key_id` and
@@ -163,7 +163,8 @@ public enum MemoryExportBundleVerifier {
             if (tree["root"] as? String) != (manifestTree?["root"] as? String) {
                 result.problems.append("hashtree.json's root disagrees with the manifest's")
             }
-            let subroots = tree["sections"] as? [String: String] ?? [:]
+            // `$defs/hashtree_file`'s member name [D-0039 ruling 8].
+            let subroots = tree["subroots"] as? [String: String] ?? [:]
             for header in headers {
                 guard let name = header["name"] as? String else { continue }
                 if subroots[name] != header["subroot"] as? String {
@@ -223,9 +224,8 @@ public enum MemoryExportBundleVerifier {
         //     in small reads against 4 MiB chunk boundaries, so a large segment
         //     never sits whole in memory here.
         result.checksRun.append("segment_sha256 \u{2194} files on disk")
-        if let treeData = try? Data(contentsOf: url.appendingPathComponent("hashtree.json")),
-           let tree = try? JSONSerialization.jsonObject(with: treeData) as? [String: Any],
-           let sidecar = tree["segment_sha256"] as? [String: [String]] {
+        if let sidecarData = try? Data(contentsOf: url.appendingPathComponent("segments.sha256.json")),
+           let sidecar = try? JSONSerialization.jsonObject(with: sidecarData) as? [String: [String]] {
             let chunkBytes = MemoryExportCrypto.hashTreeChunkBytes
             for path in sidecar.keys.sorted() {
                 let expected = sidecar[path] ?? []
@@ -261,8 +261,8 @@ public enum MemoryExportBundleVerifier {
             }
         } else {
             result.problems.append(
-                "hashtree.json carries no per-segment hashes; segment tampering is undetectable "
-                    + "— the bundle predates tamper-evident segments, re-export it"
+                "segments.sha256.json is missing; segment tampering is undetectable — the bundle "
+                    + "predates tamper-evident segments, re-export it"
             )
         }
 

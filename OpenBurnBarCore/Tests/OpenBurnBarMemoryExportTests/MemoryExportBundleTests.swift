@@ -166,12 +166,24 @@ final class MemoryExportBundleTests: XCTestCase {
         let key = MemoryExportCrypto.deterministicBundleKey(seed: "schema")
         let result = try makeExporter().export(snapshot, mode: .full, to: directory, bundleKey: key)
 
-        // The manifest and the report are the two documents the contract's
-        // top-level `oneOf` names.
+        // The THREE documents the contract's top-level `oneOf` names — the
+        // third is `hashtree.json`, which D-0039 ruling 8 typed because the one
+        // artefact whose whole purpose is to be checked was the one artefact
+        // nothing checked.
         let manifest = try json(at: directory.appendingPathComponent("manifest.json"))
         try validator.validate(manifest, against: "#/$defs/manifest")
         let report = try json(at: directory.appendingPathComponent("report.json"))
         try validator.validate(report, against: "#/$defs/reconciliation_report")
+        let tree = try json(at: directory.appendingPathComponent("hashtree.json"))
+        try validator.validate(tree, against: "#/$defs/hashtree_file")
+        // …and R5's unkeyed sidecar is a file of its own, because that `$def`
+        // is `additionalProperties: false` (D-BB-E-17). It is not a contract
+        // document; what matters is that it did not stay inside one.
+        let sidecar = try XCTUnwrap(
+            try json(at: directory.appendingPathComponent("segments.sha256.json")) as? [String: Any]
+        )
+        XCTAssertEqual(sidecar.count, MIFSection.allCases.count, "one entry per segment file")
+        XCTAssertNil((tree as? [String: Any])?["segment_sha256"])
 
         // Every section's records, against the pointer `section_record_map`
         // names for that section.
@@ -264,7 +276,21 @@ final class MemoryExportBundleTests: XCTestCase {
 
         let manifest = try XCTUnwrap(try json(at: directory.appendingPathComponent("manifest.json")) as? [String: Any])
         let rollups = try XCTUnwrap(manifest["rollups"] as? [[String: Any]])
-        XCTAssertFalse(rollups.isEmpty)
+        // D-0039 ruling 6: all eleven, and every section header carries the
+        // same digest. Eight of them used to be absent, which is what made
+        // `ROLLUP_DIGEST_MISMATCH` unreachable for those sections (M-12).
+        XCTAssertEqual(rollups.count, MIFSection.allCases.count)
+        let headers = try XCTUnwrap(manifest["sections"] as? [[String: Any]])
+        for header in headers {
+            let name = try XCTUnwrap(header["name"] as? String)
+            let digest = try XCTUnwrap(header["rollup_digest"] as? String, "\(name) declares none")
+            XCTAssertEqual(digest.count, 64, name)
+            XCTAssertEqual(
+                digest,
+                rollups.first { $0["section"] as? String == name }?["rollup_digest"] as? String,
+                "\(name): the header and rollups[] disagree"
+            )
+        }
 
         for rollup in rollups {
             let name = try XCTUnwrap(rollup["section"] as? String)
@@ -277,7 +303,7 @@ final class MemoryExportBundleTests: XCTestCase {
             // sections exactly where the importer has to. If the tuple named a
             // value the bundle cannot reproduce, this is where it would hold.
             let rows = (result.sectionBuffers[section]?.records ?? []).map { record in
-                tuple.map { key in Self.rollupValue(key, of: record, in: result) }
+                tuple.map { key in Self.rollupValue(key, of: record) }
             }
             XCTAssertEqual(rows.count, rollup["row_count"] as? Int, name)
             XCTAssertEqual(
@@ -288,30 +314,36 @@ final class MemoryExportBundleTests: XCTestCase {
         }
     }
 
-    /// One declared tuple element, resolved the way an importer resolves it.
-    /// D-0031's emitted tuples (05, 02) are literal members on every record
-    /// that rolls up, so resolution is a field read — and a null or absent
-    /// member resolves to "" rather than skipping the row, which is exactly
-    /// what would make the recompute silently diverge from the declaration.
-    private static func rollupValue(
-        _ key: String,
-        of record: MIFJSON,
-        in result: MemoryExportBundleResult
-    ) -> String {
-        guard case .object(let fields) = record else { return "" }
-        if case .string(let value) = fields[key] ?? .null { return value }
-        if case .int(let number) = fields[key] ?? .null { return String(number) }
-        return ""
+    /// One declared tuple element, resolved the way an importer resolves it:
+    /// a member lookup on the record, keeping the JSON TYPE — Q-51 (ii) orders
+    /// numbers numerically and nulls first, so a stringified `byte_len` would
+    /// sort and digest differently. An absent member is `null` (Q-51 (iii)),
+    /// never a skipped row, and an EMPTY declared name is the literal empty
+    /// string, which is section 04's third leg and nothing else.
+    private static func rollupValue(_ key: String, of record: MIFJSON) -> MIFJSON {
+        guard case .object(let fields) = record else { return .null }
+        return key.isEmpty ? .string("") : (fields[key] ?? .null)
     }
 
     // MARK: - D-0031: roll-up order and encoding, the one root
 
-    /// The digest is over the tuples ORDERED BY THEIR FIRST MEMBER, as the JCS
-    /// encoding of the array — not over US-joined lines in arrival order. Row
-    /// emission order must not move the digest.
-    func test_rollupDigestOrdersByFirstMemberAndDigestsJCS() {
-        let shuffled = [["mem_b", "jk_b", "nd_b"], ["mem_a", "jk_a", "nd_a"]]
-        let ordered = [["mem_a", "jk_a", "nd_a"], ["mem_b", "jk_b", "nd_b"]]
+    /// The digest is over the tuples sorted MEMBER BY MEMBER — Q-51 (i) and
+    /// (ii) — as the JCS encoding of the array of arrays, so row emission order
+    /// cannot move it.
+    ///
+    /// "Ordered by the tuple's first member" is not an order when two rows share
+    /// one, which is the defect this replaced: two implementations sorting a tie
+    /// differently produce different digests from the same rows, and the
+    /// importer holds `ROLLUP_DIGEST_MISMATCH` with nothing to diagnose.
+    func test_rollupDigestSortsMemberByMemberInJSONValueOrder() {
+        let shuffled: [[MIFJSON]] = [
+            [.string("mem_b"), .string("jk_b"), .string("nd_b")],
+            [.string("mem_a"), .string("jk_a"), .string("nd_a")]
+        ]
+        let ordered: [[MIFJSON]] = [
+            [.string("mem_a"), .string("jk_a"), .string("nd_a")],
+            [.string("mem_b"), .string("jk_b"), .string("nd_b")]
+        ]
         XCTAssertEqual(
             MemoryExportBundleWriter.rollupDigest(shuffled),
             MemoryExportBundleWriter.rollupDigest(ordered)
@@ -320,9 +352,64 @@ final class MemoryExportBundleTests: XCTestCase {
             MemoryExportBundleWriter.rollupDigest(ordered),
             MemoryExportDigest.sha256Hex(Data(#"[["mem_a","jk_a","nd_a"],["mem_b","jk_b","nd_b"]]"#.utf8))
         )
-        // The declared 05 tuple is the ruling's, in the ruling's order.
+
+        // A tie on the first member is decided by the second, and on the second
+        // by the third: the whole point of (i).
+        let tied: [[MIFJSON]] = [
+            [.string("t"), .string("peer-b"), .int(2)],
+            [.string("t"), .string("peer-a"), .int(9)]
+        ]
+        XCTAssertEqual(
+            MemoryExportBundleWriter.rollupDigest(tied),
+            MemoryExportDigest.sha256Hex(Data(#"[["t","peer-a",9],["t","peer-b",2]]"#.utf8))
+        )
+
+        // (ii) null first, then booleans, then numbers NUMERICALLY, then
+        // strings. `10` before `9` would be the string reading.
+        let typed: [[MIFJSON]] = [
+            [.string("s"), .int(10)],
+            [.string("s"), .int(9)],
+            [.null, .int(0)],
+            [.string("s"), .bool(true)]
+        ]
+        XCTAssertEqual(
+            MemoryExportBundleWriter.rollupDigest(typed),
+            MemoryExportDigest.sha256Hex(Data(#"[[null,0],["s",true],["s",9],["s",10]]"#.utf8))
+        )
+
+        // (iii) an absent member is null and a shorter tuple sorts first.
+        XCTAssertTrue(MemoryExportBundleWriter.precedes([.string("a")], [.string("a"), .null]))
+
+        // The declared tuples are the ruling's, in the ruling's order.
         XCTAssertEqual(MIFSection.memories.rollupTuple, ["memory_id", "body_join_key", "body_norm_digest"])
         XCTAssertEqual(MIFSection.reviewEvents.rollupTuple, ["event_id", "memory_id", "to_status"])
+        XCTAssertEqual(MIFSection.bodies.rollupTuple, ["body_join_key", "body_norm_digest", "byte_len"])
+        XCTAssertEqual(MIFSection.findings.rollupTuple, ["code", "severity", "count", "detail"])
+        XCTAssertEqual(MIFSection.projects.rollupTuple, ["project_id", "fingerprint", ""])
+    }
+
+    /// Q-51's rule that every tuple names members the SCHEMA defines, checked
+    /// against the vendored contract rather than against this file's memory of
+    /// it. A tuple naming a member no record type has is a digest of nulls —
+    /// which is how eight sections came to have no honest digest at all.
+    func test_everyRollupTupleNamesMembersTheContractDefines() throws {
+        let schema = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try contractData()) as? [String: Any]
+        )
+        for section in MIFSection.allCases {
+            let pointer = section.recordTypePointer.replacingOccurrences(of: "#/$defs/", with: "")
+            let properties = try XCTUnwrap(
+                ((schema["$defs"] as? [String: Any])?[pointer] as? [String: Any])?["properties"]
+                    as? [String: Any],
+                pointer
+            )
+            for member in section.rollupTuple where member.isEmpty == false {
+                XCTAssertNotNil(
+                    properties[member],
+                    "\(section.rawValue): `\(member)` is not a member of \(pointer)"
+                )
+            }
+        }
     }
 
     // MARK: - The delete obligation and the gate

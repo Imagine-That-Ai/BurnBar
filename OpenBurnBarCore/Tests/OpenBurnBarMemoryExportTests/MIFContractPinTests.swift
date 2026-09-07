@@ -6,14 +6,35 @@
 // -------------------------------------------
 //   Source repo:    Po'dex, memory-consolidation-gauntlet branch
 //   Source path:    docs/memory/contracts/mif-v1.schema.json
-//   Source commit:  d456c4678648a772e00eb027e9bf6e55c8c49b50
-//                   ("docs(memory): enforce record_project's identity pair
-//                    (audit B F-2)")
-//   sha256:         810fc38bee7ee91676819b7526938aacfe4f4e5a27fad8a1da15b6db9516b1aa
+//   Source commit:  3739ad37e6db7649398c98fcbd3df7f8c7d229ff
+//                   ("docs(memory): byte-pin the last four interop values,
+//                    D-0039 into MIF (Q-53)")
+//   sha256:         9c84b3bd8dd4711ae55acdfd1de7df9d4f72f690fdb20c4aea1e882119f6eef7
 //   Copied:         2026-09-07, byte for byte, no local edit of any kind
 //   Contract level: MIF v1, minor 2 [D-0021]
 //
-// Re-vendored from 1107c3ec… (commit e591e7c8, Q-30) at the end of the third
+// Re-vendored from 810fc38b… (commit d456c467) after interop run 1, and this
+// one is NOT additive — D-0039 says so itself, and four exporter changes ride
+// with it:
+//   * `section_header.rollup_digest` is REQUIRED on all eleven sections and
+//     typed `hex64` rather than `hex64_null` [ruling 6]. Every tuple is
+//     computable after Q-51's reconciliation, so the writer emits eleven
+//     digests where it emitted two, and a bundle written before this no longer
+//     validates. That is the intended effect: nullable is what made
+//     `ROLLUP_DIGEST_MISMATCH` unreachable for eight sections while their
+//     counts balanced.
+//   * `$defs/hashtree_file` types `hashtree.json` and joins the top-level
+//     `oneOf` [ruling 8]. It is `additionalProperties: false`, so R5's unkeyed
+//     per-chunk sidecar moved out of that file into `segments.sha256.json`
+//     (D-BB-E-17).
+//   * `recipient_store_id` gains the DDL's pattern [ruling 7].
+//   * `hold_reason` gains `MANIFEST_INVALID` and its parameterised
+//     `MANIFEST_INVALID:<path>` branch [ruling 6].
+// The out-of-process validation was re-run against this copy on
+// interop-fixture-v3: manifest, report, hashtree.json, 11 section headers and
+// every record, 0 failing assertions.
+//
+// Before that, from 1107c3ec… (commit e591e7c8, Q-30) at the end of the third
 // review's fix pass — the document's seventh pass put `record_project`'s
 // identity pair under `dependentRequired` both ways plus two `if`/`then`
 // branches, so D-0033 ruling 1's "together or not at all" is ENFORCED rather
@@ -68,7 +89,7 @@ import Crypto
 final class MIFContractPinTests: XCTestCase {
 
     private static let pinnedSHA256 =
-        "810fc38bee7ee91676819b7526938aacfe4f4e5a27fad8a1da15b6db9516b1aa"
+        "9c84b3bd8dd4711ae55acdfd1de7df9d4f72f690fdb20c4aea1e882119f6eef7"
 
     private func contractData() throws -> Data {
         let url = try XCTUnwrap(
@@ -110,6 +131,54 @@ final class MIFContractPinTests: XCTestCase {
         )
         XCTAssertTrue(recoveredFrom.contains(MIFRecoveredFrom.memoryQuarantineBodies.rawValue))
         XCTAssertEqual(Set(recoveredFrom), Set(MIFRecoveredFrom.allCases.map(\.rawValue)))
+    }
+
+    /// The four narrowings the Q-53 re-vendor brought, each one a thing this
+    /// exporter had to change rather than a comment it could carry.
+    func test_theVendoredContractCarriesTheQ53Narrowings() throws {
+        let schema = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: try contractData()) as? [String: Any]
+        )
+        let defs = try XCTUnwrap(schema["$defs"] as? [String: Any])
+
+        // Ruling 6: required on all eleven, and not nullable.
+        let header = try XCTUnwrap(defs["section_header"] as? [String: Any])
+        XCTAssertTrue(try XCTUnwrap(header["required"] as? [String]).contains("rollup_digest"))
+        XCTAssertEqual(
+            ((header["properties"] as? [String: Any])?["rollup_digest"] as? [String: Any])?["$ref"]
+                as? String,
+            "#/$defs/hex64"
+        )
+
+        // Ruling 8: `hashtree.json` is typed, and it is one of the three
+        // documents the top-level `oneOf` admits.
+        let tree = try XCTUnwrap(defs["hashtree_file"] as? [String: Any])
+        XCTAssertEqual(
+            Set(try XCTUnwrap(tree["required"] as? [String])),
+            ["alg", "leaf_key_derivation", "subroots", "root"]
+        )
+        XCTAssertEqual(tree["additionalProperties"] as? Bool, false, "the R5 sidecar cannot live here")
+        let admitted = try XCTUnwrap(schema["oneOf"] as? [[String: String]])
+        XCTAssertTrue(admitted.contains { $0["$ref"] == "#/$defs/hashtree_file" })
+
+        // Ruling 7: the DDL's store id.
+        let manifest = try XCTUnwrap(defs["manifest"] as? [String: Any])
+        XCTAssertEqual(
+            ((manifest["properties"] as? [String: Any])?["recipient_store_id"] as? [String: Any])?["pattern"]
+                as? String,
+            "^sto_[0-9a-f]{32}$"
+        )
+
+        // Ruling 6's other half: a manifest defect is a HELD REPORT, so the
+        // hold vocabulary has a name for it — and this build's mirror of that
+        // vocabulary carries it.
+        let holdReason = try XCTUnwrap(defs["hold_reason"] as? [String: Any])
+        let branches = try XCTUnwrap(holdReason["anyOf"] as? [[String: Any]])
+        let closed = branches.compactMap { $0["enum"] as? [String] }.flatMap { $0 }
+        XCTAssertTrue(closed.contains(MIFHoldReason.manifestInvalid.rawValue))
+        for reason in MIFHoldReason.allCases {
+            XCTAssertTrue(closed.contains(reason.rawValue), "\(reason.rawValue) is not in the contract")
+        }
     }
 
     /// The evaluator's unknown-keyword guard only fires on nodes an instance

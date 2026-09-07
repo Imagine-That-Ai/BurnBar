@@ -393,16 +393,14 @@ public struct MemoryExporter: Sendable {
                 context: context,
                 scope: scope
             )
+            // The verdict binding in section 02, and the only reason this is
+            // computed here: 05's roll-up tuple is projected from the record.
             let joinKey = MemoryExportCrypto.bodyJoinKey(bundleKey: bundleKey, body: gate.body)
-            let normDigest = MemoryExportCrypto.bodyNormDigest(bundleKey: bundleKey, body: gate.body)
             let citations = (provenanceByMemory[memory.id] ?? []).sorted { $0.id < $1.id }
-            // D-0031 ruling 2: 05 is `(memory_id, body_join_key,
-            // body_norm_digest)` — the join key, not the provenance digest.
-            sections[.memories]?.append(
-                memoryRecord,
-                lane: .agentMemories,
-                rollup: [canonicalID, joinKey, normDigest]
-            )
+            // The 05 tuple `(memory_id, body_join_key, body_norm_digest)` is
+            // projected from this record by the buffer — the record carries all
+            // three members, so there is nothing to pass.
+            sections[.memories]?.append(memoryRecord, lane: .agentMemories)
             // ...and 06 emits no rollup at all: its tuple names
             // `seal_generation`, which `record_body` has no member for (§15
             // item 8). The 05 tuple above still binds every body to its id.
@@ -423,15 +421,7 @@ public struct MemoryExporter: Sendable {
                 // The record is only minted for proven rows (D-BB-E-9), so the
                 // seq this recomputes the id from is the audit row section 09
                 // owes — the same seq, named once.
-                sections[.reviewEvents]?.append(
-                    event,
-                    lane: .memoryAuditReview,
-                    rollup: [
-                        MemoryExportIdentity.reviewEventID(storeID: storeID, auditSeq: seq),
-                        canonicalID,
-                        classification.reviewStatus.rawValue
-                    ]
-                )
+                sections[.reviewEvents]?.append(event, lane: .memoryAuditReview)
                 report.auditProvenHuman += 1
                 auditSeqsSectionNineOwes.insert(seq)
             } else if memory.reviewStatus == MIFReviewStatus.approved.rawValue {
@@ -698,15 +688,10 @@ public struct MemoryExporter: Sendable {
                 context: context,
                 userID: userID
             )
-            let normDigest = MemoryExportCrypto.bodyNormDigest(bundleKey: bundleKey, body: gate.body)
-            // A carried orphan rolls up the same 05 tuple every other row
-            // does: its synthetic memory record carries the join key and the
-            // norm digest literally.
-            sections[.memories]?.append(
-                synthetic.memory,
-                lane: .memoryBodySnapshots,
-                rollup: [canonicalID, synthetic.joinKey, normDigest]
-            )
+            // A carried orphan rolls up the same 05 tuple every other row does:
+            // its synthetic memory record carries the join key and the norm
+            // digest literally, so the buffer projects them like any other.
+            sections[.memories]?.append(synthetic.memory, lane: .memoryBodySnapshots)
             sections[.bodies]?.append(synthetic.body, lane: .memoryBodySnapshots)
             sections[.provenance]?.append(synthetic.provenance, lane: .memoryBodySnapshots)
             carriedOrphanIDs.insert(snapshotRow.memoryID)

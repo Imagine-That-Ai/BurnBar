@@ -5,7 +5,8 @@
 //   <bundle>/  manifest.json            plaintext, JCS, no bodies, no per-row digests
 //              manifest.sig             Ed25519 over the 32 raw bytes of content_digest, b64url (D-0031)
 //              keys/wrapped-bundle-key  content key wrapped to the recipient
-//              hashtree.json            per-section subroots + THE root + unkeyed per-chunk sidecar (R5)
+//              hashtree.json            per-section subroots + THE root — $defs/hashtree_file (D-0039 r.8)
+//              segments.sha256.json     unkeyed per-chunk sidecar (R5), beside the typed file
 //              sections/<NN-name>/<index:05>.seg   NDJSON, sealed (D-0031)
 //              lost.csv                 every row whose body could not be reconstructed
 //              id-map.csv               every rewritten memory_id (deviation D-BB-E-1)
@@ -26,8 +27,15 @@ public struct MemoryExportSectionBuffer: Sendable {
     public var section: MIFSection
     public var records: [MIFJSON] = []
     /// One D-0031 roll-up tuple per row, in the member order the section's
-    /// `rollupTuple` declares. Never emitted per row — only the digest travels.
-    public var rollupTuples: [[String]] = []
+    /// `rollupTuple` declares, PROJECTED FROM THE RECORD rather than supplied
+    /// beside it. Never emitted per row — only the digest travels.
+    ///
+    /// Projecting is what makes `manifest.rollups[].tuple` honest: the names
+    /// published there and the values digested come from one table, so the
+    /// manifest cannot claim a tuple the digest was not taken over. It also
+    /// closes the way eight sections came to have no digest at all — a caller
+    /// that passed none (M-12).
+    public var rollupTuples: [[MIFJSON]] = []
     /// How many of this section's records each reconciliation lane put here.
     ///
     /// It does not travel — `$defs/table_reconciliation` is
@@ -47,10 +55,25 @@ public struct MemoryExportSectionBuffer: Sendable {
     /// that happens again. `MIFReconciliationLane.sections` says which sections
     /// a lane may write; writing outside that list is a programming error the
     /// exporter's own coverage check catches before the bundle is sealed.
-    public mutating func append(_ record: MIFJSON, lane: MIFReconciliationLane, rollup: [String]? = nil) {
+    public mutating func append(_ record: MIFJSON, lane: MIFReconciliationLane) {
         records.append(record)
         attribution[lane, default: 0] += 1
-        if let rollup { rollupTuples.append(rollup) }
+        rollupTuples.append(MemoryExportSectionBuffer.rollupTuple(of: record, section: section))
+    }
+
+    /// The section's tuple, read off one record.
+    ///
+    /// Q-51 (iii): a member the row does not carry contributes JSON `null` — it
+    /// is not omitted, so every tuple in a section has the same arity — and an
+    /// EMPTY member name is the literal empty string, a value rather than a
+    /// lookup. Section 04's third leg is that, and it is the only one.
+    static func rollupTuple(of record: MIFJSON, section: MIFSection) -> [MIFJSON] {
+        guard case .object(let fields) = record else {
+            return section.rollupTuple.map { _ in .null }
+        }
+        return section.rollupTuple.map { member in
+            member.isEmpty ? .string("") : (fields[member] ?? .null)
+        }
     }
 }
 
@@ -328,21 +351,24 @@ public enum MemoryExportBundleWriter {
                 // (review F-14).
                 "segments": .int(sealed.count)
             ]
-            if buffer.rollupTuples.isEmpty == false {
-                fields["rollup_digest"] = .string(rollupDigest(buffer.rollupTuples))
-            }
+            // D-0039 ruling 6: required on all eleven, and no longer nullable.
+            // An empty section digests an EMPTY tuple list — a value, and the
+            // same one every implementation computes for no rows — rather than
+            // omitting the member, which is what made ROLLUP_DIGEST_MISMATCH
+            // unreachable for eight sections while their counts balanced.
+            fields["rollup_digest"] = .string(rollupDigest(buffer.rollupTuples))
             return .object(fields)
         }
 
-        let rollups: [MIFJSON] = sections.compactMap { buffer in
-            guard buffer.rollupTuples.isEmpty == false else { return nil }
-            return .object([
+        // All eleven, in section order: D-0039 ruling 6 leaves no section that
+        // can honestly write none.
+        let rollups: [MIFJSON] = sections.map { buffer in
+            .object([
                 "section": .string(buffer.section.rawValue),
                 // The declared tuple is what the importer recomputes from, and
-                // it HOLDS on `ROLLUP_DIGEST_MISMATCH`. Sections 05 and 06 do
-                // not digest the same third value — 05 takes the provenance
-                // digest, 06 the body join key — so one hardcoded tuple made
-                // every bundle fail on 06 (review F-3).
+                // it HOLDS on `ROLLUP_DIGEST_MISMATCH`. It is the same array
+                // each row was projected through, so the names published here
+                // and the values digested cannot drift apart.
                 "tuple": .strings(buffer.section.rollupTuple),
                 "rollup_digest": .string(rollupDigest(buffer.rollupTuples)),
                 "row_count": .int(buffer.rollupTuples.count)
@@ -477,15 +503,65 @@ public enum MemoryExportBundleWriter {
 
     /// M-19: counts cannot catch a body attached to the wrong id. One digest per
     /// section over that section's D-0031 roll-up tuple — one tuple per row,
-    /// ORDERED BY THE TUPLE'S FIRST MEMBER and digested as the JCS encoding of
-    /// the array; never the per-row values anywhere else, so nothing leaks. A
-    /// hand-edited bundle with two bodies swapped balances every count and
-    /// still fails here.
-    static func rollupDigest(_ tuples: [[String]]) -> String {
-        let ordered = tuples.sorted { $0.first ?? "" < $1.first ?? "" }
+    /// sorted and digested as the JCS encoding of the array of arrays; never
+    /// the per-row values anywhere else, so nothing leaks. A hand-edited bundle
+    /// with two bodies swapped balances every count and still fails here.
+    ///
+    /// The sort is Q-51's, and it is a byte-level part of the contract because
+    /// a different order is a different digest from the same rows — a hold the
+    /// importer cannot diagnose. "Ordered by the tuple's first member" is not an
+    /// order when two rows share one, which is what this replaced.
+    static func rollupDigest(_ tuples: [[MIFJSON]]) -> String {
+        let ordered = tuples.sorted { precedes($0, $1) }
         return MemoryExportDigest.sha256Hex(MIFCanonicalJSON.data(
-            .array(ordered.map { .array($0.map(MIFJSON.string)) })
+            .array(ordered.map { MIFJSON.array($0) })
         ))
+    }
+
+    /// Q-51 (i): member by member, the first unequal member deciding; a shorter
+    /// tuple sorts before a longer one that it prefixes.
+    static func precedes(_ lhs: [MIFJSON], _ rhs: [MIFJSON]) -> Bool {
+        for (left, right) in zip(lhs, rhs) {
+            if left == right { continue }
+            return precedes(left, right)
+        }
+        return lhs.count < rhs.count
+    }
+
+    /// Q-51 (ii): JSON value order — `null` first, then booleans, then numbers
+    /// numerically, then strings byte-wise over their UTF-8, then arrays, then
+    /// objects by their JCS rendering.
+    ///
+    /// Byte-wise over UTF-8 and not Swift's `<`, which compares Unicode
+    /// canonical-equivalence-normalised sequences: the two disagree on strings
+    /// a body can contain, and the digest is over bytes.
+    static func precedes(_ lhs: MIFJSON, _ rhs: MIFJSON) -> Bool {
+        let leftRank = jsonRank(lhs)
+        let rightRank = jsonRank(rhs)
+        if leftRank != rightRank { return leftRank < rightRank }
+        switch (lhs, rhs) {
+        case (.bool(let left), .bool(let right)): return left == false && right
+        case (.int(let left), .int(let right)): return left < right
+        case (.int(let left), .double(let right)): return Double(left) < right
+        case (.double(let left), .int(let right)): return left < Double(right)
+        case (.double(let left), .double(let right)): return left < right
+        case (.string(let left), .string(let right)):
+            return Array(left.utf8).lexicographicallyPrecedes(Array(right.utf8))
+        default:
+            return Array(MIFCanonicalJSON.serialize(lhs).utf8)
+                .lexicographicallyPrecedes(Array(MIFCanonicalJSON.serialize(rhs).utf8))
+        }
+    }
+
+    private static func jsonRank(_ value: MIFJSON) -> Int {
+        switch value {
+        case .null: 0
+        case .bool: 1
+        case .int, .double: 2
+        case .string: 3
+        case .array: 4
+        case .object: 5
+        }
     }
 
     /// Determinism is claimed on the manifest MINUS these fields, so this is
@@ -581,23 +657,34 @@ public enum MemoryExportBundleWriter {
         // concatenation is unreadable by anything but its own writer.
         try Data(wrapped.wireForm.utf8).write(to: keys.appendingPathComponent("wrapped-bundle-key"))
 
-        // D-0031 ruling 1: this copy is the SAME bytes as
-        // `manifest.hashtree.root` — passed in, never recomputed.
+        // `contracts/mif-v1.schema.json#/$defs/hashtree_file` [D-0039 ruling 8]:
+        // four members, `additionalProperties: false`, subroots keyed by the
+        // SECTION ID so no reader infers a section from a position. D-0031
+        // ruling 1: `root` is the SAME bytes as `manifest.hashtree.root` —
+        // passed in, never recomputed.
         let tree = MIFJSON.object([
-            "root": .string(hashtreeRoot),
-            "sections": .object(Dictionary(uniqueKeysWithValues: ordered.map {
+            "alg": .string("hmac-sha256"),
+            "leaf_key_derivation": .string("HKDF(bundle_key,'mif1/hashtree/v1')"),
+            "subroots": .object(Dictionary(uniqueKeysWithValues: ordered.map {
                 ($0.section.rawValue, MIFJSON.string(subroots[$0.section] ?? ""))
             })),
-            // R5 — one UNKEYED `sha256` per 4 MiB chunk of every segment file,
-            // over the ciphertext, so `verify` detects a modified segment
-            // without the bundle key. The keyed tree cannot do that: it needs
-            // the ephemeral bundle key, which this side never retains. Over
-            // ciphertext a plain hash leaks nothing (review R5), and this is
-            // an additive sidecar beside the root and subroots — not a second
-            // root, so D-0031's "computed once" still holds.
-            "segment_sha256": segmentChunkHashes(segments: segments, ordered: ordered)
+            "root": .string(hashtreeRoot)
         ])
         try MIFCanonicalJSON.data(tree).write(to: destination.appendingPathComponent("hashtree.json"))
+
+        // R5's unkeyed per-chunk sidecar — one `sha256` per 4 MiB chunk of every
+        // segment file, over the ciphertext, so `verify` detects a MODIFIED
+        // segment without the bundle key (the keyed tree needs the ephemeral
+        // key, which this side never retains; over ciphertext a plain hash leaks
+        // nothing).
+        //
+        // It lives in its own file because `$defs/hashtree_file` is
+        // `additionalProperties: false` and has no member for it: a sidecar
+        // inside `hashtree.json` now fails the contract that D-0039 ruling 8
+        // exists to make checkable. Named for what it is, and not a second root
+        // — D-0031's "computed once" is untouched. D-BB-E-17.
+        try MIFCanonicalJSON.data(segmentChunkHashes(segments: segments, ordered: ordered))
+            .write(to: destination.appendingPathComponent("segments.sha256.json"))
 
         let sections = destination.appendingPathComponent("sections")
         try manager.createDirectory(at: sections, withIntermediateDirectories: true)
@@ -614,7 +701,7 @@ public enum MemoryExportBundleWriter {
         }
     }
 
-    /// Unkeyed per-chunk hashes for `hashtree.json` (R5). Keys are bundle-
+    /// Unkeyed per-chunk hashes for `segments.sha256.json` (R5). Keys are bundle-
     /// relative segment paths; values are one `sha256` hex per 4 MiB chunk of
     /// the sealed file — including an empty section's, whose one segment is the
     /// sealed empty string and hashes to exactly one chunk (F-3).

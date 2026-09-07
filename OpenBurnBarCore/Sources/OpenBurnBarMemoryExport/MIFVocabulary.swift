@@ -300,6 +300,13 @@ public enum MIFRejectedReason: String, Sendable, CaseIterable {
 
 public enum MIFHoldReason: String, Sendable, CaseIterable {
     case reconciliationMismatch = "RECONCILIATION_MISMATCH"
+    /// D-0039 ruling 6: a manifest — or `hashtree.json` — that does not parse
+    /// or does not validate is a HELD REPORT naming the member, never a serde
+    /// error with no report, which is where interop run 1 stopped. The exporter
+    /// never emits it (it writes the manifest); it is mirrored here because
+    /// this enum is this build's copy of the contract's closed vocabulary, and
+    /// `MIFContractPinTests` compares the two.
+    case manifestInvalid = "MANIFEST_INVALID"
     case rollupDigestMismatch = "ROLLUP_DIGEST_MISMATCH"
     case unmigratableSourcePresent = "UNMIGRATABLE_SOURCE_PRESENT"
     case recipientKeyUnavailable = "RECIPIENT_KEY_UNAVAILABLE"
@@ -461,42 +468,47 @@ public enum MIFSection: String, Sendable, CaseIterable {
     /// **holds** on `ROLLUP_DIGEST_MISMATCH`, so a tuple that names the wrong
     /// field is not a label error: it is a bundle nobody can import.
     /// `manifest.rollups[].tuple` carries the names; the digest is over the
-    /// tuples ordered by their first member, as the JCS encoding of the array.
+    /// tuples sorted member by member, as the JCS encoding of the array of
+    /// arrays.
     ///
-    /// Only sections whose tuple is computable from the records BB-E emits
-    /// push roll-up tuples (05 and 02 today). The rest are transcribed here so
-    /// the declaration matches the contract, but emit no digest — §15 item 8
-    /// names the consequence: until the member settlement it records, those
-    /// digests are uncomputable and `ROLLUP_DIGEST_MISMATCH` is unreachable
-    /// for those sections:
+    /// **All eleven are computable** [D-0039 ruling 6; Q-51's reconciliation of
+    /// the five the 2026-09-08 amendment left marked]. Every member below is
+    /// defined by `contracts/mif-v1.schema.json` for that section's record
+    /// type, which is the amendment's rule — the schema is the source, and a
+    /// tuple may not name a member it does not define. The five that moved:
     ///
-    ///   * 00 `subject_content_key` — §2 forbids that field by name and the
-    ///     record carries only `subject_content_key_known`; BB-E's source
-    ///     tombstones carry a null `subject_memory_id` too;
-    ///   * 01 `receipt_id` — the receipt record has no id, it is keyed
-    ///     `(tombstone_id, peer_label)`;
-    ///   * 03 `superseding_id` — the member is `superseded_by_id` (and BB-E
-    ///     leaves section 03 empty anyway, D-BB-E-2);
-    ///   * 04 `project_id`/`fingerprint` — the project record carries neither;
-    ///   * 06 `seal_generation` — not a `record_body` member;
-    ///   * 07 names real members throughout, but BB-E's carried orphan markers
-    ///     have a null `source_content_hash`;
-    ///   * 08 `partition`/`count` — the members are `lane_label`/`row_count`;
-    ///   * 09 `seq` — the member is `peer_seq`;
-    ///   * 10 `finding_id`/`memory_id` — the finding record carries neither.
+    ///   * 00 drops `subject_content_key`, which §2 refuses by name;
+    ///   * 01 keys on `(tombstone_id, peer_label)` rather than a `receipt_id`
+    ///     the record type has never had — one tombstone has one receipt PER
+    ///     PEER;
+    ///   * 06 takes `body_norm_digest` where the tuple said `seal_generation`,
+    ///     a store column that does not travel: all three members are
+    ///     `required` on `record_body`, so this tuple is never null anywhere;
+    ///   * 09 takes `peer_seq`, the chain coordinate the section is keyed on,
+    ///     and not `payload_seq`, which is the producer's sequence inside the
+    ///     carried payload;
+    ///   * 10 is a per-code aggregate with no row id and no single memory, so
+    ///     it is `(code, severity, count, detail)` — the one tuple with FOUR
+    ///     members, which is legal because arity is per section.
+    ///
+    /// Until this, eight of eleven named members no record carried, so the
+    /// exporter could compute no digest for them and `ROLLUP_DIGEST_MISMATCH`
+    /// was unreachable for eight sections while every count balanced (M-12).
     public var rollupTuple: [String] {
         switch self {
         case .tombstones: ["tombstone_id", "subject_memory_id", "wall_ms"]
-        case .tombstoneReceipts: ["receipt_id", "tombstone_id", "acked_at_ms"]
+        case .tombstoneReceipts: ["tombstone_id", "peer_label", "acked_at_ms"]
         case .reviewEvents: ["event_id", "memory_id", "to_status"]
-        case .supersessions: ["supersession_id", "superseded_id", "superseding_id"]
+        case .supersessions: ["supersession_id", "superseded_id", "superseded_by_id"]
+        // Q-51 (iii): the third leg is the LITERAL empty string, a value and
+        // not a member lookup.
         case .projects: ["project_id", "fingerprint", ""]
         case .memories: ["memory_id", "body_join_key", "body_norm_digest"]
-        case .bodies: ["body_join_key", "seal_generation", "byte_len"]
+        case .bodies: ["body_join_key", "body_norm_digest", "byte_len"]
         case .provenance: ["citation_id", "memory_id", "source_content_hash"]
-        case .embeddings: ["partition", "model_id", "count"]
-        case .auditEvidence: ["chain_epoch", "seq", "hash"]
-        case .findings: ["finding_id", "code", "memory_id"]
+        case .embeddings: ["lane_label", "model_id", "row_count"]
+        case .auditEvidence: ["chain_epoch", "peer_seq", "hash"]
+        case .findings: ["code", "severity", "count", "detail"]
         }
     }
 
