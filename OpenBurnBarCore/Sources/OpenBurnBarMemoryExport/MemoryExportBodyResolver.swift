@@ -164,7 +164,11 @@ public enum MemoryExportBodyResolver {
             body: found.body,
             convention: convention,
             integrity: integrity,
-            recoveredFrom: .projectMemorySnapshots,
+            // MIF minor 2 [D-0021 ruling 4]: the quarantine table is now a
+            // member of `recovered_from`, so the daemon lane's review queue
+            // names the table it actually came from rather than borrowing the
+            // project snapshot's label.
+            recoveredFrom: found.fromQuarantine ? .memoryQuarantineBodies : .projectMemorySnapshots,
             findings: findings,
             fromQuarantineStore: found.fromQuarantine
         ))
@@ -199,7 +203,7 @@ public enum MemoryExportBodyResolver {
                 body: found.body,
                 convention: convention,
                 integrity: .mismatch,
-                recoveredFrom: .projectMemorySnapshots,
+                recoveredFrom: found.fromQuarantine ? .memoryQuarantineBodies : .projectMemorySnapshots,
                 findings: convention == .unknown ? [.bodyRefUnknownConvention] : [.bodyHashMismatch],
                 fromQuarantineStore: found.fromQuarantine
             ))

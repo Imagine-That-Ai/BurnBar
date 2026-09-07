@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://imagine-that.ai/schemas/memory/mif-v1.schema.json",
   "title": "Memory Interchange Format v1 — bundle, records, and reconciliation report",
-  "description": "Owned by MEMORY_MIGRATION_SPEC.md v1.1 §2. One vocabulary, two profiles ('sync' = device<->device over a pairing channel; 'migration' = one-shot BurnBar->core). Canonical column names come from MEMORY_SCHEMA.md §10 / schema/memory-v1.sql. INVARIANT ENFORCED BY THIS FILE: no record carries an authority-computed keyed field. 'content_key', 'body_hmac', 'xdevice_hmac' and 'subject_content_key' are absent from every record type and every record object sets additionalProperties:false, so a bundle carrying one fails validation (MEMORY_MIGRATION_SPEC v1.1 M-05, review item 1, SCHEMA INV-15).",
+  "description": "Owned by MEMORY_MIGRATION_SPEC.md v1.1 §2. One vocabulary, two profiles ('sync' = device<->device over a pairing channel; 'migration' = one-shot BurnBar->core). Canonical column names come from MEMORY_SCHEMA.md §10 / schema/memory-v1.sql. INVARIANT ENFORCED BY THIS FILE: no record carries an authority-computed keyed field. 'content_key', 'body_hmac', 'xdevice_hmac' and 'subject_content_key' are absent from every record type and every record object sets additionalProperties:false, so a bundle carrying one fails validation (MEMORY_MIGRATION_SPEC v1.1 M-05, review item 1, SCHEMA INV-15). MIF MINOR 2 [D-0021]: the manifest declares its crypto profile in a required 'crypto' object; record_memory gains the optional 'source_memory_id'; record_tombstone gains the optional 'scope_kind'; record_body.recovered_from gains 'memory_quarantine_bodies'. Every addition is additive, so min_importer_mif_version stays 1.",
   "oneOf": [
     { "$ref": "#/$defs/manifest" },
     { "$ref": "#/$defs/reconciliation_report" }
@@ -85,7 +85,7 @@
       "enum": ["body_unreconstructible","body_norm_digest_mismatch","record_too_large","schema_version_too_new","malformed_record","human_origin_without_audit_evidence","verdict_on_broken_chain_claimed_human","unknown_required_section"]
     },
     "hold_reason": {
-      "enum": ["RECONCILIATION_MISMATCH","ROLLUP_DIGEST_MISMATCH","UNMIGRATABLE_SOURCE_PRESENT","RECIPIENT_KEY_UNAVAILABLE","SOURCE_INTEGRITY_FAILED","SIGNATURE_UNVERIFIED","HASHTREE_MISMATCH","EXPORTER_KEY_UNPINNED","TARGET_NOT_KEYED","GATE_UNAVAILABLE","MIF_VERSION_UNSUPPORTED","MIF_PROFILE_UNSUPPORTED","MIF_REQUIRED_SECTION_MISSING","MIF_REHEARSAL_BUNDLE_REFUSED","UNSCOPED_ROWS_NO_USER","P5_SOURCE_NOT_QUIESCED","P5_SOURCE_BUILD_TOO_OLD","MIGRATION_WINDOW_EXPIRED"]
+      "enum": ["RECONCILIATION_MISMATCH","ROLLUP_DIGEST_MISMATCH","UNMIGRATABLE_SOURCE_PRESENT","RECIPIENT_KEY_UNAVAILABLE","SOURCE_INTEGRITY_FAILED","SIGNATURE_UNVERIFIED","HASHTREE_MISMATCH","EXPORTER_KEY_UNPINNED","TARGET_NOT_KEYED","GATE_UNAVAILABLE","MIF_VERSION_UNSUPPORTED","MIF_PROFILE_UNSUPPORTED","MIF_REQUIRED_SECTION_MISSING","MIF_REHEARSAL_BUNDLE_REFUSED","UNSCOPED_ROWS_NO_USER","P5_SOURCE_NOT_QUIESCED","P5_SOURCE_BUILD_TOO_OLD","MIGRATION_WINDOW_EXPIRED","VERDICT_WALL_MS_IN_FUTURE"]
     },
     "export_error": {
       "enum": ["EXPORT_KEY_UNAVAILABLE","EXPORT_SOURCE_NOT_KEYED","EXPORT_SOURCE_ROOT_OVERRIDDEN","EXPORT_RECIPIENT_UNVERIFIED","EXPORT_DISK_SPACE","EXPORT_SNAPSHOT_UNAVAILABLE","EXPORT_DELETE_WITHOUT_TOMBSTONE"]
@@ -104,7 +104,7 @@
     "manifest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mif_version","mif_minor","profile","bundle_id","producer_store_id","producer_device_id","user_id","created_at_ms","window","sections","schema_version","content_digest","hashtree","determinism","rehearsal","min_importer_mif_version"],
+      "required": ["mif_version","mif_minor","profile","bundle_id","producer_store_id","producer_device_id","user_id","created_at_ms","window","sections","schema_version","content_digest","crypto","hashtree","determinism","rehearsal","min_importer_mif_version"],
       "properties": {
         "mif_version":  { "type": "integer", "const": 1 },
         "mif_minor":    { "type": "integer", "minimum": 0 },
@@ -122,8 +122,22 @@
         },
         "schema_version": { "type": "integer", "minimum": 1 },
         "sections":     { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/section_header" } },
-        "min_importer_mif_version": { "type": "integer", "minimum": 1 },
+        "min_importer_mif_version": {
+          "$comment": "MIF minor 2 [D-0021] adds only optional record members and one required manifest object, so it does not raise this floor: a minor-2 bundle still declares 1. `crypto` is required UNCONDITIONALLY rather than gated on mif_minor because no bundle written before D-0021 exists outside test fixtures.",
+          "type": "integer", "minimum": 1
+        },
         "content_digest": { "$ref": "#/$defs/hex64" },
+        "crypto": {
+          "$comment": "D-0021 ruling 3: the manifest declares what sealed the bundle, so a CryptoKit exporter and a Rust importer can both be correct. Every v1 importer accepts BOTH aead values and BOTH compression values; an exporter emits xchacha20poly1305 + zstd where its platform has them and declares what it used otherwise. `wrap` and `key_schedule` are const because D-0021 ruling 1 admits exactly one wrap (RFC 9180 HPKE mode_base, DHKEM(X25519,HKDF-SHA256)/HKDF-SHA256/ChaCha20Poly1305, info 'mif1/keywrap/v1', aad = recipient_key_id) and ruling 2 exactly one key schedule (mif1-hkdf-v1). A hand-rolled wrap therefore fails validation rather than being negotiated.",
+          "type": "object", "additionalProperties": false,
+          "required": ["aead","compression","wrap","key_schedule"],
+          "properties": {
+            "aead": { "enum": ["xchacha20poly1305","chacha20poly1305"] },
+            "compression": { "enum": ["none","zstd"] },
+            "wrap": { "const": "hpke-base-x25519-hkdf-sha256-chacha20poly1305" },
+            "key_schedule": { "const": "mif1-hkdf-v1" }
+          }
+        },
         "hashtree": {
           "$comment": "review item 18 / attack M-19: keyed AND over ciphertext, so the manifest leaks nothing and a section is verified before it is decrypted, in one pass.",
           "type": "object", "additionalProperties": false,
@@ -228,7 +242,7 @@
 
     "record_tombstone": {
       "type": "object", "additionalProperties": false,
-      "$comment": "MIGRATION SPEC s15 item 7, closed by the Wave 2 consistency pass: `scope_kind` is NOT carried on a tombstone. `memory_tombstones` has no such column (it carries project_id, user_id and scope_key) and a tombstone is keyed by id or content key, never by scope. The importer derives the kind from scope_key's own leading tag (SCHEMA s2.3), so it is never left to invent a scope; `additionalProperties:false` means an exporter that still emits scope_kind is refused rather than silently ignored. `record_memory` and `record_supersession` keep scope_kind, because those tables DO have the column.",
+      "$comment": "MIGRATION SPEC s15 item 7 was closed by the Wave 2 consistency pass as `scope_kind` is NOT carried, because `memory_tombstones` has no such column (it carries project_id, user_id and scope_key) and a tombstone is keyed by id or content key, never by scope. REOPENED AND REVERSED BY D-0021 RULING 4: the BurnBar exporter proved the asymmetry unworkable in practice, so MIF minor 2 carries `scope_kind` OPTIONALLY (required in the next major). It stays an interchange field only: the importer still derives the routing it needs from scope_key's own leading tag (SCHEMA s2.3) and never writes a tombstone column that does not exist, so a record whose `scope_kind` disagrees with `scope_key`'s tag is a finding, not a store write. `record_memory` and `record_supersession` keep scope_kind as a stored column, because those tables DO have it.",
       "required": ["profile","tombstone_id","schema_version","tombstone_kind","scope_key","reason","origin_label","actor_kind","verdict_kind","lamport","wall_ms","origin_device_id","created_at_ms","subject_content_key_known"],
       "properties": {
         "profile": { "$ref": "#/$defs/profile" },
@@ -258,6 +272,7 @@
         },
         "project_fingerprint": { "type": ["string","null"] },
         "user_id": { "type": ["string","null"] },
+        "scope_kind": { "$ref": "#/$defs/scope_kind" },
         "scope_key": { "$ref": "#/$defs/scope_key" },
         "reason": { "$ref": "#/$defs/tombstone_reason" },
         "origin_label": { "$ref": "#/$defs/tombstone_origin_label" },
@@ -437,6 +452,10 @@
           "$comment": "SCHEMA §10: the oracle id is preserved VERBATIM so audit, provenance and tombstone references migrate intact. The residual body-oracle leak is named and accepted there.",
           "$ref": "#/$defs/memory_id"
         },
+        "source_memory_id": {
+          "$comment": "MIF minor 2 [D-0021 ruling 4]. The producer's ORIGINAL id, carried whenever `memory_id` had to be canonicalised because the producer's value is not already `mem_` + 32 hex — the BurnBar app lane mints UUID strings (`ControlPlaneStore.addMemoryAuthorityRecord`), which fail `memory_id`'s pattern. Absent when the oracle id was already canonical. It makes `id-map.csv` a convenience rather than the only record of the mapping. It is a producer-supplied opaque string, never an authority-computed value, so INV-15 is untouched.",
+          "type": ["string","null"], "maxLength": 256
+        },
         "schema_version": { "type": "integer", "minimum": 1 },
         "store_id": { "type": "string", "minLength": 1 },
         "memory_type": { "$ref": "#/$defs/memory_type" },
@@ -522,7 +541,10 @@
         "body": { "type": "string" },
         "body_object": { "$ref": "#/$defs/hex64" },
         "summary": { "type": ["string","null"] },
-        "recovered_from": { "enum": ["memory_body_snapshots","project_memory_snapshots","body_redacted_legacy_plaintext"] }
+        "recovered_from": {
+          "$comment": "MIF minor 2 [D-0021 ruling 4] adds `memory_quarantine_bodies`, the daemon lane's table, which holds every quarantined and rejected body. Without a member for it the whole daemon review queue is lost silently at export.",
+          "enum": ["memory_body_snapshots","project_memory_snapshots","body_redacted_legacy_plaintext","memory_quarantine_bodies"]
+        }
       },
       "oneOf": [ { "required": ["body"] }, { "required": ["body_object"] } ]
     },

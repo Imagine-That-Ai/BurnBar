@@ -138,9 +138,21 @@ public struct MemoryExportCommand: Sendable, Equatable {
         if verb == .export, dryRun == false, out == nil {
             throw MemoryExportCommandError.usage("memory export needs --out")
         }
+        // D-0025 ruling 3. Without this the exporter writes a complete, sealed,
+        // signed bundle whose content key exists nowhere, tells the operator
+        // "written to: …", and nobody can ever open it. `--rehearsal` is the one
+        // exception, and it mints a throwaway recipient that report.json names.
+        if verb == .export, recipient == nil, rehearsal == false {
+            throw MemoryExportCommandError.usage(
+                "\(MIFExportRefusal.recipientRequired.rawValue): memory export needs --recipient "
+                    + "<descriptor.json>, published by `memoryctl memory export-recipient`. "
+                    + "A bundle sealed to no recipient can never be opened."
+            )
+        }
         // `read_txn` pins the WAL against a live 8.4 GB file, so it is never the
-        // silent fallback: the operator has to ask for it.
-        if snapshot == .readTxn, allowLongRead == false, verb == .export, dryRun == false {
+        // silent fallback: the operator has to ask for it. A dry run reads the
+        // same way and for the same duration, so it asks too.
+        if snapshot == .readTxn, allowLongRead == false, verb == .export {
             throw MemoryExportCommandError.usage("--snapshot read_txn requires --allow-long-read")
         }
         // Compiled out of release builds, not merely refused at runtime — so on

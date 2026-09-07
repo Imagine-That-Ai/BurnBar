@@ -99,6 +99,16 @@ public struct MemoryExportReport: Sendable {
     public var contentDigest = String(repeating: "0", count: 64)
     public var exporterDeviceKeyID: String?
     public var rehearsal = false
+    /// D-0025 ruling 3's one exception, and the sentence it owes: rehearsal may
+    /// seal to a recipient nobody holds the private half of, and `report.json`
+    /// says so. `next_action` is the slot — every other object in the contract
+    /// is `additionalProperties: false` — and it is the right one, because the
+    /// consequence IS the next action: this bundle cannot be imported.
+    public var recipientIsRehearsalThrowaway = false
+    /// The recipient this bundle is addressed to. Shown in the export
+    /// confirmation, so a substituted `--recipient` descriptor is visible.
+    public var recipientKeyID: String?
+    public var recipientStoreID: String?
 
     public var sourceProduct = "BurnBar"
     public var sourceVersion = "unknown"
@@ -332,6 +342,10 @@ public struct MemoryExportReport: Sendable {
         switch decision {
         case .refused: "Nothing was written. Fix the reason above and run the export again."
         case .held: "The export finished but did not reconcile. Do not import this bundle yet."
+        case .exported where recipientIsRehearsalThrowaway:
+            "This is a rehearsal bundle sealed to a THROWAWAY recipient key that no store holds the "
+                + "private half of, so it cannot be imported anywhere. Re-run with --recipient "
+                + "<descriptor> from `memoryctl memory export-recipient` to produce a real bundle."
         case .exported: phase == .dryRun
             ? "Nothing was written. Re-run without --dry-run to produce the bundle."
             : "Import this bundle with `memoryctl memory import <bundle>`."

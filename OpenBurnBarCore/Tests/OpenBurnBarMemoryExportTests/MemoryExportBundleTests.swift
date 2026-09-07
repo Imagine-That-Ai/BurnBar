@@ -17,6 +17,17 @@ final class MemoryExportBundleTests: XCTestCase {
 
     private let storeID = "store-fixture-1"
     private let fingerprint = String(repeating: "1", count: 64)
+    /// One fixed recipient for the whole suite. `recipient_store_id` is a
+    /// deterministic manifest field now that it names the TARGET store rather
+    /// than the producer, so the determinism tests need it stable.
+    static let recipientPrivateKey = Curve25519.KeyAgreement.PrivateKey()
+    var recipient: MemoryExportRecipient {
+        MemoryExportRecipient(
+            keyID: MemoryExportRecipient.keyID(for: Self.recipientPrivateKey.publicKey),
+            publicKey: Self.recipientPrivateKey.publicKey,
+            storeID: "target-store-fixture"
+        )
+    }
 
     // MARK: - Fixture
 
@@ -83,7 +94,7 @@ final class MemoryExportBundleTests: XCTestCase {
             storeFingerprint: fingerprint,
             sourceVersion: "1.0.41",
             userID: "user-1",
-            recipientPublicKey: Curve25519.KeyAgreement.PrivateKey().publicKey,
+            recipient: recipient,
             signingKey: Curve25519.Signing.PrivateKey(),
             options: MemoryExportOptions(
                 enabled: true,
@@ -196,6 +207,41 @@ final class MemoryExportBundleTests: XCTestCase {
         XCTAssertThrowsError(try validator.validate(record, against: "#/$defs/record_memory"))
     }
 
+    /// `required` and `enum` are both implemented, and until now neither was
+    /// mutated by any test — so a regression in either would have gone
+    /// unnoticed while the suite stayed green.
+    func test_aRecordMissingARequiredFieldIsRejected() throws {
+        let validator = try MIFSchemaValidator(schemaData: try contractData())
+        var record = try XCTUnwrap(sampleMemoryRecord() as? [String: Any])
+        record.removeValue(forKey: "memory_id")
+        XCTAssertThrowsError(try validator.validate(record, against: "#/$defs/record_memory")) { error in
+            XCTAssertTrue("\(error)".contains("missing required property 'memory_id'"), "\(error)")
+        }
+    }
+
+    func test_aRecordWithAValueOutsideAClosedSetIsRejected() throws {
+        let validator = try MIFSchemaValidator(schemaData: try contractData())
+        var record = try XCTUnwrap(sampleMemoryRecord() as? [String: Any])
+        record["dedup_partition"] = "not_a_lane"
+        XCTAssertThrowsError(try validator.validate(record, against: "#/$defs/record_memory")) { error in
+            XCTAssertTrue("\(error)".contains("closed set"), "\(error)")
+        }
+    }
+
+    /// MIF minor 2's `source_memory_id` is the contract's first `maxLength`, and
+    /// re-vendoring it is what turned the evaluator's unknown-keyword guard red
+    /// until the keyword landed (review F-6).
+    func test_aSourceMemoryIDLongerThanTheContractAllowsIsRejected() throws {
+        let validator = try MIFSchemaValidator(schemaData: try contractData())
+        var record = try XCTUnwrap(sampleMemoryRecord() as? [String: Any])
+        record["source_memory_id"] = String(repeating: "x", count: 257)
+        XCTAssertThrowsError(try validator.validate(record, against: "#/$defs/record_memory")) { error in
+            XCTAssertTrue("\(error)".contains("maxLength"), "\(error)")
+        }
+        record["source_memory_id"] = String(repeating: "x", count: 256)
+        XCTAssertNoThrow(try validator.validate(record, against: "#/$defs/record_memory"))
+    }
+
     // MARK: - The delete obligation and the gate
 
     func test_deleteOfAQuarantinedRowSynthesizesATombstone() throws {
@@ -221,9 +267,17 @@ final class MemoryExportBundleTests: XCTestCase {
             try MemoryExportFixtureStore.insertAppMemory(db, id: "S1", body: "The key is \(secret) and it rotates.")
         }
         let snapshot = try MemoryExportFixtureStore.snapshot(queue)
-        try XCTSkipUnless(
+        // NOT `XCTSkipUnless`. This is the strongest security assertion in the
+        // suite, and XCTest counts a skip as a pass — so on a machine where the
+        // corpus resource does not resolve, the green run proved nothing, which
+        // is the same fail-open shape §6 refuses for `python3 -c 'import
+        // jsonschema'`. The corpus is a `Bundle.module` resource of a target
+        // this one depends on: absent, it is a packaging defect, not a fact
+        // about the machine (review F-15).
+        XCTAssertTrue(
             MemoryExportGateRunner.shared.isAvailable(),
-            "the shared secret corpus did not load in this test bundle"
+            "the shared secret corpus must load in this test bundle; a skip here would hide "
+                + "the one assertion that proves a credential never reaches a sealed body"
         )
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("mif-\(UUID().uuidString)")
@@ -244,12 +298,14 @@ final class MemoryExportBundleTests: XCTestCase {
         // through the segment key is the only way to prove that.
         let sealed = try Data(contentsOf: directory
             .appendingPathComponent("sections/06-bodies/000.ndjson.seal"))
-        let opened = try ChaChaPoly.open(
-            try ChaChaPoly.SealedBox(combined: sealed),
-            using: MemoryExportCrypto.segmentKey(
+        let opened = try MemoryExportCrypto.open(
+            sealedChunk: sealed,
+            section: .bodies,
+            segmentKey: MemoryExportCrypto.segmentKey(
                 bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "gate"),
                 section: .bodies
-            )
+            ),
+            index: 0
         )
         XCTAssertFalse(String(decoding: opened, as: UTF8.self).contains(secret))
     }

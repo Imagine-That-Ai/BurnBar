@@ -206,6 +206,11 @@ public enum MIFRecoveredFrom: String, Sendable, CaseIterable {
     case memoryBodySnapshots = "memory_body_snapshots"
     case projectMemorySnapshots = "project_memory_snapshots"
     case bodyRedactedLegacyPlaintext = "body_redacted_legacy_plaintext"
+    /// MIF minor 2 [D-0021 ruling 4]. The daemon lane's quarantine table, which
+    /// holds every quarantined and rejected body. Before minor 2 there was no
+    /// member for it, so those bodies were stamped `project_memory_snapshots` —
+    /// true about the lane, false about the table they were recovered from.
+    case memoryQuarantineBodies = "memory_quarantine_bodies"
 }
 
 public enum MIFSeverity: String, Sendable, CaseIterable {
@@ -295,6 +300,10 @@ public enum MIFHoldReason: String, Sendable, CaseIterable {
     case p5SourceNotQuiesced = "P5_SOURCE_NOT_QUIESCED"
     case p5SourceBuildTooOld = "P5_SOURCE_BUILD_TOO_OLD"
     case migrationWindowExpired = "MIGRATION_WINDOW_EXPIRED"
+    /// D-0018's admission check. Only the IMPORTER produces it — the exporter
+    /// carries the oracle's timestamps unreformatted and judges none of them —
+    /// but the mirror is of the whole closed set or it is not a mirror.
+    case verdictWallMSInFuture = "VERDICT_WALL_MS_IN_FUTURE"
 }
 
 public enum MIFExportError: String, Sendable, CaseIterable, Error {
@@ -307,6 +316,24 @@ public enum MIFExportError: String, Sendable, CaseIterable, Error {
     /// §3.3 M-04: a `memory.delete` seq inside the window with no emitted
     /// tombstone. An exporter obligation, not a warning.
     case deleteWithoutTombstone = "EXPORT_DELETE_WITHOUT_TOMBSTONE"
+}
+
+/// Refusals D-0021 and D-0025 name that the v1.2 contract's `export_error`
+/// closed set does **not** yet carry.
+///
+/// They are deliberately a separate type rather than two more `MIFExportError`
+/// cases: `reconciliation_report.export_error` validates against that closed
+/// set, so a code the contract has never heard of would turn a refusal into an
+/// unvalidatable report. Both fire before any bundle or report is written, so
+/// nothing is lost by keeping them out of the wire vocabulary — and when the
+/// contract grows them, the two enums merge and this comment goes.
+public enum MIFExportRefusal: String, Sendable, CaseIterable, Error {
+    /// D-0021 ruling 1. HPKE is the only admitted wrap; below its floor the
+    /// export refuses rather than falling back to a construction of its own.
+    case hpkeUnavailable = "EXPORT_HPKE_UNAVAILABLE"
+    /// D-0025 ruling 3. A sealed bundle whose key exists nowhere is never
+    /// written.
+    case recipientRequired = "EXPORT_RECIPIENT_REQUIRED"
 }
 
 public enum MIFFindingCode: String, Sendable, CaseIterable {
@@ -370,6 +397,19 @@ public enum MIFSection: String, Sendable, CaseIterable {
         MIFSection.allCases.firstIndex(of: self)!
     }
 
+    /// The name the **crypto** uses: `tombstones`, not `00-tombstones`.
+    ///
+    /// D-0025 ruling 1 pins this, because D-0021 ruling 2 did not and the two
+    /// readings fail as a silent decryption error at import rather than as a
+    /// mismatch anybody can see. The `NN-` prefix belongs to the directory on
+    /// disk (`rawValue`, which is also the schema's `section_header.name`) and
+    /// to nothing cryptographic: it keys neither the segment key, nor the
+    /// nonce, nor the chunk AAD.
+    public var bareName: String {
+        guard let dash = rawValue.firstIndex(of: "-") else { return rawValue }
+        return String(rawValue[rawValue.index(after: dash)...])
+    }
+
     /// `$defs.section_record_map` — the pointer a section's NDJSON lines
     /// validate against.
     public var recordTypePointer: String {
@@ -397,6 +437,23 @@ public enum MIFSection: String, Sendable, CaseIterable {
 
     /// `10 findings` is read for the report and never applied.
     public var isMergeable: Bool { self != .findings }
+
+    /// The `(id, digest, digest)` triple this section's roll-up is taken over,
+    /// as `manifest.rollups[].tuple` declares it. The importer recomputes the
+    /// digest from these three field names post-apply and **holds** on a
+    /// mismatch, so a tuple that names the wrong field is not a label error: it
+    /// is a bundle nobody can import.
+    ///
+    /// 05 and 06 differ in the third element. 05 binds a memory to the sources
+    /// it cites; 06 binds it to the body text itself. Only sections that push
+    /// roll-up tuples appear here.
+    public var rollupTuple: [String] {
+        switch self {
+        case .memories: ["memory_id", "body_norm_digest", "provenance_digest"]
+        case .bodies: ["memory_id", "body_norm_digest", "body_join_key"]
+        default: ["memory_id", "body_norm_digest", "provenance_digest"]
+        }
+    }
 
     /// Byte-ascending sort key, per §2 "within a section, records sort
     /// byte-ascending on the declared sort key".

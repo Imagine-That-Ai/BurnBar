@@ -114,7 +114,7 @@ final class MemoryExportCanonicalJSONTests: XCTestCase {
 
     func test_theVerbsAndFlagsParse() throws {
         let command = try MemoryExportCommand.parse([
-            "export", "--out", "/tmp/bundle", "--recipient", "/tmp/key",
+            "export", "--out", "/tmp/bundle", "--recipient", "/tmp/recipient.json",
             "--since-audit-seq", "4120", "--snapshot", "sqlcipher_export", "--json"
         ])
         XCTAssertEqual(command.verb, .export)
@@ -127,26 +127,59 @@ final class MemoryExportCanonicalJSONTests: XCTestCase {
     func test_exportNeedsAnOutputAndReadTxnNeedsAskingFor() {
         XCTAssertThrowsError(try MemoryExportCommand.parse(["export"]))
         // read_txn pins the WAL against a live 8.4 GB file, so it is never the
-        // silent fallback.
-        XCTAssertThrowsError(try MemoryExportCommand.parse(["export", "--out", "/tmp/b", "--snapshot", "read_txn"]))
+        // silent fallback — and a dry run holds it just as long, so it asks too.
+        XCTAssertThrowsError(try MemoryExportCommand.parse([
+            "export", "--out", "/tmp/b", "--recipient", "/tmp/r.json", "--snapshot", "read_txn"
+        ]))
+        XCTAssertThrowsError(try MemoryExportCommand.parse([
+            "export", "--recipient", "/tmp/r.json", "--dry-run", "--snapshot", "read_txn"
+        ]))
+        XCTAssertNoThrow(try MemoryExportCommand.parse([
+            "export", "--out", "/tmp/b", "--recipient", "/tmp/r.json",
+            "--snapshot", "read_txn", "--allow-long-read"
+        ]))
+    }
+
+    /// D-0025 ruling 3. A sealed bundle whose content key exists nowhere used
+    /// to be writable, and the operator was told "written to: …" (review F-8).
+    func test_anExportWithNoRecipientIsRefused() {
+        XCTAssertThrowsError(
+            try MemoryExportCommand.parse(["export", "--out", "/tmp/b", "--allow-long-read"])
+        ) { error in
+            guard case MemoryExportCommandError.usage(let message) = error else {
+                return XCTFail("expected a usage refusal, got \(error)")
+            }
+            XCTAssertTrue(message.contains(MIFExportRefusal.recipientRequired.rawValue), message)
+        }
+        // Rehearsal is the one exception, and it mints a throwaway recipient
+        // that report.json names.
         XCTAssertNoThrow(
-            try MemoryExportCommand.parse(["export", "--out", "/tmp/b", "--snapshot", "read_txn", "--allow-long-read"])
+            try MemoryExportCommand.parse(["export", "--out", "/tmp/b", "--rehearsal", "--allow-long-read"])
         )
+        // export-status and verify take no recipient: neither seals anything.
+        XCTAssertNoThrow(try MemoryExportCommand.parse(["export-status"]))
     }
 
     func test_anUnreadableSourceIsRecordedRatherThanSkippedSilently() throws {
-        let command = try MemoryExportCommand.parse(["export", "--out", "/tmp/b", "--source", "all", "--dry-run"])
+        let command = try MemoryExportCommand.parse([
+            "export", "--out", "/tmp/b", "--recipient", "/tmp/r.json",
+            "--source", "all", "--dry-run", "--allow-long-read"
+        ])
         XCTAssertEqual(command.unreadableSources.count, 2)
         XCTAssertTrue(command.unreadableSources.contains { $0.source == "cloud" })
     }
 
     func test_deterministicNoncesRequireRehearsal() {
         XCTAssertThrowsError(
-            try MemoryExportCommand.parse(["export", "--out", "/tmp/b", "--dry-run", "--deterministic-nonces"])
+            try MemoryExportCommand.parse([
+                "export", "--out", "/tmp/b", "--recipient", "/tmp/r.json",
+                "--dry-run", "--allow-long-read", "--deterministic-nonces"
+            ])
         )
         XCTAssertNoThrow(
             try MemoryExportCommand.parse([
-                "export", "--out", "/tmp/b", "--dry-run", "--rehearsal", "--deterministic-nonces"
+                "export", "--out", "/tmp/b", "--dry-run", "--allow-long-read",
+                "--rehearsal", "--deterministic-nonces"
             ])
         )
     }

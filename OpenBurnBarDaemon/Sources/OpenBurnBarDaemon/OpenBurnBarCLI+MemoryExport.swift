@@ -30,7 +30,7 @@ extension BurnBarCLIRunner {
     static let memoryUsage = """
     Usage: openburnbar-cli memory <export|export-status|verify|p5-check> [flags]
       --out PATH            bundle directory to write
-      --recipient PATH      the importer's X25519 public key (32 raw bytes or 64 hex)
+      --recipient PATH      the importer's recipient descriptor JSON (required)
       --dry-run             classify and dereference, write nothing
       --since-audit-seq N   delta export from an audit head
       --snapshot MODE       vacuum | sqlcipher_export | backup_api | read_txn
@@ -105,7 +105,7 @@ extension BurnBarCLIRunner {
             storeFingerprint: try Self.memoryStoreFingerprint(),
             sourceVersion: BurnBarDaemonVersion.current,
             userID: nil,
-            recipientPublicKey: try command.recipient.map(Self.loadRecipientKey),
+            recipient: try Self.resolveRecipient(command),
             signingKey: try Self.loadSigningKey(),
             options: MemoryExportOptions(
                 enabled: true,
@@ -184,22 +184,48 @@ extension BurnBarCLIRunner {
 
     // MARK: - Keys
 
+    /// `validate()` has already refused an export with neither `--recipient`
+    /// nor `--rehearsal`, so the throwaway branch is reachable only under
+    /// rehearsal — and on a release build it does not exist at all.
+    private static func resolveRecipient(_ command: MemoryExportCommand) throws -> MemoryExportRecipient {
+        if let path = command.recipient { return try loadRecipient(path) }
+        #if DEBUG
+        return MemoryExportRecipient.rehearsalThrowaway()
+        #else
+        throw BurnBarCLIError.missingArgument(
+            "\(MIFExportRefusal.recipientRequired.rawValue): memory export needs --recipient <descriptor.json>."
+        )
+        #endif
+    }
+
     /// The importer publishes this with `memoryctl memory export-recipient`. It
     /// is a P0 prerequisite gated by nothing: a bundle cannot be produced
-    /// without it.
-    static func loadRecipientKey(_ path: String) throws -> Curve25519.KeyAgreement.PublicKey {
-        let raw = try Data(contentsOf: URL(fileURLWithPath: path))
-        let bytes: Data
-        if raw.count == 32 {
-            bytes = raw
-        } else if let hex = String(data: raw, encoding: .utf8).flatMap(Self.hexBytes), hex.count == 32 {
-            bytes = hex
-        } else {
+    /// without it, and `MemoryExportCommand.validate()` now enforces what this
+    /// comment used to only claim.
+    ///
+    /// D-0025 ruling 2 makes it a three-field descriptor rather than a bare
+    /// key, because a key alone cannot say which store it belongs to. The id is
+    /// recomputed from the key, so a descriptor whose id was edited to look like
+    /// somebody else's is refused rather than used to address a bundle.
+    static func loadRecipient(_ path: String) throws -> MemoryExportRecipient {
+        guard let raw = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
             throw BurnBarCLIError.missingArgument(
-                "\(MIFExportError.recipientUnverified.rawValue): --recipient must be 32 raw bytes or 64 hex chars."
+                "\(MIFExportError.recipientUnverified.rawValue): no recipient descriptor at \(path)."
             )
         }
-        return try Curve25519.KeyAgreement.PublicKey(rawRepresentation: bytes)
+        do {
+            return try MemoryExportRecipient.parse(descriptor: raw)
+        } catch MemoryExportRecipient.DescriptorError.keyIDMismatch(let declared, let recomputed) {
+            throw BurnBarCLIError.missingArgument(
+                "\(MIFExportError.recipientUnverified.rawValue): the descriptor declares "
+                    + "recipient_key_id \(declared), but its public_key hashes to \(recomputed)."
+            )
+        } catch MemoryExportRecipient.DescriptorError.malformed(let reason) {
+            throw BurnBarCLIError.missingArgument(
+                "\(MIFExportError.recipientUnverified.rawValue): \(reason). --recipient takes the "
+                    + "JSON descriptor `memoryctl memory export-recipient` prints."
+            )
+        }
     }
 
     /// `com.openburnbar.memory-export` / `export-signing-key-v1`. Absent is a
@@ -217,20 +243,6 @@ extension BurnBarCLIRunner {
         return try Curve25519.Signing.PrivateKey(rawRepresentation: raw)
     }
 
-    static func hexBytes(_ text: String) -> Data? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count % 2 == 0 else { return nil }
-        var bytes = Data()
-        var index = trimmed.startIndex
-        while index < trimmed.endIndex {
-            let next = trimmed.index(index, offsetBy: 2)
-            guard let byte = UInt8(trimmed[index..<next], radix: 16) else { return nil }
-            bytes.append(byte)
-            index = next
-        }
-        return bytes
-    }
-
     // MARK: - Rendering
 
     static func formatMemoryExport(_ result: MemoryExportBundleResult) -> String {
@@ -242,6 +254,17 @@ extension BurnBarCLIRunner {
             "memories in: \(report.memoriesIn)",
             "memories out:\(report.memoriesOut)"
         ]
+        // §2 review rec 5: showing the recipient is what makes a substituted
+        // --recipient descriptor VISIBLE rather than merely honoured.
+        if let keyID = report.recipientKeyID {
+            lines.append("sealed to:   \(keyID)")
+        }
+        if let storeID = report.recipientStoreID {
+            lines.append("target store:\(storeID)")
+        }
+        if report.recipientIsRehearsalThrowaway {
+            lines.append("             ^ a REHEARSAL throwaway: no store can open this bundle")
+        }
         if report.auditProvenHuman > 0 {
             lines.append("kept human:  \(report.auditProvenHuman)")
         }

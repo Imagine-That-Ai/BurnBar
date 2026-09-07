@@ -141,6 +141,17 @@ public enum MemoryExportRecords {
             "source_kind_inferred": .string(inferredSourceKind(memory: memory, convention: body.convention))
         ]
 
+        // MIF minor 2 [D-0021 ruling 4]. The producer's ORIGINAL id, carried
+        // whenever `memory_id` had to be canonicalised — which is every app-lane
+        // row, because `ControlPlaneStore.addMemoryAuthorityRecord` defaults its
+        // id to a UUID that `^mem_[0-9a-f]{32}$` rejects. It makes `id-map.csv`
+        // a convenience rather than the only record of the mapping, and it is a
+        // producer-supplied opaque string, never an authority-computed one, so
+        // INV-15 is untouched. Absent when the oracle id was already canonical.
+        if canonicalID != memory.id {
+            fields["source_memory_id"] = .string(memory.id)
+        }
+
         // M-30: the oracle's dedup merge sets `valid_to` unconditionally on the
         // loser; the target sets it only when the edge's scope matches. There is
         // no authored edge to compare against here, so the carried value travels
@@ -403,10 +414,14 @@ public enum MemoryExportRecords {
             "content_key_version": .null,
             "project_fingerprint": .string(scope.projectFingerprint),
             "user_id": .string(userID),
-            // The contract's `record_tombstone` carries `scope_key` and NO
-            // `scope_kind` — unlike `record_memory`, which has both. Emitting
-            // the pair here fails `additionalProperties: false`, so the scope's
-            // kind is expressed by the key alone.
+            // MIF minor 2 [D-0021 ruling 4] reversed §15 item 7: `record_memory`
+            // carried both `scope_kind` and `scope_key` while `record_tombstone`
+            // carried only the key, and this exporter is what proved that
+            // asymmetry unworkable. It stays an INTERCHANGE field — the
+            // importer still derives its routing from `scope_key`'s own leading
+            // tag and never writes a tombstone column that does not exist, so a
+            // `scope_kind` disagreeing with the tag is a finding, not a write.
+            "scope_kind": .string(scope.kind.rawValue),
             "scope_key": .string(scope.key),
             "reason": .string(reason.rawValue),
             "origin_label": .string(originLabel.rawValue),

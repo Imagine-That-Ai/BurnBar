@@ -83,7 +83,9 @@ public struct MemoryExporter: Sendable {
     public var storeFingerprint: String
     public var sourceVersion: String
     public var userID: String?
-    public var recipientPublicKey: Curve25519.KeyAgreement.PublicKey?
+    /// D-0025 ruling 3: required, and not an optional that can quietly be nil.
+    /// A sealed bundle whose content key exists nowhere is never written.
+    public var recipient: MemoryExportRecipient
     public var signingKey: Curve25519.Signing.PrivateKey?
     public var options: MemoryExportOptions
 
@@ -92,7 +94,7 @@ public struct MemoryExporter: Sendable {
         storeFingerprint: String,
         sourceVersion: String,
         userID: String?,
-        recipientPublicKey: Curve25519.KeyAgreement.PublicKey?,
+        recipient: MemoryExportRecipient,
         signingKey: Curve25519.Signing.PrivateKey?,
         options: MemoryExportOptions = MemoryExportOptions()
     ) {
@@ -100,7 +102,7 @@ public struct MemoryExporter: Sendable {
         self.storeFingerprint = storeFingerprint
         self.sourceVersion = sourceVersion
         self.userID = userID
-        self.recipientPublicKey = recipientPublicKey
+        self.recipient = recipient
         self.signingKey = signingKey
         self.options = options
     }
@@ -554,6 +556,9 @@ public struct MemoryExporter: Sendable {
             tombstonesTable, sourceTombstonesTable, projectsTable
         ]
         report.partialSources = options.partialSources
+        report.recipientKeyID = recipient.keyID
+        report.recipientStoreID = recipient.storeID
+        report.recipientIsRehearsalThrowaway = recipient.isRehearsalThrowaway
         if report.reconciles == false {
             report.decision = .held
             report.holdReasons.append(.reconciliationMismatch)
@@ -566,7 +571,7 @@ public struct MemoryExporter: Sendable {
                 context: context,
                 lostRecords: lost,
                 idMappings: idMappings,
-                recipientPublicKey: recipientPublicKey,
+                recipient: recipient,
                 signingKey: signingKey,
                 exportMode: mode.manifestValue,
                 sinceAuditSeq: mode.sinceAuditSeq,

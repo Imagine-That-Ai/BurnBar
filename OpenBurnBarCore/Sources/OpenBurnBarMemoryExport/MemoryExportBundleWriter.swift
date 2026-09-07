@@ -42,7 +42,10 @@ public struct MemoryExportBundleInputs: Sendable {
     public var context: MemoryExportRecordContext
     public var lostRecords: [(memoryID: String, createdAtMS: Int, tags: [String], reason: String)]
     public var idMappings: [MemoryExportIDMapping]
-    public var recipientPublicKey: Curve25519.KeyAgreement.PublicKey?
+    /// D-0025 ruling 3: NOT optional. A sealed bundle whose content key exists
+    /// nowhere is worse than no bundle — the operator is told "written to: …"
+    /// and nobody can ever open it — so the type refuses to represent one.
+    public var recipient: MemoryExportRecipient
     public var signingKey: Curve25519.Signing.PrivateKey?
     public var exportMode: String
     public var sinceAuditSeq: Int?
@@ -104,7 +107,12 @@ public enum MemoryExportBundleWriter {
             for (index, chunk) in MemoryExportCrypto
                 .chunks(of: plaintext, size: inputs.maxSectionBytes)
                 .enumerated() {
-                sealed.append(try MemoryExportCrypto.seal(chunk: chunk, segmentKey: key, index: index))
+                sealed.append(try MemoryExportCrypto.seal(
+                    chunk: chunk,
+                    section: buffer.section,
+                    segmentKey: key,
+                    index: index
+                ))
             }
             ciphertexts[buffer.section] = sealed
             subroots[buffer.section] = MemoryExportCrypto.hashTreeRoot(
@@ -124,9 +132,10 @@ public enum MemoryExportBundleWriter {
         let bundleID = MemoryExportIdentity.bundleID(contentDigest: contentDigest)
 
         // 4. Wrap the content key and sign.
-        let wrapped = try inputs.recipientPublicKey.map {
-            try MemoryExportCrypto.wrap(bundleKey: inputs.context.bundleKey, recipientPublicKey: $0)
-        }
+        let wrapped = try MemoryExportCrypto.wrap(
+            bundleKey: inputs.context.bundleKey,
+            recipient: inputs.recipient
+        )
         let deviceKeyID = inputs.signingKey.map { MemoryExportCrypto.deviceKeyID($0.publicKey) }
 
         report.bundleID = bundleID
@@ -141,7 +150,6 @@ public enum MemoryExportBundleWriter {
             sections: ordered,
             subroots: subroots,
             ciphertexts: ciphertexts,
-            recipientKeyID: wrapped?.recipientKeyID,
             deviceKeyID: deviceKeyID,
             findingsSummary: report.findings
         )
@@ -239,7 +247,6 @@ public enum MemoryExportBundleWriter {
         sections: [MemoryExportSectionBuffer],
         subroots: [MIFSection: String],
         ciphertexts: [MIFSection: Data],
-        recipientKeyID: String?,
         deviceKeyID: String?,
         findingsSummary: [MemoryExportFinding]
     ) -> MIFJSON {
@@ -270,7 +277,12 @@ public enum MemoryExportBundleWriter {
             guard buffer.rollupTuples.isEmpty == false else { return nil }
             return .object([
                 "section": .string(buffer.section.rawValue),
-                "tuple": .strings(["memory_id", "body_norm_digest", "provenance_digest"]),
+                // The declared tuple is what the importer recomputes from, and
+                // it HOLDS on `ROLLUP_DIGEST_MISMATCH`. Sections 05 and 06 do
+                // not digest the same third value — 05 takes the provenance
+                // digest, 06 the body join key — so one hardcoded tuple made
+                // every bundle fail on 06 (review F-3).
+                "tuple": .strings(buffer.section.rollupTuple),
                 "rollup_digest": .string(rollupDigest(buffer.rollupTuples)),
                 "row_count": .int(buffer.rollupTuples.count)
             ])
@@ -290,7 +302,7 @@ public enum MemoryExportBundleWriter {
 
         var fields: [String: MIFJSON] = [
             "mif_version": .int(1),
-            "mif_minor": .int(1),
+            "mif_minor": .int(2),
             "profile": .string(MIFProfile.migration.rawValue),
             "bundle_id": .string(bundleID),
             "prev_bundle_id": .null,
@@ -322,8 +334,23 @@ public enum MemoryExportBundleWriter {
                 }))
             ]),
             "rehearsal": .bool(inputs.rehearsal),
-            "recipient_key_id": .string(recipientKeyID),
-            "recipient_store_id": .string(inputs.report.sourceStoreFingerprint),
+            // §2.1 ruling 4: the manifest declares what sealed the bundle, so a
+            // CryptoKit exporter and a Rust importer can both be correct.
+            // `wrap` and `key_schedule` are `const` in the contract — that is
+            // the schema deliberately refusing to let a hand-rolled wrap be
+            // negotiated, and this object is only emittable because the wrap
+            // above is RFC 9180.
+            "crypto": .object([
+                "aead": .string(MemoryExportCrypto.aead),
+                "compression": .string(MemoryExportCrypto.compression),
+                "wrap": .string(MemoryExportCrypto.wrapName),
+                "key_schedule": .string(MemoryExportCrypto.keyScheduleName)
+            ]),
+            "recipient_key_id": .string(inputs.recipient.manifestKeyID),
+            // The TARGET store's fingerprint, from the recipient descriptor —
+            // not the producer's, which is `source.store_fingerprint` below.
+            // An importer asks "is this bundle addressed to me?" here.
+            "recipient_store_id": .string(inputs.recipient.storeID),
             "exporter_device_key_id": .string(deviceKeyID),
             "export_mode": .string(inputs.exportMode),
             "since_audit_seq": .int(inputs.sinceAuditSeq),
@@ -386,8 +413,11 @@ public enum MemoryExportBundleWriter {
         guard case .object(var fields) = manifest else { return manifest }
         fields["created_at_ms"] = .null
         fields["recipient_key_id"] = .null
-        fields["recipient_store_id"] = .null
         fields["exporter_device_key_id"] = .null
+        // `recipient_store_id` is NOT blanked. §2's determinism claim excludes
+        // exactly `{created_at_ms, recipient_key_id, wrapped key, signature}`,
+        // and blanking a deterministic field here is how the source-fingerprint
+        // bug it used to hold survived a determinism test (review F-9).
         // The tree is keyed by the per-export bundle key, so its root moves even
         // when every plaintext byte is identical.
         fields["hashtree"] = .null
@@ -437,7 +467,7 @@ public enum MemoryExportBundleWriter {
         destination: URL,
         manifestData: Data,
         signature: Data?,
-        wrapped: MemoryExportCrypto.WrappedBundleKey?,
+        wrapped: MemoryExportCrypto.WrappedBundleKey,
         ciphertexts: [MIFSection: Data],
         subroots: [MIFSection: String],
         ordered: [MemoryExportSectionBuffer],
@@ -456,12 +486,11 @@ public enum MemoryExportBundleWriter {
         if let signature {
             try signature.write(to: destination.appendingPathComponent("manifest.sig"))
         }
-        if let wrapped {
-            let keys = destination.appendingPathComponent("keys")
-            try manager.createDirectory(at: keys, withIntermediateDirectories: true)
-            try (wrapped.ephemeralPublicKey + wrapped.ciphertext)
-                .write(to: keys.appendingPathComponent("wrapped-bundle-key"))
-        }
+        let keys = destination.appendingPathComponent("keys")
+        try manager.createDirectory(at: keys, withIntermediateDirectories: true)
+        // §2.1: `b64url(enc) ‖ "." ‖ b64url(ct)`, both unpadded. A raw
+        // concatenation is unreadable by anything but its own writer.
+        try Data(wrapped.wireForm.utf8).write(to: keys.appendingPathComponent("wrapped-bundle-key"))
 
         let tree = MIFJSON.object([
             "root": .string(MemoryExportCrypto.combineSubroots(

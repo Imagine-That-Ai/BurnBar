@@ -12,10 +12,18 @@
 // It implements the keywords `contracts/mif-v1.schema.json` actually uses:
 // `$ref`, `type`, `enum`, `const`, `required`, `properties`,
 // `additionalProperties: false`, `propertyNames`, `pattern`, `not`, `minimum`,
-// `maximum`, `minLength`, `minItems`, `maxItems`, `items`, `allOf`, `oneOf`,
-// `anyOf`, `if`/`then`/`else`. An UNKNOWN keyword is a hard failure rather than
-// a silent skip, so the contract growing a keyword this file cannot check turns
-// the suite red instead of quietly weakening it.
+// `maximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `items`,
+// `allOf`, `oneOf`, `anyOf`, `if`/`then`/`else`. An UNKNOWN keyword is a hard
+// failure rather than a silent skip.
+//
+// That guard alone is weaker than it reads, because `check` only visits a
+// sub-schema when the instance carries the property it sits under — so an
+// unimplemented keyword on an OPTIONAL field the fixture never populates was
+// invisible. `auditKeywords()` closes that: it walks the contract document
+// itself, once, through the same schema-bearing keywords the evaluator
+// recurses into, and names every keyword this file cannot check whether or not
+// a fixture exercises it. With it, "a contract that grows a keyword turns the
+// suite red" is a property rather than a hope.
 
 import Foundation
 
@@ -35,9 +43,17 @@ final class MIFSchemaValidator {
         "$ref", "$id", "$schema", "$comment", "title", "description",
         "type", "enum", "const", "required", "properties", "additionalProperties",
         "propertyNames", "pattern", "not", "minimum", "maximum", "minLength",
-        "minItems", "maxItems", "items", "allOf", "oneOf", "anyOf",
+        "maxLength", "minItems", "maxItems", "items", "allOf", "oneOf", "anyOf",
         "if", "then", "else", "$defs"
     ]
+
+    /// The keywords whose values are themselves schemas. The evaluator recurses
+    /// into exactly these, so the audit walks exactly these — anything else
+    /// (`enum`'s members, `required`'s names) is data, not a schema, and
+    /// treating it as one would invent failures.
+    private static let schemaValued: Set<String> = ["items", "not", "if", "then", "else", "additionalProperties"]
+    private static let schemaMapValued: Set<String> = ["properties", "$defs"]
+    private static let schemaArrayValued: Set<String> = ["allOf", "anyOf", "oneOf"]
 
     init(schemaData: Data) throws {
         guard let object = try JSONSerialization.jsonObject(with: schemaData) as? [String: Any] else {
@@ -97,7 +113,14 @@ final class MIFSchemaValidator {
         }
 
         if let pattern = schema["pattern"] as? String, let text = value as? String {
-            guard text.range(of: pattern, options: .regularExpression) != nil else {
+            // ICU's `$` also matches before a trailing newline, so
+            // `"mem_<32 hex>\n"` would satisfy `^mem_[0-9a-f]{32}$`. Anchoring
+            // on the whole string instead is what makes the id patterns mean
+            // what they say.
+            let match = text.range(of: pattern, options: .regularExpression)
+            let anchored = pattern.hasPrefix("^") && pattern.hasSuffix("$")
+            let matched = anchored ? match == text.startIndex..<text.endIndex : match != nil
+            guard matched else {
                 throw MIFSchemaViolation(path: path, message: "\"\(text)\" does not match \(pattern)")
             }
         }
@@ -109,8 +132,17 @@ final class MIFSchemaValidator {
         }
 
         if let text = value as? String {
-            if let minLength = schema["minLength"] as? Int, text.count < minLength {
+            // Code points, not grapheme clusters: JSON Schema counts characters
+            // as Unicode code points, and `"é"` composed from two scalars is one
+            // grapheme and two code points. The contract's bounds are on ids and
+            // opaque strings, so the two agree in practice — but agreeing by
+            // accident is not the same as being right.
+            let length = text.unicodeScalars.count
+            if let minLength = schema["minLength"] as? Int, length < minLength {
                 throw MIFSchemaViolation(path: path, message: "shorter than minLength \(minLength)")
+            }
+            if let maxLength = schema["maxLength"] as? Int, length > maxLength {
+                throw MIFSchemaViolation(path: path, message: "longer than maxLength \(maxLength)")
             }
         }
 
@@ -199,6 +231,39 @@ final class MIFSchemaValidator {
             }
         default:
             break
+        }
+    }
+
+    // MARK: - Whole-document keyword audit
+
+    /// Every keyword the contract uses anywhere, whether or not a fixture
+    /// reaches it. Returns the unimplemented ones with the pointer they sit at,
+    /// so the failure names the field rather than the file.
+    func auditKeywords() -> [(pointer: String, keyword: String)] {
+        var unimplemented: [(pointer: String, keyword: String)] = []
+        walk(root, pointer: "#", collecting: &unimplemented)
+        return unimplemented
+    }
+
+    private func walk(_ node: Any, pointer: String, collecting found: inout [(pointer: String, keyword: String)]) {
+        guard let schema = node as? [String: Any] else { return }
+        for key in schema.keys where Self.supportedKeywords.contains(key) == false {
+            found.append((pointer, key))
+        }
+        for (key, value) in schema {
+            if Self.schemaValued.contains(key) {
+                walk(value, pointer: "\(pointer)/\(key)", collecting: &found)
+            } else if Self.schemaMapValued.contains(key), let map = value as? [String: Any] {
+                for (name, child) in map {
+                    walk(child, pointer: "\(pointer)/\(key)/\(name)", collecting: &found)
+                }
+            } else if Self.schemaArrayValued.contains(key), let branches = value as? [Any] {
+                for (index, child) in branches.enumerated() {
+                    walk(child, pointer: "\(pointer)/\(key)[\(index)]", collecting: &found)
+                }
+            } else if key == "propertyNames" {
+                walk(value, pointer: "\(pointer)/propertyNames", collecting: &found)
+            }
         }
     }
 
