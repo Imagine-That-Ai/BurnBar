@@ -210,7 +210,6 @@ public enum MemoryExportBundleWriter {
             subroots: subroots,
             hashtreeRoot: hashtreeRoot,
             ordered: ordered,
-            bundleKey: inputs.context.bundleKey,
             lostCSV: lostCSV,
             idMapCSV: idMapCSV,
             reportData: reportData
@@ -505,7 +504,6 @@ public enum MemoryExportBundleWriter {
         subroots: [MIFSection: String],
         hashtreeRoot: String,
         ordered: [MemoryExportSectionBuffer],
-        bundleKey: SymmetricKey,
         lostCSV: String,
         idMapCSV: String,
         reportData: Data
