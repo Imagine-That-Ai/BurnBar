@@ -159,6 +159,92 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         }
     }
 
+    // MARK: - Determinism, on disk
+
+    /// The determinism tests export `to: nil`, so byte identity was only ever
+    /// asserted indirectly through a digest. This exports the same store twice,
+    /// with the same bundle key and the same clock, and compares the artefacts
+    /// file by file.
+    ///
+    /// Every artefact matches except two, and §2's determinism claim excludes
+    /// exactly those two — it is claimed on the manifest MINUS `{created_at_ms,
+    /// recipient_key_id, wrapped key, signature}`:
+    ///
+    ///   * `keys/wrapped-bundle-key`, because HPKE's encapsulated key is random
+    ///     (§2.1 says so, and says it costs nothing);
+    ///   * `manifest.sig`, because CryptoKit's Ed25519 is **randomized**, not
+    ///     the deterministic RFC 8032 signing §2's parenthetical names. This
+    ///     test is the evidence: one key, identical bytes, two signatures. Both
+    ///     verify, and D-BB-E-5 records the departure.
+    ///
+    /// The ciphertext IS identical, because the segment nonces are derived from
+    /// the bundle key rather than drawn.
+    func test_twoExportsWithOneKeyDifferOnlyInTheWrapAndTheSignature() throws {
+        let first = FileManager.default.temporaryDirectory.appendingPathComponent("mif-\(UUID().uuidString)")
+        let second = FileManager.default.temporaryDirectory.appendingPathComponent("mif-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: first)
+            try? FileManager.default.removeItem(at: second)
+        }
+        _ = try export(maxSectionBytes: 512, to: first, seed: "determinism-disk")
+        _ = try export(maxSectionBytes: 512, to: second, seed: "determinism-disk")
+
+        let files = try Self.relativeFiles(in: first)
+        XCTAssertEqual(files, try Self.relativeFiles(in: second), "the two bundles hold the same files")
+        XCTAssertTrue(files.contains("manifest.json"))
+        XCTAssertTrue(files.contains("manifest.sig"))
+        XCTAssertTrue(files.contains("hashtree.json"))
+        XCTAssertTrue(files.contains("keys/wrapped-bundle-key"))
+
+        var differing: [String] = []
+        for name in files {
+            let lhs = try Data(contentsOf: first.appendingPathComponent(name))
+            let rhs = try Data(contentsOf: second.appendingPathComponent(name))
+            if lhs != rhs { differing.append(name) }
+        }
+        XCTAssertEqual(
+            differing,
+            ["keys/wrapped-bundle-key", "manifest.sig"],
+            "only the two artefacts §2's determinism claim already excludes"
+        )
+
+        // A randomized signature is still a valid one, over the same manifest.
+        let manifest = try Data(contentsOf: first.appendingPathComponent("manifest.json"))
+        let digest = Data(SHA256.hash(data: manifest))
+        for root in [first, second] {
+            let signature = try Data(contentsOf: root.appendingPathComponent("manifest.sig"))
+            XCTAssertTrue(
+                Self.signingKey.publicKey.isValidSignature(signature, for: digest),
+                "both signatures verify against the same manifest"
+            )
+        }
+    }
+
+    /// Across two DIFFERENT bundle keys, `counts_hash` is the one thing that
+    /// still matches — it carries no keyed value, while `content_digest` covers
+    /// plaintext holding `body_join_key` and `body_norm_digest`, which are HMACs
+    /// under that key.
+    func test_twoExportsWithDifferentKeysAgreeOnTheCountsAndNothingElse() throws {
+        let first = FileManager.default.temporaryDirectory.appendingPathComponent("mif-\(UUID().uuidString)")
+        let second = FileManager.default.temporaryDirectory.appendingPathComponent("mif-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: first)
+            try? FileManager.default.removeItem(at: second)
+        }
+        let left = try export(maxSectionBytes: 512, to: first, seed: "key-a")
+        let right = try export(maxSectionBytes: 512, to: second, seed: "key-b")
+
+        XCTAssertEqual(left.report.countsHash, right.report.countsHash)
+        XCTAssertNotEqual(left.contentDigest, right.contentDigest)
+        for name in ["manifest.json", "hashtree.json", "sections/06-bodies/000.ndjson.seal"] {
+            XCTAssertNotEqual(
+                try Data(contentsOf: first.appendingPathComponent(name)),
+                try Data(contentsOf: second.appendingPathComponent(name)),
+                name
+            )
+        }
+    }
+
     // MARK: - verify (F-16)
 
     func test_verifyAcceptsAWholeBundleAndNamesWhatItDidNotCheck() throws {
@@ -254,5 +340,17 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         XCTAssertFalse(verification.isIntact)
         XCTAssertTrue(verification.problems.contains { $0.contains("different recipient key") })
         XCTAssertTrue(verification.problems.contains { $0.contains("different target store") })
+    }
+    private static func relativeFiles(in root: URL) throws -> [String] {
+        guard let walker = FileManager.default.enumerator(atPath: root.path) else { return [] }
+        var names: [String] = []
+        for case let path as String in walker {
+            var isDirectory: ObjCBool = false
+            let full = root.appendingPathComponent(path).path
+            if FileManager.default.fileExists(atPath: full, isDirectory: &isDirectory), isDirectory.boolValue == false {
+                names.append(path)
+            }
+        }
+        return names.sorted()
     }
 }

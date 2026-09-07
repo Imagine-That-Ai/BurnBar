@@ -199,7 +199,7 @@ there is not a MIF bundle*. What BB-E emits, item by item:
 | Compression ∈ {`none`, `zstd`}, declared | **`none`**. BurnBar vendors no zstd. Declaring `none` is legal; silently ignoring a *declared* `zstd` is not |
 | `manifest.crypto{aead, compression, wrap, key_schedule}`, required | emitted, with `wrap` and `key_schedule` the contract's `const` values — which the wrap above is the only construction able to satisfy honestly |
 
-**Two departures, both forced, both here rather than in the code's head:**
+**Three departures, all forced, all here rather than in the code's head:**
 
 1. **`manifest.recipient_key_id` cannot hold D-0025's id.** D-0025 ruling 2
    defines `recipient_key_id = "rcp_" + sha256(public_key)[0..32]` and says an
@@ -217,6 +217,14 @@ there is not a MIF bundle*. What BB-E emits, item by item:
    validates against. They live in their own Swift enum so a refusal can never
    produce a report no validator accepts. Both fire before any bundle or report
    is written. **For the spec owner:** add them to the closed set.
+3. **`manifest.sig` is not byte-reproducible.** §2 calls the signature "Ed25519
+   (deterministic, RFC 8032)". CryptoKit's `Curve25519.Signing` is *randomized*,
+   so two signings of identical bytes under one key differ — both valid, and the
+   on-disk determinism test is the evidence. Nothing downstream breaks, because
+   §2's determinism claim already excludes the signature along with
+   `created_at_ms`, `recipient_key_id` and the wrapped key. **For the spec
+   owner:** drop the parenthetical, or require a deterministic implementation
+   and say which.
 
 **On the `#available` D-0021 ruling 1 asks for:** `OpenBurnBarCore`'s deployment
 floor is macOS 14 / iOS 17, which is exactly CryptoKit HPKE's floor, so the
@@ -374,16 +382,16 @@ authority as `approved` with `origin_kind: human`.
 
 ## 6. Tests
 
-`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, **92 tests**, run on the
+`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, **94 tests**, run on the
 Swift door by `scripts/test-openburnbar-swift.sh`:
 
 ```
 swift test --package-path OpenBurnBarCore --filter MemoryExport
-→ Executed 92 tests, with 0 failures (0 unexpected)
+→ Executed 94 tests, with 0 failures (0 unexpected)
 ```
 
-The count reconciles: `grep -c "func test"` over the target's files sums to 92,
-and there is no swift-testing `@Test` anywhere in it, so 92 declared is 92
+The count reconciles: `grep -c "func test"` over the target's files sums to 94,
+and there is no swift-testing `@Test` anywhere in it, so 94 declared is 94
 executed.
 
 Fixtures are built by **BurnBar's own migrator** (`OpenBurnBarDatabase.migrator`,
@@ -409,6 +417,14 @@ the un-fixed code to prove it: the forgotten-memory regression (F-2) fails on
 both halves of its fix; the delta window (F-4) and the M-20 audit union (F-10)
 fail on five assertions between them; and the segment-aware selection (F-5)
 returns exactly the `approved` the review reported.
+
+**Determinism is checked on disk, not only through a digest.** Two exports of
+one store with one bundle key and one clock produce byte-identical artefacts
+except `keys/wrapped-bundle-key` and `manifest.sig` — exactly the two §2's
+claim excludes, for the two reasons in D-BB-E-5 — and the ciphertext is
+identical because the segment nonces are derived rather than drawn. Across two
+different bundle keys only `counts_hash` matches, which is the whole of
+D-BB-E-11's claim.
 
 **Crypto is proved, not asserted.** `MemoryExportCryptoTests` runs the RFC 9180
 Appendix A.2 base-mode vectors for this suite through the same `HPKE` the wrap
