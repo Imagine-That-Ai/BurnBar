@@ -38,6 +38,17 @@ extension BurnBarCLIRunner {
       --allow-long-read     required for --snapshot read_txn
       --carry-orphans       carry body rows no authority row references (default off)
       --json                emit the reconciliation report as JSON
+
+    verify --bundle DIR [--recipient PATH]
+      Checks the signature, the manifest's self-consistency and the section
+      files on disk. It cannot check the plaintext: the bundle key is wrapped to
+      the recipient and never kept here.
+
+    p5-check --target-ids FILE --required-version X.Y.Z
+             [--socket-token-rotated] [--memory-write-withdrawn]
+      Reads audit_head either side of the source's live id set and diffs that
+      set against the target's. The two gate flags are operator assertions and
+      default to false, so an unasserted gate holds.
     """
 
     func runMemoryCommand(_ arguments: [String]) throws -> String {
@@ -52,15 +63,9 @@ extension BurnBarCLIRunner {
         case .exportStatus:
             return try memoryExportStatus()
         case .verify:
-            // Bundle verification is the IMPORTER's job: it holds the recipient
-            // private key and this side holds none. Say so rather than
-            // pretending to check a signature we cannot open.
-            return "Bundle verification runs on the memory core: `memoryctl memory import --dry-run <bundle>`."
+            return try runMemoryVerify(command)
         case .p5Check:
-            throw BurnBarCLIError.missingArgument(
-                "memory p5-check runs from the migration runbook, which supplies the audit head either side of "
-                    + "the final delta and the target's live id set. It is not a standalone CLI step."
-            )
+            return try runMemoryP5Check(command)
         case .export:
             return try runMemoryExport(command)
         }
@@ -142,6 +147,85 @@ extension BurnBarCLIRunner {
             return MIFCanonicalJSON.serialize(result.report.json)
         }
         return Self.formatMemoryExport(result)
+    }
+
+    /// F-16. Decryption needs the recipient private key and this side holds
+    /// none — but the signature, the manifest's self-consistency and the section
+    /// files on disk need no key at all, and without them a corrupted or
+    /// truncated bundle was undetectable until it reached the other side.
+    private func runMemoryVerify(_ command: MemoryExportCommand) throws -> String {
+        // swiftlint:disable:next force_unwrapping reason: validate() refuses verify without --bundle
+        let url = URL(fileURLWithPath: command.bundle!)
+        let verification = try MemoryExportBundleVerifier.verify(
+            bundleAt: url,
+            signingPublicKey: try? Self.loadSigningKey().publicKey,
+            recipient: try command.recipient.map(Self.loadRecipient)
+        )
+        if command.json {
+            return MIFCanonicalJSON.serialize(.object([
+                "bundle": .string(url.path),
+                "intact": .bool(verification.isIntact),
+                "signature_verified": .bool(verification.signatureVerified),
+                "checks_run": .strings(verification.checksRun),
+                "problems": .strings(verification.problems)
+            ]))
+        }
+        return MemoryExportBundleVerifier.format(verification, at: url)
+    }
+
+    /// F-17. `MemoryExportP5Check.run` had no shipped caller, so D-0007's
+    /// memory-lane proof existed only as a library function while the usage
+    /// string advertised the verb.
+    ///
+    /// Steps 1 and 2 are read HERE, either side of the source's live id set and
+    /// in separate transactions — inside one, the head cannot move, and the
+    /// whole proof is that it did not.
+    private func runMemoryP5Check(_ command: MemoryExportCommand) throws -> String {
+        let queue = try openMemoryStore()
+        let headBefore = try queue.read { try MemoryExportStoreReader.auditHead($0) }
+        let sourceLiveIDs = try queue.read { try MemoryExportStoreReader.liveMemoryIDs($0) }
+        let storeID = try queue.read { try MemoryExportStoreReader.storeIdentity($0) }
+        let headAfter = try queue.read { try MemoryExportStoreReader.auditHead($0) }
+
+        // swiftlint:disable:next force_unwrapping reason: validate() refuses p5-check without --target-ids
+        let targetPath = command.targetIDs!
+        guard let text = try? String(contentsOf: URL(fileURLWithPath: targetPath), encoding: .utf8) else {
+            throw BurnBarCLIError.missingArgument("cannot read the target id set at \(targetPath).")
+        }
+        let targetLiveIDs = Set(
+            text.split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { $0.isEmpty == false }
+        )
+
+        let result = MemoryExportP5Check.run(
+            gates: MemoryExportP5Gates(
+                sourceVersion: BurnBarDaemonVersion.current,
+                // swiftlint:disable:next force_unwrapping reason: validate() refuses p5-check without it
+                requiredVersion: command.requiredVersion!,
+                socketTokenRotated: command.socketTokenRotated,
+                memoryWriteCapabilityWithdrawn: command.memoryWriteWithdrawn
+            ),
+            headBefore: headBefore.seq,
+            headAfter: headAfter.seq,
+            sourceLiveIDs: sourceLiveIDs,
+            targetLiveIDs: targetLiveIDs,
+            storeID: storeID ?? "unknown"
+        )
+        if command.json {
+            return MIFCanonicalJSON.serialize(result.report.json)
+        }
+        var lines = [
+            "audit head:  \(headBefore.seq) -> \(headAfter.seq)"
+                + (headBefore.seq == headAfter.seq ? " (quiesced)" : " (A WRITER SURVIVED THE GATES)"),
+            "source live: \(sourceLiveIDs.count)",
+            "target live: \(targetLiveIDs.count)",
+            "decision:    \(result.report.decision.rawValue)"
+        ]
+        if result.holdReasons.isEmpty == false {
+            lines.append("held:        \(result.holdReasons.map(\.rawValue).joined(separator: ", "))")
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Store

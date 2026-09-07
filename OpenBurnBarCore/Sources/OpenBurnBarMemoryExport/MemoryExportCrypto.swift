@@ -114,6 +114,9 @@ public enum MemoryExportCrypto {
     /// it. Declared in `manifest.crypto.aead`, never inferred by a reader.
     public static let aead = "chacha20poly1305"
     public static let nonceBytes = 12
+    /// What one sealed segment adds to its plaintext: the 12-byte nonce
+    /// `ChaChaPoly.combined` prefixes, plus the 16-byte Poly1305 tag.
+    public static let sealOverheadBytes = 28
     /// No zstd is vendored here, and §2.1's rule is that silently ignoring a
     /// *declared* codec is what is illegal — declaring `none` is not.
     public static let compression = "none"

@@ -198,6 +198,34 @@ final class MemoryExportCanonicalJSONTests: XCTestCase {
         )
     }
 
+    /// F-16 and F-17: both verbs are wired now, and both refuse the inputs they
+    /// genuinely cannot supply from this side rather than being advertised and
+    /// throwing.
+    func test_verifyAndP5CheckTakeTheInputsOnlyTheOtherSideHas() throws {
+        XCTAssertThrowsError(try MemoryExportCommand.parse(["verify"]))
+        let verify = try MemoryExportCommand.parse(["verify", "--bundle", "/tmp/b"])
+        XCTAssertEqual(verify.bundle, "/tmp/b")
+
+        // Step 3 is an id-set diff and step 0(a) is a version gate; neither
+        // input exists on this side, so neither gets a default.
+        XCTAssertThrowsError(try MemoryExportCommand.parse(["p5-check"]))
+        XCTAssertThrowsError(try MemoryExportCommand.parse(["p5-check", "--target-ids", "/tmp/ids"]))
+        let check = try MemoryExportCommand.parse([
+            "p5-check", "--target-ids", "/tmp/ids", "--required-version", "1.0.42"
+        ])
+        XCTAssertEqual(check.requiredVersion, "1.0.42")
+        // 0(b) and 0(c) are assertions the operator makes, and an unasserted
+        // gate holds rather than passing.
+        XCTAssertFalse(check.socketTokenRotated)
+        XCTAssertFalse(check.memoryWriteWithdrawn)
+        let asserted = try MemoryExportCommand.parse([
+            "p5-check", "--target-ids", "/tmp/ids", "--required-version", "1.0.42",
+            "--socket-token-rotated", "--memory-write-withdrawn"
+        ])
+        XCTAssertTrue(asserted.socketTokenRotated)
+        XCTAssertTrue(asserted.memoryWriteWithdrawn)
+    }
+
     func test_anUnknownVerbOrFlagIsRefused() {
         XCTAssertThrowsError(try MemoryExportCommand.parse(["import"]))
         XCTAssertThrowsError(try MemoryExportCommand.parse(["verify", "--nope"]))

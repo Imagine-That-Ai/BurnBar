@@ -97,27 +97,34 @@ public enum MemoryExportBundleWriter {
 
         // 2. Seal, and build the keyed tree over the CIPHERTEXT so a section can
         //    be verified before it is decrypted.
+        var segments: [MIFSection: [Data]] = [:]
         var ciphertexts: [MIFSection: Data] = [:]
         var subroots: [MIFSection: String] = [:]
         for buffer in ordered {
             // swiftlint:disable:next force_unwrapping reason: every section was written above
             let plaintext = plaintexts[buffer.section]!
             let key = MemoryExportCrypto.segmentKey(bundleKey: inputs.context.bundleKey, section: buffer.section)
-            var sealed = Data()
-            for (index, chunk) in MemoryExportCrypto
-                .chunks(of: plaintext, size: inputs.maxSectionBytes)
-                .enumerated() {
-                sealed.append(try MemoryExportCrypto.seal(
-                    chunk: chunk,
-                    section: buffer.section,
-                    segmentKey: key,
-                    index: index
-                ))
-            }
-            ciphertexts[buffer.section] = sealed
+            let sealed = try MemoryExportCrypto
+                // §2 rotates a section at `max_section_bytes` of CIPHERTEXT, and
+                // each sealed segment carries a 12-byte nonce and a 16-byte tag,
+                // so the plaintext cut is that much shorter. Getting this
+                // backwards writes segments slightly over the declared limit.
+                .chunks(of: plaintext, size: max(1, inputs.maxSectionBytes - MemoryExportCrypto.sealOverheadBytes))
+                .enumerated()
+                .map { index, chunk in
+                    try MemoryExportCrypto.seal(
+                        chunk: chunk,
+                        section: buffer.section,
+                        segmentKey: key,
+                        index: index
+                    )
+                }
+            segments[buffer.section] = sealed
+            let joined = sealed.reduce(into: Data()) { $0.append($1) }
+            ciphertexts[buffer.section] = joined
             subroots[buffer.section] = MemoryExportCrypto.hashTreeRoot(
                 bundleKey: inputs.context.bundleKey,
-                ciphertext: sealed
+                ciphertext: joined
             )
         }
 
@@ -150,6 +157,7 @@ public enum MemoryExportBundleWriter {
             sections: ordered,
             subroots: subroots,
             ciphertexts: ciphertexts,
+            segments: segments,
             deviceKeyID: deviceKeyID,
             findingsSummary: report.findings
         )
@@ -188,7 +196,7 @@ public enum MemoryExportBundleWriter {
                 try MemoryExportCrypto.sign(manifestBytes: manifestData, signingKey: $0)
             },
             wrapped: wrapped,
-            ciphertexts: ciphertexts,
+            segments: segments,
             subroots: subroots,
             ordered: ordered,
             bundleKey: inputs.context.bundleKey,
@@ -247,6 +255,7 @@ public enum MemoryExportBundleWriter {
         sections: [MemoryExportSectionBuffer],
         subroots: [MIFSection: String],
         ciphertexts: [MIFSection: Data],
+        segments: [MIFSection: [Data]],
         deviceKeyID: String?,
         findingsSummary: [MemoryExportFinding]
     ) -> MIFJSON {
@@ -265,7 +274,12 @@ public enum MemoryExportBundleWriter {
                 "record_type": .string(buffer.section.recordTypePointer),
                 "subroot": .string(subroots[buffer.section] ?? String(repeating: "0", count: 64)),
                 "bytes": .int(ciphertext.count),
-                "segments": .int(max(1, MemoryExportCrypto.chunks(of: ciphertext, size: inputs.maxSectionBytes).count))
+                // The number of `NNN.ndjson.seal` FILES this section is written
+                // as. It used to be the ciphertext re-chunked at
+                // `max_section_bytes`, a boundary that corresponded to nothing
+                // on disk — every section was one file however large it was
+                // (review F-14).
+                "segments": .int(max(1, segments[buffer.section]?.count ?? 1))
             ]
             if buffer.rollupTuples.isEmpty == false {
                 fields["rollup_digest"] = .string(rollupDigest(buffer.rollupTuples))
@@ -468,7 +482,7 @@ public enum MemoryExportBundleWriter {
         manifestData: Data,
         signature: Data?,
         wrapped: MemoryExportCrypto.WrappedBundleKey,
-        ciphertexts: [MIFSection: Data],
+        segments: [MIFSection: [Data]],
         subroots: [MIFSection: String],
         ordered: [MemoryExportSectionBuffer],
         bundleKey: SymmetricKey,
@@ -508,8 +522,20 @@ public enum MemoryExportBundleWriter {
         for buffer in ordered {
             let directory = sections.appendingPathComponent(buffer.section.rawValue)
             try manager.createDirectory(at: directory, withIntermediateDirectories: true)
-            try (ciphertexts[buffer.section] ?? Data())
-                .write(to: directory.appendingPathComponent("000.ndjson.seal"))
+            // One file per sealed segment. An empty section still writes
+            // `000.ndjson.seal`, so a reader never has to distinguish "no
+            // segments" from "directory not written".
+            let sealed = segments[buffer.section] ?? []
+            for (index, segment) in (sealed.isEmpty ? [Data()] : sealed).enumerated() {
+                try segment.write(to: directory.appendingPathComponent(Self.segmentFilename(index)))
+            }
         }
+    }
+
+    /// `000.ndjson.seal`, `001.ndjson.seal`, … The index is the segment index
+    /// the nonce and the chunk AAD are derived from, so the filename and the
+    /// cryptographic position are the same number by construction.
+    static func segmentFilename(_ index: Int) -> String {
+        String(format: "%03d.ndjson.seal", index)
     }
 }

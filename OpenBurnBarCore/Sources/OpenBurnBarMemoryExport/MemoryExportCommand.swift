@@ -35,6 +35,21 @@ public struct MemoryExportCommand: Sendable, Equatable {
     public var verb: Verb
     public var out: String?
     public var recipient: String?
+    /// `verify` and `p5-check` read an existing bundle rather than writing one.
+    public var bundle: String?
+    /// `p5-check`: the target's live memory ids, one per line, as the importer
+    /// publishes them. Step 3 is an id-set diff, and there is no honest way to
+    /// obtain the other side's set from this one.
+    public var targetIDs: String?
+    /// `p5-check` step 0(a): the release whose daemon carries no
+    /// `daemon.memory.*` handler and no `agent_memories` writer. No default —
+    /// inventing a version number here would turn the gate into a formality.
+    public var requiredVersion: String?
+    /// Step 0(b) and 0(c). Operator assertions, defaulting to FALSE, so an
+    /// operator who does not make them gets `P5_SOURCE_NOT_QUIESCED` rather
+    /// than a pass.
+    public var socketTokenRotated = false
+    public var memoryWriteWithdrawn = false
     public var source: SourceSelection = .authority
     public var dryRun = false
     public var resume = false
@@ -94,8 +109,10 @@ public struct MemoryExportCommand: Sendable, Equatable {
             case "--rehearsal": command.rehearsal = true
             case "--deterministic-nonces": command.deterministicNonces = true
             case "--json": command.json = true
+            case "--socket-token-rotated": command.socketTokenRotated = true
+            case "--memory-write-withdrawn": command.memoryWriteWithdrawn = true
             case "--out", "--recipient", "--source", "--since-audit-seq", "--since-updated-at-ms",
-                 "--snapshot", "--max-section-bytes":
+                 "--snapshot", "--max-section-bytes", "--bundle", "--target-ids", "--required-version":
                 index += 1
                 guard index < arguments.count else {
                     throw MemoryExportCommandError.usage("\(argument) needs a value")
@@ -114,6 +131,9 @@ public struct MemoryExportCommand: Sendable, Equatable {
         switch flag {
         case "--out": out = value
         case "--recipient": recipient = value
+        case "--bundle": bundle = value
+        case "--target-ids": targetIDs = value
+        case "--required-version": requiredVersion = value
         case "--source":
             guard let parsed = SourceSelection(rawValue: value) else {
                 throw MemoryExportCommandError.usage("--source must be one of \(SourceSelection.allCases.map(\.rawValue))")
@@ -160,6 +180,26 @@ public struct MemoryExportCommand: Sendable, Equatable {
                     + "<descriptor.json>, published by `memoryctl memory export-recipient`. "
                     + "A bundle sealed to no recipient can never be opened."
             )
+        }
+        if verb == .verify, bundle == nil {
+            throw MemoryExportCommandError.usage("memory verify needs --bundle <dir>")
+        }
+        // The P5 check is an id-set diff between two stores, and this side holds
+        // one of them. Both other inputs are the runbook's to supply.
+        if verb == .p5Check {
+            if targetIDs == nil {
+                throw MemoryExportCommandError.usage(
+                    "memory p5-check needs --target-ids <file>: the target's live memory ids, one per line, "
+                        + "as `memoryctl memory live-ids` prints them. Step 3 is an id-set diff."
+                )
+            }
+            if requiredVersion == nil {
+                throw MemoryExportCommandError.usage(
+                    "memory p5-check needs --required-version <x.y.z>: the release whose daemon carries no "
+                        + "daemon.memory.* handler and no agent_memories writer. Step 0(a) refuses an older "
+                        + "build BY VERSION and never disables one in place."
+                )
+            }
         }
         // A delta needs BOTH halves of §5's predicate. Accepting `--since-audit-seq`
         // alone and quietly exporting everything is worse than refusing: the
