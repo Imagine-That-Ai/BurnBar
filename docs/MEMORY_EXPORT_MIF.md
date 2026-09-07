@@ -801,18 +801,132 @@ ruling 6 wants a bundle from fixtures — with both key halves and the bundle ke
 seeded, so it regenerates byte for byte:
 
 ```
-bundle_id       bnd_95ee02b1f83ca2347422459f3198a411
-recipient       rcp_3005b65cea91bf2755860ad621af8cea   store `importer-store-fixture`
+bundle_id       bnd_0a52fbab859d932cb88efd1e16582c10
+content_digest  0a52fbab859d932cb88efd1e16582c10e1d87021b34195d10f5d432e48348f54
+hashtree.root   dac966b620fd578ebd0d579f29ebcac75d40d9a1c95060da5719bf9c412ffe7f
+recipient       rcp_7c9b4dfed5232488385db5a1a97f7639
+                store sto_86de0b1a69f22aced2b305dd108a0508
 contents        6 memories in (one `forgotten` → a tombstone, one proven human
                 rejection), 5 memory records, 5 bodies, 1 project, 1 citation,
                 2 audit rows, 2 findings; 11 sections, 11 segment files
-verify          intact, signature verified, 8 checks, 0 problems
-schema at HEAD  20 instances (manifest, report, 18 records), 0 failing assertions
+report          decision `exported`, no hold reasons, 15 lanes, every one balanced
+verify          intact, signature verified, 10 checks, 0 problems
+schema 9c84b3bd 30 instances (manifest, report, hashtree.json, 11 section headers,
+                16 records), 0 failing assertions
 ```
 
+`interop-fixture-v3` is what run 2 takes. Run 1's `bnd_95ee02b1…` is superseded
+whole: it was addressed to the store id `importer-store-fixture`, which no store
+can hold (M-10), and every value below it moved.
+
 Recomputed out of process from the bundle's own files (venv `cryptography` +
-`jsonschema` 4.26.0): all eleven subroots, the D-0031 ruling 1 fold root
-(`51ff2138…`, equal to `manifest.hashtree.root` and to `hashtree.json`'s), the
-unkeyed per-chunk sidecar, `sha256(JCS(manifest minus the four))` equal to
-`content_digest`, `bundle_id` following from it, and the Ed25519 signature over
-its 32 raw bytes.
+`jsonschema` 4.26.0), **195 assertions, 0 failing**: every segment opened with a
+DERIVED nonce and checked to be `ciphertext ‖ tag` with the nonce nowhere in it;
+every body base64url-decoded and re-HMAC'd into its own `body_join_key`, with
+`body_join_key ≠ body_norm_digest` on all ten rows that carry both; all eleven
+subroots and the D-0031 ruling 1 fold root, equal to `manifest.hashtree.root`
+and to `hashtree.json`'s; all eleven `rollup_digest`s recomputed from the
+decrypted records through the declared tuples; `sha256(JCS(manifest minus the
+four) ‖ root32)` equal to `content_digest`, `bundle_id` following from it, and
+the Ed25519 signature over its 32 raw bytes; the fifteen lanes' closed sums and
+the section coverage; and `report.bundle.mif_minor` equal to the manifest's.
+
+Re-running the generator reproduces the bundle byte for byte except
+`keys/wrapped-bundle-key` and `manifest.sig` — HPKE's encapsulated key and
+CryptoKit's randomized Ed25519, the two artefacts §2's determinism claim
+excludes.
+
+---
+
+## 12. Interop run 1 — what each finding was, and what it is now
+
+`docs/memory/reviews/INTEROP-RUN-1.md` measured fourteen mismatches between this
+exporter and the Rust importer, and D-0038 (amended) and D-0039 turned every one
+of them into a decision. The eight this repository owns are below, with the two
+the same pass touched because the re-vendor forced them. Each is one commit.
+
+| # | Finding, as run 1 measured it | Status |
+|---|---|---|
+| **M-4** | the exporter prepended the 12-byte nonce to every segment; §2.1 derives it and says so twice, so the importer read the ciphertext 12 bytes off and opened nothing | **fixed** — a segment is `ciphertext ‖ tag`, `sealOverheadBytes` is the 16-byte tag, and an empty section's segment is 16 bytes. `open` re-derives the nonce, which is what a reader that has never seen this code does. The test pins the framing by length AND by the derived-nonce open; returning to `.combined` turns it red |
+| **M-5** | `K_join` was derived with an UNSALTED HKDF while every other key in `mif1-hkdf-v1` uses the workspace salt, so the two sides could never have agreed on a join key | **fixed** — D-0039 ruling 3: salted, through the one `derive(salted:)` this file now has. `derive(from:)` is gone, so there is no second derivation to drift |
+| **M-6** | `record_body.body` carried the plaintext; the importer b64url-decodes, so every body arrived unreadable | **fixed** — D-0038 ruling 2: base64url, unpadded, of the canonical bytes. `byte_len` still describes the body, not the envelope. The test opens the sealed 06 segment, decodes and re-HMACs the bytes into the record's own `body_join_key` |
+| **M-7** | `body_join_key == body_norm_digest` on all five rows, so section 05's three-member roll-up tuple was two members wide and the mis-attachment check was inert | **fixed** — the join key is over the canonical bytes, the digest over `normalize(body)`, and `normalize` is the schema's §0.1 (NFKC → casefold → whitespace runs to one `U+0020` → trailing `.,;:!?` stripped) rather than the local CRLF-and-trim D-0038's amendment withdrew. The interop fixture's bodies are capitalised and full-stopped so the two values differ on every row |
+| **M-8** | sections 00, 02 and 09 carried rows that no lane in `report.json.tables[]` mentioned — §10's identity is a sum over lanes, so those rows were outside every sum. 01 and 10 had the same hole, unexercised | **fixed** — D-0039 ruling 5: `MIFReconciliationLane` is a closed vocabulary, each lane declaring the sections it may write, and six lanes are added (`agent_memories.forgotten`, `memory_fact_tombstones.replicated_at`, `memory_audit.review`, `memory_audit`, `embedding_versions`, `report.findings`). `SectionBuffer.append` REQUIRES a lane, so a row cannot enter a section without naming the sum that accounts for it; the exporter re-reads that attribution before sealing and holds `RECONCILIATION_MISMATCH` otherwise, and `verify` recomputes every lane's closed sum and the coverage from `report.json` and the manifest |
+| **M-9** | `manifest.mif_minor = 2` beside `report.bundle.mif_minor = 1`, and nothing cross-checks them | **fixed** — both read `MIFFormatVersion`, the only place either number is written; the test compares the two FILES |
+| **M-10** | `recipient_store_id` was `importer-store-fixture`, which `schema/memory-v1.sql` forbids (`GLOB 'sto_[0-9a-f]*' AND length = 36`), so no store could exist under it and `RECIPIENT_MISMATCH` was certain | **fixed** — D-0039 ruling 7's shape enforced on the way in: `mintStoreID()`, `isValidStoreID`, a refusal in `parse(descriptor:)` and in the `--store-id` parser, and a `verify` problem for a manifest carrying one (rehearsal exempt, being sealed to nobody by design) |
+| **M-11** | the fixture's `keys/recipient.json` could not have come from a real `export-recipient` | **fixed** — `recipient-keypair` mints the store id when none is given, and `interop-fixture-v3` carries `sto_86de0b1a69f22aced2b305dd108a0508`, seeded so the fixture still regenerates byte for byte |
+| M-2 | `content_digest` preimage — the exporter's exclusion set was adopted, but ruling 1 also appends the tree root's 32 RAW bytes, which this build did not | **fixed with the re-vendor** — `sha256(JCS(manifest minus the four) ‖ root32)`. The vector test digests the migration spec's own minimal manifest and reproduces its published V4 |
+| M-12 | roll-up coverage: two of eleven sections declared a digest, because eight tuples named members no record carries | **fixed with the re-vendor** — Q-51 reconciled the five open tuples, D-0039 ruling 6 makes `rollup_digest` required and non-nullable on all eleven, and the section buffer PROJECTS each row's tuple from the record it appended, so the published `tuple[]` and the digested values come from one table |
+
+M-1, M-3, M-13 and M-14 are the importer's or the contract's and are not touched
+here. M-3's ruling (the fold over the raw subroots) is what this exporter already
+did, and the vector below pins it.
+
+### The vectors — D-0039 ruling 10
+
+Computed outside this code by a second implementation (CPython `hmac`,
+`hashlib`, `unicodedata`, `base64`, with RFC 5869 HKDF and JCS written out), and
+pinned in `MIFInteropVectorsTests`. The same numbers are published in
+`MEMORY_MIGRATION_SPEC.md` §2, so the generator, the importer and this exporter
+agree on values rather than on sentences.
+
+Under `bundle_key = 0x01` × 32 and `HKDF_SALT = "imaginethat.memory.hkdf.v1"`:
+
+| name | value |
+|---|---|
+| `K_join` | `132ca0a501d425ba4b6b32ce3cd27b2417c93a7edca4bc3d67d6fb529fce1a56` |
+| body | `"Hello\r\n  world  \r\n"` — canonical `48656c6c6f0d0a2020776f726c6420200d0a`, **18 bytes** |
+| `normalize(body)` | `"hello world"` |
+| `record_body.body` | `SGVsbG8NCiAgd29ybGQgIA0K` |
+| **V1** `body_join_key` | `d1b8f1b83089cc28ff2b5f3e4b390fb8b4756f2e4bbf355eba3e2f702cce4d04` |
+| **V2** `body_norm_digest` | `11aad28d73db37d69b5894ee2c16b82d91244816e96fb006d61b47d09a760d1d` |
+| `ht_key` | `2cfb783a9d3dd7d703db9714ec529f6b93bd07c07e4e6d25271aa2007cd29d40` |
+| subroot `sec-00` | `a69a0f3b6f4801b0e876b64217e3e88b02e940fa4284abbb15cfbf030eade1eb` |
+| subroot `sec-05` | `cc511923ff13160176ec59580d1211f8ee8759d6442f33b43287d8ac1133b2e7` |
+| subroot `sec-10` | `7b35ef65925c6a650fae4a9b0152173f30e5c0d8022a379270fe20ef9349d781` |
+| **V3** bundle root | `5446dab5850a3e16851fc9d13baff4856a93b1a40e230f65e51ff6a83ddcfbef` |
+| **V4** `content_digest` | `cc7c8866b05adf30d64bc74b85700dbef667c377880ba9f914b0db74d01a8cd6` |
+| V4's `bundle_id` | `bnd_cc7c8866b05adf30d64bc74b85700dbe` |
+| V4's JCS preimage | 1,763 bytes; `sha256` of it alone is `048e80ad60cbe665719037942fe3029c3425f9afb29d1022c0988ba6ecb1440f` — a bisection point, and this build's OLD `content_digest` |
+
+`V1 ≠ V2` is the property M-7 found inert, and it holds by construction: one is
+keyed over the exact stored bytes, the other over `normalize`. They coincide only
+for a body that is already its own normal form, which is a fact about the body.
+
+**`byte_len` for this body is 18, not 17.** D-0038's amendment calls the
+canonical bytes "those exact 17 bytes"; the string literal is 5 + 2 + 2 + 5 + 2 +
+2 = 18 UTF-8 bytes, and §2 has since settled it the same way — the literal
+governs. `record_body.byte_len` is `len(canonical)`.
+
+**Two readings `normalize` leaves open, settled by the vector.** A whitespace run
+at an EDGE collapses away rather than to a space (`"hello world"`, not
+`"hello world "`), and the trailing-punctuation strip takes the whole run. Both
+are pinned by tests. Case FOLDING, not lowercasing:
+`folding(options: .caseInsensitive)` agrees with CPython's `str.casefold()` byte
+for byte on the eight cases the tests drive, `"Straße"` and `"İstanbul"` among
+them — the two places a `lowercased()` implementation diverges.
+
+### The vendored contract
+
+`Contracts/mif-v1.schema.json` is re-vendored from the gauntlet at commit
+`3739ad37e6db7649398c98fcbd3df7f8c7d229ff` (Q-53), sha256
+`9c84b3bd8dd4711ae55acdfd1de7df9d4f72f690fdb20c4aea1e882119f6eef7`, pinned by
+`MIFContractPinTests`. It is the first re-vendor that is **not** additive: a
+manifest written before it no longer validates, because `rollup_digest` is
+required on all eleven sections. `hashtree.json` gains a `$def`,
+`recipient_store_id` gains the DDL's pattern, and `hold_reason` gains
+`MANIFEST_INVALID`.
+
+### D-BB-E-17 — R5's per-chunk sidecar moved to `segments.sha256.json`
+
+`$defs/hashtree_file` is `additionalProperties: false` and names four members, so
+the unkeyed per-chunk `sha256` sidecar review R5 added — the only thing that lets
+`verify` catch a MODIFIED segment without the bundle key, which this side never
+retains — can no longer live inside `hashtree.json`. It moves to
+`segments.sha256.json` beside it, same content, same chunking as the keyed tree.
+
+It is **not** a second root and D-0031's "computed once" is untouched; it is also
+not a contract document, so nothing validates it. The alternative was to keep it
+where it was and fail the `$def` that D-0039 ruling 8 exists to make checkable.
+Flagged for the spec owner: if a bundle may carry only the files §2 lists, this
+sidecar needs either a member in `hashtree_file` or a line in §2's layout.
