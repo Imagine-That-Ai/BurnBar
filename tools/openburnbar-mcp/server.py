@@ -6144,8 +6144,11 @@ def bench_explain(stack_json: str) -> str:
 # unrelated to memory. `BURNBAR_MCP_TOOLSET` narrows what this server offers:
 #
 #   memory  — the corpus + memory surface a coding agent should carry
-#             everywhere (search, recall, remember, project memory, resume).
-#   ops     — everything else (usage, budgets, inbox, cloud, spawn, hermes).
+#             everywhere (search, recall, remember, project memory, resume),
+#             plus the project code index it retrieves over — build, status,
+#             and every read — so the retrieval loop closes inside one toolset.
+#   ops     — everything else (usage, budgets, inbox, cloud, spawn, hermes),
+#             plus the whole code index family, which both personas use.
 #   all     — the historical single-server behavior (default).
 #
 # The one-click installers write `memory` for coding agents; `ops` is for
@@ -6184,14 +6187,56 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_team_link_project",
         "burnbar_audit_trail",
         "burnbar_memory_analytics",
+        # Project code index. The toolset serves code retrieval, so it serves the
+        # whole loop: the tool that builds the index, the tool that says whether
+        # one exists, and every read over it. A reader without its producer is a
+        # tool that can only ever answer "no results" — see the closure test in
+        # tests/test_toolset_closure.py, which fails if this set drifts back.
+        # `burnbar_watch_project` is deliberately absent: it enlists the daemon in
+        # open-ended background polling, which is a standing commitment rather
+        # than a read, and nothing here depends on it. It stays in `ops`, where
+        # the operator persona owns standing work — see CODE_INDEX_TOOLSET below.
+        "burnbar_index_project",
+        "burnbar_index_status",
         "burnbar_search_code",
         "burnbar_context_pack",
         "burnbar_code_context_pack",
+        "burnbar_get_symbol",
+        "burnbar_find_references",
+        "burnbar_call_graph",
+        "burnbar_diagnostics",
+        "burnbar_explore",
         "burnbar_list_project_memory",
         "burnbar_get_project_memory",
         "burnbar_list_resumable_conversations",
         "burnbar_resume_conversation",
         "burnbar_session_briefing",
+    }
+)
+
+# The project code index family, named once.
+#
+# Both personas reach for this index: a coding agent retrieves over it, an
+# operator builds and watches it. A toolset that serves any reader of a store
+# has to serve what builds that store and what reports on it, or it serves
+# tools that can only answer "nothing found" — so the family joins `ops` whole
+# even though most of it now also sits in `memory`. Without this, growing
+# `MEMORY_TOOLSET` would have left `ops` holding `burnbar_watch_project` alone:
+# a producer with no reader and no status tool, the same defect pointed the
+# other way.
+CODE_INDEX_TOOLSET: frozenset[str] = frozenset(
+    {
+        "burnbar_index_project",
+        "burnbar_watch_project",
+        "burnbar_index_status",
+        "burnbar_search_code",
+        "burnbar_context_pack",
+        "burnbar_code_context_pack",
+        "burnbar_get_symbol",
+        "burnbar_find_references",
+        "burnbar_call_graph",
+        "burnbar_diagnostics",
+        "burnbar_explore",
     }
 )
 
@@ -6215,8 +6260,13 @@ def _apply_toolset_filter(server: Any, toolset_raw: str | None) -> str:
         )
         return "all"
     for name in list(tools):
-        in_memory = name in MEMORY_TOOLSET
-        if (requested == "memory") != in_memory:
+        if requested == "memory":
+            keep = name in MEMORY_TOOLSET
+        else:
+            # `ops` is the complement of `memory`, plus the whole code index
+            # family: the operator persona owns building and watching that index.
+            keep = name not in MEMORY_TOOLSET or name in CODE_INDEX_TOOLSET
+        if not keep:
             del tools[name]
     return requested
 
