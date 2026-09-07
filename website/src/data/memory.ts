@@ -27,7 +27,7 @@ export const MEMORY_STORE_PATH =
 
 /** MEMORY_TOOLSET in tools/openburnbar-mcp/server.py — the tools a client
  *  gets with BURNBAR_MCP_TOOLSET=memory. Counted, not guessed. */
-export const MEMORY_TOOL_COUNT = 38;
+export const MEMORY_TOOL_COUNT = 45;
 
 /* The whole server, for the sections that speak about it rather than about
    the memory toolset. Parsed out of server.py by the copy gate, so they
@@ -1183,7 +1183,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "code",
     desc: "Index source files into a local-only, project-partitioned code memory. Gitignore-aware, blob-SHA stamped, and it refuses secret-bearing files before they persist.",
     caps: ["local_write"],
-    memory: false
+    memory: true
   },
   {
     name: "burnbar_watch_project",
@@ -1197,7 +1197,7 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "code",
     desc: "What is indexed for this project, and how much storage it is using.",
     caps: [],
-    memory: false
+    memory: true
   },
   {
     name: "burnbar_search_code",
@@ -1225,35 +1225,35 @@ export const TOOL_ATLAS: AtlasTool[] = [
     group: "code",
     desc: "Find a symbol, with the tier that answered — exact LSP, static tree-sitter, or lexical fallback — and blob-staleness evidence attached.",
     caps: [],
-    memory: false
+    memory: true
   },
   {
     name: "burnbar_find_references",
     group: "code",
     desc: "Where a symbol is used across the project, using an exact language server when one is configured and answering.",
     caps: [],
-    memory: false
+    memory: true
   },
   {
     name: "burnbar_call_graph",
     group: "code",
     desc: "Lexical-tier call edges touching one symbol — who calls it, and what it calls.",
     caps: [],
-    memory: false
+    memory: true
   },
   {
     name: "burnbar_diagnostics",
     group: "code",
     desc: "Cached diagnostics for a project. A cached-file tier, and it says so rather than implying a live language server.",
     caps: [],
-    memory: false
+    memory: true
   },
   {
     name: "burnbar_explore",
     group: "code",
     desc: "Index if needed, search, and return a context pack — the one-call version for an agent that has just opened an unfamiliar repository.",
     caps: ["local_write"],
-    memory: false
+    memory: true
   },
 
   /* ── sessions across harnesses ──────────────────────────────── */
