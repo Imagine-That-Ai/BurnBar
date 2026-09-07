@@ -453,7 +453,7 @@ export const BOUNDARY: BoundaryLane[] = [
     status: "opt-in",
     statusLabel: "Off by default · paid entitlement",
     summary:
-      "Two separate features, each off by default, each requiring its own consent in Settings → Privacy, each fail-closed: no entitlement, no consent, no daemon → zero network calls and unchanged local behaviour.",
+      "Three separate features, each off by default, each requiring its own consent in Settings → Privacy, each fail-closed: no entitlement, no consent, no daemon → zero network calls and unchanged local behaviour.",
     rows: [
       {
         item: "Cloud models for memory",
