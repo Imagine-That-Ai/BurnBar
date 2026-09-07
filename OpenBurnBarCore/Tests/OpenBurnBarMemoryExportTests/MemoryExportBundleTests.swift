@@ -503,6 +503,76 @@ final class MemoryExportBundleTests: XCTestCase {
         XCTAssertEqual(result.report.orphanBodies, 0)
     }
 
+    /// F-4. `manifest.not_exported` is the per-reason SUM over every logical
+    /// table's own not-exported **source rows** — §10's closed sum is per table
+    /// (`source_rows == exported + Σ not_exported[reason]`), and the manifest
+    /// carries the roll-up of those sums. So one forgotten memory contributes
+    /// TWO rows, in two tables: the `agent_memories` row and the
+    /// `memory_body_snapshots` row that was left behind by the forget. It is a
+    /// row count, and never a count of the records the bundle carries — which is
+    /// one tombstone.
+    ///
+    /// The review read `forgotten_to_tombstone: 2` as a record count and found
+    /// one tombstone. Both numbers are right; this test pins which is which, and
+    /// `verify` now names `not_exported` when the manifest and the report
+    /// disagree about it.
+    func test_notExportedCountsSourceRowsAcrossTablesNotRecords() throws {
+        let queue = try MemoryExportFixtureStore.makeQueue()
+        try queue.write { db in
+            try MemoryExportFixtureStore.insertAppMemory(
+                db,
+                id: "forgotten-but-bodied",
+                body: "A thing the user asked to forget.",
+                reviewStatus: "forgotten"
+            )
+        }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try makeExporter().export(
+            try MemoryExportFixtureStore.snapshot(queue),
+            mode: .full,
+            to: directory,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "not-exported")
+        )
+
+        // One tombstone RECORD in the bundle.
+        XCTAssertEqual(result.sectionBuffers[.tombstones]?.records.count, 1)
+
+        // Two source ROWS not exported, in two tables, each balancing its own
+        // closed sum.
+        let byTable = Dictionary(uniqueKeysWithValues: result.report.tables.map { ($0.name, $0) })
+        XCTAssertEqual(byTable["agent_memories"]?.notExported[.forgottenToTombstone], 1)
+        XCTAssertEqual(byTable["memory_body_snapshots"]?.notExported[.forgottenToTombstone], 1)
+        for name in ["agent_memories", "memory_body_snapshots"] {
+            XCTAssertTrue(try XCTUnwrap(byTable[name]).isBalanced, "\(name) balances over its own source rows")
+        }
+
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+            ) as? [String: Any]
+        )
+        let notExported = try XCTUnwrap(manifest["not_exported"] as? [String: Int])
+        XCTAssertEqual(
+            notExported["forgotten_to_tombstone"],
+            2,
+            "the manifest sums the tables' source rows: agent_memories 1 + memory_body_snapshots 1"
+        )
+
+        // And the two documents agree, which is what makes the number checkable
+        // on the wire rather than merely declared.
+        let verification = try MemoryExportBundleVerifier.verify(
+            bundleAt: directory,
+            signingPublicKey: nil,
+            recipient: recipient
+        )
+        XCTAssertFalse(
+            verification.problems.contains { $0.contains("not_exported") },
+            verification.problems.joined(separator: "; ")
+        )
+    }
+
     /// The same store WITHOUT the forget: the row is carried, so the fix did not
     /// simply stop carrying things.
     func test_theSameRowIsCarriedWhenItWasNeverForgotten() throws {

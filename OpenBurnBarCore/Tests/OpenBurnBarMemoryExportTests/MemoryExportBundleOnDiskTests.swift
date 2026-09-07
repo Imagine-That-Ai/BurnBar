@@ -631,7 +631,8 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
                 manifest["crypto"] = crypto
             }, nil),
             ("user_id", { $0["user_id"] = "someone-else" }, nil),
-            ("not_exported", { $0["not_exported"] = ["forgotten_to_tombstone": 99, "out_of_window": 41] }, nil),
+            ("not_exported", { $0["not_exported"] = ["forgotten_to_tombstone": 99, "out_of_window": 41] },
+             "report.json's tables account for"),
             ("sections[5].row_count", { manifest in
                 var sections = manifest["sections"] as? [[String: Any]] ?? []
                 sections[5]["row_count"] = 999

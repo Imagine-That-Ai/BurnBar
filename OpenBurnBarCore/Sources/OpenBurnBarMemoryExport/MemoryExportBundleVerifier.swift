@@ -343,6 +343,35 @@ public enum MemoryExportBundleVerifier {
                 }
             }
         }
+        // `not_exported` is the per-reason SUM over every logical table's own
+        // not-exported source rows, and `report.json` carries that same view per
+        // table (§10's closed sum is per table). So the two documents witness
+        // one fact twice, and a manifest edited to hide rows disagrees with the
+        // report beside it.
+        if case .object(let declared)? = fields["not_exported"],
+           let reportData = try? Data(contentsOf: url.appendingPathComponent("report.json")),
+           case .object(let report)? = MIFCanonicalJSON.parse(reportData),
+           case .array(let tables)? = report["tables"] {
+            var summed: [String: Int] = [:]
+            for table in tables {
+                guard case .object(let member) = table,
+                      case .object(let notExported)? = member["not_exported"] else { continue }
+                for (reason, count) in notExported {
+                    guard case .int(let rows) = count else { continue }
+                    summed[reason, default: 0] += rows
+                }
+            }
+            for reason in Set(summed.keys).union(declared.keys).sorted() {
+                let manifestCount: Int
+                if case .int(let value)? = declared[reason] { manifestCount = value } else { manifestCount = 0 }
+                if manifestCount != summed[reason, default: 0] {
+                    problems.append(
+                        "not_exported.\(reason) is \(manifestCount) but report.json's tables account for "
+                            + "\(summed[reason, default: 0]) source row(s)"
+                    )
+                }
+            }
+        }
         return problems
     }
 

@@ -431,6 +431,24 @@ supersession edge the rehearsal profile asserts. Harmless and additive, but it
 is a departure and the review was right that it belonged here.
 
 
+### D-BB-E-15 — `manifest.not_exported` is a SOURCE-ROW count, summed across tables
+
+§10's closed sum is **per logical table**: `source_rows == exported + Σ
+not_exported[reason]`, and `report.json` carries that view one table at a time.
+`manifest.not_exported{}` is the roll-up of those sums, per reason code — so it
+counts **source rows**, never the records the bundle carries, and a single
+`forgotten` memory contributes **two**: the `agent_memories` row and the
+`memory_body_snapshots` row the forget left behind. The bundle carries one
+tombstone record for the same event, and both numbers are right.
+
+REVIEW-BB-EXPORTER-3 read `forgotten_to_tombstone: 2` as a record count and found
+one tombstone (F-4). Nothing about the arithmetic changed; what changed is that
+the reading is now written down, pinned by a test that asserts 1 + 1 = 2 across
+the two tables against one tombstone record, and **checkable on the wire**:
+`verify` sums `report.json`'s per-table `not_exported` and names
+`not_exported.<reason>` when the manifest disagrees with it. That is also what
+makes an edited `not_exported` a NAMED failure rather than only a broken digest.
+
 ### D-BB-E-14 — the `key_derivation` const still names the pre-D-0031 tree (spec-owner item)
 
 D-0031 ruling 1 pins the hash-tree key as salted HKDF (`salt =
@@ -686,3 +704,4 @@ Against `docs/memory/reviews/REVIEW-BB-EXPORTER-3.md` (verdict
 | F-1 | `manifest.sig` signs eleven section digests, not the manifest | **fixed** — `content_digest` is `sha256(JCS(manifest minus {created_at_ms, recipient_key_id, bundle_id, content_digest}))`, the preimage §2 and D-0031 ruling 1 both rest on (stated once in D-BB-E-5). `verify` recomputes it from the manifest bytes on disk and names the member wherever a second witness in the bundle can. Each of the review's six edits — `recipient_store_id`, `crypto.aead`, `user_id`, `not_exported`, `sections[5].row_count`, `rollups[0].rollup_digest` — now fails verification; the test drives all six, and reverting the digest to a tree-root-only preimage turns it red with 13 assertions |
 | F-2 | the bundle root is not D-0031 ruling 1's fold, and no test pins it | **fixed** — the section subroots fold with the same `HMAC(key, 0x01 ‖ l ‖ r)` and last-node promotion as the tree beneath them, over the RAW 32 bytes in section order (stated in D-BB-E-5). Pinned to the review's own independently computed value `a3d92105…`; mutating the fold domain byte fails it |
 | F-3 | three of eleven sections ship a 0-byte `.seg` no AEAD can open | **fixed** — an empty section seals the empty string: `{bytes: 28, segments: 1}` and one real segment that opens to zero plaintext bytes, so every declared segment of every bundle opens. `{bytes: 0, segments: 0}` was refused by the contract (`segments` is `minimum: 1`) and §3 says so. `verify` accepts the bundle and now NAMES a segment shorter than an AEAD seal |
+| F-4 | `manifest.not_exported` double-counts across tables | **fixed as a definition, pinned as arithmetic** — the manifest's `not_exported` is the per-reason sum of every table's not-exported SOURCE ROWS (§10's sum is per table), so one forgotten memory is two rows in two tables against one tombstone record. D-BB-E-15 states it, a test asserts 1 + 1 = 2 with one record, and `verify` names `not_exported.<reason>` when the manifest and `report.json` disagree |
