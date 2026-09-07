@@ -37,18 +37,20 @@ function parseArguments(argv) {
     "--profile",
     "--compiled-receipt",
     "--runtime-manifest",
-    "--release-gate",
     "--tag",
     "--commit",
     "--deploy-run-id",
     "--deploy-run-attempt",
     "--output",
   ]);
+  // `--release-gate` is required for every promoted deploy and forbidden on the
+  // inactive lane, where no protected promotion chain exists to bind.
+  const optional = new Set(["--release-gate", "--domain-core-inactive"]);
   const values = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (!required.has(flag))
+    if (!required.has(flag) && !optional.has(flag))
       throw new Error(`unknown argument: ${String(flag)}`);
     if (!value || value.startsWith("--"))
       throw new Error(`${flag} requires a value`);
@@ -57,6 +59,20 @@ function parseArguments(argv) {
   }
   for (const flag of required) {
     if (!values.has(flag)) throw new Error(`${flag} is required`);
+  }
+  if (
+    values.has("--domain-core-inactive") &&
+    !new Set(["true", "false"]).has(values.get("--domain-core-inactive"))
+  ) {
+    throw new Error("--domain-core-inactive must be true or false");
+  }
+  if (
+    values.has("--release-gate") ===
+    (values.get("--domain-core-inactive") === "true")
+  ) {
+    throw new Error(
+      "exactly one of --release-gate or --domain-core-inactive true is required",
+    );
   }
   return values;
 }
@@ -227,18 +243,26 @@ export function buildFunctionsDeployProof({
   profilePath,
   compiledReceiptPath,
   runtimeManifestPath,
-  releaseGatePath,
+  releaseGatePath = null,
   tag,
   commit,
   deployRunId,
   deployRunAttempt,
+  domainCoreInactive = false,
 }) {
+  if ((releaseGatePath === null) !== domainCoreInactive) {
+    throw new Error(
+      "exactly one of a release gate or the inactive domain-core lane is required",
+    );
+  }
   const resolvedProfilePath = regularFile(profilePath, "Functions profile");
   const resolvedReceiptPath = regularFile(
     compiledReceiptPath,
     "compiled Functions receipt",
   );
-  const resolvedGatePath = regularFile(releaseGatePath, "release gate");
+  const resolvedGatePath = domainCoreInactive
+    ? null
+    : regularFile(releaseGatePath, "release gate");
   const resolvedManifestPath = regularFile(
     runtimeManifestPath,
     "Functions runtime manifest",
@@ -248,6 +272,18 @@ export function buildFunctionsDeployProof({
     "Functions profile",
   );
   const profile = validateProfile(profileArtifact.json);
+  // The inactive lane exists only because nothing domain-core executes: it is
+  // never available to the protected rollback profile and never to a profile
+  // that leaves any governed domain off `legacy`.
+  if (
+    domainCoreInactive &&
+    (profile.name !== "public-production" ||
+      Object.values(profile.modes).some((mode) => mode !== "legacy"))
+  ) {
+    throw new Error(
+      "inactive domain-core mode is only valid for the legacy public-production profile",
+    );
+  }
   const receiptArtifact = readArtifact(
     resolvedReceiptPath,
     "compiled Functions receipt",
@@ -268,8 +304,12 @@ export function buildFunctionsDeployProof({
       "Functions release commit must be a full lowercase Git SHA-1",
     );
   }
-  const gateArtifact = readArtifact(resolvedGatePath, "release gate");
-  validateReleaseGate(gateArtifact.json, profile, commit);
+  const gateArtifact = domainCoreInactive
+    ? null
+    : readArtifact(resolvedGatePath, "release gate");
+  if (gateArtifact !== null) {
+    validateReleaseGate(gateArtifact.json, profile, commit);
+  }
   const manifestArtifact = readArtifact(
     resolvedManifestPath,
     "Functions runtime manifest",
@@ -322,10 +362,14 @@ export function buildFunctionsDeployProof({
       sha256: manifestArtifact.sha256,
       value: runtimeManifest,
     },
-    releaseGate: {
-      fileName: basename(resolvedGatePath),
-      sha256: gateArtifact.sha256,
-    },
+    domainCoreInactive,
+    releaseGate:
+      gateArtifact === null
+        ? null
+        : {
+            fileName: basename(resolvedGatePath),
+            sha256: gateArtifact.sha256,
+          },
   };
 }
 
@@ -335,11 +379,14 @@ export function run(argv) {
     profilePath: resolve(args.get("--profile")),
     compiledReceiptPath: resolve(args.get("--compiled-receipt")),
     runtimeManifestPath: resolve(args.get("--runtime-manifest")),
-    releaseGatePath: resolve(args.get("--release-gate")),
+    releaseGatePath: args.has("--release-gate")
+      ? resolve(args.get("--release-gate"))
+      : null,
     tag: args.get("--tag"),
     commit: args.get("--commit"),
     deployRunId: args.get("--deploy-run-id"),
     deployRunAttempt: args.get("--deploy-run-attempt"),
+    domainCoreInactive: args.get("--domain-core-inactive") === "true",
   });
   const output = writeCreateOnly(
     args.get("--output"),

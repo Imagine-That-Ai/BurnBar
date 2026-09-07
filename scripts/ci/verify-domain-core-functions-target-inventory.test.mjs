@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
@@ -9,7 +10,7 @@ import {
   verifyDomainCoreFunctionsTargetInventory,
 } from "./verify-domain-core-functions-target-inventory.mjs";
 
-const ROOT = resolve(new URL("../..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const INVENTORY = JSON.parse(
   readFileSync(
     new URL(

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { RELEASE_CONSUMERS } from "../lib/domain-core-release-evidence.mjs";
 import { deriveDomainCoreFunctionsTargets } from "./verify-domain-core-functions-target-inventory.mjs";
@@ -601,9 +602,10 @@ test("protected Functions inventory covers every pricing execution entry and bot
   assert.equal(functionsTargets.schemaVersion, 1);
   assert.deepEqual(
     functionsTargets.targets,
-    deriveDomainCoreFunctionsTargets(
-      new URL("../..", import.meta.url).pathname,
-    ),
+    // `.pathname` keeps URL percent-encoding, so a checkout under a path
+    // containing a space resolves to a `%20` directory that does not exist.
+    // CI runners never see it; local worktrees under "Samsung NVME" always do.
+    deriveDomainCoreFunctionsTargets(fileURLToPath(new URL("../..", import.meta.url))),
   );
   for (const target of functionsTargets.targets) {
     assert.match(functionsIndex, new RegExp(`\\b${target}\\b`, "u"), target);

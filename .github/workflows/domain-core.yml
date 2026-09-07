@@ -71,6 +71,7 @@ jobs:
             scripts/ci/verify-domain-core-default-branch-controls.test.mjs \
             scripts/ci/create-domain-core-functions-deploy-proof.test.mjs \
             scripts/ci/create-domain-core-functions-deployment-evidence.test.mjs \
+            scripts/ci/resolve-functions-promotion-gate.test.mjs \
             scripts/ci/create-domain-core-functions-provider-coordinates.test.mjs \
             scripts/ci/create-domain-core-runtime-artifact-manifest.test.mjs \
             scripts/ci/verify-domain-core-functions-target-inventory.test.mjs \
