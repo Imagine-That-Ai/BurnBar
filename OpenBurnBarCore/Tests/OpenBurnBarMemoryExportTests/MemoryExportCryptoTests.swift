@@ -278,6 +278,29 @@ final class MemoryExportCryptoTests: XCTestCase {
         )
     }
 
+    // MARK: - The hash tree
+
+    /// The tree runs across a section's segments, and computing it without
+    /// joining them must give the same root — otherwise avoiding that second
+    /// full copy of the ciphertext would change the manifest.
+    func test_theHashTreeOverSegmentsEqualsTheTreeOverTheirConcatenation() {
+        let bundleKey = MemoryExportCrypto.deterministicBundleKey(seed: "tree")
+        for sizes in [[0], [1], [10, 10], [4096, 1], [MemoryExportCrypto.hashTreeChunkBytes, 7]] {
+            var segments: [Data] = []
+            var byte: UInt8 = 1
+            for size in sizes {
+                segments.append(Data(repeating: byte, count: size))
+                byte = byte &+ 17
+            }
+            let joined = segments.reduce(into: Data()) { $0.append($1) }
+            XCTAssertEqual(
+                MemoryExportCrypto.hashTreeRoot(bundleKey: bundleKey, segments: segments),
+                MemoryExportCrypto.hashTreeRoot(bundleKey: bundleKey, ciphertext: joined),
+                "sizes \(sizes)"
+            )
+        }
+    }
+
     // MARK: - The recipient descriptor
 
     func test_aDescriptorWhoseKeyIDDoesNotFollowFromItsKeyIsRefused() throws {

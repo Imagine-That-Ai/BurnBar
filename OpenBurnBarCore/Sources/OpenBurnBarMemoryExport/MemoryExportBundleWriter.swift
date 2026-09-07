@@ -98,7 +98,6 @@ public enum MemoryExportBundleWriter {
         // 2. Seal, and build the keyed tree over the CIPHERTEXT so a section can
         //    be verified before it is decrypted.
         var segments: [MIFSection: [Data]] = [:]
-        var ciphertexts: [MIFSection: Data] = [:]
         var subroots: [MIFSection: String] = [:]
         for buffer in ordered {
             // swiftlint:disable:next force_unwrapping reason: every section was written above
@@ -120,11 +119,9 @@ public enum MemoryExportBundleWriter {
                     )
                 }
             segments[buffer.section] = sealed
-            let joined = sealed.reduce(into: Data()) { $0.append($1) }
-            ciphertexts[buffer.section] = joined
             subroots[buffer.section] = MemoryExportCrypto.hashTreeRoot(
                 bundleKey: inputs.context.bundleKey,
-                ciphertext: joined
+                segments: sealed
             )
         }
 
@@ -156,7 +153,6 @@ public enum MemoryExportBundleWriter {
             contentDigest: contentDigest,
             sections: ordered,
             subroots: subroots,
-            ciphertexts: ciphertexts,
             segments: segments,
             deviceKeyID: deviceKeyID,
             findingsSummary: report.findings
@@ -169,7 +165,7 @@ public enum MemoryExportBundleWriter {
         let lostCSV = lostCSVText(inputs.lostRecords)
         let idMapCSV = idMapCSVText(inputs.idMappings)
         var wouldWrite = manifestData.count + lostCSV.utf8.count + idMapCSV.utf8.count
-        for data in ciphertexts.values { wouldWrite += data.count }
+        for sealed in segments.values { wouldWrite += sealed.reduce(0) { $0 + $1.count } }
 
         report.wouldWriteBytes = wouldWrite
         if inputs.lostRecords.isEmpty == false {
@@ -254,13 +250,13 @@ public enum MemoryExportBundleWriter {
         contentDigest: String,
         sections: [MemoryExportSectionBuffer],
         subroots: [MIFSection: String],
-        ciphertexts: [MIFSection: Data],
         segments: [MIFSection: [Data]],
         deviceKeyID: String?,
         findingsSummary: [MemoryExportFinding]
     ) -> MIFJSON {
         let headers: [MIFJSON] = sections.map { buffer in
-            let ciphertext = ciphertexts[buffer.section] ?? Data()
+            let sealed = segments[buffer.section] ?? []
+            let ciphertextBytes = sealed.reduce(0) { $0 + $1.count }
             var fields: [String: MIFJSON] = [
                 "name": .string(buffer.section.rawValue),
                 "rank": .int(buffer.section.rank),
@@ -273,13 +269,13 @@ public enum MemoryExportBundleWriter {
                 "row_count": .int(buffer.records.count),
                 "record_type": .string(buffer.section.recordTypePointer),
                 "subroot": .string(subroots[buffer.section] ?? String(repeating: "0", count: 64)),
-                "bytes": .int(ciphertext.count),
+                "bytes": .int(ciphertextBytes),
                 // The number of `NNN.ndjson.seal` FILES this section is written
                 // as. It used to be the ciphertext re-chunked at
                 // `max_section_bytes`, a boundary that corresponded to nothing
                 // on disk — every section was one file however large it was
                 // (review F-14).
-                "segments": .int(max(1, segments[buffer.section]?.count ?? 1))
+                "segments": .int(max(1, sealed.count))
             ]
             if buffer.rollupTuples.isEmpty == false {
                 fields["rollup_digest"] = .string(rollupDigest(buffer.rollupTuples))

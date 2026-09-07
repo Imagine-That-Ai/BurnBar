@@ -301,9 +301,15 @@ public struct MemoryExporter: Sendable {
                 continue
             }
 
-            let resolution = MemoryExportBodyResolver.resolve(memory: memory, stores: stores)
-            guard case .resolved(let body) = resolution else {
-                guard case .unreconstructible(let failure) = resolution else { continue }
+            // A `switch`, not a `guard` with an inner fallthrough: every
+            // resolution has to land in a bucket, and a third case appearing one
+            // day must be a compile error rather than a silent `continue` that
+            // drops a row while the closed sum still adds up.
+            let body: MemoryExportResolvedBody
+            switch MemoryExportBodyResolver.resolve(memory: memory, stores: stores) {
+            case .resolved(let resolved):
+                body = resolved
+            case .unreconstructible(let failure):
                 // Not a memory record: `memories.content_key` is NOT NULL in the
                 // target and there is no body to key it from. Nothing is
                 // invented, nothing resurrects.

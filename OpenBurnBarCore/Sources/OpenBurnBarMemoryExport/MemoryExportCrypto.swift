@@ -192,9 +192,36 @@ public enum MemoryExportCrypto {
     public static let hashTreeChunkBytes = 4 * 1024 * 1024
 
     public static func hashTreeRoot(bundleKey: SymmetricKey, ciphertext: Data) -> String {
+        hashTreeRoot(bundleKey: bundleKey, segments: [ciphertext])
+    }
+
+    /// The same tree over a section's SEGMENTS, without concatenating them.
+    ///
+    /// A section is written as one file per sealed segment, and its 4 MiB
+    /// leaves run across that sequence — so joining the segments into one
+    /// `Data` just to chunk it again would hold a second full copy of the
+    /// section's ciphertext at the one point in the export where memory is
+    /// already the constraint (§2's ≤ 512 MiB, and F-14).
+    public static func hashTreeRoot(bundleKey: SymmetricKey, segments: [Data]) -> String {
         let key = derive(from: bundleKey, info: "mif1/hashtree/v1")
-        var level = chunks(of: ciphertext, size: hashTreeChunkBytes).map { chunk in
-            Data(HMAC<SHA256>.authenticationCode(for: chunk, using: key))
+        var level: [Data] = []
+        var leaf = Data()
+        leaf.reserveCapacity(hashTreeChunkBytes)
+        for segment in segments {
+            var offset = segment.startIndex
+            while offset < segment.endIndex {
+                let take = min(hashTreeChunkBytes - leaf.count, segment.distance(from: offset, to: segment.endIndex))
+                let end = segment.index(offset, offsetBy: take)
+                leaf.append(segment[offset..<end])
+                offset = end
+                if leaf.count == hashTreeChunkBytes {
+                    level.append(Data(HMAC<SHA256>.authenticationCode(for: leaf, using: key)))
+                    leaf.removeAll(keepingCapacity: true)
+                }
+            }
+        }
+        if leaf.isEmpty == false {
+            level.append(Data(HMAC<SHA256>.authenticationCode(for: leaf, using: key)))
         }
         if level.isEmpty {
             level = [Data(HMAC<SHA256>.authenticationCode(for: Data(), using: key))]
