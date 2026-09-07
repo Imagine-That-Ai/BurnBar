@@ -63,6 +63,67 @@ still writes the `memory.approve` / `memory.reject` audit row with `actor:"app"`
 daemon's `setReviewStatus` still writes `memory.review_status`. The exporter's classifier
 depends on those shapes and sees exactly what it saw before.
 
+**4. The lane is visible where it is reviewed.** `MemoryReviewInboxModel` loaded
+exactly two partitions, so a row this branch had just quarantined was invisible on
+the only macOS surface that can approve it.
+
+`AgentLens/Views/Memory/MemoryReviewInboxModel.swift`
+
+| | before | after |
+|---|---|---|
+| served kinds | `:110` `[.chat]` ∪ usage kinds | `:116` `[.chat, .agent]` ∪ usage kinds |
+| pending buckets | `:172` chat, `:177` usage | `:189` adds a third load over `[.agent]` |
+| approved buckets | `:182` chat, `:187` usage | `:204` adds a third load over `[.agent]` |
+| merge | `mergedInPageOrder(_:_:)`, two buckets | variadic over three — same comparator, so a chat-only merge is still the pre-U7 list byte for byte |
+
+**5. A scoped fetch could never have found one.** Adding the bucket load is not
+enough on its own, and this is the part the earlier note did not see. The daemon
+writes a mirrored row under its **own** per-project `project_id` and holds no
+Firebase identity, so `user_id` and `app_id` are NULL until the sync lane claims
+them (`claimUnownedAgentMemories`) — while the inbox's scope is
+`MemoryScope(appID: "openburnbar")`, whose scoped fetch demands
+`project_id = 'chat:openburnbar'` **and** `app_id = ?`. Both predicates miss every
+mirrored row, always.
+
+- `ControlPlaneStore+MemorySupport.swift:24` — `MemoryStoragePartition` gains
+  `case agent` (`:34`) and `memoryPartitionedSourceKinds` splits it out (`:48` →
+  `:65`). The case names a lane, not a `project_id` prefix: a mirrored row always
+  carries a real project id, so the `agent:` spelling is unreachable.
+- `ControlPlaneStore+MemoryRecall.swift:260` → `:290` — `if let scope {` becomes
+  `if let scope, partition != .agent {`. The agent partition is read unscoped,
+  which is how `cloudSyncCandidateChatMemories` has always read it, and is honest
+  about the lane: one engine store per macOS user, one review surface.
+
+**6. And a body it can read.** A row whose body cannot be shown is not reviewable —
+`canApprove` says so, and needed no change; what changed is that a body now loads.
+
+- `ControlPlaneStore+MemoryRecall.swift:155` → `:164` — `openAgentMemoryBody`
+  resolves the approved body from `agent_memory_bodies` first and the quarantined
+  body from `memory_quarantine_bodies` second. The order is the safety property:
+  an approved row's quarantine copy is deleted the moment it is published, so the
+  sync lane cannot pick up unapproved content through this reader.
+- `MemoryReviewInboxView.swift:301` → `:301`–`:311` — the host's `openBody` chains
+  the chat snapshot into that opener. Both readers are keyed on the same memory id,
+  so exactly one body resolves and a chat row never takes the second read.
+- `MemoryReviewInboxView.swift:493` → `:504` — the row carries a **"Coding agent"**
+  source tag beside "Safari ask" and "Agent session". Without it a member cannot
+  tell an agent's memory from something they said themselves.
+- `DashboardView.swift:1352` → `:1355` — the Memory badge sums the agent lane too
+  (`pendingAgentMemoryReviewCount`, `ControlPlaneStore+MemoryRecall.swift:381`).
+  The badge's own comment already said why: a lane the inbox lists and the badge
+  omits makes the two disagree.
+
+**7. The table already had one home — now it cannot grow a second.** The earlier
+note said the app's GRDB migrator does not create `memory_quarantine_bodies`. It
+does, and it did before this branch:
+`OpenBurnBarDatabase+CommandBoardIndexMigration.swift:25`, migration
+`v65_memory_quarantine_bodies`, mirrored in both trees; `bootstrapSchema` itself
+says the migrator is the canonical owner and the daemon's copy is a compatibility
+bridge. So no migration was owed. What was owed is the guard that keeps the three
+statements one table: both writers say `IF NOT EXISTS`, so whichever process opens
+a fresh profile second is a no-op — and silently keeps the other's shape if a
+column ever drifts. `MemoryQuarantineBodiesSchemaParityTests` is that guard.
+
 ## Tests
 
 | test | file | proves |
@@ -72,6 +133,14 @@ depends on those shapes and sees exactly what it saw before.
 | `testAbsentReviewStatusLandsInReviewRatherThanApproved` | `OpenBurnBarCore/Tests/OpenBurnBarCoreTests/BurnBarProjectMemoryRememberContractTests.swift:81` | the BL-1 pin: an absent field decodes as `quarantined` |
 | `testExplicitApprovedIsStillHonoured` | same file `:94` | the default is fail-closed, not a ceiling |
 | `testLegacyPayloadDecodesWithNilBlindSyncField` | same file `:62` | updated: a pre-blind-sync caller now also lands in review |
+| `testAQuarantinedAgentLaneMemoryIsListedWithItsBodyAndIsApprovable` | `AgentLensTests/Active/AgentLaneMemoryReviewInboxTests.swift:158` | a row seeded the way the daemon writes one (from the mirror's JSON, decoded through the shipping contract) is listed by the inbox model, its parked body opens, `canApprove` is true, the chat row beside it is untouched, and the dashboard badge counts the same rows the inbox lists |
+| `testTheChatSourceFilterStillExcludesAgentRows` | same file `:205` | the source axis still narrows: the Chat chip shows no agent row, though the badge still counts it |
+| `testApprovingAnAgentLaneMemoryFlipsReviewStatusAndAuditsItAsTheApp` | same file `:222` | approval flips `review_status`, writes exactly one `memory.approve` row with `actor:"app"` in the **daemon's** project bucket and the `source_kind:agent` / `review_status:approved` labels, and the reload moves the row to the approved bucket |
+| `testTheAppMigratorCreatesTheQuarantineBodiesTableTheDaemonWritesTo` | same file `:275` | an app-first profile has the table and index the inbox reads, with the five columns |
+| `testBothMigrationTreesDeclareTheSameQuarantineBodiesDDL` | `OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/MemoryQuarantineBodiesSchemaParityTests.swift:43` | the two hand-mirrored migration trees declare byte-identical DDL |
+| `testTheAppMigrationDDLIsByteEqualToTheDaemonBootstrapDDL` | same file `:59` | the app's `CREATE TABLE` and the daemon's are the same string, character for character (compared after Swift's own multiline dedent, so indentation is not mistaken for drift) |
+| `testTheAppIndexDDLMatchesTheDaemonBootstrapIndex` | same file `:82` | the same for the project index, whitespace-normalised — the two files differ only in a line break |
+| `testTheAppMigrationIsANoOpOnADaemonBootstrappedStore` | same file `:98` | a real store bootstrapped by the daemon, with a real quarantined body parked in it by `remember`, still has ONE table and ONE index after the app's DDL is run twice — and the body is still readable |
 
 Both new daemon tests were mutation-checked: with the decoder default put back to `.approved`,
 `testAgentLaneRememberLandsInReviewInsteadOfRecall` fails on five assertions; with the approval
@@ -82,32 +151,70 @@ tests relied on the old default to get a live, recallable row. They now say
 `reviewStatus: .approved`, which is the same lesson BL-1 teaches: a write that means approved
 should say so.
 
+The four parity tests were mutation-checked against the app migration, one mutation at a time:
+adding a column fails the two source-equality tests; dropping `IF NOT EXISTS` fails those two
+**and** the no-op test; changing the index's column fails the index test. They read the source
+files live, so a mutation needs no rebuild — and they fail rather than skip when the repository
+is unreachable.
+
+**What was actually run, and what was not.** `swift test --package-path OpenBurnBarDaemon
+--filter MemoryQuarantineBodiesSchemaParityTests` → `Executed 4 tests, with 0 failures`. The
+`AgentLensTests` suites are app-hosted XCTest and need `xcodebuild`, which this lane does not
+run; they are written and left for the nightly Mac app job. The app sources were proved by
+type-check instead: `MemoryReviewInboxModel.swift` type-checks clean against the real
+`OpenBurnBarKernel` module (with the real `MemoryReviewGateScan.swift` and a six-line
+`AppLogger` stub, and proved able to fail on a planted type error), the partition logic
+extracted verbatim from `ControlPlaneStore+MemorySupport.swift` compiles and passes sixteen
+behavioural assertions against the real `MemorySourceKind`, and all six changed or added
+app-target files parse clean. A full-target `swiftc -typecheck` is not reachable on this Mac: the AgentLens
+target imports Firebase, GoogleSignIn and Sentry from remote SPM packages that only Xcode
+resolves, and resolution fails machine-wide today (self-signed certificate on `github.com`).
+
 ## What a member sees
 
 Memories an agent asks BurnBar to remember now **wait in the Memory review inbox** instead of
-appearing in the next chat. Nothing is lost — the row is in the review feed from the moment it
-is written, and approving it puts it into recall exactly as before, including its cloud copy.
-Repository knowledge (`index_project`, code facts) is unaffected.
+appearing in the next chat — and they wait **in the inbox on this Mac**, not only on the Linux
+desktop's review surface. The row appears in Pending with its text shown, tagged **"Coding
+agent"** so it is not mistaken for something the member said, and the Memory badge counts it.
+Approve and it behaves like any other memory; reject or forget and it leaves. Nothing is lost —
+the row is in the review feed from the moment it is written, and approving it puts it into
+recall exactly as before, including its cloud copy. Repository knowledge (`index_project`, code
+facts) is unaffected, and the chat and usage lanes load exactly as they did.
 
 ### Release note (BB-D)
 
 > **Agent memories now wait for you.** When a coding agent asks BurnBar to remember something,
-> the fact lands in your Memory review inbox instead of going straight into your chats.
-> Approve it and it behaves like any other memory — recalled, cited, and synced. Nothing an
-> agent writes is used before you say so.
+> the fact lands in your Memory review inbox instead of going straight into your chats. You'll
+> find it in Memory → Pending, tagged "Coding agent", with its text in front of you: approve it
+> and it behaves like any other memory — recalled, cited, and synced — or reject it and it is
+> never used. Nothing an agent writes is used before you say so.
+
+## Closed here
+
+**The macOS review inbox does not list `source_kind = "agent"` rows** — the first limit this
+note carried — is closed by items 4 to 7. It needed one thing more than the note predicted: the
+bucket load and the `openBody` fallback were both necessary and neither was sufficient, because
+a *scoped* fetch cannot match a daemon-written row at all. And it needed one thing less: the
+app's migrator has created `memory_quarantine_bodies` since `v65`, so the "own decision" the
+note asked for was already made — what it lacked was a test that keeps the three DDL statements
+one table.
 
 ## Known limits (not fixed here)
 
-- **The macOS review inbox does not list `source_kind = "agent"` rows.**
-  `MemoryReviewInboxModel` loads exactly two partitions, `[.chat]` and
-  `MemorySourceKind.usageKinds`, and `MemoryReviewInboxView`'s source tag still says
-  "Engine memories arrive approved, so they never reach this inbox." Today these rows are
-  reviewed through `daemon.memory.review_status` (the Linux desktop Memory review surface, the
-  `burnbar_memory_review` MCP tool, the p18 probes). Wiring the macOS inbox needs three things:
-  `.agent` added to the two bucket loads; an `openBody` fallback from `openChatMemoryBody` to
-  the existing `openAgentMemoryBody`; **and a body the app can read** — a quarantined body
-  lives in `memory_quarantine_bodies`, which the daemon's bootstrap DDL creates and the app's
-  GRDB migrator does not, so that surface needs its own decision before it can show one.
+- **Approving in the app flips the row; it does not publish the body.** `setMemoryReviewStatus`
+  is deliberately unchanged: it writes `review_status = approved` and the `memory.approve`
+  audit row, and nothing else. The daemon's own `setReviewStatus` is what moves a body out of
+  `memory_quarantine_bodies` into the project-memory snapshot and refills the syncable body
+  under the engine id. So after an **in-app** approval the member sees the memory in Approved
+  and blind sync can upload it (the reader falls back to the quarantine copy, and the engine-id
+  mapping was recorded at birth), but its `body_hash` is still empty — so the convergence fold
+  cannot dedupe it across devices — and the agent's own recall does not serve it until the
+  daemon next mirrors or reviews that row. Approving through `daemon.memory.review_status`
+  remains the complete path. Closing this means either the app calling the daemon on approval
+  or the daemon reconciling app-approved rows; both are a decision, not a patch.
+- **The source-filter chips have no "Coding agent" entry.** `SourceFilter` still offers All /
+  Chat / Safari asks / Agent sessions, so an agent row is visible under All (and tagged on its
+  card) but cannot be filtered *to*. Additive whenever the chip row earns a fifth chip.
 - **The daemon bootstrap DDL still declares `review_status TEXT NOT NULL DEFAULT 'approved'`**
   (`BurnBarProjectCodeMemoryStore+Database.swift`). Every writer sets the column explicitly, so
   it changes no behaviour today, but it is the same fail-open default one layer down.
