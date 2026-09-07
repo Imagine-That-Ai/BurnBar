@@ -63,6 +63,10 @@ public struct MemoryExportBundleResult: Sendable {
     public var determinismDigest: String
     public var report: MemoryExportReport
     public var wouldWriteBytes: Int
+    /// The records exactly as they were serialised. Carried so a caller — the
+    /// schema-validation test above all — can check what actually went into the
+    /// sealed segments without decrypting them first.
+    public var sectionBuffers: [MIFSection: MemoryExportSectionBuffer]
 }
 
 public enum MemoryExportBundleWriter {
@@ -164,7 +168,8 @@ public enum MemoryExportBundleWriter {
                 contentDigest: contentDigest,
                 determinismDigest: determinismDigest,
                 report: report,
-                wouldWriteBytes: wouldWrite
+                wouldWriteBytes: wouldWrite,
+                sectionBuffers: inputs.sections
             )
         }
 
@@ -189,7 +194,8 @@ public enum MemoryExportBundleWriter {
             contentDigest: contentDigest,
             determinismDigest: determinismDigest,
             report: report,
-            wouldWriteBytes: wouldWrite
+            wouldWriteBytes: wouldWrite,
+            sectionBuffers: inputs.sections
         )
     }
 

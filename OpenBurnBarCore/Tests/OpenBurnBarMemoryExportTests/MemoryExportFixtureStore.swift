@@ -16,7 +16,9 @@
 
 import Foundation
 import GRDB
-import OpenBurnBarData
+// `OpenBurnBarDatabase` is internal to OpenBurnBarData, and the point of this
+// file is to run the REAL migrator rather than a copy of its DDL.
+@testable import OpenBurnBarData
 @testable import OpenBurnBarMemoryExport
 
 enum MemoryExportFixtureStore {

@@ -284,7 +284,10 @@ public enum MemoryExportRecords {
             "content_key_version": .null,
             "project_fingerprint": .string(scope.projectFingerprint),
             "user_id": .string(userID),
-            "scope_kind": .string(scope.kind.rawValue),
+            // The contract's `record_tombstone` carries `scope_key` and NO
+            // `scope_kind` — unlike `record_memory`, which has both. Emitting
+            // the pair here fails `additionalProperties: false`, so the scope's
+            // kind is expressed by the key alone.
             "scope_key": .string(scope.key),
             "reason": .string(reason.rawValue),
             "origin_label": .string(originLabel.rawValue),
@@ -331,7 +334,6 @@ public enum MemoryExportRecords {
             ])]),
             "project_fingerprint": .null,
             "user_id": .string(row.userID ?? context.userID),
-            "scope_kind": .string(MIFScopeKind.user.rawValue),
             "scope_key": .string(row.userID ?? context.userID ?? "migration:unscoped"),
             "reason": .string(MIFTombstoneReason.sourceDeleted.rawValue),
             "origin_label": .string(MIFTombstoneOriginLabel.local.rawValue),
