@@ -62,9 +62,12 @@ from burnbar_usage_ledger import (  # noqa: E402  — module import after sys.pa
     derive_idempotency_key,
 )
 from resume_core import (  # noqa: E402
+    ENCRYPTED_STORE_RECOVERY,
+    ResumeEnvironment,
     dispatch_resume,
     list_resumable_conversations,
     spawn_resume,
+    store_is_encrypted,
 )
 import project_code_memory as pcm  # noqa: E402
 import memory_engine as me  # noqa: E402
@@ -5606,6 +5609,32 @@ def burnbar_org_spend(
     )
 
 
+def _resume_environment() -> ResumeEnvironment:
+    """
+    Resume reads borrow the same opener every other conversation tool uses.
+
+    `_connect_ro` probes the file: a plaintext store is opened directly, an
+    encrypted one is served by the daemon's SELECT-only handle. resume_core used
+    to call `sqlite3.connect` on the store itself, which cannot decrypt it — both
+    resume tools were dead against a real install with "file is not a database".
+    """
+    return ResumeEnvironment(connect=_connect_ro)
+
+
+def _resume_error_recovery(exc: BaseException) -> str:
+    """
+    Say what to start when the read failed because the daemon could not serve it.
+
+    The store's own header decides: when it is ciphertext, this process has no
+    key and the only read path is the daemon, so any failure there is worth
+    naming as such rather than handing back a bare transport error.
+    """
+    detail = str(exc)
+    if store_is_encrypted(_default_db_path()):
+        return f"{detail} — {ENCRYPTED_STORE_RECOVERY}"
+    return detail
+
+
 @mcp.tool()
 def burnbar_list_resumable_conversations(
     provider: str | None = None,
@@ -5628,12 +5657,13 @@ def burnbar_list_resumable_conversations(
             since=since,
             limit=limit,
             offset=offset,
+            env=_resume_environment(),
         )
     except Exception as exc:
         payload = {
             "kind": "error",
             "code": "resume_list_failed",
-            "recovery": str(exc),
+            "recovery": _resume_error_recovery(exc),
         }
     return json.dumps(payload, indent=2, default=str)
 
@@ -5668,13 +5698,14 @@ def burnbar_resume_conversation(
             target_model=target_model,
             max_tokens=max_tokens,
             print_only=print_only,
+            env=_resume_environment(),
         )
     except Exception as exc:
         payload = {
             "kind": "error",
             "code": "resume_failed",
             "session_id": session_id,
-            "recovery": str(exc),
+            "recovery": _resume_error_recovery(exc),
         }
     return json.dumps(payload, indent=2, default=str)
 
@@ -5704,13 +5735,14 @@ def burnbar_spawn_resume(
             target_model=target_model,
             max_tokens=max_tokens,
             cleanup_after_seconds=cleanup_after_seconds,
+            env=_resume_environment(),
         )
     except Exception as exc:
         payload = {
             "kind": "error",
             "code": "resume_spawn_failed",
             "session_id": session_id,
-            "recovery": str(exc),
+            "recovery": _resume_error_recovery(exc),
         }
     return json.dumps(payload, indent=2, default=str)
 
