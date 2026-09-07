@@ -249,4 +249,59 @@ final class MemoryExportChainAndP5Tests: XCTestCase {
         XCTAssertNil(try queue.read { try MemoryExportStoreReader.storeIdentity($0) })
     }
 
+    /// R9's second rung, which had no test at all (review F-8): a store
+    /// predating migration v22 has no `devices` row, and the identity falls back
+    /// to the audit chain's **genesis** hash — equally in-file, equally
+    /// immutable, and equally a row.
+    ///
+    /// Genesis and not the head is the whole point: the head moves with every
+    /// write, so seeding ids from it would mint a different `mem_` for the same
+    /// oracle row on every export and a follow-up delta would duplicate the
+    /// store instead of updating it.
+    func test_theIdentityFallsBackToTheAuditChainGenesis() throws {
+        let queue = try MemoryExportFixtureStore.makeQueue()
+        let withDevices = try queue.read { try MemoryExportStoreReader.storeIdentity($0) }
+        try queue.write { db in
+            try db.execute(sql: "DELETE FROM devices")
+            _ = try MemoryExportFixtureStore.appendAudit(
+                db,
+                action: "memory.add",
+                projectID: "chat:user-1",
+                subjectID: "genesis-subject",
+                labels: ["memory_id:genesis-subject"],
+                ts: "2026-01-01T00:00:00.000Z"
+            )
+        }
+        let genesisHash = try XCTUnwrap(
+            try queue.read { try String.fetchOne($0, sql: "SELECT hash FROM memory_audit ORDER BY seq LIMIT 1") }
+        )
+        let identity = try XCTUnwrap(try queue.read { try MemoryExportStoreReader.storeIdentity($0) })
+        XCTAssertEqual(
+            identity,
+            "burnbar-" + String(
+                MemoryExportDigest.sha256Hex("memory_audit.genesis\u{1F}\(genesisHash)").prefix(24)
+            ),
+            "the fallback is sha256 over the genesis hash, computed here rather than by the reader"
+        )
+        XCTAssertNotEqual(identity, withDevices, "the `devices` rung is preferred while it exists")
+
+        // Appending more audit rows does not move it: the chain HEAD is not the
+        // seed, the genesis is.
+        try queue.write { db in
+            _ = try MemoryExportFixtureStore.appendAudit(
+                db,
+                action: "memory.add",
+                projectID: "chat:user-1",
+                subjectID: "later-subject",
+                labels: ["memory_id:later-subject"],
+                ts: "2026-02-01T00:00:00.000Z"
+            )
+        }
+        XCTAssertEqual(
+            try queue.read { try MemoryExportStoreReader.storeIdentity($0) },
+            identity,
+            "a write to the store must not re-mint every canonical id"
+        )
+    }
+
 }

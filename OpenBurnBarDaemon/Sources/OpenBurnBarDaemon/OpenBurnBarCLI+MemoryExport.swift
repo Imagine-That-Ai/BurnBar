@@ -37,6 +37,16 @@ extension BurnBarCLIRunner {
       --snapshot MODE       vacuum | sqlcipher_export | backup_api | read_txn
       --allow-long-read     required for --snapshot read_txn
       --carry-orphans       carry body rows no authority row references (default off)
+      --source WHICH        authority | legacy | cloud | all — an unread source is
+                            recorded in partial_sources, never silently skipped
+      --accept-degraded-source  export a store whose integrity check failed
+      --max-section-bytes N section rotation, in bytes of ciphertext (default 256 MiB)
+      --rehearsal           DEBUG builds only: seal to a THROWAWAY recipient nobody
+                            holds the private half of. A rehearsal bundle cannot be
+                            imported anywhere and report.json says so — it is not a
+                            way to make an interop fixture (see recipient-keypair)
+      --deterministic-nonces  DEBUG builds only, requires --rehearsal: derive the
+                            bundle key from a fixture seed so the bundle reproduces
       --json                emit the reconciliation report as JSON
 
     verify --bundle DIR [--recipient PATH]
@@ -114,8 +124,11 @@ extension BurnBarCLIRunner {
         let concurrentWrites = headBefore.seq != headAfter.seq || headBefore.hash != headAfter.hash
 
         guard let storeID = snapshot.storeIdentity else {
+            // One value, from the enum, in both lanes: `MIFVocabulary` carries
+            // the case "so both lanes that refuse can name the same value", and
+            // this one spelled it as a bare literal until F-8.
             throw BurnBarCLIError.missingArgument(
-                "EXPORT_STORE_IDENTITY_ABSENT: this store carries neither a local `devices` row nor an "
+                "\(MIFExportError.storeIdentityAbsent.rawValue): this store carries neither a local `devices` row nor an "
                     + "audit chain, so it has nothing that identifies it from the inside. Every canonical "
                     + "id is seeded from that value, and the exporter will not invent one."
             )
