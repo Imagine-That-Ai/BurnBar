@@ -276,38 +276,179 @@ final class MemoryExportClassifierTests: XCTestCase {
         XCTAssertTrue(result.findings.contains(.reviewStatusUnknownValue))
     }
 
-    // MARK: - M-12 selection
+    // MARK: - M-12 selection, which is segment-aware
 
-    func test_laterRejectBeatsHigherSeqApprove() {
-        var memory = row(id: "A11")
+    /// F-5, and the direction that corrupts truth. On an INTACT chain §3.1 case
+    /// 1 orders by `seq DESC`, because seq is the oracle's own append order and
+    /// inside a verified run it is exactly the fact the chain proves. Ordering
+    /// by `(ts, seq)` here lets a clock skew between the app and daemon writers
+    /// promote an `approve` over a later-sequenced `reject` — a verdict no human
+    /// gave arriving as `approved`, `origin_kind: human`, with a
+    /// `record_review_event` minted for it.
+    func test_insideAnIntactSegmentAHigherSeqRejectBeatsAClockSkewedApprove() {
+        var memory = row(id: "A12")
+        memory.reviewStatus = "approved"
+        let reject = MemoryExportAuditRow(
+            seq: 100,
+            ts: "2026-01-02T00:00:00.000Z",
+            actor: "app",
+            action: "memory.reject",
+            subjectID: "A12",
+            labels: ["review_status:rejected"]
+        )
+        let approve = MemoryExportAuditRow(
+            // A LOWER seq with a LATER ts: the app and daemon writers disagree
+            // about the wall clock, and the chain has already ordered them.
+            seq: 99,
+            ts: "2026-01-03T00:00:00.000Z",
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A12",
+            labels: ["review_status:approved"]
+        )
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [reject, approve],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 2)
+        ))
+        XCTAssertEqual(result.reviewStatus, .rejected)
+        XCTAssertEqual(result.verdictAuditSeq, 100)
+    }
+
+    /// The mirror, so the rule is "seq decides inside an intact run" rather than
+    /// "reject always wins": the same shape with the verdicts swapped keeps the
+    /// approve, and it is a real human approval.
+    func test_insideAnIntactSegmentAHigherSeqApproveBeatsAClockSkewedReject() {
+        var memory = row(id: "A13")
         memory.reviewStatus = "approved"
         let approve = MemoryExportAuditRow(
             seq: 100,
             ts: "2026-01-02T00:00:00.000Z",
             actor: "app",
             action: "memory.approve",
-            subjectID: "A11",
+            subjectID: "A13",
             labels: ["review_status:approved"]
         )
         let reject = MemoryExportAuditRow(
-            // A LOWER seq with a LATER ts — the payload-seq divergence case
-            // where ordering by seq alone resolves the wrong way.
             seq: 99,
             ts: "2026-01-03T00:00:00.000Z",
             actor: "app",
             action: "memory.reject",
-            subjectID: "A11",
+            subjectID: "A13",
             labels: ["review_status:rejected"]
         )
-        let chain = MemoryExportChainVerification(verifiedThroughSeq: 1000, rowsWalked: 2)
         let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
             memory: memory,
             auditRows: [approve, reject],
             bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
-            chain: chain
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 2)
+        ))
+        XCTAssertEqual(result.reviewStatus, .approved)
+        XCTAssertEqual(result.originKind, .human)
+        XCTAssertEqual(result.verdictAuditSeq, 100)
+    }
+
+    /// §3.1 case 2. When the candidates straddle a broken span `seq` is
+    /// undefined between them, so the timestamp decides — and the selected row
+    /// still has to pass conjunct 5 on its own account.
+    func test_acrossABrokenBoundaryTheTimestampDecides() {
+        var memory = row(id: "A14")
+        memory.reviewStatus = "approved"
+        let approve = MemoryExportAuditRow(
+            seq: 100,
+            ts: "2026-01-02T00:00:00.000Z",
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A14",
+            labels: ["review_status:approved"]
+        )
+        let reject = MemoryExportAuditRow(
+            seq: 99,
+            ts: "2026-01-03T00:00:00.000Z",
+            actor: "app",
+            action: "memory.reject",
+            subjectID: "A14",
+            labels: ["review_status:rejected"]
+        )
+        // The approve sits above the verified span; the reject is inside it.
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [approve, reject],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 99, brokenAt: [100], rowsWalked: 2)
         ))
         XCTAssertEqual(result.reviewStatus, .rejected)
         XCTAssertEqual(result.verdictAuditSeq, 99)
+    }
+
+    /// And when the unverified row is the one the timestamp picks, case 2
+    /// decides only WHICH finding is reported: conjunct 5 still refuses the
+    /// claim, so nothing unproven is inherited (§3.1 row 7).
+    func test_acrossABrokenBoundaryAnUnverifiedWinnerIsStillNotProof() {
+        var memory = row(id: "A15")
+        memory.reviewStatus = "approved"
+        let reject = MemoryExportAuditRow(
+            seq: 99,
+            ts: "2026-01-02T00:00:00.000Z",
+            actor: "app",
+            action: "memory.reject",
+            subjectID: "A15",
+            labels: ["review_status:rejected"]
+        )
+        let approve = MemoryExportAuditRow(
+            seq: 100,
+            ts: "2026-01-03T00:00:00.000Z",
+            actor: "app",
+            action: "memory.approve",
+            subjectID: "A15",
+            labels: ["review_status:approved"]
+        )
+        let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+            memory: memory,
+            auditRows: [reject, approve],
+            bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
+            chain: MemoryExportChainVerification(verifiedThroughSeq: 99, brokenAt: [100], rowsWalked: 2)
+        ))
+        XCTAssertEqual(result.reviewStatus, .quarantined)
+        XCTAssertEqual(result.importOriginDetail, .verdictOnBrokenChain)
+        XCTAssertTrue(result.findings.contains(.verdictOnBrokenChain))
+    }
+
+    /// §3.1 case 3, in both segment cases: a genuine tie resolves to the safe
+    /// side, which is the only one that cannot promote text no human read.
+    func test_aTieOnSeqAndTimestampIsWonByTheReject() {
+        for chain in [
+            MemoryExportChainVerification(verifiedThroughSeq: 1_000, rowsWalked: 2),
+            MemoryExportChainVerification(verifiedThroughSeq: 0, brokenAt: [7], rowsWalked: 2)
+        ] {
+            var memory = row(id: "A16")
+            memory.reviewStatus = "approved"
+            let shared = "2026-01-02T00:00:00.000Z"
+            let approve = MemoryExportAuditRow(
+                seq: 7,
+                ts: shared,
+                actor: "app",
+                action: "memory.approve",
+                subjectID: "A16",
+                labels: ["review_status:approved"]
+            )
+            let reject = MemoryExportAuditRow(
+                seq: 7,
+                ts: shared,
+                actor: "app",
+                action: "memory.reject",
+                subjectID: "A16",
+                labels: ["review_status:rejected"]
+            )
+            let result = MemoryExportClassifier.classify(MemoryExportClassifierInput(
+                memory: memory,
+                auditRows: [approve, reject],
+                bodySnapshotUpdatedAt: MemoryExportTimestamp.parse("2026-01-01T00:00:00.000Z"),
+                chain: chain
+            ))
+            XCTAssertNotEqual(result.reviewStatus, .approved, "a tie never resolves to approved")
+        }
     }
 
     // MARK: - Helpers

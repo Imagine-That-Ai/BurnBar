@@ -106,7 +106,7 @@ public enum MemoryExportClassifier {
             return base(stored: nil, status: .quarantined, detail: .absentColumn)
         }
 
-        if let verdict = latestVerdictRow(for: input.memory, in: input.auditRows) {
+        if let verdict = latestVerdictRow(for: input.memory, in: input.auditRows, chain: input.chain) {
             return classifyAgainst(verdict: verdict, input: input, stored: stored)
         }
 
@@ -219,33 +219,69 @@ public enum MemoryExportClassifier {
         classification.verdictTimestamp = verdict.ts
         classification.verdictActor = verdict.actor
         classification.verdictAuditRowHash = verdict.hash
-        classification.verdictFromStatus = previousStatus(before: verdict, in: input.auditRows)
+        classification.verdictFromStatus = previousStatus(
+            before: verdict,
+            in: input.auditRows,
+            withinIntactSegment: input.chain.isTrustworthy(seq: verdict.seq)
+        )
         return classification
     }
 
     // MARK: - Selection among oracle audit rows
 
-    /// M-12: latest-wins ordered by `(ts, seq)`, and on any tie `rejected` wins.
+    /// M-12's latest-wins, which is **segment-aware**: one rule, two cases.
     ///
-    /// Ordering by `seq` alone is undefined under payload-seq divergence and the
-    /// app/daemon fork, where `approve(seq 100, ts T)` and `reject(seq 99, ts
-    /// T+1)` resolve either way. This is the exporter's per-row SELECTION among
-    /// oracle rows; it is not a merge rule and does not compete with §4.
+    ///   1. **Inside one intact segment** — every candidate chain-verified, in
+    ///      no `chain_broken_at[]` span and in no `chain_forks[]` member — order
+    ///      by `seq DESC`. `seq` is the oracle's own append order, and inside an
+    ///      intact run it is exactly the fact the chain proves.
+    ///   2. **Across a broken or forked boundary**, where `seq` is undefined,
+    ///      fall back to `(ts, seq)`. This is the case the oracle's two known
+    ///      pathologies produce.
+    ///   3. Either way, a tie is won by `rejected`.
+    ///
+    /// Applying case 2 universally — which is what this did — lets a clock skew
+    /// between the app and daemon writers reorder rows the chain has already
+    /// ordered: on an INTACT chain, `reject(seq 100, ts T)` and
+    /// `approve(seq 99, ts T+1)` resolved to the approve, all six conjuncts
+    /// passed, and a verdict no human gave survived into the new authority as
+    /// `approved` with `origin_kind: human` (review F-5). Case 1 exists to
+    /// neutralise exactly that, and §3.1 says so in as many words: "preferring
+    /// `ts` there would let a wrong clock reorder rows the chain has already
+    /// ordered".
+    ///
+    /// This is the exporter's per-row SELECTION among oracle rows; it is not a
+    /// merge rule and does not compete with §4.
     static func latestVerdictRow(
         for memory: MemoryExportMemoryRow,
-        in rows: [MemoryExportAuditRow]
+        in rows: [MemoryExportAuditRow],
+        chain: MemoryExportChainVerification
     ) -> MemoryExportAuditRow? {
-        rows
+        let candidates = rows
             .filter { verdictActions.contains($0.action) && $0.actor == "app" && $0.subjectID == memory.id }
-            .max { lhs, rhs in orderedBefore(lhs, rhs) }
+        guard candidates.isEmpty == false else { return nil }
+        let intact = candidates.allSatisfy { chain.isTrustworthy(seq: $0.seq) }
+        return candidates.max { lhs, rhs in orderedBefore(lhs, rhs, withinIntactSegment: intact) }
     }
 
-    /// A total order: timestamp, then seq, then `reject` above `approve` so a
-    /// genuine tie resolves to the safe side.
-    static func orderedBefore(_ lhs: MemoryExportAuditRow, _ rhs: MemoryExportAuditRow) -> Bool {
-        let lhsTime = MemoryExportTimestamp.parse(lhs.ts) ?? .distantPast
-        let rhsTime = MemoryExportTimestamp.parse(rhs.ts) ?? .distantPast
-        if lhsTime != rhsTime { return lhsTime < rhsTime }
+    /// A total order. Inside an intact segment it is `seq` then the reject
+    /// tie-break; across a boundary it is timestamp, then `seq`, then the same
+    /// tie-break. `reject` sorts above `approve` so a genuine tie resolves to
+    /// the safe side, which is the only direction that cannot promote text no
+    /// human read.
+    static func orderedBefore(
+        _ lhs: MemoryExportAuditRow,
+        _ rhs: MemoryExportAuditRow,
+        withinIntactSegment intact: Bool
+    ) -> Bool {
+        if intact == false {
+            // `ts` is ISO TEXT in the oracle and is compared lexicographically,
+            // which is well-defined for its fixed-width UTC format. It is not
+            // otherwise treated as a clock.
+            let lhsTime = MemoryExportTimestamp.parse(lhs.ts) ?? .distantPast
+            let rhsTime = MemoryExportTimestamp.parse(rhs.ts) ?? .distantPast
+            if lhsTime != rhsTime { return lhsTime < rhsTime }
+        }
         if lhs.seq != rhs.seq { return lhs.seq < rhs.seq }
         return rejectRank(lhs) < rejectRank(rhs)
     }
@@ -259,12 +295,13 @@ public enum MemoryExportClassifier {
     /// accepts for `from_status`.
     private static func previousStatus(
         before verdict: MemoryExportAuditRow,
-        in rows: [MemoryExportAuditRow]
+        in rows: [MemoryExportAuditRow],
+        withinIntactSegment intact: Bool
     ) -> String? {
         let earlier = rows
-            .filter { $0.seq != verdict.seq && orderedBefore($0, verdict) }
+            .filter { $0.seq != verdict.seq && orderedBefore($0, verdict, withinIntactSegment: intact) }
             .filter { $0.reviewStatusLabelValue != nil }
-            .max { orderedBefore($0, $1) }
+            .max { orderedBefore($0, $1, withinIntactSegment: intact) }
         guard let value = earlier?.reviewStatusLabelValue,
               MIFReviewStatus(rawValue: value) != nil else {
             return nil
