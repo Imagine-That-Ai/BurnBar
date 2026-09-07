@@ -761,6 +761,132 @@ final class MemoryExportBundleTests: XCTestCase {
         XCTAssertNotNil(result.report.tables.first { $0.name == "pcm_project_aliases" })
     }
 
+    /// M-8 + D-0039 ruling 5: §10's closed sum covers all ELEVEN sections.
+    ///
+    /// Interop run 1 found three sections carrying rows that no lane in
+    /// `report.json.tables[]` mentioned — 00 (a forgotten memory's tombstone,
+    /// while both tombstone tables reported `exported: 0`), 02 (one review
+    /// event) and 09 (two audit rows) — plus 01 and 10, which the fixture
+    /// happened not to exercise. §10's identity is a sum over lanes, so a
+    /// carried row outside every lane is a row no sum covers, which is exactly
+    /// what the identity exists to forbid.
+    ///
+    /// Every record now names its lane as it is appended, and this reads that
+    /// attribution back off the buffers: nothing carried is unattributed,
+    /// nothing writes into a section its lane does not declare, and every
+    /// section has at least one lane in the report.
+    func test_everyCarriedRowBelongsToALaneAndEverySectionHasOne() throws {
+        let snapshot = try MemoryExportFixtureStore.snapshot(try makeStore())
+        var exporter = makeExporter()
+        exporter.options.carryOrphans = true
+        let result = try exporter.export(
+            snapshot,
+            mode: .full,
+            to: nil,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "lanes")
+        )
+        XCTAssertEqual(result.report.decision, .exported, "the coverage identity holds")
+
+        let declared = Set(result.report.tables.map(\.lane))
+        for section in MIFSection.allCases {
+            XCTAssertFalse(section.lanes.isEmpty, "\(section.rawValue) has no lane at all")
+            for lane in section.lanes {
+                XCTAssertTrue(
+                    declared.contains(lane),
+                    "\(section.rawValue): report.json does not carry lane \(lane.rawValue)"
+                )
+            }
+            let buffer = try XCTUnwrap(result.sectionBuffers[section])
+            XCTAssertEqual(
+                buffer.attribution.values.reduce(0, +),
+                buffer.records.count,
+                "\(section.rawValue): every carried row is attributed to a lane"
+            )
+            for lane in buffer.attribution.keys {
+                XCTAssertTrue(
+                    lane.sections.contains(section),
+                    "\(lane.rawValue) wrote into \(section.rawValue), which it does not declare"
+                )
+            }
+        }
+
+        // The five sections that had no lane, by their own numbers.
+        func rows(_ section: MIFSection) throws -> Int {
+            try XCTUnwrap(result.sectionBuffers[section]).records.count
+        }
+        func lane(_ lane: MIFReconciliationLane) throws -> MemoryExportTableReconciliation {
+            try XCTUnwrap(result.report.tables.first { $0.lane == lane })
+        }
+        // 00: the fixture's tombstone comes from the forget path and from the
+        // `memory.delete` audit row, and the two lanes account for both.
+        XCTAssertGreaterThan(try rows(.tombstones), 0)
+        XCTAssertEqual(
+            try lane(.agentMemoriesForgotten).exported
+                + lane(.memoryFactTombstones).exported
+                + lane(.memorySourceTombstones).exported
+                + lane(.memoryAuditDelete).exported,
+            try rows(.tombstones)
+        )
+        // The forget path's source rows are the same rows `agent_memories`
+        // reports as `forgotten_to_tombstone` — one obligation seen from both
+        // sides, which is what keeps the second lane from inventing rows.
+        XCTAssertEqual(
+            try lane(.agentMemoriesForgotten).sourceRows,
+            try lane(.agentMemories).notExported[.forgottenToTombstone] ?? 0
+        )
+        // 02: one proven human verdict, from one `memory.reject` audit row.
+        XCTAssertEqual(try lane(.memoryAuditReview).exported, try rows(.reviewEvents))
+        XCTAssertGreaterThan(try lane(.memoryAuditReview).sourceRows, 0)
+        // 09: the audit rows themselves.
+        XCTAssertEqual(try lane(.memoryAudit).exported, try rows(.auditEvidence))
+        XCTAssertEqual(try lane(.memoryAudit).sourceRows, snapshot.auditRows.count)
+        // 01 and 10.
+        XCTAssertEqual(try lane(.memoryFactTombstoneReceipts).exported, try rows(.tombstoneReceipts))
+        XCTAssertEqual(try lane(.reportFindings).exported, try rows(.findings))
+        XCTAssertEqual(try lane(.reportFindings).sourceRows, result.report.findings.count)
+        XCTAssertEqual(try lane(.embeddingVersions).exported, try rows(.embeddings))
+
+        // And every lane still balances over its OWN source rows: a lane added
+        // to close the coverage identity must not close it by inventing rows.
+        for table in result.report.tables {
+            XCTAssertTrue(table.isBalanced, "\(table.name) does not balance")
+        }
+
+        // Interop run 1's section-00 case exactly: a store whose ONLY tombstone
+        // comes from the forget path, so both tombstone tables report
+        // `exported: 0` while section 00 carries a row. That row belonged to no
+        // lane; it belongs to this one.
+        let forgetting = try MemoryExportFixtureStore.makeQueue()
+        try forgetting.write { db in
+            try MemoryExportFixtureStore.insertAppMemory(
+                db,
+                id: "forgotten-row",
+                body: "A fact the user asked to forget.",
+                reviewStatus: "forgotten"
+            )
+        }
+        let forgotten = try makeExporter().export(
+            try MemoryExportFixtureStore.snapshot(forgetting),
+            mode: .full,
+            to: nil,
+            bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "forget-lane")
+        )
+        let tombstones = try XCTUnwrap(forgotten.sectionBuffers[.tombstones])
+        XCTAssertEqual(tombstones.records.count, 1)
+        XCTAssertEqual(tombstones.attribution[.agentMemoriesForgotten], 1)
+        XCTAssertEqual(forgotten.sectionBuffers[.memories]?.records.count, 0, "a forget is not a memory")
+
+        func forgottenLane(_ lane: MIFReconciliationLane) throws -> MemoryExportTableReconciliation {
+            try XCTUnwrap(forgotten.report.tables.first { $0.lane == lane })
+        }
+        XCTAssertEqual(try forgottenLane(.memoryFactTombstones).exported, 0)
+        XCTAssertEqual(try forgottenLane(.memorySourceTombstones).exported, 0)
+        XCTAssertEqual(try forgottenLane(.memoryAuditDelete).exported, 0)
+        XCTAssertEqual(try forgottenLane(.agentMemoriesForgotten).sourceRows, 1)
+        XCTAssertEqual(try forgottenLane(.agentMemoriesForgotten).exported, 1)
+        XCTAssertEqual(forgotten.report.decision, .exported)
+    }
+
     /// R3. A row the reader COUNTED and the export never saw.
     ///
     /// The reader takes `SELECT COUNT(*)` on its own edge, before the rows; a

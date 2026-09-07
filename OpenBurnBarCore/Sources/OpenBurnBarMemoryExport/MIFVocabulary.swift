@@ -500,6 +500,18 @@ public enum MIFSection: String, Sendable, CaseIterable {
         }
     }
 
+    /// The reconciliation lanes that may write into this section — the inverse
+    /// of `MIFReconciliationLane.sections`, derived rather than restated so the
+    /// two cannot disagree.
+    ///
+    /// D-0039 ruling 5: **every** section has at least one lane, and §10's
+    /// closed sum therefore covers all eleven. A section with no lane is a set
+    /// of carried rows no sum accounts for, which is what interop run 1 found
+    /// for 00, 02 and 09 (M-8).
+    public var lanes: [MIFReconciliationLane] {
+        MIFReconciliationLane.allCases.filter { $0.sections.contains(self) }
+    }
+
     /// Byte-ascending sort key, per §2 "within a section, records sort
     /// byte-ascending on the declared sort key".
     public var sortKeys: [String] {
@@ -515,6 +527,73 @@ public enum MIFSection: String, Sendable, CaseIterable {
         case .embeddings: ["lane_label", "model_id"]
         case .auditEvidence: ["peer_seq"]
         case .findings: ["code"]
+        }
+    }
+}
+
+/// The logical tables §10 reconciles, as a closed set.
+///
+/// A "lane" is one closed sum in `report.json.tables[]`: source rows in, every
+/// row in exactly one bucket, and — for the rows that travel — a section they
+/// land in. The vocabulary is closed for the same reason the reason codes are:
+/// interop run 1 found three sections (00 tombstones, 02 review events, 09
+/// audit evidence) carrying rows that belonged to no lane at all, so no sum
+/// covered them and `report.json` could balance while the bundle carried rows
+/// nobody had accounted for (M-8).
+///
+/// Several lanes are not store tables, and are named so that this is legible:
+/// `agent_memories.forgotten` is the forget path, `memory_audit.delete` and
+/// `memory_audit.review` are two obligations of one audit table, and
+/// `report.findings` is section 10, which §2 says is not data — it gets a lane
+/// anyway, because D-0039 ruling 5's sum is over all eleven sections and a
+/// section excused from the sum is exactly the hole this closes.
+public enum MIFReconciliationLane: String, Sendable, CaseIterable {
+    case agentMemories = "agent_memories"
+    /// Row 12 of §3.1: a `forgotten` memory leaves as a tombstone and never as
+    /// a memory. The tombstone is a section-00 row, so the path needs a lane of
+    /// its own — `agent_memories` accounts for the same source row under
+    /// `not_exported.forgotten_to_tombstone`, which says what did NOT travel.
+    case agentMemoriesForgotten = "agent_memories.forgotten"
+    case agentMemoriesSupersededBy = "agent_memories.superseded_by"
+    case memoryBodySnapshots = "memory_body_snapshots"
+    case memoryProvenance = "memory_provenance"
+    case memoryFactTombstones = "memory_fact_tombstones"
+    /// A tombstone that has been replicated carries a receipt into section 01.
+    case memoryFactTombstoneReceipts = "memory_fact_tombstones.replicated_at"
+    case memorySourceTombstones = "memory_source_tombstones"
+    case memoryAuditDelete = "memory_audit.delete"
+    /// The `memory.approve` / `memory.reject` rows a review event is minted
+    /// from (D-BB-E-9: proven verdicts only).
+    case memoryAuditReview = "memory_audit.review"
+    /// The audit rows themselves, as section 09's evidence.
+    case memoryAudit = "memory_audit"
+    case pcmProjects = "pcm_projects"
+    case pcmProjectAliases = "pcm_project_aliases"
+    case embeddingVersions = "embedding_versions"
+    case reportFindings = "report.findings"
+
+    /// The sections this lane's carried rows land in. Empty means the lane
+    /// transports nothing — `pcm_project_aliases` is real source rows that §2
+    /// does not carry, and saying so with an empty list is the point.
+    public var sections: [MIFSection] {
+        switch self {
+        case .agentMemories: [.memories, .bodies]
+        case .agentMemoriesForgotten: [.tombstones]
+        case .agentMemoriesSupersededBy: [.supersessions]
+        // A carried orphan becomes a synthetic memory, its body and one
+        // body-only provenance marker — three sections from one lane.
+        case .memoryBodySnapshots: [.memories, .bodies, .provenance]
+        case .memoryProvenance: [.provenance]
+        case .memoryFactTombstones: [.tombstones]
+        case .memoryFactTombstoneReceipts: [.tombstoneReceipts]
+        case .memorySourceTombstones: [.tombstones]
+        case .memoryAuditDelete: [.tombstones]
+        case .memoryAuditReview: [.reviewEvents]
+        case .memoryAudit: [.auditEvidence]
+        case .pcmProjects: [.projects]
+        case .pcmProjectAliases: []
+        case .embeddingVersions: [.embeddings]
+        case .reportFindings: [.findings]
         }
     }
 }

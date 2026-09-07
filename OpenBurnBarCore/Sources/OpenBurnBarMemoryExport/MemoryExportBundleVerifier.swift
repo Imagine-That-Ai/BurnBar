@@ -308,7 +308,79 @@ public enum MemoryExportBundleVerifier {
             }
         }
 
+        // 7. §10's closed sums, recomputed from `report.json` rather than
+        //    believed, and D-0039 ruling 5's coverage: every section the
+        //    manifest declares rows for has a lane in the report that accounts
+        //    for them. Interop run 1 found three sections (00, 02, 09) whose
+        //    rows belonged to no lane at all, so `balanced` could be true of
+        //    every lane while the bundle carried rows nobody had counted (M-8).
+        result.checksRun.append("report.json lanes ↔ section rows")
+        result.problems.append(contentsOf: reconciliationProblems(bundleAt: url, headers: headers))
+
         return result
+    }
+
+    /// The closed sums and the section coverage, read off the two files.
+    ///
+    /// `table_reconciliation` is `additionalProperties: false`, so a lane cannot
+    /// carry the section it writes into; the binding is
+    /// `MIFReconciliationLane.sections`, and the lane NAME is what the report
+    /// gives a verifier to look it up with. A name outside the vocabulary is
+    /// therefore a lane this build cannot reason about — reported, not ignored.
+    static func reconciliationProblems(bundleAt url: URL, headers: [[String: Any]]) -> [String] {
+        guard let data = try? Data(contentsOf: url.appendingPathComponent("report.json")),
+              let report = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tables = report["tables"] as? [[String: Any]] else {
+            return ["report.json is missing or carries no tables[], so no count can be reconciled"]
+        }
+        var problems: [String] = []
+        var present: Set<MIFReconciliationLane> = []
+
+        for table in tables {
+            guard let name = table["name"] as? String else {
+                problems.append("report.json carries a table with no name")
+                continue
+            }
+            guard let lane = MIFReconciliationLane(rawValue: name) else {
+                problems.append("report.json's lane `\(name)` is not one this build knows")
+                continue
+            }
+            present.insert(lane)
+
+            let sourceRows = table["source_rows"] as? Int ?? 0
+            let exported = table["exported"] as? Int ?? 0
+            let notExported = (table["not_exported"] as? [String: Int] ?? [:]).values.reduce(0, +)
+            let rejected = (table["rejected"] as? [String: Int] ?? [:]).values.reduce(0, +)
+            let accounted = exported + notExported + rejected
+            let balanced = sourceRows == accounted
+            if balanced == false {
+                problems.append(
+                    "\(name): \(sourceRows) source row(s), \(accounted) accounted "
+                        + "(\(exported) exported + \(notExported) not exported + \(rejected) rejected)"
+                )
+            }
+            if let declared = table["balanced"] as? Bool, declared != balanced {
+                problems.append("\(name): declares balanced=\(declared) and its own numbers say \(balanced)")
+            }
+        }
+
+        for header in headers {
+            guard let name = header["name"] as? String,
+                  let section = MIFSection(rawValue: name) else { continue }
+            let rows = header["row_count"] as? Int ?? 0
+            let lanes = section.lanes
+            if lanes.isEmpty {
+                problems.append("\(name): no reconciliation lane covers this section")
+                continue
+            }
+            if rows > 0, lanes.contains(where: present.contains) == false {
+                problems.append(
+                    "\(name): \(rows) row(s) carried and report.json has none of the lanes that "
+                        + "account for them (\(lanes.map(\.rawValue).joined(separator: ", ")))"
+                )
+            }
+        }
+        return problems
     }
 
     /// The manifest members a second artefact in the same bundle can

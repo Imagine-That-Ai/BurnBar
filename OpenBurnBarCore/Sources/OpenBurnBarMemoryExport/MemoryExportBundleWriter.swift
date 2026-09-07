@@ -28,11 +28,28 @@ public struct MemoryExportSectionBuffer: Sendable {
     /// One D-0031 roll-up tuple per row, in the member order the section's
     /// `rollupTuple` declares. Never emitted per row — only the digest travels.
     public var rollupTuples: [[String]] = []
+    /// How many of this section's records each reconciliation lane put here.
+    ///
+    /// It does not travel — `$defs/table_reconciliation` is
+    /// `additionalProperties: false`, and a section header has no member for it
+    /// either — but it is what makes D-0039 ruling 5's closed sum checkable:
+    /// a row cannot enter a section without naming the lane that accounts for
+    /// it, because `append` will not let it.
+    public var attribution: [MIFReconciliationLane: Int] = [:]
 
     public init(section: MIFSection) { self.section = section }
 
-    public mutating func append(_ record: MIFJSON, rollup: [String]? = nil) {
+    /// Append one record, naming the lane whose closed sum accounts for it.
+    ///
+    /// `lane` is not optional and has no default on purpose: interop run 1
+    /// found sections 00, 02 and 09 carrying rows that no lane in
+    /// `report.json.tables[]` mentioned (M-8), and a defaulted parameter is how
+    /// that happens again. `MIFReconciliationLane.sections` says which sections
+    /// a lane may write; writing outside that list is a programming error the
+    /// exporter's own coverage check catches before the bundle is sealed.
+    public mutating func append(_ record: MIFJSON, lane: MIFReconciliationLane, rollup: [String]? = nil) {
         records.append(record)
+        attribution[lane, default: 0] += 1
         if let rollup { rollupTuples.append(rollup) }
     }
 }

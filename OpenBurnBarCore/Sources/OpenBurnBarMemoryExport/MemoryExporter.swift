@@ -147,25 +147,39 @@ public struct MemoryExporter: Sendable {
         var sections = Dictionary(uniqueKeysWithValues: MIFSection.allCases.map {
             ($0, MemoryExportSectionBuffer(section: $0))
         })
-        var memoriesTable = MemoryExportTableReconciliation(name: "agent_memories")
-        var bodiesTable = MemoryExportTableReconciliation(name: "memory_body_snapshots")
-        var provenanceTable = MemoryExportTableReconciliation(name: "memory_provenance")
-        var tombstonesTable = MemoryExportTableReconciliation(name: "memory_fact_tombstones")
-        var sourceTombstonesTable = MemoryExportTableReconciliation(name: "memory_source_tombstones")
-        var projectsTable = MemoryExportTableReconciliation(name: "pcm_projects")
+        var memoriesTable = MemoryExportTableReconciliation(.agentMemories)
+        var bodiesTable = MemoryExportTableReconciliation(.memoryBodySnapshots)
+        var provenanceTable = MemoryExportTableReconciliation(.memoryProvenance)
+        var tombstonesTable = MemoryExportTableReconciliation(.memoryFactTombstones)
+        var sourceTombstonesTable = MemoryExportTableReconciliation(.memorySourceTombstones)
+        var projectsTable = MemoryExportTableReconciliation(.pcmProjects)
+        // M-8: five sections carried rows that no lane in `report.json.tables[]`
+        // mentioned — 00 (a forgotten memory's tombstone), 01, 02, 09 and 10 —
+        // so §10's closed sum, which is a sum over lanes, did not cover them.
+        // D-0039 ruling 5 requires a lane per section; these are the five that
+        // were missing, and each is a real obligation rather than a restatement
+        // of a count: the forget path discharges a memory into a tombstone, a
+        // replicated tombstone owes a receipt, a proven verdict owes an event,
+        // an audit row owes its evidence, and a finding owes its record.
+        var forgottenTable = MemoryExportTableReconciliation(.agentMemoriesForgotten)
+        var receiptsTable = MemoryExportTableReconciliation(.memoryFactTombstoneReceipts)
+        var reviewTable = MemoryExportTableReconciliation(.memoryAuditReview)
+        var auditTable = MemoryExportTableReconciliation(.memoryAudit)
+        var embeddingsTable = MemoryExportTableReconciliation(.embeddingVersions)
+        var findingsTable = MemoryExportTableReconciliation(.reportFindings)
         // F-18: edges and aliases get their own closed sums. They used to be
         // added to `agent_memories.source_rows` and `pcm_projects.source_rows`
         // AFTER the fact, which made those numbers stop meaning "rows in the
         // source table" and closed the balance by construction instead of
         // checking it.
-        var edgesTable = MemoryExportTableReconciliation(name: "agent_memories.superseded_by")
-        var aliasesTable = MemoryExportTableReconciliation(name: "pcm_project_aliases")
+        var edgesTable = MemoryExportTableReconciliation(.agentMemoriesSupersededBy)
+        var aliasesTable = MemoryExportTableReconciliation(.pcmProjectAliases)
         // R3: a synthesized tombstone is not a `memory_fact_tombstones` row, and
         // adding one to that table's `source_rows` on the same edge that added
         // it to `exported` is how its closed sum became `N == N`. The
         // `memory.delete` audit rows are their own logical table with their own
         // obligation (M-04), so they get their own row.
-        var deletesTable = MemoryExportTableReconciliation(name: "memory_audit.delete")
+        var deletesTable = MemoryExportTableReconciliation(.memoryAuditDelete)
 
         let stores = MemoryExportBodyStores(
             snapshotsByMemoryID: Dictionary(
@@ -291,6 +305,11 @@ public struct MemoryExporter: Sendable {
             // as a tombstone and never appears in section 05.
             if classification.isTombstoneOnly {
                 memoriesTable.note(.forgottenToTombstone)
+                // The forget path's own lane. Its source rows are counted here
+                // rather than read off the reader's table count, because they
+                // are a SUBSET of `agent_memories` no reader can count on its
+                // own edge — the same shape `memory_audit.delete` has.
+                forgottenTable.sourceRows += 1
                 let tombstoneID = MemoryExportIdentity.tombstoneID(
                     storeID: storeID,
                     sourceTable: "agent_memories.forgotten",
@@ -301,19 +320,27 @@ public struct MemoryExporter: Sendable {
                     emittedTombstoneSubjects.insert(
                         canonical(memory.id)
                     )
-                    sections[.tombstones]?.append(MemoryExportRecords.factTombstoneRecord(
-                        tombstoneID: tombstoneID,
-                        subjectMemoryID: canonical(memory.id),
-                        userID: scope.userID,
-                        scope: scope,
-                        reason: .userForget,
-                        originLabel: .daemonForgotten,
-                        synthesisReason: .forgottenStatus,
-                        auditSeq: nil,
-                        createdAtMS: MemoryExportTimestamp.milliseconds(memory.updatedAt),
-                        context: context
-                    ))
+                    sections[.tombstones]?.append(
+                        MemoryExportRecords.factTombstoneRecord(
+                            tombstoneID: tombstoneID,
+                            subjectMemoryID: canonical(memory.id),
+                            userID: scope.userID,
+                            scope: scope,
+                            reason: .userForget,
+                            originLabel: .daemonForgotten,
+                            synthesisReason: .forgottenStatus,
+                            auditSeq: nil,
+                            createdAtMS: MemoryExportTimestamp.milliseconds(memory.updatedAt),
+                            context: context
+                        ),
+                        lane: .agentMemoriesForgotten
+                    )
+                    forgottenTable.exported += 1
                     report.tombstonesWithoutContentKey += 1
+                } else {
+                    // The subject already has a tombstone from another path, so
+                    // this forget is discharged by it.
+                    forgottenTable.note(.cloudAlreadyLocal)
                 }
                 continue
             }
@@ -371,12 +398,17 @@ public struct MemoryExporter: Sendable {
             let citations = (provenanceByMemory[memory.id] ?? []).sorted { $0.id < $1.id }
             // D-0031 ruling 2: 05 is `(memory_id, body_join_key,
             // body_norm_digest)` — the join key, not the provenance digest.
-            sections[.memories]?.append(memoryRecord, rollup: [canonicalID, joinKey, normDigest])
+            sections[.memories]?.append(
+                memoryRecord,
+                lane: .agentMemories,
+                rollup: [canonicalID, joinKey, normDigest]
+            )
             // ...and 06 emits no rollup at all: its tuple names
             // `seal_generation`, which `record_body` has no member for (§15
             // item 8). The 05 tuple above still binds every body to its id.
             sections[.bodies]?.append(
-                MemoryExportRecords.bodyRecord(body: body, gate: gate, context: context)
+                MemoryExportRecords.bodyRecord(body: body, gate: gate, context: context),
+                lane: .agentMemories
             )
             memoriesTable.exported += 1
 
@@ -391,11 +423,15 @@ public struct MemoryExporter: Sendable {
                 // The record is only minted for proven rows (D-BB-E-9), so the
                 // seq this recomputes the id from is the audit row section 09
                 // owes — the same seq, named once.
-                sections[.reviewEvents]?.append(event, rollup: [
-                    MemoryExportIdentity.reviewEventID(storeID: storeID, auditSeq: seq),
-                    canonicalID,
-                    classification.reviewStatus.rawValue
-                ])
+                sections[.reviewEvents]?.append(
+                    event,
+                    lane: .memoryAuditReview,
+                    rollup: [
+                        MemoryExportIdentity.reviewEventID(storeID: storeID, auditSeq: seq),
+                        canonicalID,
+                        classification.reviewStatus.rawValue
+                    ]
+                )
                 report.auditProvenHuman += 1
                 auditSeqsSectionNineOwes.insert(seq)
             } else if memory.reviewStatus == MIFReviewStatus.approved.rawValue {
@@ -409,11 +445,14 @@ public struct MemoryExporter: Sendable {
             }
 
             for citation in citations {
-                sections[.provenance]?.append(MemoryExportRecords.provenanceRecord(
-                    row: citation,
-                    memoryID: canonicalID,
-                    context: context
-                ))
+                sections[.provenance]?.append(
+                    MemoryExportRecords.provenanceRecord(
+                        row: citation,
+                        memoryID: canonicalID,
+                        context: context
+                    ),
+                    lane: .memoryProvenance
+                )
                 provenanceTable.exported += 1
             }
 
@@ -437,6 +476,9 @@ public struct MemoryExporter: Sendable {
             "memory_fact_tombstones",
             observed: snapshot.factTombstones.count
         )
+        // A replicated tombstone owes a section-01 receipt, which is section
+        // 01's whole content and had no lane at all (M-8).
+        receiptsTable.sourceRows = snapshot.factTombstones.count { $0.replicatedAt != nil }
         for tombstone in snapshot.factTombstones.sorted(by: { $0.id < $1.id }) {
             let subject = canonical(tombstone.memoryID)
             let id = MemoryExportIdentity.tombstoneID(
@@ -446,34 +488,42 @@ public struct MemoryExporter: Sendable {
             )
             guard emittedTombstoneIDs.insert(id).inserted else {
                 tombstonesTable.note(.cloudAlreadyLocal)
+                // Its receipt goes with it: the tombstone this one duplicates
+                // carries the section-01 row.
+                if tombstone.replicatedAt != nil { receiptsTable.note(.cloudAlreadyLocal) }
                 continue
             }
             emittedTombstoneSubjects.insert(subject)
-            sections[.tombstones]?.append(MemoryExportRecords.factTombstoneRecord(
-                tombstoneID: id,
-                subjectMemoryID: subject,
-                userID: tombstone.userID,
-                scope: MemoryExportScope(
-                    kind: .user,
-                    key: tombstone.userID,
+            sections[.tombstones]?.append(
+                MemoryExportRecords.factTombstoneRecord(
+                    tombstoneID: id,
+                    subjectMemoryID: subject,
                     userID: tombstone.userID,
-                    projectFingerprint: nil,
-                    isPseudoProject: true
+                    scope: MemoryExportScope(
+                        kind: .user,
+                        key: tombstone.userID,
+                        userID: tombstone.userID,
+                        projectFingerprint: nil,
+                        isPseudoProject: true
+                    ),
+                    reason: MemoryExportRecords.tombstoneReason(tombstone.reason, default: .userForget),
+                    originLabel: .local,
+                    synthesisReason: nil,
+                    auditSeq: nil,
+                    createdAtMS: MemoryExportTimestamp.milliseconds(tombstone.createdAt),
+                    context: context
                 ),
-                reason: MemoryExportRecords.tombstoneReason(tombstone.reason, default: .userForget),
-                originLabel: .local,
-                synthesisReason: nil,
-                auditSeq: nil,
-                createdAtMS: MemoryExportTimestamp.milliseconds(tombstone.createdAt),
-                context: context
-            ))
+                lane: .memoryFactTombstones
+            )
             tombstonesTable.exported += 1
             report.tombstonesWithoutContentKey += 1
             record(.tombstoneContentKeyUnknown, sample: tombstone.memoryID)
             if let replicated = tombstone.replicatedAt {
                 sections[.tombstoneReceipts]?.append(
-                    MemoryExportRecords.receiptRecord(tombstoneID: id, replicatedAt: replicated)
+                    MemoryExportRecords.receiptRecord(tombstoneID: id, replicatedAt: replicated),
+                    lane: .memoryFactTombstoneReceipts
                 )
+                receiptsTable.exported += 1
             }
         }
 
@@ -507,24 +557,27 @@ public struct MemoryExporter: Sendable {
                 canonical(subjectID)
             )
             let projectID = delete.projectID ?? "chat:unscoped"
-            sections[.tombstones]?.append(MemoryExportRecords.factTombstoneRecord(
-                tombstoneID: id,
-                subjectMemoryID: canonical(subjectID),
-                userID: MemoryExportPartition.pseudoProjectUserID(projectID) ?? userID,
-                scope: MemoryExportScope(
-                    kind: .user,
-                    key: MemoryExportPartition.pseudoProjectUserID(projectID) ?? userID ?? projectID,
+            sections[.tombstones]?.append(
+                MemoryExportRecords.factTombstoneRecord(
+                    tombstoneID: id,
+                    subjectMemoryID: canonical(subjectID),
                     userID: MemoryExportPartition.pseudoProjectUserID(projectID) ?? userID,
-                    projectFingerprint: nil,
-                    isPseudoProject: true
+                    scope: MemoryExportScope(
+                        kind: .user,
+                        key: MemoryExportPartition.pseudoProjectUserID(projectID) ?? userID ?? projectID,
+                        userID: MemoryExportPartition.pseudoProjectUserID(projectID) ?? userID,
+                        projectFingerprint: nil,
+                        isPseudoProject: true
+                    ),
+                    reason: .userForget,
+                    originLabel: .local,
+                    synthesisReason: .appDeleted,
+                    auditSeq: delete.seq,
+                    createdAtMS: MemoryExportTimestamp.milliseconds(delete.ts),
+                    context: context
                 ),
-                reason: .userForget,
-                originLabel: .local,
-                synthesisReason: .appDeleted,
-                auditSeq: delete.seq,
-                createdAtMS: MemoryExportTimestamp.milliseconds(delete.ts),
-                context: context
-            ))
+                lane: .memoryAuditDelete
+            )
             deletesTable.exported += 1
             report.deleteWithoutTombstoneSynthesized += 1
             report.tombstonesWithoutContentKey += 1
@@ -551,7 +604,8 @@ public struct MemoryExporter: Sendable {
         )
         for tombstone in snapshot.sourceTombstones.sorted(by: { $0.id < $1.id }) {
             sections[.tombstones]?.append(
-                MemoryExportRecords.sourceTombstoneRecord(row: tombstone, context: context)
+                MemoryExportRecords.sourceTombstoneRecord(row: tombstone, context: context),
+                lane: .memorySourceTombstones
             )
             sourceTombstonesTable.exported += 1
             report.sourceTombstoneSuppressors += 1
@@ -561,7 +615,10 @@ public struct MemoryExporter: Sendable {
         // ---- 04: projects --------------------------------------------------
         projectsTable.sourceRows = snapshot.sourceRows("pcm_projects", observed: snapshot.projects.count)
         for project in snapshot.projects.sorted(by: { $0.projectID < $1.projectID }) {
-            sections[.projects]?.append(MemoryExportRecords.projectRecord(project: project, context: context))
+            sections[.projects]?.append(
+                MemoryExportRecords.projectRecord(project: project, context: context),
+                lane: .pcmProjects
+            )
             projectsTable.exported += 1
             // The v3 fingerprint needs a live checkout; the exporter carries the
             // inputs it has and says the fingerprint is downgraded rather than
@@ -574,19 +631,32 @@ public struct MemoryExporter: Sendable {
         }
 
         // ---- 08: embeddings (counts only) ----------------------------------
+        // §2 does not transport vectors; what travels is one count row per
+        // embedding version, and `embedding_versions` is the lane that carries
+        // them. The vectors themselves are `embedding_vector_disposable` on the
+        // same lane, so the sum says both what came and what deliberately did
+        // not.
+        embeddingsTable.sourceRows = snapshot.embeddingLanes.count
         for lane in snapshot.embeddingLanes.sorted(by: { $0.versionID < $1.versionID }) {
-            sections[.embeddings]?.append(MemoryExportRecords.embeddingRecord(lane: lane))
+            sections[.embeddings]?.append(
+                MemoryExportRecords.embeddingRecord(lane: lane),
+                lane: .embeddingVersions
+            )
+            embeddingsTable.exported += 1
         }
 
         // ---- 09: audit evidence --------------------------------------------
+        auditTable.sourceRows = snapshot.sourceRows("memory_audit", observed: snapshot.auditRows.count)
         for row in snapshot.auditRows.sorted(by: { $0.seq < $1.seq }) {
             if case .delta(let since, _) = mode,
                row.seq <= since,
                auditSeqsSectionNineOwes.contains(row.seq) == false {
+                auditTable.note(.outOfWindow)
                 continue
             }
             let built = MemoryExportRecords.auditEvidenceRecord(row: row, chain: chain, context: context)
-            sections[.auditEvidence]?.append(built.record)
+            sections[.auditEvidence]?.append(built.record, lane: .memoryAudit)
+            auditTable.exported += 1
             report.auditLabelsStripped += built.strippedLabels.count
             if built.strippedLabels.isEmpty == false { record(.auditLabelStripped, sample: String(row.seq)) }
         }
@@ -634,10 +704,11 @@ public struct MemoryExporter: Sendable {
             // norm digest literally.
             sections[.memories]?.append(
                 synthetic.memory,
+                lane: .memoryBodySnapshots,
                 rollup: [canonicalID, synthetic.joinKey, normDigest]
             )
-            sections[.bodies]?.append(synthetic.body)
-            sections[.provenance]?.append(synthetic.provenance)
+            sections[.bodies]?.append(synthetic.body, lane: .memoryBodySnapshots)
+            sections[.provenance]?.append(synthetic.provenance, lane: .memoryBodySnapshots)
             carriedOrphanIDs.insert(snapshotRow.memoryID)
             report.syntheticOrphanMemories += 1
         }
@@ -700,10 +771,37 @@ public struct MemoryExporter: Sendable {
             "pcm_project_aliases",
             observed: snapshot.projects.reduce(0) { $0 + $1.pathAliasCount }
         )
+
+        // Section 02's lane. The source is the audit table's REVIEW rows —
+        // `memory.approve` and `memory.reject`, the two verbs a verdict is
+        // written with — and each one either becomes an event or lands in a
+        // bucket. `auditSeqsSectionNineOwes` is exactly the set of seqs an
+        // event was minted from, so this reads the emitted records rather than
+        // recounting the loop that emitted them.
+        let verdictRows = snapshot.auditRows.filter {
+            MemoryExportClassifier.verdictActions.contains($0.action)
+        }
+        reviewTable.sourceRows = verdictRows.count
+        for row in verdictRows {
+            if auditSeqsSectionNineOwes.contains(row.seq) {
+                reviewTable.exported += 1
+            } else if case .delta(let since, _) = mode, row.seq <= since {
+                reviewTable.note(.outOfWindow)
+            } else {
+                // The classifier did not admit it: an unproven verdict, a
+                // broken chain around it, a second verdict on a memory whose
+                // event was minted from another seq, or a memory that did not
+                // travel. D-BB-E-9: section 02 carries proven verdicts only.
+                reviewTable.note(.restrictedClassification)
+            }
+        }
+
         report.tables = [
             memoriesTable, bodiesTable, provenanceTable,
             tombstonesTable, sourceTombstonesTable, projectsTable,
-            edgesTable, aliasesTable, deletesTable
+            edgesTable, aliasesTable, deletesTable,
+            forgottenTable, receiptsTable, reviewTable, auditTable,
+            embeddingsTable, findingsTable
         ]
         // A table that does not balance is a row the source held and this bundle
         // cannot account for — the reader counted it, the export never saw it.
@@ -729,6 +827,11 @@ public struct MemoryExporter: Sendable {
                 )
             }
             .sorted { $0.code.rawValue < $1.code.rawValue }
+        // Section 10 is not data — §2 says a finding is never applied — but
+        // D-0039 ruling 5's sum is over all ELEVEN sections, and a section
+        // excused from the sum is the hole M-8 named. The lane is honest about
+        // what it counts: findings computed in, finding records written out.
+        findingsTable.sourceRows = report.findings.count
         for finding in report.findings {
             let lostForCode = finding.code == .bodyUnreconstructible
                 ? lost.map {
@@ -741,15 +844,25 @@ public struct MemoryExporter: Sendable {
                     )
                 }
                 : []
-            sections[.findings]?.append(MemoryExportRecords.findingRecord(
-                code: finding.code,
-                severity: finding.severity,
-                count: finding.count,
-                table: finding.table,
-                detail: finding.detail,
-                sampleSourceIDs: finding.sampleSourceIDs,
-                lostRecords: lostForCode
-            ))
+            sections[.findings]?.append(
+                MemoryExportRecords.findingRecord(
+                    code: finding.code,
+                    severity: finding.severity,
+                    count: finding.count,
+                    table: finding.table,
+                    detail: finding.detail,
+                    sampleSourceIDs: finding.sampleSourceIDs,
+                    lostRecords: lostForCode
+                ),
+                lane: .reportFindings
+            )
+            findingsTable.exported += 1
+        }
+        // `report.tables` was assembled before the findings were computed, so
+        // the findings lane's own numbers land here — the one lane whose source
+        // is this run rather than the store.
+        if let index = report.tables.firstIndex(where: { $0.lane == .reportFindings }) {
+            report.tables[index] = findingsTable
         }
 
         // §13 AD-2, checked rather than claimed: no id this bundle tombstones in
@@ -762,13 +875,61 @@ public struct MemoryExporter: Sendable {
             return emittedTombstoneSubjects.contains(id) == false
         }
 
+        // D-0039 ruling 5, checked rather than claimed: every row this bundle
+        // carries is inside some lane's closed sum, and every one of the eleven
+        // sections has a lane. `append` made each row name its lane, so this
+        // re-reads the attribution off the buffers and refuses the two ways it
+        // could still be wrong — a lane writing into a section it does not
+        // declare, and a lane the report does not carry.
+        let declaredLanes = Set(report.tables.map(\.lane))
+        var coverageFailed = false
+        for section in MIFSection.allCases {
+            let buffer = sections[section] ?? MemoryExportSectionBuffer(section: section)
+            for (lane, rows) in buffer.attribution.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                if lane.sections.contains(section) == false {
+                    record(
+                        .sourceUnreadable,
+                        sample: "\(section.rawValue): \(rows) row(s) written by lane \(lane.rawValue), "
+                            + "which does not declare this section"
+                    )
+                }
+                if declaredLanes.contains(lane) == false {
+                    record(
+                        .sourceUnreadable,
+                        sample: "\(section.rawValue): \(rows) row(s) on lane \(lane.rawValue), which "
+                            + "report.json does not carry"
+                    )
+                }
+            }
+            let attributed = buffer.attribution.values.reduce(0, +)
+            if attributed != buffer.records.count {
+                record(
+                    .sourceUnreadable,
+                    sample: "\(section.rawValue): \(buffer.records.count) row(s) carried, \(attributed) "
+                        + "attributed to a lane"
+                )
+                coverageFailed = true
+            }
+            if buffer.records.isEmpty == false, buffer.attribution.isEmpty {
+                record(
+                    .sourceUnreadable,
+                    sample: "\(section.rawValue): \(buffer.records.count) row(s) carried by no lane at all"
+                )
+                coverageFailed = true
+            }
+        }
+
         report.partialSources = options.partialSources
         report.recipientKeyID = recipient.keyID
         report.recipientStoreID = recipient.storeID
         report.recipientIsRehearsalThrowaway = recipient.isRehearsalThrowaway
-        if report.reconciles == false {
+        if report.reconciles == false || coverageFailed {
             report.decision = .held
-            report.holdReasons.append(.reconciliationMismatch)
+            // One reason, however many ways the sums failed: `hold_reasons[]`
+            // is a set of causes, not a log.
+            if report.holdReasons.contains(.reconciliationMismatch) == false {
+                report.holdReasons.append(.reconciliationMismatch)
+            }
         }
 
         return try MemoryExportBundleWriter.build(

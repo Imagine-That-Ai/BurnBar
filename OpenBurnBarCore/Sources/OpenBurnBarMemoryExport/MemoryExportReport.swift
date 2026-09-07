@@ -13,7 +13,14 @@
 import Foundation
 
 public struct MemoryExportTableReconciliation: Sendable, Equatable {
-    public var name: String
+    /// The lane this sum is for, from the closed vocabulary. It used to be a
+    /// free `String`, which is how three carried sections ended up with no lane
+    /// at all (M-8): nothing could ask "which lane covers section 09?" of a set
+    /// of strings.
+    public var lane: MIFReconciliationLane
+    /// `report.json`'s `tables[].name`. The contract types it a free string, so
+    /// the vocabulary lives here rather than in the schema.
+    public var name: String { lane.rawValue }
     public var sourceRows = 0
     public var exported = 0
     public var notExported: [MIFNotExportedReason: Int] = [:]
@@ -21,7 +28,7 @@ public struct MemoryExportTableReconciliation: Sendable, Equatable {
     public var gateHeld = 0
     public var recoveredLegacyPlaintext = 0
 
-    public init(name: String) { self.name = name }
+    public init(_ lane: MIFReconciliationLane) { self.lane = lane }
 
     public mutating func note(_ reason: MIFNotExportedReason, _ count: Int = 1) {
         notExported[reason, default: 0] += count
