@@ -277,7 +277,7 @@ const PARTS = [
                   </p>
                   {film.caveat && (
                     <p class="film__caveat">
-                      <span class="tag tag--review">In review, not shipped</span>
+                      <span class="tag tag--review">{film.caveat.label}</span>
                       {film.caveat.note} <a href={film.caveat.href}>Read the boundary</a>.
                     </p>
                   )}

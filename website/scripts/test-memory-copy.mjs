@@ -24,9 +24,10 @@
  *      pinned" on the page. Unpinned numbers must look unpinned.
  *   6. The extraction floor quoted on the page matches `RECALL_FLOOR` in
  *      tools/openburnbar-mcp/tests/test_eval_extraction.py.
- *   7. Cross-device sync is described as not shipped. The page must carry the
- *      "Not shipped" lane and must never claim sync/replication across devices
- *      is available, because the pull half is still in review.
+ *   7. Cross-device sync is published as whatever `tools/openburnbar-mcp/`
+ *      can be read to do — derived from the source, not pinned to a
+ *      sentence. This invariant used to enforce the opposite claim; see its
+ *      own block below for why that was the bug and not the feature.
  *
  * And, since the coverage round, the atlas — the page's claim to list every
  * tool the server has, which is exactly the kind of claim that rots quietly:
@@ -263,20 +264,124 @@ check(
   `the page quotes a different extraction floor than the committed RECALL_FLOOR = ${floor}`
 );
 
-/* ── 7 · cross-device sync is not advertised as shipped ─────────────────── */
+/* ── 7 · cross-device sync is published as what the engine actually does ──
+ *
+ * THIS INVARIANT USED TO PIN THE OPPOSITE CLAIM. It required the page to say
+ * the pull-and-merge half was unshipped and in review. PR #2519 (77527f23c5)
+ * landed that half on `main`, and because a gate was holding the old sentence
+ * in place the page could not drift back to true on its own: the copy was
+ * wrong and CI failed anyone who fixed it. Pinning a fact is the right
+ * pattern; pinning a *sentence about* a fact is how the pin outlives it.
+ *
+ * So the shipped/unshipped question is now READ OUT OF THE SOURCE on every
+ * run, and the page must agree with whichever way it reads:
+ *
+ *   a. `burnbar_memory_sync_pull` is a registered `@mcp.tool()` and a member
+ *      of `MEMORY_TOOLSET` — the tool the engine drains the inbox through.
+ *   b. `merge_remote` is defined in `memory_engine/_sync.py` — the merge.
+ *   c. `hooks/claude-code-session-start.sh` gates the drain on an opt-in
+ *      environment variable, whose literal name the page must print.
+ *
+ * With (a) and (b) present, the page must NOT publish device sync as in
+ * review or unshipped, and must still publish the two conditions that ARE
+ * true: it is Mac-to-Mac, and nothing merges until something calls the pull.
+ * Delete the tool or the merge and (a)/(b) fail loudly, which puts the gate
+ * back on the "we removed it and the page still promises it" drift — the one
+ * that can actually happen from here.
+ */
+
+const syncSrc = readFileSync(join(MCP, "memory_engine", "_sync.py"), "utf8");
+const hookSrc = readFileSync(join(MCP, "hooks", "claude-code-session-start.sh"), "utf8");
+
+const pullToolRegistered = /@mcp\.tool\(\)\s*(?:async\s+)?def\s+burnbar_memory_sync_pull\b/.test(
+  serverSrc
+);
+const pullToolInToolset = /"burnbar_memory_sync_pull"/.test(toolsetBlock[1]);
+const mergeShipped = /^\s*def\s+merge_remote\s*\(/m.test(syncSrc);
+
+/* The drain's opt-in switch, read from the hook rather than transcribed. Its
+ * default arm is the literal `off`, which is also what makes the "nothing
+ * merges on its own" row on the page true. */
+const hookEnv = hookSrc.match(/\$\{(OPENBURNBAR_[A-Z0-9_]+):-off\}/)?.[1];
+assert.ok(
+  hookEnv,
+  "could not read the default-off opt-in variable from hooks/claude-code-session-start.sh"
+);
+
+check(
+  pullToolRegistered && pullToolInToolset,
+  "burnbar_memory_sync_pull is no longer a registered memory tool in server.py — the page " +
+    "publishes cross-device sync as shipped and nothing backs that any more"
+);
+check(
+  mergeShipped,
+  "memory_engine/_sync.py no longer defines merge_remote — the page publishes cross-device " +
+    "sync as shipped and nothing backs that any more"
+);
+
+/* The lane the claim lives in, taken from the data module so a check about
+ * one lane cannot be satisfied by prose somewhere else on the page. */
+const boundaryStart = dataSrc.indexOf("export const BOUNDARY: BoundaryLane[] = [");
+assert.ok(boundaryStart > 0, "could not find BOUNDARY in src/data/memory.ts");
+const boundarySrc = dataSrc.slice(boundaryStart, dataSrc.indexOf("\n];", boundaryStart));
+const notShippedStart = boundarySrc.indexOf('id: "not-yet"');
+const leavesStart = boundarySrc.indexOf('id: "leaves"');
+assert.ok(notShippedStart > 0 && leavesStart > 0, "BOUNDARY lost its leaves / not-yet lanes");
+const notShippedLane = boundarySrc.slice(notShippedStart);
+const optInLane = boundarySrc.slice(leavesStart, notShippedStart);
 
 check(text.includes("Not shipped"), '/memory must carry the "Not shipped" lane');
+
+/* The stale claim, in every phrasing it lived in. `main` pulls and merges. */
+const STALE = [
+  /\bin review, not shipped\b/i,
+  /(?:cross-device sync|pull[-\s]and[-\s]merge|the pull half|pull and merge half)[^.]{0,140}?\b(?:in review|not shipped|is written and)\b/i,
+  /\b(?:pull|merge)[^.]{0,80}?\bis (?:still )?in review\b/i
+];
+for (const pattern of STALE) {
+  check(
+    !pattern.test(text),
+    `/memory still publishes cross-device sync as unshipped, but #2519 landed the pull half: ${pattern}`
+  );
+}
 check(
-  /pull half is|pull and merge/i.test(text),
-  "the not-shipped lane must name the pull-and-merge half specifically"
+  !/pull[-\s]and[-\s]merge|the pull half/i.test(notShippedLane),
+  'the "Not shipped" lane still names the pull-and-merge half — it is on `main`; the lane must ' +
+    "name what is actually missing instead"
 );
+
+/* What must stay published, because it is still true. */
+check(
+  /\bMac(s)?\b/.test(notShippedLane) && /(iphone|ipad|ios)/i.test(notShippedLane),
+  'the "Not shipped" lane must say device sync reaches only another Mac — there is no memory ' +
+    "engine on iOS"
+);
+check(
+  notShippedLane.includes("burnbar_memory_sync_pull") && notShippedLane.includes(hookEnv),
+  `the "Not shipped" lane must say nothing merges until something calls ` +
+    `burnbar_memory_sync_pull, and name its opt-in switch ${hookEnv}`
+);
+check(
+  text.includes("burnbar_memory_sync_pull") && text.includes(hookEnv),
+  `both the pull tool and its opt-in switch ${hookEnv} must reach the rendered page`
+);
+check(
+  /other Macs|device sync|other devices/i.test(optInLane),
+  "the opt-in lane must carry device sync as its own row: it is a separate consent from backup, " +
+    "with its own switch and the same paid entitlement"
+);
+
+/* Overclaims, now pointed the way the copy can actually go wrong: sync is
+ * real, so the lie available to us is that it is effortless or universal. */
 const OVERCLAIMS = [
-  /sync(s|ed)? (?:your )?memories across (?:your )?devices/i,
-  /memories follow you (?:to|across) (?:your )?(?:other |second )?(?:mac|device)/i,
-  /cross-device sync is (?:now )?(?:live|available|here)/i
+  /memories (?:sync|arrive|appear|show up)[^.]{0,40}\bautomatically\b/i,
+  /(?:cross-device )?sync is on by default/i,
+  /sync(?:s|ed)? (?:your )?memories to (?:your )?(?:iphone|ipad|phone)/i,
+  /works on (?:every|all your) devices/i,
+  /nothing to turn on/i
 ];
 for (const pattern of OVERCLAIMS) {
-  check(!pattern.test(text), `/memory appears to advertise unshipped device sync: ${pattern}`);
+  check(!pattern.test(text), `/memory appears to overclaim device sync: ${pattern}`);
 }
 
 /* ── 8 · the atlas is complete, in both directions ───────────────────────
@@ -742,7 +847,8 @@ console.log(
     `constants match tools/openburnbar-mcp/; ${measurements.length} measurements render in their own ` +
     `bench cards (${unpinned.length} honestly labelled unpinned); extraction floor ${floor} matches ` +
     `the committed assertion; ${realShapes.length} credential shapes across ${contextCount} ` +
-    `placements match the gate suite; device sync is published as not shipped.\n` +
+    `placements match the gate suite; device sync is published as shipped-and-conditional, ` +
+    `derived from burnbar_memory_sync_pull + merge_remote with ${hookEnv} named on the page.\n` +
     `✓ memory atlas: all ${registeredAll.length} tools listed and printed as the total, none invented ` +
     `(${registeredBurnbar.length} burnbar_* + ${registeredOrchestration.length} ` +
     `ministry_*/castle_*/bench_*); ${atlasEntries.filter((e) => e.memory).length} marked ` +

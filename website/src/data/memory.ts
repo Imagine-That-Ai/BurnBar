@@ -462,24 +462,33 @@ export const BOUNDARY: BoundaryLane[] = [
       {
         item: "Encrypted backup of approved memories",
         note: "Approved, non-secret memories replicate to your own namespace end-to-end encrypted. The stored document holds a sealed blob, an opaque keyed-hash id, keyed source hashes, the kind, the review status and three timestamps — and the server's own rules forbid the rest: no text, no citations, no vectors, no tags, no entities, no metadata, no project names or paths."
+      },
+      {
+        item: "Sync to your other Macs",
+        note: "A second switch sitting under the backup one, off even once backup is on: “Sync memories to my other devices”. With both on, this Mac also reads your own sealed facts back down, refuses any envelope that does not verify under a key only your devices hold, and parks what does for the engine to merge. Turning backup off stops the pull too, and with any lever shut no memory_facts read is issued at all."
       }
     ],
-    source: "docs/PRIVACY.md:83-93"
+    source: "docs/PRIVACY.md:83-95 § Optional Memory Backup and Device Sync"
   },
   {
     id: "not-yet",
     title: "Not shipped",
     status: "not-shipped",
-    statusLabel: "In review",
+    statusLabel: "Two real gaps",
     summary:
-      "Named here so the section above can be read as complete. We would rather show you the gap than let you infer a feature.",
+      "Named here so the section above can be read as complete. We would rather show you the gap than let you infer a feature. This lane used to say cross-device sync itself was unshipped; it landed, and these two are what is left.",
     rows: [
       {
-        item: "Cross-device sync — the pull and merge half",
-        note: "Backup is on main today: an encrypted copy off the device that BurnBar cannot read. Pulling those memories down onto a second Mac and merging them into its engine is written and in review. It is not shipped, so do not plan around it."
+        item: "A second device that is not a Mac",
+        note: "Both halves of device sync are macOS. There is no memory engine on iPhone or iPad, and the Memory MCP does not run on Windows or Linux, so the only device that can receive your memories is another signed-in Mac. A phone in the picture is illustration."
+      },
+      {
+        item: "A merge that happens on its own",
+        note: "The receiving Mac verifies and parks incoming facts on its own cadence, but the engine folds them into recall only when something calls burnbar_memory_sync_pull — an agent, the opt-in OPENBURNBAR_MEMORY_SYNC_HOOK session-start hook, or you by hand. Nothing runs on a timer, so a Mac nobody drains keeps a full inbox and an unchanged recall."
       }
     ],
-    source: "docs/superpowers/plans/2026-09-03-memory-blind-sync.md § Shipping shape"
+    source:
+      "tools/openburnbar-mcp/server.py burnbar_memory_sync_pull; memory_engine/_sync.py merge_remote; hooks/claude-code-session-start.sh"
   }
 ];
 
@@ -2271,8 +2280,15 @@ export type Film = {
    * A correction printed on the card, for a film that shows more than
    * `main` ships. Rendered next to the player, not buried in the
    * transcript — a reader who never opens the transcript still gets it.
+   *
+   * `label` is the tag the card prints before the note. It lives here rather
+   * than in the template because the correction it names can change while the
+   * film cannot: the frames are burned in and cannot be re-rendered in a copy
+   * PR, so when the gap narrows the tag has to narrow with the note. A
+   * hard-coded tag is how "In review, not shipped" outlived the thing it
+   * described.
    */
-  caveat?: { note: string; href: string };
+  caveat?: { label: string; note: string; href: string };
   /** Everything the film puts on screen, in order. */
   transcript: string[];
 };
@@ -2343,7 +2359,8 @@ export const FILMS: Film[] = [
       "burnbar_forget takes the body, the vector, the history and the relations in one transaction — and writes a tombstone, so a memory this device forgot is never revived by a later sync.",
     section: { n: "05", id: "forget", label: "Forget" },
     caveat: {
-      note: "The second device in this film is the designed shape, not today's. Backup — the push half — is on main; pulling those memories down onto another device and merging them is in review, so the receipt has nothing to arrive at yet. § 13 names the gap.",
+      label: "Mac to Mac",
+      note: "The forget receipt reaching a second device is real: the pull half is on main, and burnbar_memory_sync_pull folds a receipt into the other machine's engine and tombstones the copy there. The phone is not. Device sync is Mac to Mac — there is no memory engine on iOS — so read the second device in this film as another Mac. § 13 names that gap and the one beside it.",
       href: "#boundary"
     },
     transcript: [
