@@ -110,6 +110,25 @@ Each section is written as one `<index:05>.seg` per sealed segment, rotating at
 segment index the nonce and the chunk AAD are derived from (D-0031 ruling 1:
 five decimal digits, zero-padded, from 0).
 
+**An empty section seals the empty string** (F-3). Sections `01`, `03` and `08`
+are empty in every bundle BB-E writes today, and each used to declare
+`{bytes: 0, segments: 1}` over a **0-byte** `00000.seg`. A ChaCha20-Poly1305
+segment is never shorter than its 12-byte nonce and 16-byte tag, so an importer
+that opens every segment the manifest declares — which is what §2's "a reader
+knows every path in the bundle from the manifest alone" invites — failed on three
+sections of every bundle, while one that special-cased `bytes == 0` did not: a
+fork in the format at its first interop run. An empty section now declares
+`{bytes: 28, segments: 1}` and its one segment is a real seal that opens to zero
+plaintext bytes, hence to zero records, which is exactly what `row_count: 0`
+says. **The importer side reads it the same way: open every declared segment,
+expect no records from this one.**
+
+`{bytes: 0, segments: 0}` is the other option REVIEW-BB-EXPORTER-3 offered, and
+the contract cannot express it — `section_header.segments` is `{"type":
+"integer", "minimum": 1}` at the vendored HEAD, so a bundle declaring zero fails
+validation on both sides. §2 itself says nothing about the empty case beyond
+"`manifest.sections[].segments` is that count", so the schema is the tiebreak.
+
 ---
 
 ## 4. Deviations
@@ -666,3 +685,4 @@ Against `docs/memory/reviews/REVIEW-BB-EXPORTER-3.md` (verdict
 |---|---|---|
 | F-1 | `manifest.sig` signs eleven section digests, not the manifest | **fixed** — `content_digest` is `sha256(JCS(manifest minus {created_at_ms, recipient_key_id, bundle_id, content_digest}))`, the preimage §2 and D-0031 ruling 1 both rest on (stated once in D-BB-E-5). `verify` recomputes it from the manifest bytes on disk and names the member wherever a second witness in the bundle can. Each of the review's six edits — `recipient_store_id`, `crypto.aead`, `user_id`, `not_exported`, `sections[5].row_count`, `rollups[0].rollup_digest` — now fails verification; the test drives all six, and reverting the digest to a tree-root-only preimage turns it red with 13 assertions |
 | F-2 | the bundle root is not D-0031 ruling 1's fold, and no test pins it | **fixed** — the section subroots fold with the same `HMAC(key, 0x01 ‖ l ‖ r)` and last-node promotion as the tree beneath them, over the RAW 32 bytes in section order (stated in D-BB-E-5). Pinned to the review's own independently computed value `a3d92105…`; mutating the fold domain byte fails it |
+| F-3 | three of eleven sections ship a 0-byte `.seg` no AEAD can open | **fixed** — an empty section seals the empty string: `{bytes: 28, segments: 1}` and one real segment that opens to zero plaintext bytes, so every declared segment of every bundle opens. `{bytes: 0, segments: 0}` was refused by the contract (`segments` is `minimum: 1`) and §3 says so. `verify` accepts the bundle and now NAMES a segment shorter than an AEAD seal |

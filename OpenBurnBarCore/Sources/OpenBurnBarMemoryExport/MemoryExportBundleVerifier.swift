@@ -191,7 +191,24 @@ public enum MemoryExportBundleVerifier {
                     result.problems.append("\(name): segment \(index) is missing")
                     continue
                 }
+                // Every declared segment is a sealed unit an importer can open,
+                // an empty section's included — it seals the empty string, so it
+                // is never shorter than the nonce and tag (F-3).
+                if size < MemoryExportCrypto.sealOverheadBytes {
+                    result.problems.append(
+                        "\(name): segment \(index) is \(size) bytes — shorter than an AEAD seal, "
+                            + "so no importer can open it"
+                    )
+                }
                 onDisk += size
+            }
+            // And nothing BESIDE them: a section directory holding more `.seg`
+            // files than the manifest declares is a bundle merged with another.
+            let extra = ((try? manager.contentsOfDirectory(atPath: directory.path)) ?? [])
+                .filter { $0.hasSuffix(".seg") }
+                .count - max(1, declaredSegments)
+            if extra > 0 {
+                result.problems.append("\(name): \(extra) segment file(s) the manifest does not declare")
             }
             if onDisk != declaredBytes {
                 result.problems.append(

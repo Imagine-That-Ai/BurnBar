@@ -159,6 +159,85 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         }
     }
 
+    /// F-3. Three of the eleven sections are empty in every fixture bundle
+    /// (`01-tombstone_receipts`, `03-supersessions`, `08-embeddings`), and each
+    /// declared `{bytes: 0, segments: 1}` over a **0-byte** `00000.seg`. A
+    /// ChaCha20-Poly1305 segment is never shorter than its 12-byte nonce and
+    /// 16-byte tag, so an importer that opens every segment the manifest
+    /// declares failed on three sections of every bundle while one that
+    /// special-cased `bytes == 0` did not.
+    ///
+    /// An empty section now seals the empty string: one real segment, 28 bytes,
+    /// which opens to zero plaintext bytes and therefore to zero records. The
+    /// other option the review offered — `{bytes: 0, segments: 0}` and no file —
+    /// the contract cannot express: `section_header.segments` is `{"type":
+    /// "integer", "minimum": 1}` at the vendored HEAD.
+    func test_anEmptySectionSealsTheEmptyStringRatherThanAZeroByteFile() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try export(maxSectionBytes: 256 * 1024 * 1024, to: directory, seed: "empty-sections")
+
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try Data(contentsOf: directory.appendingPathComponent("manifest.json"))
+            ) as? [String: Any]
+        )
+        let headers = try XCTUnwrap(manifest["sections"] as? [[String: Any]])
+        var empties = 0
+        for header in headers {
+            let name = try XCTUnwrap(header["name"] as? String)
+            let section = try XCTUnwrap(MIFSection(rawValue: name))
+            guard header["row_count"] as? Int == 0 else { continue }
+            empties += 1
+            XCTAssertEqual(header["segments"] as? Int, 1, "\(name) declares its one segment")
+            XCTAssertEqual(
+                header["bytes"] as? Int,
+                MemoryExportCrypto.sealOverheadBytes,
+                "\(name): an empty section is the sealed empty string, nonce + tag"
+            )
+            let file = directory
+                .appendingPathComponent("sections")
+                .appendingPathComponent(name)
+                .appendingPathComponent("00000.seg")
+            let sealed = try Data(contentsOf: file)
+            XCTAssertEqual(sealed.count, MemoryExportCrypto.sealOverheadBytes)
+            // And it OPENS — the whole point. Zero plaintext bytes, so the
+            // section holds no records, which is what `row_count: 0` says.
+            let opened = try MemoryExportCrypto.open(
+                sealedChunk: sealed,
+                section: section,
+                segmentKey: MemoryExportCrypto.segmentKey(
+                    bundleKey: MemoryExportCrypto.deterministicBundleKey(seed: "empty-sections"),
+                    section: section
+                ),
+                index: 0
+            )
+            XCTAssertTrue(opened.isEmpty, "\(name) opens to zero plaintext bytes")
+        }
+        XCTAssertGreaterThanOrEqual(empties, 3, "the fixture has at least three empty sections")
+
+        // `verify` accepts it, and would have named a 0-byte file.
+        let verification = try MemoryExportBundleVerifier.verify(
+            bundleAt: directory,
+            signingPublicKey: Self.signingKey.publicKey,
+            recipient: recipient
+        )
+        XCTAssertTrue(verification.isIntact, verification.problems.joined(separator: "; "))
+        XCTAssertEqual(result.report.decision, .exported)
+
+        try Data().write(to: directory.appendingPathComponent("sections/08-embeddings/00000.seg"))
+        let truncated = try MemoryExportBundleVerifier.verify(
+            bundleAt: directory,
+            signingPublicKey: Self.signingKey.publicKey,
+            recipient: recipient
+        )
+        XCTAssertTrue(
+            truncated.problems.contains { $0.contains("shorter than an AEAD seal") },
+            "a 0-byte segment is named, got: \(truncated.problems)"
+        )
+    }
+
     // MARK: - The recipient binding (R4)
 
     /// D-0021 ruling 1 makes `recipient_key_id` the HPKE `aad`, and D-0025

@@ -104,12 +104,25 @@ public enum MemoryExportBundleWriter {
             // swiftlint:disable:next force_unwrapping reason: every section was written above
             let plaintext = plaintexts[buffer.section]!
             let key = MemoryExportCrypto.segmentKey(bundleKey: inputs.context.bundleKey, section: buffer.section)
-            let sealed = try MemoryExportCrypto
-                // §2 rotates a section at `max_section_bytes` of CIPHERTEXT, and
-                // each sealed segment carries a 12-byte nonce and a 16-byte tag,
-                // so the plaintext cut is that much shorter. Getting this
-                // backwards writes segments slightly over the declared limit.
+            // §2 rotates a section at `max_section_bytes` of CIPHERTEXT, and
+            // each sealed segment carries a 12-byte nonce and a 16-byte tag, so
+            // the plaintext cut is that much shorter. Getting this backwards
+            // writes segments slightly over the declared limit.
+            let pieces = MemoryExportCrypto
                 .chunks(of: plaintext, size: max(1, inputs.maxSectionBytes - MemoryExportCrypto.sealOverheadBytes))
+            // An EMPTY section seals the empty string — one real 28-byte AEAD
+            // segment that opens to zero bytes and therefore to zero records
+            // (review F-3). It used to declare `{bytes: 0, segments: 1}` and
+            // write a 0-byte `00000.seg`, which no AEAD can open: an importer
+            // that opens every segment the manifest declares failed on three
+            // sections of every bundle, and one that special-cased `bytes == 0`
+            // did not — a fork in the format at its first interop run.
+            //
+            // `{bytes: 0, segments: 0}` is the other option the review offered
+            // and the contract cannot express it: `section_header.segments` is
+            // `{"type": "integer", "minimum": 1}` at the vendored HEAD, so a
+            // bundle declaring zero fails validation on both sides.
+            let sealed = try (pieces.isEmpty ? [Data()] : pieces)
                 .enumerated()
                 .map { index, chunk in
                     try MemoryExportCrypto.seal(
@@ -289,11 +302,13 @@ public enum MemoryExportBundleWriter {
                 "subroot": .string(subroots[buffer.section] ?? String(repeating: "0", count: 64)),
                 "bytes": .int(ciphertextBytes),
                 // The number of `<index:05>.seg` FILES this section is written
-                // as. It used to be the ciphertext re-chunked at
+                // as, every one of them openable — an empty section's file seals
+                // the empty string rather than being a 0-byte placeholder
+                // (F-3). It used to be the ciphertext re-chunked at
                 // `max_section_bytes`, a boundary that corresponded to nothing
                 // on disk — every section was one file however large it was
                 // (review F-14).
-                "segments": .int(max(1, sealed.count))
+                "segments": .int(sealed.count)
             ]
             if buffer.rollupTuples.isEmpty == false {
                 fields["rollup_digest"] = .string(rollupDigest(buffer.rollupTuples))
@@ -571,11 +586,11 @@ public enum MemoryExportBundleWriter {
         for buffer in ordered {
             let directory = sections.appendingPathComponent(buffer.section.rawValue)
             try manager.createDirectory(at: directory, withIntermediateDirectories: true)
-            // One file per sealed segment. An empty section still writes
-            // `00000.seg`, so a reader never has to distinguish "no
-            // segments" from "directory not written".
-            let sealed = segments[buffer.section] ?? []
-            for (index, segment) in (sealed.isEmpty ? [Data()] : sealed).enumerated() {
+            // One file per sealed segment, and every section has at least one
+            // because an empty section seals the empty string (F-3) — so a
+            // reader never has to distinguish "no segments" from "directory not
+            // written", and never meets a file no AEAD can open.
+            for (index, segment) in (segments[buffer.section] ?? []).enumerated() {
                 try segment.write(to: directory.appendingPathComponent(Self.segmentFilename(index)))
             }
         }
@@ -583,17 +598,15 @@ public enum MemoryExportBundleWriter {
 
     /// Unkeyed per-chunk hashes for `hashtree.json` (R5). Keys are bundle-
     /// relative segment paths; values are one `sha256` hex per 4 MiB chunk of
-    /// the sealed file. An empty section's placeholder file hashes to no chunks
-    /// at all — its emptiness is covered by the manifest's `bytes` count, and
-    /// any byte added to it surfaces as a chunk-count mismatch.
+    /// the sealed file — including an empty section's, whose one segment is the
+    /// sealed empty string and hashes to exactly one chunk (F-3).
     static func segmentChunkHashes(
         segments: [MIFSection: [Data]],
         ordered: [MemoryExportSectionBuffer]
     ) -> MIFJSON {
         var files: [String: MIFJSON] = [:]
         for buffer in ordered {
-            let sealed = segments[buffer.section] ?? []
-            for (index, segment) in (sealed.isEmpty ? [Data()] : sealed).enumerated() {
+            for (index, segment) in (segments[buffer.section] ?? []).enumerated() {
                 files["sections/" + buffer.section.rawValue + "/" + segmentFilename(index)] =
                     .strings(chunkHashes(segment))
             }
