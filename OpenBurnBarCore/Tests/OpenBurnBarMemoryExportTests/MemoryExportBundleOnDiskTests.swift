@@ -622,7 +622,7 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         )
         // The size check still agrees — this failure is the content check's alone.
         XCTAssertFalse(verification.problems.contains { $0.contains("bytes on disk") })
-        XCTAssertTrue(verification.checksRun.contains { $0.contains("segment_sha256") })
+        XCTAssertTrue(verification.checksRun.contains { $0.contains("chunk_sha256") })
     }
 
     /// The substituted-recipient check, run against the artefact on disk rather

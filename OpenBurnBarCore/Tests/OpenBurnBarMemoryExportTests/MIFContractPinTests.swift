@@ -6,14 +6,26 @@
 // -------------------------------------------
 //   Source repo:    Po'dex, memory-consolidation-gauntlet branch
 //   Source path:    docs/memory/contracts/mif-v1.schema.json
-//   Source commit:  3739ad37e6db7649398c98fcbd3df7f8c7d229ff
-//                   ("docs(memory): byte-pin the last four interop values,
-//                    D-0039 into MIF (Q-53)")
-//   sha256:         9c84b3bd8dd4711ae55acdfd1de7df9d4f72f690fdb20c4aea1e882119f6eef7
-//   Copied:         2026-09-07, byte for byte, no local edit of any kind
+//   Source commit:  e389a25d69fb45a292233936adea5949f1c6ee60
+//                   ("docs(memory): Q-60 pattern lookahead-free for the sync
+//                    subset evaluator")
+//   sha256:         6a6864e980161843c8e1ec2b2162af3632a97c4944e6a75f741c5ba9ddf3adf5
+//   Copied:         2026-09-08, byte for byte, no local edit of any kind
 //   Contract level: MIF v1, minor 2 [D-0021]
 //
-// Re-vendored from 810fc38b… (commit d456c467) after interop run 1, and this
+// Re-vendored from 9c84b3bd… (commit 3739ad37) for brief 19, carrying Q-56's
+// `hashtree_file.chunk_sha256` and Q-60's closed-directory `hold_reason`
+// branch. Both are ADDITIVE — `chunk_sha256` is optional, the fourth `anyOf`
+// branch widens — so a bundle written before this still validates and
+// `mif_minor` stays 2. The exporter changes riding with it:
+//
+//   * the writer embeds the unkeyed per-chunk hashes in `hashtree.json` as
+//     `chunk_sha256`, keyed by section id, and no longer writes
+//     `segments.sha256.json` (Q-56, I-63: delete, not merely stop);
+//   * `verify` reads them from the tree file and names a stray sidecar
+//     (Q-60: an unnamed file is `MANIFEST_INVALID:bundle/<path>`).
+//
+// Before that, from 810fc38b… (commit d456c467) after interop run 1, and this
 // one is NOT additive — D-0039 says so itself, and four exporter changes ride
 // with it:
 //   * `section_header.rollup_digest` is REQUIRED on all eleven sections and
@@ -26,13 +38,17 @@
 //   * `$defs/hashtree_file` types `hashtree.json` and joins the top-level
 //     `oneOf` [ruling 8]. It is `additionalProperties: false`, so R5's unkeyed
 //     per-chunk sidecar moved out of that file into `segments.sha256.json`
-//     (D-BB-E-17).
+//     (D-BB-E-17) — and Q-56 has since moved it back in as the OPTIONAL
+//     `chunk_sha256` member, keyed by section id, with the sidecar deleted
+//     (see the header above).
 //   * `recipient_store_id` gains the DDL's pattern [ruling 7].
 //   * `hold_reason` gains `MANIFEST_INVALID` and its parameterised
 //     `MANIFEST_INVALID:<path>` branch [ruling 6].
 // The out-of-process validation was re-run against this copy on
 // interop-fixture-v3: manifest, report, hashtree.json, 11 section headers and
-// every record, 0 failing assertions.
+// every record, 0 failing assertions — and again at 6a6864e9 on
+// interop-fixture-v4 (`MIFInteropFixtureV4Tests`, §11 of the doc): 23
+// instances, 82 recomputation assertions, 0 failing.
 //
 // Before that, from 1107c3ec… (commit e591e7c8, Q-30) at the end of the third
 // review's fix pass — the document's seventh pass put `record_project`'s
@@ -89,7 +105,7 @@ import Crypto
 final class MIFContractPinTests: XCTestCase {
 
     private static let pinnedSHA256 =
-        "9c84b3bd8dd4711ae55acdfd1de7df9d4f72f690fdb20c4aea1e882119f6eef7"
+        "6a6864e980161843c8e1ec2b2162af3632a97c4944e6a75f741c5ba9ddf3adf5"
 
     private func contractData() throws -> Data {
         let url = try XCTUnwrap(
@@ -179,6 +195,51 @@ final class MIFContractPinTests: XCTestCase {
         for reason in MIFHoldReason.allCases {
             XCTAssertTrue(closed.contains(reason.rawValue), "\(reason.rawValue) is not in the contract")
         }
+    }
+
+    /// The two widenings the 6a6864e9 re-vendor brought (brief 19). Both are
+    /// additive, so `mif_minor` stays 2 — and each one is a thing this
+    /// exporter had to change rather than a comment it could carry.
+    func test_theVendoredContractCarriesTheQ56AndQ60Widenings() throws {
+        let schema = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: try contractData()) as? [String: Any]
+        )
+        let defs = try XCTUnwrap(schema["$defs"] as? [String: Any])
+
+        // Q-56: `hashtree.json` carries the unkeyed per-chunk digests as
+        // `chunk_sha256`, keyed by section id exactly as `subroots` is —
+        // OPTIONAL, and outside `content_digest`.
+        let tree = try XCTUnwrap(defs["hashtree_file"] as? [String: Any])
+        let properties = try XCTUnwrap(tree["properties"] as? [String: Any])
+        let chunkSHA = try XCTUnwrap(properties["chunk_sha256"] as? [String: Any])
+        XCTAssertFalse(
+            try XCTUnwrap(tree["required"] as? [String]).contains("chunk_sha256"),
+            "optional: a bundle written before Q-56 still validates"
+        )
+        XCTAssertEqual(
+            (chunkSHA["propertyNames"] as? [String: Any])?["enum"] as? [String],
+            (properties["subroots"] as? [String: Any])
+                .flatMap { $0["propertyNames"] as? [String: Any] }
+                .flatMap { $0["enum"] as? [String] },
+            "chunk_sha256 is keyed by the same section ids as subroots"
+        )
+        XCTAssertEqual(
+            ((chunkSHA["additionalProperties"] as? [String: Any])?["items"] as? [String: Any])?["$ref"]
+                as? String,
+            "#/$defs/hex64",
+            "one sha256 hex per ciphertext chunk"
+        )
+
+        // Q-60: the bundle directory is a CLOSED set of files. An extra file
+        // at an implemented minor is held under a second `bundle/` root.
+        let holdReason = try XCTUnwrap(defs["hold_reason"] as? [String: Any])
+        let branches = try XCTUnwrap(holdReason["anyOf"] as? [[String: Any]])
+        XCTAssertEqual(branches.count, 4, "the closed enum, INVARIANT_FAILED, MANIFEST_INVALID:manifest, MANIFEST_INVALID:bundle")
+        let patterns = branches.compactMap { $0["pattern"] as? String }
+        XCTAssertTrue(
+            patterns.contains("^MANIFEST_INVALID:bundle(/[A-Za-z0-9][A-Za-z0-9_.\\-]{0,127})+$"),
+            "the bundle-root branch Q-60 ruled"
+        )
     }
 
     /// The evaluator's unknown-keyword guard only fires on nodes an instance

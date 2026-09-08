@@ -5,8 +5,8 @@
 //   <bundle>/  manifest.json            plaintext, JCS, no bodies, no per-row digests
 //              manifest.sig             Ed25519 over the 32 raw bytes of content_digest, b64url (D-0031)
 //              keys/wrapped-bundle-key  content key wrapped to the recipient
-//              hashtree.json            per-section subroots + THE root — $defs/hashtree_file (D-0039 r.8)
-//              segments.sha256.json     unkeyed per-chunk sidecar (R5), beside the typed file
+//              hashtree.json            per-section subroots + THE root + chunk_sha256 —
+//                                       $defs/hashtree_file (D-0039 r.8, Q-56)
 //              sections/<NN-name>/<index:05>.seg   NDJSON, sealed (D-0031)
 //              lost.csv                 every row whose body could not be reconstructed
 //              id-map.csv               every rewritten memory_id (deviation D-BB-E-1)
@@ -665,34 +665,38 @@ public enum MemoryExportBundleWriter {
         // concatenation is unreadable by anything but its own writer.
         try Data(wrapped.wireForm.utf8).write(to: keys.appendingPathComponent("wrapped-bundle-key"))
 
-        // `contracts/mif-v1.schema.json#/$defs/hashtree_file` [D-0039 ruling 8]:
-        // four members, `additionalProperties: false`, subroots keyed by the
-        // SECTION ID so no reader infers a section from a position. D-0031
-        // ruling 1: `root` is the SAME bytes as `manifest.hashtree.root` —
-        // passed in, never recomputed.
-        let tree = MIFJSON.object([
+        // `contracts/mif-v1.schema.json#/$defs/hashtree_file` [D-0039 ruling 8,
+        // Q-56]: `additionalProperties: false`, subroots keyed by the SECTION
+        // ID so no reader infers a section from a position. D-0031 ruling 1:
+        // `root` is the SAME bytes as `manifest.hashtree.root` — passed in,
+        // never recomputed.
+        //
+        // Q-56 moved R5's unkeyed per-chunk digests HERE, as `chunk_sha256` —
+        // one `sha256` per 4 MiB chunk of every segment file, over the
+        // ciphertext, keyed by SECTION ID exactly as `subroots` is — so
+        // `verify` detects a MODIFIED segment without the bundle key (the
+        // keyed tree needs the ephemeral key, which this side never retains;
+        // over ciphertext a plain hash leaks nothing). One file per concept:
+        // the `segments.sha256.json` sidecar is gone, and Q-60's closed
+        // directory means a bundle still carrying one is held
+        // `MANIFEST_INVALID:bundle/segments.sha256.json` rather than verified
+        // against the stale copy. `chunk_sha256` is OPTIONAL and OUTSIDE
+        // `content_digest` — a verification aid, never an authority (D-BB-E-17).
+        let treeMembers: [String: MIFJSON] = [
             "alg": .string("hmac-sha256"),
             "leaf_key_derivation": .string("HKDF(bundle_key,'mif1/hashtree/v1')"),
             "subroots": .object(Dictionary(uniqueKeysWithValues: ordered.map {
                 ($0.section.rawValue, MIFJSON.string(subroots[$0.section] ?? ""))
             })),
-            "root": .string(hashtreeRoot)
-        ])
+            "root": .string(hashtreeRoot),
+            "chunk_sha256": .object(Dictionary(uniqueKeysWithValues: ordered.map {
+                ($0.section.rawValue, MIFJSON.strings(
+                    (segments[$0.section] ?? []).flatMap { chunkHashes($0) }
+                ))
+            }))
+        ]
+        let tree = MIFJSON.object(treeMembers)
         try MIFCanonicalJSON.data(tree).write(to: destination.appendingPathComponent("hashtree.json"))
-
-        // R5's unkeyed per-chunk sidecar — one `sha256` per 4 MiB chunk of every
-        // segment file, over the ciphertext, so `verify` detects a MODIFIED
-        // segment without the bundle key (the keyed tree needs the ephemeral
-        // key, which this side never retains; over ciphertext a plain hash leaks
-        // nothing).
-        //
-        // It lives in its own file because `$defs/hashtree_file` is
-        // `additionalProperties: false` and has no member for it: a sidecar
-        // inside `hashtree.json` now fails the contract that D-0039 ruling 8
-        // exists to make checkable. Named for what it is, and not a second root
-        // — D-0031's "computed once" is untouched. D-BB-E-17.
-        try MIFCanonicalJSON.data(segmentChunkHashes(segments: segments, ordered: ordered))
-            .write(to: destination.appendingPathComponent("segments.sha256.json"))
 
         let sections = destination.appendingPathComponent("sections")
         try manager.createDirectory(at: sections, withIntermediateDirectories: true)
@@ -707,24 +711,6 @@ public enum MemoryExportBundleWriter {
                 try segment.write(to: directory.appendingPathComponent(Self.segmentFilename(index)))
             }
         }
-    }
-
-    /// Unkeyed per-chunk hashes for `segments.sha256.json` (R5). Keys are bundle-
-    /// relative segment paths; values are one `sha256` hex per 4 MiB chunk of
-    /// the sealed file — including an empty section's, whose one segment is the
-    /// sealed empty string and hashes to exactly one chunk (F-3).
-    static func segmentChunkHashes(
-        segments: [MIFSection: [Data]],
-        ordered: [MemoryExportSectionBuffer]
-    ) -> MIFJSON {
-        var files: [String: MIFJSON] = [:]
-        for buffer in ordered {
-            for (index, segment) in (segments[buffer.section] ?? []).enumerated() {
-                files["sections/" + buffer.section.rawValue + "/" + segmentFilename(index)] =
-                    .strings(chunkHashes(segment))
-            }
-        }
-        return .object(files)
     }
 
     /// One `sha256` hex per 4 MiB chunk — the same chunking as the keyed tree,

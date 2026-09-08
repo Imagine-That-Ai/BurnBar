@@ -501,7 +501,15 @@ public enum MemoryExportCrypto {
     }
 
     /// The exporter device key id shown in the importer's TOFU confirmation.
+    ///
+    /// I-74 / D-0041: `edk_` + the first 16 bytes of `sha256` over the
+    /// exporter's Ed25519 verifying key, as 32 lowercase hex — D-0025's
+    /// `rcp_` construction with the device signing key in place of the
+    /// recipient X25519 key. A bare digest does not say what it is; the
+    /// prefix is what the probe's L4 shape check and the TOFU confirmation
+    /// read. It used to be the bare 64-hex digest, the same shape D-0041
+    /// records as owed on `mifgen`'s emitter.
     public static func deviceKeyID(_ publicKey: Curve25519.Signing.PublicKey) -> String {
-        MemoryExportDigest.sha256Hex(publicKey.rawRepresentation)
+        "edk_" + MemoryExportDigest.sha256Hex(publicKey.rawRepresentation).prefix(32)
     }
 }

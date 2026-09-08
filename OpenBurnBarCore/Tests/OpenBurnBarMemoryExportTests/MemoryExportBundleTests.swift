@@ -176,14 +176,25 @@ final class MemoryExportBundleTests: XCTestCase {
         try validator.validate(report, against: "#/$defs/reconciliation_report")
         let tree = try json(at: directory.appendingPathComponent("hashtree.json"))
         try validator.validate(tree, against: "#/$defs/hashtree_file")
-        // …and R5's unkeyed sidecar is a file of its own, because that `$def`
-        // is `additionalProperties: false` (D-BB-E-17). It is not a contract
-        // document; what matters is that it did not stay inside one.
-        let sidecar = try XCTUnwrap(
-            try json(at: directory.appendingPathComponent("segments.sha256.json")) as? [String: Any]
+        // …and Q-56's unkeyed per-chunk hashes live INSIDE that document as
+        // `chunk_sha256`, keyed by section id exactly as `subroots` is — one
+        // file per concept, so the `segments.sha256.json` sidecar is gone and
+        // Q-60's closed directory refuses a bundle still carrying one.
+        let treeObject = try XCTUnwrap(tree as? [String: Any])
+        let chunkSHA = try XCTUnwrap(treeObject["chunk_sha256"] as? [String: [String]])
+        XCTAssertEqual(Set(chunkSHA.keys), Set(MIFSection.allCases.map(\.rawValue)), "one entry per section")
+        for section in MIFSection.allCases {
+            XCTAssertFalse(
+                try XCTUnwrap(chunkSHA[section.rawValue]).isEmpty,
+                "\(section.rawValue) seals at least one segment, so at least one chunk"
+            )
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent("segments.sha256.json").path
+            ),
+            "the sidecar is gone; hashtree.json carries chunk_sha256 instead"
         )
-        XCTAssertEqual(sidecar.count, MIFSection.allCases.count, "one entry per segment file")
-        XCTAssertNil((tree as? [String: Any])?["segment_sha256"])
 
         // Every section's records, against the pointer `section_record_map`
         // names for that section.

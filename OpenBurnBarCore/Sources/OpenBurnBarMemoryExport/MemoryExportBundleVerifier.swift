@@ -8,9 +8,9 @@
 // never retained here. `verify` used to return a sentence pointing at the
 // importer for that reason — which left a corrupted or truncated bundle
 // undetectable until it reached the other side (review F-16). What it CAN
-// recompute is the UNKEYED per-chunk `sha256` sidecar in `segments.sha256.json`
-// (review R5): the tree is over ciphertext, so a plain hash leaks nothing and
-// a flipped bit names its segment and chunk without any key.
+// recompute is the UNKEYED per-chunk `chunk_sha256` in `hashtree.json`
+// (review R5, Q-56): the tree is over ciphertext, so a plain hash leaks
+// nothing and a flipped bit names its segment and chunk without any key.
 //
 // Everything below needs no key at all:
 //
@@ -23,8 +23,9 @@
 //   * every section directory holds exactly the `segments` files the manifest
 //     declares, summing to the declared `bytes` — which catches a truncated,
 //     partly-copied or partly-deleted bundle;
-//   * every segment file's 4 MiB chunks hash to `segments.sha256.json` — which
-//     catches a MODIFIED segment, naming the file and chunk;
+//   * every segment file's 4 MiB chunks hash to `hashtree.json`'s
+//     `chunk_sha256` — which catches a MODIFIED segment, naming the file
+//     and chunk;
 //   * `keys/wrapped-bundle-key` is the two-part b64url form §2.1 states, with a
 //     32-byte encapsulated key;
 //   * given the recipient descriptor, `recipient_key_id` and
@@ -218,50 +219,76 @@ public enum MemoryExportBundleVerifier {
             }
         }
 
-        // 4b. The segment bytes themselves, against the unkeyed sidecar. Sizes
-        //     (check 4) catch truncation; this catches modification at the same
-        //     size — the one-bit flip check 4 is blind to (review R5). Streamed
-        //     in small reads against 4 MiB chunk boundaries, so a large segment
-        //     never sits whole in memory here.
-        result.checksRun.append("segment_sha256 \u{2194} files on disk")
-        if let sidecarData = try? Data(contentsOf: url.appendingPathComponent("segments.sha256.json")),
-           let sidecar = try? JSONSerialization.jsonObject(with: sidecarData) as? [String: [String]] {
+        // 4b. The segment bytes themselves, against `hashtree.json`'s unkeyed
+        //     `chunk_sha256` (Q-56). Sizes (check 4) catch truncation; this
+        //     catches modification at the same size — the one-bit flip check 4
+        //     is blind to (review R5). Streamed in small reads against 4 MiB
+        //     chunk boundaries, so a large segment never sits whole in memory
+        //     here. The comparison is per section, in segment-index order over
+        //     the flat chunk stream the writer sealed; the message names the
+        //     file and its chunk within that file.
+        result.checksRun.append("chunk_sha256 \u{2194} files on disk")
+        if manager.fileExists(atPath: url.appendingPathComponent("segments.sha256.json").path) {
+            // Q-60 closed the directory: the sidecar is not read — a stale one
+            // beside a current tree would let a verifier bless tampered bytes
+            // — it is named, and the bundle is the importer's held
+            // `MANIFEST_INVALID:bundle/segments.sha256.json`.
+            result.problems.append(
+                "segments.sha256.json is present; Q-56 moved the per-chunk hashes into "
+                    + "hashtree.json's chunk_sha256 and Q-60 closed the directory — re-export it"
+            )
+        }
+        if let treeData = try? Data(contentsOf: url.appendingPathComponent("hashtree.json")),
+           let tree = try? JSONSerialization.jsonObject(with: treeData) as? [String: Any],
+           let chunkSHA = tree["chunk_sha256"] as? [String: [String]] {
             let chunkBytes = MemoryExportCrypto.hashTreeChunkBytes
-            for path in sidecar.keys.sorted() {
-                let expected = sidecar[path] ?? []
-                let file = url.appendingPathComponent(path)
-                guard let handle = try? FileHandle(forReadingFrom: file) else {
-                    result.problems.append("\(path): segment file is missing")
-                    continue
-                }
-                var index = 0
+            for header in headers {
+                guard let name = header["name"] as? String else { continue }
+                let expected = chunkSHA[name] ?? []
+                let declaredSegments = header["segments"] as? Int ?? 1
+                var cursor = 0
                 var matched = true
-                while matched {
-                    // `readData(ofLength:)` is the portable read: `read(upToCount:)`
-                    // is unavailable on the Linux corelibs this package still builds.
-                    let data = handle.readData(ofLength: chunkBytes)
-                    if data.isEmpty { break }
-                    if index >= expected.count
-                        || MemoryExportDigest.sha256Hex(data) != expected[index] {
-                        result.problems.append(
-                            "\(path): chunk \(index) (byte offset \(index * chunkBytes)) "
-                                + "does not match hashtree.json — the segment was modified after sealing"
-                        )
+                for segmentIndex in 0..<max(1, declaredSegments) {
+                    let relative = "sections/\(name)/" + MemoryExportBundleWriter.segmentFilename(segmentIndex)
+                    guard let handle = try? FileHandle(
+                        forReadingFrom: url.appendingPathComponent(relative)
+                    ) else {
+                        // Check 4 already reports a missing segment; there is
+                        // nothing further to hash here.
                         matched = false
+                        break
                     }
-                    index += 1
+                    var fileChunk = 0
+                    while matched {
+                        // `readData(ofLength:)` is the portable read:
+                        // `read(upToCount:)` is unavailable on the Linux
+                        // corelibs this package still builds.
+                        let data = handle.readData(ofLength: chunkBytes)
+                        if data.isEmpty { break }
+                        if cursor >= expected.count
+                            || MemoryExportDigest.sha256Hex(data) != expected[cursor] {
+                            result.problems.append(
+                                "\(relative): chunk \(fileChunk) (byte offset \(fileChunk * chunkBytes)) "
+                                    + "does not match hashtree.json — the segment was modified after sealing"
+                            )
+                            matched = false
+                        }
+                        cursor += 1
+                        fileChunk += 1
+                    }
+                    try? handle.close()
+                    if matched == false { break }
                 }
-                try? handle.close()
-                if matched, index != expected.count {
+                if matched, cursor != expected.count {
                     result.problems.append(
-                        "\(path): \(index) chunks on disk, \(expected.count) in hashtree.json "
-                            + "— the segment was truncated or extended after sealing"
+                        "\(name): \(cursor) chunks on disk, \(expected.count) in hashtree.json's "
+                            + "chunk_sha256 — the section was truncated or extended after sealing"
                     )
                 }
             }
         } else {
             result.problems.append(
-                "segments.sha256.json is missing; segment tampering is undetectable — the bundle "
+                "hashtree.json carries no chunk_sha256; segment tampering is undetectable — the bundle "
                     + "predates tamper-evident segments, re-export it"
             )
         }

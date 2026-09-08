@@ -561,20 +561,19 @@ authority as `approved` with `origin_kind: human`.
 
 ## 6. Tests
 
-`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, **121 tests**, run on the
+`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, **139 tests**, run on the
 Swift door by `scripts/test-openburnbar-swift.sh`:
 
 ```
 swift test --package-path OpenBurnBarCore --filter MemoryExport
-→ Executed 121 tests, with 0 failures (0 unexpected)
+→ Executed 139 tests, with 0 failures (0 unexpected)
 ```
 
 The count reconciles: `grep -h "func test"` over the target's files sums to
-121, and there is no swift-testing `@Test` anywhere in it, so 121 declared is
-121 executed (113 at the third review + 8: the manifest-digest preimage and the
-six-member tamper drive, the empty-section seal, `not_exported`'s row
-arithmetic, the chain-breaker lowering vector, the pinned bundle root, the
-audit-genesis rung, and the fixture keypair's two halves).
+139, and there is no swift-testing `@Test` anywhere in it, so 139 declared is
+139 executed (135 at interop run 1's fix pass + 4: the `edk_` shape pin, the
+Q-56/Q-60 narrowings pin, and interop-fixture-v4's pin plus its regeneration
+proof).
 
 Fixtures are built by **BurnBar's own migrator** (`OpenBurnBarDatabase.migrator`,
 the `OpenBurnBarData` mirror), so the schema under test is the one production
@@ -801,35 +800,55 @@ ruling 6 wants a bundle from fixtures — with both key halves and the bundle ke
 seeded, so it regenerates byte for byte:
 
 ```
-bundle_id       bnd_0a52fbab859d932cb88efd1e16582c10
-content_digest  0a52fbab859d932cb88efd1e16582c10e1d87021b34195d10f5d432e48348f54
-hashtree.root   dac966b620fd578ebd0d579f29ebcac75d40d9a1c95060da5719bf9c412ffe7f
-recipient       rcp_7c9b4dfed5232488385db5a1a97f7639
+bundle_id       bnd_07d85c762714fb527ae4ccb126dd5962
+content_digest  07d85c762714fb527ae4ccb126dd59627b88b624d681696900e381a9481245a5
+hashtree.root   1adf5de3e559b2bf841d4c2761eefa7da7cbd0af169fe735e232d339c9d5a5d1
+recipient       rcp_34a31a0d016fad9b86b70ba95f4b21b7
                 store sto_86de0b1a69f22aced2b305dd108a0508
-contents        6 memories in (one `forgotten` → a tombstone, one proven human
-                rejection), 5 memory records, 5 bodies, 1 project, 1 citation,
-                2 audit rows, 2 findings; 11 sections, 11 segment files
+exporter key    edk_f993bf2661c8a80d1ec098a49f6fb01d (manifest and report agree)
+contents        5 memories in (one `forgotten` → a tombstone, one proven human
+                rejection), 4 memory records, 4 bodies, 1 project, 1 citation,
+                3 audit rows, 3 findings; 11 sections, 11 segment files
 report          decision `exported`, no hold reasons, 15 lanes, every one balanced
 verify          intact, signature verified, 10 checks, 0 problems
-schema 9c84b3bd 30 instances (manifest, report, hashtree.json, 11 section headers,
-                16 records), 0 failing assertions
+schema 6a6864e9 23 instances (manifest, report, hashtree.json, 20 records),
+                0 failing assertions
 ```
 
-`interop-fixture-v3` is what run 2 takes. Run 1's `bnd_95ee02b1…` is superseded
-whole: it was addressed to the store id `importer-store-fixture`, which no store
-can hold (M-10), and every value below it moved.
+`interop-fixture-v4` is what run 2 takes. Run 1's `bnd_95ee02b1…` was
+superseded whole by v3's `bnd_0a52fbab…` (it was addressed to the store id
+`importer-store-fixture`, which no store can hold — M-10), and v3 is superseded
+whole by v4: Q-56 moved the per-chunk hashes into `hashtree.json` as
+`chunk_sha256` with the sidecar deleted, and I-74 pinned `exporter_device_key_id`
+to `edk_` + 32 hex. The recipient store id is v3's fictitious importer store,
+unchanged, so run 2 presents the store v3 named. `content_digest` binds the
+manifest and the tree root and nothing else in the tree file, so the chunk
+hashes move no digest — the new `bundle_id` is the device-key change's.
+
+The generator is `MIFInteropFixtureV4Tests`: fixed recipient pair (`0x44` × 32),
+fixed signing key (`0x53` × 32), `deterministicBundleKey(seed:
+"interop-fixture-v4")`, fixed clock. It pins every value above and proves the
+bundle regenerates. With `MIF_V4_DUMP_DIR` set it also writes run 2's handoff
+— `<dir>/fixture-bundle` plus `<dir>/fixture-keys` (`recipient.json` and the
+`0600` `recipient-secret.json` the importer opens the wrap with):
+
+```
+MIF_V4_DUMP_DIR=/tmp/mif-v4 swift test --package-path OpenBurnBarCore \
+    --filter MIFInteropFixtureV4Tests.test_interopFixtureV4IsPinned
+```
 
 Recomputed out of process from the bundle's own files (venv `cryptography` +
-`jsonschema` 4.26.0), **195 assertions, 0 failing**: every segment opened with a
-DERIVED nonce and checked to be `ciphertext ‖ tag` with the nonce nowhere in it;
-every body base64url-decoded and re-HMAC'd into its own `body_join_key`, with
-`body_join_key ≠ body_norm_digest` on all ten rows that carry both; all eleven
+`jsonschema` 4.26.0), **82 assertions, 0 failing**: the HPKE wrap opened to the
+seeded bundle key under the fixture recipient secret (RFC 9180 base mode
+written out, checked first against the RFC's own A.1.1 `shared_secret` and the
+A.2 `key`); every segment opened with a DERIVED nonce under the BARE section
+name; `chunk_sha256` recomputed from the ciphertext chunks, all eleven keyed
 subroots and the D-0031 ruling 1 fold root, equal to `manifest.hashtree.root`
-and to `hashtree.json`'s; all eleven `rollup_digest`s recomputed from the
-decrypted records through the declared tuples; `sha256(JCS(manifest minus the
-four) ‖ root32)` equal to `content_digest`, `bundle_id` following from it, and
-the Ed25519 signature over its 32 raw bytes; the fifteen lanes' closed sums and
-the section coverage; and `report.bundle.mif_minor` equal to the manifest's.
+and to `hashtree.json`'s; `sha256(JCS(manifest minus the four) ‖ root32)` equal
+to `content_digest`, `bundle_id` following from it, and the Ed25519 signature
+over its 32 raw bytes verified under the fixed `0x53` key; all twenty records
+against the vendored contract; the fifteen lanes' closed sums; the `edk_` shape
+in both files; and no `segments.sha256.json` on disk.
 
 Re-running the generator reproduces the bundle byte for byte except
 `keys/wrapped-bundle-key` and `manifest.sig` — HPKE's encapsulated key and
@@ -909,24 +928,46 @@ them — the two places a `lowercased()` implementation diverges.
 ### The vendored contract
 
 `Contracts/mif-v1.schema.json` is re-vendored from the gauntlet at commit
-`3739ad37e6db7649398c98fcbd3df7f8c7d229ff` (Q-53), sha256
-`9c84b3bd8dd4711ae55acdfd1de7df9d4f72f690fdb20c4aea1e882119f6eef7`, pinned by
-`MIFContractPinTests`. It is the first re-vendor that is **not** additive: a
-manifest written before it no longer validates, because `rollup_digest` is
-required on all eleven sections. `hashtree.json` gains a `$def`,
-`recipient_store_id` gains the DDL's pattern, and `hold_reason` gains
-`MANIFEST_INVALID`.
+`e389a25d69fb45a292233936adea5949f1c6ee60` (Q-60, lookahead-free), sha256
+`6a6864e980161843c8e1ec2b2162af3632a97c4944e6a75f741c5ba9ddf3adf5`, pinned by
+`MIFContractPinTests`. It is ADDITIVE — back to additive after Q-53's breaking
+one — so a bundle written before it still validates and `mif_minor` stays 2:
+`hashtree_file` gains the OPTIONAL `chunk_sha256` member (Q-56, D-BB-E-17), and
+`hold_reason` gains the fourth `anyOf` branch `MANIFEST_INVALID:bundle/<path>`
+(Q-60, the closed directory). The previous copy (`3739ad37`, Q-53,
+`9c84b3bd…`) was the first re-vendor that was **not** additive: a manifest
+written before it no longer validates, because `rollup_digest` is required on
+all eleven sections.
 
-### D-BB-E-17 — R5's per-chunk sidecar moved to `segments.sha256.json`
+### D-BB-E-17 — R5's per-chunk hashes live in `hashtree.json` as `chunk_sha256`
 
-`$defs/hashtree_file` is `additionalProperties: false` and names four members, so
-the unkeyed per-chunk `sha256` sidecar review R5 added — the only thing that lets
-`verify` catch a MODIFIED segment without the bundle key, which this side never
-retains — can no longer live inside `hashtree.json`. It moves to
-`segments.sha256.json` beside it, same content, same chunking as the keyed tree.
+Q-56 gave the sidecar the member D-BB-E-17's first half asked the spec owner
+for: `$defs/hashtree_file` carries OPTIONAL `chunk_sha256` — one unkeyed
+`sha256` per 4 MiB ciphertext chunk of every segment file, keyed by SECTION ID
+exactly as `subroots` is — so `verify` catches a MODIFIED segment without the
+bundle key, which this side never retains. One file per concept: the writer no
+longer emits `segments.sha256.json`, and Q-60's closed directory means a bundle
+still carrying one is held `MANIFEST_INVALID:bundle/segments.sha256.json`
+rather than verified against the stale copy — `verify` names it and never reads
+it (I-63: delete, not merely stop).
 
-It is **not** a second root and D-0031's "computed once" is untouched; it is also
-not a contract document, so nothing validates it. The alternative was to keep it
-where it was and fail the `$def` that D-0039 ruling 8 exists to make checkable.
-Flagged for the spec owner: if a bundle may carry only the files §2 lists, this
-sidecar needs either a member in `hashtree_file` or a line in §2's layout.
+It is **not** a second root and D-0031's "computed once" is untouched; it is
+OUTSIDE `content_digest`, which binds the manifest and the tree `root` and
+nothing else in the tree file — a verification aid, never an authority. What it
+replaced: `$defs/hashtree_file` was `additionalProperties: false` with four
+members, so R5's sidecar could not live inside `hashtree.json` and moved out to
+`segments.sha256.json` beside it, unvalidated by any contract. That file is gone
+from every bundle this build writes.
+
+### D-BB-E-18 — `exporter_device_key_id` is `edk_` + 32 lowercase hex
+
+I-74 / D-0041: the exporter's Ed25519 verifying key, as `edk_` +
+`sha256(public_key)[0..32]` — D-0025's `rcp_` construction with the device
+signing key in place of the recipient X25519 key. The emitter returned the bare
+64-hex digest, the same shape D-0041 records as owed on `mifgen`'s emitter, so
+the two producers never matched and the probe's L4 shape check failed by
+construction. Both the manifest member and the `report.bundle` mirror carry the
+pinned form (the contract still types both as plain nullable strings — Q-62
+pins the `^edk_[0-9a-f]{32}$` pattern on the Po'dex side, brief 19 vendors
+before it). A self-describing id survives in logs and in the TOFU confirmation;
+a bare digest does not say what it is.

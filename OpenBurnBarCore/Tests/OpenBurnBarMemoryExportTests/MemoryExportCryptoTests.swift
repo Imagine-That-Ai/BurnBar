@@ -610,6 +610,35 @@ final class MemoryExportCryptoTests: XCTestCase {
         }
     }
 
+    // MARK: - The exporter device key id
+
+    /// I-74 / D-0041: `exporter_device_key_id` is `edk_` + the first 16 bytes
+    /// of `sha256` over the exporter's Ed25519 verifying key, as 32 lowercase
+    /// hex — D-0025's `rcp_` construction with the device signing key. The
+    /// emitter used to return the bare 64-hex digest, the same shape D-0041
+    /// records as owed on `mifgen`'s emitter, so the two producers never
+    /// matched and the probe's L4 shape check failed by construction.
+    func test_theExporterDeviceKeyIDIsThePinnedEdkShape() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let id = MemoryExportCrypto.deviceKeyID(signingKey.publicKey)
+
+        // The shape: `edk_` + 32 lowercase hex.
+        XCTAssertNotNil(
+            id.range(of: "^edk_[0-9a-f]{32}$", options: .regularExpression),
+            "got \(id)"
+        )
+        // The construction: D-0025's, with the device key.
+        XCTAssertEqual(
+            id,
+            "edk_" + MemoryExportDigest.sha256Hex(signingKey.publicKey.rawRepresentation).prefix(32)
+        )
+        // Deterministic per key, distinct per key.
+        XCTAssertEqual(id, MemoryExportCrypto.deviceKeyID(signingKey.publicKey))
+        XCTAssertNotEqual(id, MemoryExportCrypto.deviceKeyID(Curve25519.Signing.PrivateKey().publicKey))
+        // And not the old shape: a bare 64-hex digest carries no kind.
+        XCTAssertNotEqual(id.count, 64)
+    }
+
     // MARK: - The recipient descriptor
 
     /// The interop fixture's missing half (D-0021 ruling 6). `--rehearsal` mints
