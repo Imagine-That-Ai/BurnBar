@@ -540,7 +540,7 @@ public enum MemoryExportCrypto {
         for excluded in [
             "profile", "event_signature", "signing_key_id",
             "audit_chain_epoch", "audit_seq", "audit_row_hash",
-            "chain_verified", "body_hash_at_verdict", "body_verdict_binding",
+            "chain_verified", "body_hash_at_verdict", "body_verdict_binding"
         ] {
             members.removeValue(forKey: excluded)
         }

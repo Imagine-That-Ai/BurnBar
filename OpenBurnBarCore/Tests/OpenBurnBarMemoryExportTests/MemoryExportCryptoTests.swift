@@ -31,7 +31,7 @@ final class MemoryExportCryptoTests: XCTestCase {
     /// mode 0, kem_id 32 (DHKEM(X25519, HKDF-SHA256)), kdf_id 1 (HKDF-SHA256),
     /// aead_id 3 (ChaCha20Poly1305) — the suite D-0021 ruling 1 admits, and the
     /// only one.
-    private enum A2 {
+    private enum VectorA2 {
         static let info = "4f6465206f6e2061204772656369616e2055726e"
         static let skRm = "8057991eef8f1f1af18f4a9491d16a1ce333f695d4db8e38da75975c4478e0fb"
         static let pkRm = "4310ee97d88cc1f088a5576c77ab0cf5c3ac797f3d95139c6c84b5429c59662a"
@@ -48,23 +48,23 @@ final class MemoryExportCryptoTests: XCTestCase {
     /// is the whole reason D-0021 named an RFC instead of describing a shape.
     func test_rfc9180AppendixA2BaseVectorOpensUnderThisBuildsHPKE() throws {
         let privateKey = try Curve25519.KeyAgreement.PrivateKey(
-            rawRepresentation: try XCTUnwrap(Self.hex(A2.skRm))
+            rawRepresentation: try XCTUnwrap(Self.hex(VectorA2.skRm))
         )
         // The vector's own public key must follow from its private key, or the
         // transcription is wrong in a way the open below could still hide.
-        XCTAssertEqual(Self.hexString(privateKey.publicKey.rawRepresentation), A2.pkRm)
+        XCTAssertEqual(Self.hexString(privateKey.publicKey.rawRepresentation), VectorA2.pkRm)
 
         var recipient = try HPKE.Recipient(
             privateKey: privateKey,
             ciphersuite: .Curve25519_SHA256_ChachaPoly,
-            info: try XCTUnwrap(Self.hex(A2.info)),
-            encapsulatedKey: try XCTUnwrap(Self.hex(A2.enc))
+            info: try XCTUnwrap(Self.hex(VectorA2.info)),
+            encapsulatedKey: try XCTUnwrap(Self.hex(VectorA2.enc))
         )
         let opened = try recipient.open(
-            try XCTUnwrap(Self.hex(A2.ct)),
-            authenticating: try XCTUnwrap(Self.hex(A2.aad))
+            try XCTUnwrap(Self.hex(VectorA2.ct)),
+            authenticating: try XCTUnwrap(Self.hex(VectorA2.aad))
         )
-        XCTAssertEqual(Self.hexString(opened), A2.pt)
+        XCTAssertEqual(Self.hexString(opened), VectorA2.pt)
     }
 
     /// The same vector with one AAD byte changed must NOT open. Without this
@@ -73,17 +73,17 @@ final class MemoryExportCryptoTests: XCTestCase {
     /// exists for.
     func test_rfc9180AppendixA2VectorRefusesAWrongAAD() throws {
         let privateKey = try Curve25519.KeyAgreement.PrivateKey(
-            rawRepresentation: try XCTUnwrap(Self.hex(A2.skRm))
+            rawRepresentation: try XCTUnwrap(Self.hex(VectorA2.skRm))
         )
         var recipient = try HPKE.Recipient(
             privateKey: privateKey,
             ciphersuite: .Curve25519_SHA256_ChachaPoly,
-            info: try XCTUnwrap(Self.hex(A2.info)),
-            encapsulatedKey: try XCTUnwrap(Self.hex(A2.enc))
+            info: try XCTUnwrap(Self.hex(VectorA2.info)),
+            encapsulatedKey: try XCTUnwrap(Self.hex(VectorA2.enc))
         )
         XCTAssertThrowsError(
             try recipient.open(
-                try XCTUnwrap(Self.hex(A2.ct)),
+                try XCTUnwrap(Self.hex(VectorA2.ct)),
                 authenticating: Data("Count-1".utf8)
             )
         )
@@ -849,7 +849,7 @@ final class MemoryExportCryptoTests: XCTestCase {
             "audit_row_hash": .string("hash"),
             "chain_verified": .bool(true),
             "body_hash_at_verdict": .string("join"),
-            "body_verdict_binding": .string("bound"),
+            "body_verdict_binding": .string("bound")
         ])
     }
 
@@ -861,13 +861,14 @@ final class MemoryExportCryptoTests: XCTestCase {
         let digest = try XCTUnwrap(MemoryExportCrypto.reviewEventDigestBytes(record))
         XCTAssertEqual(digest.count, 32)
         guard case .object(var members) = record else {
-            return XCTFail("the fixture record is an object")
+            XCTFail("the fixture record is an object")
+            return
         }
         var excluded = members
         for key in [
             "profile", "event_signature", "signing_key_id",
             "audit_chain_epoch", "audit_seq", "audit_row_hash",
-            "chain_verified", "body_hash_at_verdict",
+            "chain_verified", "body_hash_at_verdict"
         ] {
             excluded[key] = .string("bogus")
         }
@@ -917,7 +918,8 @@ final class MemoryExportCryptoTests: XCTestCase {
             )
         )
         guard case .object(var members) = record else {
-            return XCTFail("the fixture record is an object")
+            XCTFail("the fixture record is an object")
+            return
         }
         members["to_status"] = .string("rejected")
         XCTAssertFalse(

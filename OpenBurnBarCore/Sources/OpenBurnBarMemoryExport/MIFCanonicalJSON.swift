@@ -98,7 +98,8 @@ public enum MIFCanonicalJSON {
                 if index > 0 { out += "," }
                 writeString(key, into: &out)
                 out += ":"
-                // swiftlint:disable:next force_unwrapping reason: key came from members.keys
+                // reason: key came from members.keys
+                // swiftlint:disable:next force_unwrapping
                 write(members[key]!, into: &out)
             }
             out += "}"

@@ -54,7 +54,8 @@ final class MemoryExportBodyResolverTests: XCTestCase {
             """#]
         )
         guard case .resolved(let body) = MemoryExportBodyResolver.resolve(memory: memory, stores: stores) else {
-            return XCTFail("the app lane should have answered")
+            XCTFail("the app lane should have answered")
+            return
         }
         XCTAssertEqual(body.body, "app body")
         XCTAssertEqual(body.recoveredFrom, .memoryBodySnapshots)
@@ -84,10 +85,12 @@ final class MemoryExportBodyResolverTests: XCTestCase {
             quarantineBodiesByMemoryID: snapshot.quarantineBodies
         )
         for (id, expected) in [("B1", "app lane body"), (daemonID, "daemon lane body")] {
-            // swiftlint:disable:next force_unwrapping reason: both rows were just written
+            // reason: both rows were just written
+            // swiftlint:disable:next force_unwrapping
             let memory = snapshot.memories.first { $0.id == id }!
             guard case .resolved(let body) = MemoryExportBodyResolver.resolve(memory: memory, stores: stores) else {
-                return XCTFail("\(id) should resolve")
+                XCTFail("\(id) should resolve")
+                return
             }
             XCTAssertEqual(body.body, expected)
             XCTAssertEqual(body.integrity, .verified, "both lanes get the same hash check")
@@ -111,14 +114,16 @@ final class MemoryExportBodyResolverTests: XCTestCase {
             )
         }
         let snapshot = try MemoryExportFixtureStore.snapshot(queue)
-        // swiftlint:disable:next force_unwrapping reason: the row was just written
+        // reason: the row was just written
+        // swiftlint:disable:next force_unwrapping
         let memory = snapshot.memories.first!
         let stores = MemoryExportBodyStores(
             projectSnapshotJSONBySlug: snapshot.projectSnapshots,
             quarantineBodiesByMemoryID: snapshot.quarantineBodies
         )
         guard case .resolved(let body) = MemoryExportBodyResolver.resolve(memory: memory, stores: stores) else {
-            return XCTFail("a quarantined daemon body must not read as loss")
+            XCTFail("a quarantined daemon body must not read as loss")
+            return
         }
         XCTAssertEqual(body.body, "held for review")
         XCTAssertTrue(body.fromQuarantineStore)
@@ -142,7 +147,8 @@ final class MemoryExportBodyResolverTests: XCTestCase {
             memory: memory,
             stores: MemoryExportBodyStores()
         ) else {
-            return XCTFail("recovery runs before loss")
+            XCTFail("recovery runs before loss")
+            return
         }
         XCTAssertEqual(body.body, "the original plaintext body")
         XCTAssertEqual(body.integrity, .recoveredLegacyPlaintext)
@@ -163,7 +169,8 @@ final class MemoryExportBodyResolverTests: XCTestCase {
             memory: memory,
             stores: MemoryExportBodyStores()
         ) else {
-            return XCTFail("no body means no memory record")
+            XCTFail("no body means no memory record")
+            return
         }
         XCTAssertTrue(failure.findings.contains(.bodyUnreconstructible))
         XCTAssertFalse(failure.reasonDetail.isEmpty, "a count is not a name")
@@ -188,7 +195,8 @@ final class MemoryExportBodyResolverTests: XCTestCase {
             updatedAt: "2026-01-01T00:00:00.000Z"
         )])
         guard case .resolved(let body) = MemoryExportBodyResolver.resolve(memory: memory, stores: stores) else {
-            return XCTFail("the row still travels")
+            XCTFail("the row still travels")
+            return
         }
         XCTAssertEqual(body.integrity, .mismatch)
         XCTAssertTrue(body.findings.contains(.bodyHashMismatch))

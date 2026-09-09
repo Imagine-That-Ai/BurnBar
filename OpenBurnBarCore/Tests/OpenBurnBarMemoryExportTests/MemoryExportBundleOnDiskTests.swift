@@ -677,7 +677,8 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         // a manifest carries, plus the two a digest cannot bind because they are
         // derived from it.
         guard case .object(let preimage) = MemoryExportManifestDigest.preimage(parsed),
-              case .object(let all) = parsed else { return XCTFail("the manifest is a JSON object") }
+              case .object(let all) = parsed else { XCTFail("the manifest is a JSON object") 
+return }
         XCTAssertEqual(
             Set(all.keys).subtracting(preimage.keys),
             ["created_at_ms", "recipient_key_id", "bundle_id", "content_digest"]
@@ -687,7 +688,8 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
         }
         // D-0031: the root is an input to `content_digest` — here, as a member
         // of the manifest the digest is taken over.
-        guard case .object(let tree)? = preimage["hashtree"] else { return XCTFail("no hashtree member") }
+        guard case .object(let tree)? = preimage["hashtree"] else { XCTFail("no hashtree member") 
+return }
         let sidecar = try XCTUnwrap(
             JSONSerialization.jsonObject(
                 with: try Data(contentsOf: directory.appendingPathComponent("hashtree.json"))

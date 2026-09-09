@@ -83,7 +83,7 @@ final class MIFSchemaValidator {
         return schema
     }
 
-    // swiftlint:disable:next cyclomatic_complexity function_body_length reason: one branch per JSON Schema keyword
+    // reason: one branch per JSON Schema keyword
     private func check(_ value: Any, schema: [String: Any], path: String) throws {
         assertionsEvaluated += 1
 

@@ -81,7 +81,7 @@ public enum MemoryExportClassifier {
     static let appBodyRefPrefix = "memory_body_snapshots:"
     static let verdictActions: Set<String> = ["memory.approve", "memory.reject"]
 
-    // swiftlint:disable:next cyclomatic_complexity reason: the §3.1 table is sixteen rows and splitting it hides the shape
+    // reason: the §3.1 table is sixteen rows and splitting it hides the shape
     public static func classify(_ input: MemoryExportClassifierInput) -> MemoryExportClassification {
         let stored = input.memory.reviewStatus
 

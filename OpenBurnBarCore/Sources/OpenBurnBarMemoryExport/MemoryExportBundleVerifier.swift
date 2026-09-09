@@ -62,7 +62,7 @@ public enum MemoryExportBundleVerifier {
         case unreadable(String)
     }
 
-    // swiftlint:disable:next function_body_length cyclomatic_complexity reason: one branch per artefact the bundle is made of
+    // reason: one branch per artefact the bundle is made of
     public static func verify(
         bundleAt url: URL,
         signingPublicKey: Curve25519.Signing.PublicKey?,

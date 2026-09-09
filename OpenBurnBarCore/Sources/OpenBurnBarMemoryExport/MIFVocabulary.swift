@@ -417,7 +417,8 @@ public enum MIFSection: String, Sendable, CaseIterable {
     case findings = "10-findings"
 
     public var rank: Int {
-        // swiftlint:disable:next force_unwrapping reason: self is always a member of allCases
+        // reason: self is always a member of allCases
+        // swiftlint:disable:next force_unwrapping
         MIFSection.allCases.firstIndex(of: self)!
     }
 

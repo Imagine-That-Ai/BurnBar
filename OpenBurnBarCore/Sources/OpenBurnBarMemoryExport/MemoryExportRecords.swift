@@ -100,8 +100,7 @@ public enum MemoryExportRecords {
         // carried `prj_` id the scope key names, so `derive_scope_key`'s
         // `p:{project_id}` recomputes to the carried value on a fresh target.
         if let project = projects[memory.projectID],
-           let fingerprint = projectFingerprint(for: project)
-        {
+           let fingerprint = projectFingerprint(for: project) {
             let carried = carriedProjectID(fingerprint: fingerprint)
             return MemoryExportScope(
                 kind: .project,
@@ -122,7 +121,7 @@ public enum MemoryExportRecords {
 
     // MARK: - 05 memories
 
-    // swiftlint:disable:next function_parameter_count reason: a record type's fields are its parameters
+    // reason: a record type's fields are its parameters
     public static func memoryRecord(
         memory: MemoryExportMemoryRow,
         classification: MemoryExportClassification,
@@ -465,7 +464,7 @@ public enum MemoryExportRecords {
 
     // MARK: - 00 tombstones
 
-    // swiftlint:disable:next function_parameter_count reason: a record type's fields are its parameters
+    // reason: a record type's fields are its parameters
     public static func factTombstoneRecord(
         tombstoneID: String,
         subjectMemoryID: String,

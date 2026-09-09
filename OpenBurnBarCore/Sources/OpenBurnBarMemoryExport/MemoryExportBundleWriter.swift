@@ -141,7 +141,8 @@ public enum MemoryExportBundleWriter {
         var segments: [MIFSection: [Data]] = [:]
         var subroots: [MIFSection: String] = [:]
         for buffer in ordered {
-            // swiftlint:disable:next force_unwrapping reason: every section was written above
+            // reason: every section was written above
+            // swiftlint:disable:next force_unwrapping
             let plaintext = plaintexts[buffer.section]!
             let key = MemoryExportCrypto.segmentKey(bundleKey: inputs.context.bundleKey, section: buffer.section)
             // §2 rotates a section at `max_section_bytes` of CIPHERTEXT, and
@@ -314,7 +315,7 @@ public enum MemoryExportBundleWriter {
 
     // MARK: - Manifest
 
-    // swiftlint:disable:next function_parameter_count reason: the manifest is a wide record by construction
+    // reason: the manifest is a wide record by construction
     static func manifestJSON(
         inputs: MemoryExportBundleInputs,
         bundleID: String?,
@@ -633,7 +634,7 @@ public enum MemoryExportBundleWriter {
 
     // MARK: - Disk
 
-    // swiftlint:disable:next function_parameter_count reason: writing the bundle is writing its parts
+    // reason: writing the bundle is writing its parts
     private static func write(
         destination: URL,
         manifestData: Data,

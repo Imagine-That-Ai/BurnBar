@@ -113,7 +113,8 @@ public struct MemoryExporter: Sendable {
         self.options = options
     }
 
-    // swiftlint:disable:next function_body_length cyclomatic_complexity reason: this is the §3 pipeline; splitting it hides which section a row lands in
+    // reason: this is the §3 pipeline; splitting it hides which section a row lands in
+    // swiftlint:disable:next cyclomatic_complexity
     public func export(
         _ snapshot: MemoryExportSourceSnapshot,
         mode: MemoryExportMode,
@@ -190,7 +191,8 @@ public struct MemoryExporter: Sendable {
             quarantineBodiesByMemoryID: snapshot.quarantineBodies
         )
         let auditBySubject = Dictionary(grouping: snapshot.auditRows.filter { $0.subjectID != nil }) {
-            // swiftlint:disable:next force_unwrapping reason: filtered above
+            // reason: filtered above
+            // swiftlint:disable:next force_unwrapping
             $0.subjectID!
         }
         let provenanceByMemory = Dictionary(grouping: snapshot.provenance, by: \.memoryID)
@@ -545,7 +547,8 @@ public struct MemoryExporter: Sendable {
                 deletesTable.note(.outOfWindow)
                 continue
             }
-            // swiftlint:disable:next force_unwrapping reason: filtered above
+            // reason: filtered above
+            // swiftlint:disable:next force_unwrapping
             let subjectID = delete.subjectID!
             let id = MemoryExportIdentity.tombstoneID(
                 storeID: storeID,

@@ -73,7 +73,8 @@ final class MemoryExportCanonicalJSONTests: XCTestCase {
 
     func test_roundTripThroughTheAppsOwnFormat() {
         let text = "2026-09-07T01:02:03.456Z"
-        // swiftlint:disable:next force_unwrapping reason: the literal above is well formed
+        // reason: the literal above is well formed
+        // swiftlint:disable:next force_unwrapping
         XCTAssertEqual(MemoryExportTimestamp.string(MemoryExportTimestamp.parse(text)!), text)
     }
 
@@ -96,17 +97,17 @@ final class MemoryExportCanonicalJSONTests: XCTestCase {
     }
 
     func test_derivedIdsMatchTheShapesTheContractPins() {
-        XCTAssertTrue(
+        XCTAssertNotNil(
             MemoryExportIdentity.tombstoneID(storeID: "s", sourceTable: "t", sourceID: "x")
-                .range(of: "^tmb_[0-9a-f]{32}$", options: .regularExpression) != nil
+                .range(of: "^tmb_[0-9a-f]{32}$", options: .regularExpression)
         )
-        XCTAssertTrue(
+        XCTAssertNotNil(
             MemoryExportIdentity.reviewEventID(storeID: "s", auditSeq: 42)
-                .range(of: "^rev_[0-9a-f]{32}$", options: .regularExpression) != nil
+                .range(of: "^rev_[0-9a-f]{32}$", options: .regularExpression)
         )
-        XCTAssertTrue(
+        XCTAssertNotNil(
             MemoryExportIdentity.citationID(storeID: "s", provenanceID: "p")
-                .range(of: "^cit_[0-9a-f]{32}$", options: .regularExpression) != nil
+                .range(of: "^cit_[0-9a-f]{32}$", options: .regularExpression)
         )
     }
 

@@ -20,8 +20,8 @@ final class MemoryExportBundleTests: XCTestCase {
     /// One fixed recipient for the whole suite. `recipient_store_id` is a
     /// deterministic manifest field now that it names the TARGET store rather
     /// than the producer, so the determinism tests need it stable.
-    static let recipientPrivateKey = Curve25519.KeyAgreement.PrivateKey()
-    var recipient: MemoryExportRecipient {
+    private static let recipientPrivateKey = Curve25519.KeyAgreement.PrivateKey()
+    private var recipient: MemoryExportRecipient {
         MemoryExportRecipient(
             keyID: MemoryExportRecipient.keyID(for: Self.recipientPrivateKey.publicKey),
             publicKey: Self.recipientPrivateKey.publicKey,
@@ -746,7 +746,8 @@ final class MemoryExportBundleTests: XCTestCase {
             snapshot,
             mode: .delta(
                 sinceAuditSeq: snapshot.auditHeadSeq,
-                // swiftlint:disable:next force_unwrapping reason: a literal ISO timestamp
+                // reason: a literal ISO timestamp
+                // swiftlint:disable:next force_unwrapping
                 sinceUpdatedAtMS: Int((dayOne!.timeIntervalSince1970 * 1000).rounded())
             ),
             to: nil,
@@ -812,7 +813,6 @@ final class MemoryExportBundleTests: XCTestCase {
         XCTAssertEqual(nine["required"] as? Bool, true)
         XCTAssertEqual(nine["row_count"] as? Int, carriedSeqs.count)
     }
-
 
     // MARK: - Reconciliation
 
@@ -1084,7 +1084,8 @@ final class MemoryExportBundleTests: XCTestCase {
         // And it reaches the artefact a reader actually opens.
         guard case .object(let json) = result.report.json,
               case .array(let tables) = json["tables"] ?? .null else {
-            return XCTFail("the report has no tables array")
+            XCTFail("the report has no tables array")
+            return
         }
         XCTAssertTrue(tables.contains { table in
             guard case .object(let fields) = table,

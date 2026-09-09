@@ -20,7 +20,7 @@ func redactedSectionRecords(
     _ buffers: [MIFSection: MemoryExportSectionBuffer]
 ) -> [String: [MIFJSON]] {
     Dictionary(
-        uniqueKeysWithValues: buffers.map { (section, buffer) in
+        uniqueKeysWithValues: buffers.map { section, buffer in
             (
                 section.rawValue,
                 buffer.records.map { record in

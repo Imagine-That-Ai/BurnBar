@@ -235,7 +235,8 @@ final class MIFInteropFixtureV4Tests: XCTestCase {
             guard case .object(let members) = event,
                   case .string(let signature) = members["event_signature"]
             else {
-                return XCTFail("a proven verdict leaves signed")
+                XCTFail("a proven verdict leaves signed")
+                return
             }
             XCTAssertTrue(
                 MemoryExportCrypto.verifyReviewEventSignature(

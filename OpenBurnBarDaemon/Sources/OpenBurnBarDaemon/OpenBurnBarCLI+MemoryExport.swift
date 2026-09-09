@@ -187,7 +187,8 @@ extension BurnBarCLIRunner {
     /// D-0025 ruling 3 is satisfied rather than worked around, and the private
     /// half sits in `./fixture-keys/recipient-secret.json` for the importer.
     private func runMemoryRecipientKeypair(_ command: MemoryExportCommand) throws -> String {
-        // swiftlint:disable:next force_unwrapping reason: validate() refuses recipient-keypair without --out
+        // reason: validate() refuses recipient-keypair without --out
+        // swiftlint:disable:next force_unwrapping
         let directory = URL(fileURLWithPath: command.out!)
         let keypair = MemoryExportRecipient.generateKeypair(storeID: command.storeID)
         let written = try MemoryExportRecipient.writeKeypair(keypair, to: directory)
@@ -216,7 +217,8 @@ extension BurnBarCLIRunner {
     /// files on disk need no key at all, and without them a corrupted or
     /// truncated bundle was undetectable until it reached the other side.
     private func runMemoryVerify(_ command: MemoryExportCommand) throws -> String {
-        // swiftlint:disable:next force_unwrapping reason: validate() refuses verify without --bundle
+        // reason: validate() refuses verify without --bundle
+        // swiftlint:disable:next force_unwrapping
         let url = URL(fileURLWithPath: command.bundle!)
         let verification = try MemoryExportBundleVerifier.verify(
             bundleAt: url,
@@ -249,7 +251,8 @@ extension BurnBarCLIRunner {
         let storeID = try queue.read { try MemoryExportStoreReader.storeIdentity($0) }
         let headAfter = try queue.read { try MemoryExportStoreReader.auditHead($0) }
 
-        // swiftlint:disable:next force_unwrapping reason: validate() refuses p5-check without --target-ids
+        // reason: validate() refuses p5-check without --target-ids
+        // swiftlint:disable:next force_unwrapping
         let targetPath = command.targetIDs!
         guard let text = try? String(contentsOf: URL(fileURLWithPath: targetPath), encoding: .utf8) else {
             throw BurnBarCLIError.missingArgument("cannot read the target id set at \(targetPath).")
@@ -277,7 +280,8 @@ extension BurnBarCLIRunner {
         let result = MemoryExportP5Check.run(
             gates: MemoryExportP5Gates(
                 sourceVersion: BurnBarDaemonVersion.current,
-                // swiftlint:disable:next force_unwrapping reason: validate() refuses p5-check without it
+                // reason: validate() refuses p5-check without it
+                // swiftlint:disable:next force_unwrapping
                 requiredVersion: command.requiredVersion!,
                 socketTokenRotated: command.socketTokenRotated,
                 memoryWriteCapabilityWithdrawn: command.memoryWriteWithdrawn

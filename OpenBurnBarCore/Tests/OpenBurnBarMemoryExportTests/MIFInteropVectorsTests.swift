@@ -153,7 +153,8 @@ final class MIFInteropVectorsTests: XCTestCase {
 
         // The document is self-consistent, and this reads its own declarations
         // back rather than trusting the two constants above.
-        guard case .object(let fields) = manifest else { return XCTFail("not an object") }
+        guard case .object(let fields) = manifest else { XCTFail("not an object") 
+return }
         XCTAssertEqual(fields["content_digest"], .string(v4))
         XCTAssertEqual(fields["bundle_id"], .string("bnd_" + v4.prefix(32)))
         XCTAssertEqual(
