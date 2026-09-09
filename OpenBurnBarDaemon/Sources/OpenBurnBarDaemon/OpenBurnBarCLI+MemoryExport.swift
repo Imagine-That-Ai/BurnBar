@@ -190,7 +190,7 @@ extension BurnBarCLIRunner {
         // reason: validate() refuses recipient-keypair without --out
         // swiftlint:disable:next force_unwrapping
         let directory = URL(fileURLWithPath: command.out!)
-        let keypair = MemoryExportRecipient.generateKeypair(storeID: command.storeID)
+        let keypair = try MemoryExportRecipient.generateKeypair(storeID: command.storeID)
         let written = try MemoryExportRecipient.writeKeypair(keypair, to: directory)
         if command.json {
             return MIFCanonicalJSON.serialize(.object([
