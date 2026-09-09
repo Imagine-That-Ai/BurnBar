@@ -31,3 +31,13 @@ ignoreUntil = 2026-12-03T00:00:00Z
 # devDependency that is not part of any deployed functions bundle. Re-evaluate
 # when firebase-tools migrates to stream-json 3.x.
 reason = "stream-json filter DoS (GHSA-528h-pc64-c93x): dev-only transitive of firebase-tools, which requires the 1.x CommonJS entry points; the only fix (3.5.0+) is ESM-only with renamed exports and breaks database:import/auth:import/Next.js at load time, and no patched 1.x exists. Unreachable in this consumer (local developer files via CLI, never a served event loop). Time-boxed pending an upstream firebase-tools migration."
+
+[[IgnoredVulns]]
+id = "GHSA-2q42-4q24-7rgv"
+ignoreUntil = 2026-12-09T00:00:00Z
+# reason: @typespec/compiler and @typespec/openapi3 1.15.0 in
+# tools/schema-sync (devDependencies of a schema-generation tool that runs
+# only on developer-selected local spec files). OSV lists no fixed version;
+# re-evaluate when TypeSpec publishes a patched line.
+reason = "TypeSpec compiler/openapi3 advisory: dev-only schema-sync tooling over local files, no fixed release published; re-evaluate by 2026-12-09"
+

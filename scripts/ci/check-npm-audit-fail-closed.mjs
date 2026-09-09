@@ -54,6 +54,15 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // callable shim in functions/vendor/openburnbar/brace-expansion-cjs removed the
 // final vulnerable 1.x copies from the dependency tree.
 export const ADVISORY_ALLOWLIST = {
+  "GHSA-2q42-4q24-7rgv": {
+    // reason: @typespec/compiler and @typespec/openapi3 1.15.0 are
+    // devDependencies of tools/schema-sync, a schema-generation tool that only
+    // reads developer-selected local spec files. OSV lists no fixed version, so
+    // there is nothing to bump to. Paired with the osv-scanner.toml entry.
+    reason:
+      "TypeSpec compiler/openapi3 advisory: dev-only schema-sync tooling over local files, no fixed release published",
+    expires: "2026-12-09",
+  },
   "GHSA-528h-pc64-c93x": {
     // reason: quadratic path-recompute DoS in stream-json's pick/ignore/filter/
     // replace filters. Only firebase-tools depends on it, as a devDependency,

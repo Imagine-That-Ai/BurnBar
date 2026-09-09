@@ -167,6 +167,7 @@ reject the advisory again instead of letting the ignore rot.
 
 Current entries:
 
+- **GHSA-2q42-4q24-7rgv** (TypeSpec compiler/openapi3, expires 2026-12-09): devDependencies of `tools/schema-sync`, which only reads developer-selected local spec files; OSV lists no fixed version. Paired entries in `osv-scanner.toml` and `scripts/ci/check-npm-audit-fail-closed.mjs`.
 - **GHSA-528h-pc64-c93x** (stream-json path-filter DoS, expires 2026-12-03):
   `pick`/`ignore`/`filter`/`replace` recompute the whole path string per token,
   so deeply nested JSON costs O(depth²). The only depender is `firebase-tools`,
