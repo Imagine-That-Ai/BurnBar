@@ -192,7 +192,7 @@ final class MemoryQuarantineBodiesSchemaParityTests: XCTestCase {
     /// indentation from each. What comes back is the string the compiler builds,
     /// so two files that indent their literals differently still compare equal —
     /// and two files whose SQL differs still compare unequal.
-    static func multilineLiteral(containing marker: String, in source: String) -> String? {
+    private static func multilineLiteral(containing marker: String, in source: String) -> String? {
         let lines = source.components(separatedBy: "\n")
         guard let markerIndex = lines.firstIndex(where: { $0.contains(marker) }) else { return nil }
         guard let openIndex = (0..<markerIndex).reversed().first(where: {
@@ -214,7 +214,7 @@ final class MemoryQuarantineBodiesSchemaParityTests: XCTestCase {
     /// The `"…"` form: everything between the quotes on the marker's own line.
     /// Nil when the marker's line carries no quoted string of its own, which is
     /// how a multiline literal's opening line is told apart from this one.
-    static func singleLineLiteral(containing marker: String, in source: String) -> String? {
+    private static func singleLineLiteral(containing marker: String, in source: String) -> String? {
         guard let line = source.components(separatedBy: "\n").first(where: { $0.contains(marker) }),
               let open = line.firstIndex(of: "\""),
               let close = line.lastIndex(of: "\""),

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarData
+import OpenBurnBarKernel
 
 // MARK: - Agent-lane publication (I-56)
 
