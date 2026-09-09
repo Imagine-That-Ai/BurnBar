@@ -48,6 +48,11 @@ public enum MemoryExportCryptoError: Error, Equatable {
     /// `manifest.content_digest` is not 64 hex characters, so there are no 32
     /// raw bytes to sign. A corrupt manifest must refuse, never sign garbage.
     case malformedContentDigest
+    /// A review event that is not an object has no preimage to sign. The
+    /// exporter only signs records it built, so this is unreachable through
+    /// the record builder — it exists so the signer refuses rather than
+    /// signing garbage if it is ever called on anything else.
+    case reviewEventNotAnObject
 }
 
 public enum MemoryExportCrypto {
@@ -511,5 +516,70 @@ public enum MemoryExportCrypto {
     /// records as owed on `mifgen`'s emitter.
     public static func deviceKeyID(_ publicKey: Curve25519.Signing.PublicKey) -> String {
         "edk_" + MemoryExportDigest.sha256Hex(publicKey.rawRepresentation).prefix(32)
+    }
+
+    // MARK: - Review-event signatures (I-76)
+
+    /// The review-event signature preimage (migration spec §2 record 02): the
+    /// exporter-built record minus the nine members the signature does not
+    /// cover — `profile`, `event_signature`, `signing_key_id`,
+    /// `audit_chain_epoch`, `audit_seq`, `audit_row_hash`, `chain_verified`,
+    /// `body_hash_at_verdict`, `body_verdict_binding` — with `from_status`
+    /// null defaulted to
+    /// `"quarantined"`, the same default the importer reads (I-76), so a
+    /// first verdict, which moved from nothing, signs the status it reads as.
+    /// JCS-canonicalised (`MIFCanonicalJSON`, RFC 8785), hashed with SHA-256.
+    /// `client_id`/`policy_id` travel fixed null (the schema types both
+    /// `null`), so they enter the preimage as null, the way the exporter
+    /// builds them. Returns the 32 raw digest bytes, the message Ed25519
+    /// signs (D-0031 ruling 1's construction, applied to the record instead
+    /// of the manifest). The nine were established by flip-oracle, not by
+    /// inspection: see the spec for the method.
+    public static func reviewEventDigestBytes(_ record: MIFJSON) -> Data? {
+        guard case .object(var members) = record else { return nil }
+        for excluded in [
+            "profile", "event_signature", "signing_key_id",
+            "audit_chain_epoch", "audit_seq", "audit_row_hash",
+            "chain_verified", "body_hash_at_verdict", "body_verdict_binding",
+        ] {
+            members.removeValue(forKey: excluded)
+        }
+        if members["from_status"] == nil || members["from_status"] == .null {
+            members["from_status"] = .string("quarantined")
+        }
+        let canonical = MIFCanonicalJSON.serialize(.object(members))
+        return Data(SHA256.hash(data: Data(canonical.utf8)))
+    }
+
+    /// Sign a proven human verdict with the device key: `event_signature` is
+    /// Ed25519 over the preimage's 32 raw bytes, rendered base64url unpadded
+    /// like every other binary in the format. The key is the manifest key —
+    /// the device key's second signed thing, never a second key.
+    public static func signReviewEvent(
+        _ record: MIFJSON,
+        signingKey: Curve25519.Signing.PrivateKey
+    ) throws -> String {
+        guard let digest = reviewEventDigestBytes(record) else {
+            throw MemoryExportCryptoError.reviewEventNotAnObject
+        }
+        return MemoryExportBase64URL.encode(try signingKey.signature(for: digest))
+    }
+
+    /// The exact inverse of `signReviewEvent`, for tests and the fixture
+    /// self-check: a test that signs and verifies through these two functions
+    /// proves the record's preimage, the way `verifySignature` proves the
+    /// manifest's.
+    public static func verifyReviewEventSignature(
+        _ record: MIFJSON,
+        signature: String,
+        publicKey: Curve25519.Signing.PublicKey
+    ) -> Bool {
+        guard let digest = reviewEventDigestBytes(record),
+              let sig = MemoryExportBase64URL.decode(
+                signature.trimmingCharacters(in: .whitespacesAndNewlines)
+              ) else {
+            return false
+        }
+        return publicKey.isValidSignature(sig, for: digest)
     }
 }

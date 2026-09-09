@@ -33,6 +33,8 @@
     "hex64_null":     { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
     "recipient_key_id_null": { "type": ["string", "null"], "pattern": "^rcp_[0-9a-f]{32}$",
       "$comment": "D-0025: recipient_key_id = \"rcp_\" + sha256(public_key)[0..32] - the first 16 bytes as 32 lowercase hex, in the wire s1.4 `rcp_` id grammar. v1.1 typed this hex64 and MEMORY_MIGRATION_SPEC s2 wrote `sha256(pubkey)`; one form now, because `aad = recipient_key_id` in the HPKE wrap (D-0021 ruling 1) makes the exact string load-bearing - two implementations that disagree about it produce bundles neither can open. The exporter recomputes it from `public_key` in the recipient descriptor and REFUSES on mismatch." },
+    "exporter_device_key_id_null": { "type": ["string", "null"], "pattern": "^edk_[0-9a-f]{32}$",
+      "$comment": "D-0041 (Q-62): exporter_device_key_id = \"edk_\" + sha256(Ed25519 verifying key)[0..32] - the first 16 bytes as 32 lowercase hex. The importer pins this key on first import (TOFU) and verifies both the manifest signature and every human verdict under it, so the exact string is load-bearing the way recipient_key_id is: two implementations that disagree about it produce bundles neither can open. Null stays admissible (an unsigned rehearsal carries no key); a present string that is not edk_+32hex fails validation." },
     "lamport":        { "type": "integer", "minimum": 0 },
     "b64url":         { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
     "memory_id":      { "type": "string", "pattern": "^mem_[0-9a-f]{32}$" },
@@ -177,7 +179,7 @@
           "$comment": "D-0039 ruling 7 (Q-53): the IMPORTER's store id, in the DDL's own grammar - `stores.store_id` is CHECK(GLOB 'sto_[0-9a-f]*' AND length = 36), i.e. 'sto_' + 32 lowercase hex (schema/memory-v1.sql). v1.1 typed it as any string, so a bundle could carry a recipient store id no store could ever hold and still validate, while RECIPIENT_MISMATCH is the hold that compares it to this store. The BurnBar exporter filled it with the SOURCE fingerprint (D-0025 rule 2), which a real store id makes visible instead of plausible.",
           "type": ["string","null"], "pattern": "^sto_[0-9a-f]{32}$"
         },
-        "exporter_device_key_id": { "type": ["string","null"] },
+        "exporter_device_key_id": { "$ref": "#/$defs/exporter_device_key_id_null" },
         "export_mode": { "enum": ["full","delta"] },
         "since_audit_seq": { "type": ["integer","null"], "minimum": 0 },
         "delta_watermarks": {
@@ -804,7 +806,7 @@
             },
             "profile": { "$ref": "#/$defs/profile" },
             "content_digest": { "$ref": "#/$defs/hex64" },
-            "exporter_device_key_id": { "type": ["string","null"] },
+            "exporter_device_key_id": { "$ref": "#/$defs/exporter_device_key_id_null" },
             "signature_verified": { "type": "boolean" },
             "hashtree_verified": { "type": "boolean" },
             "rollups_verified": { "type": "boolean" },

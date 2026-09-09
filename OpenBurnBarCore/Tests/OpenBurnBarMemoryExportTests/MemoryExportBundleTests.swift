@@ -114,10 +114,16 @@ final class MemoryExportBundleTests: XCTestCase {
 
         let first = try exporter.export(snapshot, mode: .full, to: nil, bundleKey: key)
         let second = try exporter.export(snapshot, mode: .full, to: nil, bundleKey: key)
-        XCTAssertEqual(first.contentDigest, second.contentDigest)
-        XCTAssertEqual(first.bundleID, second.bundleID)
+        // I-76's randomized event signatures move the bundle identity on
+        // every export, so sameness is the determinism digest, the counts and
+        // the records minus signature bytes — never the identity itself.
         XCTAssertEqual(first.determinismDigest, second.determinismDigest)
         XCTAssertEqual(first.report.countsHash, second.report.countsHash)
+        XCTAssertEqual(
+            redactedSectionRecords(first.sectionBuffers),
+            redactedSectionRecords(second.sectionBuffers),
+            "the same database exports the same records but for signature bytes"
+        )
 
         // A DIFFERENT bundle key changes the digest, and that is correct rather
         // than a determinism failure: `body_join_key` and `body_norm_digest` are
@@ -147,7 +153,15 @@ final class MemoryExportBundleTests: XCTestCase {
         let real = try exporter.export(snapshot, mode: .full, to: directory, bundleKey: key)
 
         XCTAssertEqual(dry.report.countsHash, real.report.countsHash)
-        XCTAssertEqual(dry.contentDigest, real.contentDigest)
+        // The identity moves with I-76's randomized event signatures, so the
+        // dry run and the real run agree on the determinism digest and the
+        // records minus signature bytes instead.
+        XCTAssertEqual(dry.determinismDigest, real.determinismDigest)
+        XCTAssertEqual(
+            redactedSectionRecords(dry.sectionBuffers),
+            redactedSectionRecords(real.sectionBuffers),
+            "dry and real runs classify the same records"
+        )
         XCTAssertNil(dry.bundleURL, "a dry run writes no bundle")
         XCTAssertNotNil(real.bundleURL)
         XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("manifest.json").path))

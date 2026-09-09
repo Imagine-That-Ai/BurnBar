@@ -6,12 +6,20 @@
 // -------------------------------------------
 //   Source repo:    Po'dex, memory-consolidation-gauntlet branch
 //   Source path:    docs/memory/contracts/mif-v1.schema.json
-//   Source commit:  e389a25d69fb45a292233936adea5949f1c6ee60
-//                   ("docs(memory): Q-60 pattern lookahead-free for the sync
-//                    subset evaluator")
-//   sha256:         6a6864e980161843c8e1ec2b2162af3632a97c4944e6a75f741c5ba9ddf3adf5
-//   Copied:         2026-09-08, byte for byte, no local edit of any kind
+//   Source commit:  b0a79c8335594ec8bee8082f0c6b9216dd8a341e
+//                   ("docs(memory): Q-62 edk pattern, hello build_sha, Q-63
+//                    lost.csv beside the bundle")
+//   sha256:         8a4fbb22a7245b9a01f69ea9ea5a4b23f3504dc4272bba6febacaf4859ade143
+//   Copied:         2026-09-09, byte for byte, no local edit of any kind
 //   Contract level: MIF v1, minor 2 [D-0021]
+//
+// Re-vendored from 6a6864e9… for brief 28, carrying Q-62's
+// `$defs/exporter_device_key_id_null` (`^edk_[0-9a-f]{32}$`, D-0041) on the
+// manifest and the report bundle mirror. A narrowing, but every bundle this
+// exporter writes already carries the pinned `edk_`+32hex form (brief 19),
+// so nothing it wrote stops validating and `mif_minor` stays 2. The exporter
+// changes riding with it are the I-76 verdict signatures below, not schema
+// shape.
 //
 // Re-vendored from 9c84b3bd… (commit 3739ad37) for brief 19, carrying Q-56's
 // `hashtree_file.chunk_sha256` and Q-60's closed-directory `hold_reason`
@@ -105,7 +113,7 @@ import Crypto
 final class MIFContractPinTests: XCTestCase {
 
     private static let pinnedSHA256 =
-        "6a6864e980161843c8e1ec2b2162af3632a97c4944e6a75f741c5ba9ddf3adf5"
+        "8a4fbb22a7245b9a01f69ea9ea5a4b23f3504dc4272bba6febacaf4859ade143"
 
     private func contractData() throws -> Data {
         let url = try XCTUnwrap(

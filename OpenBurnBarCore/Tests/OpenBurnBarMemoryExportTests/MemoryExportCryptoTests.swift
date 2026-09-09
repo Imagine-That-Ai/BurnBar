@@ -817,6 +817,124 @@ final class MemoryExportCryptoTests: XCTestCase {
         }
     }
 
+    // MARK: - Review-event signatures (I-76)
+
+    private static let verdictSigningSeed = Data(repeating: 0x56, count: 32)
+
+    private func verdictSigningKey() throws -> Curve25519.Signing.PrivateKey {
+        try Curve25519.Signing.PrivateKey(rawRepresentation: Self.verdictSigningSeed)
+    }
+
+    private static func unsignedVerdict(fromStatus: MIFJSON) -> MIFJSON {
+        .object([
+            "profile": .string("migration"),
+            "event_id": .string("rev_test"),
+            "memory_id": .string("mem_test"),
+            "from_status": fromStatus,
+            "to_status": .string("approved"),
+            "actor_kind": .string("human"),
+            "actor_id": .string("human:test"),
+            "client_id": .null,
+            "verdict_kind": .string("human_verdict"),
+            "policy_id": .null,
+            "reason_label": .string("migration.human_verdict"),
+            "decided_at_ms": .int(1_767_225_600_000),
+            "lamport": .int(0),
+            "wall_ms": .int(1_767_225_600_000),
+            "origin_device_id": .string("migration:store-fixture"),
+            "event_signature": .null,
+            "signing_key_id": .null,
+            "audit_chain_epoch": .int(1),
+            "audit_seq": .int(7),
+            "audit_row_hash": .string("hash"),
+            "chain_verified": .bool(true),
+            "body_hash_at_verdict": .string("join"),
+            "body_verdict_binding": .string("bound"),
+        ])
+    }
+
+    /// The preimage is the record minus the eight (spec §2 record 02): a record
+    /// carrying unrelated values in any of them signs the same digest, while
+    /// any of the fifteen covered members moves it.
+    func test_reviewEventPreimageCoversFifteenMembersAndEightItDoesNot() throws {
+        let record = Self.unsignedVerdict(fromStatus: .string("approved"))
+        let digest = try XCTUnwrap(MemoryExportCrypto.reviewEventDigestBytes(record))
+        XCTAssertEqual(digest.count, 32)
+        guard case .object(var members) = record else {
+            return XCTFail("the fixture record is an object")
+        }
+        var excluded = members
+        for key in [
+            "profile", "event_signature", "signing_key_id",
+            "audit_chain_epoch", "audit_seq", "audit_row_hash",
+            "chain_verified", "body_hash_at_verdict",
+        ] {
+            excluded[key] = .string("bogus")
+        }
+        XCTAssertEqual(
+            MemoryExportCrypto.reviewEventDigestBytes(.object(excluded)),
+            digest,
+            "the eight excluded members never enter what is signed"
+        )
+        var covered = members
+        covered["to_status"] = .string("rejected")
+        XCTAssertNotEqual(
+            MemoryExportCrypto.reviewEventDigestBytes(.object(covered)),
+            digest,
+            "a covered member moves the digest"
+        )
+    }
+
+    /// A null `from_status` — a first verdict, which moved from nothing — signs
+    /// the status it reads as: `quarantined`, the importer's own default
+    /// (I-76). The carried and the defaulted forms sign differently, so the
+    /// defaulting is load-bearing, not cosmetic.
+    func test_reviewEventPreimageDefaultsANullFromStatusToQuarantined() throws {
+        let nulled = Self.unsignedVerdict(fromStatus: .null)
+        let carried = Self.unsignedVerdict(fromStatus: .string("quarantined"))
+        let approved = Self.unsignedVerdict(fromStatus: .string("approved"))
+        XCTAssertEqual(
+            MemoryExportCrypto.reviewEventDigestBytes(nulled),
+            MemoryExportCrypto.reviewEventDigestBytes(carried)
+        )
+        XCTAssertNotEqual(
+            MemoryExportCrypto.reviewEventDigestBytes(nulled),
+            MemoryExportCrypto.reviewEventDigestBytes(approved)
+        )
+    }
+
+    /// Sign and verify are exact inverses through the device key; a flipped
+    /// record byte and a foreign key both refuse.
+    func test_reviewEventSignAndVerifyAreExactInverses() throws {
+        let key = try verdictSigningKey()
+        let record = Self.unsignedVerdict(fromStatus: .null)
+        let signature = try MemoryExportCrypto.signReviewEvent(
+            record, signingKey: key
+        )
+        XCTAssertTrue(
+            MemoryExportCrypto.verifyReviewEventSignature(
+                record, signature: signature, publicKey: key.publicKey
+            )
+        )
+        guard case .object(var members) = record else {
+            return XCTFail("the fixture record is an object")
+        }
+        members["to_status"] = .string("rejected")
+        XCTAssertFalse(
+            MemoryExportCrypto.verifyReviewEventSignature(
+                .object(members), signature: signature, publicKey: key.publicKey
+            )
+        )
+        let foreign = try Curve25519.Signing.PrivateKey(
+            rawRepresentation: Data(repeating: 0x77, count: 32)
+        )
+        XCTAssertFalse(
+            MemoryExportCrypto.verifyReviewEventSignature(
+                record, signature: signature, publicKey: foreign.publicKey
+            )
+        )
+    }
+
     // MARK: - Helpers
 
     private static func hex(_ text: String) -> Data? {

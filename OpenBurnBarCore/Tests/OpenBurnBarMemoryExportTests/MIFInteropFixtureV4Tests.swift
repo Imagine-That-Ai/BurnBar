@@ -163,18 +163,18 @@ final class MIFInteropFixtureV4Tests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let result = try export(to: directory)
 
-        XCTAssertEqual(result.bundleID, "bnd_07d85c762714fb527ae4ccb126dd5962")
-        XCTAssertEqual(
-            result.contentDigest,
-            "07d85c762714fb527ae4ccb126dd59627b88b624d681696900e381a9481245a5"
-        )
+        // I-76: the two proven verdicts leave signed under the device key
+        // with CryptoKit's randomized Ed25519, so the identity moves on every
+        // export and no identity value is pinned here — v5 carries the interop
+        // identity now. What this pins is the shape and the self-consistency:
+        // `bundle_id` is `bnd_` plus the digest's first 32 hex, and the files
+        // carry the identity the result computed.
+        XCTAssertEqual(result.bundleID, "bnd_" + result.contentDigest.prefix(32))
 
         let manifest = try XCTUnwrap(try json(at: directory.appendingPathComponent("manifest.json")) as? [String: Any])
+        XCTAssertEqual(manifest["bundle_id"] as? String, result.bundleID)
+        XCTAssertEqual(manifest["content_digest"] as? String, result.contentDigest)
         let manifestTree = try XCTUnwrap(manifest["hashtree"] as? [String: Any])
-        XCTAssertEqual(
-            manifestTree["root"] as? String,
-            "1adf5de3e559b2bf841d4c2761eefa7da7cbd0af169fe735e232d339c9d5a5d1"
-        )
         XCTAssertEqual(manifest["recipient_key_id"] as? String, "rcp_34a31a0d016fad9b86b70ba95f4b21b7")
         XCTAssertEqual(manifest["recipient_store_id"] as? String, Self.importerStoreID)
         // I-74: the pinned `edk_` + 32-hex shape, in both files that carry it.
@@ -227,6 +227,25 @@ final class MIFInteropFixtureV4Tests: XCTestCase {
         try validator.validate(manifest, against: "#/$defs/manifest")
         try validator.validate(report, against: "#/$defs/reconciliation_report")
         try validator.validate(tree, against: "#/$defs/hashtree_file")
+        // I-76: both review events leave signed, and both signatures verify
+        // under the device key over the §2 record-02 preimage.
+        let events = try XCTUnwrap(result.sectionBuffers[.reviewEvents]?.records)
+        XCTAssertEqual(events.count, 2, "v4's proven approve and proven rejection")
+        for event in events {
+            guard case .object(let members) = event,
+                  case .string(let signature) = members["event_signature"]
+            else {
+                return XCTFail("a proven verdict leaves signed")
+            }
+            XCTAssertTrue(
+                MemoryExportCrypto.verifyReviewEventSignature(
+                    event, signature: signature,
+                    publicKey: try signingKey().publicKey
+                ),
+                "the event signature verifies over the record-02 preimage"
+            )
+        }
+
         let verification = try MemoryExportBundleVerifier.verify(
             bundleAt: directory,
             signingPublicKey: try signingKey().publicKey,
@@ -254,15 +273,20 @@ final class MIFInteropFixtureV4Tests: XCTestCase {
         }
     }
 
-    /// The fixture regenerates: the same store through the same fixed keys
-    /// yields the same bundle identity (the wrap and the signature excepted,
+    /// The fixture regenerates in structure: the same store through the same
+    /// fixed keys yields the same records and the same determinism digest —
+    /// while the bundle identity moves with I-76's randomized event
+    /// signatures (the wrap and the manifest signature excepted beside them,
     /// per §2's determinism claim).
     func test_interopFixtureV4Regenerates() throws {
         let first = try export(to: nil, seed: "interop-fixture-v4")
-        XCTAssertEqual(first.bundleID, "bnd_07d85c762714fb527ae4ccb126dd5962")
+        let second = try export(to: nil, seed: "interop-fixture-v4")
+        XCTAssertEqual(first.determinismDigest, second.determinismDigest)
+        XCTAssertEqual(first.report.countsHash, second.report.countsHash)
         XCTAssertEqual(
-            first.contentDigest,
-            "07d85c762714fb527ae4ccb126dd59627b88b624d681696900e381a9481245a5"
+            redactedSectionRecords(first.sectionBuffers),
+            redactedSectionRecords(second.sectionBuffers),
+            "the same store exports the same records but for signature bytes"
         )
     }
 

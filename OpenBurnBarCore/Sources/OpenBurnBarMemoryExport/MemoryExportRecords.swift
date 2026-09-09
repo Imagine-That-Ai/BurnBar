@@ -48,7 +48,36 @@ public enum MemoryExportRecords {
 
     // MARK: - Scope
 
-    public static func scope(for memory: MemoryExportMemoryRow, manifestUserID: String?) -> MemoryExportScope {
+    // MARK: - Project identity (D-0033 ruling 1)
+
+    /// The fingerprint the importer will match this project on. Identity is
+    /// the fingerprint, never the carried id — so a memory's
+    /// `project_fingerprint` must name the same value the section-04 record
+    /// carries, in the importer's own arm order: the store's curated
+    /// fingerprint when it has one, else the documented fallback the importer
+    /// derives without inputs, `path:<primary_path>` (`MEMORY_SCHEMA.md`
+    /// §2.2's last rung, review item 15). A v2 value ships as `fingerprint`,
+    /// never as `fingerprint_v3`.
+    public static func projectFingerprint(for project: MemoryExportProjectRow) -> String? {
+        if !project.identityFingerprint.isEmpty { return project.identityFingerprint }
+        guard !project.primaryPath.isEmpty else { return nil }
+        return "path:" + project.primaryPath
+    }
+
+    /// The id the section-04 record carries for a fingerprinted project:
+    /// `prj_` plus 32 hex over the fingerprint — the shape the importer's
+    /// `id_shape("prj_", …)` accepts, so a fresh target inserts under it and
+    /// the memories' `p:` scope keys resolve against the id the importer
+    /// assigned (migration §4's carried-id path).
+    public static func carriedProjectID(fingerprint: String) -> String {
+        "prj_" + MemoryExportDigest.sha256Hex(fingerprint).prefix(32)
+    }
+
+    public static func scope(
+        for memory: MemoryExportMemoryRow,
+        manifestUserID: String?,
+        projects: [String: MemoryExportProjectRow] = [:]
+    ) -> MemoryExportScope {
         if MemoryExportPartition.isPartitionPseudoProject(memory.projectID) {
             let user = memory.userID
                 ?? MemoryExportPartition.pseudoProjectUserID(memory.projectID)
@@ -56,20 +85,37 @@ public enum MemoryExportRecords {
             // `unscoped` with no manifest user has nowhere honest to go — v1
             // forbids `global` — so the key names the pseudo-project and the
             // importer holds with UNSCOPED_ROWS_NO_USER rather than inventing a
-            // user here.
+            // user here. A routed user key carries the `u:` tag the importer's
+            // scope derivation asserts (`MEMORY_SCHEMA.md` §2.3); the unrouted
+            // fallback keeps today's bare shape so the hold still triggers.
             return MemoryExportScope(
                 kind: .user,
-                key: user ?? memory.projectID,
+                key: user.map { "u:" + $0 } ?? memory.projectID,
                 userID: user,
                 projectFingerprint: nil,
                 isPseudoProject: true
             )
         }
+        // A real project: the fingerprint the importer matches plus the
+        // carried `prj_` id the scope key names, so `derive_scope_key`'s
+        // `p:{project_id}` recomputes to the carried value on a fresh target.
+        if let project = projects[memory.projectID],
+           let fingerprint = projectFingerprint(for: project)
+        {
+            let carried = carriedProjectID(fingerprint: fingerprint)
+            return MemoryExportScope(
+                kind: .project,
+                key: "p:" + carried,
+                userID: memory.userID ?? manifestUserID,
+                projectFingerprint: fingerprint,
+                isPseudoProject: false
+            )
+        }
         return MemoryExportScope(
             kind: .project,
-            key: memory.projectID,
+            key: "p:" + memory.projectID,
             userID: memory.userID ?? manifestUserID,
-            projectFingerprint: memory.projectID,
+            projectFingerprint: nil,
             isPseudoProject: false
         )
     }
@@ -368,11 +414,13 @@ public enum MemoryExportRecords {
         memoryID: String,
         classification: MemoryExportClassification,
         bodyJoinKey: String,
-        context: MemoryExportRecordContext
+        context: MemoryExportRecordContext,
+        signingKey: Curve25519.Signing.PrivateKey? = nil,
+        signingKeyID: String? = nil
     ) -> MIFJSON? {
         guard classification.isProvenHumanVerdict, let seq = classification.verdictAuditSeq else { return nil }
         let decidedMS = MemoryExportTimestamp.milliseconds(classification.verdictTimestamp)
-        return .object([
+        let unsigned: MIFJSON = .object([
             "profile": .string(MIFProfile.migration.rawValue),
             "event_id": .string(MemoryExportIdentity.reviewEventID(storeID: context.storeID, auditSeq: seq)),
             "memory_id": .string(memoryID),
@@ -398,6 +446,21 @@ public enum MemoryExportRecords {
             "body_hash_at_verdict": .string(bodyJoinKey),
             "body_verdict_binding": .string(MIFBodyVerdictBinding.bound.rawValue)
         ])
+        // I-76: a proven human verdict leaves signed when the device key is
+        // present (the bundle path), unsigned when it is not (unit tests that
+        // build records without a key). The preimage excludes the two
+        // signature members, so signing the unsigned record is signing the
+        // record the importer verifies — never the signature itself.
+        guard let signingKey, let signingKeyID,
+              case .object(var members) = unsigned,
+              let signature = try? MemoryExportCrypto.signReviewEvent(
+                unsigned, signingKey: signingKey
+              ) else {
+            return unsigned
+        }
+        members["event_signature"] = .string(signature)
+        members["signing_key_id"] = .string(signingKeyID)
+        return .object(members)
     }
 
     // MARK: - 00 tombstones
@@ -543,8 +606,17 @@ public enum MemoryExportRecords {
         project: MemoryExportProjectRow,
         context: MemoryExportRecordContext
     ) -> MIFJSON {
-        .object([
+        // D-0033 ruling 1: the importer matches on the computed fingerprint
+        // and inserts under the carried `prj_` id when it is well shaped and
+        // free — so the record carries both, computed by the same helpers the
+        // memories' scope keys use. A project with no fingerprint carries
+        // neither, exactly today's shape.
+        let fingerprint = projectFingerprint(for: project)
+        let carriedID = fingerprint.map { carriedProjectID(fingerprint: $0) }
+        return .object([
             "profile": .string(MIFProfile.migration.rawValue),
+            "project_id": .string(carriedID),
+            "fingerprint": .string(fingerprint),
             "identity_version": .int(project.identityVersion),
             "display_name": .string(project.projectName.isEmpty ? project.projectID : project.projectName),
             "primary_path": .string(project.primaryPath),

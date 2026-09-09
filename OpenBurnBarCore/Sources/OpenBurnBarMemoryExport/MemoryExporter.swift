@@ -272,8 +272,16 @@ public struct MemoryExporter: Sendable {
         memoriesTable.note(.outOfWindow, snapshot.memories.count - windowed.count)
         report.memoriesIn = snapshot.memories.count
 
+        // D-0033 ruling 1: project-scoped memories name the fingerprint the
+        // importer matches plus the carried `prj_` id their scope keys resolve
+        // against, so scope resolution sees the snapshot's projects.
+        let projectsByID = Dictionary(
+            uniqueKeysWithValues: snapshot.projects.map { ($0.projectID, $0) }
+        )
         for memory in windowed.sorted(by: { $0.id < $1.id }) {
-            let scope = MemoryExportRecords.scope(for: memory, manifestUserID: userID)
+            let scope = MemoryExportRecords.scope(
+                for: memory, manifestUserID: userID, projects: projectsByID
+            )
             if scope.isPseudoProject {
                 report.partitionPseudoProject += 1
                 record(.partitionPseudoProject, sample: memory.id)
@@ -415,7 +423,15 @@ public struct MemoryExporter: Sendable {
                    memoryID: canonicalID,
                    classification: classification,
                    bodyJoinKey: joinKey,
-                   context: context
+                   context: context,
+                   // I-76: proven human verdicts leave signed under the device
+                   // key (its second signed thing after the manifest); without
+                   // a key the record stays null-signed, the way unit tests
+                   // build it.
+                   signingKey: signingKey,
+                   signingKeyID: signingKey.map {
+                       MemoryExportCrypto.deviceKeyID($0.publicKey)
+                   }
                ) {
                 // D-0031 ruling 2: 02 is `(event_id, memory_id, to_status)`.
                 // The record is only minted for proven rows (D-BB-E-9), so the
