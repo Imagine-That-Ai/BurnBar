@@ -41,3 +41,13 @@ ignoreUntil = 2026-12-09T00:00:00Z
 # re-evaluate when TypeSpec publishes a patched line.
 reason = "TypeSpec compiler/openapi3 advisory: dev-only schema-sync tooling over local files, no fixed release published; re-evaluate by 2026-12-09"
 
+[[IgnoredVulns]]
+id = "GHSA-82fw-gwwq-j7x9"
+ignoreUntil = 2026-12-09T00:00:00Z
+# reason: @vitest/mocker redirect-mock path traversal (moderate, 5.9) in vitest
+# 4.1.8, a devDependency of the test runner only. syncpack pins vitest to one
+# version across the monorepo and website/package-lock.json cannot be
+# re-resolved at 4.1.11 with npm 10.9.8 (arborist `edgesOut` fault), so the
+# monorepo-wide bump is a follow-up; the fixed line is 4.1.11.
+reason = "vitest mocker path traversal: moderate, dev-only test runner; monorepo-wide bump to 4.1.11 blocked by the npm arborist fault on website's lockfile; re-evaluate by 2026-12-09"
+

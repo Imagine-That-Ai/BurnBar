@@ -54,6 +54,15 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // callable shim in functions/vendor/openburnbar/brace-expansion-cjs removed the
 // final vulnerable 1.x copies from the dependency tree.
 export const ADVISORY_ALLOWLIST = {
+  "GHSA-82fw-gwwq-j7x9": {
+    // reason: @vitest/mocker redirect-mock path traversal (moderate) in the
+    // dev-only vitest 4.1.8 the monorepo is syncpack-pinned to; the fixed
+    // 4.1.11 cannot be re-locked in website with npm 10.9.8 (arborist
+    // `edgesOut` fault). Paired with the osv-scanner.toml entry.
+    reason:
+      "vitest mocker path traversal: moderate, dev-only test runner; monorepo-wide bump to 4.1.11 is a follow-up",
+    expires: "2026-12-09",
+  },
   "GHSA-2q42-4q24-7rgv": {
     // reason: @typespec/compiler and @typespec/openapi3 1.15.0 are
     // devDependencies of tools/schema-sync, a schema-generation tool that only
