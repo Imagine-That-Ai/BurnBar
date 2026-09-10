@@ -312,10 +312,13 @@
         var jy = reduced ? 0 : Math.cos(baseT * 1.8 + d.phase * 1.3) * 0.6;
         var sh = reduced ? 0.25 : (Math.sin((d.x - d.y) * 5.5 - T) + 1) / 2;
         var hi = Math.pow(sh, 2.2);
-        var r = d.r + (255 - d.r) * hi * 0.5;
-        var g = d.g + (255 - d.g) * hi * 0.5;
-        var b = d.b + (255 - d.b) * hi * 0.5;
-        var alpha = coh * tw * d.a * (0.56 + hi * 0.24);
+        // Light-mode contrast: the white-ward highlight (255-hi*0.5) washed dots
+        // out on the paper (#f6f4ee). Shave that lift and raise the opacity
+        // floor so dots hold at rest instead of dissolving into cream.
+        var r = d.r + (255 - d.r) * hi * 0.32;
+        var g = d.g + (255 - d.g) * hi * 0.32;
+        var b = d.b + (255 - d.b) * hi * 0.32;
+        var alpha = coh * tw * d.a * (0.82 + hi * 0.12);
         if (alpha <= 0.01) continue;
         var px = cx + d.x * size + d.sx * scatter + jx;
         var py = cy + d.y * size + d.sy * scatter + jy;
