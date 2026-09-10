@@ -402,21 +402,17 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
     }
 }
 
-final class LinuxGatewayHarness: @unchecked Sendable {
+private final class LinuxGatewayHarness: @unchecked Sendable {
     private let host: String
     let port: Int
     let usageRecorder: BurnBarUsageRecorder
     let proxyRouteLogStore: BurnBarProxyRouteLogStore
     let modelHealthStore: BurnBarGatewayModelHealthStore
-    let configStore: BurnBarConfigStore
+    private let configStore: BurnBarConfigStore
     private let server: BurnBarHTTPGatewayServer
     private let tempDirectory: URL
 
-    init(
-        host: String = "127.0.0.1",
-        authToken: String? = nil,
-        memoryEgress: ((BurnBarConfigStore, BurnBarUsageRecorder) -> BurnBarMemoryEgressEnforcer)? = nil
-    ) throws {
+    init(host: String = "127.0.0.1") throws {
         self.host = host
         self.port = try LinuxSocketSupport.reserveLoopbackPort(host: host)
         tempDirectory = FileManager.default.temporaryDirectory
@@ -446,15 +442,14 @@ final class LinuxGatewayHarness: @unchecked Sendable {
                 isEnabled: true,
                 host: host,
                 port: port,
-                authToken: authToken,
-                allowUnauthenticatedLoopback: authToken == nil
+                authToken: nil,
+                allowUnauthenticatedLoopback: true
             ),
             configStore: configStore,
             usageRecorder: usageRecorder,
             proxyRouteLogStore: proxyRouteLogStore,
             modelHealthStore: modelHealthStore,
-            logger: BurnBarDaemonLogger(category: "linux-gateway-tests"),
-            memoryEgress: memoryEgress?(configStore, usageRecorder)
+            logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
         )
     }
 
@@ -536,7 +531,7 @@ final class LinuxGatewayHarness: @unchecked Sendable {
     }
 }
 
-final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
+private final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
     struct Request: Sendable {
         let path: String
         let authorization: String?
@@ -546,8 +541,6 @@ final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
 
     enum Response: Sendable {
         case openAIChatStream
-        case openAIChatJSON
-        case openAIChatUpstream500
         case openAIChatPrimary429
         case openAIResponsesJSON
         case anthropicMessagesJSON
@@ -624,11 +617,6 @@ final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
     func stop() {
         acceptTask?.cancel()
         if listenFD >= 0 {
-            // `close` alone does not wake a thread blocked in `accept` on
-            // Linux; the blocked cooperative-pool worker would then starve
-            // XCTest's async teardown blocks. Shut the socket down first, as
-            // the gateway does.
-            _ = Glibc.shutdown(listenFD, Int32(SHUT_RDWR))
             Glibc.close(listenFD)
             listenFD = -1
         }
@@ -687,14 +675,6 @@ final class LinuxMockOpenAIStreamServer: @unchecked Sendable {
                 + #""usage":{"prompt_tokens":7,"completion_tokens":5,"total_tokens":12,"cache_creation_input_tokens":3,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}"# + "\n\n"
             _ = try? LinuxSocketSupport.sendAll(Data(usageChunk.utf8), to: clientFD)
             _ = try? LinuxSocketSupport.sendAll(Data("data: [DONE]\n\n".utf8), to: clientFD)
-        case .openAIChatJSON:
-            sendJSON(
-                #"{"id":"chatcmpl-linux-json","object":"chat.completion","model":"glm-5-turbo","choices":[{"index":0,"message":{"role":"assistant","content":"{\"facts\":[]}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":4,"total_tokens":16}}"#,
-                status: 200,
-                to: clientFD
-            )
-        case .openAIChatUpstream500:
-            sendJSON(#"{"error":{"message":"boom"}}"#, status: 500, to: clientFD)
         case .openAIChatPrimary429:
             if request.authorization == "Bearer primary-key" {
                 sendJSON(
@@ -796,12 +776,7 @@ data: {"type":"message_stop"}
 
     private func sendJSON(_ body: String, status: Int = 200, to clientFD: Int32) {
         let data = Data(body.utf8)
-        let reason: String
-        switch status {
-        case 429: reason = "Too Many Requests"
-        case 500: reason = "Internal Server Error"
-        default: reason = "OK"
-        }
+        let reason = status == 429 ? "Too Many Requests" : "OK"
         let head = "HTTP/1.1 \(status) \(reason)\r\n"
             + "Content-Type: application/json\r\n"
             + "Content-Length: \(data.count)\r\n"
@@ -812,7 +787,7 @@ data: {"type":"message_stop"}
     }
 }
 
-enum LinuxHTTPClient {
+private enum LinuxHTTPClient {
     struct Response {
         let statusCode: Int
         let headers: [String: String]
@@ -899,7 +874,7 @@ enum LinuxHTTPClient {
     }
 }
 
-enum LinuxSocketSupport {
+private enum LinuxSocketSupport {
     static func reserveLoopbackPort(host: String = "127.0.0.1") throws -> Int {
         let isIPv6 = host == "::1"
         let socketFD = Glibc.socket(isIPv6 ? AF_INET6 : AF_INET, Int32(SOCK_STREAM.rawValue), 0)
