@@ -129,12 +129,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
@@ -149,7 +149,7 @@ jobs:
       # (PHASE1_CORE_SPLIT_PLAN.md §"Windows build recipe"); also backs SwiftPM's
       # plugin/lldb tooling on Windows.
       - name: Install Python 3.10
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
         with:
           python-version: "3.10"
 
@@ -347,7 +347,7 @@ jobs:
           dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj -c Release --filter FullyQualifiedName~RustMode_RecordedStatuslineSnapshot --runtime win-x64
 
       - name: Upload x64 native engine bundle
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: openburnbar-native-engine-win-x64
           path: ${{ env.OPENBURNBAR_NATIVE_ENGINE_STAGE }}
@@ -410,12 +410,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: |
             8.0.x
@@ -432,7 +432,7 @@ jobs:
       # the Foundation Engine subset does not itself require Python, so the minor
       # divergence does not affect the compile under test.
       - name: Install Python 3.11 (ARM64)
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
         with:
           python-version: "3.11"
 
@@ -614,7 +614,7 @@ jobs:
           dotnet test windows/tests/quota/OpenBurnBar.App.Quota.Tests.csproj -c Release --filter FullyQualifiedName~RustMode_RecordedStatuslineSnapshot --runtime win-arm64
 
       - name: Upload ARM64 native engine bundle
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: openburnbar-native-engine-win-arm64
           path: ${{ env.OPENBURNBAR_NATIVE_ENGINE_STAGE }}

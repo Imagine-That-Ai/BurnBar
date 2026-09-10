@@ -64,7 +64,7 @@ jobs:
     if: github.event_name != 'merge_group' && needs.classify.outputs.macos == 'true'
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: false
 
@@ -76,13 +76,13 @@ jobs:
         run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Cache macOS Signal FFI artifact
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: Vendor/OpenBurnBarSignalFfiMac.xcframework
           key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
 
       - name: Cache Swift Package Manager dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             .spm-cache-new
@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload macOS idle/occlusion CPU evidence
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: macos-idle-occlusion-cpu-evidence
           path: ${{ runner.temp }}/macos-idle-occlusion-evidence/result.json
@@ -180,7 +180,7 @@ jobs:
         # because the derived-data dir (where attempts are written) is deleted
         # by the script's retry refreshes and EXIT trap before this step runs.
         if: failure()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: openburnbar-app-test-xcresults
           path: |
@@ -213,7 +213,7 @@ jobs:
     if: github.event_name != 'merge_group' && needs.classify.outputs.mobile == 'true'
     steps:
       - name: Check out repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           submodules: false
 
@@ -225,13 +225,13 @@ jobs:
         run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Cache iOS Signal FFI artifact
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: Vendor/OpenBurnBarSignalFfiIOS.xcframework
           key: ${{ runner.os }}-signal-ffi-ios-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
 
       - name: Cache Swift Package Manager dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5.0.5 (node24-native)
         with:
           path: |
             .spm-cache-new
