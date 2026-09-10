@@ -24,7 +24,7 @@ public enum MemoryExportStoreReader {
     /// that absence is §3.1 row 13, not an error.
     public static func read(_ db: Database) throws -> MemoryExportSourceSnapshot {
         var snapshot = MemoryExportSourceSnapshot()
-        snapshot.sourceQuickCheck = try String.fetchOne(db, sql: "PRAGMA quick_check") ?? "ok"
+        snapshot.sourceQuickCheck = try quickCheck(db)
         snapshot.storeIdentity = try storeIdentity(db)
 
         let memoryColumns = try columnNames(db, table: "agent_memories")
@@ -307,6 +307,30 @@ public enum MemoryExportStoreReader {
     }
 
     // MARK: - Probes
+
+    /// The tables the export reads, checked one by one. A whole-store
+    /// `PRAGMA quick_check` also validates every FTS5 inverted index, and on
+    /// SQLite builds where that validation writes scratch state it answers
+    /// "attempt to write a readonly database" inside the read-only transaction
+    /// this reader runs in — refusing every export over a table the export
+    /// never touches. Checking the exported tables keeps the guard about the
+    /// bytes that leave; tables that do not exist are skipped, not failed.
+    static let checkedTables = [
+        "agent_memories", "memory_body_snapshots", "memory_audit", "memory_provenance",
+        "memory_fact_tombstones", "memory_source_tombstones", "memory_quarantine_bodies",
+        "memory_embedding_refs", "project_memory_snapshots", "pcm_projects",
+        "pcm_project_aliases", "devices"
+    ]
+
+    static func quickCheck(_ db: Database) throws -> String {
+        var problems: [String] = []
+        for table in checkedTables where try tableExists(db, table) {
+            // The table names are this file's own literals, never a caller's.
+            let answers = try String.fetchAll(db, sql: "PRAGMA quick_check(\(table))")
+            problems += answers.filter { $0 != "ok" }
+        }
+        return problems.isEmpty ? "ok" : problems.joined(separator: "; ")
+    }
 
     public static func tableExists(_ db: Database, _ name: String) throws -> Bool {
         try Int.fetchOne(
