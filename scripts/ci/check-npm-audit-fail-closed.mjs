@@ -89,6 +89,18 @@ export const ADVISORY_ALLOWLIST = {
       "stream-json filter DoS: dev-only transitive of firebase-tools, which requires the 1.x CommonJS entry points; the only fix (3.5.0+) is ESM-only with renamed exports and breaks database:import/auth:import/Next.js at load time, and no patched 1.x exists.",
     expires: "2026-12-03",
   },
+  "GHSA-8cw4-87c7-c6xx": {
+    // reason: csv-parse 5.6.0 replaces a parsed record's prototype when a CSV
+    // carries a duplicated `__proto__` header with `columns` and
+    // `group_columns_by_name` both set. Only firebase-tools depends on it, as a
+    // functions/ devDependency that never reaches a deployed bundle, and it only
+    // parses developer-selected local files (`firebase auth:import`). The only
+    // fixed line is 7.0.2, a major firebase-tools has not adopted; an override
+    // is untested against auth:import. Paired with the osv-scanner.toml entry.
+    reason:
+      "csv-parse prototype replacement via duplicated __proto__ header: dev-only transitive of firebase-tools over developer-selected local CSV files; the only fix (7.0.2) is a major firebase-tools has not adopted",
+    expires: "2026-12-09",
+  },
 };
 
 function isObject(value) {

@@ -189,6 +189,14 @@ Current entries:
   command, not untrusted request bodies on a served event loop, which is the
   attack the advisory describes. Remove the entries when `firebase-tools`
   migrates to `stream-json` 3.x.
+- **GHSA-8cw4-87c7-c6xx** (csv-parse prototype replacement, expires 2026-12-09):
+  a duplicated `__proto__` header replaces the parsed record's prototype when
+  `columns` and `group_columns_by_name` are both set. The only depender is
+  `firebase-tools`, a `functions/` **devDependency** that never reaches a deployed
+  bundle and only parses developer-selected local CSV files (`firebase auth:import`).
+  The only fixed line is 7.0.2, a major firebase-tools has not adopted, and an
+  override is untested against auth:import. Paired entries in `osv-scanner.toml`
+  and `scripts/ci/check-npm-audit-fail-closed.mjs`.
 
 The previous entry (GHSA-mh99-v99m-4gvg, brace-expansion DoS, expiring
 2026-08-21) was retired when the vendored callable CommonJS shim in

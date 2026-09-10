@@ -51,3 +51,15 @@ ignoreUntil = 2026-12-09T00:00:00Z
 # monorepo-wide bump is a follow-up; the fixed line is 4.1.11.
 reason = "vitest mocker path traversal: moderate, dev-only test runner; monorepo-wide bump to 4.1.11 blocked by the npm arborist fault on website's lockfile; re-evaluate by 2026-12-09"
 
+
+[[IgnoredVulns]]
+id = "GHSA-8cw4-87c7-c6xx"
+ignoreUntil = 2026-12-09T00:00:00Z
+# reason: csv-parse 5.6.0 prototype replacement through a duplicated
+# `__proto__` header when `columns` and `group_columns_by_name` are both set.
+# The only depender is firebase-tools (a functions/ devDependency, never a
+# deployed bundle), which reads developer-selected local CSV files for
+# `firebase auth:import`. The only fixed line is 7.0.2, a major firebase-tools
+# has not adopted; forcing it through an override is untested against
+# auth:import. Re-evaluate when firebase-tools bumps csv-parse.
+reason = "csv-parse prototype replacement via duplicated __proto__ header: dev-only transitive of firebase-tools over developer-selected local CSV files; the only fix (7.0.2) is a major firebase-tools has not adopted; re-evaluate by 2026-12-09"
