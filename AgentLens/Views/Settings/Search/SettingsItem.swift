@@ -94,6 +94,11 @@ enum SettingsPageRoute: Hashable, Codable {
     case indexing
     case sessionSummaries
 
+    // Memory Sync — the canonical pane, pushed from BOTH the Devices & Sync
+    // tab and the Search & Memory page so the two entry points share one
+    // implementation instead of rendering two copies that can disagree.
+    case memorySync
+
     // AI Inbox
     case aiInboxRoot
 
@@ -201,14 +206,29 @@ enum SettingsAnchor {
     // General → Refresh
     static let refreshInterval = "general.refresh.interval"
 
-    // General → Indexing
+    // General → Search & Memory
     static let indexingToggle = "general.indexing.enabled"
     static let indexingMemory = "general.indexing.memory"
-    static let indexingMemoryDeviceSync = "general.indexing.memoryDeviceSync"
     static let indexingMemoryCloudModels = "general.indexing.memoryCloudModels"
-    static let indexingTeamMemory = "general.indexing.teamMemory"
-    static let indexingMemoryHealth = "general.indexing.memoryHealth"
-    static let indexingMemorySyncStatus = "general.indexing.memorySyncStatus"
+    /// The drill row on the Search & Memory page that leads to the canonical
+    /// Memory Sync pane. Its own anchor, so search can land a member on the
+    /// signpost when they are already reading the memory controls.
+    static let indexingMemorySyncLink = "general.indexing.memorySyncLink"
+
+    // Devices & Sync → Memory Sync
+    //
+    // These five used to be `general.indexing.*`, because every memory-sync
+    // control lived inside the Indexing & Search page. They moved with the
+    // controls: an anchor names where a setting IS, and search resolves an
+    // anchor to exactly one page route (`SettingsManifest.anchorIndex`), so
+    // leaving the old ids would have pointed settings search at the page the
+    // controls are no longer on.
+    static let memorySyncOverview = "devicesAndSync.memorySync.overview"
+    static let memorySyncBackup = "devicesAndSync.memorySync.backup"
+    static let memorySyncDeviceToggle = "devicesAndSync.memorySync.deviceToggle"
+    static let memorySyncTeam = "devicesAndSync.memorySync.team"
+    static let memorySyncHealth = "devicesAndSync.memorySync.health"
+    static let memorySyncStatus = "devicesAndSync.memorySync.status"
 
     // General → Summaries
     static let summariesAuto = "general.summaries.auto"

@@ -146,9 +146,15 @@ final class SettingsRouter {
              .indexing, .sessionSummaries:
             return [route]
 
-        // AI Inbox — top-level tab; also reachable as a drill from Indexing.
+        // AI Inbox — top-level tab; also reachable as a drill from Search & Memory.
         case .aiInboxRoot:
             return []
+
+        // Memory Sync — one canonical pane with two doors into it. A single
+        // drill either way, so the same path works whether the member arrived
+        // from Devices & Sync or from the Search & Memory page.
+        case .memorySync:
+            return [route]
 
         // Daemon subpages.
         case .daemonRoot:

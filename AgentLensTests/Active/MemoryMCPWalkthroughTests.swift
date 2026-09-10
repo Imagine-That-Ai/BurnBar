@@ -92,7 +92,7 @@ final class MemoryMCPWalkthroughTests: XCTestCase {
             step.tourAnchor, SettingsAnchor.indexingMemory,
             "The 'saves itself' page must land on the real on-device Memory controls, not the decorative Cloud hero"
         )
-        XCTAssertEqual(step.findPath, "Settings › General › Indexing")
+        XCTAssertEqual(step.findPath, "Settings › General › Search & Memory")
 
         let item = SettingsManifest.all.first { $0.anchorID == step.tourAnchor }
         XCTAssertEqual(item?.tab, .general)
@@ -130,7 +130,11 @@ final class MemoryMCPWalkthroughTests: XCTestCase {
 
         // The Control page must be honest about what's free vs. Cloud Pro so
         // a free user never reads a promise that dead-ends on a paywall.
-        XCTAssertTrue(step.body.contains("General › Indexing"), "Free on-device controls must be named")
+        XCTAssertTrue(step.body.contains("General › Search & Memory"), "Free on-device controls must be named")
+        XCTAssertTrue(
+            step.body.contains("Devices & Sync › Memory Sync"),
+            "The cloud-backup opt-in the copy offers must name the page it actually lives on"
+        )
         XCTAssertTrue(step.body.contains("Cloud Pro"), "The workbench's tier requirement must be named")
     }
 

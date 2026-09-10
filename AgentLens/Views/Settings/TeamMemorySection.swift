@@ -71,7 +71,7 @@ struct TeamMemorySection: View {
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .settingsAnchor(SettingsAnchor.indexingTeamMemory)
+        .settingsAnchor(SettingsAnchor.memorySyncTeam)
         .task { await model.refresh() }
         .sheet(isPresented: $showCreateSheet) { createSheet }
         .sheet(isPresented: $showJoinSheet) { joinSheet }

@@ -87,8 +87,12 @@ final class OnboardingMemoryStepTests: XCTestCase {
     /// two places the same controls live afterwards.
     func testSkipNoteNamesWhereEverythingLivesAfterwards() {
         let note = OnboardingMemoryContent.skipNote
-        XCTAssertTrue(note.contains("Settings \u{203A} Connections \u{203A} Apps"))
-        XCTAssertTrue(note.contains("Settings \u{203A} General \u{203A} Indexing"))
+        // "Connections › Apps" was this assertion until the installer moved to
+        // Agents › CLIs in #2555; the copy moved and the test did not, so this
+        // case has been red on main since. Pinned to the shipped string now.
+        XCTAssertTrue(note.contains("Settings \u{203A} Agents \u{203A} CLIs"))
+        XCTAssertTrue(note.contains("Settings \u{203A} General \u{203A} Search & Memory"))
+        XCTAssertTrue(note.contains("Settings \u{203A} Devices & Sync \u{203A} Memory Sync"))
     }
 
     /// The step reuses the Settings installer, so every client it can wire is

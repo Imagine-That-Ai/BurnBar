@@ -128,8 +128,30 @@ struct DevicesAndSyncSettingsView: View {
                         )
                     }
                     .settingsAnchor(SettingsAnchor.cloudSyncToggle)
+
+                    // The row Alberto went looking for and did not find. Every
+                    // memory-sync control used to live three levels down the
+                    // General tab, under a page called "Indexing & Search" —
+                    // while this section, literally headed "Sync", held one row
+                    // about conversations. This pushes the SAME pane the Search
+                    // & Memory page links to; there is one implementation.
+                    NavigationLink(value: SettingsPageRoute.memorySync) {
+                        SettingsDrillRow(
+                            icon: "brain.head.profile",
+                            iconTint: DesignSystem.Colors.whimsy,
+                            title: MemorySyncCopy.title,
+                            subtitle: MemorySyncCopy.rowSubtitle,
+                            value: MemorySyncCopy.rowValue(settingsManager),
+                            valueTint: settingsManager.memoryDeviceSyncEnabled
+                                ? DesignSystem.Colors.success
+                                : DesignSystem.Colors.textMuted
+                        )
+                    }
                 } header: {
                     Text("Sync")
+                } footer: {
+                    Text("Conversation sync and memory sync are separate consents. Turning one on does not turn the other on.")
+                        .font(DesignSystem.Typography.tiny)
                 }
 
                 Section {

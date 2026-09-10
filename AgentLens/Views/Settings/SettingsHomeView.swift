@@ -163,7 +163,7 @@ struct SettingsHomeView: View {
                     tab: .devicesAndSync
                 )
                 statusCard(
-                    title: "Indexing",
+                    title: "Search & Memory",
                     icon: "magnifyingglass.circle.fill",
                     status: settingsManager.conversationIndexingEnabled ? "On" : "Off",
                     tint: settingsManager.conversationIndexingEnabled ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted,
