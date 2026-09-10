@@ -22,6 +22,23 @@ if str(_PARENT) not in sys.path:
 import memory_engine as me  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _no_installed_courier(monkeypatch: pytest.MonkeyPatch):
+    """
+    Keep the suite hermetic against the machine it runs on.
+
+    `_signed_cli_path()` probes `/Applications/OpenBurnBar.app/...` for the signed
+    CLI courier. On a developer Mac with the app installed that courier verifies,
+    so the server routes daemon reads and memory-mirror writes through the REAL
+    local daemon — quietly bypassing every `pcm.write_authority` /
+    `pcm.call_daemon` stub these tests install, and making results depend on
+    whether OpenBurnBar happens to be installed. Emptying the candidate list
+    removes that dependency. Tests that want a courier set `OPENBURNBAR_CLI_PATH`
+    (honoured under pytest) or point this env var at their own fixture.
+    """
+    monkeypatch.setenv("OPENBURNBAR_APP_BUNDLE_PATHS", "")
+
+
 @pytest.fixture
 def server_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """An empty app database, a dead daemon socket, and no capabilities granted:

@@ -566,6 +566,225 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(BurnBarMemoryRanking.tokenize("café foo_bar"), ["caf", "foo_bar", "foo", "bar"])
     }
 
+    /// B9: every served hit carries the engine's breakdown, member for member.
+    /// `_read.py` builds exactly `lexicalRank, bm25, semanticRank, cosine,
+    /// salience, recency, rerankScore, reranker` beside a sibling `matchedBy`.
+    func test_daemon_ranking_returns_the_same_why_components_as_the_engine() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-why-test")
+        )
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Always compile Swift code before pushing to main branch.",
+                projectPath: fixture.project.path,
+                kind: "procedure",
+                sourcePath: "docs/superpowers/rules.md"
+            )
+        )
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Python memory engine maintains under 1500 lines per module.",
+                projectPath: fixture.project.path,
+                kind: "fact"
+            )
+        )
+
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "compile Swift code", projectPath: fixture.project.path)
+        )
+        let firstHit = try XCTUnwrap(recall.hits.first)
+        XCTAssertEqual(firstHit.memoryID, remembered.memoryID)
+
+        let why = try XCTUnwrap(firstHit.why, "every ranked hit reports why it was served")
+        let matchedBy = try XCTUnwrap(firstHit.matchedBy)
+
+        // The lexical lane always runs, so it is always reported.
+        XCTAssertEqual(why.lexicalRank, 1)
+        XCTAssertGreaterThan(try XCTUnwrap(why.bm25), 0)
+        XCTAssertGreaterThan(why.salience, 0)
+        XCTAssertGreaterThan(why.recency, 0)
+        // The daemon runs no reranker; the engine reports nil for both with
+        // rerank off, so the daemon does too rather than inventing a value.
+        XCTAssertNil(why.rerankScore)
+        XCTAssertNil(why.reranker)
+
+        // The semantic lane only runs when an embedding provider is available.
+        // Whichever way the environment falls, the lane and the members agree.
+        if why.semanticRank == nil {
+            XCTAssertNil(why.cosine, "no semantic rank means no cosine to report")
+            XCTAssertEqual(matchedBy, "lexical")
+        } else {
+            XCTAssertNotNil(why.cosine)
+            XCTAssertEqual(matchedBy, "hybrid")
+        }
+
+        let explanation = try XCTUnwrap(firstHit.whyExplanation)
+        XCTAssertEqual(
+            String(explanation.prefix("Matched by \(matchedBy): lexical #1 (bm25 ".count)),
+            "Matched by \(matchedBy): lexical #1 (bm25 ",
+            "one explanation line per hit, opening with the lane and the lexical rank"
+        )
+
+        // Four-decimal rounding, matching `round(value, 4)` on the engine side.
+        for value in [why.bm25, why.cosine, why.salience, why.recency].compactMap({ $0 }) {
+            XCTAssertEqual(value, (value * 10000).rounded(.toNearestOrEven) / 10000, accuracy: 1e-12)
+        }
+    }
+
+    /// B9 acceptance: the breakdown is a report, not an input.
+    ///
+    /// The ordering and the scores are pinned as LITERALS against a fixed
+    /// four-memory fixture with the semantic lane disabled, so the ranking is a
+    /// pure function of the corpus and the query: change a BM25 knob, a kind
+    /// weight, a fusion weight or the salience/recency curve and this test fails
+    /// instead of shifting quietly. (Comparing two recalls of the same build
+    /// proves determinism, not invariance — both would move together.)
+    ///
+    /// The independent proof that THIS branch changed no score:
+    /// `git diff org/main -- OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarMemoryRanking.swift`
+    /// is a single pure-append hunk (`@@ -196,4 +196,55 @@`, 51 added lines, 0
+    /// removed, 0 context lines modified), and in `BurnBarProjectCodeMemoryStore.recall`
+    /// the fused-score line
+    /// `scores[entry.key] = entry.value * (0.6 + 0.4 * min(1.0, max(0.0, salience))) * recency`
+    /// is byte-identical to `org/main`; the only insertion inside that `reduce`
+    /// is the `whyByID[…] =` write, which is never read back into `scores` or
+    /// `rankedIDs`.
+    func test_reporting_the_why_breakdown_does_not_change_recall_ordering() throws {
+        let fixture = try makeFixture()
+        // The semantic lane is disabled on purpose: the OS sentence embedder is
+        // present on some machines and absent on others, and a pinned ordering
+        // has to be a property of the ranker, not of the host.
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-why-ordering-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        var memoryIDs: [String] = []
+        for (index, text) in [
+            "Always compile Swift code before pushing to main branch.",
+            "Swift code review happens before the merge queue.",
+            "Python memory engine maintains under 1500 lines per module.",
+            "The daemon compiles with a Swift 6 toolchain."
+        ].enumerated() {
+            memoryIDs.append(
+                try store.remember(
+                    BurnBarProjectMemoryRememberRequest(
+                        text: text,
+                        projectPath: fixture.project.path,
+                        kind: index.isMultiple(of: 2) ? "procedure" : "fact"
+                    )
+                ).memoryID
+            )
+        }
+
+        let request = BurnBarProjectMemoryRecallRequest(
+            query: "compile Swift code",
+            projectPath: fixture.project.path
+        )
+        let first = try store.recall(request)
+        let second = try store.recall(request)
+
+        // The fixture's ordering, as literals: "Always compile Swift code before
+        // pushing to main branch." (all three query terms) ahead of "The daemon
+        // compiles with a Swift 6 toolchain." and then "Swift code review happens
+        // before the merge queue." — memories 0, 3, 1 in insertion order.
+        // "Python memory engine maintains under 1500 lines per module." shares no
+        // query token and is not served at all.
+        XCTAssertEqual(first.hits.map(\.memoryID), [memoryIDs[0], memoryIDs[3], memoryIDs[1]])
+        XCTAssertEqual(first.hits.map(\.rank), [0, 1, 2])
+        XCTAssertEqual(first.hits.map(\.memoryID), second.hits.map(\.memoryID))
+        XCTAssertEqual(first.hits.map(\.rank), second.hits.map(\.rank))
+
+        // Every served hit is lexical-only here, and each reports the score that
+        // put it where it is. These are the ranker's own numbers under the current
+        // BM25 knobs (k1 1.2, b 0.75), kind weights and salience/recency curves:
+        // move any of them and this array moves with it.
+        XCTAssertEqual(first.hits.map(\.matchedBy), ["lexical", "lexical", "lexical"])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.lexicalRank }, [1, 2, 3])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.bm25 }, [1.6614, 1.2311, 1.0673])
+        // `procedure` and `fact` share the 0.85 kind weight, and `remember`
+        // defaults to confidence 1.0 with no accesses yet.
+        XCTAssertEqual(first.hits.compactMap { $0.why?.salience }, [0.85, 0.85, 0.85])
+        // Freshly written, so the 365-day half-life has not moved: 0.5 + 0.5 = 1.0.
+        XCTAssertEqual(first.hits.compactMap { $0.why?.recency }, [1.0, 1.0, 1.0])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.semanticRank }, [])
+        XCTAssertEqual(first.hits.compactMap { $0.why?.cosine }, [])
+    }
+
+    /// The breakdown formats one line per hit, in the engine's field order.
+    func test_the_why_breakdown_renders_one_explanation_line() {
+        let (matchedBy, why) = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("other", 9.0), ("mem_unit", 4.25)],
+            semantic: [("mem_unit", 0.91)],
+            salience: 0.85,
+            recency: 0.99
+        )
+
+        XCTAssertEqual(matchedBy, "hybrid")
+        XCTAssertEqual(why.lexicalRank, 2)
+        XCTAssertEqual(why.bm25, 4.25)
+        XCTAssertEqual(why.semanticRank, 1)
+        XCTAssertEqual(why.cosine, 0.91)
+        XCTAssertEqual(
+            why.explanationLine(matchedBy: matchedBy),
+            "Matched by hybrid: lexical #2 (bm25 4.25), semantic #1 (cos 0.91), salience 0.85, recency 0.99"
+        )
+
+        let lexicalOnly = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("mem_unit", 1.5)],
+            semantic: [],
+            salience: 0.5,
+            recency: 1.0
+        )
+        XCTAssertEqual(lexicalOnly.matchedBy, "lexical")
+        XCTAssertNil(lexicalOnly.why.semanticRank)
+        XCTAssertEqual(
+            lexicalOnly.why.explanationLine(matchedBy: lexicalOnly.matchedBy),
+            "Matched by lexical: lexical #1 (bm25 1.50), salience 0.50, recency 1.00"
+        )
+
+        // The fourth lane. The store never reaches it — `whyByID` is keyed off
+        // `fusedScores`, whose keys always came from a lane, and the browse
+        // listing reports no breakdown at all — but the engine DOES emit it
+        // (`_read.py`: `"hybrid" if lr and sr else ("lexical" if lr else
+        // ("semantic" if sr else "browse"))`), so the daemon mirrors it rather
+        // than diverging on a case a future browse-with-scores path would hit.
+        let neitherLane = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("other", 9.0)],
+            semantic: [("another", 0.5)],
+            salience: 0.6,
+            recency: 0.75
+        )
+        XCTAssertEqual(neitherLane.matchedBy, "browse")
+        XCTAssertNil(neitherLane.why.lexicalRank)
+        XCTAssertNil(neitherLane.why.bm25)
+        XCTAssertNil(neitherLane.why.semanticRank)
+        XCTAssertNil(neitherLane.why.cosine)
+        XCTAssertEqual(
+            neitherLane.why.explanationLine(matchedBy: neitherLane.matchedBy),
+            "Matched by browse: salience 0.60, recency 0.75"
+        )
+
+        // The engine rounds with Python's `round`, which is half-to-EVEN. 0.03125
+        // is exact in binary and ×10⁴ is exactly 312.5, so the two rules disagree
+        // here: half-to-even gives 0.0312, half-away-from-zero 0.0313. The daemon
+        // reports the engine's digit.
+        let tie = BurnBarMemoryRanking.why(
+            id: "mem_unit",
+            lexical: [("mem_unit", 0.03125)],
+            semantic: [],
+            salience: 0.03125,
+            recency: 1.0
+        )
+        XCTAssertEqual(tie.why.bm25, 0.0312)
+        XCTAssertEqual(tie.why.salience, 0.0312)
+    }
+
     func testMemoryRecallMatchesSourcePathTokens() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "memory-source-path-test"))
@@ -1716,6 +1935,341 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(identity.projectID, transitionProjectID)
     }
 
+    /// A4 / engine parity: confirmed adoption -> git fingerprint -> provisional
+    /// path-derived mapping, in that order, on both the read-write and the
+    /// read-only path. The engine walks the same three rungs in
+    /// `memory_engine/store.py: resolve_project`.
+    func test_daemon_project_identity_follows_the_same_override_order() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-order-test")
+        )
+
+        // 3rd rung: a folder with no mapping and no git root is provisional — a
+        // path-derived fingerprint, which the engine's doctor flags as such.
+        let provisional = try store.resolveProjectIdentity(root: fixture.project)
+        XCTAssertTrue(
+            provisional.fingerprint.hasPrefix("path:"),
+            "a non-git folder resolves provisionally, not to a stable identity"
+        )
+
+        // 2nd rung: a git root takes the git identity.
+        let gitRoot = try makeGitFolder(in: fixture.root, named: "GitIdentityFixture", origin: "daemon-repo")
+        let gitIdentity = try store.resolveProjectIdentity(root: gitRoot)
+        XCTAssertTrue(gitIdentity.fingerprint.hasPrefix("git:"))
+        XCTAssertNotEqual(gitIdentity.projectID, provisional.projectID)
+
+        // 1st rung: a CONFIRMED adoption for the path wins over everything the
+        // folder's contents imply.
+        let explicitID = "proj_explicit_mapped_override_999"
+        try adoptProject(database: fixture.database, path: fixture.project, projectID: explicitID)
+
+        XCTAssertEqual(try store.resolveProjectIdentity(root: fixture.project).projectID, explicitID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: fixture.project).projectID,
+            explicitID,
+            "the read-only path must resolve identically or a recall and a write disagree"
+        )
+    }
+
+    /// (a) Rung 1 beats rung 2: a folder whose CONTENTS carry a git fingerprint
+    /// another project already owns still resolves to the project it was adopted
+    /// into, and the adoption marker survives being resolved.
+    func test_a_confirmed_adoption_alias_outranks_a_differing_git_fingerprint() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-adoption-test")
+        )
+
+        // A repository this device already knows, by its git fingerprint.
+        let twin = try makeGitFolder(in: fixture.root, named: "AdoptionTwin", origin: "shared-origin")
+        let twinIdentity = try store.resolveProjectIdentity(root: twin)
+        XCTAssertTrue(twinIdentity.fingerprint.hasPrefix("git:"))
+
+        // A second checkout of the same repository — byte-identical fingerprint —
+        // that the member has adopted into a different project.
+        let adopted = try makeGitFolder(in: fixture.root, named: "AdoptedCheckout", origin: "shared-origin")
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: adopted),
+            twinIdentity.fingerprint,
+            "precondition: both folders' contents imply the same identity"
+        )
+        let adoptedID = "proj_00000000000000000000000000adopt"
+        try adoptProject(database: fixture.database, path: adopted, projectID: adoptedID)
+
+        let resolved = try store.resolveProjectIdentity(root: adopted)
+        XCTAssertEqual(resolved.projectID, adoptedID)
+        XCTAssertNotEqual(resolved.projectID, twinIdentity.projectID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: adopted).projectID,
+            adoptedID,
+            "the read-only path must agree with the read-write path"
+        )
+
+        // Resolving must not overwrite the adoption marker with the folder's own
+        // git fingerprint, or the very next resolve would forget the adoption and
+        // hand the folder to the twin's project.
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT identity_fingerprint FROM pcm_projects WHERE project_id = \(sqlLiteral(adoptedID))"
+            ).first,
+            "explicit:\(adoptedID)"
+        )
+        XCTAssertEqual(try store.resolveProjectIdentity(root: adopted).projectID, adoptedID)
+
+        // The twin keeps its own identity; nothing stole its fingerprint.
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: twin).projectID, twinIdentity.projectID)
+    }
+
+    /// (b) Rung 2 beats rung 3, which is the bug this test exists for: a directory
+    /// that was visited once (and so carries an automatic, PROVISIONAL alias) and
+    /// is LATER reused for a checkout of a repository this device already knows
+    /// must resolve to that repository's project. Following the alias instead
+    /// would serve and write repository A's memories inside repository B — and
+    /// the engine, resolving the same folder, would pick B.
+    func test_a_provisional_path_alias_loses_to_a_known_git_fingerprint() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-reuse-test")
+        )
+
+        // Repository B, known to this device from another checkout.
+        let checkout = try makeGitFolder(in: fixture.root, named: "ReusedCheckout", origin: "reused-repo")
+        let checkoutIdentity = try store.resolveProjectIdentity(root: checkout)
+        XCTAssertTrue(checkoutIdentity.fingerprint.hasPrefix("git:"))
+
+        // A directory used for something else first: provisional id A, with a
+        // memory of its own and therefore an automatic alias row.
+        let folder = fixture.root.appendingPathComponent("ReusedDirectory", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "A note that predates the repository in this directory.",
+                projectPath: folder.path,
+                kind: "fact"
+            )
+        )
+        let provisionalIdentity = try store.readOnlyProjectIdentity(root: folder)
+        XCTAssertTrue(provisionalIdentity.fingerprint.hasPrefix("path:"))
+        XCTAssertNotEqual(provisionalIdentity.projectID, checkoutIdentity.projectID)
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT project_id FROM pcm_project_aliases
+                WHERE path_hash = \(sqlLiteral(provisionalIdentity.pathHash))
+                """
+            ).first,
+            provisionalIdentity.projectID,
+            "precondition: the directory carries an automatic alias, not an adoption"
+        )
+
+        // The directory is now a checkout of repository B.
+        try runGit(["init"], cwd: folder)
+        try runGit(["remote", "add", "origin", "https://example.com/org/reused-repo.git"], cwd: folder)
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: folder),
+            checkoutIdentity.fingerprint,
+            "precondition: the directory's contents now imply repository B's identity"
+        )
+
+        // The fingerprint wins on both paths — the provisional alias does not.
+        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, checkoutIdentity.projectID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: folder).projectID,
+            checkoutIdentity.projectID,
+            "the read-only path must agree with the read-write path"
+        )
+
+        // ...and the directory's earlier, unrelated memory does not come along.
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "note that predates the repository", projectPath: folder.path)
+        )
+        XCTAssertTrue(
+            recall.hits.allSatisfy { $0.projectID == checkoutIdentity.projectID },
+            "recall in the reused directory must serve only repository B's memories"
+        )
+
+        // The move is reported once per process, with opaque ids and no path.
+        let split = BurnBarProjectIdentitySplit(
+            provisionalProjectID: provisionalIdentity.projectID,
+            gitProjectID: checkoutIdentity.projectID
+        )
+        XCTAssertEqual(
+            BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count,
+            1,
+            "the superseded provisional mapping is observed exactly once"
+        )
+        XCTAssertEqual(try store.resolveProjectIdentity(root: folder).projectID, checkoutIdentity.projectID)
+        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().filter { $0 == split }.count, 1)
+        XCTAssertFalse(BurnBarProjectIdentityDiagnostics.noteSplit(split))
+        XCTAssertEqual(
+            split.logMetadata,
+            ["project_id": provisionalIdentity.projectID, "git_project_id": checkoutIdentity.projectID]
+        )
+        XCTAssertTrue(split.logMetadata.values.allSatisfy { $0.contains("/") == false })
+
+        // A folder whose mapping already agrees with its fingerprint is not a
+        // split, and neither is an adoption that outranked one.
+        let before = BurnBarProjectIdentityDiagnostics.observedSplits().count
+        _ = try store.resolveProjectIdentity(root: checkout)
+        XCTAssertEqual(BurnBarProjectIdentityDiagnostics.observedSplits().count, before)
+    }
+
+    /// (c) Unchanged behaviour: a folder nobody has mapped, whose git fingerprint
+    /// no project owns, gets the id derived from that fingerprint — the same id
+    /// the engine's `project_id_for_fingerprint` mints.
+    func test_an_unmapped_folder_with_an_unknown_fingerprint_gets_a_fresh_id() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-fresh-test")
+        )
+        let fresh = try makeGitFolder(in: fixture.root, named: "FreshCheckout", origin: "fresh-repo")
+        let fingerprint = BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: fresh)
+        XCTAssertTrue(fingerprint.hasPrefix("git:"))
+        let expected = BurnBarProjectCodeMemoryStore.projectID(
+            forFingerprint: fingerprint,
+            fallbackProjectID: BurnBarProjectCodeMemoryStore.legacyProjectID(for: fresh)
+        )
+
+        let readOnly = try store.readOnlyProjectIdentity(root: fresh)
+        let resolved = try store.resolveProjectIdentity(root: fresh)
+
+        XCTAssertEqual(resolved.projectID, expected)
+        XCTAssertEqual(
+            readOnly.projectID,
+            resolved.projectID,
+            "the read-only path must agree with the read-write path before anything is written"
+        )
+        XCTAssertEqual(resolved.fingerprint, fingerprint)
+    }
+
+    /// A4 red team: repository CONTENTS must never re-scope a folder the member
+    /// ADOPTED. A hostile (or merely careless) `git remote add` that makes an
+    /// adopted folder's fingerprint collide with another project's leaves the
+    /// adoption alone, so recall in that folder returns none of the victim
+    /// project's rows and no write lands under the victim id.
+    func test_an_adopted_folder_matching_another_projects_git_fingerprint_is_not_rescoped() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "identity-redteam-test")
+        )
+
+        // Victim: a git checkout with a memory of its own.
+        let victim = try makeGitFolder(in: fixture.root, named: "VictimProject", origin: "victim")
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The victim project deploys on Thursday.",
+                projectPath: victim.path,
+                kind: "fact"
+            )
+        )
+        let victimIdentity = try store.readOnlyProjectIdentity(root: victim)
+        XCTAssertTrue(victimIdentity.fingerprint.hasPrefix("git:"))
+
+        // Hostile folder: adopted into a project of its own, with its own memory.
+        let hostile = fixture.root.appendingPathComponent("HostileProject", isDirectory: true)
+        try FileManager.default.createDirectory(at: hostile, withIntermediateDirectories: true)
+        let hostileID = "proj_000000000000000000000000hostile"
+        try adoptProject(database: fixture.database, path: hostile, projectID: hostileID)
+        _ = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The hostile folder has its own unrelated note.",
+                projectPath: hostile.path,
+                kind: "fact"
+            )
+        )
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: hostile).projectID, hostileID)
+        XCTAssertNotEqual(hostileID, victimIdentity.projectID)
+
+        // The attacker makes the folder's CONTENTS claim the victim's identity.
+        try runGit(["init"], cwd: hostile)
+        try runGit(["remote", "add", "origin", "https://example.com/org/victim.git"], cwd: hostile)
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.projectIdentityFingerprint(root: hostile),
+            victimIdentity.fingerprint,
+            "precondition: the folders' contents now imply the same identity"
+        )
+
+        // Identity does not move, on either path...
+        XCTAssertEqual(try store.readOnlyProjectIdentity(root: hostile).projectID, hostileID)
+        XCTAssertEqual(try store.resolveProjectIdentity(root: hostile).projectID, hostileID)
+        XCTAssertEqual(
+            try store.readOnlyProjectIdentity(root: victim).projectID,
+            victimIdentity.projectID,
+            "the victim keeps its own identity too"
+        )
+
+        // ...recall in the hostile folder returns none of the victim's rows...
+        let recall = try store.recall(
+            BurnBarProjectMemoryRecallRequest(query: "victim project deploys Thursday", projectPath: hostile.path)
+        )
+        XCTAssertTrue(
+            recall.hits.allSatisfy { $0.projectID == hostileID },
+            "recall in the hostile folder must not serve another project's memories"
+        )
+        XCTAssertFalse(recall.hits.contains { $0.bodyRedacted.contains("deploys on Thursday") })
+
+        // ...and a write from the hostile folder does not land under the victim id.
+        let written = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "A note written after the fingerprint collision.",
+                projectPath: hostile.path,
+                kind: "fact"
+            )
+        )
+        XCTAssertEqual(written.projectID, hostileID)
+        XCTAssertNotEqual(written.projectID, victimIdentity.projectID)
+    }
+
+    /// The engine's `map_project` (`memory_engine/store.py`) is what a confirmed
+    /// `project adopt` runs: it stamps `explicit:<project id>` as the project's
+    /// identity fingerprint and points the folder's alias row at that project.
+    /// The daemon has no adopt RPC yet (follow-up packet P31), so a test writes
+    /// the same two rows the engine's adoption writes.
+    private func adoptProject(database: URL, path: URL, projectID: String) throws {
+        let canonicalPath = path.resolvingSymlinksInPath().standardizedFileURL.path
+        let pathHash = BurnBarProjectCodeMemoryStore.sha256Hex(canonicalPath)
+        let aliasID = "alias_" + String(BurnBarProjectCodeMemoryStore.sha256Hex(pathHash).prefix(32))
+        let now = BurnBarProjectCodeMemoryStore.isoNow()
+        try sqliteExecute(
+            database: database,
+            sql: """
+            INSERT OR IGNORE INTO pcm_projects
+                (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
+            VALUES
+                (\(sqlLiteral(projectID)), 2, \(sqlLiteral("explicit:\(projectID)")), \
+            \(sqlLiteral(path.lastPathComponent)), \(sqlLiteral(canonicalPath)), '\(now)', '\(now)');
+
+            INSERT INTO pcm_project_aliases
+                (id, project_id, alias_path, path_hash, first_seen_at, last_seen_at)
+            VALUES
+                (\(sqlLiteral(aliasID)), \(sqlLiteral(projectID)), \(sqlLiteral(canonicalPath)), \
+            \(sqlLiteral(pathHash)), '\(now)', '\(now)')
+            ON CONFLICT(path_hash) DO UPDATE SET
+                project_id = excluded.project_id,
+                alias_path = excluded.alias_path,
+                last_seen_at = excluded.last_seen_at
+            """
+        )
+    }
+
+    /// A git work tree whose only stable identity part is its origin remote, so two
+    /// folders built with the same `origin` share a fingerprint exactly.
+    private func makeGitFolder(in root: URL, named name: String, origin: String) throws -> URL {
+        let folder = root.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try runGit(["init"], cwd: folder)
+        try runGit(["remote", "add", "origin", "https://example.com/org/\(origin).git"], cwd: folder)
+        return folder
+    }
+
     func testIndexProjectEvictsOldestFilesFirstUnderBudget() throws {
         let fixture = try makeFixture()
         let sources = fixture.project.appendingPathComponent("Sources")
@@ -2377,6 +2931,801 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             ),
             [engineID],
             "the label the cloud copy is keyed on survives so the forget can reach it"
+        )
+    }
+
+    // MARK: - Memory Blind Sync inbox (PR-2)
+
+    /// Stands in for the app: creates `remote_sync_watermarks` the way the app's
+    /// `v30` migration does and publishes the device-sync consent marker for
+    /// `userID`. The daemon never creates this table — it belongs to the app's
+    /// migrator — so a fixture that wants a consenting member has to supply it,
+    /// which is exactly the boundary being tested: no app, no consent, no drain.
+    /// GRDB's own `Date` binding format, which is what the app's marker write
+    /// puts in `lastSyncedAt`. Spelled out here so the fixture is byte-identical
+    /// to production and the daemon's freshness comparison is tested against the
+    /// string it will actually meet.
+    private func grdbDateLiteral(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.string(from: date)
+    }
+
+    private func seedDeviceSyncConsentMarker(
+        database: URL,
+        userID: String,
+        refreshedAt: Date = Date()
+    ) throws {
+        try sqliteExecute(
+            database: database,
+            sql: """
+            CREATE TABLE IF NOT EXISTS remote_sync_watermarks (
+                accountUid TEXT NOT NULL,
+                collectionKind TEXT NOT NULL,
+                lastSyncedAt DATETIME NOT NULL,
+                lastProcessedRemoteUpdateAt DATETIME,
+                version INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (accountUid, collectionKind)
+            );
+            DELETE FROM remote_sync_watermarks
+            WHERE collectionKind = \(sqlLiteral(BurnBarMemoryDeviceSyncMarker.collectionKind));
+            INSERT INTO remote_sync_watermarks
+                (accountUid, collectionKind, lastSyncedAt, lastProcessedRemoteUpdateAt, version)
+            VALUES (\(sqlLiteral(userID)), \(sqlLiteral(BurnBarMemoryDeviceSyncMarker.collectionKind)),
+                    \(sqlLiteral(grdbDateLiteral(refreshedAt))), NULL, 1);
+            """
+        )
+    }
+
+    /// Withdraws consent exactly as the app does when the sub-toggle goes off,
+    /// the member signs out, or the entitlement lapses: the marker row is deleted.
+    private func clearDeviceSyncConsentMarker(database: URL) throws {
+        try sqliteExecute(
+            database: database,
+            sql: """
+            DELETE FROM remote_sync_watermarks
+            WHERE collectionKind = \(sqlLiteral(BurnBarMemoryDeviceSyncMarker.collectionKind));
+            """
+        )
+    }
+
+    /// The courier labels a forget receipt without understanding one.
+    ///
+    /// `agent_memory_inbox` has no kind column and the blind-sync wave adds no
+    /// migration, so the app writes the discriminator inside `payload_json` —
+    /// which this RPC passes through verbatim — and the daemon lifts exactly
+    /// that one key onto `BurnBarMemorySyncInboxEntry.entryKind`. A fact payload
+    /// has no such key, and absence has to mean "a fact": every row parked
+    /// before the field existed is one. The exact JSON is the contract in
+    /// `.superpowers/sdd/2026-09-03-memory-blind-sync/receipt-entry-shape.md`.
+    func testDrainingTheInboxLabelsAForgetReceiptEntry() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-fact', 'member-1', 'mem_aaaa', '{"text":"a fact"}',
+                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-receipt', 'member-1', 'aabbcc', '{"entryKind":"memory_forget_receipt","reason":"user_delete"}',
+                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-garbled', 'member-1', 'mem_cccc', 'not json at all',
+                 '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-team', 'member-1', 'mem_dddd',
+                 '{"teamID":"team_0123456789abcdef","authorUID":"uid_alice"}',
+                 '2026-09-04T00:00:04.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        let listed = try store.syncInboxList(BurnBarMemorySyncInboxListRequest())
+
+        XCTAssertEqual(listed.entries.map(\.docID), ["doc-fact", "doc-receipt", "doc-garbled", "doc-team"])
+        XCTAssertNil(listed.entries[0].entryKind, "a fact carries no discriminator, and never has")
+        XCTAssertEqual(listed.entries[1].entryKind, "memory_forget_receipt")
+        XCTAssertNil(listed.entries[2].entryKind, "an unreadable payload is a fact, not an error")
+        // The same trick, the same rule, one more key (memory program D16): a
+        // team fact says which team it came from without the courier learning
+        // anything else about it, and a personal fact says nothing at all.
+        XCTAssertNil(listed.entries[0].teamID, "a personal fact names no team, and never has")
+        XCTAssertNil(listed.entries[2].teamID)
+        XCTAssertEqual(listed.entries[3].teamID, "team_0123456789abcdef")
+        XCTAssertNil(listed.entries[3].entryKind, "a team FACT is still a fact")
+        XCTAssertEqual(
+            listed.entries[1].payloadJSON,
+            #"{"entryKind":"memory_forget_receipt","reason":"user_delete"}"#,
+            "the payload itself is passed through byte for byte"
+        )
+    }
+
+    /// The engine has no keys and no network: the only way a memory fact the app
+    /// pulled down reaches it is this drain. Listing returns unapplied rows
+    /// oldest-first, acknowledging stamps them, and a second list is empty — so a
+    /// refresh tick never hands the engine the same fact to merge twice.
+    func testDrainingTheBlindSyncInboxListsAcknowledgesAndStaysDrained() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-b', 'member-1', 'mem_bbbb', '{"text":"second"}', '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-a', 'member-1', 'mem_aaaa', '{"text":"first"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-done', 'member-1', 'mem_cccc', '{"text":"merged"}', '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', '2026-09-04T00:00:10.000Z');
+            """
+        )
+
+        let listed = try store.syncInboxList(BurnBarMemorySyncInboxListRequest())
+        XCTAssertEqual(
+            listed.entries.map(\.docID),
+            ["doc-a", "doc-b"],
+            "already-merged rows stay drained, and the rest arrive in updatedAt order"
+        )
+        XCTAssertEqual(listed.entries.map(\.engineMemoryID), ["mem_aaaa", "mem_bbbb"])
+        XCTAssertEqual(listed.entries.first?.payloadJSON, #"{"text":"first"}"#)
+        XCTAssertEqual(
+            listed.entries.map(\.userID),
+            ["member-1", "member-1"],
+            "the account a parked fact belongs to travels so the engine can audit it"
+        )
+
+        let acked = try store.syncInboxAck(
+            BurnBarMemorySyncInboxAckRequest(docIDs: listed.entries.map(\.docID))
+        )
+        XCTAssertEqual(acked.acknowledged, 2)
+        XCTAssertTrue(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.isEmpty,
+            "an acknowledged fact is never handed to the engine again"
+        )
+
+        // Re-acknowledging, and acknowledging a doc id that was never parked,
+        // both change nothing — the engine may retry a partial drain safely.
+        let replay = try store.syncInboxAck(
+            BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-a", "doc-never-seen"])
+        )
+        XCTAssertEqual(
+            replay.acknowledged,
+            0,
+            "the count is `changes()` on one guarded statement, so an already-merged id reports nothing"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NOT NULL"
+            ),
+            ["3"]
+        )
+    }
+
+    /// One guarded statement acknowledges the whole batch and `changes()` reports
+    /// what it actually stamped, so a batch mixing unmerged, already-merged and
+    /// never-parked ids reports only the rows it moved — and the retention sweep
+    /// that follows must not be mistaken for acknowledgements.
+    func testAcknowledgingAMixedBatchCountsOnlyTheRowsItStamped() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        let stale = BurnBarProjectCodeMemoryStore.isoString(
+            Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxRetentionSeconds - 3_600)
+        )
+
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-open-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-open-2', 'member-1', 'mem_2', '{}', '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-merged', 'member-1', 'mem_3', '{}', '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', \(sqlLiteral(stale)));
+            """
+        )
+
+        let acked = try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(
+            docIDs: ["doc-open-1", "doc-open-2", "doc-merged", "doc-never-seen", ""]
+        ))
+
+        XCTAssertEqual(acked.acknowledged, 2)
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-open-1", "doc-open-2"],
+            "the sweep took the long-merged row; the freshly stamped ones stay"
+        )
+    }
+
+    /// The inbox is a transit buffer, not a store. Once a fact is merged, its
+    /// parked plaintext is a redundant second copy of a member's memory; keeping
+    /// it for ever would quietly accumulate one per synced fact. The sweep runs on
+    /// the drain and touches ONLY merged rows — dropping an unmerged one would
+    /// lose a fact the engine never saw, because the pull watermark has already
+    /// moved past its document.
+    func testDrainingTheInboxSweepsMergedPlaintextPastItsRetentionWindowOnly() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        let stale = BurnBarProjectCodeMemoryStore.isoString(
+            Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxRetentionSeconds - 3_600)
+        )
+        let recent = BurnBarProjectCodeMemoryStore.isoString(Date().addingTimeInterval(-3_600))
+
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-stale', 'member-1', 'mem_stale', '{"text":"long merged"}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', \(sqlLiteral(stale))),
+                ('doc-recent', 'member-1', 'mem_recent', '{"text":"just merged"}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', \(sqlLiteral(recent))),
+                ('doc-open', 'member-1', 'mem_open', '{"text":"never merged"}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', NULL);
+            """
+        )
+
+        _ = try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-open"]))
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-open", "doc-recent"],
+            "only the merged row past its retention window is swept"
+        )
+    }
+
+    /// The drain is bounded. An engine asking for everything must not be able to
+    /// pull an unbounded result set across the socket in one call.
+    func testTheBlindSyncInboxDrainHonoursItsLimit() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        let values = (1...5).map { index in
+            "('doc-\(index)', 'member-1', 'mem_\(index)', '{}', '2026-09-04T00:00:0\(index).000Z', '2026-09-04T00:00:09.000Z', NULL)"
+        }.joined(separator: ",\n")
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+            \(values);
+            """
+        )
+
+        let listed = try store.syncInboxList(BurnBarMemorySyncInboxListRequest(limit: 2))
+        XCTAssertEqual(listed.entries.map(\.docID), ["doc-1", "doc-2"])
+    }
+
+    /// **The cross-account leak this predicate exists to stop.** Member A syncs,
+    /// their facts park unmerged (nothing auto-drains them), A signs out and B
+    /// signs in. Before the consent marker, the drain filtered on `applied_at IS
+    /// NULL` alone and handed A's plaintext memories to B's engine — no attacker
+    /// required, just a shared Mac. The marker names B, so A's rows are invisible.
+    func testDrainingAsAnotherMemberReturnsNoneOfTheFormerAccountsRows() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        // Member B is signed in and consenting; member A's rows are still parked.
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-b")
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-a1', 'member-a', 'mem_a1', '{"text":"A private fact"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-a2', 'member-a', 'mem_a2', '{"text":"A second private fact"}', '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        let listed = try store.syncInboxList(BurnBarMemorySyncInboxListRequest())
+
+        XCTAssertEqual(
+            listed.entries.count,
+            0,
+            "the previous member's unmerged facts must never be handed to the member who is signed in now"
+        )
+
+        // Nor may B mark them merged, which would hide them from A for good.
+        let acked = try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-a1", "doc-a2"]))
+        XCTAssertEqual(acked.acknowledged, 0)
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NULL"
+            ),
+            ["2"],
+            "A's rows are untouched, not silently acknowledged by B"
+        )
+    }
+
+    /// Consent revocation stops the drain, not just the download. §7's sub-toggle
+    /// governs ingress into the ENGINE as much as ingress into the inbox: a member
+    /// who turns "Sync memories to my other devices" off has withdrawn permission
+    /// for rows that are already parked, and the app withdraws the marker to say
+    /// so. The next drain returns nothing even though the rows are still unmerged.
+    func testWithdrawingConsentStopsTheNextDrainEvenWithRowsStillParked() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+        XCTAssertEqual(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.map(\.docID),
+            ["doc-1"],
+            "with consent, the row drains"
+        )
+
+        try clearDeviceSyncConsentMarker(database: fixture.database)
+
+        XCTAssertTrue(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.isEmpty,
+            "consent off ⇒ nothing pending may drain"
+        )
+        XCTAssertEqual(
+            try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-1"])).acknowledged,
+            0,
+            "and nothing may be acknowledged either"
+        )
+    }
+
+    /// A hard forget must reach the parked plaintext too. `agent_memory_inbox`
+    /// holds an OPENED copy of a memory pulled from another device, and nothing
+    /// else deletes by memory — the account purge deletes by owner, the sweeps
+    /// delete by age. Without this, forgetting a memory left a readable copy of
+    /// its body on disk, and an unmerged one would have been offered to the
+    /// engine again on the next drain.
+    func testForgettingAMemoryAlsoDropsItsParkedPlaintextFromTheSyncInbox() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        let engineID = "mem_00112233445566778899aabbccddee01"
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The release branch is cut on Fridays.",
+                projectPath: fixture.project.path,
+                engineMemoryID: engineID
+            )
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-forgotten', 'member-1', \(sqlLiteral(engineID)), '{"text":"The release branch is cut on Fridays."}',
+                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-other', 'member-1', 'mem_ffffffffffffffffffffffffffffff02', '{"text":"unrelated"}',
+                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: remembered.memoryID, projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-other"],
+            "the forgotten memory's parked plaintext is gone; unrelated rows are untouched"
+        )
+    }
+
+    /// The other half of the merged-row sweep. An unmerged row waits for an
+    /// engine that may never run — the Memory MCP only runs when an agent calls
+    /// it — so without a bound the inbox becomes a permanent plaintext mirror of
+    /// every memory the member's other devices ever wrote.
+    func testTheDrainSweepsUnmergedRowsThatOutlivedTheirOwnLongerWindow() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        // The app's format (`syncInboxTimestamp`), because `received_at` is the
+        // app's column and the cutoff is compared against it as text.
+        let ancient = BurnBarProjectCodeMemoryStore.syncInboxTimestamp(
+            Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxUnappliedRetentionSeconds - 3_600)
+        )
+        // Older than the MERGED window but well inside the unmerged one: an
+        // unmerged row is a fact nothing has applied, so it is kept far longer.
+        let middling = BurnBarProjectCodeMemoryStore.syncInboxTimestamp(
+            Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxRetentionSeconds - 3_600)
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-abandoned', 'member-1', 'mem_1', '{}', '2026-01-01T00:00:00.000Z', \(sqlLiteral(ancient)), NULL),
+                ('doc-waiting', 'member-1', 'mem_2', '{}', '2026-01-01T00:00:00.000Z', \(sqlLiteral(middling)), NULL),
+                ('doc-live', 'member-1', 'mem_3', '{}', '2026-01-01T00:00:00.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        _ = try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-live"]))
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-live", "doc-waiting"],
+            "only the row that waited past the unmerged bound is dropped"
+        )
+    }
+
+    /// **The window the eager purges alone could not close.** The daemon
+    /// outlives the app: quit or crash the Mac app after a sign-out and the
+    /// consent marker sits on disk indefinitely with nothing left to withdraw
+    /// it, so a drain an hour later still found a marker naming the member who
+    /// left. Bounding its age makes a marker no consenting sync has refreshed
+    /// stop authorising anything, whether or not the app ever comes back.
+    func testAConsentMarkerNoSyncHasRefreshedGoesStaleAndDrainsNothing() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        // Fresh: the app's last consenting cycle was a moment ago.
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        XCTAssertEqual(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.map(\.docID),
+            ["doc-1"],
+            "a marker a consenting sync just refreshed authorises the drain"
+        )
+
+        // Stale: no sync has vouched for it in longer than the bound. The app is
+        // not running to withdraw it, and that is precisely the case.
+        try seedDeviceSyncConsentMarker(
+            database: fixture.database,
+            userID: "member-1",
+            refreshedAt: Date().addingTimeInterval(-BurnBarProjectCodeMemoryStore.deviceSyncConsentMarkerMaxAge - 60)
+        )
+        XCTAssertTrue(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.isEmpty,
+            "a stale marker is no consent: the drain hands over nothing"
+        )
+        XCTAssertEqual(
+            try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-1"])).acknowledged,
+            0,
+            "and nothing may be acknowledged under a stale marker either"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT COUNT(*) FROM agent_memory_inbox WHERE applied_at IS NULL"
+            ),
+            ["1"],
+            "the row is still parked, not silently marked merged"
+        )
+
+        // And the app coming back — one consenting sync rewriting the marker —
+        // restores the drain without any other state changing.
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        XCTAssertEqual(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.map(\.docID),
+            ["doc-1"],
+            "a sync refreshing the marker makes it current again"
+        )
+    }
+
+    /// The bound is 2× the app's default refresh interval, so exactly one missed
+    /// tick is tolerated. A marker refreshed 15 minutes ago (one interval plus
+    /// slack) still drains; the constant is not accidentally shorter than the
+    /// cadence that maintains it, which would make the feature flap.
+    func testTheMarkerBoundToleratesOneMissedRefreshTick() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        XCTAssertEqual(
+            BurnBarProjectCodeMemoryStore.deviceSyncConsentMarkerMaxAge,
+            1_200,
+            "2 × BehaviorSettings.refreshInterval (600 s)"
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+        try seedDeviceSyncConsentMarker(
+            database: fixture.database,
+            userID: "member-1",
+            refreshedAt: Date().addingTimeInterval(-900)
+        )
+        XCTAssertEqual(
+            try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.map(\.docID),
+            ["doc-1"],
+            "one skipped tick is not a withdrawal"
+        )
+    }
+
+    /// A stamp the marker column carries that SQLite cannot read at all is not
+    /// "fresh by default" — `julianday()` answers NULL and the CASE resolves to
+    /// stale. Fail closed on corruption, like every other ambiguous shape.
+    func testAnUnreadableMarkerStampIsTreatedAsStale() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            UPDATE remote_sync_watermarks SET lastSyncedAt = 'not-a-timestamp'
+            WHERE collectionKind = \(sqlLiteral(BurnBarMemoryDeviceSyncMarker.collectionKind));
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-1', 'member-1', 'mem_1', '{}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+        XCTAssertTrue(try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.isEmpty)
+    }
+
+    /// The unmerged sweep's cutoff is compared lexicographically against
+    /// `received_at`, which the APP writes with fractional seconds while the
+    /// daemon's general-purpose `isoString` emits bare seconds. `'.'` sorts
+    /// before `'Z'`, so a row up to a second NEWER than the cutoff used to be
+    /// swept as older. This pins the boundary second in both directions.
+    func testTheUnmergedSweepCutoffComparesExactlyAtTheBoundarySecond() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        // Pinned, and chosen so the cutoff lands on a whole second: a bare-seconds
+        // cutoff would then truncate to the SAME second as the rows, which is the
+        // only place the two formats actually disagree. With a wall-clock `now`
+        // the sub-second offsets usually straddle a second boundary and the bug
+        // hides — this makes the regression detectable every run.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let boundary = now.addingTimeInterval(-BurnBarProjectCodeMemoryStore.syncInboxUnappliedRetentionSeconds)
+        // Half a second on either side of the cutoff, written the way the app
+        // writes `received_at`.
+        let justInside = BurnBarProjectCodeMemoryStore.syncInboxTimestamp(boundary.addingTimeInterval(0.5))
+        let justOutside = BurnBarProjectCodeMemoryStore.syncInboxTimestamp(boundary.addingTimeInterval(-0.5))
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-keep', 'member-1', 'mem_keep', '{}', '2026-01-01T00:00:00.000Z', \(sqlLiteral(justInside)), NULL),
+                ('doc-sweep', 'member-1', 'mem_sweep', '{}', '2026-01-01T00:00:00.000Z', \(sqlLiteral(justOutside)), NULL);
+            """
+        )
+
+        try store.pruneMergedSyncInboxRows(now: now)
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-keep"],
+            "the sub-second-newer row survives and the sub-second-older one goes: the comparison is exact"
+        )
+    }
+
+    /// The forget delete is scoped like every sibling statement: a forget from
+    /// the consenting member's engine must not reach into another member's
+    /// parked rows that happen to be on the same shared Mac.
+    func testForgettingUnderOneMemberLeavesAnotherMembersParkedRowAlone() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+        let engineID = "mem_00112233445566778899aabbccddee09"
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Deploys are frozen in December.",
+                projectPath: fixture.project.path,
+                engineMemoryID: engineID
+            )
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('doc-mine', 'member-1', \(sqlLiteral(engineID)), '{"text":"Deploys are frozen in December."}',
+                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-theirs', 'member-other', \(sqlLiteral(engineID)), '{"text":"someone else''s parked copy"}',
+                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: remembered.memoryID, projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-theirs"],
+            "the consenting member's parked plaintext is gone; the other account's row is not this forget's to delete"
+        )
+    }
+
+    /// A TEAM row's parked plaintext is reached too, though it is not parked
+    /// under the id the engine forgets it by (PR3 round-5 nit 2).
+    ///
+    /// The asymmetry this covers: a personal document is parked under the same
+    /// engine id the engine knows the row by, so deleting by `engine_memory_id`
+    /// finds it. A team document is parked under the SEALED id the contributing
+    /// member chose, while the engine lands the row under an id DERIVED from
+    /// `(teamID, projectID, engineScope, bodyHash)` — the isolation fix that
+    /// closed Cursor T2. So the delete list and the parked column stopped
+    /// naming the same thing, and a local `burnbar_forget` on a landed team row
+    /// left its opened body sitting in `agent_memory_inbox`.
+    ///
+    /// The promise under test is the file's own: a hard forget leaves NO
+    /// readable copy anywhere this daemon owns.
+    func testForgettingATeamMemoryAlsoDropsThePlaintextParkedUnderItsSealedID() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try seedDeviceSyncConsentMarker(database: fixture.database, userID: "member-1")
+
+        let teamID = "team_0123456789abcdef"
+        let teamProjectID = "burnbar-core"
+        let body = "The release train leaves on Thursdays."
+        let bodyHash = BurnBarProjectCodeMemoryStore.sha256Hex(body)
+        // What the ENGINE lands this document under: derived, never taken.
+        let derivedID = BurnBarProjectCodeMemoryStore.teamLocalMemoryID(
+            teamID: teamID,
+            projectID: teamProjectID,
+            engineScope: "project",
+            bodyHash: bodyHash
+        )
+        // What the DOCUMENT was parked under: the sealer's own engine id, which
+        // is a different value entirely and is deliberately kept, because it is
+        // the only handle the sealed cloud copy has.
+        let sealedID = "mem_99998888777766665555444433332222"
+        XCTAssertNotEqual(derivedID, sealedID)
+
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                engineMemoryID: derivedID
+            )
+        )
+        let teamPayload = """
+        {"teamID":"\(teamID)","projectID":"\(teamProjectID)","engineScope":"project",\
+        "bodyHash":"\(bodyHash)","memoryID":"\(sealedID)","text":"\(body)"}
+        """
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES
+                ('team:\(teamID):member-1:doc-team-1', 'member-1', \(sqlLiteral(sealedID)),
+                 \(sqlLiteral(teamPayload)),
+                 '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('team:\(teamID):member-1:doc-team-2', 'member-1', \(sqlLiteral(sealedID)),
+                 '{"teamID":"\(teamID)","projectID":"\(teamProjectID)","engineScope":"project","bodyHash":"ff00","text":"a different team fact"}',
+                 '2026-09-04T00:00:02.000Z', '2026-09-04T00:00:09.000Z', NULL),
+                ('doc-personal', 'member-1', 'mem_ffffffffffffffffffffffffffffff03', '{"text":"unrelated"}',
+                 '2026-09-04T00:00:03.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: remembered.memoryID, projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox ORDER BY doc_id"
+            ),
+            ["doc-personal", "team:\(teamID):member-1:doc-team-2"],
+            "the forgotten TEAM row's parked plaintext is gone; the other team fact and the personal row are untouched"
+        )
+        // The promise, asserted as a promise rather than as a row count: the
+        // body is not readable anywhere this daemon owns.
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT doc_id FROM agent_memory_inbox WHERE payload_json LIKE '%release train%'"
+            ),
+            [],
+            "no parked plaintext of the forgotten body survives"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT memory_id FROM agent_memory_bodies WHERE body LIKE '%release train%'"
+            ),
+            [],
+            "and the mirrored body is blanked, as it always was"
+        )
+    }
+
+    /// With NO marker the forget still reaches the plaintext. This is the one
+    /// deliberate asymmetry with `syncInboxList` / `syncInboxAck`: reading and
+    /// acknowledging fail closed by handing over nothing, but a DELETE has no
+    /// fail-closed direction — refusing to delete is what leaves a readable copy
+    /// of a memory the member deleted sitting on disk.
+    func testForgettingWithNoConsentMarkerStillClearsTheParkedPlaintext() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        let engineID = "mem_00112233445566778899aabbccddee0a"
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "The on-call rota rolls over on Mondays.",
+                projectPath: fixture.project.path,
+                engineMemoryID: engineID
+            )
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-forgotten', 'member-1', \(sqlLiteral(engineID)), '{"text":"The on-call rota rolls over on Mondays."}',
+                    '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(memoryID: remembered.memoryID, projectPath: fixture.project.path)
+        )
+
+        XCTAssertEqual(
+            try sqliteStrings(database: fixture.database, sql: "SELECT COUNT(*) FROM agent_memory_inbox"),
+            ["0"],
+            "no marker must not mean the deleted memory's plaintext survives"
+        )
+    }
+
+    /// Fail closed on a store the app has never migrated: `remote_sync_watermarks`
+    /// belongs to the app's migrator, so its absence is the absence of consent
+    /// rather than an error the drain should raise. The default posture of a
+    /// daemon that has never met the app is "hand over nothing".
+    func testADrainWithNoConsentMarkerTableAtAllReturnsNothing() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memory_inbox
+                (doc_id, user_id, engine_memory_id, payload_json, remote_updated_at, received_at, applied_at)
+            VALUES ('doc-1', 'member-1', 'mem_1', '{"text":"parked"}', '2026-09-04T00:00:01.000Z', '2026-09-04T00:00:09.000Z', NULL);
+            """
+        )
+
+        XCTAssertNil(store.memoryDeviceSyncConsentUserID())
+        XCTAssertTrue(try store.syncInboxList(BurnBarMemorySyncInboxListRequest()).entries.isEmpty)
+        XCTAssertEqual(
+            try store.syncInboxAck(BurnBarMemorySyncInboxAckRequest(docIDs: ["doc-1"])).acknowledged,
+            0
         )
     }
 

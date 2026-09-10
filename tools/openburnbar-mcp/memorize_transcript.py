@@ -19,6 +19,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+from transcript_adapters import (  # noqa: E402
+    ADVERTISED_CLIENTS,
+    detect_client,
+    load_client_transcript,
+)
+
 HOOK_ENV = "OPENBURNBAR_MEMORY_SESSION_HOOK"
 MAX_MESSAGES = 400
 MAX_TRANSCRIPT_CHARS = 200_000
@@ -111,6 +121,9 @@ def _memorize_messages(
     session_id: str,
     reason: str,
     env: dict[str, str],
+    client: str = "claude_code",
+    review_status: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     overrides = {k: v for k, v in env.items() if k.startswith(("OPENBURNBAR_", "BURNBAR_"))}
     if "BURNBAR_MCP_TOOLSET" not in overrides and "BURNBAR_MCP_TOOLSET" not in os.environ:
@@ -126,12 +139,24 @@ def _memorize_messages(
     try:
         import server  # noqa: PLC0415 — deferred: loading FastMCP is only worth it once we know there is work
 
+        source_client = "claude-code" if client in {"claude_code", "claude-code"} else client
+        meta: dict[str, Any] = {
+            "hook": "SessionEnd" if source_client == "claude-code" else "Collector",
+            "reason": reason,
+            "sessionId": session_id,
+            "client": source_client,
+            "source_tool": "memorize_transcript",
+        }
+        if metadata:
+            meta.update(metadata)
+
         raw = server.burnbar_memorize(
             messages=messages,
             project_path=project_path,
             source_kind="session",
-            source_ref=f"claude-code:{session_id}",
-            metadata={"hook": "SessionEnd", "reason": reason, "sessionId": session_id},
+            source_ref=f"{source_client}:{session_id}",
+            metadata=meta,
+            review_status=review_status,
         )
     finally:
         for key, value in previous.items():
@@ -194,6 +219,9 @@ def memorize(
     project_path: str | None,
     session_id: str,
     reason: str,
+    client: str = "auto",
+    review_status: str | None = None,
+    metadata: dict[str, Any] | None = None,
     budget_seconds: float = DEFAULT_BUDGET_SECONDS,
     env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
@@ -216,6 +244,22 @@ def memorize(
     def _alarm(_signum: int, _frame: Any) -> None:
         raise _Deadline
 
+    resolved_client = client.strip().lower() if client and client != "auto" else detect_client(path)
+    if resolved_client in {"claude_code", "claude-code"}:
+        resolved_client = "claude_code"
+    elif resolved_client in {"cursor-agent", "cursoragent"}:
+        resolved_client = "cursor"
+    elif resolved_client in {"grok-build", "grokbuild"}:
+        resolved_client = "grok"
+
+    # A collector is a capture path: it files unread, machine-extracted rows for
+    # review, and nothing it is asked for grants approval. `review_status` may
+    # only make the outcome STRICTER (`rejected`); `approved`, a per-client
+    # default, and `OPENBURNBAR_MEMORY_DEFAULT_REVIEW_STATUS` no longer put a row
+    # nobody has read straight into recall.
+    requested = str(review_status or "").strip().lower()
+    target_review_status = "rejected" if requested == "rejected" else "quarantined"
+
     messages: list[dict[str, str]] = []
     # The deadline is armed before the read, not after it: a transcript large or
     # pathological enough to be slow to parse would otherwise hold session end
@@ -224,7 +268,11 @@ def memorize(
     signal.setitimer(signal.ITIMER_REAL, budget_seconds)
     try:
         try:
-            messages = trim_messages(load_transcript(path))
+            if resolved_client == "claude_code":
+                messages = trim_messages(load_transcript(path))
+            else:
+                _, loaded_msgs = load_client_transcript(path, client=resolved_client, max_messages=MAX_MESSAGES)
+                messages = trim_messages(loaded_msgs)
         except _Deadline:
             # `TimeoutError` is an `OSError`; the deadline must not be reported
             # as a failure to read the file.
@@ -238,6 +286,9 @@ def memorize(
             project_path=project_path,
             session_id=session_id,
             reason=reason,
+            client=resolved_client,
+            review_status=target_review_status,
+            metadata=metadata,
             env=env,
         )
     except _Deadline:
@@ -351,14 +402,31 @@ def _redacted_output(result: dict[str, Any]) -> dict[str, Any]:
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="memorize_transcript.py",
-        description="Memorize a Claude Code session transcript into the local OpenBurnBar memory store.",
+        description="Memorize a session transcript into the local OpenBurnBar memory store.",
     )
     parser.add_argument(
         "--hook-stdin",
         action="store_true",
         help="read the Claude Code SessionEnd hook JSON payload from stdin",
     )
-    parser.add_argument("--transcript", help="path to the session transcript JSONL")
+    parser.add_argument("--transcript", help="path to the session transcript")
+    parser.add_argument(
+        "--client",
+        default="auto",
+        choices=["auto", *ADVERTISED_CLIENTS],
+        help="transcript client format (auto|claude_code|cursor|codex|hermes|grok)",
+    )
+    parser.add_argument(
+        "--review-status",
+        choices=["quarantined", "rejected"],
+        default=None,
+        help="initial review status (default: quarantined; a collector cannot approve)",
+    )
+    parser.add_argument(
+        "--quarantine",
+        action="store_true",
+        help="no-op kept for compatibility: collected rows are always quarantined",
+    )
     parser.add_argument("--project", help="project root the memories belong to (default: the working directory)")
     parser.add_argument("--session-id", default="", help="session identifier used in the memory source ref")
     parser.add_argument("--reason", default="other", help="why the session ended (clear|resume|logout|...)")
@@ -386,11 +454,15 @@ def main(argv: list[str] | None = None) -> int:
         project = payload.get("cwd")
         session_id = str(payload.get("session_id") or "")
         reason = str(payload.get("reason") or "other")
+        client = "claude_code"
+        target_review_status = None
     else:
         transcript = args.transcript
         project = args.project
         session_id = args.session_id
         reason = args.reason
+        client = args.client
+        target_review_status = args.review_status or ("quarantined" if args.quarantine else None)
         # Only the by-hand form can commit a usage error. A hook payload without a
         # transcript is a runtime fact to report, not a reason to fail session end.
         if not transcript:
@@ -401,6 +473,8 @@ def main(argv: list[str] | None = None) -> int:
         project_path=str(project) if project else None,
         session_id=session_id,
         reason=reason,
+        client=client,
+        review_status=target_review_status,
         budget_seconds=args.budget_seconds,
     )
     print(json.dumps(_redacted_output(result), default=str))

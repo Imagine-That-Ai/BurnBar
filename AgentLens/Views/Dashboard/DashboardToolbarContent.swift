@@ -1467,6 +1467,7 @@ extension DashboardMainRoute {
         case "controlDeck": return .controlDeck
         case "home": return .home
         case "fleet": return .fleet
+        case "receipts": return .receipts
         default: return nil
         }
     }

@@ -24,7 +24,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GEN = join(HERE, "gen");
@@ -461,4 +461,11 @@ function main() {
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+// `file://${process.argv[1]}` is NOT a URL: a repo path containing a space (or
+// any other character a URL must percent-encode) makes `import.meta.url` read
+// `.../Samsung%20NVME/...` while `process.argv[1]` stays raw, the comparison
+// fails, and `node codegen.mjs` exits 0 having written nothing. The silent
+// no-op then surfaces as the confusing "generated files on disk are stale"
+// failure in registry.test.mjs. `pathToFileURL` encodes the argv path the same
+// way the loader encoded `import.meta.url`, so the two are comparable.
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) main();

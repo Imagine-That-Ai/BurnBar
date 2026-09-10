@@ -41,6 +41,9 @@ enum DashboardMainRoute: Hashable {
     /// Live Agent Fleet — watch running agents and send light control.
     /// Not in `primarySections` so ⌘1–⌘8 stay put.
     case fleet
+    /// Itemized token burn slips and cache discounts register.
+    /// Not in `primarySections` so ⌘1–⌘8 stay put.
+    case receipts
     case provider(AgentProvider)
     case model(String)
 
@@ -76,6 +79,7 @@ enum DashboardMainRoute: Hashable {
         case .quota: return "Quota"
         case .controlDeck: return "Control Deck"
         case .fleet: return "Fleet"
+        case .receipts: return "Receipts"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -99,6 +103,7 @@ enum DashboardMainRoute: Hashable {
         case .quota: return "gauge.with.dots.needle.67percent"
         case .controlDeck: return "slider.horizontal.below.square.filled.and.square"
         case .fleet: return "rectangle.3.group"
+        case .receipts: return "doc.text.below.ecg"
         case .provider: return "cpu"
         case .model: return "cube"
         }
@@ -120,6 +125,8 @@ enum DashboardMainRoute: Hashable {
             return DesignSystem.Colors.ember
         case .fleet:
             return DesignSystem.Colors.amber
+        case .receipts:
+            return DesignSystem.Colors.ember
         case .home, .inbox:
             return DesignSystem.Colors.ember
         case .database, .projects, .missions, .sessionLogs, .memoryReview:
@@ -147,6 +154,7 @@ enum DashboardMainRoute: Hashable {
         case .recap: return "Your month with AI, read back to you"
         case .controlDeck: return "Every feature, live, one click deep"
         case .fleet: return "Watch agents. Steer the one in charge."
+        case .receipts: return "Itemized token burn, cache discounts & slips"
         case .provider: return "Provider deep dive"
         case .model: return "Model deep dive"
         }

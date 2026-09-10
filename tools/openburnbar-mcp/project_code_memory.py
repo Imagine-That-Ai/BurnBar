@@ -16,7 +16,7 @@ import subprocess
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from burnbar_usage_ledger import _default_socket_path, _resolve_socket_auth_token
 
@@ -295,8 +295,8 @@ def _entropy_labels(text: str) -> list[str]:
     return labels
 
 
-def project_root(project_path: str | None = None) -> Path:
-    raw = (project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH") or os.getcwd()).strip()
+def project_root(project_path: str | Path | None = None) -> Path:
+    raw = str(project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH") or os.getcwd()).strip()
     root = Path(raw).expanduser().resolve()
     if not root.is_dir():
         raise ValueError(f"project_path must point to an existing directory: {root}")
@@ -319,6 +319,65 @@ def _git_output(root: Path, arguments: list[str]) -> str:
     except (OSError, subprocess.SubprocessError):
         return ""
     return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def git_committed_blob(root: Path, relative_path: str, max_bytes: int) -> bytes | None:
+    """The bytes of `relative_path` AS COMMITTED at `HEAD`, or None when there are none.
+
+    `None` covers every way a path can fail to be a committed blob, and the
+    caller is expected to treat them all identically: the directory is not a git
+    work tree, the branch is unborn (no `HEAD`), the path is not in the tree,
+    `HEAD` names a directory or a submodule at that path, git is missing, or git
+    hung. There is deliberately no distinguishing return value — a caller that
+    branches on *why* there is no committed content is a caller that can be
+    talked into treating "no repository" as "committed".
+
+    BOUNDED like every other read of this class. `git show` streams the blob, so
+    the pipe is read to `max_bytes + 1` and a blob over the bound returns None
+    (the same "refused whole, never truncated" rule the link-file readers apply)
+    without the whole object ever being held. `subprocess.run` would have
+    buffered an attacker-sized blob in full before any check could run, which is
+    why this does not use `_git_output`.
+    """
+    argv = [
+        "git",
+        "-C",
+        str(root),
+        "--no-optional-locks",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "show",
+        f"HEAD:{relative_path}",
+    ]
+    try:
+        process = subprocess.Popen(  # noqa: S603 — fixed argv, no shell, path is a constant
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    try:
+        assert process.stdout is not None  # noqa: S101 — guaranteed by stdout=PIPE
+        raw = process.stdout.read(max_bytes + 1)
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+            return None
+    except OSError:
+        process.kill()
+        return None
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+    if process.returncode != 0 or len(raw) > max_bytes:
+        return None
+    return raw
 
 
 def project_identity_fingerprint(root: Path) -> str:
@@ -364,25 +423,71 @@ def has_project_rows(conn: sqlite3.Connection, project_id: str) -> bool:
     return False
 
 
-def resolve_project_id(conn: sqlite3.Connection, root: Path) -> str:
-    ensure_schema(conn)
+def _adopted_project_id(conn: sqlite3.Connection, path_hash: str, canonical_path: str) -> str | None:
+    """The project a member explicitly adopted for this folder, if any.
+
+    `memory_engine.store.map_project` — reachable only through `adopt_project`,
+    which refuses without a confirmation — writes `project_map:<path hash>` and
+    `project_map:<canonical path>`. That key is the adoption; everything else in
+    this table is bookkeeping.
+    """
+    if "engine_meta" not in table_names(conn):
+        return None
+    row = conn.execute(
+        "SELECT value FROM engine_meta WHERE key = ? OR key = ? LIMIT 1",
+        (f"project_map:{path_hash}", f"project_map:{canonical_path}"),
+    ).fetchone()
+    return str(row[0]) if row is not None else None
+
+
+class _ProjectIdentity(NamedTuple):
+    """The read-only half of project resolution: which id a folder maps to."""
+
+    project_id: str
+    canonical_path: str
+    path_hash: str
+    fingerprint: str
+    existing_project_id: str | None
+
+
+def _derive_project_id(conn: sqlite3.Connection, root: Path) -> _ProjectIdentity:
+    """Decide which project id a folder resolves to, issuing SELECTs only.
+
+    `resolve_project_id` records that answer; the code-memory read tools reuse
+    the same decision through `resolve_project_id_readonly` without the
+    bookkeeping writes. Both go through here so a read and a write can never
+    drift into resolving one folder to two different projects.
+    """
     resolved = root.resolve()
     canonical_path = str(resolved)
     path_hash = sha256_hex(canonical_path)
     legacy_project_id = project_id_for(resolved)
     fingerprint = project_identity_fingerprint(resolved)
     preferred_project_id = project_id_for_fingerprint(fingerprint, legacy_project_id)
-    ts = now_iso()
 
-    existing = conn.execute(
-        "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
-        (fingerprint,),
-    ).fetchone()
     alias = conn.execute(
         "SELECT project_id FROM pcm_project_aliases WHERE path_hash = ? LIMIT 1",
         (path_hash,),
     ).fetchone()
-    if existing:
+    existing = conn.execute(
+        "SELECT project_id FROM pcm_projects WHERE identity_fingerprint = ? LIMIT 1",
+        (fingerprint,),
+    ).fetchone()
+    # An ADOPTION outranks the git identity, and nothing else does. The engine's
+    # `adopt_project` writes `project_map:<path hash>` under an explicit
+    # confirmation, and that key is the only evidence here that a member chose
+    # this folder's project — without it the daemon and the engine would
+    # disagree about which project a folder is the moment one was adopted.
+    #
+    # An alias row alone proves nothing: this function records one automatically
+    # for every folder it ever sees. Letting a bare alias beat the fingerprint
+    # made two checkouts of the same repository resolve to different ids
+    # whenever one of them had been seen before, and left a folder that moved
+    # pinned to a stale id instead of re-deriving from git.
+    adopted = _adopted_project_id(conn, path_hash, canonical_path)
+    if adopted:
+        project_id = adopted
+    elif existing:
         project_id = str(existing[0])
     elif alias:
         project_id = str(alias[0])
@@ -390,27 +495,62 @@ def resolve_project_id(conn: sqlite3.Connection, root: Path) -> str:
         project_id = legacy_project_id
     else:
         project_id = preferred_project_id
+    return _ProjectIdentity(
+        project_id=project_id,
+        canonical_path=canonical_path,
+        path_hash=path_hash,
+        fingerprint=fingerprint,
+        existing_project_id=None if existing is None else str(existing[0]),
+    )
 
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO pcm_projects
-            (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (project_id, 2, fingerprint, resolved.name, canonical_path, ts, ts),
-    )
-    conn.execute(
-        """
-        UPDATE pcm_projects
-        SET identity_version = 2,
-            identity_fingerprint = ?,
-            project_name = ?,
-            primary_path = ?,
-            updated_at = ?
-        WHERE project_id = ?
-        """,
-        (fingerprint, resolved.name, canonical_path, ts, project_id),
-    )
+
+def resolve_project_id(conn: sqlite3.Connection, root: Path) -> str:
+    """Resolve a folder to its project id AND record the mapping.
+
+    This writes (schema DDL, plus project/alias bookkeeping rows), so it belongs
+    to the indexing and memory-write paths only. Read tools call
+    `resolve_project_id_readonly`, which reaches the same answer with SELECTs.
+    """
+    ensure_schema(conn)
+    identity = _derive_project_id(conn, root)
+    resolved = root.resolve()
+    project_id = identity.project_id
+    canonical_path = identity.canonical_path
+    path_hash = identity.path_hash
+    fingerprint = identity.fingerprint
+    ts = now_iso()
+
+    can_update_fingerprint = identity.existing_project_id in (None, project_id)
+    if can_update_fingerprint:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO pcm_projects
+                (project_id, identity_version, identity_fingerprint, project_name, primary_path, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (project_id, 2, fingerprint, resolved.name, canonical_path, ts, ts),
+        )
+        conn.execute(
+            """
+            UPDATE pcm_projects
+            SET identity_version = 2,
+                identity_fingerprint = ?,
+                project_name = ?,
+                primary_path = ?,
+                updated_at = ?
+            WHERE project_id = ?
+            """,
+            (fingerprint, resolved.name, canonical_path, ts, project_id),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE pcm_projects
+            SET updated_at = ?
+            WHERE project_id = ?
+            """,
+            (ts, project_id),
+        )
     conn.execute(
         """
         INSERT INTO pcm_project_aliases
@@ -428,6 +568,90 @@ def resolve_project_id(conn: sqlite3.Connection, root: Path) -> str:
         (canonical_path, project_id),
     )
     return project_id
+
+
+# Every table the code-memory READ path touches, either to resolve the project
+# (`_derive_project_id`, `has_project_rows`) or to answer the query itself. A
+# read must not conjure these into existence: reads run over the daemon's
+# SELECT-only surface, and an unbuilt index is a fact to report, not a schema to
+# create behind the caller's back.
+CODE_MEMORY_READ_TABLES: tuple[str, ...] = (
+    "agent_memories",
+    "code_artifacts",
+    "code_call_edges",
+    "code_diagnostics_cache",
+    "code_index_checkpoints",
+    "code_references",
+    "code_symbols",
+    "memory_audit",
+    "pcm_project_aliases",
+    "pcm_projects",
+    "search_chunks",
+    "search_chunks_fts",
+    "search_documents",
+)
+
+# Frontier names bound per statement during the call-graph BFS. Keeps the
+# placeholder count well under SQLite's bound-variable ceiling; larger
+# frontiers simply run as several SELECTs whose rows are merged and re-sorted.
+CALL_GRAPH_FRONTIER_BATCH = 400
+
+# One BFS hop. `{placeholders}` takes only "?" separators -- every frontier name
+# travels as a bound parameter, never as SQL text.
+CALL_GRAPH_HOP_SQL = """
+    SELECT caller.name, callee.name, caller_art.file_path, callee_art.file_path, e.confidence_tier,
+           caller_art.id, caller.blob_sha, callee_art.id, callee.blob_sha,
+           caller.tier_evidence_json, callee.tier_evidence_json
+    FROM code_call_edges AS e
+    JOIN code_symbols AS caller ON caller.id = e.caller_symbol_id
+    JOIN code_symbols AS callee ON callee.id = e.callee_symbol_id
+    JOIN code_artifacts AS caller_art ON caller_art.id = caller.artifact_id
+    JOIN code_artifacts AS callee_art ON callee_art.id = callee.artifact_id
+    WHERE e.project_id = ?
+      AND caller.name IN ({placeholders})
+    ORDER BY caller.name, callee.name
+"""
+
+INDEX_NOT_BUILT_HINT = "Run burnbar_index_project for this project to build the code index, then retry."
+
+
+def code_memory_missing_tables(conn: sqlite3.Connection) -> list[str]:
+    """Which code-memory tables this store lacks. One SELECT over `sqlite_master`."""
+    present = table_names(conn)
+    return [table for table in CODE_MEMORY_READ_TABLES if table not in present]
+
+
+def code_index_unavailable(conn: sqlite3.Connection, root: Path) -> dict[str, Any] | None:
+    """The payload a code-memory read returns when the index was never built.
+
+    `None` when the store is initialised and the read may proceed. Callers return
+    this dict verbatim instead of running `ensure_schema`, so a read against an
+    uninitialised store says what to do rather than silently creating tables --
+    which the daemon's SELECT-only read surface refuses anyway.
+    """
+    missing = code_memory_missing_tables(conn)
+    if not missing:
+        return None
+    return {
+        "status": "unavailable",
+        "code": "INDEX_NOT_BUILT",
+        "reason": (
+            "This store has no project code index yet, so there is nothing to read. "
+            f"Missing tables: {', '.join(missing)}."
+        ),
+        "missingTables": missing,
+        "reindexHint": INDEX_NOT_BUILT_HINT,
+        **project_payload(root),
+    }
+
+
+def resolve_project_id_readonly(conn: sqlite3.Connection, root: Path) -> str:
+    """`resolve_project_id` without its schema DDL or bookkeeping writes.
+
+    Same decision, SELECTs only. Guard with `code_index_unavailable` first: the
+    tables this reads are only guaranteed to exist once the index has been built.
+    """
+    return _derive_project_id(conn, root).project_id
 
 
 def project_payload(root: Path, project_id: str | None = None) -> dict[str, str]:
@@ -3173,16 +3397,29 @@ def enclosing_symbol(symbol_starts: list[tuple[int, str]], offset: int) -> str |
     return current
 
 
-def current_blob_for(conn: sqlite3.Connection, artifact_id: str) -> str | None:
+def current_blob_for(conn: sqlite3.Connection, artifact_id: str, root: Path | None = None) -> str | None:
+    """The blob SHA of an indexed file as it stands on disk right now.
+
+    `root` is the folder the caller is asking about. Prefer it over the stored
+    checkpoint: a folder that moved since it was indexed still resolves to the
+    same project, and the caller named where it lives now. Reads used to repoint
+    `code_index_checkpoints.project_root` on the way past -- a write, refused by
+    the daemon's SELECT-only read surface -- and without that every hit in a
+    moved checkout looked stale and was dropped. Only the indexer moves the
+    stored root now; a read just uses the path it was handed.
+    """
     row = conn.execute("SELECT project_id, file_path FROM code_artifacts WHERE id = ?", (artifact_id,)).fetchone()
     if row is None:
         return None
-    checkpoint = conn.execute(
-        "SELECT project_root FROM code_index_checkpoints WHERE project_id = ?", (row[0],)
-    ).fetchone()
-    if checkpoint is None:
-        return None
-    path = Path(str(checkpoint[0])) / str(row[1])
+    base = root
+    if base is None:
+        checkpoint = conn.execute(
+            "SELECT project_root FROM code_index_checkpoints WHERE project_id = ?", (row[0],)
+        ).fetchone()
+        if checkpoint is None:
+            return None
+        base = Path(str(checkpoint[0]))
+    path = base / str(row[1])
     try:
         return make_blob_sha(path.read_bytes())
     except OSError:
@@ -3190,14 +3427,15 @@ def current_blob_for(conn: sqlite3.Connection, artifact_id: str) -> str | None:
 
 
 class ArtifactFreshnessCache:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, root: Path | None = None):
         self.conn = conn
+        self.root = root
         self._values: dict[tuple[str, str], bool] = {}
 
     def is_current(self, artifact_id: str, blob_sha: str) -> bool:
         key = (artifact_id, blob_sha)
         if key not in self._values:
-            current_blob = current_blob_for(self.conn, artifact_id)
+            current_blob = current_blob_for(self.conn, artifact_id, self.root)
             self._values[key] = bool(current_blob and current_blob == blob_sha)
         return self._values[key]
 
@@ -3248,9 +3486,10 @@ def stale_degradation_payload(
 
 
 def search_code(conn: sqlite3.Connection, query: str, project_path: str | None, limit: int) -> dict[str, Any]:
-    ensure_schema(conn)
     root = project_root(project_path)
-    project_id = resolve_project_id(conn, root)
+    if not_built := code_index_unavailable(conn, root):
+        return not_built
+    project_id = resolve_project_id_readonly(conn, root)
     q = fts_query(query)
     if not q:
         return {"status": "unavailable", "code": "EMPTY_QUERY", "reason": "query produced no searchable tokens"}
@@ -3306,7 +3545,7 @@ def search_code(conn: sqlite3.Connection, query: str, project_path: str | None, 
             "snippet": row[12],
             "lexicalRank": idx + 1,
         }
-    freshness = ArtifactFreshnessCache(conn)
+    freshness = ArtifactFreshnessCache(conn, root)
     results = []
     stale_candidates = 0
     for _chunk_id, item in lexical.items():
@@ -3573,9 +3812,10 @@ def context_pack(
 
 
 def get_symbol(conn: sqlite3.Connection, name: str, project_path: str | None, limit: int) -> dict[str, Any]:
-    ensure_schema(conn)
     root = project_root(project_path)
-    project_id = resolve_project_id(conn, root)
+    if not_built := code_index_unavailable(conn, root):
+        return not_built
+    project_id = resolve_project_id_readonly(conn, root)
     rows = conn.execute(
         """
         SELECT s.id, s.name, s.kind, s.range_json, s.blob_sha, s.confidence_tier,
@@ -3595,7 +3835,7 @@ def get_symbol(conn: sqlite3.Connection, name: str, project_path: str | None, li
         """,
         (project_id, name, f"%{name}%", name, max(1, min(int(limit), 50))),
     ).fetchall()
-    freshness = ArtifactFreshnessCache(conn)
+    freshness = ArtifactFreshnessCache(conn, root)
     symbols = []
     stale_candidates = 0
     for row in rows:
@@ -3625,9 +3865,10 @@ def get_symbol(conn: sqlite3.Connection, name: str, project_path: str | None, li
 
 
 def find_references(conn: sqlite3.Connection, symbol_name: str, project_path: str | None, limit: int) -> dict[str, Any]:
-    ensure_schema(conn)
     root = project_root(project_path)
-    project_id = resolve_project_id(conn, root)
+    if not_built := code_index_unavailable(conn, root):
+        return not_built
+    project_id = resolve_project_id_readonly(conn, root)
     lim = max(1, min(int(limit), 200))
     exact_refs = exact_lsp_references_for_symbol(conn, symbol_name, project_id, root, lim)
     if exact_refs:
@@ -3650,7 +3891,7 @@ def find_references(conn: sqlite3.Connection, symbol_name: str, project_path: st
         """,
         (project_id, symbol_name, lim),
     ).fetchall()
-    freshness = ArtifactFreshnessCache(conn)
+    freshness = ArtifactFreshnessCache(conn, root)
     refs = []
     stale_candidates = 0
     for row in rows:
@@ -3681,9 +3922,10 @@ def find_references(conn: sqlite3.Connection, symbol_name: str, project_path: st
 def call_graph(
     conn: sqlite3.Connection, symbol_name: str, project_path: str | None, depth: int, limit: int
 ) -> dict[str, Any]:
-    ensure_schema(conn)
     root = project_root(project_path)
-    project_id = resolve_project_id(conn, root)
+    if not_built := code_index_unavailable(conn, root):
+        return not_built
+    project_id = resolve_project_id_readonly(conn, root)
     effective_depth = max(1, min(int(depth), 3))
     edge_limit = max(1, min(int(limit), 200))
 
@@ -3703,7 +3945,7 @@ def call_graph(
         """,
         (project_id, symbol_name, symbol_name),
     ).fetchall()
-    freshness = ArtifactFreshnessCache(conn)
+    freshness = ArtifactFreshnessCache(conn, root)
 
     def _is_current(row: tuple[Any, ...]) -> bool:
         return artifact_is_current(conn, str(row[5]), str(row[6]), freshness) and artifact_is_current(
@@ -3748,33 +3990,22 @@ def call_graph(
         return discovered
 
     frontier = _add_edges(seed_rows, hop=1)
-    conn.execute("CREATE TEMP TABLE IF NOT EXISTS temp_code_call_frontier (name TEXT PRIMARY KEY)")
 
-    # Multi-hop BFS: expand neighbors until depth is exhausted or edge limit reached.
+    # Multi-hop BFS: expand neighbors until depth is exhausted or edge limit
+    # reached. The frontier binds inline rather than staging into a TEMP table:
+    # this runs over the daemon's SELECT-only read surface, which refuses DDL and
+    # DML, and where every statement is its own RPC on its own handle -- so a
+    # temp table would not survive to the next call even if it were allowed.
     for hop in range(2, effective_depth + 1):
         if not frontier or len(edges) >= edge_limit:
             break
-        conn.execute("DELETE FROM temp_code_call_frontier")
-        conn.executemany(
-            "INSERT OR IGNORE INTO temp_code_call_frontier (name) VALUES (?)",
-            [(name,) for name in frontier],
-        )
-        hop_rows = conn.execute(
-            """
-            SELECT caller.name, callee.name, caller_art.file_path, callee_art.file_path, e.confidence_tier,
-                   caller_art.id, caller.blob_sha, callee_art.id, callee.blob_sha,
-                   caller.tier_evidence_json, callee.tier_evidence_json
-            FROM code_call_edges AS e
-            JOIN code_symbols AS caller ON caller.id = e.caller_symbol_id
-            JOIN code_symbols AS callee ON callee.id = e.callee_symbol_id
-            JOIN code_artifacts AS caller_art ON caller_art.id = caller.artifact_id
-            JOIN code_artifacts AS callee_art ON callee_art.id = callee.artifact_id
-            WHERE e.project_id = ?
-              AND caller.name IN (SELECT name FROM temp_code_call_frontier)
-            ORDER BY caller.name, callee.name
-            """,
-            (project_id,),
-        ).fetchall()
+        hop_rows: list[Any] = []
+        for batch_start in range(0, len(frontier), CALL_GRAPH_FRONTIER_BATCH):
+            batch = frontier[batch_start : batch_start + CALL_GRAPH_FRONTIER_BATCH]
+            placeholders = ", ".join("?" * len(batch))
+            hop_sql = CALL_GRAPH_HOP_SQL.format(placeholders=placeholders)  # noqa: S608 -- placeholders only; every name is bound
+            hop_rows.extend(conn.execute(hop_sql, (project_id, *batch)).fetchall())
+        hop_rows.sort(key=lambda row: (str(row[0]), str(row[1])))
         frontier = _add_edges(hop_rows, hop=hop)
         if len(edges) >= edge_limit:
             edges = edges[:edge_limit]
@@ -3793,9 +4024,10 @@ def call_graph(
 
 
 def diagnostics(conn: sqlite3.Connection, project_path: str | None, tool: str | None, limit: int) -> dict[str, Any]:
-    ensure_schema(conn)
     root = project_root(project_path)
-    project_id = resolve_project_id(conn, root)
+    if not_built := code_index_unavailable(conn, root):
+        return not_built
+    project_id = resolve_project_id_readonly(conn, root)
     if tool:
         rows = conn.execute(
             """
@@ -3829,9 +4061,10 @@ def diagnostics(conn: sqlite3.Connection, project_path: str | None, tool: str | 
 
 
 def index_status(conn: sqlite3.Connection, project_path: str | None) -> dict[str, Any]:
-    ensure_schema(conn)
     root = project_root(project_path)
-    project_id = resolve_project_id(conn, root)
+    if not_built := code_index_unavailable(conn, root):
+        return not_built
+    project_id = resolve_project_id_readonly(conn, root)
     checkpoint = conn.execute(
         """
         SELECT indexed_at, artifact_count, chunk_count, rejected_count, last_commit_sha,
@@ -3887,9 +4120,10 @@ def index_status(conn: sqlite3.Connection, project_path: str | None) -> dict[str
 
 
 def repo_map(conn: sqlite3.Connection, project_path: str | None, limit: int = 50) -> dict[str, Any]:
-    ensure_schema(conn)
     root = project_root(project_path)
-    project_id = resolve_project_id(conn, root)
+    if not_built := code_index_unavailable(conn, root):
+        return not_built
+    project_id = resolve_project_id_readonly(conn, root)
     top_limit = max(1, min(int(limit), 500))
     top_files = [
         {"filePath": row[0], "lang": row[1], "symbolCount": int(row[2])}

@@ -56,6 +56,8 @@ on:
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
       - "scripts/lib/resolve-repo-path.sh"
       - "scripts/lib/resolve-repo-path.test.sh"
+      - "scripts/lib/swift-toolchain.sh"
+      - "scripts/lib/swift-toolchain.test.sh"
       - "scripts/ci/verify-signing-profile-certificate.py"
       - "scripts/ci/verify-signing-profile-certificate.sh"
       - "scripts/ci/verify-signing-profile-certificate.test.py"
@@ -207,6 +209,8 @@ on:
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
       - "scripts/lib/resolve-repo-path.sh"
       - "scripts/lib/resolve-repo-path.test.sh"
+      - "scripts/lib/swift-toolchain.sh"
+      - "scripts/lib/swift-toolchain.test.sh"
       - "scripts/ci/verify-signing-profile-certificate.py"
       - "scripts/ci/verify-signing-profile-certificate.sh"
       - "scripts/ci/verify-signing-profile-certificate.test.py"
@@ -512,6 +516,9 @@ jobs:
 
       - name: Self-test macOS release output path resolution
         run: bash scripts/lib/resolve-repo-path.test.sh
+
+      - name: Self-test swift toolchain resolution
+        run: bash scripts/lib/swift-toolchain.test.sh
 
       - name: Self-test macOS signing profile certificate matcher
         run: python3 scripts/ci/verify-signing-profile-certificate.test.py

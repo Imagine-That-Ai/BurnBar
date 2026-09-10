@@ -19,19 +19,55 @@
 #   - the Engine closure contains none of the known UI-carrying targets, AND
 #   - no file under any closure target imports SwiftUI or AppKit.
 #
+# TOOLCHAIN: resolved through scripts/lib/swift-toolchain.sh, never bare `swift`
+# from PATH. A swiftly (or otherwise non-Xcode) `swift` earlier on PATH compiles
+# the manifest against a mismatched SDK and fails every run; this script used to
+# swallow that stderr and exit 1 with no output, which read as a real invariant
+# breach. Any dump-package failure now prints the toolchain and the raw stderr.
+#
 # Usage: scripts/debt/check-engine-closure-ui-purity.sh
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 core_pkg="${repo_root}/OpenBurnBarCore"
 
-dump="$(cd "${core_pkg}" && swift package dump-package 2>/dev/null)"
+# shellcheck source=../lib/swift-toolchain.sh
+source "${repo_root}/scripts/lib/swift-toolchain.sh"
+obb_swift_init || exit 1
 
-python3 - "${core_pkg}/Sources" <<PY
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/engine-closure-ui-purity.XXXXXX")"
+trap 'rm -rf "${work_dir}"' EXIT
+dump_path="${work_dir}/dump-package.json"
+dump_err="${work_dir}/dump-package.err"
+
+dump_failed=0
+(cd "${core_pkg}" && "${OBB_SWIFT}" package dump-package) \
+  >"${dump_path}" 2>"${dump_err}" || dump_failed=$?
+
+if [[ "${dump_failed}" -ne 0 || ! -s "${dump_path}" ]]; then
+  if [[ "${dump_failed}" -ne 0 ]]; then
+    echo "FAIL: 'swift package dump-package' exited ${dump_failed} in ${core_pkg}." >&2
+  else
+    echo "FAIL: 'swift package dump-package' produced no output in ${core_pkg}." >&2
+  fi
+  echo "      toolchain: ${OBB_SWIFT} (resolved via ${OBB_SWIFT_SOURCE})" >&2
+  echo "      This is a TOOLCHAIN failure, not a UI-purity breach." >&2
+  echo "      ---------------- swift stderr ----------------" >&2
+  cat "${dump_err}" >&2
+  echo "      -------------- end swift stderr --------------" >&2
+  echo "      If the toolchain above is not the active Xcode's swift, either" >&2
+  echo "      run under 'DEVELOPER_DIR=\$(xcode-select -p)' or set" >&2
+  echo "      OPENBURNBAR_SWIFT to the swift you want this check to use." >&2
+  exit 1
+fi
+
+python3 - "${core_pkg}/Sources" "${dump_path}" <<'PY'
 import json, os, re, sys
 
 sources_root = sys.argv[1]
-pkg = json.loads('''${dump}''')
+dump_path = sys.argv[2]
+with open(dump_path, encoding="utf-8") as fh:
+    pkg = json.load(fh)
 targets = {t['name']: t for t in pkg['targets']}
 
 # UI-carrying targets that must NEVER appear in Engine's transitive closure.

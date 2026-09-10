@@ -83,13 +83,27 @@ type DataDomainUsageResponse = {
     totalBytes: number;
   };
   limits: { pensieve: PensieveLimits; wandParallelMax: number };
-  domains: Array<{ id: string; count: number; bytes: number }>;
+  /**
+   * Per-domain footprint. `countable: false` means this domain HAS no per-user
+   * count to report, which is not "zero documents" (PR 4 review L7): `count`
+   * stays 0 so older clients keep parsing, and a client that understands the
+   * marker renders "not counted here" instead of a number it would be inventing.
+   */
+  domains: Array<{ id: string; count: number; bytes: number; countable: boolean }>;
   schemaVersion: number;
 };
 
 interface UsageSource {
-  /** Collection whose docs are counted for the domain footprint. */
-  countCollection: string;
+  /**
+   * Collection whose docs are counted for the domain footprint.
+   *
+   * ABSENT means "this domain has no per-user footprint to count", which is not
+   * the same as "zero documents". Team memory (`team_pensieve`) is the case:
+   * its documents live in a SHARED tenant at `team_memory_facts/{teamId}/facts`,
+   * not under `users/{uid}/`, so there is no per-user collection to aggregate
+   * and counting one would be inventing a number.
+   */
+  countCollection?: string;
   /** Optional numeric field summed across the collection for a byte total. */
   byteCollection?: string;
   byteField?: string;
@@ -124,6 +138,8 @@ export const DATA_DOMAIN_USAGE: Record<string, UsageSource> = {
   entitlements_billing: { countCollection: "entitlements" },
   device_trust_keys: { countCollection: "escrow_devices" },
   audit_timeline: { countCollection: "unified_audit_log" },
+  // No per-user count source: team facts are a shared tenant (see UsageSource).
+  team_pensieve: {},
 };
 
 function optionalString(value: unknown): string | undefined {
@@ -179,14 +195,16 @@ async function domainSnapshot(
   uid: string,
   id: string,
   src: UsageSource,
-): Promise<{ id: string; count: number; bytes: number }> {
+): Promise<{ id: string; count: number; bytes: number; countable: boolean }> {
   let count = 0;
   let bytes = 0;
-  try {
-    const agg = await db.collection(`users/${uid}/${src.countCollection}`).count().get();
-    count = Number(agg.data().count ?? 0);
-  } catch {
-    count = 0; // empty/missing collection — fail soft
+  if (src.countCollection) {
+    try {
+      const agg = await db.collection(`users/${uid}/${src.countCollection}`).count().get();
+      count = Number(agg.data().count ?? 0);
+    } catch {
+      count = 0; // empty/missing collection — fail soft
+    }
   }
   if (src.byteCollection && src.byteField) {
     try {
@@ -199,7 +217,11 @@ async function domainSnapshot(
       bytes = 0;
     }
   }
-  return { id, count, bytes };
+  // `countable` is derived from the SOURCE, never from the result: a domain with
+  // a count collection that happens to be empty is countable and reports 0; a
+  // domain with no count collection reports "not countable" and its 0 means
+  // nothing (PR 4 review L7).
+  return { id, count, bytes, countable: src.countCollection !== undefined };
 }
 
 export const getDataDomainUsage = onCall(

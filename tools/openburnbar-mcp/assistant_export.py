@@ -1,0 +1,522 @@
+"""Guarded assistant-export importer for ChatGPT and Claude.ai data exports.
+
+Strict export-schema version gate: unknown versions are rejected, never guessed.
+Parser output is quarantine-only (review_status = 'quarantined').
+Entry secret sweep flags secrets and refuses to store them.
+Convergent deduplication collapses identical bodies on (project, scope, body_hash).
+Bounded batches respect an export cap and report full summary metrics.
+"""
+
+from __future__ import annotations
+
+import collections
+import os
+from dataclasses import dataclass, field
+from collections.abc import Sequence
+from typing import Any
+
+from memory_engine import Fact, canonical_body_hash, normalize_scope, resolve_project
+from memory_engine._util import _convergence_key
+from memory_engine.gate import scan_text
+from memory_engine.store import audit_event
+
+DEFAULT_IMPORT_BATCH_CAP = 10
+# The ceiling a caller may not lift. `batch_cap` exists so an import of
+# unreviewed, model-authored text lands in reviewable chunks; a caller-supplied
+# `10**9` removed the bound the packet asked for. The default stays small on
+# purpose — every row lands quarantined and a human has to read it — and the
+# caller may raise it up to here, never past it.
+MAX_IMPORT_BATCH_CAP = 500
+
+SUPPORTED_ASSISTANT_EXPORT_SCHEMAS: frozenset[str] = frozenset(
+    {
+        "chatgpt.export.v1",
+        "openai.chatgpt.export.v1",
+        "chatgpt.conversations.v1",
+        "claude.export.v1",
+        "anthropic.claude.export.v1",
+        "claude.conversations.v1",
+        "openburnbar.assistant_export.v1",
+    }
+)
+
+
+@dataclass
+class CandidateMemory:
+    text: str
+    source_ref: str
+    tags: list[str] = field(default_factory=list)
+    entities: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    kind: str = "fact"
+    scope: str = "project"
+
+
+def is_assistant_export(payload: dict[str, Any], explicit_schema: str | None = None) -> bool:
+    """True if payload or argument indicates an assistant export format."""
+    schema = explicit_schema or payload.get("schema") or payload.get("schema_version") or payload.get("version")
+    if schema:
+        schema_str = str(schema).strip()
+        if schema_str in SUPPORTED_ASSISTANT_EXPORT_SCHEMAS:
+            return True
+        if schema_str.startswith(
+            ("chatgpt.", "openai.chatgpt.", "claude.", "anthropic.claude.", "openburnbar.assistant_export.")
+        ):
+            return True
+    if any(k in payload for k in ("conversations", "chat_messages")):
+        return True
+    return False
+
+
+def validate_export_schema(schema: str | None) -> dict[str, Any] | None:
+    """Fail-closed schema gate: return rejection dict if unknown/unsupported."""
+    if not schema or not str(schema).strip():
+        return {
+            "status": "rejected",
+            "code": "UNKNOWN_SCHEMA_VERSION",
+            "reason": (
+                "missing export schema version; assistant exports require an explicit "
+                f"supported schema version (supported: {', '.join(sorted(SUPPORTED_ASSISTANT_EXPORT_SCHEMAS))})"
+            ),
+        }
+    clean = str(schema).strip()
+    if clean not in SUPPORTED_ASSISTANT_EXPORT_SCHEMAS:
+        return {
+            "status": "rejected",
+            "code": "UNKNOWN_SCHEMA_VERSION",
+            "reason": (
+                f"unknown or unsupported export schema version '{clean}'; "
+                f"supported versions: {', '.join(sorted(SUPPORTED_ASSISTANT_EXPORT_SCHEMAS))}"
+            ),
+        }
+    return None
+
+
+def _chatgpt_mapping_nodes(mapping: dict[str, Any], current_node: Any) -> list[dict[str, Any]]:
+    """The conversation the user kept, in order — not every node of the tree.
+
+    A ChatGPT `mapping` is a TREE. Regenerating a reply or editing a prompt adds
+    a sibling branch and leaves the superseded one in the export; `current_node`
+    names the leaf of the branch the user ended on. Flattening `mapping.values()`
+    therefore imported abandoned edits and replies the member explicitly
+    regenerated away, as quarantined candidates that contradict the ones they
+    kept.
+
+    Walking the parent chain from `current_node` is only possible when the export
+    carries one. When it does not — or when it names a node that is not in the
+    mapping, or the chain is a cycle — this falls back to the previous
+    deterministic flat ordering, because there is no branch to choose and
+    dropping the whole conversation would be worse than importing all of it.
+    """
+    chain: list[dict[str, Any]] = []
+    node_id = str(current_node).strip() if current_node else ""
+    seen: set[str] = set()
+    while node_id and node_id in mapping and node_id not in seen:
+        seen.add(node_id)
+        node = mapping[node_id]
+        if not isinstance(node, dict):
+            break
+        chain.append(node)
+        parent = node.get("parent")
+        node_id = str(parent).strip() if parent else ""
+    if chain:
+        chain.reverse()
+        return chain
+    return sorted(
+        (node for node in mapping.values() if isinstance(node, dict)),
+        key=lambda n: ((n.get("message") or {}).get("create_time") or 0.0, str(n.get("id") or "")),
+    )
+
+
+def parse_chatgpt_conversations(conversations: Sequence[dict[str, Any]]) -> list[CandidateMemory]:
+    """Extract candidate memories from ChatGPT conversations.json."""
+    candidates: list[CandidateMemory] = []
+    for conv in conversations:
+        if not isinstance(conv, dict):
+            continue
+        conv_id = str(conv.get("id") or conv.get("conversation_id") or "unknown_conv")
+        title = str(conv.get("title") or "").strip()
+
+        mapping = conv.get("mapping")
+        if isinstance(mapping, dict):
+            for node in _chatgpt_mapping_nodes(mapping, conv.get("current_node")):
+                if not isinstance(node, dict):
+                    continue
+                msg = node.get("message")
+                if not isinstance(msg, dict):
+                    continue
+                author = msg.get("author") or {}
+                role = str(author.get("role") or "").strip().lower()
+                content = msg.get("content") or {}
+                parts = content.get("parts") or []
+                text = "\n".join(str(p) for p in parts if p is not None).strip()
+                if not text:
+                    continue
+                msg_id = str(msg.get("id") or node.get("id") or f"node_{len(candidates)}")
+                candidates.append(
+                    CandidateMemory(
+                        text=text,
+                        source_ref=f"chatgpt:{conv_id}#{msg_id}",
+                        tags=["chatgpt", "assistant_export"],
+                        metadata={
+                            "client": "chatgpt",
+                            "conversationID": conv_id,
+                            "conversationTitle": title,
+                            "role": role,
+                        },
+                        kind="fact",
+                        scope="project",
+                    )
+                )
+
+        messages = conv.get("messages")
+        if isinstance(messages, list):
+            for idx, msg in enumerate(messages):
+                if not isinstance(msg, dict):
+                    continue
+                text = str(msg.get("text") or msg.get("content") or "").strip()
+                if not text:
+                    continue
+                msg_id = str(msg.get("id") or f"msg_{idx}")
+                role = str(msg.get("role") or msg.get("sender") or "").strip().lower()
+                candidates.append(
+                    CandidateMemory(
+                        text=text,
+                        source_ref=f"chatgpt:{conv_id}#{msg_id}",
+                        tags=["chatgpt", "assistant_export"],
+                        metadata={
+                            "client": "chatgpt",
+                            "conversationID": conv_id,
+                            "conversationTitle": title,
+                            "role": role,
+                        },
+                        kind="fact",
+                        scope="project",
+                    )
+                )
+    return candidates
+
+
+def parse_claude_conversations(conversations: Sequence[dict[str, Any]]) -> list[CandidateMemory]:
+    """Extract candidate memories from Claude.ai conversations.json."""
+    candidates: list[CandidateMemory] = []
+    for conv in conversations:
+        if not isinstance(conv, dict):
+            continue
+        conv_id = str(conv.get("uuid") or conv.get("id") or "unknown_conv")
+        title = str(conv.get("name") or conv.get("title") or "").strip()
+        chat_messages = conv.get("chat_messages") or []
+        if isinstance(chat_messages, list):
+            for idx, msg in enumerate(chat_messages):
+                if not isinstance(msg, dict):
+                    continue
+                text = str(msg.get("text") or msg.get("content") or "").strip()
+                if not text:
+                    continue
+                msg_id = str(msg.get("uuid") or msg.get("id") or f"msg_{idx}")
+                sender = str(msg.get("sender") or msg.get("role") or "").strip().lower()
+                candidates.append(
+                    CandidateMemory(
+                        text=text,
+                        source_ref=f"claude:{conv_id}#{msg_id}",
+                        tags=["claude", "assistant_export"],
+                        metadata={
+                            "client": "claude",
+                            "conversationID": conv_id,
+                            "conversationTitle": title,
+                            "sender": sender,
+                        },
+                        kind="fact",
+                        scope="project",
+                    )
+                )
+    return candidates
+
+
+def parse_direct_memories(memories: Sequence[dict[str, Any]], client: str = "assistant") -> list[CandidateMemory]:
+    """Extract candidate memories from an explicit memories list."""
+    candidates: list[CandidateMemory] = []
+    for idx, raw in enumerate(memories):
+        if not isinstance(raw, dict):
+            continue
+        text = str(raw.get("content") or raw.get("text") or raw.get("body") or "").strip()
+        if not text:
+            continue
+        mem_id = str(raw.get("id") or f"mem_{idx}")
+        candidates.append(
+            CandidateMemory(
+                text=text,
+                source_ref=f"{client}:memory#{mem_id}",
+                tags=[client, "assistant_export"],
+                metadata={"client": client, "source": "direct_memory"},
+                kind="fact",
+                scope="project",
+            )
+        )
+    return candidates
+
+
+def parse_assistant_export(payload: dict[str, Any], schema: str) -> list[CandidateMemory]:
+    """Dispatch export parsing based on schema and payload shape."""
+    schema_clean = schema.lower().strip()
+    client = "chatgpt" if "chatgpt" in schema_clean else ("claude" if "claude" in schema_clean else "assistant")
+
+    # If payload has direct memories list
+    if isinstance(payload.get("memories"), list) and not payload.get("conversations"):
+        return parse_direct_memories(payload["memories"], client=client)
+
+    conversations = payload.get("conversations")
+    if not isinstance(conversations, list):
+        if "mapping" in payload:
+            conversations = [payload]
+        elif "chat_messages" in payload:
+            conversations = [payload]
+        else:
+            conversations = []
+
+    if client == "chatgpt":
+        return parse_chatgpt_conversations(conversations)
+    if client == "claude":
+        return parse_claude_conversations(conversations)
+
+    # General fallback for openburnbar.assistant_export.v1
+    detected_client = str(payload.get("client") or "").strip().lower()
+    if detected_client == "claude":
+        return parse_claude_conversations(conversations)
+    return parse_chatgpt_conversations(conversations)
+
+
+def _parse_cursor(cursor: int | str | None) -> int | None:
+    """The offset a caller resumes from, or None when the value is not one.
+
+    A made-up cursor must not silently re-import batch one: a caller that
+    mistakes `nextCursor` for a page number would otherwise be told `ok` while
+    the tail of its export stayed unread.
+    """
+    if cursor is None or cursor == "":
+        return 0
+    if isinstance(cursor, bool):
+        return None
+    try:
+        offset = int(cursor)
+    except (TypeError, ValueError):
+        return None
+    return offset if offset >= 0 else None
+
+
+def import_assistant_export(
+    engine: Any,
+    payload: dict[str, Any],
+    *,
+    schema: str,
+    project_path: str | None = None,
+    batch_cap: int | None = None,
+    cursor: int | str | None = None,
+) -> dict[str, Any]:
+    """Guarded import of an assistant export payload into the memory engine.
+
+    `cursor` is the offset into the export's candidate list this batch starts at,
+    and the summary returns `nextCursor` for the batch after it. Without one,
+    every call selected the same first `cap` candidates: the rest collapsed as
+    duplicates and everything past the cap was never considered, so an export
+    larger than the cap (10 by default) could not be imported in full.
+    """
+    # 1. Strict schema version gate
+    rejection = validate_export_schema(schema)
+    if rejection:
+        return rejection
+    offset = _parse_cursor(cursor)
+    if offset is None:
+        return {
+            "status": "rejected",
+            "code": "INVALID_CURSOR",
+            "reason": f"cursor must be a non-negative integer offset; got {cursor!r}",
+        }
+
+    project_id, root = resolve_project(engine.conn, project_path)
+
+    # 2. Parse candidate memories
+    all_candidates = parse_assistant_export(payload, schema)
+
+    # 3. Bounded batches with cap
+    cap = (
+        batch_cap
+        if batch_cap is not None
+        else int(os.environ.get("OPENBURNBAR_MEMORY_IMPORT_BATCH_CAP", str(DEFAULT_IMPORT_BATCH_CAP)))
+    )
+    cap = max(1, min(int(cap), MAX_IMPORT_BATCH_CAP))
+    bounded_candidates = all_candidates[offset : offset + cap]
+    next_offset = offset + len(bounded_candidates)
+    remaining = max(0, len(all_candidates) - next_offset)
+    is_batch_capped = remaining > 0
+
+    decisions: list[dict[str, Any]] = []
+    secrets_flagged = 0
+    duplicates_collapsed = 0
+    quarantined_count = 0
+    seen_ckeys: set[str] = set()
+
+    for candidate in bounded_candidates:
+        # 4. Secret sweep on entry
+        findings = scan_text(candidate.text)
+        if findings.has_secret:
+            secrets_flagged += 1
+            decisions.append(
+                {
+                    "event": "REJECT",
+                    "code": "SECRET_DETECTED",
+                    "labels": findings.secret_labels,
+                    "sourceRef": candidate.source_ref,
+                    "reason": "secret detected during export entry sweep; flagged and not stored",
+                }
+            )
+            continue
+
+        # 5. Convergence key deduplication
+        try:
+            scope = normalize_scope(candidate.scope, candidate.kind)
+        except ValueError:
+            scope = "project"
+
+        body_hash = canonical_body_hash(candidate.text)
+        ckey = _convergence_key(project_id, scope, body_hash)
+
+        if ckey in seen_ckeys:
+            duplicates_collapsed += 1
+            decisions.append(
+                {
+                    "event": "COLLAPSE",
+                    "code": "DUPLICATE_CONVERGENCE_KEY",
+                    "convergenceKey": ckey,
+                    "bodyHash": body_hash,
+                    "sourceRef": candidate.source_ref,
+                    "reason": "duplicate body collapsed on convergence key",
+                }
+            )
+            continue
+        seen_ckeys.add(ckey)
+
+        # Check existing destination project store
+        existing = engine.conn.execute(
+            "SELECT id, review_status FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NULL",
+            (project_id, scope, body_hash),
+        ).fetchone()
+        if existing is not None:
+            duplicates_collapsed += 1
+            decisions.append(
+                {
+                    "event": "NONE",
+                    "code": "DUPLICATE_CONVERGENCE_KEY",
+                    "convergenceKey": ckey,
+                    "memoryID": str(existing["id"]),
+                    "bodyHash": body_hash,
+                    "sourceRef": candidate.source_ref,
+                    "reason": "duplicate body collapsed against existing store convergence key",
+                }
+            )
+            continue
+
+        # 6. Parser -> Quarantine only
+        fact = Fact(
+            text=candidate.text,
+            kind=candidate.kind,
+            confidence=0.7,
+            scope=scope,
+            tags=candidate.tags,
+            entities=candidate.entities,
+            metadata=candidate.metadata,
+            source_ref=candidate.source_ref,
+            review_status="quarantined",  # STRICTLY QUARANTINED!
+        )
+
+        decision = engine._commit_fact(
+            project_id=project_id,
+            root=root,
+            fact=fact,
+            source_kind="import",
+            source_hash=f"assistant_import:{ckey}",
+            extractor="assistant_export",
+        )
+        # What actually landed, read back off the row — not an assumption. The
+        # fact is stamped `quarantined` on the way in, but a NEAR-duplicate takes
+        # `_commit_fact`'s reinforce path and reinforces an existing APPROVED
+        # row; claiming that row is quarantined is a false statement about the
+        # member's own data.
+        landed_id = decision.get("memoryID")
+        landed_status = None
+        if landed_id:
+            landed_row = engine.conn.execute(
+                "SELECT review_status FROM memories WHERE id = ?", (str(landed_id),)
+            ).fetchone()
+            if landed_row is not None:
+                landed_status = str(landed_row["review_status"])
+        if landed_status is not None:
+            decision["reviewStatus"] = landed_status
+        decision["convergenceKey"] = ckey
+        decisions.append(decision)
+        if decision.get("event") in ("ADD", "UPDATE") and decision.get("reviewStatus") == "quarantined":
+            quarantined_count += 1
+
+    # 7. Audit and commit
+    audit_event(
+        engine.conn,
+        action="memory.assistant_import",
+        project_id=project_id,
+        subject_id=None,
+        labels=[
+            f"schema:{schema}",
+            f"imported:{quarantined_count}",
+            f"quarantined:{quarantined_count}",
+            f"secrets_flagged:{secrets_flagged}",
+            f"duplicates_collapsed:{duplicates_collapsed}",
+            f"batch_capped:{str(is_batch_capped).lower()}",
+            f"cursor:{offset}",
+            f"next_cursor:{next_offset if is_batch_capped else 'none'}",
+        ],
+        actor=engine.config.actor,
+    )
+    engine._commit()
+    engine._invalidate_cache()
+
+    # 8. Return comprehensive summary.
+    # The event totals are counted off `decisions`, never off the preliminary
+    # counters: `_commit_fact` rejects candidates for reasons the entry sweep
+    # never sees — a `reject` PII policy, untrusted export metadata over the
+    # auxiliary-field bound — and reporting `REJECT: 0` for an import that did
+    # reject rows makes the advertised metrics unusable. In-batch duplicates are
+    # reported as `COLLAPSE` decisions and count toward `NONE`, which is what a
+    # duplicate resolves to.
+    events = collections.Counter(
+        str(decision.get("event") or "") for decision in decisions if isinstance(decision, dict)
+    )
+    summary = {
+        "imported": quarantined_count,
+        "quarantined": quarantined_count,
+        "approved": 0,
+        "secretsFlagged": secrets_flagged,
+        "duplicatesCollapsed": duplicates_collapsed,
+        "totalCandidates": len(all_candidates),
+        "batchCap": cap,
+        "batchCapped": is_batch_capped,
+        # Where this batch started, and where the next one does. `nextCursor` is
+        # None exactly when the export is fully consumed, so a caller loops until
+        # it is rather than guessing whether anything was dropped.
+        "cursor": offset,
+        "nextCursor": next_offset if is_batch_capped else None,
+        "remaining": remaining,
+        "batchSize": len(bounded_candidates),
+        "ADD": events["ADD"],
+        "UPDATE": events["UPDATE"],
+        "NONE": events["NONE"] + events["COLLAPSE"],
+        "DELETE": events["DELETE"],
+        "REJECT": events["REJECT"],
+    }
+
+    return {
+        "status": "ok",
+        "summary": summary,
+        "decisions": decisions,
+        "schema": schema,
+        "projectID": project_id,
+        "projectPath": root,
+    }

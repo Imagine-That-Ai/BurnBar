@@ -303,6 +303,46 @@ final class RemoteSyncWatermarkTests: XCTestCase {
         XCTAssertLessThan(difference, 60, "Default should be ~90 days ago")
     }
 
+    /// Memory facts are STATE, not events. A memory's `updatedAt` is when it was
+    /// last touched, not when it stopped being true, so the conversation
+    /// collections' 90-day cutoff silently delivered a brand-new device only the
+    /// memories that happened to have been edited recently — the opposite of
+    /// what "your memories follow you to your other Mac" promises, with no error
+    /// and no counter to notice it by.
+    func test_watermark_fetchOrDefault_backfillsTheWholeStoreForMemoryFacts() async throws {
+        let queue = try DatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let watermarkStore = makeWatermarkStore(dataStore)
+
+        let floor = try await watermarkStore.fetchWatermarkOrDefault(
+            accountUid: "fresh-account",
+            collectionKind: .memoryFacts
+        )
+
+        let tenYearsAgo = Calendar.current.date(byAdding: .year, value: -10, to: Date())!
+        XCTAssertLessThan(floor, tenYearsAgo, "a first sync of memory_facts reaches back past any plausible store")
+        XCTAssertEqual(floor, RemoteSyncCollectionKind.memoryFacts.firstSyncFloor)
+
+        // The conversation-shaped collections keep the cutoff they have always had.
+        for kind in [RemoteSyncCollectionKind.usage, .conversations, .chatThreads] {
+            let ninetyDaysAgo = Calendar.current.date(byAdding: .day, value: -90, to: Date())!
+            XCTAssertLessThan(abs(kind.firstSyncFloor.timeIntervalSince(ninetyDaysAgo)), 60, "\(kind)")
+        }
+
+        // A stored watermark still governs every later sync, for every kind.
+        let stored = Date(timeIntervalSince1970: 1_800_000_000)
+        try await dataStore.advanceRemoteSyncWatermark(
+            accountUid: "fresh-account",
+            collectionKind: .memoryFacts,
+            lastProcessedRemoteUpdateAt: stored
+        )
+        let resumed = try await watermarkStore.fetchWatermarkOrDefault(
+            accountUid: "fresh-account",
+            collectionKind: .memoryFacts
+        )
+        XCTAssertEqual(resumed.timeIntervalSince1970, stored.timeIntervalSince1970, accuracy: 1)
+    }
+
     // MARK: - VAL-TOKEN-012: Remote re-ingest behavior is explicit and tested
 
     func test_remoteInsert_allowsReinsertOfSameKey() async throws {

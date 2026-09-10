@@ -148,6 +148,7 @@ export const SITE = {
 
 export const NAV_PRIMARY = [
   { href: "/product", label: "Product" },
+  { href: "/memory", label: "Memory MCP" },
   { href: "/router", label: "Router" },
   { href: "/bench", label: "Bench" },
   { href: "/floo", label: "Floo" },
@@ -163,6 +164,7 @@ export const NAV_PRIMARY = [
 export const NAV_FOOTER = {
   product: [
     { href: "/product", label: "Overview" },
+    { href: "/memory", label: "Memory MCP — agent memory" },
     { href: "/router", label: "Fire Hydrant — router" },
     { href: "/bench", label: "BurnBench — benchmarks" },
     { href: "/floo", label: "Floo — phone & Mac" },
@@ -181,6 +183,7 @@ export const NAV_FOOTER = {
     { href: SITE.consoleUrl, label: "Your data console", external: true },
     { href: "/security", label: "Security model" },
     { href: "/mcp", label: "MCP integration" },
+    { href: "/memory", label: "Memory MCP" },
     { href: "/legal/source", label: "Source offer" },
     { href: "/legal/privacy-policy", label: "Privacy policy" },
     { href: "/legal/terms", label: "Terms" }

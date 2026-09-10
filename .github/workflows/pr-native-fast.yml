@@ -98,9 +98,12 @@ jobs:
 
           # Any of these surfaces can change Swift compilation OR the generated
           # pbxproj (XcodeGen globs source directories, so adding/removing a
-          # file under one of them rewrites project.pbxproj).
+          # file under one of them rewrites project.pbxproj). The Engine-closure
+          # UI-purity check and the swift-toolchain resolver it sources are
+          # listed too: this job is the only lane that runs that check, so a
+          # change to the gate itself must re-run the gate.
           if echo "${changed}" | grep -Eq \
-            '^(project\.yml|OpenBurnBar\.xcodeproj/|OpenBurnBarCore/|OpenBurnBarDaemon/|OpenBurnBarMobile/|OpenBurnBarMobileTests/|OpenBurnBarMobileUITests/|OpenBurnBarKeyboard/|OpenBurnBarWidget/|AgentLens/|AgentLensTests/|scripts/ci/verify-daemon-release-signing(\.test)?\.sh|\.swiftlint\.yml|packages/data-domains/gen/.*\.swift|packages/design-tokens/dist/swift/.*\.swift|\.github/workflows/pr-native-fast\.yml)'; then
+            '^(project\.yml|OpenBurnBar\.xcodeproj/|OpenBurnBarCore/|OpenBurnBarDaemon/|OpenBurnBarMobile/|OpenBurnBarMobileTests/|OpenBurnBarMobileUITests/|OpenBurnBarKeyboard/|OpenBurnBarWidget/|AgentLens/|AgentLensTests/|scripts/ci/verify-daemon-release-signing(\.test)?\.sh|scripts/debt/check-engine-closure-ui-purity\.sh|scripts/lib/swift-toolchain\.sh|\.swiftlint\.yml|packages/data-domains/gen/.*\.swift|packages/design-tokens/dist/swift/.*\.swift|\.github/workflows/pr-native-fast\.yml)'; then
             echo "native=true" >> "$GITHUB_OUTPUT"
             echo "Native surface changed: running SwiftPM + xcodegen-drift gates."
           else

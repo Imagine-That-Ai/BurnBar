@@ -77,7 +77,7 @@
     "@openburnbar/signal-envelope-contracts": "file:vendor/openburnbar/signal-envelope-contracts",
     "@sentry/core": "10.69.0",
     "@sentry/node": "10.69.0",
-    "@simplewebauthn/server": "13.3.0",
+    "@simplewebauthn/server": "13.3.2",
     "cockatiel": "3.2.1",
     "express": "5.2.1",
     "firebase-admin": "14.2.0",

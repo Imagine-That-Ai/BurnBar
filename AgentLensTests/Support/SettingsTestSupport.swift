@@ -163,6 +163,11 @@ func makeTestKeychainStore() -> KeychainStore {
 /// *about* resolution — cached fleet kills, the pre-Remote-Config launch window —
 /// construct `SettingsManager` directly with their own
 /// `usageMemoryRemoteConfigSeed`; see `UsageMemoryGateTests`.
+///
+/// The ORGANIZATION ceiling is seeded `nil` — unresolved — because that is the
+/// shipped default: no org ceiling is published to Remote Config yet, and the
+/// org lane is held closed until one is. Tests that are about the org lane pass
+/// their own `orgMemoryRemoteConfigSeed`; see `MemoryOrgCeilingTests`.
 @MainActor
 func makeSettingsManager(
     defaults: UserDefaults? = nil,
@@ -170,7 +175,8 @@ func makeSettingsManager(
     gatewaySecrets: KeychainStore? = nil,
     usageMemoryRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = {
         UsageMemoryRemoteConfigSnapshot(extractionEnabled: true, authorityWritesEnabled: true)
-    }
+    },
+    orgMemoryRemoteConfigSeed: () -> OrgMemoryRemoteConfigSnapshot? = { nil }
 ) -> SettingsManager {
     SettingsManager(
         defaults: defaults ?? makeIsolatedDefaults(),
@@ -184,6 +190,7 @@ func makeSettingsManager(
             legacyServices: [],
             backend: SettingsManagerTestKeychainBackend()
         ),
-        usageMemoryRemoteConfigSeed: usageMemoryRemoteConfigSeed
+        usageMemoryRemoteConfigSeed: usageMemoryRemoteConfigSeed,
+        orgMemoryRemoteConfigSeed: orgMemoryRemoteConfigSeed
     )
 }

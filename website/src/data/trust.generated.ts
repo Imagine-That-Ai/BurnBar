@@ -209,6 +209,30 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     ]
   },
   {
+    "id": "team_pensieve",
+    "title": "Team Memory",
+    "tier": "end_to_end",
+    "blurb": "Memories you contribute to a team space. The lane is blind: the server holds sealed fact envelopes, opaque keyed document ids, opaque source hashes and ECIES-wrapped per-device key envelopes — never fact bodies, citations or any team key. What the server does own is MEMBERSHIP, because a client cannot be trusted to assert it, so team size, join and leave timing, per-member write volume and the coarse kind distribution are visible to it. Inside a team the key is shared: every active member can read every team fact, so a team space is a contribution and display boundary between members, not a confidentiality one. Leaving a team stops future access and rotates the key, but never retracts what a member already replicated to their own device.",
+    "caveat": null,
+    "serverSees": [
+      "opaque keyed document ids",
+      "opaque source hashes",
+      "coarse kind",
+      "team membership graph",
+      "join/leave timing",
+      "per-member write volume",
+      "wrapped per-device key envelopes",
+      "timestamps"
+    ],
+    "deviceOnly": [
+      "team fact bodies",
+      "team fact citations",
+      "project names",
+      "team vault keys",
+      "team slug key"
+    ]
+  },
+  {
     "id": "provider_accounts",
     "title": "Provider Accounts",
     "tier": "server_readable",

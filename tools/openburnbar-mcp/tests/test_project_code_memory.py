@@ -564,15 +564,27 @@ def moved_identity_symbol():
         repo.rename(moved)
         searched = pcm.search_code(conn, "identity-move-token", str(moved), limit=10)
 
+        # Identity survives the move, and the moved checkout's files still read
+        # as current: the search resolves them under the root it was handed
+        # rather than the checkpoint's now-stale one.
         assert searched["projectID"] == indexed["projectID"]
         assert searched["results"][0]["filePath"] == "main.py"
-        assert (
-            conn.execute(
-                "SELECT COUNT(*) FROM pcm_project_aliases WHERE project_id = ?",
-                (indexed["projectID"],),
-            ).fetchone()[0]
-            == 2
-        )
+
+        def alias_count() -> int:
+            return int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM pcm_project_aliases WHERE project_id = ?",
+                    (indexed["projectID"],),
+                ).fetchone()[0]
+            )
+
+        # A read records nothing. It reaches the right project without writing an
+        # alias for the new path -- reads run over the daemon's SELECT-only
+        # surface, which refuses the INSERT that used to happen here.
+        assert alias_count() == 1
+        # The write path is where the moved path earns its alias row.
+        assert pcm.resolve_project_id(conn, moved) == indexed["projectID"]
+        assert alias_count() == 2
         assert (
             conn.execute(
                 "SELECT COUNT(*) FROM pcm_projects WHERE project_id = ? AND identity_version = 2",

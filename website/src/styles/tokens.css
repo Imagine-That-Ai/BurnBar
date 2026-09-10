@@ -43,6 +43,14 @@
   --ember-deep: var(--core-red);
   --ember-glow: var(--core-glow);
   --ember-wash: var(--core-underglow);
+  /* Ember as TEXT, not as a graphic. --ember-core is a mark colour: it draws
+     rules, dots and borders, where WCAG asks for 3:1 and it clears it in both
+     themes. Small ember labels are a different question — on paper
+     --core-fire measures 4.06:1, which fails 1.4.3 at caption sizes — so this
+     token exists to carry the same ember identity at ≥4.5:1 wherever the ink
+     is a word rather than a line. Dark theme: --core-fire itself, 6.95:1.
+     Light theme: darkened below, 5.50:1. */
+  --ember-text: var(--core-fire);
 
   /* ---------- Mercury Aliases ---------- */
   --mercury-bright: #ffffff;
@@ -242,6 +250,12 @@
   --core-red: #b3261c;
   --core-glow: rgba(200, 83, 10, 0.28);
   --core-underglow: rgba(200, 83, 10, 0.08);
+
+  /* Ember-as-text, one step deeper than --core-fire so 12px labels clear AA
+     on paper: 5.50:1 on --ink-void, 5.12:1 on --ink-base. --core-fire stays
+     where it is — it is still the right colour for rules, dots and borders,
+     which answer to 1.4.11's 3:1, not to 1.4.3's 4.5:1. */
+  --ember-text: #a8430a;
 
   /* mercury → ink-on-paper */
   --mercury-bright: #16140f;

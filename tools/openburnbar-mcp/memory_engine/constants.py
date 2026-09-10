@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-ENGINE_SCHEMA_VERSION = 1
+ENGINE_SCHEMA_VERSION = 2
 ENGINE_ACTOR = "local-mcp"
 MEMORY_DB_PATH_ENV = "OPENBURNBAR_MEMORY_DB_PATH"
 MEMORY_KEY_ENV = "OPENBURNBAR_MEMORY_KEY_BASE64"
@@ -72,6 +72,105 @@ SHORT_HALF_LIFE_KINDS = frozenset({"event", "todo"})
 HALF_LIFE_DAYS_SHORT = 30.0
 HALF_LIFE_DAYS_LONG = 365.0
 REVIEW_STATUSES = ("approved", "quarantined", "rejected")
+
+# --- Memory Blind Sync (docs/superpowers/specs/2026-09-03-memory-blind-sync-design.md)
+# The highest `MemoryCloudFactPayload` schema this engine understands. A document
+# sealed by a newer device is parked, never half-merged.
+REMOTE_PAYLOAD_SCHEMA_MAX = 2
+# The forget-receipt entry the app parks beside facts in `agent_memory_inbox`
+# (discriminated by `entryKind`). Its own schema, its own ceiling.
+REMOTE_RECEIPT_ENTRY_KIND = "memory_forget_receipt"
+REMOTE_RECEIPT_SCHEMA_MAX = 1
+# Advisory lineage gap timeout and hold-back queue cap (§5 / P5).
+DEFAULT_LINEAGE_GAP_TIMEOUT_SECONDS = 3600.0
+LINEAGE_HOLD_QUEUE_MAX_SIZE = 100
+DEFAULT_ORPHAN_GRACE_PERIOD_SECONDS = 86400.0 * 7
+DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS = 30
+# `memories.source_kind` for a row that arrived through the blind-sync merge.
+REMOTE_SOURCE_KIND = "cloud_sync"
+# The shape a local `remember` mints (`"mem_" + secrets.token_hex(16)`). A remote
+# `payload.memoryID` becomes the local primary key, so it is held to exactly that
+# shape: anything else is refused for good rather than stored.
+REMOTE_MEMORY_ID_RE = re.compile(r"^mem_[0-9a-f]{32}$")
+# `payload.writerDevice` — the only attribution field a remote payload carries.
+# It is an opaque token naming a device, never prose, so it is held to a bounded
+# character class: a value outside this shape is dropped from the merged
+# revision rather than stored. It has to be, because the field lands in
+# `memory_history.meta_json`, which is PLAINTEXT, and is reported to the calling
+# model by the ungated timeline — so an unbounded one is a prompt-injection and
+# a disclosure channel in the same string.
+REMOTE_WRITER_DEVICE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+# `payload.previousBodyHash` — lineage ADVICE about a body this device may not
+# hold. It is copied verbatim into the lineage hold's note, and `engine_meta` is
+# PLAINTEXT: ids, hashes and timestamps only. A canonical SHA-256 digest is the
+# only thing that can be lineage advice, so prose or a very large value from a
+# corrupt or hostile peer is dropped (never stored, never echoed) rather than
+# handed one oversized slot per hold. Matched case-insensitively and stored
+# lowercased, because that is the form `canonical_body_hash` compares against.
+REMOTE_PREVIOUS_BODY_HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+# `payload.teamID` — the team a fact was contributed to, when it came down the
+# TEAM lane rather than the member's own (memory program D16). Held to exactly
+# the shape `functions/src/teamRoster.ts::newTeamId` mints
+# (`"team_" + randomUUID().replace(/-/g, "").slice(0, 16)`, i.e. 16 lowercase hex
+# characters) for the same reason `writerDevice` is held to a device token: the
+# value lands in PLAINTEXT `meta_json` and in an `engine_meta` key, and it is
+# reported to the calling model by the ungated timeline, so an unbounded one is a
+# prompt-injection channel and a disclosure channel in one string.
+#
+# A value outside the shape is REFUSED, never dropped — the opposite of
+# `writerDevice`, and the same decision the receipt lane already took. `teamID`
+# is not attribution: it SELECTS THE NAMESPACE. Dropping it leaves a document
+# that came down the team lane merging on the PERSONAL lane, under the
+# attacker-chosen `memoryID`, against the member's own rows — which is Cursor's
+# T2 overwrite reached through the selector instead of through the id. The
+# member loses nothing they had: a document whose team is unreadable names no
+# namespace this device can honour.
+#
+# The character class is `[0-9a-f]`, not `[a-z0-9]`: the minter is a UUID's hex,
+# and `test_the_team_id_regex_pins_the_typescript_minters_shape` mints one the
+# same way and pins both halves of that claim.
+#
+# `\A`/`\Z`, not `^`/`$`: Python's `$` also matches immediately before a
+# trailing newline, so `^...$` would accept `"team_<16 hex>\n"`. The call site
+# strips first, so nothing reaches the pattern with a newline today — but this
+# pattern is now a namespace selector, and a selector should be exact on its own
+# terms rather than on its caller's.
+REMOTE_TEAM_ID_RE = re.compile(r"\Ateam_[0-9a-f]{16}\Z")
+# `payload.authorUID` — which member contributed a team fact. A Firebase uid is
+# an opaque alphanumeric token; the same plaintext-boundary argument applies.
+REMOTE_AUTHOR_UID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+# `payload.projectID` — the convergence identity's project half. On the personal
+# lane this value is minted by this engine on this machine; on the TEAM lane it
+# is the `teamProjectId` a member committed to a shared repository's
+# `.openburnbar/project.json`, so it is remote, member-authored text like every
+# other string screened here — and it is the one that lands in PLAINTEXT
+# `memories.project_id`, in an `engine_meta` convergence key and on an audit
+# event, all of which the ungated timeline reports to the calling model. Held to
+# exactly `REMOTE_WRITER_DEVICE_RE`'s token shape.
+#
+# Unlike `teamID` and `authorUID` this one is REFUSED rather than dropped:
+# `project_id` is load-bearing for convergence (the row cannot be keyed without
+# it), so there is no "keep the memory, lose the attribution" outcome available.
+# Terminal and acknowledged, exactly like `PROJECT_IDENTITY_MISSING` above it:
+# the document is what it is, and re-offering it every cycle for ever helps
+# nobody. The app-side pull refuses the same shape a second time
+# (`TeamMemorySyncService.teamProjectIDPattern`).
+REMOTE_PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+# The checked-in file that says which teams a repository publishes to, and
+# therefore — PR3 Cursor ruling, T4 — which team rows a session opened inside
+# that repository may be SERVED. Read live on every serving call rather than
+# cached, because "the link was removed" has to stop the serving on the next
+# call and not on the next daemon restart.
+#
+# The schema is the app's (`TeamProjectLink`, AgentLens/Services/CloudSync/
+# TeamMemoryUploadEligibility.swift), and the bound is the app's `maxBytes` byte
+# for byte: this is a member-authored file in a SHARED repository, so reading
+# more of it than the schema can justify is reading an attacker's payload.
+# Anything larger is refused whole — this checkout links nothing — rather than
+# truncated, because a truncated JSON document is a parse failure with extra
+# steps.
+TEAM_PROJECT_LINK_RELATIVE_PATH = (".openburnbar", "project.json")
+TEAM_PROJECT_LINK_MAX_BYTES = 2_048
 SENSITIVITIES = ("none", "pii", "redacted", "secret")
 MEMORY_SCOPES = ("project", "personal")
 
@@ -360,3 +459,84 @@ ANSWER_PROMPT_SYSTEM = (
     f'"{ANSWER_REFUSAL}" with no citations. Respond with only a JSON object: '
     '{"answer": "<answer text with [id] citations>", "citations": ["<id>", ...]}.'
 )
+
+# The revision-metadata keys `timeline()` documents and returns. `meta_json` is
+# written from a remote payload on a merged revision, so anything outside this
+# set is a sending device's content, not this tool's contract. The D16 team pair
+# (`teamID` / `authorUID`) is admitted here only because `_screen_remote_row`
+# holds both to a bounded token shape before they can reach `meta_json`.
+TIMELINE_META_KEYS = (
+    "remoteMemoryID",
+    "updatedAt",
+    "event",
+    "writerDevice",
+    "writer_device",
+    "deviceId",
+    "device_id",
+    "extracted_by",
+    "extractedBy",
+    "model_id",
+    "modelId",
+    "reason",
+    "replacement",
+    "canonicalID",
+    "foldedID",
+    "supersededBy",
+    "remoteSupersededBy",
+    "teamID",
+    "authorUID",
+)
+
+# ----- the reserved metadata namespace: what the ENGINE owns on a row -----
+#
+# PR3 Cursor ruling T6. `metadata` is caller-supplied and lands verbatim in the
+# plaintext `metadata_json` column, so any key the engine READS as authority is
+# a key a caller with `memory_write` can FORGE. Team provenance was exactly
+# that: a top-level `metadata["teamID"]` both the merge stamped and `remember`
+# would happily persist, which let a local caller claim team-lane authority —
+# hiding their own row from every serving path and locking it out of
+# `forget` / `update` for good (the unstamping is itself a locked write).
+#
+# So provenance moved somewhere a caller cannot reach. Every metadata key whose
+# name starts with `RESERVED_METADATA_PREFIX` is ENGINE-OWNED: caller input
+# carrying one is refused on the local write paths and stripped on the import
+# paths, and only the sync lane ever writes inside it. The whole prefix is
+# reserved rather than the one key, so a later sibling is fenced by existing
+# code rather than by remembering to add it here.
+RESERVED_METADATA_PREFIX = "_"
+RESERVED_METADATA_CODE = "RESERVED_METADATA_KEY"
+
+# The one reserved root the engine writes today, and the team block inside it.
+# `metadata_json["_burnbar"]["team"] = {"teamID": ..., "authorUID": ...}`.
+ENGINE_METADATA_KEY = "_burnbar"
+TEAM_PROVENANCE_SUBKEY = "team"
+
+# The same path as a SQLite JSON path, for the fences that have to run in SQL
+# (`list`'s visibility clause). Quoted label: a leading underscore is legal
+# unquoted on current SQLite, and quoting costs nothing on any version.
+TEAM_ID_JSON_PATH = '$."_burnbar".team.teamID'
+
+# "This row is team-origin", as a SQL predicate over the alias `m`.
+#
+# Amendment A1 (`docs/superpowers/plans/2026-09-05-team-memory-design.md`). A
+# team row's landing partition is the `teamProjectId` checked into the shared
+# repository — deliberately NOT a local `proj_<32hex>` id, because two members'
+# checkouts of the same repository mint different local ids and a team fact has
+# to converge across them anyway. So `memories.project_id` holds a value from a
+# different namespace, and the LOCAL project fence — `(m.project_id = ? OR
+# m.scope = 'personal')` — can never admit a project-scoped team row on ANY
+# member's Mac, the author's included.
+#
+# Every query that carries the local project fence therefore widens it with this
+# disjunct and hands the decision to `_team_row_servable`, which compares the
+# pair the link file actually states. The Python-side fences do the same with
+# `_metadata_team_id(...) is not None`. Widening a SELECT grants nothing: the
+# serving predicate still decides, and it is now the only thing that does.
+TEAM_ROW_PRESENT_SQL = f"json_extract(m.metadata_json, '{TEAM_ID_JSON_PATH}') IS NOT NULL"
+
+# NOT renamed, and deliberately: `memory_history.meta_json` (and so `timeline`'s
+# `TIMELINE_META_KEYS` above) still carries `teamID` / `authorUID` under those
+# exact names. That surface is written only by `_write_remote_row` from a
+# screened payload — `_commit_fact` copies a fixed list of attribution keys into
+# history meta and `teamID` is not on it — so it was never caller-forgeable, and
+# the app-side "Team fact · contributed by X" badge keeps reading what it reads.

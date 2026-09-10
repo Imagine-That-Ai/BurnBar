@@ -15,6 +15,7 @@ actor DataStoreActor {
     let database: OpenBurnBarDatabase
     let usageStore: UsageStore
     nonisolated let conversationStore: ConversationStore
+    let receiptStore: ReceiptStore
     let searchIndexStore: SearchIndexStore
     let artifactStore: ArtifactStore
     let projectionStore: ProjectionStore
@@ -40,6 +41,7 @@ actor DataStoreActor {
         )
         usageStore = UsageStore(dbQueue: databaseQueue)
         conversationStore = ConversationStore(dbQueue: databaseQueue)
+        receiptStore = ReceiptStore(dbQueue: databaseQueue)
         searchIndexStore = SearchIndexStore(dbQueue: databaseQueue)
         artifactStore = ArtifactStore(dbQueue: databaseQueue)
         projectionStore = ProjectionStore(dbQueue: databaseQueue)

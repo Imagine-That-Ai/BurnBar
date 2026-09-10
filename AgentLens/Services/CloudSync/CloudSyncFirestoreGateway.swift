@@ -44,6 +44,16 @@ protocol CloudSyncDocumentGateway: AnyObject, Sendable {
 }
 
 protocol CloudSyncQueryGateway: AnyObject, Sendable {
+    /// Resume strictly AFTER the document whose ordered values are `values`, in
+    /// this query's own `order(by:)` sequence — Firestore's `Query.start(after:)`.
+    ///
+    /// The composite cursor a stable pagination needs. Ordering by a
+    /// non-unique field alone (`updatedAt`, say) cannot express "the rest of
+    /// this instant": a `>` filter skips the whole tie group and a `>=` filter
+    /// re-reads it for ever. `order(by: field)` + `orderByDocumentID()` +
+    /// `start(afterOrderedValues: [instant, docID])` says exactly where to
+    /// resume.
+    func start(afterOrderedValues values: [Any]) -> CloudSyncQueryGateway
     func whereField(_ field: String, isGreaterThan value: Any) -> CloudSyncQueryGateway
     func whereField(_ field: String, isEqualTo value: Any) -> CloudSyncQueryGateway
     func whereDocumentID(isGreaterThan value: String) -> CloudSyncQueryGateway
@@ -228,6 +238,10 @@ final class CloudSyncQueryLiveGateway: CloudSyncQueryGateway, @unchecked Sendabl
 
     init(query: Query) {
         self.query = query
+    }
+
+    func start(afterOrderedValues values: [Any]) -> CloudSyncQueryGateway {
+        CloudSyncQueryLiveGateway(query: query.start(after: values))
     }
 
     func whereField(_ field: String, isGreaterThan value: Any) -> CloudSyncQueryGateway {

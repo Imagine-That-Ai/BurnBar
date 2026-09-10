@@ -381,3 +381,378 @@ def test_the_printed_line_carries_no_memory_text(tmp_path):
             or value is None
             or value in (*_KNOWN_STATUSES, *_KNOWN_CODES, *_KNOWN_EXTRACTORS, "other", "none")
         ), value
+
+
+FIXTURE_CURSOR = MCP_DIR / "tests" / "fixtures" / "cursor_transcript.jsonl"
+FIXTURE_CODEX = MCP_DIR / "tests" / "fixtures" / "codex_transcript.jsonl"
+FIXTURE_HERMES = MCP_DIR / "tests" / "fixtures" / "hermes_transcript.json"
+FIXTURE_GROK = MCP_DIR / "tests" / "fixtures" / "grok_transcript.jsonl"
+
+
+def _quarantined_memories(env: dict[str, str], project_path: str) -> list[dict]:
+    import memory_engine as me
+
+    engine = me.MemoryEngine.open(db_path=env["OPENBURNBAR_MEMORY_DB_PATH"])
+    try:
+        listing = engine.list(
+            project_path=project_path,
+            scope="all",
+            include_quarantined=True,
+            include_cross_project=True,
+            page_size=200,
+        )
+        return listing["results"]
+    finally:
+        engine.close()
+
+
+def test_cursor_transcript_maps_fields_and_lands_quarantined_with_provenance(tmp_path):
+    env = _isolated_env(tmp_path)
+    project = tmp_path / "cursor_proj"
+    project.mkdir()
+    session_id = "cursor-sess-001"
+
+    result = mt.memorize(
+        transcript_path=FIXTURE_CURSOR,
+        project_path=str(project),
+        session_id=session_id,
+        reason="clear",
+        client="cursor",
+        env=env,
+    )
+    assert result["status"] == "memorized", result
+
+    decisions = result["result"]["decisions"]
+    assert decisions, "expected decisions from cursor transcript"
+    for d in decisions:
+        assert d.get("reviewStatus") == "quarantined", d
+        assert f"cursor:{session_id}#" in d.get("sourceRef", ""), d
+
+    import memory_engine as me
+
+    engine = me.MemoryEngine.open(db_path=env["OPENBURNBAR_MEMORY_DB_PATH"])
+    try:
+        # Default approved listing excludes quarantined memories
+        default_list = engine.list(project_path=str(project), scope="all", review_status="approved")
+        assert len(default_list["results"]) == 0
+
+        # Quarantined list contains all extracted rows
+        quarantined = engine.list(project_path=str(project), scope="all", review_status="quarantined")
+        assert len(quarantined["results"]) >= 1
+        bodies = [m["body"] for m in quarantined["results"]]
+        for row in quarantined["results"]:
+            assert row["reviewStatus"] == "quarantined"
+            assert row["sourceRef"].startswith(f"cursor:{session_id}#")
+            assert row["metadata"].get("client") == "cursor"
+            assert row["metadata"].get("source_tool") == "memorize_transcript"
+            assert row["metadata"].get("sessionId") == session_id
+
+        # Field mapping assertions: prose extracted, system and tool noise ignored
+        assert any("daemon socket" in b for b in bodies), bodies
+        assert not any("coding assistant" in b for b in bodies)
+        assert not any("grep_search" in b for b in bodies)
+        assert not any("Found daemon socket" in b for b in bodies)
+    finally:
+        engine.close()
+
+
+def test_codex_transcript_maps_fields_and_lands_quarantined_with_provenance(tmp_path):
+    env = _isolated_env(tmp_path)
+    project = tmp_path / "codex_proj"
+    project.mkdir()
+    session_id = "codex-sess-002"
+
+    result = mt.memorize(
+        transcript_path=FIXTURE_CODEX,
+        project_path=str(project),
+        session_id=session_id,
+        reason="clear",
+        client="codex",
+        env=env,
+    )
+    assert result["status"] == "memorized", result
+
+    decisions = result["result"]["decisions"]
+    assert decisions, "expected decisions from codex transcript"
+    for d in decisions:
+        assert d.get("reviewStatus") == "quarantined", d
+        assert f"codex:{session_id}#" in d.get("sourceRef", ""), d
+
+    import memory_engine as me
+
+    engine = me.MemoryEngine.open(db_path=env["OPENBURNBAR_MEMORY_DB_PATH"])
+    try:
+        default_list = engine.list(project_path=str(project), scope="all", review_status="approved")
+        assert len(default_list["results"]) == 0
+
+        quarantined = engine.list(project_path=str(project), scope="all", review_status="quarantined")
+        assert len(quarantined["results"]) >= 1
+        bodies = [m["body"] for m in quarantined["results"]]
+        for row in quarantined["results"]:
+            assert row["reviewStatus"] == "quarantined"
+            assert row["sourceRef"].startswith(f"codex:{session_id}#")
+            assert row["metadata"].get("client") == "codex"
+            assert row["metadata"].get("source_tool") == "memorize_transcript"
+            assert row["metadata"].get("sessionId") == session_id
+
+        # Field mapping assertions: prose extracted, tool and meta events dropped.
+        # The fixture carries the shape a Codex 0.15x rollout log actually has
+        # (`response_item` -> `payload` -> `message`), so a regression to the
+        # non-current `payload.item` reading fails here as `skipped_empty`.
+        assert any("local-only" in b for b in bodies), bodies
+        assert not any("session_meta" in b for b in bodies)
+        assert not any("Codex, an agent" in b for b in bodies), bodies
+        assert not any("Database path checked" in b for b in bodies)
+    finally:
+        engine.close()
+
+
+def test_hermes_transcript_maps_fields_and_lands_quarantined_with_provenance(tmp_path):
+    env = _isolated_env(tmp_path)
+    project = tmp_path / "hermes_proj"
+    project.mkdir()
+    session_id = "hermes-sess-003"
+
+    result = mt.memorize(
+        transcript_path=FIXTURE_HERMES,
+        project_path=str(project),
+        session_id=session_id,
+        reason="clear",
+        client="hermes",
+        env=env,
+    )
+    assert result["status"] == "memorized", result
+
+    decisions = result["result"]["decisions"]
+    assert decisions, "expected decisions from hermes transcript"
+    for d in decisions:
+        assert d.get("reviewStatus") == "quarantined", d
+        assert f"hermes:{session_id}#" in d.get("sourceRef", ""), d
+
+    import memory_engine as me
+
+    engine = me.MemoryEngine.open(db_path=env["OPENBURNBAR_MEMORY_DB_PATH"])
+    try:
+        default_list = engine.list(project_path=str(project), scope="all", review_status="approved")
+        assert len(default_list["results"]) == 0
+
+        quarantined = engine.list(project_path=str(project), scope="all", review_status="quarantined")
+        assert len(quarantined["results"]) >= 1
+        bodies = [m["body"] for m in quarantined["results"]]
+        for row in quarantined["results"]:
+            assert row["reviewStatus"] == "quarantined"
+            assert row["sourceRef"].startswith(f"hermes:{session_id}#")
+            assert row["metadata"].get("client") == "hermes"
+            assert row["metadata"].get("source_tool") == "memorize_transcript"
+            assert row["metadata"].get("sessionId") == session_id
+
+        # Field mapping assertions: prose extracted from messages JSON, tool calls ignored
+        assert any("daemon socket" in b or "WAL file" in b for b in bodies), bodies
+        assert not any("Socket active" in b for b in bodies)
+        assert not any("inspect_socket" in b for b in bodies)
+    finally:
+        engine.close()
+
+
+def test_grok_transcript_maps_fields_and_lands_quarantined_with_provenance(tmp_path):
+    env = _isolated_env(tmp_path)
+    project = tmp_path / "grok_proj"
+    project.mkdir()
+    session_id = "grok-sess-004"
+
+    result = mt.memorize(
+        transcript_path=FIXTURE_GROK,
+        project_path=str(project),
+        session_id=session_id,
+        reason="clear",
+        client="grok",
+        env=env,
+    )
+    assert result["status"] == "memorized", result
+
+    decisions = result["result"]["decisions"]
+    assert decisions, "expected decisions from grok transcript"
+    for d in decisions:
+        assert d.get("reviewStatus") == "quarantined", d
+        assert f"grok:{session_id}#" in d.get("sourceRef", ""), d
+
+    import memory_engine as me
+
+    engine = me.MemoryEngine.open(db_path=env["OPENBURNBAR_MEMORY_DB_PATH"])
+    try:
+        default_list = engine.list(project_path=str(project), scope="all", review_status="approved")
+        assert len(default_list["results"]) == 0
+
+        quarantined = engine.list(project_path=str(project), scope="all", review_status="quarantined")
+        assert len(quarantined["results"]) >= 1
+        bodies = [m["body"] for m in quarantined["results"]]
+        for row in quarantined["results"]:
+            assert row["reviewStatus"] == "quarantined"
+            assert row["sourceRef"].startswith(f"grok:{session_id}#")
+            assert row["metadata"].get("client") == "grok"
+            assert row["metadata"].get("source_tool") == "memorize_transcript"
+            assert row["metadata"].get("sessionId") == session_id
+
+        # Field mapping assertions: chat_history.jsonl prose mapped, tool noise dropped
+        assert any("RRF" in b for b in bodies), bodies
+        assert not any("Tests finished" in b for b in bodies)
+    finally:
+        engine.close()
+
+
+def test_cli_client_flag_runs_collector_and_quarantines(tmp_path):
+    env = _isolated_env(tmp_path)
+    project = tmp_path / "cli_cursor_proj"
+    project.mkdir()
+    session_id = "sess-cli-cursor-001"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(MCP_DIR / "memorize_transcript.py"),
+            "--transcript",
+            str(FIXTURE_CURSOR),
+            "--client",
+            "cursor",
+            "--project",
+            str(project),
+            "--session-id",
+            session_id,
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    output = json.loads(result.stdout.strip().splitlines()[-1])
+    assert output["status"] == "memorized"
+    assert output["result"]["summary"]["ADD"] >= 1
+
+    import memory_engine as me
+
+    engine = me.MemoryEngine.open(db_path=env["OPENBURNBAR_MEMORY_DB_PATH"])
+    try:
+        quarantined = engine.list(project_path=str(project), scope="all", review_status="quarantined")
+        assert len(quarantined["results"]) >= 1
+        for row in quarantined["results"]:
+            assert row["reviewStatus"] == "quarantined"
+            assert row["sourceRef"].startswith(f"cursor:{session_id}#")
+    finally:
+        engine.close()
+
+
+def test_codex_adapter_reads_the_current_response_item_payload_shape(tmp_path):
+    """Codex writes `{"type":"response_item","payload":{"type":"message","role":...}}`.
+
+    The adapter used to look for `payload.item` and fall back to the outer
+    envelope, which carries no role, so every user and assistant turn of a real
+    session was discarded and the collector reported `skipped_empty`. This is the
+    shape a Codex 0.15x rollout log on disk actually has.
+    """
+    from transcript_adapters.codex import load_codex_transcript
+
+    rollout = tmp_path / "rollout-2026-09-05T03-52-43-01a06fb2.jsonl"
+    rollout.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2026-09-05T03:52:51.043Z",
+                        "ordinal": 0,
+                        "type": "session_meta",
+                        "payload": {"session_id": "01a06fb2", "cwd": "/tmp/p", "cli_version": "0.153.3"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-09-05T03:52:51.700Z",
+                        "ordinal": 4,
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "id": "msg_dev",
+                            "role": "developer",
+                            "content": [{"type": "input_text", "text": "You are Codex, an agent based on GPT-6."}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-09-05T03:52:51.757Z",
+                        "ordinal": 5,
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "id": "msg_user",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": "Keep the memory store local-only."}],
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-09-05T03:52:54.370Z",
+                        "ordinal": 12,
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "id": "msg_asst",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "Agreed, it stays on-device."}],
+                            "phase": "commentary",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "response_item",
+                        "payload": {"type": "custom_tool_call", "name": "shell", "input": "sqlite3 store.db"},
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    messages = load_codex_transcript(rollout)
+    assert messages == [
+        {"role": "user", "content": "Keep the memory store local-only."},
+        {"role": "assistant", "content": "Agreed, it stays on-device."},
+    ], messages
+
+
+def test_collector_forces_quarantine_over_an_approved_request(tmp_path):
+    """A capture path files rows for review; it does not grant approval.
+
+    `--review-status approved`, `OPENBURNBAR_MEMORY_DEFAULT_REVIEW_STATUS`, and a
+    `claude_code` client used to land rows straight into recall. Nothing a caller
+    or an extractor asks for lets an unread, machine-authored row skip
+    `burnbar_memory_review`.
+    """
+    env = _isolated_env(tmp_path)
+    env["OPENBURNBAR_MEMORY_DEFAULT_REVIEW_STATUS"] = "approved"
+    project = tmp_path / "forced_proj"
+    project.mkdir()
+
+    result = mt.memorize(
+        transcript_path=FIXTURE_CODEX,
+        project_path=str(project),
+        session_id="forced-sess",
+        reason="clear",
+        client="codex",
+        review_status="approved",
+        env=env,
+    )
+    assert result["status"] == "memorized", result
+    assert [d.get("reviewStatus") for d in result["result"]["decisions"]] != []
+    for decision in result["result"]["decisions"]:
+        assert decision.get("reviewStatus") == "quarantined", decision
+
+    import memory_engine as me
+
+    engine = me.MemoryEngine.open(db_path=env["OPENBURNBAR_MEMORY_DB_PATH"])
+    try:
+        assert engine.list(project_path=str(project), scope="all", review_status="approved")["results"] == []
+    finally:
+        engine.close()

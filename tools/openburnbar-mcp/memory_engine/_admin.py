@@ -5,20 +5,46 @@ Only methods live here; construction and shared state stay in `engine.py`."""
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
+from pathlib import Path
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+import project_code_memory as pcm
 
 from . import gate
-from ._util import _aux_strings, _ingest_decision, _json_dumps, _json_loads, now_iso, sha256_hex
+from ._util import (
+    _aux_strings,
+    _ingest_decision,
+    _json_dumps,
+    _json_loads,
+    _parse_iso,
+    now_iso,
+    sha256_hex,
+)
 from .constants import (
     DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_ORPHAN_GRACE_PERIOD_SECONDS,
+    DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS,
     EMBEDDING_PROVIDER_ENV,
     ENGINE_SCHEMA_VERSION,
+    LINEAGE_HOLD_QUEUE_MAX_SIZE,
     MAX_MEMORIES_PER_PROJECT_SOFT,
+    TEAM_ROW_PRESENT_SQL,
 )
 from .embeddings import encode_vector
 from .extract import Fact
-from .store import audit_event, default_db_path, project_payload, resolve_project, verify_audit_chain
+from .store import (
+    audit_event,
+    default_db_path,
+    project_payload,
+    read_project_dotfile,
+    resolve_project,
+    verify_audit_chain,
+)
+
+if TYPE_CHECKING:  # pragma: no cover — annotation only; the value is built in `_namespaces`.
+    from ._namespaces import _SessionTeamLinks
 
 
 # The auxiliary-exposure sweep is a regex pass over short strings, so the cap is
@@ -229,22 +255,58 @@ class _Maintenance:
         include_superseded: bool = False,
         all_projects: bool = False,
     ) -> dict[str, Any]:
+        """Every memory this session may be served, as JSON.
+
+        T4: an export SERVES bodies — whole ones, with their ids, to whatever
+        holds `sensitive_read` — so it answers to `_team_row_servable` exactly
+        as `recall`, `list` and `get` do. `all_projects` widens the PROJECT
+        fence and never the team one: a team row is exported only where THIS
+        checkout links its team to the project that row landed in, so an
+        unrelated repository exports none of them, and deleting the link stops
+        the export on the very next call rather than at the next pull.
+
+        The omission is counted, never silent. `teamRowsWithheld` tells an
+        operator taking a backup that N rows were held back, so a restore is
+        not quietly short of rows nobody can name — the same reason
+        `import_memories` counts its own strips and skips. A1 is what makes that
+        count honest on the NARROW export too: a team row's landing partition is
+        a `teamProjectId`, so `m.project_id = ?` used to drop every one of them
+        before the team fence could see it — the row was neither exported nor
+        counted, and a linked member's own backup was silently short of the team
+        memory they are entitled to.
+        """
         params: list[Any] = [self.provider.version_id]
         where = "WHERE 1=1"
         payload: dict[str, Any] = {}
         if not all_projects:
             project_id, root = resolve_project(self.conn, project_path)
-            where += " AND m.project_id = ?"
+            # A1: the team fence below decides a team row, not the local one.
+            where += f" AND (m.project_id = ? OR {TEAM_ROW_PRESENT_SQL})"
             params.append(project_id)
             payload = project_payload(project_id, root)
         if not include_superseded:
             where += " AND m.valid_to IS NULL"
         rows = self.conn.execute(self._SELECT + where + " ORDER BY m.created_at ASC", params).fetchall()
+        # Both resolved lazily, and for the reason `_team_serves_memory` gives:
+        # a store holding no team row must not gain a `projects` upsert or a
+        # link-file read because somebody took a backup.
+        session_project_id: str | None = payload.get("projectID")
+        links: _SessionTeamLinks | None = None
+        team_rows_withheld = 0
         items = []
         for row in rows:
             memory = self._row_to_memory(row)
             if memory is None:
                 continue
+            team_id = self._metadata_team_id(memory.metadata)
+            if team_id is not None:
+                if session_project_id is None:
+                    session_project_id = resolve_project(self.conn, project_path)[0]
+                if links is None:
+                    links = self._session_team_links(session_project_id)
+                if not self._team_row_servable(team_id, memory.project_id, session_project_id, links):
+                    team_rows_withheld += 1
+                    continue
             item = memory.public()
             if memory.sensitivity == "secret":
                 item["secretText"] = self._open_vault(memory.id, memory.project_id) if include_secrets else None
@@ -254,7 +316,11 @@ class _Maintenance:
             action="memory.export",
             project_id=payload.get("projectID"),
             subject_id=None,
-            labels=[f"count:{len(items)}", f"secrets:{'yes' if include_secrets else 'no'}"],
+            labels=[
+                f"count:{len(items)}",
+                f"secrets:{'yes' if include_secrets else 'no'}",
+                f"teamWithheld:{team_rows_withheld}",
+            ],
             actor=self.config.actor,
         )
         self._commit()
@@ -264,6 +330,7 @@ class _Maintenance:
             "allProjects": all_projects,
             "exportedAt": now_iso(),
             "count": len(items),
+            "teamRowsWithheld": team_rows_withheld,
             "memories": items,
             **payload,
         }
@@ -288,6 +355,7 @@ class _Maintenance:
                 "historicalSkipped": 0,
                 **project_payload(project_id, root),
             }
+        reserved_stripped = 0
         for raw in items:
             if not isinstance(raw, dict):
                 continue
@@ -305,6 +373,13 @@ class _Maintenance:
             # Engine-owned metadata is recomputed on write and must not leak across stores.
             for key in ("daemonMemoryID", "gateLabels", "injectionLabels"):
                 fact.metadata.pop(key, None)
+            # T6, and the same rule those three already state, generalised to
+            # the reserved namespace: an archive row may carry a team stamp this
+            # store never earned. STRIPPED rather than refused, because an
+            # import is a machine-generated payload and one stale row must not
+            # make a whole restore unimportable — the body lands as what it
+            # actually is here, a personal memory. Counted, so it is not silent.
+            reserved_stripped += len(self._strip_reserved_metadata(fact.metadata))
             decisions.append(
                 self._commit_fact(
                     project_id=project_id,
@@ -334,8 +409,30 @@ class _Maintenance:
             "summary": summary,
             "decisions": decisions,
             "historicalSkipped": historical_skipped,
+            "reservedMetadataStripped": reserved_stripped,
             **project_payload(project_id, root),
         }
+
+    def import_assistant_export(
+        self,
+        payload: dict[str, Any],
+        *,
+        schema: str,
+        project_path: str | None = None,
+        batch_cap: int | None = None,
+        cursor: int | str | None = None,
+    ) -> dict[str, Any]:
+        """Import memories from a ChatGPT or Claude.ai assistant export payload."""
+        import assistant_export
+
+        return assistant_export.import_assistant_export(
+            self,
+            payload,
+            schema=schema,
+            project_path=project_path,
+            batch_cap=batch_cap,
+            cursor=cursor,
+        )
 
     def import_legacy(self, items: Sequence[dict[str, Any]], *, project_path: str | None) -> dict[str, Any]:
         """Import rows from the daemon-owned `agent_memories` store exactly once.
@@ -388,6 +485,10 @@ class _Maintenance:
             if fact is None:
                 continue
             fact.metadata = {**fact.metadata, "legacyMemoryID": legacy_id}
+            # T6: same strip as `import_memories`, and here it also keeps a
+            # stamped legacy row from becoming permanently retryable — a REJECT
+            # is non-terminal, so it would be re-offered on every drain for ever.
+            self._strip_reserved_metadata(fact.metadata)
             decision = self._commit_fact(
                 project_id=owner_project_id,
                 root=owner_root,
@@ -526,7 +627,15 @@ class _Maintenance:
                     exposures.append({"id": str(row["id"]), "surface": surface, "revision": revision, "labels": labels})
         return {"exposures": exposures, "scan": scan}
 
-    def doctor(self, *, project_path: str | None = None, aux_scan_cursor: int | None = None) -> dict[str, Any]:
+    def doctor(
+        self,
+        *,
+        project_path: str | None = None,
+        aux_scan_cursor: int | None = None,
+        apply: bool = False,
+        grace_period_seconds: float = DEFAULT_ORPHAN_GRACE_PERIOD_SECONDS,
+        parked_retention_days: int = DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS,
+    ) -> dict[str, Any]:
         db_path = self.db_path or default_db_path()
         # Resolved first: the auxiliary-exposure scan below is per project, so it
         # has to know which one before the findings are assembled.
@@ -538,6 +647,116 @@ class _Maintenance:
                 project_extra = dict(project_payload(active_project_id, root))
             except ValueError as exc:
                 project_extra = {"projectError": str(exc)}
+
+        pruned_orphans = 0
+        pruned_supersedes = 0
+        unstamped_provenance = 0
+
+        if apply:
+            # A7's `--apply` bound, deliberately narrow: prune aged orphan bodies
+            # and aged parked supersedes, and *nothing else*. It never heals a
+            # ledger, never deletes a finding, and never writes the app-owned
+            # `remote_sync_watermarks` table — a watermark the doctor rewound
+            # would silently re-drain or skip a member's inbox, and a finding the
+            # doctor deleted is a report that lies on its next run. Everything
+            # this pass will not repair stays in `findings` for a human.
+            now_dt = datetime.now(UTC)
+
+            for orphan in self.orphan_memory_bodies():
+                mid = str(orphan["memory_id"])
+                emid = str(orphan["engine_memory_id"])
+                ts = _parse_iso(orphan.get("updated_at") or orphan.get("created_at"))
+                # No usable timestamp means no way to prove the row cleared the
+                # grace period, so it is reported rather than deleted.
+                if ts is None or (now_dt - ts).total_seconds() <= grace_period_seconds:
+                    continue
+                # Referenced by a forget receipt: the receipt is the evidence that
+                # refuses a replay, and the body it names is not ours to drop.
+                if (
+                    self.conn.execute(
+                        "SELECT 1 FROM engine_meta "
+                        "WHERE key = ? OR key = ? OR (key LIKE 'forget_receipt:%' AND value LIKE ?) LIMIT 1",
+                        (f"forget_receipt:{emid}", f"forget_receipt:{mid}", f"%{emid}%"),
+                    ).fetchone()
+                    is not None
+                ):
+                    continue
+                # Referenced by an upload this device staged and has not yet sent.
+                if (
+                    self.conn.execute(
+                        "SELECT 1 FROM engine_meta "
+                        "WHERE (key LIKE 'staged_upload:%' OR key LIKE 'pending_upload:%' OR key LIKE 'in_flight_upload:%') "
+                        "AND (key LIKE ? OR key LIKE ? OR value LIKE ? OR value LIKE ?) LIMIT 1",
+                        (f"%{emid}%", f"%{mid}%", f"%{emid}%", f"%{mid}%"),
+                    ).fetchone()
+                    is not None
+                ):
+                    continue
+                # Referenced by a live row in the daemon's own store.
+                if "agent_memories" in pcm.table_names(self.conn) and (
+                    self.conn.execute(
+                        "SELECT 1 FROM agent_memories WHERE id = ? AND (review_status = 'approved' OR valid_to IS NULL)",
+                        (mid,),
+                    ).fetchone()
+                    is not None
+                ):
+                    continue
+                self.conn.execute("DELETE FROM agent_memory_bodies WHERE memory_id = ?", (mid,))
+                pruned_orphans += 1
+
+            retention_seconds = parked_retention_days * 86400.0
+            for parked in self.parked_supersedes():
+                ts = _parse_iso(parked.get("receivedAt") or parked.get("reportedAt") or parked.get("updatedAt"))
+                # Same rule as the orphan loop above, and for the same reason: no
+                # usable timestamp means no way to prove the row cleared the
+                # retention window, so it is reported rather than deleted.
+                # `parked_supersedes()` builds these as `str(x or y or "")`, and
+                # `_parse_iso("")` is None — falling through here pruned rows at
+                # ZERO age under the default 30-day window.
+                if ts is None or (now_dt - ts).total_seconds() <= retention_seconds:
+                    continue
+                source = parked.get("source")
+                if source == "engine_meta" and parked.get("key"):
+                    self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (parked["key"],))
+                elif source == "memories" and parked.get("memoryID"):
+                    # T5: `--apply` runs on this device, for this user, and a
+                    # parked supersede edge is part of a team row's state — the
+                    # team lane put it there and the team lane resolves it. The
+                    # finding stays in the report either way, so nothing is
+                    # hidden by declining to write.
+                    if self._team_write_refusal(str(parked["memoryID"]), project_id=active_project_id) is not None:
+                        continue
+                    self.conn.execute("UPDATE memories SET superseded_by = NULL WHERE id = ?", (parked["memoryID"],))
+                else:
+                    # `source == "inbox"` lands here deliberately. `agent_memory_inbox`
+                    # is the daemon's transport table: an unapplied document is one
+                    # the engine has not acknowledged — a lineage-held revision sits
+                    # exactly like this by design — and deleting it loses the memory
+                    # permanently and silently, the same class of harm as rewinding
+                    # `remote_sync_watermarks`. The doctor reports it; the daemon
+                    # drains it.
+                    continue
+                pruned_supersedes += 1
+
+            # T6 recovery, and the one repair in this pass that RESTORES access
+            # rather than reclaiming space. A stamped row no `sync_identity:team:`
+            # entry accounts for is a row the team lane never wrote — a caller
+            # forged the stamp before the write paths refused it — and it is
+            # invisible to every read and locked against `forget` and `update`,
+            # the unstamping included. Un-stamping is the only way out, it
+            # touches nothing but the engine's own namespace, and the finding
+            # below still reports whatever this loop could not repair.
+            for orphan in self.orphan_team_provenance():
+                if self._clear_team_provenance(str(orphan["memoryID"])):
+                    unstamped_provenance += 1
+
+            if pruned_orphans or pruned_supersedes or unstamped_provenance:
+                self._commit()
+            if unstamped_provenance:
+                # These rows were fenced out of `_load_active`'s pool; a cached
+                # list from before the repair still hides them.
+                self._invalidate_cache()
+
         aux = self.aux_secret_exposure(active_project_id, after_rowid=aux_scan_cursor or 0)
         exposures, aux_scan = aux["exposures"], aux["scan"]
         undecryptable = 0
@@ -625,6 +844,292 @@ class _Maintenance:
                     "detail": f"hash chain breaks at seq {chain['brokenAtSeq']}",
                 }
             )
+
+        # Sync-ledger pass (A7)
+        epoch_dt = datetime.min.replace(tzinfo=UTC)
+
+        # 1. Watermark sanity across both ledgers
+        trans_wm = self.transport_watermarks()
+        for acct, wm in trans_wm.items():
+            s_row = self.conn.execute("SELECT applied_updated_at FROM sync_state WHERE user_id = ?", (acct,)).fetchone()
+            # ONLY the processed cursor. `lastSyncedAt` is set to the current
+            # instant when the app creates this row on opt-in, with
+            # `lastProcessedRemoteUpdateAt` NULL: that row is the consent marker,
+            # not evidence a remote fact was ever processed. Falling back to it
+            # reported a stranded transport on every healthy device whose
+            # `sync_state` was simply empty because no remote fact had arrived.
+            t_iso = wm.get("lastProcessedRemoteUpdateAt")
+            t_ts = _parse_iso(t_iso) if t_iso else None
+            is_stranded = False
+            if s_row is None:
+                if t_ts is not None and t_ts > epoch_dt:
+                    is_stranded = True
+            else:
+                e_ts = _parse_iso(s_row["applied_updated_at"])
+                if t_ts is not None and (e_ts is None or t_ts > e_ts):
+                    is_stranded = True
+            if is_stranded:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "STRANDED_TRANSPORT_WATERMARK",
+                        "detail": (
+                            f"Transport watermark ({t_iso}) for user '{acct}' is ahead of engine applied watermark "
+                            f"({s_row['applied_updated_at'] if s_row else 'none'})."
+                        ),
+                    }
+                )
+
+        # 2. Orphan agent_memory_bodies
+        orphan_rows = self.orphan_memory_bodies()
+        if orphan_rows:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "ORPHAN_MEMORY_BODIES",
+                    "detail": f"{len(orphan_rows)} orphan row(s) in agent_memory_bodies with no owning record in memories.",
+                    "fix": "Run doctor with apply=True to prune eligible aged orphans.",
+                }
+            )
+
+        # 3. Parked supersedes
+        parked_list = self.parked_supersedes()
+        if parked_list:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "PARKED_SUPERSEDES",
+                    "detail": f"{len(parked_list)} parked supersede(s) waiting for target memories.",
+                    "fix": (
+                        "Wait for the target memories to sync. `apply=True` prunes only the engine's own "
+                        "notes past the retention window, and only where their age can be proved; an "
+                        "unapplied inbox document belongs to the daemon and is never deleted from here."
+                    ),
+                }
+            )
+
+        # 4. Receipt coverage
+        rcpt_gaps = self.receipt_coverage_gaps()
+        if rcpt_gaps:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "RECEIPT_COVERAGE_GAP",
+                    "detail": f"{len(rcpt_gaps)} receipt coverage gap(s) found (missing convergence identity or forget receipt).",
+                    "fix": "Re-run the pull; a gap that persists means a receipt or its identity was never written and needs a forget replay.",
+                }
+            )
+
+        # 5. Open lineage holds
+        #
+        # The queue is bounded and its only clearer is the next re-offer of the
+        # document that filled a slot, so a note whose peer stopped sending it
+        # sits there for good. Nothing reported it, and a full queue does not
+        # fail loudly: lineage advice simply stops applying and every arriving
+        # revision takes LWW immediately. Report-only — releasing a slot is the
+        # sync path's decision, never the doctor's.
+        holds = self.lineage_holds()
+        if holds:
+            seen = sorted(str(hold.get("firstSeen") or "") for hold in holds if hold.get("firstSeen"))
+            oldest = seen[0] if seen else None
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "OPEN_LINEAGE_HOLDS",
+                    "count": len(holds),
+                    "oldestFirstSeen": oldest,
+                    "detail": (
+                        f"{len(holds)} of {LINEAGE_HOLD_QUEUE_MAX_SIZE} lineage hold slot(s) are occupied"
+                        + (f", the oldest held since {oldest}" if oldest else "")
+                        + ". A full queue applies last-writer-wins to every arriving revision at once."
+                    ),
+                    "fix": (
+                        "Pull again: a hold is released when the document it describes is re-offered, or lapses "
+                        "on the gap timeout. A slot that never clears means the peer that filled it stopped "
+                        "sending; there is nothing to repair here and `apply` does not touch it."
+                    ),
+                }
+            )
+
+        # 6. Unresolved gaps
+        for gap in self.unresolved_gaps():
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "UNRESOLVED_GAP",
+                    "detail": (
+                        f"Memory {gap.get('memoryID')} timed out waiting for predecessor hash "
+                        f"{str(gap.get('expectedHash', ''))[:8]}; applied via LWW."
+                    ),
+                }
+            )
+        if active_project_id:
+            proj_row = self.conn.execute(
+                "SELECT fingerprint FROM projects WHERE project_id = ?", (active_project_id,)
+            ).fetchone()
+            if proj_row and str(proj_row[0] or "").startswith("path:"):
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "PROVISIONAL_PROJECT_IDENTITY",
+                        "detail": (
+                            f"Project '{active_project_id}' uses provisional path-hashed identity; "
+                            "initialize git or adopt an explicit project ID via `project adopt <id>`."
+                        ),
+                        "fix": "Run `git init` or adopt an explicit project ID via `project adopt <id>`.",
+                    }
+                )
+        else:
+            provisional_rows = self.conn.execute(
+                "SELECT project_id FROM projects WHERE fingerprint LIKE 'path:%'"
+            ).fetchall()
+            for prow in provisional_rows:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "PROVISIONAL_PROJECT_IDENTITY",
+                        "detail": (
+                            f"Project '{prow[0]}' uses provisional path-hashed identity; "
+                            "initialize git or adopt an explicit project ID via `project adopt <id>`."
+                        ),
+                        "fix": "Run `git init` or adopt an explicit project ID via `project adopt <id>`.",
+                    }
+                )
+
+        if active_project_id and project_extra.get("projectRoot"):
+            # The dotfile is read HERE, not on the read path that resolves a
+            # project — reading it is a report, and reporting is what the doctor
+            # is for. `read_project_dotfile` validates the shape and never
+            # returns unvalidated bytes, so nothing a cloned repository wrote
+            # can reach this payload: the doctor hands its findings to the
+            # calling model unwrapped, and the old `fix` string was
+            # "Run `project adopt <verbatim file contents>`" — a
+            # prompt-injection channel one surface over from the one P8 closes.
+            proposed, digest = read_project_dotfile(Path(str(project_extra["projectRoot"])))
+            if proposed is not None and proposed != active_project_id:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "UNCONFIRMED_PROJECT_DOTFILE",
+                        "detail": (
+                            "This folder carries a .burnbar/project-id proposing another project. It is a "
+                            "proposal only: nothing resolves through it and nothing is stored until you adopt it."
+                        ),
+                        "proposedProjectID": proposed,
+                        # Named, never interpolated into a command: the fix tells
+                        # the member where to look, and they run it themselves.
+                        "fix": (
+                            "Read .burnbar/project-id in this folder yourself. If you meant it, run "
+                            "`project adopt` there and confirm; if you did not, delete the file."
+                        ),
+                    }
+                )
+            elif proposed is None and digest is not None:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "MALFORMED_PROJECT_DOTFILE",
+                        # The content is identified by hash. Echoing it is the
+                        # whole defect: it is repository-controlled text.
+                        "detail": (
+                            f"This folder's .burnbar/project-id (sha256 {digest[:12]}) is not a project id. "
+                            "It is ignored entirely."
+                        ),
+                        "fix": "Delete .burnbar/project-id in this folder, or replace it with a real project id.",
+                    }
+                )
+
+        orphan_provenance = self.orphan_team_provenance()
+        if orphan_provenance:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "ORPHAN_TEAM_PROVENANCE",
+                    "detail": (
+                        f"{len(orphan_provenance)} memories carry team provenance that no team convergence "
+                        "ledger entry accounts for. The team lane never wrote them, so they are hidden from "
+                        "recall and locked against forget and update."
+                    ),
+                    "memoryIDs": [item["memoryID"] for item in orphan_provenance][:20],
+                    "fix": "Run burnbar_memory_doctor with apply=true (requires memory_write) to un-stamp them.",
+                }
+            )
+
+        # The link file's diagnostic (D16 follow-up). Checkout-relative by
+        # nature — "which teams does THIS repository publish to" has no answer
+        # without a repository — so it runs only when a project resolved, the
+        # same condition the auxiliary-exposure scan above is gated on.
+        #
+        # WARN, not ERROR: every state it reports is a configuration a member
+        # can hold on purpose for a while (a team synced but not yet linked in
+        # this repository is the normal state of every repository the team does
+        # not share), and none of them lock a row the way orphan provenance
+        # does. Counts and ids only, like every other team finding.
+        #
+        # NO `apply`, AND NO REMEDIATION SCRIPT (D16 Cursor ruling, clause 3).
+        # The link is a checked-in, human decision about what a repository
+        # publishes to whom; a doctor that wrote it would be committing on the
+        # member's behalf, and a doctor whose `fix` reads as a command to run
+        # would be handing an agent the same door by another route. So the
+        # finding names the tool, states plainly what linking DOES — it makes
+        # this checkout's approved memories uploadable to that team, and admits
+        # that team's facts here — and says a human must confirm and commit it.
+        # `decision` carries that sentence as its own field so a caller cannot
+        # render the fix without it.
+        if active_project_id is not None:
+            link_report = self.team_project_link_report(project_path=project_path)
+            project_extra.setdefault("teamProjectLinks", link_report["links"])
+            flagged = [
+                team
+                for team in link_report["teams"]
+                if team["factsWithheldTeamProjectNotLinked"]
+                or (team["syncedOnThisMac"] and not team["linkedInThisCheckout"])
+                or team["linkNamesNoHeldPartition"]
+                or team["linkWrittenButNotCommitted"]
+            ]
+            if flagged:
+                withheld_total = sum(int(team["factsWithheldTeamProjectNotLinked"]) for team in flagged)
+                unlinked = [team["teamID"] for team in flagged if not team["linkedInThisCheckout"]]
+                mismatched = [team["teamID"] for team in flagged if team["linkNamesNoHeldPartition"]]
+                # Reported apart from `unlinked` even though every one of these
+                # is also unlinked: "you have not linked this team" and "you
+                # wrote this link and have not committed it" are different
+                # sentences with different next steps, and collapsing them is
+                # what made an uncommitted file look like a working link.
+                uncommitted = [team["teamID"] for team in flagged if team["linkWrittenButNotCommitted"]]
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "TEAM_PROJECT_LINK_GAPS",
+                        "detail": (
+                            f"{len(flagged)} team(s) have a link problem in this checkout: "
+                            f"{withheld_total} team fact(s) are held back from this session for "
+                            f"TEAM_PROJECT_NOT_LINKED, {len(unlinked)} team(s) this Mac syncs have no entry in "
+                            f"{link_report['linkPath']} that HEAD carries, {len(uncommitted)} of those name a "
+                            "teamProjectId in the working tree that was never committed (a written link is not a "
+                            f"link), and {len(mismatched)} link(s) name a project id none of the facts this store "
+                            "holds for that team landed in."
+                        ),
+                        "teams": flagged,
+                        "linkPath": link_report["linkPath"],
+                        "uncommittedTeamIDs": uncommitted,
+                        "decision": (
+                            "Linking a repository to a team makes this checkout's approved memories eligible to "
+                            "upload to that team — readable by every member of it, now and in future — and admits "
+                            "that team's facts into this checkout's sessions. That is a human decision about what "
+                            "this repository publishes and to whom. It is not a step to run because a report "
+                            "mentioned it."
+                        ),
+                        "fix": (
+                            "If — and only if — the team agreed to share this repository, a human confirms the "
+                            "teamProjectId the team agreed on (burnbar_team_link_project takes confirm=true and "
+                            "requires memory_write) and COMMITS the file. Until the entry is in HEAD it links "
+                            "nothing: the engine reads the committed file, so an uncommitted or locally-modified "
+                            "entry uploads nothing and serves nothing."
+                        ),
+                    }
+                )
+
         payload: dict[str, Any] = {
             "status": "ok" if not any(item["severity"] == "error" for item in findings) else "degraded",
             "engine": {
@@ -653,5 +1158,12 @@ class _Maintenance:
             "auxSecretExposure": exposures,
             "findings": findings,
         }
+        if apply:
+            payload["apply"] = {
+                "applied": True,
+                "prunedOrphans": pruned_orphans,
+                "prunedSupersedes": pruned_supersedes,
+                "unstampedTeamProvenance": unstamped_provenance,
+            }
         payload.update(project_extra)
         return payload

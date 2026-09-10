@@ -239,6 +239,27 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
     ],
     storagePrefixes: [],
   },
+  // TEAM MEMORY HAS NO PER-USER PATHS, AND THAT IS THE POINT (memory program
+  // D16 / PR 2). This map is `users/{uid}/…`-shaped: every entry names
+  // collections a per-user export or delete may walk. Team facts live at
+  // `team_memory_facts/{teamId}/facts` — a SHARED tenant, not a user
+  // subcollection — and a member does not own that tenant. Deleting a team
+  // space because one member erased their account would destroy the other
+  // members' data; `firestore.rules` says as much, allowing a member to delete
+  // only rows whose `resource.data.uid` is theirs.
+  //
+  // So the domain is registered with EMPTY paths (it is a real domain, and the
+  // Data & Privacy Control Center must account for it) and listed in
+  // `UNDELETABLE_DOMAINS`, which routes the user to the team surface — leave the
+  // team, which cuts their access and triggers a key rotation — instead of
+  // silently exporting or deleting nothing. Empty paths mean the export and
+  // delete walks visit no collection at all, so neither can reach another
+  // member's row by accident.
+  team_pensieve: {
+    encryptionTier: "end_to_end",
+    firestoreCollections: [],
+    storagePrefixes: [],
+  },
 };
 
 /**

@@ -18,10 +18,10 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
 
     // MARK: - Migrator wiring
 
-    func test_migrator_latestIdentifier_isV66AgentMemoryBodies() {
+    func test_migrator_latestIdentifier_isV67AgentMemoryInbox() {
         XCTAssertEqual(
             OpenBurnBarDatabase.latestMigrationIdentifier,
-            "v66_agent_memory_bodies"
+            "v67_agent_memory_inbox"
         )
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v61_usage_memory"),

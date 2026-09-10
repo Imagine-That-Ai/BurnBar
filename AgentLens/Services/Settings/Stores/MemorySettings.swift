@@ -36,6 +36,104 @@ final class MemorySettings {
         didSet { persistence.set(approvedCloudBackupEnabled, forKey: "memoryApprovedCloudBackupEnabled") }
     }
 
+    /// Opt-in SUB-toggle of `approvedCloudBackupEnabled` (default OFF — Memory
+    /// Blind Sync PR-2): also read the member's own sealed facts back DOWN onto
+    /// this device. Backing memory up is not the same consent as syncing it
+    /// across devices, so the pull half needs its own switch and defaults off
+    /// even for a member who already opted into backup. `MemoryCloudSyncDomain`
+    /// ANDs it under the backup gate, so turning backup off stops both halves and
+    /// this switch alone can never start a download.
+    var deviceSyncEnabled: Bool = false {
+        didSet { persistence.set(deviceSyncEnabled, forKey: "memoryDeviceSyncEnabled") }
+    }
+
+    /// Live Data Vault entitlement check (Pro Max or Ultra — the same tier
+    /// `GatedFeature.dataVault` requires), the fourth lever of the device-sync
+    /// gate (default OFF — fail closed). Not user-settable and not persisted:
+    /// it is refreshed from `MacCloudEntitlementStore` as the member's resolved
+    /// tier changes — by the Privacy & Indexing view for presentation, and by
+    /// `MemoryCloudSyncDomain.gateSnapshot()` on every sync cycle so the pull
+    /// never depends on the member having opened Settings.
+    ///
+    /// This lever is **load-bearing for the network**, not decoration.
+    /// `firestore.rules` gates `memory_facts` *writes* on
+    /// `hasActiveDataVaultEntitlement(userId)`; *reads* are granted by the
+    /// per-user namespace rule (`match /users/{userId}/{collectionId}/{documentId}`,
+    /// which lists `memory_facts` in its read allowlist) and carry no
+    /// entitlement check at all. Without this lever a member whose entitlement
+    /// lapsed, with both toggles still persisted true, would keep issuing live
+    /// Firestore reads the server would happily answer. Unresolved ⇒ false, so
+    /// the pull stays closed until the tier actually resolves.
+    var deviceSyncEntitlementSatisfied: Bool = false
+
+    /// Per-team opt-in for contributing to and reading a shared team memory
+    /// space (memory program D16, default EMPTY — every team off).
+    ///
+    /// A SET rather than a Bool, because consent to share with one team is not
+    /// consent to share with another: a member on two teams opts each in
+    /// separately, and joining a third opts in nothing. `TeamMemorySyncGate`
+    /// ANDs this under the whole shipped device-sync gate, so team sync is a
+    /// strict SUBSET of personal sync — turning cloud backup off stops it too,
+    /// and this switch alone can never start a team upload or download.
+    ///
+    /// Persisted as a JSON array of team ids so the order the member joined in
+    /// does not become state.
+    var teamMemorySyncEnabled: Set<String> = [] {
+        didSet {
+            persistence.set(
+                Self.encodeTeamIDs(teamMemorySyncEnabled),
+                forKey: "memoryTeamSyncEnabledTeamIDsJSON"
+            )
+        }
+    }
+
+    /// Firebase Remote Config `memory_team_sync_enabled` (default true). Not
+    /// user-settable and not persisted; a fleet flip to false closes every
+    /// team's lane instantly. Only meaningful once
+    /// `hasResolvedTeamRemoteConfig` is true — until then the lane is held
+    /// CLOSED regardless, so the optimistic `true` can never open it ahead of
+    /// the cached fleet value (the closed-until-resolved rule the usage lanes
+    /// already follow).
+    var remoteConfigTeamSyncEnabled: Bool = true
+
+    /// Whether a Remote Config value has been applied to the team fleet switch.
+    /// Not persisted: every launch re-resolves, so a relaunch starts closed.
+    private(set) var hasResolvedTeamRemoteConfig: Bool = false
+
+    /// The ONLY path that opens the team lane, mirroring
+    /// `applyUsageRemoteConfig`: the setter above deliberately does not resolve,
+    /// so a partial write can never promote a defaulted `true` into an open lane.
+    func applyTeamRemoteConfig(teamSyncEnabled: Bool) {
+        remoteConfigTeamSyncEnabled = teamSyncEnabled
+        hasResolvedTeamRemoteConfig = true
+    }
+
+    /// `nonisolated`: both are pure functions over their arguments, and the
+    /// consent gate's tests read them without a main-actor hop.
+    nonisolated static func encodeTeamIDs(_ teamIDs: Set<String>) -> String {
+        // Sorted, so the set's iteration order never becomes persisted state and
+        // two runs with the same opt-ins write the same bytes.
+        do {
+            let data = try JSONEncoder().encode(teamIDs.sorted())
+            return String(data: data, encoding: .utf8) ?? "[]"
+        } catch {
+            // A `[String]` cannot fail to encode; the empty list keeps the store
+            // consistent rather than persisting a half-written key.
+            return "[]"
+        }
+    }
+
+    nonisolated static func decodeTeamIDs(_ json: String) -> Set<String> {
+        guard let data = json.data(using: .utf8) else { return [] }
+        do {
+            return Set(try JSONDecoder().decode([String].self, from: data).filter { !$0.isEmpty })
+        } catch {
+            // A malformed persisted list degrades to "no team opted in", which
+            // is the fail-closed default. It must never throw at launch.
+            return []
+        }
+    }
+
     /// Firebase Remote Config `memory_extraction_enabled` (default true). Not
     /// user-settable; the fleet kill switch sets this false to halt extraction
     /// instantly. Fetch transport errors preserve extraction only when the
@@ -254,14 +352,111 @@ final class MemorySettings {
         hasResolvedUsageRemoteConfig = true
     }
 
+    // MARK: Organization memory ceiling (D17)
+
+    /// User consent (default OFF) to let this Mac participate in ORGANIZATION
+    /// memory — memory that an organization's policy governs rather than the
+    /// member alone. Sibling of `consentGranted` and `usageMemoryConsentGranted`,
+    /// and, like them, granting it implies its prompt was shown.
+    ///
+    /// It is not enough on its own: the org lane additionally requires a
+    /// resolved organization ceiling (below). Nothing in the shipped app reads
+    /// this yet — the consuming surface is the team-memory slice (D16) — so it
+    /// is a lever the org lane will be built on, deliberately landed first and
+    /// closed.
+    var orgMemoryConsentGranted: Bool = false {
+        didSet {
+            persistence.set(orgMemoryConsentGranted, forKey: "orgMemoryConsentGranted")
+            if orgMemoryConsentGranted { orgMemoryConsentShown = true }
+        }
+    }
+
+    /// Whether the organization-memory consent prompt has been presented (so it
+    /// is not shown again). Set when consent is granted, or when it is declined.
+    var orgMemoryConsentShown: Bool = false {
+        didSet { persistence.set(orgMemoryConsentShown, forKey: "orgMemoryConsentShown") }
+    }
+
+    /// The organization ceiling currently in force. Nil when none has been
+    /// applied *and* when the resolved payload published none — the two are
+    /// told apart by `hasResolvedOrgMemoryRemoteConfig`, and both close the
+    /// lane. Not persisted: every launch re-resolves from Remote Config's
+    /// active cached snapshot, so a relaunch always starts unresolved.
+    private(set) var orgMemoryCeiling: OrgMemoryRemoteConfigSnapshot?
+
+    /// Whether an organization ceiling — the **active cached** one at init, or a
+    /// freshly activated one — has actually been applied.
+    ///
+    /// WHY THIS EXISTS (KD12): the ceiling is what says *which* memory kinds an
+    /// organization gates at all. A device that has never resolved one therefore
+    /// cannot answer "is this kind org-gated?", and any rule that guesses —
+    /// including an age rule, which still has to guess on a device that never
+    /// fetched — guesses OPEN. So the org lane is held structurally CLOSED until
+    /// a ceiling lands, exactly as `hasResolvedUsageRemoteConfig` holds the two
+    /// usage lanes closed. Offline is not a special case: Firebase's cached
+    /// config is a real resolved ceiling and counts as one.
+    ///
+    /// This flag is NOT `orgMemoryCeiling != nil` under another name: a payload
+    /// that resolves and publishes no ceiling sets this true with a nil
+    /// ceiling, which is a state the org lane must be able to tell apart from
+    /// "we have never heard from Remote Config" even though both close it.
+    ///
+    /// Not persisted, for the same reason as its usage sibling.
+    private(set) var hasResolvedOrgMemoryRemoteConfig: Bool = false
+
+    /// Apply an organization ceiling and mark the org lane resolved. The ONLY
+    /// path that can open the org lane.
+    ///
+    /// Called with the active **cached** ceiling at init, and again with the
+    /// fetched one after it activates.
+    ///
+    /// - Parameter ceiling: nil means "Remote Config answered, and this
+    ///   organization publishes no memory ceiling". That RESOLVES the lane and
+    ///   leaves it closed — an organization that has published nothing has
+    ///   permitted nothing — rather than leaving the device pretending it never
+    ///   asked.
+    func applyOrgMemoryRemoteConfig(_ ceiling: OrgMemoryRemoteConfigSnapshot?) {
+        orgMemoryCeiling = ceiling
+        hasResolvedOrgMemoryRemoteConfig = true
+    }
+
+    /// Whether the organization lane is open at all right now.
+    ///
+    /// Deliberately NOT ANDed into any member-local gate: member memory that was
+    /// never org-gated runs on its own lane (`MemoryExtractionGate`), so an
+    /// absent, stale or denying org ceiling cannot brick a member's own memory.
+    func isOrgMemorySyncAllowed() -> Bool {
+        OrgMemoryCeilingGate.isSyncAllowed(
+            consentGranted: orgMemoryConsentGranted,
+            remoteConfigResolved: hasResolvedOrgMemoryRemoteConfig,
+            ceiling: orgMemoryCeiling
+        )
+    }
+
+    /// Whether one memory kind may travel on the organization lane.
+    func isOrgMemoryKindAllowed(_ kind: MemoryKind) -> Bool {
+        OrgMemoryCeilingGate.isKindAllowed(
+            kind: kind,
+            consentGranted: orgMemoryConsentGranted,
+            remoteConfigResolved: hasResolvedOrgMemoryRemoteConfig,
+            ceiling: orgMemoryCeiling
+        )
+    }
+
     /// - Parameter usageRemoteConfigSeed: the **active cached** usage Remote Config
     ///   values, read synchronously (no network). Returning `nil` means "no fleet
     ///   channel resolved yet" and leaves both usage lanes CLOSED until
     ///   `applyUsageRemoteConfig` lands. `SettingsManager` supplies Firebase's
     ///   activated cache here so a cached kill is honored before any gate opens.
+    /// - Parameter orgMemoryRemoteConfigSeed: the **active cached** organization
+    ///   ceiling, read synchronously (no network). Returning `nil` means "no org
+    ///   ceiling resolved yet" and leaves the org lane CLOSED until
+    ///   `applyOrgMemoryRemoteConfig` lands. It never affects the member-local
+    ///   lane, which is not org-gated.
     init(
         persistence: SettingsPersistenceCoordinator,
-        usageRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = { nil }
+        usageRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = { nil },
+        orgMemoryRemoteConfigSeed: () -> OrgMemoryRemoteConfigSnapshot? = { nil }
     ) {
         self.persistence = persistence
         if persistence.objectExists(forKey: "memoryAutomaticExtraction") {
@@ -272,6 +467,14 @@ final class MemorySettings {
         }
         if persistence.objectExists(forKey: "memoryApprovedCloudBackupEnabled") {
             self.approvedCloudBackupEnabled = persistence.bool(forKey: "memoryApprovedCloudBackupEnabled")
+        }
+        if persistence.objectExists(forKey: "memoryDeviceSyncEnabled") {
+            self.deviceSyncEnabled = persistence.bool(forKey: "memoryDeviceSyncEnabled")
+        }
+        if persistence.objectExists(forKey: "memoryTeamSyncEnabledTeamIDsJSON") {
+            self.teamMemorySyncEnabled = Self.decodeTeamIDs(
+                persistence.string(forKey: "memoryTeamSyncEnabledTeamIDsJSON", defaultValue: "[]")
+            )
         }
         // Load `consentShown` before `consentGranted` so the granted-didSet's
         // implicit `consentShown = true` never races a stale persisted value.
@@ -327,7 +530,13 @@ final class MemorySettings {
                 forKey: "usageMemorySourceAgentSessionsEnabled"
             )
         }
-        // Repair granted-implies-shown for BOTH consent pairs before anything
+        if persistence.objectExists(forKey: "orgMemoryConsentShown") {
+            self.orgMemoryConsentShown = persistence.bool(forKey: "orgMemoryConsentShown")
+        }
+        if persistence.objectExists(forKey: "orgMemoryConsentGranted") {
+            self.orgMemoryConsentGranted = persistence.bool(forKey: "orgMemoryConsentGranted")
+        }
+        // Repair granted-implies-shown for ALL consent pairs before anything
         // reads them (see `normalizeConsentShownInvariants`).
         normalizeConsentShownInvariants()
         // Honor the active cached fleet values before any usage lane can open.
@@ -337,6 +546,17 @@ final class MemorySettings {
                 extractionEnabled: seed.extractionEnabled,
                 authorityWritesEnabled: seed.authorityWritesEnabled
             )
+        }
+        // Honor the active cached organization ceiling before the org lane can
+        // open. A nil SEED means "Remote Config has not answered on this
+        // device" — unresolved, and the org lane stays CLOSED until
+        // `applyOrgMemoryRemoteConfig` lands. (That is a different state from
+        // `applyOrgMemoryRemoteConfig(nil)`, which is "it answered and
+        // published no ceiling"; the seed closure cannot express the second,
+        // and D16 owns the payload decode that can.) Nothing here touches the
+        // member-local lane, which is propagated below regardless.
+        if let orgCeiling = orgMemoryRemoteConfigSeed() {
+            applyOrgMemoryRemoteConfig(orgCeiling)
         }
         propagateExtractionGate()
         propagateUsageGates()
@@ -370,6 +590,7 @@ final class MemorySettings {
         if consentGranted, !consentShown { consentShown = true }
         if usageMemoryConsentGranted, !usageMemoryConsentShown { usageMemoryConsentShown = true }
         if cloudModelsEnabled, !cloudModelsConsentShown { cloudModelsConsentShown = true }
+        if orgMemoryConsentGranted, !orgMemoryConsentShown { orgMemoryConsentShown = true }
     }
 
     /// Tell the daemon hand-off that the cloud-models policy (or its gate) moved.
@@ -440,6 +661,102 @@ enum MemoryCloudModelsGate {
         remoteConfigEnabled: Bool
     ) -> Bool {
         consentGranted && cloudModelsEnabled && remoteConfigEnabled
+    }
+}
+
+// MARK: - Memory device-sync gate (Memory Blind Sync PR-2)
+
+/// Pure gate for "Sync memories to my other devices": the pull runs, and the
+/// row reads ON, only when the sub-toggle **and** the backup opt-in **and** the
+/// Data Vault entitlement **and** the fleet Remote Config ceiling all allow.
+/// Any lever off -> no download and the row reads off (fail-closed). Kept pure
+/// so the gate logic is testable without Firebase, `MacCloudEntitlementStore`,
+/// or a `SettingsManager`.
+///
+/// This is the EFFECTIVE gate, shared by both callers:
+/// `SettingsManager.memoryDeviceSyncEnabled` (what `MemoryCloudSyncDomain`
+/// consults before issuing a single `memory_facts` read) and
+/// `SettingsManager.memoryDeviceSyncRowEnabled` (what the Settings row shows)
+/// are the same computation over the same levers, so the row can never read
+/// "on" while the network is closed, or the reverse.
+///
+/// The entitlement lever is load-bearing for the network. `firestore.rules`
+/// gates `memory_facts` **writes** on `hasActiveDataVaultEntitlement(userId)`;
+/// **reads** are granted by the per-user namespace rule, which lists
+/// `memory_facts` in its read allowlist and applies no entitlement check. The
+/// client gate is therefore the only thing standing between a lapsed
+/// entitlement and a live Firestore read.
+enum MemoryDeviceSyncGate {
+    static func isEnabled(
+        deviceSyncOptIn: Bool,
+        backupOptIn: Bool,
+        entitlementSatisfied: Bool,
+        remoteConfigEnabled: Bool
+    ) -> Bool {
+        deviceSyncOptIn && backupOptIn && entitlementSatisfied && remoteConfigEnabled
+    }
+}
+
+// MARK: - Team memory sync gate (memory program D16 / P22)
+
+/// Pure gate for "share memories with this team".
+///
+/// TEAM SYNC IS A STRICT SUBSET OF PERSONAL SYNC, and that is the point of the
+/// first two levers. `deviceSyncGateOpen` is `MemoryDeviceSyncGate.isEnabled`
+/// (the sub-toggle AND the backup opt-in AND the live Data Vault entitlement AND
+/// the fleet ceiling) and `accountLeversOpen` is
+/// `MemoryDeviceSyncScope.current(...).isOpen` (Firebase available AND signed in
+/// AND account cloud sync on). A member who turns cloud backup off, signs out,
+/// or loses the entitlement stops contributing to every team at the same instant
+/// — so a design miss in the team lane can never strand member data behind a
+/// switch the member believes is off.
+///
+/// The remaining three levers are the team's own:
+///
+///   * `teamOptIn` — this specific team, from `MemorySettings
+///     .teamMemorySyncEnabled`, default false for every team.
+///   * `rosterStatusActive` — the LIVE roster says this member is `active`, not
+///     `pending` (keys not yet issued) and not `removed`. The server enforces
+///     this too; reading it here is what stops a removed member's client from
+///     spending a cycle on writes the rules will refuse.
+///   * `remoteConfigTeamSyncAllowed` + `remoteConfigResolved` — the fleet
+///     ceiling, CLOSED UNTIL RESOLVED (KD12): the RC field defaults to the
+///     optimistic `true`, so without the resolution lever a consenting member's
+///     lane would open at launch and stay open until the async fetch landed,
+///     ignoring a kill already cached on disk.
+///
+/// ORG CEILING SEAM — A NAMED NO-OP, NOT A MISSING `&&`. PR #2534's
+/// organisation ceiling (`OrgMemoryRemoteConfigSnapshot` /
+/// `isOrgMemorySyncAllowed()`) IS on this branch's base: it is on `main`, and
+/// it lives ~300 lines above this comment in this very file. It is still not
+/// ANDed in here, and the reason is #2534's OWN ruling rather than an
+/// omission — `isOrgMemorySyncAllowed()`'s doc comment says it is
+/// "Deliberately NOT ANDed into any member-local gate", because member memory
+/// that was never org-gated must not be brickable by an absent, stale or
+/// denying org ceiling. This IS a member-local gate: every lever above is read
+/// from the member's own settings and the member's own roster row.
+///
+/// SO PR 4 MUST NOT WIRE IT AS A ONE-LINER. Whether a TEAM lane — unlike a
+/// member's personal one — should be org-gated is a design ruling that has not
+/// been made, and taking it silently by adding `orgCeilingAllowed` here would
+/// let an organisation that has published nothing, or whose ceiling has gone
+/// stale, close a lane the member and the team both consented to. Take the
+/// ruling first; the `&&` is the easy part.
+enum TeamMemorySyncGate {
+    static func isEnabled(
+        deviceSyncGateOpen: Bool,
+        accountLeversOpen: Bool,
+        teamOptIn: Bool,
+        rosterStatusActive: Bool,
+        remoteConfigTeamSyncAllowed: Bool,
+        remoteConfigResolved: Bool
+    ) -> Bool {
+        deviceSyncGateOpen
+            && accountLeversOpen
+            && teamOptIn
+            && rosterStatusActive
+            && remoteConfigTeamSyncAllowed
+            && remoteConfigResolved
     }
 }
 
@@ -583,5 +900,116 @@ final class MemorySettingsService {
             status = try await memoryService.eventStatus(eventID)
         }
         return status
+    }
+}
+
+// MARK: - Organization memory ceiling (D17)
+
+/// The organization memory ceiling as read from Firebase Remote Config's
+/// **active** (cached or freshly activated) config.
+///
+/// Carried as one value, like `UsageMemoryRemoteConfigSnapshot`, because the
+/// "is the org lane open" switch and the "which kinds may travel on it"
+/// allowlist are one policy: a half-applied ceiling that opened the lane while
+/// its allowlist was still defaulted would ship kinds the organization never
+/// permitted.
+///
+/// **NO FRESHNESS BOUND LIVES HERE**, and that is the decision (KD12), not an
+/// omission. A client-side max-age cannot answer "which kinds are org-gated" on
+/// a device that never resolved a ceiling — that question is itself answered by
+/// the ceiling — so an age rule has to guess, and every way of guessing
+/// resolves OPEN. Closed-until-resolved is the whole mechanism instead, exactly
+/// as `UsageMemoryRemoteConfigSnapshot` does it.
+///
+/// A bound published by an organization would be a different thing, and it
+/// would need something this type does not have: an organization identity.
+/// There is no `orgId`, no signature, and nothing that distinguishes an
+/// organization's field from any other Remote Config value, so "the
+/// organization published this bound" is not a claim the code can check. If an
+/// organization ever needs a freshness bound, it belongs in D16 beside the
+/// payload schema and the org identity that would make it checkable.
+struct OrgMemoryRemoteConfigSnapshot: Equatable, Sendable {
+    /// Whether the organization permits its members' devices to use the org
+    /// memory lane at all.
+    var orgMemoryEnabled: Bool
+
+    /// The memory kinds this organization allows on the org lane, as
+    /// `MemoryKind` raw values. Anything absent is denied: an allowlist, so a
+    /// kind the organization has never heard of cannot ride in on a default.
+    var allowedKinds: Set<String>
+}
+
+// MARK: - Organization memory ceiling gate (pure)
+
+/// Pure gate: the ORGANIZATION memory lane is open only when the member has
+/// affirmatively consented **and** an organization ceiling has actually been
+/// resolved **and** that ceiling enables the lane. Any lever off -> the org
+/// lane is closed (fail-closed).
+///
+/// `remoteConfigResolved` is here for the same reason it is in
+/// `UsageMemoryExtractionGate`: without it, a device that has never fetched a
+/// ceiling would have to decide "is this kind org-gated?" with no policy in
+/// hand, and every way of deciding that resolves OPEN. The ceiling is what
+/// defines the gating, so an unresolved ceiling closes the lane.
+///
+/// What that conjunct does and does not do, precisely. `MemorySettings` has
+/// exactly one writer of this pair — `applyOrgMemoryRemoteConfig`, which always
+/// sets the flag — so `!resolved` implies `ceiling == nil` for every state that
+/// store can reach, and the `remoteConfigResolved` conjunct never changes
+/// `isSyncAllowed`'s answer TODAY: `let ceiling` alone would decide the same
+/// way. It is kept for two things that are true. First, the flag is real state
+/// the store's readers need, and it is not `ceiling != nil` restated:
+/// `applyOrgMemoryRemoteConfig(nil)` records "resolved, and this organization
+/// publishes no ceiling" — a real Remote Config outcome, distinguishable from
+/// "never resolved", and still closed. Second, this gate is a PURE function
+/// with other possible callers, and stating the requirement in the signature is
+/// what keeps a future caller that has a cached ceiling but no resolution from
+/// opening the lane on it.
+///
+/// Deliberately TIME-INDEPENDENT: no `now`, and no freshness bound (KD12 — see
+/// `OrgMemoryRemoteConfigSnapshot`). The gate is pure state, so its consumer
+/// can cache the answer and be told when it moves rather than re-asking the
+/// clock and getting a different answer for the same state.
+///
+/// Kept pure so the matrix is testable without Firebase or a `SettingsManager`.
+enum OrgMemoryCeilingGate {
+    static func isSyncAllowed(
+        consentGranted: Bool,
+        remoteConfigResolved: Bool,
+        ceiling: OrgMemoryRemoteConfigSnapshot?
+    ) -> Bool {
+        guard consentGranted, remoteConfigResolved, let ceiling else { return false }
+        return ceiling.orgMemoryEnabled
+    }
+
+    static func isKindAllowed(
+        kind: String,
+        consentGranted: Bool,
+        remoteConfigResolved: Bool,
+        ceiling: OrgMemoryRemoteConfigSnapshot?
+    ) -> Bool {
+        guard
+            isSyncAllowed(
+                consentGranted: consentGranted,
+                remoteConfigResolved: remoteConfigResolved,
+                ceiling: ceiling
+            ),
+            let ceiling
+        else { return false }
+        return ceiling.allowedKinds.contains(kind)
+    }
+
+    static func isKindAllowed(
+        kind: MemoryKind,
+        consentGranted: Bool,
+        remoteConfigResolved: Bool,
+        ceiling: OrgMemoryRemoteConfigSnapshot?
+    ) -> Bool {
+        isKindAllowed(
+            kind: kind.rawValue,
+            consentGranted: consentGranted,
+            remoteConfigResolved: remoteConfigResolved,
+            ceiling: ceiling
+        )
     }
 }

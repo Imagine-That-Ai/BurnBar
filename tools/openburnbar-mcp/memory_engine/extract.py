@@ -170,6 +170,14 @@ class Fact:
         # contract so an export/import round trip keeps provenance and expiry.
         source_ref = raw.get("source_ref") or raw.get("sourceRef")
         expires_at = raw.get("expires_at") or raw.get("expiresAt")
+        # Copied, but NEVER trusted from an extractor. `reviewStatus` is not part
+        # of the extraction contract; a model volunteers it, and `_commit_fact`
+        # reads anything that is neither `quarantined` nor `rejected` as
+        # `approved` — a status that is recallable by default and carries the
+        # conflict authority to retire existing approved memories. So a
+        # prompt-injected transcript could grant its own facts both. `memorize`
+        # discards this field for every extractor-authored fact and honours it
+        # only on facts the CALLER handed in; import and sync set it themselves.
         review_status = raw.get("review_status") or raw.get("reviewStatus")
         raw_sensitivity = raw.get("sensitivity")
         sensitivity = str(raw_sensitivity).strip().lower() if raw_sensitivity is not None else None

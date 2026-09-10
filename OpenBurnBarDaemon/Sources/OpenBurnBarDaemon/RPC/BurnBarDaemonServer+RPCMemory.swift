@@ -70,6 +70,26 @@ extension BurnBarDaemonServer {
             } catch {
                 return encodeErrorResponse(id: typedRequest.id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
             }
+        case .memorySyncInboxList:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarMemorySyncInboxListRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: try projectCodeMemory.syncInboxList(typedRequest.params)))
+            } catch {
+                return encodeErrorResponse(id: typedRequest.id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
+            }
+        case .memorySyncInboxAck:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarMemorySyncInboxAckRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: try projectCodeMemory.syncInboxAck(typedRequest.params)))
+            } catch {
+                return encodeErrorResponse(id: typedRequest.id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
+            }
         case .memoryAnalytics:
             let typedRequest = try decoder.decode(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarProjectMemoryAnalyticsRequest>.self,

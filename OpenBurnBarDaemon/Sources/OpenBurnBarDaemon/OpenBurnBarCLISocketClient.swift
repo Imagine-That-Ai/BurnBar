@@ -24,10 +24,18 @@ public protocol BurnBarCLIClient: Sendable {
     /// Read-only SQL over the daemon's keyed store, for the signed-CLI courier
     /// the local MCP server routes through on production installs.
     func searchSQL(_ request: BurnBarSearchSQLRequest) throws -> BurnBarSearchSQLResult
+    /// Memory Blind Sync: the facts the app pulled down and parked, for the
+    /// engine to merge. Same courier route as `searchSQL`/`memoryRemember`.
+    func memorySyncInboxList(_ request: BurnBarMemorySyncInboxListRequest) throws -> BurnBarMemorySyncInboxListResponse
+    /// Memory Blind Sync: stamps `applied_at` on the doc ids the engine merged.
+    func memorySyncInboxAck(_ request: BurnBarMemorySyncInboxAckRequest) throws -> BurnBarMemorySyncInboxAckResponse
     func codeIndex(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?) throws -> BurnBarProjectCodeIndexProjectResponse
     func codeWatch(projectPath: String?, maxFiles: Int, maxFileBytes: Int, storageBudgetBytes: Int?, pollIntervalSeconds: Double) throws -> BurnBarProjectCodeWatchProjectResponse
     func codeSearch(query: String, projectPath: String?, limit: Int) throws -> BurnBarProjectCodeSearchResponse
     func codeIndexStatus(projectPath: String?) throws -> BurnBarProjectCodeIndexStatusResponse
+    /// Repo map + optional context pack over an already-built index. Carried by
+    /// the signed courier so `burnbar_explore` has a route on signed installs.
+    func codeExplore(_ request: BurnBarProjectCodeExploreRequest) throws -> BurnBarProjectCodeExploreResponse
     func attachRunClient(clientID: BurnBarClientID, sessionID: BurnBarSessionID) throws
     func createRun(_ request: BurnBarRunCreateRequest) throws -> BurnBarRunCreateResponse
     func listRuns(_ request: BurnBarRunListRequest) throws -> BurnBarRunListResponse
@@ -328,6 +336,21 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
         )
     }
 
+    /// `daemon.code.explore` over the SIGNED CLI route. The daemon's explore is
+    /// read-only — it reports a `degraded` status when no checkpoint exists
+    /// rather than indexing on demand — but the Python MCP tool that calls it
+    /// has no other way through the first-party peer gate, so it travels the
+    /// same courier as `codeIndexProject`.
+    public func codeExplore(_ request: BurnBarProjectCodeExploreRequest) throws -> BurnBarProjectCodeExploreResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .codeExplore,
+                authToken: authToken,
+                params: request
+            )
+        )
+    }
+
     public func attachRunClient(clientID: BurnBarClientID, sessionID: BurnBarSessionID) throws {
         let _: BurnBarClientAttachResponse = try requestResult(
             BurnBarRPCRequestEnvelopeWithParams(
@@ -490,6 +513,34 @@ public struct BurnBarCLISocketClient: BurnBarCLIClient, Sendable {
     public func searchSQL(_ request: BurnBarSearchSQLRequest) throws -> BurnBarSearchSQLResult {
         try requestResult(BurnBarRPCRequestEnvelopeWithParams(
             method: .searchSQL,
+            authToken: authToken,
+            params: request
+        ))
+    }
+
+    /// Memory Blind Sync drain, over the same signed courier as `searchSQL`. The
+    /// Python memory engine cannot dial the control socket itself — production
+    /// enforces the first-party code-signature gate a virtualenv `python` can
+    /// never satisfy — so the only way it reaches the facts the app pulled down
+    /// is through this binary.
+    public func memorySyncInboxList(
+        _ request: BurnBarMemorySyncInboxListRequest
+    ) throws -> BurnBarMemorySyncInboxListResponse {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(
+            method: .memorySyncInboxList,
+            authToken: authToken,
+            params: request
+        ))
+    }
+
+    /// The write half of the drain: it stamps `applied_at`, so the daemon
+    /// classifies it as `memoryWrite` and an attenuated peer cannot mark a
+    /// member's memories merged.
+    public func memorySyncInboxAck(
+        _ request: BurnBarMemorySyncInboxAckRequest
+    ) throws -> BurnBarMemorySyncInboxAckResponse {
+        try requestResult(BurnBarRPCRequestEnvelopeWithParams(
+            method: .memorySyncInboxAck,
             authToken: authToken,
             params: request
         ))

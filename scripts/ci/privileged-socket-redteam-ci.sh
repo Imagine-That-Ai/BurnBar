@@ -14,6 +14,12 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
 
+# Deterministic swift resolution: a non-Xcode `swift` earlier on PATH builds the
+# bridge against a mismatched SDK, which would surface here as an unexplained
+# infra failure. See scripts/lib/swift-toolchain.sh.
+# shellcheck source=../lib/swift-toolchain.sh
+source "${repo_root}/scripts/lib/swift-toolchain.sh"
+
 SOCKET_PATH="/var/run/openburnbar-virtual-hid.sock"
 BRIDGE_LOG="$(mktemp -t openburnbar-bridge-log)"
 ARTIFACT_DIR="${OPENBURNBAR_DAST_ARTIFACT_DIR:-${RUNNER_TEMP:-/tmp}/openburnbar-dast-redteam}"
@@ -39,7 +45,12 @@ JSON
 }
 
 echo "==> Building bridge + red-team probe (debug, ad-hoc signed)"
-if ! swift build --package-path OpenBurnBarDaemon \
+if ! obb_swift_init; then
+  write_result "infra-failed" "infra" "swift-toolchain-unavailable"
+  exit 2
+fi
+
+if ! "${OBB_SWIFT}" build --package-path OpenBurnBarDaemon \
   --product OpenBurnBarVirtualHIDBridge \
   --product OpenBurnBarPrivilegedSocketRedTeamProbe \
   -c debug; then
@@ -47,7 +58,7 @@ if ! swift build --package-path OpenBurnBarDaemon \
   exit 2
 fi
 
-if ! BIN_PATH="$(swift build --package-path OpenBurnBarDaemon -c debug --show-bin-path)"; then
+if ! BIN_PATH="$("${OBB_SWIFT}" build --package-path OpenBurnBarDaemon -c debug --show-bin-path)"; then
   write_result "infra-failed" "infra" "privileged-build-path-unavailable"
   exit 2
 fi
@@ -96,7 +107,7 @@ if [[ "$PROBE_EXIT" -eq 0 ]]; then
 fi
 
 echo "==> Running PrivilegedSocketRedTeamIntegrationTests against the live socket"
-RUN_PRIVILEGED_SOCKET_REDTEAM=1 OPENBURNBAR_REDTEAM_PROBE_PATH="$PROBE" swift test \
+RUN_PRIVILEGED_SOCKET_REDTEAM=1 OPENBURNBAR_REDTEAM_PROBE_PATH="$PROBE" "${OBB_SWIFT}" test \
   --package-path OpenBurnBarDaemon \
   --filter PrivilegedSocketRedTeamIntegrationTests || {
     write_result "failed" "product" "privileged-redteam-test-failed"

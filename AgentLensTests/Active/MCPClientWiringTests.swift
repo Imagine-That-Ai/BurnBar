@@ -18,7 +18,9 @@ final class MCPClientWiringTests: XCTestCase {
     override func setUpWithError() throws {
         home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
-        wiring = MCPClientWiring(home: home)
+        // `configHome` is pinned under the fake home so the Muse target can
+        // never reach the real `~/.config` (or an inherited `XDG_CONFIG_HOME`).
+        wiring = MCPClientWiring(home: home, configHome: home.appendingPathComponent(".config"))
     }
 
     override func tearDownWithError() throws {
@@ -148,6 +150,169 @@ final class MCPClientWiringTests: XCTestCase {
         try wiring.unwire(target: .codex)
         XCTAssertFalse(wiring.isWired(target: .claudeCode))
         XCTAssertFalse(wiring.isWired(target: .codex))
+    }
+
+    // MARK: The other JSON clients (Droid, Antigravity, Gemini CLI, Muse)
+
+    /// Each path is pinned to the client's own documentation. A silent move
+    /// here writes a config nothing reads, which is worse than no row at all.
+    func test_configPaths_matchEachClientsDocumentedLocation() {
+        func relative(_ target: MCPClientWiringTarget) -> String {
+            wiring.configURL(for: target).path.replacingOccurrences(of: home.path + "/", with: "")
+        }
+        XCTAssertEqual(relative(.claudeCode), ".claude.json")
+        XCTAssertEqual(relative(.cursor), ".cursor/mcp.json")
+        XCTAssertEqual(relative(.codex), ".codex/config.toml")
+        // https://docs.factory.ai/cli/configuration/mcp
+        XCTAssertEqual(relative(.droid), ".factory/mcp.json")
+        // https://antigravity.google/docs/cli/mcp/
+        XCTAssertEqual(relative(.antigravity), ".gemini/config/mcp_config.json")
+        // https://geminicli.com/docs/reference/configuration
+        XCTAssertEqual(relative(.geminiCLI), ".gemini/settings.json")
+        // $XDG_CONFIG_HOME/muse/settings.json
+        XCTAssertEqual(relative(.muse), ".config/muse/settings.json")
+    }
+
+    func test_resolvedConfigHome_prefersXDGThenDotConfig() {
+        XCTAssertEqual(
+            MCPClientWiring.resolvedConfigHome(home: home, environment: [:]).path,
+            home.appendingPathComponent(".config").path
+        )
+        XCTAssertEqual(
+            MCPClientWiring.resolvedConfigHome(home: home, environment: ["XDG_CONFIG_HOME": "/xdg"]).path,
+            "/xdg"
+        )
+        XCTAssertEqual(
+            MCPClientWiring.resolvedConfigHome(home: home, environment: ["XDG_CONFIG_HOME": "   "]).path,
+            home.appendingPathComponent(".config").path
+        )
+    }
+
+    /// Factory documents `type: "stdio"` on local-process servers.
+    func test_wireDroid_writesStdioTypedEntryAndKeepsForeignServers() throws {
+        let url = wiring.configURL(for: .droid)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"mcpServers": {"airtable": {"command": "npx", "args": ["-y", "airtable-mcp-server"]}}}"#
+            .data(using: .utf8)!.write(to: url)
+
+        XCTAssertTrue(try wiring.wire(target: .droid, launch: launch).didMutate)
+
+        let servers = try XCTUnwrap(try json(at: url)["mcpServers"] as? [String: Any])
+        XCTAssertNotNil(servers["airtable"], "A user's other servers must survive")
+        let entry = try XCTUnwrap(servers["openburnbar"] as? [String: Any])
+        XCTAssertEqual(entry["type"] as? String, "stdio")
+        XCTAssertEqual(entry["command"] as? String, "/usr/bin/python3")
+        XCTAssertEqual((entry["env"] as? [String: String])?["BURNBAR_MCP_TOOLSET"], "memory")
+        XCTAssertFalse(try wiring.wire(target: .droid, launch: launch).didMutate)
+
+        try wiring.unwire(target: .droid)
+        let after = try XCTUnwrap(try json(at: url)["mcpServers"] as? [String: Any])
+        XCTAssertNotNil(after["airtable"])
+        XCTAssertNil(after["openburnbar"])
+    }
+
+    /// Antigravity and Gemini CLI both live under `~/.gemini`, but in two
+    /// different files. Wiring one must never touch the other.
+    func test_antigravityAndGeminiCLI_areIndependentFiles() throws {
+        let geminiURL = wiring.configURL(for: .geminiCLI)
+        try FileManager.default.createDirectory(at: geminiURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"mcpServers": {"warp": {"command": "warp-mcp"}}, "security": {"auth": {"selectedType": "oauth-personal"}}}"#
+            .data(using: .utf8)!.write(to: geminiURL)
+
+        try wiring.wire(target: .antigravity, launch: launch)
+        XCTAssertTrue(wiring.isWired(target: .antigravity))
+        XCTAssertFalse(wiring.isWired(target: .geminiCLI), "Antigravity's file is not Gemini CLI's file")
+        XCTAssertNil(
+            try XCTUnwrap(try json(at: geminiURL)["mcpServers"] as? [String: Any])["openburnbar"]
+        )
+
+        try wiring.wire(target: .geminiCLI, launch: launch)
+        let gemini = try json(at: geminiURL)
+        XCTAssertNotNil(gemini["security"], "Nested Gemini CLI settings must survive")
+        let servers = try XCTUnwrap(gemini["mcpServers"] as? [String: Any])
+        XCTAssertNotNil(servers["warp"])
+        XCTAssertNotNil(servers["openburnbar"])
+
+        try wiring.unwire(target: .geminiCLI)
+        XCTAssertTrue(wiring.isWired(target: .antigravity), "Unwiring one must not unwire the other")
+    }
+
+    /// Muse refuses to load a settings file without `schema_version`
+    /// ("malformed settings file …: missing field `schema_version`"), so a
+    /// file we create must carry it, and a file that already has one must
+    /// keep the value the user chose.
+    func test_wireMuse_writesStdioTransportAndTheRequiredSchemaVersion() throws {
+        let url = wiring.configURL(for: .muse)
+        XCTAssertTrue(try wiring.wire(target: .muse, launch: launch).didMutate)
+
+        let root = try json(at: url)
+        XCTAssertEqual(root["schema_version"] as? Int, 1)
+        let entry = try XCTUnwrap((root["mcpServers"] as? [String: Any])?["openburnbar"] as? [String: Any])
+        XCTAssertEqual(entry["transport"] as? String, "stdio")
+        XCTAssertEqual(entry["command"] as? String, "/usr/bin/python3")
+        XCTAssertEqual(entry["args"] as? [String], ["/repo/tools/openburnbar-mcp/server.py"])
+        XCTAssertFalse(try wiring.wire(target: .muse, launch: launch).didMutate)
+
+        // Unwiring leaves a file Muse can still load.
+        try wiring.unwire(target: .muse)
+        let after = try json(at: url)
+        XCTAssertEqual(after["schema_version"] as? Int, 1)
+        XCTAssertNil(after["mcpServers"])
+    }
+
+    func test_wireMuse_preservesExistingSettingsAndDoesNotRewriteSchemaVersion() throws {
+        let url = wiring.configURL(for: .muse)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"schema_version": 2, "model": "muse-spark-1.3", "mcpServers": {"other": {"transport": "stdio", "command": "/bin/true"}}}"#
+            .data(using: .utf8)!.write(to: url)
+
+        try wiring.wire(target: .muse, launch: launch)
+
+        let root = try json(at: url)
+        XCTAssertEqual(root["schema_version"] as? Int, 2, "A user's schema_version is theirs")
+        XCTAssertEqual(root["model"] as? String, "muse-spark-1.3")
+        let servers = try XCTUnwrap(root["mcpServers"] as? [String: Any])
+        XCTAssertNotNil(servers["other"])
+        XCTAssertNotNil(servers["openburnbar"])
+    }
+
+    /// A pre-existing entry alone is not "wired" for Muse if the root is still
+    /// missing the key its loader requires — the next wire repairs it.
+    func test_wireMuse_repairsAConfigMissingSchemaVersion() throws {
+        let url = wiring.configURL(for: .muse)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try wiring.wire(target: .muse, launch: launch)
+
+        var root = try json(at: url)
+        root.removeValue(forKey: "schema_version")
+        try JSONSerialization.data(withJSONObject: root).write(to: url)
+
+        XCTAssertTrue(try wiring.wire(target: .muse, launch: launch).didMutate)
+        XCTAssertEqual(try json(at: url)["schema_version"] as? Int, 1)
+    }
+
+    /// Whatever we write, we take back — for every JSON client, with the
+    /// user's other servers and unrelated keys intact.
+    func test_everyJSONTarget_roundTripsSurgically() throws {
+        let jsonTargets: [MCPClientWiringTarget] = [.claudeCode, .cursor, .droid, .antigravity, .geminiCLI, .muse]
+        for target in jsonTargets {
+            let url = wiring.configURL(for: target)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try #"{"schema_version": 1, "keepMe": "yes", "mcpServers": {"foreign": {"command": "npx"}}}"#
+                .data(using: .utf8)!.write(to: url)
+
+            XCTAssertFalse(wiring.isWired(target: target), "\(target) starts unwired")
+            try wiring.wire(target: target, launch: launch)
+            XCTAssertTrue(wiring.isWired(target: target), "\(target) reports wired")
+
+            try wiring.unwire(target: target)
+            XCTAssertFalse(wiring.isWired(target: target), "\(target) reports unwired")
+            let after = try json(at: url)
+            XCTAssertEqual(after["keepMe"] as? String, "yes", "\(target) kept unrelated keys")
+            let servers = try XCTUnwrap(after["mcpServers"] as? [String: Any], "\(target) kept foreign servers")
+            XCTAssertNotNil(servers["foreign"], "\(target) kept the user's server")
+            XCTAssertNil(servers["openburnbar"])
+        }
     }
 
     // MARK: Launch resolution

@@ -806,7 +806,14 @@ extension BurnBarProjectCodeMemoryStore {
     }
 
     static func isoNow() -> String {
-        ISO8601DateFormatter().string(from: Date())
+        isoString(Date())
+    }
+
+    /// Same shape as `isoNow()` — fixed-width UTC, so two stamps compare
+    /// lexicographically in chronological order and a retention sweep needs no
+    /// date parse in SQL.
+    static func isoString(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 
     static func sha256Hex(_ text: String) -> String {

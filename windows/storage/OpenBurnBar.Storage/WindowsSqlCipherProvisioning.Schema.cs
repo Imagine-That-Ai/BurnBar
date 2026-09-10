@@ -128,6 +128,19 @@ public sealed partial class WindowsSqlCipherProvisioner
         )
         """,
         "CREATE UNIQUE INDEX IF NOT EXISTS agent_memory_bodies_engine_idx ON agent_memory_bodies(engine_memory_id)",
+        // v67_agent_memory_inbox — mirrors the canonical GRDB migration.
+        """
+        CREATE TABLE IF NOT EXISTS agent_memory_inbox (
+            doc_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            engine_memory_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            remote_updated_at TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            applied_at TEXT
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS agent_memory_inbox_user_applied_idx ON agent_memory_inbox(user_id, applied_at)",
         """
         CREATE TABLE IF NOT EXISTS conversations (
             id TEXT NOT NULL PRIMARY KEY,

@@ -960,6 +960,189 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  createTeam: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with a server-side Data Vault entitlement check",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives the founding admin from request.auth.uid only and mints a fresh server-side team id",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["createTeam"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  inviteTeamMember: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck: "handler requires an ACTIVE ADMIN row at team_rosters/{teamId}/members/{request.auth.uid} before resolving the invitee uid or writing an invite",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "inviteTeamMember rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["inviteTeamMember"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  acceptTeamInvite: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck: "handler requires a verified email claim and an invite whose server-stored inviteeUid equals request.auth.uid; escrow key fingerprints are read from the caller's own namespace",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "acceptTeamInvite rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["acceptTeamInvite"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  promoteTeamMember: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId", "uid"],
+    ownershipCheck: "handler requires an ACTIVE ADMIN row for request.auth.uid on that team, and verifies key envelope coverage addressed to the named member before activating it",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "promoteTeamMember rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["promoteTeamMember"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  removeTeamMember: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId", "targetUid"],
+    ownershipCheck: "handler allows self-leave, otherwise requires an ACTIVE ADMIN row for request.auth.uid on that team",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "removeTeamMember rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["removeTeamMember"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  abandonTeamKeyGeneration: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck:
+      "handler requires an ACTIVE ADMIN row for request.auth.uid on that team, and burns only the next unclaimed key version, only when it is neither active nor retained and an envelope for it exists",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "abandonTeamKeyGeneration rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["abandonTeamKeyGeneration"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  recordTeamRewrapComplete: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck: "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and refuses any key version but the roster's current activeKeyVersion",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "recordTeamRewrapComplete rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["recordTeamRewrapComplete"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  recordTeamSlugKeyId: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck:
+      "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and records the founding slug-key fingerprint write-once, refusing any second, different value",
+    handlerModule: "teamSlugKeyRecord.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "recordTeamSlugKeyId rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["recordTeamSlugKeyId"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  rotateTeamKey: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck: "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and refuses any key version but activeKeyVersion + 1",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "rotateTeamKey rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["rotateTeamKey"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   triggerVoIPCall: {
     bolaCoverage: [
       {
@@ -1433,9 +1616,14 @@ const objectExpectedCodes = Object.fromEntries(
     }),
 );
 
-if (Object.keys(objectExpectedCodes).length !== 95) {
+// 95 pre-existing object-id endpoints + the six team roster callables that
+// take a teamId / member uid from the client (D16 / P21) — the sixth,
+// `abandonTeamKeyGeneration`, landed with PR 2's rotation escape hatch — plus
+// the rotation completion marker (D16 / P22, PR 4) and the founding
+// slug-key fingerprint recorder (D16, this PR).
+if (Object.keys(objectExpectedCodes).length !== 103) {
   throw new Error(
-    `Expected exactly 95 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
+    `Expected exactly 103 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
   );
 }
 

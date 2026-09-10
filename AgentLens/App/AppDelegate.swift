@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     let popoverDismissController = PopoverDismissController()
     var lastHandledStatusItemEventKey: OpenBurnBarStatusItemClick.EventKey?
     var lastHandledStatusItemEventTime: TimeInterval = 0
+    var receiptFlyoutController: ReceiptFlyoutController?
 
     // live wallpaper variables
     var settingsManager: SettingsManager? {
@@ -424,6 +425,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let observer = performanceGateVisibilityObserver {
             DistributedNotificationCenter.default().removeObserver(observer)
             performanceGateVisibilityObserver = nil
+        }
+    }
+
+    // MARK: - Receipt Flyout Presentation
+
+    func showReceiptFlyout(for receipt: ReceiptRecord) {
+        guard settingsManager?.receiptFlyoutEnabled != false else { return }
+
+        // Don't show flyout if main popover is already open
+        if glassPopoverPanel?.isVisible == true || popover?.isShown == true {
+            return
+        }
+
+        if receiptFlyoutController == nil {
+            receiptFlyoutController = ReceiptFlyoutController(
+                statusItem: statusItem,
+                onOpenReceiptDetail: { [weak self] selectedReceipt in
+                    self?.openReceiptDetail(selectedReceipt)
+                }
+            )
+        } else {
+            receiptFlyoutController?.updateStatusItem(statusItem)
+        }
+        receiptFlyoutController?.showFlyout(for: receipt)
+    }
+
+    func openReceiptDetail(_ receipt: ReceiptRecord) {
+        if let dataStore {
+            WindowManager.shared.openReceiptsWindow(dataStore: dataStore, initialReceiptId: receipt.id)
         }
     }
 }

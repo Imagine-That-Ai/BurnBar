@@ -102,6 +102,17 @@ struct DashboardSectionSwitcher: View {
                         : DashboardMainRoute.fleet.systemImage())
                 }
             }
+            Button {
+                onNavigate(.receipts)
+            } label: {
+                Label {
+                    Text(DashboardMainRoute.receipts.title())
+                } icon: {
+                    Image(systemName: currentRoute == .receipts
+                        ? "checkmark"
+                        : DashboardMainRoute.receipts.systemImage())
+                }
+            }
         } label: {
             labelView
         }

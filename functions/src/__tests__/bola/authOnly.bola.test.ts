@@ -65,6 +65,7 @@ export const AUTH_ONLY_CALLABLES = [
   "pushLinuxCloudReplicas",
   "pullLinuxCloudReplicas",
   "writeSignalAtRestDocument",
+  "createTeam",
 ] as const;
 
 export const PLATFORM_TRIGGER_ENDPOINTS = [

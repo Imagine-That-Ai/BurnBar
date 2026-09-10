@@ -297,6 +297,30 @@ extension BurnBarProjectCodeMemoryStore {
             """,
             []
         )
+        // Memory Blind Sync inbox (v67). The app's pull lane writes it; the engine
+        // drains it through this store, so a daemon-first profile must be able to
+        // create it too. Mirrors the canonical GRDB migration exactly.
+        try execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_memory_inbox (
+                doc_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                engine_memory_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                remote_updated_at TEXT NOT NULL,
+                received_at TEXT NOT NULL,
+                applied_at TEXT
+            )
+            """,
+            []
+        )
+        try execute(
+            """
+            CREATE INDEX IF NOT EXISTS agent_memory_inbox_user_applied_idx
+            ON agent_memory_inbox(user_id, applied_at)
+            """,
+            []
+        )
         try execute(
             "CREATE INDEX IF NOT EXISTS memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id)",
             []

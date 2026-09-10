@@ -77,7 +77,7 @@ final class AppCommandRouter {
         // it, but a host missing from this list never reaches that handler — it
         // falls through to `default` and is handed to the Google Sign-In fallback,
         // so the route would be declared and unreachable.
-        case "quota", "inbox", "home", "recap":
+        case "quota", "inbox", "home", "recap", "receipts":
             return routeDashboardDeepLink?(url) ?? false
         case "approve-device", "device-approval", "devices":
             Task { @MainActor in

@@ -1,343 +1,14 @@
 import Foundation
 
-public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
-    public let text: String
-    public let projectPath: String?
-    public let kind: String
-    public let scope: String
-    public let tags: [String]
-    public let confidence: Double
-    public let sourcePath: String?
-    public let reviewStatus: MemoryReviewStatus
-    /// Present means the `agent` partition and keys its blind-sync document; `nil` keeps `"code"`.
-    public let engineMemoryID: String?
-
-    public init(
-        text: String,
-        projectPath: String? = nil,
-        kind: String = "note",
-        scope: String = "personal",
-        tags: [String] = [],
-        confidence: Double = 1.0,
-        sourcePath: String? = nil,
-        reviewStatus: MemoryReviewStatus = .approved,
-        engineMemoryID: String? = nil
-    ) {
-        self.text = text
-        self.projectPath = projectPath
-        self.kind = kind
-        self.scope = scope
-        self.tags = tags
-        self.confidence = confidence
-        self.sourcePath = sourcePath
-        self.reviewStatus = reviewStatus
-        self.engineMemoryID = engineMemoryID
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case text, projectPath, kind, scope, tags, confidence, sourcePath, reviewStatus, engineMemoryID
-    }
-
-    public init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        self.text = try values.decode(String.self, forKey: .text)
-        self.projectPath = try values.decodeIfPresent(String.self, forKey: .projectPath)
-        self.kind = try values.decodeIfPresent(String.self, forKey: .kind) ?? "note"
-        self.scope = try values.decodeIfPresent(String.self, forKey: .scope) ?? "personal"
-        self.tags = try values.decodeIfPresent([String].self, forKey: .tags) ?? []
-        self.confidence = try values.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
-        self.sourcePath = try values.decodeIfPresent(String.self, forKey: .sourcePath)
-        self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .approved
-        self.engineMemoryID = try values.decodeIfPresent(String.self, forKey: .engineMemoryID)
-    }
-}
-
-public struct BurnBarProjectMemoryRememberResponse: Codable, Hashable, Sendable {
-    public let traceID: String
-    public let projectID: String
-    public let memoryID: String
-    public let auditHash: String
-
-    public init(traceID: String, projectID: String, memoryID: String, auditHash: String) {
-        self.traceID = traceID
-        self.projectID = projectID
-        self.memoryID = memoryID
-        self.auditHash = auditHash
-    }
-}
-
-public struct BurnBarProjectMemoryRecallRequest: Codable, Hashable, Sendable {
-    public let query: String
-    public let projectPath: String?
-    public let limit: Int
-    public let scope: String
-    public let includeCrossProject: Bool
-    public let includeQuarantined: Bool
-    public let includeForgotten: Bool
-
-    public init(
-        query: String,
-        projectPath: String? = nil,
-        limit: Int = 20,
-        scope: String = "all",
-        includeCrossProject: Bool = false,
-        includeQuarantined: Bool = false,
-        includeForgotten: Bool = false
-    ) {
-        self.query = query
-        self.projectPath = projectPath
-        self.limit = limit
-        self.scope = scope
-        self.includeCrossProject = includeCrossProject
-        self.includeQuarantined = includeQuarantined
-        self.includeForgotten = includeForgotten
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case query, projectPath, limit, scope, includeCrossProject, includeQuarantined, includeForgotten
-    }
-
-    public init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        self.query = try values.decode(String.self, forKey: .query)
-        self.projectPath = try values.decodeIfPresent(String.self, forKey: .projectPath)
-        self.limit = try values.decodeIfPresent(Int.self, forKey: .limit) ?? 20
-        self.scope = try values.decodeIfPresent(String.self, forKey: .scope) ?? "all"
-        self.includeCrossProject = try values.decodeIfPresent(Bool.self, forKey: .includeCrossProject) ?? false
-        self.includeQuarantined = try values.decodeIfPresent(Bool.self, forKey: .includeQuarantined) ?? false
-        self.includeForgotten = try values.decodeIfPresent(Bool.self, forKey: .includeForgotten) ?? false
-    }
-}
-
-public struct BurnBarProjectMemoryHit: Codable, Hashable, Sendable {
-    public let memoryID: String
-    public let projectID: String
-    public let kind: String
-    public let scope: String
-    public let confidence: Double
-    public let bodyRedacted: String
-    public let tags: [String]
-    public let sourcePath: String?
-    public let snippet: String
-    public let rank: Double?
-    public let reviewStatus: MemoryReviewStatus
-
-    public init(
-        memoryID: String,
-        projectID: String,
-        kind: String,
-        scope: String,
-        confidence: Double,
-        bodyRedacted: String,
-        tags: [String],
-        sourcePath: String?,
-        snippet: String,
-        rank: Double?,
-        reviewStatus: MemoryReviewStatus = .approved
-    ) {
-        self.memoryID = memoryID
-        self.projectID = projectID
-        self.kind = kind
-        self.scope = scope
-        self.confidence = confidence
-        self.bodyRedacted = bodyRedacted
-        self.tags = tags
-        self.sourcePath = sourcePath
-        self.snippet = snippet
-        self.rank = rank
-        self.reviewStatus = reviewStatus
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case memoryID, projectID, kind, scope, confidence, bodyRedacted, tags, sourcePath, snippet, rank, reviewStatus
-    }
-
-    public init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        self.memoryID = try values.decode(String.self, forKey: .memoryID)
-        self.projectID = try values.decode(String.self, forKey: .projectID)
-        self.kind = try values.decode(String.self, forKey: .kind)
-        self.scope = try values.decode(String.self, forKey: .scope)
-        self.confidence = try values.decode(Double.self, forKey: .confidence)
-        self.bodyRedacted = try values.decode(String.self, forKey: .bodyRedacted)
-        self.tags = try values.decode([String].self, forKey: .tags)
-        self.sourcePath = try values.decodeIfPresent(String.self, forKey: .sourcePath)
-        self.snippet = try values.decode(String.self, forKey: .snippet)
-        self.rank = try values.decodeIfPresent(Double.self, forKey: .rank)
-        self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .approved
-    }
-}
-
-/// Durable review transition for an existing memory authority record. The daemon
-/// owns this state; renderers never persist a decision locally.
-public struct BurnBarProjectMemoryReviewStatusRequest: Codable, Hashable, Sendable {
-    public let memoryID: String
-    public let projectPath: String?
-    public let status: MemoryReviewStatus
-
-    public init(memoryID: String, projectPath: String? = nil, status: MemoryReviewStatus) {
-        self.memoryID = memoryID
-        self.projectPath = projectPath
-        self.status = status
-    }
-}
-
-public struct BurnBarProjectMemoryReviewStatusResponse: Codable, Hashable, Sendable {
-    public let traceID: String
-    public let projectID: String
-    public let memoryID: String
-    public let status: MemoryReviewStatus
-    public let auditHash: String
-
-    public init(traceID: String, projectID: String, memoryID: String, status: MemoryReviewStatus, auditHash: String) {
-        self.traceID = traceID
-        self.projectID = projectID
-        self.memoryID = memoryID
-        self.status = status
-        self.auditHash = auditHash
-    }
-}
-
-public struct BurnBarProjectMemoryRecallResponse: Codable, Hashable, Sendable {
-    public let traceID: String
-    public let projectID: String
-    public let hits: [BurnBarProjectMemoryHit]
-
-    public init(traceID: String, projectID: String, hits: [BurnBarProjectMemoryHit]) {
-        self.traceID = traceID
-        self.projectID = projectID
-        self.hits = hits
-    }
-}
-
-public struct BurnBarProjectMemoryForgetRequest: Codable, Hashable, Sendable {
-    public let memoryID: String
-    public let projectPath: String?
-    public let requireCloudDelete: Bool
-
-    public init(memoryID: String, projectPath: String? = nil, requireCloudDelete: Bool = false) {
-        self.memoryID = memoryID
-        self.projectPath = projectPath
-        self.requireCloudDelete = requireCloudDelete
-    }
-}
-
-public struct BurnBarProjectMemoryForgetResponse: Codable, Hashable, Sendable {
-    public let traceID: String
-    public let projectID: String
-    public let memoryID: String
-    public let localDeleted: Bool
-    public let cloudDeletePending: Bool
-    public let auditHash: String
-
-    public init(
-        traceID: String,
-        projectID: String,
-        memoryID: String,
-        localDeleted: Bool,
-        cloudDeletePending: Bool,
-        auditHash: String
-    ) {
-        self.traceID = traceID
-        self.projectID = projectID
-        self.memoryID = memoryID
-        self.localDeleted = localDeleted
-        self.cloudDeletePending = cloudDeletePending
-        self.auditHash = auditHash
-    }
-}
-
-public struct BurnBarProjectMemoryAuditTrailRequest: Codable, Hashable, Sendable {
-    public let projectPath: String?
-    public let limit: Int
-
-    public init(projectPath: String? = nil, limit: Int = 50) {
-        self.projectPath = projectPath
-        self.limit = limit
-    }
-}
-
-public struct BurnBarProjectMemoryAuditEvent: Codable, Hashable, Sendable {
-    public let seq: Int64
-    public let ts: String
-    public let actor: String
-    public let action: String
-    public let domain: String
-    public let projectID: String?
-    public let subjectID: String?
-    public let labels: [String]
-    public let prevHash: String?
-    public let hash: String
-
-    public init(
-        seq: Int64,
-        ts: String,
-        actor: String,
-        action: String,
-        domain: String,
-        projectID: String?,
-        subjectID: String?,
-        labels: [String],
-        prevHash: String?,
-        hash: String
-    ) {
-        self.seq = seq
-        self.ts = ts
-        self.actor = actor
-        self.action = action
-        self.domain = domain
-        self.projectID = projectID
-        self.subjectID = subjectID
-        self.labels = labels
-        self.prevHash = prevHash
-        self.hash = hash
-    }
-}
-
-public struct BurnBarProjectMemoryAuditTrailResponse: Codable, Hashable, Sendable {
-    public let traceID: String
-    public let projectID: String
-    public let events: [BurnBarProjectMemoryAuditEvent]
-
-    public init(traceID: String, projectID: String, events: [BurnBarProjectMemoryAuditEvent]) {
-        self.traceID = traceID
-        self.projectID = projectID
-        self.events = events
-    }
-}
-
-public struct BurnBarProjectMemoryAnalyticsRequest: Codable, Hashable, Sendable {
-    public let projectPath: String?
-
-    public init(projectPath: String? = nil) {
-        self.projectPath = projectPath
-    }
-}
-
-public struct BurnBarProjectMemoryAnalyticsResponse: Codable, Hashable, Sendable {
-    public let traceID: String
-    public let projectID: String
-    public let total: Int
-    public let byKind: [String: Int]
-    public let byScope: [String: Int]
-    public let lastAuditHash: String?
-
-    public init(
-        traceID: String,
-        projectID: String,
-        total: Int,
-        byKind: [String: Int],
-        byScope: [String: Int],
-        lastAuditHash: String?
-    ) {
-        self.traceID = traceID
-        self.projectID = projectID
-        self.total = total
-        self.byKind = byKind
-        self.byScope = byScope
-        self.lastAuditHash = lastAuditHash
-    }
-}
+// MARK: - Project code intelligence wire contracts
+//
+// Foundation-only leaf carved out of OpenBurnBarKernel's
+// `BurnBarProjectCodeMemoryContracts.swift` per docs/CORE_DECOMPOSITION_PROGRAM.md:
+// that file held two unrelated contract families (project MEMORY and project
+// CODE) and Kernel is at its LOC ceiling, so the code half moves to its own
+// leaf. Kernel `@_exported import`s this target, so every existing
+// `import OpenBurnBarKernel` / `import OpenBurnBarCore` consumer keeps
+// compiling unchanged. Depends on Foundation and nothing else.
 
 public struct BurnBarProjectCodeRange: Codable, Hashable, Sendable {
     public let startLine: Int
@@ -1191,5 +862,82 @@ public struct BurnBarProjectCodeExploreResponse: Codable, Hashable, Sendable {
         self.hits = hits
         self.truncated = truncated
         self.degradation = degradation
+    }
+}
+
+// MARK: - Memory ranking "why" breakdown (B9)
+
+/// Why one memory was served, mirroring the engine's breakdown member for member
+/// (`tools/openburnbar-mcp/memory_engine/_read.py`, the `why` dict built beside
+/// each hit). The engine emits `matchedBy` as a SIBLING of `why`, so it lives on
+/// the hit here too rather than inside this struct — same shape, same names, same
+/// four-decimal rounding, so a daemon-served hit and an engine-served hit explain
+/// themselves identically.
+///
+/// This is a report, not an input: nothing here participates in scoring. Adding
+/// or reading it must never change a recall's ordering.
+public struct BurnBarMemoryWhyBreakdown: Codable, Hashable, Sendable {
+    /// 1-based position in the lexical (BM25) candidate list; nil when the query
+    /// never matched lexically.
+    public let lexicalRank: Int?
+    /// The BM25 score at `lexicalRank`, rounded to four decimals. Nil with it.
+    public let bm25: Double?
+    /// 1-based position in the semantic (cosine) candidate list; nil when no
+    /// embedding was available or the memory was not among the neighbours.
+    public let semanticRank: Int?
+    /// The cosine similarity at `semanticRank`, rounded to four decimals.
+    public let cosine: Double?
+    /// The salience multiplier applied after fusion, rounded to four decimals.
+    public let salience: Double
+    /// The recency multiplier applied after fusion, rounded to four decimals.
+    public let recency: Double
+    /// Cross-encoder rerank score, when a reranker ran. The daemon has no
+    /// reranker, so it reports nil — exactly as the engine does with rerank off.
+    public let rerankScore: Double?
+    /// The reranker's name, nil alongside `rerankScore`.
+    public let reranker: String?
+
+    public init(
+        lexicalRank: Int? = nil,
+        bm25: Double? = nil,
+        semanticRank: Int? = nil,
+        cosine: Double? = nil,
+        salience: Double,
+        recency: Double,
+        rerankScore: Double? = nil,
+        reranker: String? = nil
+    ) {
+        self.lexicalRank = lexicalRank
+        self.bm25 = bm25
+        self.semanticRank = semanticRank
+        self.cosine = cosine
+        self.salience = salience
+        self.recency = recency
+        self.rerankScore = rerankScore
+        self.reranker = reranker
+    }
+
+    /// The one line a UI shows under a hit. `matchedBy` is the hit's, not the
+    /// breakdown's, so it is passed in.
+    ///
+    /// e.g. `Matched by hybrid: lexical #1 (bm25 3.14), semantic #2 (cos 0.88), salience 0.95, recency 0.85`
+    public func explanationLine(matchedBy: String) -> String {
+        var parts: [String] = []
+        if let lexicalRank {
+            parts.append("lexical #\(lexicalRank) (bm25 \(Self.twoDecimals(bm25 ?? 0)))")
+        }
+        if let semanticRank {
+            parts.append("semantic #\(semanticRank) (cos \(Self.twoDecimals(cosine ?? 0)))")
+        }
+        parts.append("salience \(Self.twoDecimals(salience))")
+        parts.append("recency \(Self.twoDecimals(recency))")
+        if let rerankScore {
+            parts.append("\(reranker ?? "rerank") \(Self.twoDecimals(rerankScore))")
+        }
+        return "Matched by \(matchedBy): " + parts.joined(separator: ", ")
+    }
+
+    private static func twoDecimals(_ value: Double) -> String {
+        String(format: "%.2f", value)
     }
 }

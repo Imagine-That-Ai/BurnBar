@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from ._admin import _Maintenance
+from ._lifecycle import _Lifecycle
 from ._read import _ReadPath
+from ._sync import _BlindSync
 from ._util import _clamp, _json_dumps, _json_loads, _parse_iso
 from ._write import _WritePath
 from .constants import (
@@ -25,12 +27,13 @@ from .constants import (
     SECRET_POLICIES,
     SECRET_POLICY_ENV,
     SHORT_HALF_LIFE_KINDS,
+    TEAM_ROW_PRESENT_SQL,
 )
 from .crypto import KeyRing, secure_store_files
 from .providers import ModelRouter
 from .embeddings import EmbeddingProvider, decode_vector, embedding_provider
 from .gate import auxiliary_injection_labels
-from .store import default_db_path, open_store, resolve_project
+from .store import adopt_project, default_db_path, open_store, resolve_project
 from .text import tokenize
 
 
@@ -94,6 +97,14 @@ class ActiveMemory:
     recall_tokens: list[str] = field(default_factory=list)
     vector: list[float] | None = None
 
+    @property
+    def extracted_by(self) -> str | None:
+        return self.metadata.get("extracted_by") or self.metadata.get("extractedBy")
+
+    @property
+    def model_id(self) -> str | None:
+        return self.metadata.get("model_id") or self.metadata.get("modelId")
+
     def public(self, include_body: bool = True) -> dict[str, Any]:
         payload = {
             "memoryID": self.id,
@@ -121,6 +132,10 @@ class ActiveMemory:
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
         }
+        if self.extracted_by:
+            payload["extractedBy"] = self.extracted_by
+        if self.model_id:
+            payload["modelId"] = self.model_id
         if include_body:
             payload["body"] = self.body
         return payload
@@ -129,7 +144,7 @@ class ActiveMemory:
 _PROJECT_CACHE: dict[str, tuple[tuple[int, str, int, str], list[ActiveMemory]]] = {}
 
 
-class MemoryEngine(_WritePath, _ReadPath, _Maintenance):
+class MemoryEngine(_WritePath, _ReadPath, _Lifecycle, _Maintenance, _BlindSync):
     def __init__(
         self,
         conn: sqlite3.Connection,
@@ -227,6 +242,20 @@ class MemoryEngine(_WritePath, _ReadPath, _Maintenance):
             ),
         )
         self._commit()
+
+    def resolve_project(self, project_path: str | Path | None = None) -> tuple[str, Path]:
+        """Resolve the project identity for a path."""
+        return resolve_project(self.conn, str(project_path) if project_path is not None else None)
+
+    def adopt_project(
+        self,
+        project_path: str | Path | None = None,
+        project_id: str | None = None,
+        *,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        """Explicitly adopt a project ID for a folder path."""
+        return adopt_project(self.conn, project_path, project_id, confirmed=confirmed)
 
     def pending_daemon_mirror_ids(self, project_path: str | None) -> list[str]:
         """Return durable mirror tombstones owned by one canonical project path."""
@@ -373,14 +402,19 @@ class MemoryEngine(_WritePath, _ReadPath, _Maintenance):
         self, project_id: str, *, include_personal_cross_project: bool = True, include_cross_project: bool = False
     ) -> list[ActiveMemory]:
         version = self.provider.version_id
+        # A1: a team row's landing partition is a `teamProjectId`, so the LOCAL
+        # project fence would drop every project-scoped team row before any team
+        # predicate saw it. The pool admits them and hands the decision on —
+        # `_team_serve_filter` on the read paths, `_team_write_filter` on the
+        # write ones. Neither caller of this method is without one.
         if include_cross_project:
             where = "WHERE m.valid_to IS NULL"
             params: list[Any] = [version]
         elif include_personal_cross_project:
-            where = "WHERE m.valid_to IS NULL AND (m.project_id = ? OR m.scope = 'personal')"
+            where = f"WHERE m.valid_to IS NULL AND (m.project_id = ? OR m.scope = 'personal' OR {TEAM_ROW_PRESENT_SQL})"
             params = [version, project_id]
         else:
-            where = "WHERE m.valid_to IS NULL AND m.project_id = ?"
+            where = f"WHERE m.valid_to IS NULL AND (m.project_id = ? OR {TEAM_ROW_PRESENT_SQL})"
             params = [version, project_id]
         # Reinforcement moves access_count / last_accessed_at / salience without
         # touching updated_at, so the stamp has to include them or another

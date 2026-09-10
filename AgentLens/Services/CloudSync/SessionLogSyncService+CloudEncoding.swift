@@ -46,12 +46,4 @@ extension SessionLogSyncService {
         }
         return terms
     }
-
-    static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
-        guard let dict = raw as? [String: Any],
-              let data = try? JSONSerialization.data(withJSONObject: dict) else { // try?-ok(optional envelope parse)
-            return nil
-        }
-        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data) // try?-ok(optional envelope decode)
-    }
 }

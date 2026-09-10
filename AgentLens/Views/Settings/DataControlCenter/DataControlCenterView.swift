@@ -226,7 +226,8 @@ struct DataControlCenterView: View {
             .width(min: 84, ideal: 140, max: 160)
 
             TableColumn("Records", value: \.count) { row in
-                Text("\(row.count)")
+                // "—", not "0", where no per-user count exists (PR 4 review L7).
+                Text(row.countDisplay)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }

@@ -72,6 +72,7 @@ jobs:
       source_run_attempt: ${{ steps.domain-core-source.outputs.run_attempt }}
       signer_run_id: ${{ steps.domain-core-gate.outputs.signer_run_id }}
       signer_run_attempt: ${{ steps.domain-core-gate.outputs.signer_run_attempt }}
+      domain_core_inactive: ${{ steps.proof_gate.outputs.domain_core_inactive }}
       proof_artifact: ${{ steps.domain-core-proof.outputs.artifact_name }}
       prepared_artifact: ${{ steps.prepared-artifact.outputs.artifact_name }}
     steps:
@@ -327,8 +328,33 @@ jobs:
           ].join("\n") + "\n");
           NODE
 
+      # gen-3 was annulled in #2173, so the activation resolver reports
+      # `active: false` and no promotion-proof run ever signed the resulting
+      # candidate bundle. #2322 taught the native release gate that lane and
+      # #2329 taught hosting; the Functions lane was never taught, so every tag
+      # deploy since 2026-08-20 died on
+      # `HTTP 404: Not Found (.../attestations/sha256:a2d4583c...)`.
+      # The resolver is fail-closed: the rollback profile always requires the
+      # proof, a non-boolean activation flag is an error, and the inactive lane
+      # is only available to a `public-production` profile whose every governed
+      # domain mode is `legacy` (i.e. no domain-core code executes).
+      - name: Resolve whether a protected promotion proof is required
+        id: proof_gate
+        env:
+          DOMAIN_CORE_PROFILE: ${{ steps.tag.outputs.domain_core_profile }}
+          RUST_ACTIVE: ${{ steps.activation.outputs.active }}
+          PROFILE_PATH: ${{ steps.domain-core-profile.outputs.profile_path }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/resolve-functions-promotion-gate.mjs \
+            --active "$RUST_ACTIVE" \
+            --profile "$DOMAIN_CORE_PROFILE" \
+            --profile-receipt "$PROFILE_PATH" \
+            --format github-output >> "$GITHUB_OUTPUT"
+
       - name: Locate exact deterministic candidate source run
         id: domain-core-source
+        if: steps.proof_gate.outputs.proof_required == 'true'
         env:
           CANDIDATE_COMMIT: ${{ steps.domain-core-profile.outputs.candidate_commit }}
           GH_TOKEN: ${{ github.token }}
@@ -361,6 +387,7 @@ jobs:
           printf 'run_id=%s\nrun_attempt=%s\n' "$run_id" "$run_attempt" >> "$GITHUB_OUTPUT"
 
       - name: Download exact unsigned candidate bundle
+        if: steps.proof_gate.outputs.proof_required == 'true'
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
@@ -369,6 +396,7 @@ jobs:
           path: ${{ runner.temp }}/domain-core-release-materials/candidate
 
       - name: Download exact candidate rollback artifact
+        if: steps.proof_gate.outputs.proof_required == 'true'
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
@@ -378,6 +406,7 @@ jobs:
 
       - name: Verify protected promotion and exact rollback before build
         id: domain-core-gate
+        if: steps.proof_gate.outputs.proof_required == 'true'
         env:
           CANDIDATE_COMMIT: ${{ steps.domain-core-profile.outputs.candidate_commit }}
           CORE_VERSION: ${{ steps.domain-core-profile.outputs.core_version }}
@@ -405,10 +434,19 @@ jobs:
 
           mkdir -p "$materials/promotion"
           pushd "$materials/promotion" >/dev/null
-          gh attestation download "$candidate" \
+          # A bare `gh attestation download` failure prints only
+          # `HTTP 404 ... /attestations/sha256:<digest>` — a digest nobody can
+          # act on, which is how 39 consecutive repair tags were burned against
+          # this step. Name the candidate, the exact remediation, and say
+          # plainly that another tag will not help.
+          if ! gh attestation download "$candidate" \
             --repo "$GITHUB_REPOSITORY" \
             --predicate-type https://slsa.dev/provenance/v1 \
-            --limit 100
+            --limit 100; then
+            candidate_digest="$(sha256sum "$candidate" | awk '{print $1}')"
+            echo "::error::No protected promotion attestation exists for candidate ${CANDIDATE_COMMIT} (bundle sha256:${candidate_digest}, source run ${SOURCE_RUN_ID} attempt ${SOURCE_RUN_ATTEMPT}). Mint it by dispatching .github/workflows/domain-core-promotion-proof.yml from main with candidate_commit=${CANDIDATE_COMMIT}; that run must pass 'Verify candidate control plane matches trusted main', so a candidate whose control plane has drifted behind main needs a new activation commit first. Cutting another release tag will not change this."
+            exit 1
+          fi
           mapfile -t attestation_files < <(find . -maxdepth 1 -type f -name 'sha256*.jsonl' -print)
           if [[ "${#attestation_files[@]}" -ne 1 ]]; then
             echo "::error::Expected exactly one digest-addressed protected attestation download, found ${#attestation_files[@]}."
@@ -555,31 +593,43 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
           RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+          PROOF_REQUIRED: ${{ steps.proof_gate.outputs.proof_required }}
+          DOMAIN_CORE_INACTIVE: ${{ steps.proof_gate.outputs.domain_core_inactive }}
         run: |
           set -euo pipefail
           materials="$RUNNER_TEMP/domain-core-release-materials"
           stage="$RUNNER_TEMP/domain-core-functions-deploy-proof"
           mkdir -p "$stage"
           cp -a functions/lib "$stage/functions-lib"
-          node scripts/ci/create-domain-core-functions-deploy-proof.mjs \
-            --profile "${{ steps.domain-core-profile.outputs.profile_path }}" \
-            --compiled-receipt functions/lib/generated/domainCoreCandidateReceipt.js \
-            --runtime-manifest functions/lib/domain-core-runtime-artifact-manifest.json \
-            --release-gate "$materials/domain-core-release-gate.json" \
-            --tag "$RELEASE_TAG" \
-            --commit "$RELEASE_COMMIT" \
-            --deploy-run-id "$GITHUB_RUN_ID" \
-            --deploy-run-attempt "$GITHUB_RUN_ATTEMPT" \
+          proof_args=(
+            --profile "${{ steps.domain-core-profile.outputs.profile_path }}"
+            --compiled-receipt functions/lib/generated/domainCoreCandidateReceipt.js
+            --runtime-manifest functions/lib/domain-core-runtime-artifact-manifest.json
+            --tag "$RELEASE_TAG"
+            --commit "$RELEASE_COMMIT"
+            --deploy-run-id "$GITHUB_RUN_ID"
+            --deploy-run-attempt "$GITHUB_RUN_ATTEMPT"
             --output "$stage/domain-core-functions-deploy-proof.json"
+          )
+          if [[ "$PROOF_REQUIRED" == "true" ]]; then
+            proof_args+=(--release-gate "$materials/domain-core-release-gate.json")
+          else
+            [[ "$DOMAIN_CORE_INACTIVE" == "true" ]] \
+              || { echo "::error::A Functions deploy without a protected release gate requires the inactive domain-core lane."; exit 1; }
+            proof_args+=(--domain-core-inactive true)
+          fi
+          node scripts/ci/create-domain-core-functions-deploy-proof.mjs "${proof_args[@]}"
           install -m 0600 "${{ steps.domain-core-profile.outputs.profile_path }}" "$stage/domain-core-functions-profile.json"
           install -m 0600 functions/lib/generated/domainCoreCandidateReceipt.js "$stage/domainCoreCandidateReceipt.js"
           install -m 0600 functions/lib/domain-core-runtime-artifact-manifest.json "$stage/domain-core-runtime-artifact-manifest.json"
-          install -m 0600 "$materials/domain-core-release-gate.json" "$stage/domain-core-release-gate.json"
-          install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
-          install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"
-          install -m 0600 "$materials/rollback/domain-core-public-production-rollback.json" "$stage/domain-core-public-production-rollback.json"
-          install -m 0600 "$materials/domain-core-public-production-rollback-release.json" \
-            "$stage/domain-core-public-production-rollback-release.json"
+          if [[ "$PROOF_REQUIRED" == "true" ]]; then
+            install -m 0600 "$materials/domain-core-release-gate.json" "$stage/domain-core-release-gate.json"
+            install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
+            install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"
+            install -m 0600 "$materials/rollback/domain-core-public-production-rollback.json" "$stage/domain-core-public-production-rollback.json"
+            install -m 0600 "$materials/domain-core-public-production-rollback-release.json" \
+              "$stage/domain-core-public-production-rollback-release.json"
+          fi
           artifact_name="domain-core-functions-deploy-proof-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 
@@ -753,6 +803,7 @@ jobs:
       source_run_attempt: ${{ needs.prepare-functions-deploy.outputs.source_run_attempt }}
       signer_run_id: ${{ needs.prepare-functions-deploy.outputs.signer_run_id }}
       signer_run_attempt: ${{ needs.prepare-functions-deploy.outputs.signer_run_attempt }}
+      domain_core_inactive: ${{ needs.prepare-functions-deploy.outputs.domain_core_inactive }}
       proof_artifact: ${{ needs.prepare-functions-deploy.outputs.proof_artifact }}
       reused_existing_evidence: ${{ steps.stable-replay.outputs.reused }}
     env:
@@ -1061,6 +1112,8 @@ jobs:
 
       - name: Deployment summary
         if: always()
+        env:
+          DOMAIN_CORE_INACTIVE: ${{ needs.prepare-functions-deploy.outputs.domain_core_inactive }}
         run: |
           {
             echo "## Production Functions deploy"
@@ -1068,7 +1121,11 @@ jobs:
             echo "- Dry run: ${{ needs.prepare-functions-deploy.outputs.dry_run }}"
             echo "- FUNCTION_VERSION: ${{ needs.prepare-functions-deploy.outputs.tag }}"
             echo "- Domain core profile: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}"
-            echo "- Protected signer: run ${{ needs.prepare-functions-deploy.outputs.signer_run_id }}, attempt ${{ needs.prepare-functions-deploy.outputs.signer_run_attempt }}"
+            if [[ "$DOMAIN_CORE_INACTIVE" == "true" ]]; then
+              echo "- Protected signer: not required — domain core is inactive (every governed domain is \`legacy\`, no domain-core code executes)"
+            else
+              echo "- Protected signer: run ${{ needs.prepare-functions-deploy.outputs.signer_run_id }}, attempt ${{ needs.prepare-functions-deploy.outputs.signer_run_attempt }}"
+            fi
             echo "- Project: burnbar"
             echo "- Health: functions-health-gate job"
             echo ""
@@ -1190,8 +1247,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.deploy-functions.outputs.tag }}
           DOMAIN_CORE_PROFILE: ${{ needs.deploy-functions.outputs.domain_core_profile }}
+          DOMAIN_CORE_INACTIVE: ${{ needs.deploy-functions.outputs.domain_core_inactive }}
         run: |
           set -euo pipefail
+          # The Functions release-evidence workflow exists to re-verify the
+          # protected promotion chain (release gate, candidate bundle, signer
+          # run, promotion attestation). On the inactive lane none of those
+          # artifacts exist, so dispatching it would guarantee a red post-deploy
+          # evidence run and a P0 page for a release that shipped correctly.
+          # Record the reason instead; the lane returns when the domain core is
+          # reactivated and a promotion proof is signed again.
+          if [[ "$DOMAIN_CORE_INACTIVE" == "true" ]]; then
+            echo "::notice::Domain core is inactive; no protected promotion chain exists to re-verify, so tag-bound Functions release evidence is not dispatched for $RELEASE_TAG."
+            {
+              echo "## Functions release evidence"
+              echo "- Not dispatched: domain core is inactive for \`$RELEASE_TAG\`."
+              echo "- There is no protected promotion proof, release gate, or candidate bundle to re-verify."
+              echo "- The deploy proof, runtime artifact manifest, and health gate evidence still apply."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           gh workflow run domain-core-functions-release-evidence.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$RELEASE_TAG" \

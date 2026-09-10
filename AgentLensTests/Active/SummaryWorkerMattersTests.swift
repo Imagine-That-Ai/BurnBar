@@ -341,3 +341,93 @@ private final class SummaryWorkerNetworkRecorder: URLProtocol {
 
     override func stopLoading() {}
 }
+
+// MARK: - OpenAI-compatible response parser
+
+/// Pins the one `/chat/completions` body reader that `SummaryLLMClient` and
+/// `MemoryExtractionLLMClient` now share.
+///
+/// Both clients used to carry a verbatim copy of this walk. The copies were
+/// retired into `OpenAICompatibleChatResponse.assistantText(fromResponseBody:)`,
+/// so these cases are what stops the two lanes from silently drifting apart
+/// again — every branch the two copies had is asserted here, including the two
+/// that only differed in spelling (`compactMap` with an `if let` vs a direct
+/// cast) and therefore had to keep behaving identically.
+final class OpenAICompatibleChatResponseTests: XCTestCase {
+
+    private func body(_ object: [String: Any]) throws -> Data {
+        try JSONSerialization.data(withJSONObject: object)
+    }
+
+    func test_string_content_is_returned_verbatim() throws {
+        let data = try body([
+            "choices": [["message": ["content": "hello world"]]]
+        ])
+        XCTAssertEqual(OpenAICompatibleChatResponse.assistantText(fromResponseBody: data), "hello world")
+    }
+
+    func test_content_blocks_are_joined_in_order() throws {
+        let data = try body([
+            "choices": [["message": ["content": [
+                ["type": "text", "text": "one "],
+                ["type": "text", "text": "two"]
+            ]]]]
+        ])
+        XCTAssertEqual(OpenAICompatibleChatResponse.assistantText(fromResponseBody: data), "one two")
+    }
+
+    func test_blocks_without_text_are_skipped_not_failed() throws {
+        let data = try body([
+            "choices": [["message": ["content": [
+                ["type": "thinking"],
+                ["type": "text", "text": "kept"]
+            ]]]]
+        ])
+        XCTAssertEqual(OpenAICompatibleChatResponse.assistantText(fromResponseBody: data), "kept")
+    }
+
+    /// An all-empty block array is `nil`, not `""` — both retired copies did
+    /// this, and a caller that treats `""` as a usable completion would store an
+    /// empty summary / memory.
+    func test_all_empty_blocks_are_nil_not_empty_string() throws {
+        let data = try body([
+            "choices": [["message": ["content": [["type": "thinking"]]]]]
+        ])
+        XCTAssertNil(OpenAICompatibleChatResponse.assistantText(fromResponseBody: data))
+    }
+
+    func test_first_choice_wins() throws {
+        let data = try body([
+            "choices": [
+                ["message": ["content": "first"]],
+                ["message": ["content": "second"]]
+            ]
+        ])
+        XCTAssertEqual(OpenAICompatibleChatResponse.assistantText(fromResponseBody: data), "first")
+    }
+
+    func test_missing_choices_is_nil() throws {
+        XCTAssertNil(OpenAICompatibleChatResponse.assistantText(fromResponseBody: try body(["error": "nope"])))
+    }
+
+    func test_empty_choices_is_nil() throws {
+        XCTAssertNil(OpenAICompatibleChatResponse.assistantText(fromResponseBody: try body(["choices": []])))
+    }
+
+    func test_missing_message_is_nil() throws {
+        XCTAssertNil(OpenAICompatibleChatResponse.assistantText(fromResponseBody: try body(["choices": [["finish_reason": "stop"]]])))
+    }
+
+    func test_unreadable_content_type_is_nil() throws {
+        let data = try body(["choices": [["message": ["content": 42]]]])
+        XCTAssertNil(OpenAICompatibleChatResponse.assistantText(fromResponseBody: data))
+    }
+
+    func test_non_json_body_is_nil() {
+        XCTAssertNil(OpenAICompatibleChatResponse.assistantText(fromResponseBody: Data("not json".utf8)))
+    }
+
+    func test_empty_body_is_nil() {
+        XCTAssertNil(OpenAICompatibleChatResponse.assistantText(fromResponseBody: Data()))
+    }
+}

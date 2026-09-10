@@ -1131,6 +1131,18 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarInboxModels",
             dependencies: ["OpenBurnBarPlatformSupport"]
         ),
+        // Project-code intelligence wire contracts (index/search/symbols/refs/
+        // call graph/diagnostics/ops/snapshot/watch/explore) as a Foundation-only
+        // leaf, following the assistant-model and AI-Inbox precedent in
+        // docs/CORE_DECOMPOSITION_PROGRAM.md. Carved out of Kernel's
+        // `BurnBarProjectCodeMemoryContracts.swift`, which held two unrelated
+        // contract families; the project-MEMORY half stays in Kernel next to the
+        // memory model enums it references. Kernel re-exports this target so
+        // existing `import OpenBurnBarKernel` consumers keep the same public
+        // surface. Deps: Foundation only.
+        .target(
+            name: "OpenBurnBarProjectCodeContracts"
+        ),
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
         // linked into the production graph — the `import OpenBurnBarFirestoreModels`
@@ -1143,6 +1155,7 @@ let firstPartyTargetsBase: [Target] = [
             dependencies: [
                 "OpenBurnBarAssistantModels",
                 "OpenBurnBarInboxModels",
+                "OpenBurnBarProjectCodeContracts",
                 "OpenBurnBarPlatformSupport",
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",

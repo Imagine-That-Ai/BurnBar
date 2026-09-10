@@ -34,7 +34,14 @@ def test_heuristic_extraction_meets_the_floor_and_leaks_nothing():
 
 def test_gate_matrix_detects_every_raw_shape():
     matrix = eval_memory.run_gate_matrix()
-    assert len(matrix) >= 12
+    # The count is part of the claim, not scaffolding around it: burnbar.ai/memory
+    # publishes "25 of 25 credential shapes detected in raw form" and badges it
+    # pinned. `>= 12` pinned the completeness and left the total free, so a 26th
+    # shape could land and the page could keep saying 25 with a green build.
+    # website/scripts/test-memory-copy.mjs holds the page to this number from the
+    # other side; this line is what makes the number mean something.
+    assert len(matrix) == 25, len(matrix)
+    assert len(matrix) == len(eval_memory.SECRET_SHAPES)
     assert all(row["raw"] for row in matrix), [row["shape"] for row in matrix if not row["raw"]]
 
 

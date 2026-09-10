@@ -33,13 +33,33 @@ final class MemoryReviewInboxModel {
             case unavailable
         }
 
+        /// What a local re-scan of this row's body concluded. Deliberately a
+        /// SCAN, not a verdict: no app producer can ever fill in "which gate
+        /// quarantined this row" (every app-side gate DROPS a candidate and
+        /// `quarantined` is the DDL default), so the row names what a fresh
+        /// scan sees and nothing else. See `MemoryReviewGateScan`.
+        typealias GateState = MemoryReviewGateScan.GateState
+
         let memory: Memory          // OpenBurnBarCore.Memory
         let body: String            // transiently-opened sealed body (display only)
         let bodyLoadState: BodyLoadState
+        let gateState: GateState
         var id: MemoryID { memory.id }
         var canApprove: Bool {
             bodyLoadState == .loaded &&
                 body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+
+        init(
+            memory: Memory,
+            body: String,
+            bodyLoadState: BodyLoadState,
+            gateState: GateState = .noGateFired
+        ) {
+            self.memory = memory
+            self.body = body
+            self.bodyLoadState = bodyLoadState
+            self.gateState = gateState
         }
     }
 
@@ -81,6 +101,9 @@ final class MemoryReviewInboxModel {
     typealias OpenBody = (MemoryID) async throws -> String?
     typealias SetStatus = (MemoryID, MemoryReviewStatus, Set<MemorySourceKind>) async throws -> Bool
     typealias Forget = (MemoryID, Set<MemorySourceKind>) async throws -> Bool
+    /// Re-scans one already-opened body. Injected so a test can drive the
+    /// fail-closed branch, which is otherwise process-wide corpus state.
+    typealias GateScan = (String) -> Item.GateState
 
     /// Every source kind the inbox serves. Daemon-owned `.code` rows are not
     /// review-inbox material and stay invisible here.
@@ -106,6 +129,7 @@ final class MemoryReviewInboxModel {
     private let openBody: OpenBody
     private let setStatus: SetStatus
     private let forgetRecord: Forget
+    private let gateScan: GateScan
 
     /// Largest page we request per bucket and per source partition. The inbox is
     /// a review surface, not a paginated browser, so a single generous page keeps
@@ -121,7 +145,8 @@ final class MemoryReviewInboxModel {
         loadPage: @escaping LoadPage,
         openBody: @escaping OpenBody,
         setStatus: @escaping SetStatus,
-        forget: @escaping Forget
+        forget: @escaping Forget,
+        gateScan: @escaping GateScan = { MemoryReviewGateScan.scan($0) }
     ) {
         self.scope = scope
         self.sourceFilter = sourceFilter
@@ -129,6 +154,7 @@ final class MemoryReviewInboxModel {
         self.openBody = openBody
         self.setStatus = setStatus
         self.forgetRecord = forget
+        self.gateScan = gateScan
     }
 
     /// Loads both buckets: pending keeps only `.quarantined` (requesting quarantined
@@ -259,7 +285,17 @@ final class MemoryReviewInboxModel {
                     AppLogger.dataStore.silentFailure("Failed to open memory body for \(memory.id)", error: error)
                     bodyState = ("", .unavailable)
                 }
-                items.append(Item(memory: memory, body: bodyState.0, bodyLoadState: bodyState.1))
+                // A body that could not be opened was never re-checked, so the
+                // row says so rather than rendering as a clean "no gate fired".
+                let gateState: Item.GateState = bodyState.1 == .loaded
+                    ? gateScan(bodyState.0)
+                    : .scannerUnavailable
+                items.append(Item(
+                    memory: memory,
+                    body: bodyState.0,
+                    bodyLoadState: bodyState.1,
+                    gateState: gateState
+                ))
                 if items.count >= pageSize { break }
             }
 

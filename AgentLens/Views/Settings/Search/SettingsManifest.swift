@@ -334,6 +334,16 @@ enum SettingsManifest {
             helpText: "Opens the on-device Memory controls. Free on this Mac — no Cloud plan required; sealed cloud backup of approved memories is a separate opt-in."
         ),
         SettingsItem(
+            id: "general.indexing.memoryDeviceSync",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemoryDeviceSync,
+            title: "Sync Memories to My Other Devices",
+            subtitle: "Opt-in sub-toggle of cloud backup: read your own approved memories back down onto this Mac from your other signed-in devices",
+            keywords: ["memory", "sync", "device sync", "cross-device", "pull", "download", "data vault", "pensieve", "backup", "other devices"],
+            helpText: "Requires \"Back up approved memories\" and the Data Vault plan (Pro Max or Ultra). Off by default even when backup is already on."
+        ),
+        SettingsItem(
             id: "general.indexing.memoryCloudModels",
             tab: .general,
             pageRoute: .indexing,
@@ -342,6 +352,36 @@ enum SettingsManifest {
             subtitle: "Opt-in: frontier models for memory extraction, reconciliation, embeddings, rerank and answers on your own keys or subscription",
             keywords: ["memory", "pro", "cloud models", "openrouter", "vercel", "anthropic", "openai", "claude code", "codex", "retention", "daily cap", "blind"],
             helpText: "Pro. Off by default. Providers you consent to receive redacted memory text directly from this Mac; BurnBar never receives your memory data."
+        ),
+        SettingsItem(
+            id: "general.indexing.teamMemory",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingTeamMemory,
+            title: "Team Memory",
+            subtitle: "Opt-in per team: share approved project memories with a team space, see the roster, rotate the team key",
+            keywords: ["team", "team memory", "shared memory", "roster", "invite", "join team", "leave team", "rotate key", "members", "blind", "pensieve"],
+            helpText: "Off for every team by default, and a strict subset of your own memory sync. Joining a team grants access to the team's existing history; leaving protects future memories only. Every active member holds the team key and can read every team fact."
+        ),
+        SettingsItem(
+            id: "general.indexing.memoryHealth",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemoryHealth,
+            title: "Memory Health",
+            subtitle: "Per-project memory counters, audit-chain integrity, sync ages and the checks this Mac can run itself",
+            keywords: ["memory", "health", "audit", "chain", "integrity", "counters", "analytics", "sync", "watermark", "marker", "pending review", "doctor", "diagnostics"],
+            helpText: "Counters come from the local daemon; the checks are run on this Mac. Engine doctor findings are not measured here."
+        ),
+        SettingsItem(
+            id: "general.indexing.memorySyncStatus",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemorySyncStatus,
+            title: "Memory Sync Status",
+            subtitle: "Both transport cursors, the device-sync consent marker's age, and what is parked in the inbox",
+            keywords: ["memory", "sync", "status", "watermark", "cursor", "marker", "stale", "inbox", "parked", "forget receipts", "diagnostics", "debug"],
+            helpText: "Read from this Mac's own database and never sent anywhere. Rejected and skipped counts come from the memory engine and are not measured here."
         ),
 
         // MARK: General → Session summaries
@@ -705,6 +745,27 @@ enum SettingsManifest {
 
         // MARK: Devices & Sync
 
+        // MARK: Receipts
+
+        SettingsItem(
+            id: "receipts.overview",
+            tab: .receipts,
+            pageRoute: .receiptsRoot,
+            anchorID: SettingsAnchor.receiptsOverview,
+            title: "Session Receipts",
+            subtitle: "Menu bar popup, notification banner and printer sound when a CLI session closes",
+            keywords: ["receipt", "receipts", "session", "cli", "close", "flyout", "popup", "notification", "banner", "sound", "thermal", "printer", "drawer"]
+        ),
+        SettingsItem(
+            id: "receipts.qualityReview",
+            tab: .receipts,
+            pageRoute: .receiptsRoot,
+            anchorID: SettingsAnchor.receiptsQualityReview,
+            title: "Receipt Quality Review",
+            subtitle: "Auto-run a quality review on close and pick the review model",
+            keywords: ["receipt", "quality", "review", "audit", "model", "score", "auto", "llm"]
+        ),
+
         SettingsItem(
             id: "devices.cloudSync",
             tab: .devicesAndSync,
@@ -983,6 +1044,8 @@ enum SettingsManifest {
     /// setting that has no scroll target.
     static let visibleAnchorIDs: Set<String> = Set([
         SettingsAnchor.homeOverview,
+        SettingsAnchor.receiptsOverview,
+        SettingsAnchor.receiptsQualityReview,
         SettingsAnchor.modelProxyOverview,
         SettingsAnchor.modelProxyEndpoint,
         SettingsAnchor.modelProxyRouting,
@@ -1008,7 +1071,11 @@ enum SettingsManifest {
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
         SettingsAnchor.indexingMemory,
+        SettingsAnchor.indexingMemoryDeviceSync,
         SettingsAnchor.indexingMemoryCloudModels,
+        SettingsAnchor.indexingTeamMemory,
+        SettingsAnchor.indexingMemoryHealth,
+        SettingsAnchor.indexingMemorySyncStatus,
         SettingsAnchor.summariesAuto,
         SettingsAnchor.aiInboxOverview,
         SettingsAnchor.aiInboxEnable,

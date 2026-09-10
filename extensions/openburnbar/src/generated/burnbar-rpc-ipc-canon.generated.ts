@@ -1102,6 +1102,26 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.memory.sync.inbox.ack",
+    "caseName": "memorySyncInboxAck",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.memory.sync.inbox.ack",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.memory.sync.inbox.list",
+    "caseName": "memorySyncInboxList",
+    "domain": "memory",
+    "capability": "memory_read",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.memory.sync.inbox",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.mission.approve",
     "caseName": "missionApprove",
     "domain": "mission_control",

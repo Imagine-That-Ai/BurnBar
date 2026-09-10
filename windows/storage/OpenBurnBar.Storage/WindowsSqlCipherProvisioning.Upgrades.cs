@@ -122,7 +122,31 @@ public sealed partial class WindowsSqlCipherProvisioner
                 WindowsSchemaUpgradeStatement.Always(
                     "CREATE UNIQUE INDEX IF NOT EXISTS agent_memory_bodies_engine_idx ON agent_memory_bodies(engine_memory_id)"),
             }),
+
+        // v67_agent_memory_inbox — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
+        new WindowsSchemaUpgradeStep(
+            "v67_agent_memory_inbox",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.Always(AgentMemoryInboxTableSql),
+                WindowsSchemaUpgradeStatement.Always(
+                    "CREATE INDEX IF NOT EXISTS agent_memory_inbox_user_applied_idx ON agent_memory_inbox(user_id, applied_at)"),
+            }),
     };
+
+    internal const string AgentMemoryInboxTableSql =
+        """
+        CREATE TABLE IF NOT EXISTS agent_memory_inbox (
+            doc_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            engine_memory_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            remote_updated_at TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            applied_at TEXT
+        )
+        """;
 
     internal const string AgentMemoryBodiesTableSql =
         """

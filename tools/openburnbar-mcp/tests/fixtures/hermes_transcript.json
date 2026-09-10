@@ -1,0 +1,30 @@
+{
+  "session_id": "hermes-session-gold-123",
+  "title": "Hermes Concurrency Task",
+  "model": "hermes-3-llama-3.1-8b",
+  "session_start": "2026-09-03T12:00:00Z",
+  "last_updated": "2026-09-03T12:05:00Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "We decided to route all memory writes through the daemon socket."
+    },
+    {
+      "role": "assistant",
+      "content": "Agreed. All memory writes will target the daemon socket directly.",
+      "tool_calls": [
+        {
+          "name": "inspect_socket"
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "Socket active."
+    },
+    {
+      "role": "assistant",
+      "content": "The WAL file must be checkpointed before the backup runs."
+    }
+  ]
+}

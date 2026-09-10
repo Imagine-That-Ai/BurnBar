@@ -313,6 +313,48 @@ def _collect_response_text(payload: dict[str, Any]) -> str:
     return "\n".join(out)
 
 
+def extract_messages_from_payload(payload: dict[str, Any] | list[Any]) -> list[dict[str, str]]:
+    """Extract standard user/assistant prose turns from a Hermes session snapshot or proxy payload."""
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict):
+        if "messages" in payload and isinstance(payload["messages"], list):
+            items = payload["messages"]
+        elif "choices" in payload and isinstance(payload["choices"], list):
+            items = [
+                c.get("message")
+                for c in payload["choices"]
+                if isinstance(c, dict) and isinstance(c.get("message"), dict)
+            ]
+        else:
+            items = [payload]
+    else:
+        return []
+
+    messages: list[dict[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        if role not in {"user", "assistant"}:
+            continue
+        content = item.get("content")
+        text = ""
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            parts = [
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type", "text") == "text"
+            ]
+            text = "\n".join(p for p in parts if isinstance(p, str))
+        cleaned = text.strip()
+        if cleaned:
+            messages.append({"role": role, "content": cleaned})
+    return messages
+
+
 def _build_event(
     *,
     config: ProxyConfig,

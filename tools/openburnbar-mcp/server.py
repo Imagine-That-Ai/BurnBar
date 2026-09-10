@@ -14,6 +14,7 @@ Optional env:
 
 from __future__ import annotations
 
+import argparse
 import json
 import base64
 import hashlib
@@ -29,6 +30,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
@@ -60,14 +62,18 @@ from burnbar_usage_ledger import (  # noqa: E402  — module import after sys.pa
     derive_idempotency_key,
 )
 from resume_core import (  # noqa: E402
+    ENCRYPTED_STORE_RECOVERY,
+    ResumeEnvironment,
     dispatch_resume,
     list_resumable_conversations,
     spawn_resume,
+    store_is_encrypted,
 )
 import project_code_memory as pcm  # noqa: E402
 import memory_engine as me  # noqa: E402
 import ministry as ministry_core  # noqa: E402
 import castle as castle_core  # noqa: E402
+import session_briefing  # noqa: E402
 
 mcp = FastMCP("openburnbar-local")
 
@@ -277,11 +283,20 @@ _IS_LINUX = sys.platform.startswith("linux")
 # Pinned from OpenBurnBarPrivilegedTrust in
 # OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/PrivilegedSocketTrust.swift:
 # `teamID` (the Organizational Unit on the signing leaf) and the CLI entry of
-# `daemonRPCPeerBundleIdentifiers`, which together form
-# `daemonRPCPeerDesignatedRequirement` — the requirement the daemon itself
-# evaluates against this courier. Keep both in sync with that file.
+# `daemonRPCPeerBundleIdentifiers`. Together they form the requirement below,
+# which is a strict narrowing of `daemonRPCPeerDesignatedRequirement` (that one
+# ORs in the app and daemon identifiers; the courier is only ever the CLI).
+# Keep both in sync with that file — `test_verify_courier_pins_the_swift_team_id`
+# and `PrivilegedSocketTrustTests` fail if they drift.
 _COURIER_TEAM_ID = "4Y367DF25B"
 _COURIER_BUNDLE_IDENTIFIER = "com.openburnbar.cli"
+
+# CodeDirectory flags the Swift daemon enforces programmatically (the Code
+# Signing Requirement Language cannot express them). Mirrors
+# `OpenBurnBarPrivilegedTrust.hardenedRuntimeFlag` / `.libraryValidationFlag`;
+# `scripts/build-macos-website-release.sh` signs the courier `runtime,library`.
+_COURIER_HARDENED_RUNTIME_FLAG = 0x1_0000
+_COURIER_LIBRARY_VALIDATION_FLAG = 0x2000
 
 # `scripts/build-macos-website-release.sh` installs and signs the courier at
 # `Contents/Helpers/OpenBurnBarCLI`. The `Contents/MacOS/openburnbar-cli` entries
@@ -296,52 +311,184 @@ _COURIER_BUNDLE_CANDIDATES = (
 # Packaged Linux installs put the courier here, root-owned.
 _COURIER_LINUX_PREFIX = "/opt/openburnbar/bin/"
 
+# Colon-separated courier paths that replace the defaults above. Set it when the
+# app lives somewhere else, or to the empty string to search nowhere. This can
+# only ever SHRINK or REDIRECT the search; every path it names is still put
+# through the full signature check below, so it cannot admit an untrusted
+# binary. The suite sets it so results never depend on whether the machine
+# running the tests happens to have OpenBurnBar installed.
+_COURIER_CANDIDATES_ENV = "OPENBURNBAR_APP_BUNDLE_PATHS"
 
-def _verify_courier(path: str) -> bool:
+
+def _courier_candidates() -> tuple[str, ...]:
+    override = os.environ.get(_COURIER_CANDIDATES_ENV)
+    if override is None:
+        return _COURIER_BUNDLE_CANDIDATES
+    return tuple(part for part in (piece.strip() for piece in override.split(os.pathsep)) if part)
+
+
+# Why the last `_signed_cli_path()` sweep found no courier, so the daemon's
+# "peer failed first-party code-signature verification" can name the real cause
+# instead of leaving the operator to guess. Subject metadata only — never
+# certificate bytes, keys, or anything from the keychain.
+_COURIER_REJECTIONS: list[str] = []
+
+_CODESIGN = "/usr/bin/codesign"
+_CODEDIRECTORY_FLAGS_RE = re.compile(r"\bflags=0x([0-9a-fA-F]+)")
+
+
+def _courier_designated_requirement() -> str:
+    """
+    The requirement a courier must satisfy, in the same grammar the Swift daemon
+    hands `SecRequirementCreateWithString`.
+
+    `anchor apple generic` + the Team ID on the leaf's Organizational Unit is
+    what binds the binary to this team. Both Developer ID and Apple Development
+    leaves carry `OU = <team id>`; only the *auto-generated designated
+    requirement text* differs between them (Developer ID phrases identity as
+    `leaf[subject.OU]`, Apple Development as `leaf[subject.CN]`), which is why
+    this is evaluated by codesign rather than string-matched against that text.
+    """
+    return (
+        f'anchor apple generic and certificate leaf[subject.OU] = "{_COURIER_TEAM_ID}" '
+        f'and identifier "{_COURIER_BUNDLE_IDENTIFIER}"'
+    )
+
+
+def _codesign(args: list[str], timeout: int = 10) -> subprocess.CompletedProcess[bytes] | None:
+    try:
+        return subprocess.run([_CODESIGN, *args], capture_output=True, timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _codesign_text(completed: subprocess.CompletedProcess[bytes] | None) -> str:
+    """codesign splits its output across stdout and stderr depending on release."""
+    if completed is None:
+        return ""
+    return (completed.stdout or b"").decode("utf-8", "replace") + (completed.stderr or b"").decode("utf-8", "replace")
+
+
+def _courier_signature_summary(path: str) -> str:
+    """
+    A one-line, non-sensitive description of what the candidate actually
+    presented: signing identifier, Team ID, and the leaf authority's common
+    name. These are the public subject fields printed by `codesign -dvvv`; no
+    certificate bytes, private keys, or keychain material are read or emitted.
+    """
+    described = _codesign(["-dvvv", path])
+    if described is None:
+        return "codesign could not be run"
+    text = _codesign_text(described)
+    if described.returncode != 0:
+        if "not signed" in text:
+            return "unsigned"
+        return "signature could not be read"
+    fields: list[str] = []
+    for label, key in (("identifier", "Identifier="), ("team", "TeamIdentifier=")):
+        for line in text.splitlines():
+            if line.startswith(key):
+                fields.append(f"{label}={line[len(key) :].strip() or '(none)'}")
+                break
+        else:
+            fields.append(f"{label}=(absent)")
+    for line in text.splitlines():
+        if line.startswith("Authority="):
+            fields.append(f"authority={line[len('Authority=') :].strip()}")
+            break
+    else:
+        fields.append("authority=(none — ad-hoc or unsigned)")
+    return ", ".join(fields)
+
+
+def _courier_codedirectory_flags(path: str) -> int | None:
+    """Parse the CodeDirectory `flags=0x…` word; None when it cannot be read."""
+    described = _codesign(["-d", "--verbose=2", path])
+    if described is None or described.returncode != 0:
+        return None
+    match = _CODEDIRECTORY_FLAGS_RE.search(_codesign_text(described))
+    if not match:
+        return None
+    try:
+        return int(match.group(1), 16)
+    except ValueError:
+        return None
+
+
+def _verify_courier_detail(path: str) -> tuple[bool, str]:
     """
     Confirm a candidate really is the first-party courier before handing it the
-    daemon's trust. Fails closed: any error, timeout, or unexpected output is a
-    rejection, because the alternative is piping memory reads and writes through
-    whatever binary happens to sit at a guessable path.
+    daemon's trust, and say why when it is not.
+
+    Fails closed: any error, timeout, or unexpected output is a rejection,
+    because the alternative is piping memory reads and writes through whatever
+    binary happens to sit at a guessable path.
+
+    On macOS the check is `codesign --verify --strict -R=<requirement>`, i.e.
+    the OS *evaluates* the pinned requirement against the signature. The
+    previous implementation instead substring-matched the binary's own
+    auto-generated designated-requirement text, which (a) is weaker — a
+    signature can carry an explicitly declared DR string — and (b) rejected
+    every locally built install, because codesign phrases an Apple Development
+    identity as `leaf[subject.CN]` even though that leaf carries the very same
+    `OU = <team id>` the pin is about.
     """
     if _IS_MACOS:
-        try:
-            verified = subprocess.run(
-                ["/usr/bin/codesign", "--verify", "--strict", path],
-                capture_output=True,
-                timeout=10,
-                check=False,
+        requirement = _courier_designated_requirement()
+        verified = _codesign(["--verify", "--strict", f"-R={requirement}", path])
+        if verified is None:
+            return False, "codesign could not be run"
+        if verified.returncode != 0:
+            detail = _codesign_text(verified).strip().splitlines()
+            reason = detail[-1].strip() if detail else f"codesign exited {verified.returncode}"
+            return (
+                False,
+                f"presented [{_courier_signature_summary(path)}]; required [{requirement}]; codesign: {reason}",
             )
-            if verified.returncode != 0:
-                return False
-            described = subprocess.run(
-                ["/usr/bin/codesign", "-d", "--requirements", "-", path],
-                capture_output=True,
-                timeout=10,
-                check=False,
+        flags = _courier_codedirectory_flags(path)
+        if flags is None:
+            return False, "CodeDirectory flags could not be read"
+        missing = [
+            name
+            for name, bit in (
+                ("hardened runtime", _COURIER_HARDENED_RUNTIME_FLAG),
+                ("library validation", _COURIER_LIBRARY_VALIDATION_FLAG),
             )
-        except (OSError, subprocess.SubprocessError):
-            return False
-        if described.returncode != 0:
-            return False
-        # codesign writes the designated requirement to stderr on most releases
-        # and to stdout on others; require the team OU and identifier in either.
-        requirement = (described.stdout or b"").decode("utf-8", "replace") + (described.stderr or b"").decode(
-            "utf-8", "replace"
-        )
-        if f'certificate leaf[subject.OU] = "{_COURIER_TEAM_ID}"' not in requirement:
-            return False
-        return f'identifier "{_COURIER_BUNDLE_IDENTIFIER}"' in requirement
+            if not flags & bit
+        ]
+        if missing:
+            return False, f"signature satisfies the team requirement but is missing {' and '.join(missing)}"
+        return True, "ok"
 
     if _IS_LINUX:
         if not os.path.realpath(path).startswith(_COURIER_LINUX_PREFIX):
-            return False
+            return False, f"not under the packaged prefix {_COURIER_LINUX_PREFIX}"
         try:
-            return os.stat(path).st_uid == 0
-        except OSError:
-            return False
+            if os.stat(path).st_uid != 0:
+                return False, "not root-owned"
+        except OSError as exc:
+            return False, f"could not stat the candidate: {exc}"
+        return True, "ok"
 
-    return False
+    return False, f"no courier trust model for platform {sys.platform}"
+
+
+def _verify_courier(path: str) -> bool:
+    """Boolean face of :func:`_verify_courier_detail`."""
+    return _verify_courier_detail(path)[0]
+
+
+def _courier_rejection_summary() -> str:
+    """Operator-facing explanation of why no courier was accepted."""
+    if not _IS_MACOS and not _IS_LINUX:
+        return f"This platform ({sys.platform}) has no signed-courier path."
+    if not _COURIER_REJECTIONS:
+        return (
+            "No OpenBurnBar CLI courier was found on disk. Install the signed app "
+            f"(searched: {', '.join(_courier_candidates()) or '(none)'}) so encrypted-store "
+            "reads can travel through a binary the daemon trusts."
+        )
+    return "No courier was accepted. Candidates: " + "; ".join(_COURIER_REJECTIONS)
 
 
 def _signed_cli_path() -> str | None:
@@ -360,53 +507,111 @@ def _signed_cli_path() -> str | None:
     candidates: list[tuple[str, bool]] = []
     if override:
         candidates.append((override, trusted_override))
-    candidates += [(candidate, False) for candidate in _COURIER_BUNDLE_CANDIDATES]
+    candidates += [(candidate, False) for candidate in _courier_candidates()]
     candidates.append((shutil.which("openburnbar-cli") or "", False))
+    rejections: list[str] = []
     for candidate, skip_verification in candidates:
         if not candidate or not os.path.isfile(candidate) or not os.access(candidate, os.X_OK):
             continue
-        if skip_verification or _verify_courier(candidate):
+        if skip_verification:
+            _COURIER_REJECTIONS[:] = rejections
             return candidate
+        accepted, reason = _verify_courier_detail(candidate)
+        if accepted:
+            _COURIER_REJECTIONS[:] = rejections
+            return candidate
+        rejections.append(f"{candidate}: {reason}")
+    _COURIER_REJECTIONS[:] = rejections
     return None
 
 
-def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
+def _signed_cli_read(command: str, payload: dict[str, Any]) -> dict[str, Any] | None:
     """
-    Run one read-only query through the signed CLI. Returns None when no signed
-    binary is present, so the caller can fall back to the direct socket (which
-    is what dev builds, where the peer gate is off, actually want).
+    Run one daemon read through the signed CLI. Returns None when no accepted
+    courier is present, so the caller can fall back to the direct socket — the
+    right path for daemons that do not enforce the peer gate. When the gate is
+    enforced, the caller reports ``_courier_rejection_summary()`` alongside the
+    daemon's refusal so the operator can see which candidate failed and why.
+    """
+    status, value = _signed_cli_read_detail(command, payload)
+    return value if status == "ok" else None
+
+
+def _signed_cli_read_detail(command: str, payload: dict[str, Any]) -> tuple[str, Any]:
+    """
+    Run one daemon read through the signed CLI, distinguishing the two very
+    different reasons it can come back empty:
+
+    * ``("no-courier", None)`` — nothing on this machine satisfied the courier
+      requirement, so the caller may still try the direct socket.
+    * ``("failed", message)`` — the courier ran and the *daemon* refused the
+      command. Retrying that same command over the direct socket cannot help,
+      and doing so used to replace the daemon's real answer (a missing table, a
+      rejected statement) with an unrelated code-signature refusal. Callers
+      report `message` instead.
+    * ``("ok", result)`` — a decoded JSON object.
     """
     cli = _signed_cli_path()
     if not cli:
-        return None
+        return "no-courier", None
     try:
         completed = subprocess.run(
-            [cli, "search-sql"],
+            [cli, command],
             input=json.dumps(payload).encode("utf-8"),
             capture_output=True,
             timeout=20,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
+    except (OSError, subprocess.SubprocessError) as exc:
+        return "failed", f"signed CLI {command} could not be run: {exc}"
     if completed.returncode != 0:
-        return None
+        detail = (completed.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        reason = detail[-1].strip() if detail else f"exit code {completed.returncode}"
+        return "failed", f"signed CLI {command} failed: {reason}"
     try:
         decoded = json.loads(completed.stdout.decode("utf-8", "replace"))
-    except (ValueError, UnicodeDecodeError):
-        return None
-    return decoded if isinstance(decoded, dict) else None
+    except (ValueError, UnicodeDecodeError) as exc:
+        return "failed", f"signed CLI {command} returned invalid JSON: {exc}"
+    if not isinstance(decoded, dict):
+        return "failed", f"signed CLI {command} returned a non-object JSON result"
+    return "ok", decoded
 
 
-_SIGNED_MEMORY_COMMANDS = {
+def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """One read-only query through the signed CLI; None when there is no courier."""
+    return _signed_cli_read("search-sql", payload)
+
+
+# Every daemon method this server reaches through `_memory_write_authority`
+# MUST appear here, mapped to the signed CLI subcommand that carries it.
+#
+# A method missing from this table does not degrade — it falls through to a
+# direct socket connection, which on a signed install with the first-party peer
+# gate enforced is refused outright:
+#
+#     daemon rejected daemon.code.index_project: code=-32001
+#     message='OpenBurnBar RPC peer failed first-party code-signature verification.'
+#
+# `tests/test_signed_courier_command_parity.py` asserts this table covers every
+# such call site and that the Swift CLI carries every command named here.
+_SIGNED_DAEMON_COMMANDS = {
     "daemon.memory.remember": "memory-remember",
     "daemon.memory.forget": "memory-forget",
+    # Blind sync: marking an inbox document merged is a write, so it travels the
+    # same trusted-courier path a remember does.
+    "daemon.memory.sync.inbox.ack": "memory-sync-inbox-ack",
+    # Project code memory. The index *reads* travel `search-sql` (they are plain
+    # SELECTs against the daemon's keyed store); these three are not SELECTs and
+    # had no route at all until the CLI grew the matching subcommands.
+    "daemon.code.index_project": "code-index-project",
+    "daemon.code.watch_project": "code-watch-project",
+    "daemon.code.explore": "code-explore",
 }
 
 
-def _signed_memory_write_authority(method: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Use the trusted CLI courier for daemon memory writes on signed installs."""
-    command = _SIGNED_MEMORY_COMMANDS.get(method)
+def _signed_daemon_write_authority(method: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Use the trusted CLI courier for daemon writes on signed installs."""
+    command = _SIGNED_DAEMON_COMMANDS.get(method)
     if command is None:
         return None
     cli = _signed_cli_path()
@@ -424,10 +629,19 @@ def _signed_memory_write_authority(method: str, payload: dict[str, Any]) -> dict
         return {"code": "DAEMON_WRITE_REQUIRED", "reason": f"signed CLI invocation failed: {exc}"}
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip()
-        return {
-            "code": "DAEMON_WRITE_REJECTED",
-            "reason": detail or f"signed CLI {command} failed with exit code {completed.returncode}",
-        }
+        reason = detail or f"signed CLI {command} failed with exit code {completed.returncode}"
+        # A courier that never reached the daemon is *unreachable*, not *rejected*.
+        # The daemon phrases its own refusals as `privacy_rpc_error code=… message=…`;
+        # a socket that is absent or unresponsive fails before any of that. Reporting
+        # the two the same way told callers a write had been denied on the merits
+        # when in fact nothing had judged it. (Latent until the courier gate was
+        # fixed — an unfound courier could never produce this branch.)
+        if "privacy_rpc_error" not in reason:
+            return {
+                "code": "DAEMON_WRITE_REQUIRED",
+                "reason": f"signed CLI {command} could not reach the daemon: {reason}",
+            }
+        return {"code": "DAEMON_WRITE_REJECTED", "reason": reason}
     try:
         decoded = json.loads(completed.stdout.decode("utf-8", "replace"))
     except (ValueError, UnicodeDecodeError) as exc:
@@ -438,7 +652,7 @@ def _signed_memory_write_authority(method: str, payload: dict[str, Any]) -> dict
 
 
 def _memory_write_authority(method: str, params: dict[str, Any]) -> dict[str, Any]:
-    signed = _signed_memory_write_authority(method, params)
+    signed = _signed_daemon_write_authority(method, params)
     if signed is not None:
         return signed
     return pcm.write_authority(method, params)
@@ -457,11 +671,25 @@ class _DaemonReadConnection:
     def execute(self, sql: str, params: Any = ()) -> _DaemonCursor:
         wire_args = [_sql_value_to_wire(value) for value in params]
         payload = {"sql": sql, "args": wire_args, "maxRows": 2000}
-        result = _signed_search_sql(payload)
-        if result is None:
-            # Dev/unsigned builds: the daemon's peer gate is not enforced, so the
-            # direct socket still works and is the cheaper path.
-            result = pcm.call_daemon("daemon.search.sql", payload, timeout_seconds=15.0)
+        status, value = _signed_cli_read_detail("search-sql", payload)
+        if status == "ok":
+            result = value
+        elif status == "failed":
+            # The courier reached the daemon and the daemon answered "no". That
+            # answer is the truth; re-asking over the direct socket would only
+            # swap it for an unrelated peer-gate refusal.
+            raise RuntimeError(str(value))
+        else:
+            # No courier was accepted. Some daemons do not enforce the peer gate,
+            # and for those the direct socket still works and is cheaper. When the
+            # gate IS on, the daemon's refusal alone says nothing about why the
+            # courier was skipped, so attach that diagnosis to the error.
+            try:
+                result = pcm.call_daemon("daemon.search.sql", payload, timeout_seconds=15.0)
+            except RuntimeError as exc:
+                if "code-signature" not in str(exc):
+                    raise
+                raise RuntimeError(f"{exc} — {_courier_rejection_summary()}") from exc
         columns = [str(name) for name in (result.get("columns") or [])]
         index_by_name = {name: index for index, name in enumerate(columns)}
         rows = [
@@ -1864,6 +2092,20 @@ def _memory_wrap_history(events: list[dict[str, Any]], *, source_tool: str, memo
                 record_id=memory_id,
                 field=f"history[{index}].meta",
             )
+        # The attribution fields the timeline hoists out of `meta` to the top
+        # level. `meta` is wrapped above and these were not, so a value that is
+        # not an opaque token reached the model as a bare string — the same
+        # channel the wrapper exists to close, one field over. `writerDevice` is
+        # bounded at sync screening; `extractedBy` and `modelId` are whatever a
+        # provider wrote, so the shape is checked here for all three.
+        for field in ("writerDevice", "extractedBy", "modelId"):
+            value = wrapped.get(field)
+            if isinstance(value, str) and not me.constants.REMOTE_WRITER_DEVICE_RE.match(value):
+                wrapped[field] = _memory_wrap_read_string(
+                    value,
+                    source_tool=source_tool,
+                    record_id=f"{memory_id}:history[{index}].{field}",
+                )
         wrapped_events.append(wrapped)
     return wrapped_events
 
@@ -1922,7 +2164,10 @@ def _memory_mirror_remember(decision: dict[str, Any], project_path: str | None) 
     if "code-signature" in reason:
         return {
             "status": "peer_rejected",
-            "reason": "daemon rejected this process as an unsigned peer; the engine store remains authoritative",
+            "reason": (
+                "daemon rejected this process as an unsigned peer; the engine store remains "
+                f"authoritative. {_courier_rejection_summary()}"
+            ),
         }
     if authority.get("code") == "DAEMON_WRITE_REJECTED":
         return {"status": "rejected", "reason": reason}
@@ -2459,6 +2704,8 @@ def burnbar_memorize(
     tags: list[str] | str | None = None,
     metadata: dict[str, Any] | str | None = None,
     force: bool = False,
+    review_status: str | None = None,
+    fail_closed: bool = False,
 ) -> str:
     """
     Collect durable memories from a conversation, a block of text, or a list of
@@ -2496,6 +2743,26 @@ def burnbar_memorize(
         if requested_extractor.startswith("pro") and _pro_extractor_may_spawn(requested_extractor):
             if denied := _capability_denial("burnbar_memorize", "spawn_process"):
                 return denied
+    if requested_extractor.startswith("pro") and fail_closed:
+        policy = me.load_policy()
+        if policy is None or not policy.enabled:
+            return json.dumps(
+                {
+                    "status": "unavailable",
+                    "code": "CLOUD_CONSENT_REQUIRED",
+                    "reason": "cloud models for memory are turned off or daemon unavailable",
+                },
+                indent=2,
+            )
+        if not policy.pro_active:
+            return json.dumps(
+                {
+                    "status": "unavailable",
+                    "code": "PRO_REQUIRED",
+                    "reason": "BurnBar Pro is not active on this Mac",
+                },
+                indent=2,
+            )
     try:
         if isinstance(messages, str):
             stripped = messages.strip()
@@ -2532,6 +2799,8 @@ def burnbar_memorize(
             default_tags=_normalize_tags(tags),
             metadata=parsed_metadata if isinstance(parsed_metadata, dict) else None,
             force=force,
+            default_review_status=review_status,
+            fail_closed=fail_closed,
         )
         for decision in result.get("decisions", []):
             retire_ids = _memory_mirror_retire_ids(decision)
@@ -2552,6 +2821,71 @@ def burnbar_memorize(
         if isinstance(decision, dict)
     ]
     return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_memory_extract(
+    messages: list[dict[str, Any]] | str | None = None,
+    text: str | None = None,
+    project_path: str | None = None,
+    provider: str | None = None,
+    max_facts: int = 8,
+    scope: str | None = None,
+    tags: list[str] | str | None = None,
+    metadata: dict[str, Any] | str | None = None,
+    force: bool = False,
+    review_status: str | None = None,
+) -> str:
+    """
+    Extract memories from a conversation with a Pro model instead of the local
+    heuristic, on demand.
+
+    Routed through the member's own quota and keys via the #2501 model policy, so
+    BurnBar never sees the transcript or the key. Refuses fail-closed rather than
+    silently degrading to the heuristic: no Pro entitlement, or no cloud consent,
+    means no extraction. Every row it writes carries `extracted_by` and the model
+    id, so a reviewer can see what produced it.
+
+    Rows land `quarantined`, like every other capture path — the collectors and
+    the assistant-export importer do the same — and there is no argument that
+    lifts it. This is the path that ships a member's transcript to a cloud model
+    and writes back facts nobody has read; approving them is a separate,
+    deliberate act (`burnbar_memory_review`). The model's own `reviewStatus` is
+    discarded for the same reason: a prompt-injected transcript would otherwise
+    grant itself recall and the authority to retire approved memories.
+    `review_status` is still accepted, and may only make the outcome STRICTER
+    (`rejected`); it cannot approve.
+
+    Gate: `memory_llm_extract` and `memory_write`, plus cloud consent and a Pro
+    entitlement; `spawn_process` as well when the policy can route extraction to
+    a local CLI.
+    """
+    extractor = f"pro:{provider}" if provider else "pro"
+    # Named here as well as inside `burnbar_memorize`, so a refusal names the tool
+    # the caller actually invoked instead of the one it delegates to.
+    if denied := _capability_denial("burnbar_memory_extract", "memory_llm_extract"):
+        return denied
+    if _pro_extractor_may_spawn(extractor):
+        if denied := _capability_denial("burnbar_memory_extract", "spawn_process"):
+            return denied
+    if denied := _capability_denial("burnbar_memory_extract", "memory_write"):
+        return denied
+    return burnbar_memorize(
+        messages=messages,
+        text=text,
+        project_path=project_path,
+        extractor=extractor,
+        max_facts=max_facts,
+        scope=scope,
+        tags=tags,
+        metadata=metadata,
+        force=force,
+        # A capture path files rows for review, it never grants approval. The
+        # argument survives so an existing caller is answered rather than
+        # errored, but `approved` is not one of its outcomes.
+        review_status="rejected" if str(review_status or "").strip().lower() == "rejected" else "quarantined",
+        fail_closed=True,
+    )
 
 
 @mcp.tool()
@@ -2590,6 +2924,11 @@ def burnbar_recall(
     `rerank` (Memory Pro) re-orders the top `rerank_top_k` fusion hits by a
     model's relevance; `None` follows the policy, `False` never calls a model,
     and `trustSignal.rerank` reports `applied`, `off`, or `skipped:<code>`.
+
+    A recall that returns anything appends ONE label-only `memory.recall_serve`
+    row to the audit chain, carrying the served ids and nothing else — that is
+    what `burnbar_memory_timeline` reads to answer "when did this last help".
+    Best-effort: a store another process has locked still returns its results.
     """
     if limited := _local_mcp_rate_limit("burnbar_recall", "memory"):
         return limited
@@ -2667,6 +3006,68 @@ def burnbar_recall_pack(
         )
         result["legacyMigration"] = migration
     return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_session_briefing(
+    project_path: str | None = None,
+    branch: str | None = None,
+    token_budget: int = 1200,
+) -> str:
+    """Build a token-budgeted session-start briefing for the active repo and branch.
+
+    Off unless the member turns it on: set `OPENBURNBAR_SESSION_BRIEFING=1`. The
+    pack is bounded by `token_budget` and degrades to headings rather than
+    truncating a fact mid-sentence, and it comes back wrapped as untrusted
+    retrieved data like every other recall.
+
+    Gate: `sensitive_read` — a briefing carries prior transcript context, so it
+    needs explicit plaintext-read consent on top of the opt-in.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_session_briefing", "memory"):
+        return limited
+    if not session_briefing.is_session_briefing_opted_in():
+        return json.dumps(
+            {
+                "status": "disabled",
+                "code": "SESSION_BRIEFING_OPT_IN_REQUIRED",
+                "reason": "Session briefings are opt-in. Set OPENBURNBAR_SESSION_BRIEFING=1 to enable.",
+            },
+            indent=2,
+        )
+    if denied := _capability_denial(
+        "burnbar_session_briefing",
+        "sensitive_read",
+        "Session briefings include prior transcript context and require explicit plaintext-read consent.",
+    ):
+        return denied
+    with _memory_engine() as engine:
+        pack = session_briefing.build_session_briefing(
+            engine,
+            project_path=project_path,
+            branch=branch,
+            token_budget=token_budget,
+            # The builder's own gates stay live, and they receive what this tool
+            # actually decided rather than a hardcoded pair of `True`s — which
+            # made `build_session_briefing`'s consent handling unreachable in
+            # production and its test a test of a path nothing takes (M15).
+            consent=_capability_enabled("sensitive_read"),
+            opt_in=session_briefing.is_session_briefing_opted_in(),
+            wrap=True,
+        )
+    if pack is None:
+        # Both gates are checked above, so a None here means the builder itself
+        # declined. Say so rather than returning an empty string a client would
+        # read as an empty briefing.
+        return json.dumps(
+            {
+                "status": "disabled",
+                "code": "SESSION_BRIEFING_UNAVAILABLE",
+                "reason": "the briefing builder produced nothing for this project",
+            },
+            indent=2,
+        )
+    return pack
 
 
 @mcp.tool()
@@ -2846,7 +3247,16 @@ def burnbar_memory_update(
 
 @mcp.tool()
 def burnbar_memory_history(memory_id: str, limit: int = 100) -> str:
-    """Return change history with before/after bodies wrapped as untrusted retrieved data."""
+    """Return change history with before/after bodies wrapped as untrusted retrieved data.
+
+    A quarantined or rejected memory reports its changes with the bodies
+    withheld (`bodiesRedacted`), exactly as `burnbar_memory_timeline` withholds
+    them. This tool carries no capability and, unlike the timeline, no project
+    scope either, so it is the weaker of the two revision surfaces — leaving it
+    unredacted would have made the gate decision a door rather than a fence.
+
+    Gate: ungated, like `burnbar_memory_timeline`.
+    """
     if limited := _local_mcp_rate_limit("burnbar_memory_history", "memory"):
         return limited
     with _memory_engine() as engine:
@@ -2854,6 +3264,43 @@ def burnbar_memory_history(memory_id: str, limit: int = 100) -> str:
     result["events"] = _memory_wrap_history(
         result.get("events", []), source_tool="burnbar_memory_history", memory_id=memory_id
     )
+    result["trustSignal"] = {"untrustedContentWrapped": True}
+    return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_memory_timeline(
+    memory_id: str,
+    project_path: str | None = None,
+    limit: int = 100,
+) -> str:
+    """Read one memory's revision history: what changed, on which device, and when it last helped.
+
+    Scoped by project in its own right — a memory id belonging to another project
+    is refused without returning its body or metadata. "Last helped" is the most
+    recent recall that served this memory, falling back to its latest write.
+
+    A quarantined or rejected memory reports its revisions with the bodies
+    withheld (`bodiesRedacted`): this tool carries no capability, and undoing a
+    gate decision through it would make the quarantine decorative.
+    `burnbar_memory_history` withholds them on the same terms, so neither
+    revision surface is a way around the other. Each revision's `meta` is a
+    projection of the keys this tool documents, not the whole stored blob,
+    because a merged revision's metadata is written from a remote payload, and
+    `writerDevice` is reported only when it is an opaque device token.
+
+    Gate: ungated, like `burnbar_memory_history` — the project scoping above is
+    what fences it, not a capability.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_memory_timeline", "memory"):
+        return limited
+    with _memory_engine() as engine:
+        result = engine.timeline(memory_id, project_path=project_path, limit=limit)
+    if result.get("revisions"):
+        result["revisions"] = _memory_wrap_history(
+            result.get("revisions", []), source_tool="burnbar_memory_timeline", memory_id=memory_id
+        )
+        result["events"] = result["revisions"]
     result["trustSignal"] = {"untrustedContentWrapped": True}
     return json.dumps(result, indent=2, default=str)
 
@@ -3021,8 +3468,28 @@ def burnbar_memory_export(
 
 
 @mcp.tool()
-def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: str | None = None) -> str:
-    """Import memories from a `burnbar_memory_export` payload or a list of `{text, kind, confidence, tags, ...}` objects; each passes the gate and conflict resolution."""
+def burnbar_memory_import(
+    memories: list[dict[str, Any]] | dict[str, Any] | str,
+    project_path: str | None = None,
+    schema: str | None = None,
+    batch_cap: int | None = None,
+    cursor: int | str | None = None,
+) -> str:
+    """Import memories from a `burnbar_memory_export` payload, a ChatGPT/Claude.ai assistant export, or a list of `{text, kind, confidence, tags, ...}` objects; each passes the gate and conflict resolution.
+
+    An assistant export lands quarantined, one bounded batch at a time.
+    `batch_cap` may lower that bound but never lift it: it is clamped to
+    `assistant_export.MAX_IMPORT_BATCH_CAP`, and the summary reports the cap
+    actually applied. Each decision's `reviewStatus` is read back off the row
+    that landed, so a near-duplicate that reinforced an approved memory is not
+    reported as a quarantine.
+
+    Batches are resumable: the summary returns `cursor` (where this batch
+    started), `nextCursor` (where the next one starts, `null` when the export is
+    fully consumed) and `remaining`. Pass `nextCursor` back as `cursor` to
+    continue. Without it every call would select the same first `batch_cap`
+    candidates and the tail of an export would never be read at all.
+    """
     if limited := _local_mcp_rate_limit("burnbar_memory_import", "memory"):
         return limited
     if denied := _capability_denial("burnbar_memory_import", "memory_write"):
@@ -3031,6 +3498,69 @@ def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: st
         payload = _memory_json_arg(memories, None, argument="memories")
     except _InvalidJSONArgument as exc:
         return _invalid_json_payload(exc)
+
+    import assistant_export
+
+    detected_schema = schema
+    if isinstance(payload, dict):
+        detected_schema = schema or payload.get("schema") or payload.get("schema_version") or payload.get("version")
+
+    # If an assistant export schema or payload structure is indicated
+    if detected_schema or (
+        isinstance(payload, dict) and assistant_export.is_assistant_export(payload, detected_schema)
+    ):
+        detected_str = str(detected_schema).strip() if detected_schema else ""
+        if detected_str == "openburnbar.memory_export.v1":
+            pass
+        elif detected_str in assistant_export.SUPPORTED_ASSISTANT_EXPORT_SCHEMAS:
+            if not isinstance(payload, dict):
+                payload = {"schema": detected_str, "conversations": payload}
+            with _memory_engine() as engine:
+                result = engine.import_assistant_export(
+                    payload,
+                    schema=detected_str,
+                    project_path=project_path,
+                    batch_cap=batch_cap,
+                    cursor=cursor,
+                )
+                result["decisions"] = [
+                    _memory_wrap_write_decision(decision, source_tool="burnbar_memory_import")
+                    for decision in result.get("decisions", [])
+                    if isinstance(decision, dict)
+                ]
+            return json.dumps(result, indent=2, default=str)
+        else:
+            return json.dumps(
+                {
+                    "status": "rejected",
+                    "code": "UNKNOWN_SCHEMA_VERSION",
+                    "reason": (
+                        f"unknown or unsupported export schema version '{detected_str}'; "
+                        f"supported versions: openburnbar.memory_export.v1, "
+                        f"{', '.join(sorted(assistant_export.SUPPORTED_ASSISTANT_EXPORT_SCHEMAS))}"
+                    ),
+                },
+                indent=2,
+            )
+
+    if (
+        isinstance(payload, list)
+        and payload
+        and isinstance(payload[0], dict)
+        and ("mapping" in payload[0] or "chat_messages" in payload[0])
+    ):
+        return json.dumps(
+            {
+                "status": "rejected",
+                "code": "UNKNOWN_SCHEMA_VERSION",
+                "reason": (
+                    "missing export schema version; assistant exports require an explicit "
+                    f"supported schema version (supported: {', '.join(sorted(assistant_export.SUPPORTED_ASSISTANT_EXPORT_SCHEMAS))})"
+                ),
+            },
+            indent=2,
+        )
+
     if isinstance(payload, dict):
         if payload.get("schema") == "openburnbar.memory_export.v1" and payload.get("allProjects") is True:
             return json.dumps(
@@ -3076,6 +3606,147 @@ def burnbar_memory_import(memories: list[dict[str, Any]] | str, project_path: st
     return json.dumps(result, indent=2, default=str)
 
 
+# --- Memory Blind Sync: the pull half of
+# docs/superpowers/specs/2026-09-03-memory-blind-sync-design.md ---------------
+#
+# Task 4 verifies each sealed `memory_facts` document, opens it with the vault
+# key the app holds, and parks the plaintext in the control plane's
+# `agent_memory_inbox`. The engine never sees that key: it drains the inbox
+# through the daemon, merges under §5, and acknowledges only what it finished
+# with. The daemon rejects this Python process as a peer on signed installs, so
+# both halves go through the trusted CLI courier there and fall back to the
+# direct socket on dev builds, exactly as the search and remember paths do.
+
+
+def _memory_sync_inbox_list(project_id: str | None, limit: int) -> dict[str, Any]:
+    """The unmerged documents the daemon is holding for this device.
+
+    `projectID` rides along for the daemon's audit trace only: an engine memory
+    id is globally unique and carries no project, so the inbox is member-scoped
+    and the result is deliberately NOT narrowed by it.
+    """
+    params = {"projectID": project_id, "limit": max(1, min(int(limit), 1_000))}
+    result = _signed_cli_read("memory-sync-inbox-list", params)
+    if result is None:
+        try:
+            result = pcm.call_daemon("daemon.memory.sync.inbox.list", params, timeout_seconds=15.0)
+        except Exception as exc:  # noqa: BLE001 — every failure is one structured status
+            reason = str(exc)
+            return {
+                "status": "unavailable",
+                "code": "DAEMON_PEER_REJECTED" if "code-signature" in reason else "DAEMON_UNREACHABLE",
+                "reason": reason[:300],
+            }
+    entries = result.get("entries")
+    if not isinstance(entries, list):
+        return {"status": "unavailable", "code": "INVALID_INBOX_RESPONSE", "reason": "no entries in the daemon reply"}
+    return {"status": "ok", "entries": [item for item in entries if isinstance(item, dict)]}
+
+
+_MEMORY_SYNC_DECISION_BODY_FIELDS = ("text", "tags", "entities")
+
+
+def _memory_wrap_sync_decision(decision: dict[str, Any]) -> dict[str, Any]:
+    """One merge decision: ids, counts and labels — never another device's body.
+
+    The engine no longer puts `text`/`tags`/`entities` on a decision (the inbox
+    is account-wide, so they could belong to another project); this strips them
+    defensively should any path reintroduce one, and fences the remaining
+    free-text field (`reason`) as untrusted.
+    """
+    wrapped = {key: value for key, value in decision.items() if key not in _MEMORY_SYNC_DECISION_BODY_FIELDS}
+    record_id = str(decision.get("memoryID") or decision.get("docID") or "unknown")
+    if "reason" in wrapped:
+        wrapped["reason"] = _memory_wrap_auxiliary(
+            wrapped["reason"], source_tool="burnbar_memory_sync_pull", record_id=record_id, field="reason"
+        )
+    return wrapped
+
+
+def _memory_sync_inbox_ack(doc_ids: Sequence[str]) -> dict[str, Any]:
+    """Mark the documents the merge finished with. Idempotent on the daemon side."""
+    if not doc_ids:
+        return {"status": "ok", "acknowledged": 0}
+    authority = _memory_write_authority("daemon.memory.sync.inbox.ack", {"docIDs": list(doc_ids)})
+    if authority.get("mode") != "daemon":
+        return {
+            "status": "unavailable",
+            "code": str(authority.get("code") or "DAEMON_WRITE_REQUIRED"),
+            "reason": str(authority.get("reason") or "")[:300],
+            "acknowledged": 0,
+        }
+    result = authority.get("result") or {}
+    return {"status": "ok", "acknowledged": int(result.get("acknowledged") or 0)}
+
+
+@mcp.tool()
+def burnbar_memory_sync_pull(project_path: str | None = None, limit: int = 200) -> str:
+    """
+    Merge this member's memories from their other devices into the local engine store.
+
+    Drains the daemon's blind-sync inbox — sealed `memory_facts` documents the
+    app already verified and opened — and folds them in under last-writer-wins
+    on `updatedAt`, converging on `(project_id, scope, body_hash)`. Every row
+    passes the same gate a `burnbar_remember` does, a memory this device forgot
+    is never revived, and a supersede whose target has not arrived is parked for
+    the next pull rather than dropped. Only the documents the merge finished
+    with are acknowledged.
+
+    The counts: `applied` rows landed, `reinforced` folded into a row that
+    already held the same fact, `unchanged` were already applied or lost
+    last-writer-wins, `refused` will never be merged (a failed gate, a forgotten
+    memory, a document that can never be keyed) and are acknowledged so they
+    stop being offered, and `parked` are the ones this pull could not finish
+    with — an unarrived supersede target, a payload sealed by a newer engine —
+    which the next pull is offered again.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_memory_sync_pull", "memory"):
+        return limited
+    if denied := _capability_denial("burnbar_memory_sync_pull", "memory_write"):
+        return denied
+    empty = {
+        "status": "ok",
+        "applied": 0,
+        "reinforced": 0,
+        "parked": 0,
+        "refused": 0,
+        "unchanged": 0,
+        "acked": 0,
+        "watermark": {},
+        "decisions": [],
+    }
+    with _memory_engine() as engine:
+        try:
+            project_id: str | None = me.resolve_project(engine.conn, project_path)[0]
+        except ValueError:
+            project_id = None
+        listed = _memory_sync_inbox_list(project_id, limit)
+        if listed.get("status") != "ok":
+            return json.dumps(listed, indent=2, default=str)
+        entries = listed["entries"]
+        if not entries:
+            return json.dumps(empty, indent=2, default=str)
+        merged = engine.merge_remote(entries)
+    acknowledged = _memory_sync_inbox_ack(merged["ackDocIDs"])
+    payload = {
+        "status": "ok",
+        "applied": merged["applied"],
+        "reinforced": merged["reinforced"],
+        "parked": merged["parked"],
+        "refused": merged["refused"],
+        "unchanged": merged["unchanged"],
+        "acked": acknowledged.get("acknowledged", 0),
+        "watermark": merged["watermark"],
+        # Remote bodies are content this device did not write and no local user
+        # approved. Every one leaves the tool wrapped — unlike a local write
+        # decision, where an approved body is the caller's own text coming back.
+        "decisions": [_memory_wrap_sync_decision(decision) for decision in merged["decisions"]],
+    }
+    if acknowledged.get("status") != "ok":
+        payload["ackFailure"] = {"code": acknowledged.get("code"), "reason": acknowledged.get("reason")}
+    return json.dumps(payload, indent=2, default=str)
+
+
 @mcp.tool()
 def burnbar_memory_reindex(project_path: str | None = None, all_projects: bool = False) -> str:
     """Embed every active memory missing a vector for the current embedding model version and purge stale-version vectors."""
@@ -3088,8 +3759,119 @@ def burnbar_memory_reindex(project_path: str | None = None, all_projects: bool =
 
 
 @mcp.tool()
+def burnbar_project_adopt(project_id: str | None = None, project_path: str | None = None, confirm: bool = False) -> str:
+    """
+    Join this folder to an existing project id — only when the member says so.
+
+    A `.burnbar/project-id` dotfile *proposes* an identity and is never applied on
+    its own, because repository contents must not be able to re-scope a folder's
+    memories by being cloned. Without `confirm=True` this call refuses and reports
+    both sides — `memoriesCount`, the rows adopting would join, and
+    `detachingCount`, the rows this folder holds under its current id, which are
+    left where they are and stop being visible from here. With it, the mapping is
+    written. A dotfile naming an id already mapped to this path is a no-op, and an
+    id that is not `proj_` plus 32 hex characters is refused before anything is
+    written.
+
+    Gate: `memory_write`.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_project_adopt", "memory"):
+        return limited
+    if denied := _capability_denial("burnbar_project_adopt", "memory_write"):
+        return denied
+    with _memory_engine() as engine:
+        try:
+            result = engine.adopt_project(project_path=project_path, project_id=project_id, confirmed=confirm)
+        except ValueError as exc:
+            # A malformed id (or a dotfile that is not one) is a refusal, not a
+            # crash — and the message names the shape, never the rejected bytes.
+            return json.dumps(
+                {"status": "refused", "code": "INVALID_PROJECT_ID", "reason": str(exc)},
+                indent=2,
+            )
+        return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_team_link_project(
+    team_id: str,
+    team_project_id: str,
+    project_path: str | None = None,
+    confirm: bool = False,
+) -> str:
+    """
+    Say which shared project id this repository publishes to a team, in `.openburnbar/project.json`.
+
+    A team document's id derives from this checked-in `teamProjectId` and never
+    from the repository's git identity, because a member who cloned over SSH and
+    one who cloned over HTTPS derive different engine project ids for the same
+    repository — so a git-derived id would split one team's memory in half,
+    silently, with every upload still reporting success. The file is the record:
+    a repository with no entry for a team publishes nothing to it, and only a
+    COMMIT makes a link real for anyone but this Mac.
+
+    EVERY WRITE NEEDS `confirm=True`, a first-time link exactly as much as a
+    re-point. Naming a team here is the act that makes this repository's approved
+    memories eligible to upload to that team — readable by every member of it,
+    now and in future — and admits that team's facts into this checkout's
+    sessions. On a Mac that already syncs the team, the FIRST write is the one
+    that opens that door, so it is the one the confirmation stands in front of.
+    An entry that already names a different project is refused with both sides
+    reported (a different decision, and its own code); one that already names the
+    same project is a no-op and needs no confirmation.
+
+    AND THE WRITE IS NOT THE LINK. The engine and the app both read this file
+    from git `HEAD`: an entry counts only where the working tree and `HEAD` agree
+    on it, per team. A written-but-uncommitted entry, a locally-modified one, and
+    a file in a directory that is not a git work tree all publish NOTHING and
+    serve nothing — the result's `effective` and `nextStep` say so. Only a commit
+    makes a link, which is what "a checked-in, human decision" has to mean if it
+    is to mean anything.
+
+    Both ids are held to the shapes the engine screens them by on the way back
+    in — `team_` plus 16 lowercase hex for the team, a project token of at most
+    128 characters for the project — so a value this tool accepts is a value the
+    reader will honour. A link file this reader cannot parse is never
+    overwritten, confirmation or not: it may hold another team's entry.
+
+    `burnbar_memory_doctor` reports the other half — teams this Mac syncs with no
+    entry `HEAD` carries, entries written and never committed, links naming a
+    project nothing local matches, and how many team facts are being withheld
+    from this session because of it.
+
+    Gate: `memory_write`.
+    """
+    if limited := _local_mcp_rate_limit("burnbar_team_link_project", "memory"):
+        return limited
+    if denied := _capability_denial("burnbar_team_link_project", "memory_write"):
+        return denied
+    with _memory_engine() as engine:
+        try:
+            result = engine.link_team_project(
+                project_path=project_path,
+                team_id=team_id,
+                team_project_id=team_project_id,
+                confirmed=confirm,
+            )
+        except ValueError as exc:
+            # An unresolvable `project_path` is a refusal, not a crash — the same
+            # shape `burnbar_project_adopt` gives a malformed id.
+            return json.dumps(
+                {"status": "refused", "code": "INVALID_PROJECT_PATH", "reason": str(exc)},
+                indent=2,
+            )
+        return json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
 def burnbar_audit_trail(project_path: str | None = None, limit: int = 50) -> str:
-    """Return the label-only memory audit hash chain (with chain verification) for a project."""
+    """Return the label-only memory audit hash chain (with chain verification) for a project.
+
+    The trail records what happened *to* memories — add, update, forget,
+    redaction, quarantine, sync — plus one `memory.recall_serve` row per recall
+    that returned results, whose labels name the ids it served. Nothing here
+    carries a body, a tag or a query.
+    """
     if limited := _local_mcp_rate_limit("burnbar_audit_trail", "memory"):
         return limited
     with _memory_engine() as engine:
@@ -3361,19 +4143,39 @@ def _code_index_doctor(project_path: str | None) -> dict[str, Any]:
 
 
 @mcp.tool()
-def burnbar_memory_doctor(project_path: str | None = None, aux_scan_cursor: int | None = None) -> str:
+def burnbar_memory_doctor(
+    project_path: str | None = None,
+    aux_scan_cursor: int | None = None,
+    apply: bool = False,
+) -> str:
     """Health of the local memory engine (store, encryption, embeddings, policy, audit chain, daemon mirror) and the Project Code Memory index.
 
     `aux_scan_cursor` resumes the auxiliary secret sweep past the rows a previous
     call already covered: when that sweep is truncated it reports
     `memoryEngine.auxScan.nextCursor`, and passing it back scans the next page.
     A store larger than the scan cap is covered by walking the cursor to None.
+
+    Report-first: without `apply` this call only reads. `apply=True` prunes
+    exactly two things — orphan memory bodies past the grace period that no
+    receipt, staged upload or live daemon row references, and parked supersedes
+    past the retention window whose age it can actually prove. It never edits a
+    watermark, never writes the app-owned `agent_memory_inbox`, and never
+    deletes a finding; everything else it reports stays for a human.
+
+    Gate: the report is ungated, like `burnbar_memory_history`. `apply=True`
+    deletes rows and requires `memory_write`. Rate-limited under the code family.
     """
     if limited := _local_mcp_rate_limit("burnbar_memory_doctor", "code"):
         return limited
+    # The report is a read; `apply` is a delete, and is gated exactly like every
+    # other mutating tool on this surface. The default profile is `read_only`,
+    # so without this an agent granted nothing at all could prune store rows by
+    # passing one boolean.
+    if apply and (denied := _capability_denial("burnbar_memory_doctor", "memory_write")):
+        return denied
     try:
         with _memory_engine() as engine:
-            memory = engine.doctor(project_path=project_path, aux_scan_cursor=aux_scan_cursor)
+            memory = engine.doctor(project_path=project_path, aux_scan_cursor=aux_scan_cursor, apply=apply)
             memory["legacyMigration"] = _migrate_legacy_memories(engine, project_path)
     except Exception as exc:  # noqa: BLE001 — surfaced as a finding
         memory = {
@@ -4825,6 +5627,32 @@ def burnbar_org_spend(
     )
 
 
+def _resume_environment() -> ResumeEnvironment:
+    """
+    Resume reads borrow the same opener every other conversation tool uses.
+
+    `_connect_ro` probes the file: a plaintext store is opened directly, an
+    encrypted one is served by the daemon's SELECT-only handle. resume_core used
+    to call `sqlite3.connect` on the store itself, which cannot decrypt it — both
+    resume tools were dead against a real install with "file is not a database".
+    """
+    return ResumeEnvironment(connect=_connect_ro)
+
+
+def _resume_error_recovery(exc: BaseException) -> str:
+    """
+    Say what to start when the read failed because the daemon could not serve it.
+
+    The store's own header decides: when it is ciphertext, this process has no
+    key and the only read path is the daemon, so any failure there is worth
+    naming as such rather than handing back a bare transport error.
+    """
+    detail = str(exc)
+    if store_is_encrypted(_default_db_path()):
+        return f"{detail} — {ENCRYPTED_STORE_RECOVERY}"
+    return detail
+
+
 @mcp.tool()
 def burnbar_list_resumable_conversations(
     provider: str | None = None,
@@ -4847,12 +5675,13 @@ def burnbar_list_resumable_conversations(
             since=since,
             limit=limit,
             offset=offset,
+            env=_resume_environment(),
         )
     except Exception as exc:
         payload = {
             "kind": "error",
             "code": "resume_list_failed",
-            "recovery": str(exc),
+            "recovery": _resume_error_recovery(exc),
         }
     return json.dumps(payload, indent=2, default=str)
 
@@ -4887,13 +5716,14 @@ def burnbar_resume_conversation(
             target_model=target_model,
             max_tokens=max_tokens,
             print_only=print_only,
+            env=_resume_environment(),
         )
     except Exception as exc:
         payload = {
             "kind": "error",
             "code": "resume_failed",
             "session_id": session_id,
-            "recovery": str(exc),
+            "recovery": _resume_error_recovery(exc),
         }
     return json.dumps(payload, indent=2, default=str)
 
@@ -4923,13 +5753,14 @@ def burnbar_spawn_resume(
             target_model=target_model,
             max_tokens=max_tokens,
             cleanup_after_seconds=cleanup_after_seconds,
+            env=_resume_environment(),
         )
     except Exception as exc:
         payload = {
             "kind": "error",
             "code": "resume_spawn_failed",
             "session_id": session_id,
-            "recovery": str(exc),
+            "recovery": _resume_error_recovery(exc),
         }
     return json.dumps(payload, indent=2, default=str)
 
@@ -4949,6 +5780,43 @@ def burnbar_spawn_resume(
 # There is deliberately no write tool: an agent may read the inbox, but only the
 # human approves memories and only the daemon publishes items.
 # ---------------------------------------------------------------------------
+
+
+def _scan_for_a_firing_gate(item: dict[str, Any]) -> dict[str, Any]:
+    """Re-scan an AI Inbox item and name which gate WOULD fire on it, and why.
+
+    **A fresh scan, not a recorded decision.** The AI Inbox is the proactive
+    brief the daemon assembles from git state, agent sessions and GitHub; its
+    items were never gated by anything, so there is no verdict to report. The
+    fields are `scanGate` / `scanReason` for exactly that reason — stamping
+    `verdict: "quarantined"` on an item nothing quarantined asserts a decision
+    no gate ever made, which is the opposite of B10's "name which gate fired".
+
+    An item that already carries a real `gate` from the daemon keeps it, and is
+    not re-scanned.
+
+    Call this BEFORE the untrusted-content wrapper replaces a field: for an item
+    with no `text`, scanning after the wrap reads the envelope's own boilerplate
+    instead of the content it is meant to describe.
+    """
+    if "gate" in item:
+        return item
+    diagnosis = me.gate.diagnose_firing_gate(
+        str(
+            item.get("text")
+            or item.get("summaryMarkdown")
+            or (item.get("summary") or {}).get("title")
+            or item.get("title")
+            or ""
+        ),
+        tags=list(item.get("tags") or []),
+        entities=list(item.get("entities") or []),
+        metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+        source_ref=item.get("sourceRef") or item.get("source_ref"),
+    )
+    item["scanGate"] = diagnosis["gate"]
+    item["scanReason"] = diagnosis["reason"]
+    return item
 
 
 @mcp.tool()
@@ -4992,6 +5860,9 @@ def burnbar_inbox_list(
 
     items = result.get("items") or []
     for item in items:
+        # Scanned first: the wrapper below replaces `title`, and an item with no
+        # `text` would otherwise be scanned through the envelope.
+        _scan_for_a_firing_gate(item)
         # Titles are model-authored prose derived from logs. Wrap them so a
         # downstream agent treats them as data, never as instructions.
         item["title"] = _wrap_untrusted_snippet(
@@ -5042,6 +5913,8 @@ def burnbar_inbox_get(item_id: str) -> str:
     if not item:
         return json.dumps({"item": None, "error": f"no inbox item with id {item_id!r}"}, indent=2)
 
+    # Scanned before anything is wrapped, for the same reason as in the list.
+    _scan_for_a_firing_gate(item)
     summary = item.get("summary") or {}
     summary["title"] = _wrap_untrusted_snippet(summary.get("title"), source_tool="burnbar_inbox_get", record_id=item_id)
     item["summary"] = summary
@@ -5289,8 +6162,11 @@ def bench_explain(stack_json: str) -> str:
 # unrelated to memory. `BURNBAR_MCP_TOOLSET` narrows what this server offers:
 #
 #   memory  — the corpus + memory surface a coding agent should carry
-#             everywhere (search, recall, remember, project memory, resume).
-#   ops     — everything else (usage, budgets, inbox, cloud, spawn, hermes).
+#             everywhere (search, recall, remember, project memory, resume),
+#             plus the project code index it retrieves over — build, status,
+#             and every read — so the retrieval loop closes inside one toolset.
+#   ops     — everything else (usage, budgets, inbox, cloud, spawn, hermes),
+#             plus the whole code index family, which both personas use.
 #   all     — the historical single-server behavior (default).
 #
 # The one-click installers write `memory` for coding agents; `ops` is for
@@ -5306,6 +6182,7 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_get_conversation",
         "burnbar_remember",
         "burnbar_memorize",
+        "burnbar_memory_extract",
         "burnbar_recall",
         "burnbar_recall_pack",
         "burnbar_memory_ask",
@@ -5315,22 +6192,69 @@ MEMORY_TOOLSET: frozenset[str] = frozenset(
         "burnbar_memory_list",
         "burnbar_memory_update",
         "burnbar_memory_history",
+        "burnbar_memory_timeline",
         "burnbar_memory_review",
         "burnbar_memory_entities",
         "burnbar_memory_relations",
         "burnbar_memory_export",
         "burnbar_memory_import",
         "burnbar_memory_reindex",
+        "burnbar_memory_sync_pull",
         "burnbar_memory_doctor",
+        "burnbar_project_adopt",
+        "burnbar_team_link_project",
         "burnbar_audit_trail",
         "burnbar_memory_analytics",
+        # Project code index. The toolset serves code retrieval, so it serves the
+        # whole loop: the tool that builds the index, the tool that says whether
+        # one exists, and every read over it. A reader without its producer is a
+        # tool that can only ever answer "no results" — see the closure test in
+        # tests/test_toolset_closure.py, which fails if this set drifts back.
+        # `burnbar_watch_project` is deliberately absent: it enlists the daemon in
+        # open-ended background polling, which is a standing commitment rather
+        # than a read, and nothing here depends on it. It stays in `ops`, where
+        # the operator persona owns standing work — see CODE_INDEX_TOOLSET below.
+        "burnbar_index_project",
+        "burnbar_index_status",
         "burnbar_search_code",
         "burnbar_context_pack",
         "burnbar_code_context_pack",
+        "burnbar_get_symbol",
+        "burnbar_find_references",
+        "burnbar_call_graph",
+        "burnbar_diagnostics",
+        "burnbar_explore",
         "burnbar_list_project_memory",
         "burnbar_get_project_memory",
         "burnbar_list_resumable_conversations",
         "burnbar_resume_conversation",
+        "burnbar_session_briefing",
+    }
+)
+
+# The project code index family, named once.
+#
+# Both personas reach for this index: a coding agent retrieves over it, an
+# operator builds and watches it. A toolset that serves any reader of a store
+# has to serve what builds that store and what reports on it, or it serves
+# tools that can only answer "nothing found" — so the family joins `ops` whole
+# even though most of it now also sits in `memory`. Without this, growing
+# `MEMORY_TOOLSET` would have left `ops` holding `burnbar_watch_project` alone:
+# a producer with no reader and no status tool, the same defect pointed the
+# other way.
+CODE_INDEX_TOOLSET: frozenset[str] = frozenset(
+    {
+        "burnbar_index_project",
+        "burnbar_watch_project",
+        "burnbar_index_status",
+        "burnbar_search_code",
+        "burnbar_context_pack",
+        "burnbar_code_context_pack",
+        "burnbar_get_symbol",
+        "burnbar_find_references",
+        "burnbar_call_graph",
+        "burnbar_diagnostics",
+        "burnbar_explore",
     }
 )
 
@@ -5354,13 +6278,79 @@ def _apply_toolset_filter(server: Any, toolset_raw: str | None) -> str:
         )
         return "all"
     for name in list(tools):
-        in_memory = name in MEMORY_TOOLSET
-        if (requested == "memory") != in_memory:
+        if requested == "memory":
+            keep = name in MEMORY_TOOLSET
+        else:
+            # `ops` is the complement of `memory`, plus the whole code index
+            # family: the operator persona owns building and watching that index.
+            keep = name not in MEMORY_TOOLSET or name in CODE_INDEX_TOOLSET
+        if not keep:
             del tools[name]
     return requested
 
 
+def _handle_cli_args(argv: list[str]) -> bool:
+    """Run `project adopt` from the command line, or report that this is not a CLI call.
+
+    The only subcommand the server takes. Everything else falls through to the
+    stdio MCP loop, so an unrecognised argv never swallows a normal launch.
+    """
+    if argv[:2] != ["project", "adopt"]:
+        return False
+
+    parser = argparse.ArgumentParser(
+        prog="openburnbar-mcp project adopt",
+        description="Join a folder to an explicit project id, after showing what adopting it would join.",
+    )
+    parser.add_argument("project_id", nargs="?", default=None, help="the project id to adopt")
+    parser.add_argument("--path", default=None, help="the project path (defaults to the working directory)")
+    parser.add_argument("-y", "--yes", action="store_true", help="adopt without the interactive confirmation")
+    args = parser.parse_args(argv[2:])
+
+    with _memory_engine() as engine:
+        try:
+            result = engine.adopt_project(project_path=args.path, project_id=args.project_id, confirmed=args.yes)
+        except ValueError as exc:
+            print(f"Could not adopt the project: {exc}", file=sys.stderr)
+            sys.exit(1)
+        if result.get("status") == "confirmation_required":
+            print(result["message"])
+            # Adoption re-scopes a folder's memories, so it is never inferred: a
+            # pipe or a hook gets a refusal and an exit code, not a default yes.
+            if not sys.stdin.isatty():
+                print("Re-run with --yes to adopt.", file=sys.stderr)
+                sys.exit(1)
+            try:
+                reply = input("Adopt this project id? [y/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                reply = ""
+            if reply not in ("y", "yes"):
+                print("Adoption cancelled.")
+                sys.exit(1)
+            try:
+                result = engine.adopt_project(project_path=args.path, project_id=args.project_id, confirmed=True)
+            except ValueError as exc:
+                print(f"Could not adopt the project: {exc}", file=sys.stderr)
+                sys.exit(1)
+
+        if result.get("status") != "ok":
+            print(f"Could not adopt the project: {result}", file=sys.stderr)
+            sys.exit(1)
+        if result.get("reason") == "already_mapped":
+            print(f"Path '{result['path']}' is already mapped to project '{result['projectID']}'.")
+        else:
+            print(
+                f"Adopted project '{result['projectID']}' for path '{result['path']}' "
+                f"({result['memoriesCount']} memories joined, "
+                f"{result.get('detachingCount', 0)} left behind under "
+                f"'{result.get('detachingProjectID')}')."
+            )
+    return True
+
+
 def main() -> None:
+    if len(sys.argv) > 1 and _handle_cli_args(sys.argv[1:]):
+        return
     _apply_toolset_filter(mcp, os.environ.get("BURNBAR_MCP_TOOLSET"))
     mcp.run()
 

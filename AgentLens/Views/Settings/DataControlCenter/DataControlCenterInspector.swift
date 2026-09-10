@@ -91,7 +91,8 @@ struct DomainInspector: View {
         InspectorCard(title: "FOOTPRINT", icon: "chart.bar.fill") {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 18) {
-                    metric(value: "\(row.count)", label: countLabel)
+                    // "—" where no per-user count exists (PR 4 review L7).
+                    metric(value: row.countDisplay, label: countLabel)
                     if domain.byteSource != nil {
                         metric(value: byteString(row.bytes), label: "Stored")
                     }
@@ -114,13 +115,20 @@ struct DomainInspector: View {
                 .chartYAxis(.hidden)
                 .frame(height: 44)
                 .accessibilityLabel("\(domain.title) footprint")
-                .accessibilityValue("\(row.count) records")
+                .accessibilityValue(
+                    row.isCountable ? "\(row.count) records" : "no per-account record count for this domain"
+                )
             }
         }
     }
 
     private var countLabel: String {
-        domain.countSource?.replacingOccurrences(of: "_", with: " ") ?? "Records"
+        // A domain with no count SOURCE has no count to label; say that rather
+        // than labelling a "0" as "Records" (PR 4 review L7).
+        guard let countSource = domain.countSource else {
+            return row.isCountable ? "Records" : "Not counted here"
+        }
+        return countSource.replacingOccurrences(of: "_", with: " ")
     }
 
     // MARK: Pensieve hard caps (Swift Charts gauge meters)

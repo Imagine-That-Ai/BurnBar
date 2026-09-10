@@ -146,6 +146,9 @@ enum SettingsPageRoute: Hashable, Codable {
     // Devices & Sync
     case devicesAndSyncRoot
 
+    // Receipts
+    case receiptsRoot
+
     // Text Expansion
     case textExpansionRoot
 
@@ -201,10 +204,18 @@ enum SettingsAnchor {
     // General → Indexing
     static let indexingToggle = "general.indexing.enabled"
     static let indexingMemory = "general.indexing.memory"
+    static let indexingMemoryDeviceSync = "general.indexing.memoryDeviceSync"
     static let indexingMemoryCloudModels = "general.indexing.memoryCloudModels"
+    static let indexingTeamMemory = "general.indexing.teamMemory"
+    static let indexingMemoryHealth = "general.indexing.memoryHealth"
+    static let indexingMemorySyncStatus = "general.indexing.memorySyncStatus"
 
     // General → Summaries
     static let summariesAuto = "general.summaries.auto"
+
+    // Receipts
+    static let receiptsOverview = "receipts.overview"
+    static let receiptsQualityReview = "receipts.qualityReview"
 
     // AI Inbox
     static let aiInboxOverview = "aiInbox.overview"

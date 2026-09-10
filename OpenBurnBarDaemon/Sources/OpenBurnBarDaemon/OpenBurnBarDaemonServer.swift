@@ -1661,7 +1661,8 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .memoryRemember, .memoryRecall, .memoryReviewStatus, .memoryForget, .memoryAuditTrail, .memoryAnalytics, .memoryModelPolicy:
+            case .memoryRemember, .memoryRecall, .memoryReviewStatus, .memoryForget, .memoryAuditTrail, .memoryAnalytics, .memoryModelPolicy,
+                 .memorySyncInboxList, .memorySyncInboxAck:
                 return try await handleMemoryRPC(
                     method: method,
                     decoder: decoder,

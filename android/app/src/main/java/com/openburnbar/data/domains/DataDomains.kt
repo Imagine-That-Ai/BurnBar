@@ -76,6 +76,17 @@ object DataDomains {
             sealingScheme = "cloudvault-aesgcm-v2",
         ),
         DataDomain(
+            id = "team_pensieve", title = "Team Memory", icon = "person.3.sequence.fill",
+            encryptionTier = EncryptionTier.END_TO_END, summary = "Memories you contribute to a team space. The lane is blind: the server holds sealed fact envelopes, opaque keyed document ids, opaque source hashes and ECIES-wrapped per-device key envelopes — never fact bodies, citations or any team key. What the server does own is MEMBERSHIP, because a client cannot be trusted to assert it, so team size, join and leave timing, per-member write volume and the coarse kind distribution are visible to it. Inside a team the key is shared: every active member can read every team fact, so a team space is a contribution and display boundary between members, not a confidentiality one. Leaving a team stops future access and rotates the key, but never retracts what a member already replicated to their own device.",
+            serverSees = listOf("opaque keyed document ids", "opaque source hashes", "coarse kind", "team membership graph", "join/leave timing", "per-member write volume", "wrapped per-device key envelopes", "timestamps"), deviceOnly = listOf("team fact bodies", "team fact citations", "project names", "team vault keys", "team slug key"),
+            firestorePaths = listOf(), storagePaths = listOf(),
+            countSource = null, byteSource = null,
+            retention = "until_deleted", actions = listOf("view"),
+            entitlementGate = "burnbar_pro_max", suspensionSurface = "burnbar_cloud_pro",
+            cloudVaultRewrapStrategy = "document_envelopes",
+            sealingScheme = "cloudvault-aesgcm-v2",
+        ),
+        DataDomain(
             id = "provider_accounts", title = "Provider Accounts", icon = "person.badge.key.fill",
             encryptionTier = EncryptionTier.SERVER_READABLE, summary = "Connected AI provider accounts. Labels + status only — the actual credentials live in Google Cloud Secret Manager, never in your data tree.",
             serverSees = listOf("provider id", "redacted label", "status", "refresh metadata"), deviceOnly = listOf("secret material (in Secret Manager, not the user tree)"),

@@ -26,6 +26,8 @@ from ._util import (
     now_iso,
     raw_tags,
     sha256_hex,
+    canonical_body_hash,
+    fail_closed_refusal,
 )
 from .judge import JudgeDecision, llm_judge
 from .providers import ModelRouter, ModelUnavailable
@@ -114,6 +116,8 @@ class _WritePath:
         default_tags: Sequence[str] | None = None,
         metadata: dict[str, Any] | None = None,
         force: bool = False,
+        default_review_status: str | None = None,
+        fail_closed: bool = False,
     ) -> dict[str, Any]:
         project_id, root = resolve_project(self.conn, project_path)
         # The batch-wide auxiliary input the caller controls. Per-fact aux from
@@ -150,6 +154,7 @@ class _WritePath:
                 "defaultScope": default_scope,
                 "defaultTags": normalize_tags(default_tags),
                 "metadata": metadata or {},
+                "defaultReviewStatus": default_review_status,
                 "secretPolicy": self.config.secret_policy,
                 "piiPolicy": self.config.pii_policy,
                 "retainAllowed": self.config.retain_allowed,
@@ -207,6 +212,10 @@ class _WritePath:
                     render_transcript(normalized_messages), pii_policy=self.config.pii_policy
                 )
                 if safe_transcript is None:
+                    if fail_closed:
+                        return fail_closed_refusal(
+                            "rejected", "TRANSCRIPT_GATE_REJECTED", transcript_gate.get("reason"), project_id, root
+                        )
                     extraction_error = f"{extractor_name}: {transcript_gate.get('reason')}"
                     extractor_name = "heuristic"
                     extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
@@ -214,6 +223,8 @@ class _WritePath:
                     try:
                         extracted = extractor_fn_resolved(safe_transcript, max_facts)
                     except ModelUnavailable as exc:
+                        if fail_closed:
+                            return fail_closed_refusal("unavailable", exc.code, exc.reason, project_id, root)
                         extraction_error = f"{extractor_name}: {exc.code}: {exc.reason}"
                         extraction_outcome = {
                             "purpose": "memory-extract",
@@ -225,25 +236,32 @@ class _WritePath:
                         extractor_name = "heuristic"
                         extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
                     except Exception as exc:  # noqa: BLE001 — degrade to the heuristic path, report the reason
+                        if fail_closed:
+                            return fail_closed_refusal("unavailable", "EXTRACTION_FAILED", str(exc), project_id, root)
                         extraction_error = f"{extractor_name}: {exc}"
                         extractor_name = "heuristic"
                         extracted = heuristic_extract(normalized_messages, max_facts=max_facts)
                     else:
                         provenance = getattr(extractor_fn_resolved, "provenance", None)
                         if isinstance(provenance, dict):
+                            model_id = str(provenance.get("model") or provenance.get("label") or "")
+                            extracted_by = str(provenance.get("label") or provenance.get("provider") or model_id)
                             extraction_outcome = {
                                 "purpose": "memory-extract",
                                 "applied": True,
                                 "code": None,
-                                "model": provenance.get("label"),
+                                "model": model_id,
                                 "provider": provenance.get("provider"),
+                                "label": extracted_by,
                                 "droppedUngrounded": int(provenance.get("droppedUngrounded") or 0),
                             }
-                            extractor_name = f"llm:{provenance.get('label')}"
+                            extractor_name = f"llm:{extracted_by}"
                             gate_hash = sha256_hex(safe_transcript)[:16]
                             for fact in extracted:
                                 fact.metadata = {
                                     **fact.metadata,
+                                    "extracted_by": extracted_by,
+                                    "model_id": model_id,
                                     "extractPromptVersion": provenance.get("promptVersion"),
                                     "transcriptGateHash": gate_hash,
                                     "modelLatencyMs": int(provenance.get("latencyMs") or 0),
@@ -254,6 +272,10 @@ class _WritePath:
 
         decisions: list[dict[str, Any]] = []
         for fact in extracted:
+            # Every row says what produced it, heuristic or model alike: an
+            # unlabelled row is one a reviewer cannot weigh (C15).
+            fact.metadata.setdefault("extracted_by", extractor_name)
+            fact.metadata.setdefault("model_id", extractor_name)
             if default_tags:
                 # Raw until `_commit_fact` gates them; see `raw_tags`.
                 fact.tags = raw_tags(list(fact.tags) + list(default_tags))
@@ -263,6 +285,10 @@ class _WritePath:
                 fact.metadata = merged
             if default_scope and not fact.scope:
                 fact.scope = default_scope
+            # Unconditional, and an extractor's own status is discarded; only
+            # CALLER `facts` keep one. See `Fact.from_mapping` for why.
+            if default_review_status or not facts:
+                fact.review_status = default_review_status
             fact.source_ref = _merged_source_ref(source_ref, fact.source_ref)
             decision = self._commit_fact(
                 project_id=project_id,
@@ -452,6 +478,25 @@ class _WritePath:
                 "kind": kind,
                 "scope": scope,
             }
+        # T6. THE choke point every locally-initiated write passes through —
+        # `remember`, `memorize`, every extractor batch, `import_legacy`,
+        # `import_memories` — and so the one place the engine's own metadata
+        # namespace is defended. A caller that names `_burnbar` is reaching for
+        # the team control plane (`metadata["teamID"]` used to BE that reach),
+        # and it is told which key and why rather than watching the write
+        # half-apply. The import paths strip before they get here, so an archive
+        # carrying a stale stamp still restores.
+        reserved = self._reserved_metadata_refusal(fact.metadata)
+        if reserved is not None:
+            audit_event(
+                self.conn,
+                action="memory.reserved_metadata_refused",
+                project_id=project_id,
+                subject_id=None,
+                labels=[f"keys:{len(reserved['reservedKeys'])}"],
+                actor=self.config.actor,
+            )
+            return {"event": "REJECT", **reserved, "kind": kind, "scope": scope}
         # Bound the auxiliary input before the gate walks it. This is the
         # backstop that covers every write path, `import_memories` included.
         overflow = aux_input_overflow(
@@ -541,7 +586,7 @@ class _WritePath:
             review_status = "rejected"  # an imported review decision is preserved
         else:
             review_status = "approved"
-        body_hash = sha256_hex(body.lower())
+        body_hash = canonical_body_hash(body)
         ts = now_iso()
         now = datetime.now(UTC)
         entities = list(dict.fromkeys(list(fact.entities) + extract_entities(body)))[:16]
@@ -572,10 +617,20 @@ class _WritePath:
         # Exact duplicate in the same project/scope → reinforce, unless the row
         # was rejected in review (stays hidden) or has expired (reactivated).
         exact = self.conn.execute(
-            "SELECT id, review_status, expires_at FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NULL",
+            "SELECT id, project_id, metadata_json, review_status, expires_at FROM memories "
+            "WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NULL",
             (project_id, scope, body_hash),
         ).fetchone()
         if exact is not None:
+            # T5, and the one case where the answer is neither "reinforce" nor
+            # "add". The store holds `UNIQUE(project_id, scope, body_hash)`, so
+            # when the row occupying this triple is a TEAM row there is no
+            # second row to create and reinforcing it is precisely what the
+            # write fence forbids. Report the convergence, change nothing.
+            refusal = self._team_write_refusal(str(exact["id"]), row=exact, project_id=project_id)
+            if refusal is not None:
+                self._commit()
+                return {"event": "NONE", **refusal, "kind": kind, "scope": scope}
             if str(exact["review_status"]) == "rejected":
                 audit_event(
                     self.conn,
@@ -620,6 +675,11 @@ class _WritePath:
                 quarantine_labels=reinforce_injection,
                 reactivate=_is_expired(exact["expires_at"], now),
             )
+            # This row holds this body: say so in the convergence ledger, so a
+            # later local edit that moves the body on cannot leave another
+            # device's copy of it keyed to nothing here. See
+            # `_sync.py::_record_convergence_identity`.
+            self._record_convergence_identity(project_id, scope, body_hash, str(exact["id"]))
             if gate.action == "retain" and gate.vault_body is not None:
                 # Different secrets redact to the same body: keep the vault current.
                 changed = self._rotate_vault(str(exact["id"]), project_id, gate)
@@ -629,7 +689,15 @@ class _WritePath:
                     decision["event"] = "UPDATE"
             return decision
 
-        active = self._load_active(project_id, include_personal_cross_project=(scope == "personal"))
+        # T5: the pool a local write reasons over never contains a team row.
+        # `include_personal_cross_project` is what carried one in — a team fact
+        # sealed `engineScope = "personal"` is cross-project on the personal
+        # lane — and this pool feeds near-duplicate reinforce, the judge, the
+        # conflict resolver AND the explicit `supersedes` check below, so one
+        # filter here closes all four.
+        active = self._team_write_filter(
+            self._load_active(project_id, include_personal_cross_project=(scope == "personal")), project_id
+        )
         candidates = [
             item
             for item in active
@@ -746,9 +814,24 @@ class _WritePath:
         # reverts to an earlier statement (A -> B -> A) brings the retired row back
         # under its original id instead of colliding on insert.
         retired = self.conn.execute(
-            "SELECT id, rowid, superseded_by FROM memories WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NOT NULL",
+            "SELECT id, rowid, superseded_by, project_id, metadata_json FROM memories "
+            "WHERE project_id = ? AND scope = ? AND body_hash = ? AND valid_to IS NOT NULL",
             (project_id, scope, body_hash),
         ).fetchone()
+        if retired is not None:
+            # T7, and the last face of T5's rule. A team merge RETIRES the rows
+            # it supersedes and leaves them in `UNIQUE(project_id, scope,
+            # body_hash)`, so the A -> B -> A revert above would find a retired
+            # TEAM row and rewrite it in place — same id, local metadata, no
+            # stamp — resurrecting it as a personal row. That is the identical
+            # unauthorized mutation the live-row branch refuses, one `valid_to`
+            # apart, so it gets the identical answer: report the convergence,
+            # change nothing, and create no personal row on a triple the UNIQUE
+            # index says is already spoken for.
+            refusal = self._team_write_refusal(str(retired["id"]), row=retired, project_id=project_id)
+            if refusal is not None:
+                self._commit()
+                return {"event": "NONE", **refusal, "kind": kind, "scope": scope}
         reactivated_id = str(retired["id"]) if retired is not None else None
         memory_id = reactivated_id or ("mem_" + secrets.token_hex(16))
         salience = self.compute_salience(kind, fact.confidence, 0)
@@ -839,6 +922,14 @@ class _WritePath:
                 ),
             )
             rowid = int(self.conn.execute("SELECT rowid FROM memories WHERE id = ?", (memory_id,)).fetchone()["rowid"])
+        # §5's convergence identity, recorded by the LOCAL writer as well as by
+        # the merge. The live `UNIQUE(project_id, scope, body_hash)` lookup only
+        # answers while this row still holds this body, and a later local edit
+        # moves it on; without this entry another device's independently-learned
+        # copy of the superseded body would key to nothing here and land as a
+        # second active row, while every device that received the same two
+        # revisions by merge folded it into one.
+        self._record_convergence_identity(project_id, scope, body_hash, memory_id)
         if vector is not None:
             self.conn.execute(
                 "INSERT INTO memory_vectors (memory_rowid, embedding_version, dimension, vector) VALUES (?, ?, ?, ?)",
@@ -863,6 +954,16 @@ class _WritePath:
                 "UPDATE memories SET supersedes_json = ? WHERE id = ?",
                 (_json_dumps(retired_supersede_targets), memory_id),
             )
+        hist_meta = {
+            "supersedes": retired_supersede_targets,
+            "previouslySupersededBy": (retired["superseded_by"] if retired is not None else None),
+            "decidedBy": decided_by,
+            "rationale": rationale,
+        }
+        # Attribution the timeline reads back: who wrote it, and what extracted it.
+        for key in ("writerDevice", "writer_device", "deviceId", "device_id", "extracted_by", "model_id"):
+            if metadata.get(key) is not None:
+                hist_meta[key] = metadata[key]
         self._history(
             memory_id,
             project_id,
@@ -871,12 +972,7 @@ class _WritePath:
             else ("created" if not retired_supersede_targets else "created_superseding"),
             None,
             body,
-            {
-                "supersedes": retired_supersede_targets,
-                "previouslySupersededBy": (retired["superseded_by"] if retired is not None else None),
-                "decidedBy": decided_by,
-                "rationale": rationale,
-            },
+            hist_meta,
         )
         if gate.action == "redact":
             audit_event(
@@ -936,6 +1032,10 @@ class _WritePath:
             "decidedBy": decided_by,
             "rationale": rationale,
         }
+        if metadata.get("extracted_by"):
+            decision["extractedBy"] = metadata["extracted_by"]
+        if metadata.get("model_id"):
+            decision["modelId"] = metadata["model_id"]
         if self._judge_outcome is not None:
             decision["judge"] = self._judge_outcome
         if reactivated_id:
@@ -1102,12 +1202,20 @@ class _WritePath:
         labels: Sequence[str] = (),
         quarantine_labels: Sequence[str] = (),
         reactivate: bool = False,
+        stamp_updated_at: bool = True,
     ) -> dict[str, Any]:
         """Merge a duplicate into `memory_id`.
 
         `incoming_body` is the *gated* body of the duplicate; it is recorded in
         the encrypted history column, never in plaintext meta. `reactivate`
         clears an expired row's expiry (to the incoming fact's, if any).
+
+        `stamp_updated_at=False` is the blind-sync merge: `updated_at` is the
+        row's last *writer* mark, and a duplicate arriving from another device is
+        not a writer on this one. Stamping this device's wall clock there would
+        make the row look newer than every remote revision authored before the
+        merge ran, and the genuinely newer edit would then lose last-writer-wins
+        for ever.
         """
         row = self._get_row(memory_id)
         if row is None:
@@ -1127,20 +1235,28 @@ class _WritePath:
         else:
             review_status = existing.review_status
         sensitivity = "secret" if fact.sensitivity == "secret" else existing.sensitivity
-        self.conn.execute(
-            "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, salience = ?, review_status = ?, sensitivity = ?, updated_at = ? WHERE id = ?",
-            (
-                _json_dumps(merged_tags),
-                _json_dumps(merged_entities),
-                confidence,
-                access,
-                self.compute_salience(existing.kind, confidence, access),
-                review_status,
-                sensitivity,
-                ts,
-                memory_id,
-            ),
-        )
+        columns: list[Any] = [
+            _json_dumps(merged_tags),
+            _json_dumps(merged_entities),
+            confidence,
+            access,
+            self.compute_salience(existing.kind, confidence, access),
+            review_status,
+            sensitivity,
+        ]
+        if stamp_updated_at:
+            columns.append(ts)
+            self.conn.execute(
+                "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, "
+                "salience = ?, review_status = ?, sensitivity = ?, updated_at = ? WHERE id = ?",
+                (*columns, memory_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE memories SET tags_json = ?, entities_json = ?, confidence = ?, access_count = ?, "
+                "salience = ?, review_status = ?, sensitivity = ? WHERE id = ?",
+                (*columns, memory_id),
+            )
         if reactivate:
             self.conn.execute("UPDATE memories SET expires_at = ? WHERE id = ?", (fact.expires_at, memory_id))
         meta = {"reason": reason, "incomingHash": sha256_hex(incoming_body.lower())[:16], "labels": sorted(set(labels))}
@@ -1266,53 +1382,3 @@ class _WritePath:
             missing_sql = f"SELECT id FROM memories WHERE id IN ({placeholders})"  # noqa: S608 — placeholders only; values are bound
             found.update(str(row["id"]) for row in self.conn.execute(missing_sql, chunk).fetchall())
         return [item for item in wanted if item not in found]
-
-    def _retire(self, memory_id: str, *, reason: str, replacement: str | None) -> bool:
-        row = self._get_row(memory_id)
-        if row is None or row["valid_to"] is not None:
-            return False
-        if bool(row["immutable"]):
-            self._history(
-                memory_id,
-                str(row["project_id"]),
-                "retire_blocked_immutable",
-                None,
-                None,
-                {"reason": reason, "replacement": replacement},
-            )
-            return False
-        ts = now_iso()
-        self.conn.execute(
-            "UPDATE memories SET valid_to = ?, superseded_by = ?, updated_at = ? WHERE id = ?",
-            (ts, replacement, ts, memory_id),
-        )
-        self._history(
-            memory_id, str(row["project_id"]), "retired", None, None, {"reason": reason, "replacement": replacement}
-        )
-        return True
-
-    def _history(
-        self, memory_id: str, project_id: str, event: str, before: str | None, after: str | None, meta: dict[str, Any]
-    ) -> None:
-        aad = f"{memory_id}|{project_id}|history"
-        before_cipher = before_nonce = after_cipher = after_nonce = None
-        if before is not None:
-            before_cipher, before_nonce = self.keyring.seal(before, aad)
-        if after is not None:
-            after_cipher, after_nonce = self.keyring.seal(after, aad)
-        self.conn.execute(
-            "INSERT INTO memory_history (memory_id, project_id, event, actor, ts, before_cipher, before_nonce, after_cipher, after_nonce, key_id, meta_json) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (
-                memory_id,
-                project_id,
-                event,
-                self.config.actor,
-                now_iso(),
-                before_cipher,
-                before_nonce,
-                after_cipher,
-                after_nonce,
-                self.keyring.key_id,
-                _json_dumps(meta),
-            ),
-        )

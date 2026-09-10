@@ -11,9 +11,17 @@ import SwiftUI
 /// "Approved" filter.
 struct MemoryReviewInboxView: View {
     let model: MemoryReviewInboxModel
+    /// Loads one memory's history for the row's "History" disclosure. Optional
+    /// so a host with no store handle still renders the inbox; the disclosure
+    /// simply does not appear.
+    let loadTimeline: MemoryTimelineModel.LoadTimeline?
 
-    init(model: MemoryReviewInboxModel) {
+    init(
+        model: MemoryReviewInboxModel,
+        loadTimeline: MemoryTimelineModel.LoadTimeline? = nil
+    ) {
         self.model = model
+        self.loadTimeline = loadTimeline
     }
 
     var body: some View {
@@ -212,6 +220,7 @@ struct MemoryReviewInboxView: View {
                         MemoryReviewRow(
                             item: item,
                             isPending: model.filter == .pending,
+                            loadTimeline: loadTimeline,
                             onApprove: { Task { await model.approve(item.id) } },
                             onReject: { Task { await model.reject(item.id) } },
                             onForget: { Task { await model.forget(item.id) } }
@@ -263,13 +272,24 @@ struct MemoryReviewInboxView: View {
 @MainActor
 struct MemoryReviewInboxHost: View {
     @State private var model: MemoryReviewInboxModel
+    private let loadTimeline: MemoryTimelineModel.LoadTimeline
 
     init(
         store: ControlPlaneStore,
         scope: MemoryScope,
         sourceFilter: MemoryReviewInboxModel.SourceFilter = .all,
+        /// The signed-in member, for the user-scoped `agent_memory_inbox` read
+        /// behind "Arrived from <device>". Nil simply names no device.
+        userID: String? = nil,
         afterStatusChange: @escaping @MainActor () async -> Void = {}
     ) {
+        // The app's own audit ledger, not the engine's revision bodies — the
+        // record carries `source` so the view can say which it is showing.
+        self.loadTimeline = { memoryID, _ in
+            MemoryTimelineModel.TimelineResult(
+                try await store.memoryTimeline(memoryID: memoryID, userID: userID)
+            )
+        }
         self._model = State(initialValue: MemoryReviewInboxModel(
             scope: scope,
             sourceFilter: sourceFilter,
@@ -304,7 +324,7 @@ struct MemoryReviewInboxHost: View {
     }
 
     var body: some View {
-        MemoryReviewInboxView(model: model)
+        MemoryReviewInboxView(model: model, loadTimeline: loadTimeline)
     }
 }
 
@@ -379,12 +399,22 @@ private struct MemoryReviewEmptyState: View {
 struct MemoryReviewRow: View {
     let item: MemoryReviewInboxModel.Item
     let isPending: Bool
+    /// Nil when the host has no history reader; the row then shows no History
+    /// disclosure at all rather than an empty one.
+    var loadTimeline: MemoryTimelineModel.LoadTimeline?
     let onApprove: () -> Void
     let onReject: () -> Void
     let onForget: () -> Void
 
     @State private var confirmingReject = false
     @State private var confirmingForget = false
+    @State private var showingHistory = false
+    /// Holds the row's timeline model across re-renders. The inbox model is
+    /// `@Observable`, so approving any sibling row re-evaluates this body; a
+    /// model built inline would be replaced by a fresh empty one whose `.task`
+    /// never re-fires, and the open history would blank to "Nothing has happened
+    /// to this memory yet."
+    @State private var timelineBox = MemoryTimelineModelBox()
 
     private var confidencePercent: Int {
         Int((item.memory.confidence * 100).rounded())
@@ -410,11 +440,15 @@ struct MemoryReviewRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
+                scanCallout
+
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     MemoryCitationChipView(citations: item.memory.citations, onJumpToLocal: nil)
                     Spacer(minLength: 0)
                     actions
                 }
+
+                historyDisclosure
             }
             .padding(DesignSystem.Spacing.sm)
         }
@@ -477,6 +511,98 @@ struct MemoryReviewRow: View {
         .overlay(
             Capsule(style: .continuous)
                 .strokeBorder(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    /// The row's "History" disclosure: one memory's recorded events, read from
+    /// this Mac's own audit ledger. Collapsed by default so the inbox stays a
+    /// review surface, and built lazily so an unopened row costs no read.
+    @ViewBuilder
+    private var historyDisclosure: some View {
+        if let loadTimeline {
+            DisclosureGroup(isExpanded: $showingHistory) {
+                if showingHistory {
+                    MemoryTimelineView(
+                        model: timelineBox.model(for: item.id, loadTimeline: loadTimeline)
+                    )
+                    .padding(.top, DesignSystem.Spacing.xs)
+                }
+            } label: {
+                Text("History")
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .textCase(.uppercase)
+            }
+            .disclosureGroupStyle(.automatic)
+        }
+    }
+
+    /// Names what a LOCAL re-scan of this body concluded — never a stored
+    /// verdict. Nothing in this app can record "which gate quarantined this
+    /// row": app-side gates drop candidates, and `quarantined` is simply where
+    /// every new memory waits. So the default line says exactly that, a scan
+    /// hit is labelled as a scan, and a scan that could not run says it did not.
+    @ViewBuilder
+    private var scanCallout: some View {
+        switch item.gateState {
+        case .noGateFired:
+            calloutRow(
+                icon: "tray",
+                tint: DesignSystem.Colors.textMuted,
+                title: "Held for review — no gate fired. Every new memory waits here.",
+                detail: nil
+            )
+        case .scanned(let gate, let reason):
+            calloutRow(
+                icon: "shield.lefthalf.filled",
+                tint: DesignSystem.Colors.amber,
+                title: "Scanner flags: \(gate)",
+                detail: reason
+            )
+        case .scannerUnavailable:
+            calloutRow(
+                icon: "exclamationmark.shield",
+                tint: DesignSystem.Colors.textMuted,
+                title: "Scanner unavailable — this row was not re-checked",
+                detail: nil
+            )
+        }
+    }
+
+    private func calloutRow(icon: String, tint: Color, title: String, detail: String?) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(tint)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(tint)
+
+                if let detail {
+                    Text(detail)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.xs)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(tint.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .strokeBorder(tint.opacity(0.25), lineWidth: 0.5)
         )
     }
 
