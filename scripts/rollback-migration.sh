@@ -118,6 +118,7 @@ MIGRATIONS=(
   "v65_memory_quarantine_bodies|atomic|unapplied-only|backup-restore|Encrypted review holding table for quarantined memory bodies"
   "v66_agent_memory_bodies|atomic|unapplied-only|backup-restore|Approved bodies for engine-mirrored memories, the copy blind sync seals and uploads"
   "v67_agent_memory_inbox|atomic|unapplied-only|backup-restore|Landing zone for memory facts pulled back from the member's cloud vault, drained by the engine"
+  "v68_agent_memories_review_default_repair|atomic|unapplied-only|backup-restore|Rebuilds agent_memories so review_status defaults to quarantined (fail closed) where an older bootstrap left DEFAULT approved; columns, rows and indexes carried verbatim; no-op when the default is already correct"
 )
 
 # ── Commands ─────────────────────────────────────────────────────────────
