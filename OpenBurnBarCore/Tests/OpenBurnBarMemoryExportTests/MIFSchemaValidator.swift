@@ -295,7 +295,22 @@ final class MIFSchemaValidator {
     }
 
     private func isBool(_ value: Any) -> Bool {
+        #if canImport(Darwin)
         (value as? NSNumber).map { CFGetTypeID($0) == CFBooleanGetTypeID() } ?? false
+        #else
+        // swift-corelibs-foundation decodes JSON true/false as `Bool`, never as a number-shaped
+        // NSNumber, and the CoreFoundation type-id check only exists on Darwin.
+        value is Bool
+        #endif
+    }
+
+    private func boolValue(_ value: Any) -> Bool? {
+        guard isBool(value) else { return nil }
+        #if canImport(Darwin)
+        return (value as? NSNumber)?.boolValue
+        #else
+        return value as? Bool
+        #endif
     }
 
     private func numeric(_ value: Any?) -> Double? {
@@ -308,8 +323,8 @@ final class MIFSchemaValidator {
         if lhs is NSNull && rhs is NSNull { return true }
         if let left = lhs as? String, let right = rhs as? String { return left == right }
         if isBool(lhs) || isBool(rhs) {
-            guard let left = lhs as? NSNumber, let right = rhs as? NSNumber else { return false }
-            return isBool(lhs) == isBool(rhs) && left.boolValue == right.boolValue
+            guard let left = boolValue(lhs), let right = boolValue(rhs) else { return false }
+            return left == right
         }
         if let left = numeric(lhs), let right = numeric(rhs) { return left == right }
         return false
