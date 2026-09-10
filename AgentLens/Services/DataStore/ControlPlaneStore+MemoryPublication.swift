@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarData
 import OpenBurnBarKernel
 
 // MARK: - Agent-lane publication (I-56)
@@ -27,21 +26,55 @@ extension ControlPlaneStore {
     /// How one review verdict reaches the daemon. Injected on the store so tests
     /// can drive both outcomes without a socket; production wires
     /// `liveAgentMemoryReviewPublisher`.
+    ///
+    /// `expectedUpdatedAt` is the `agent_memories.updated_at` stamp the caller
+    /// wrote when it committed the verdict (review #2565): two overlapping
+    /// verdicts race on the wire, and the stamp is what lets the daemon refuse
+    /// to apply an Approve a later Reject already superseded. The Bool is the
+    /// response's `applied` — `false` means the daemon refused the transition
+    /// as stale and the row carries a newer verdict.
     typealias AgentMemoryReviewPublishing = @Sendable (
         _ memoryID: MemoryID,
         _ projectPath: String,
-        _ status: MemoryReviewStatus
-    ) async throws -> Void
+        _ status: MemoryReviewStatus,
+        _ expectedUpdatedAt: String
+    ) async throws -> Bool
+
+    /// How one agent-lane forget reaches the daemon (review #2565). Called
+    /// BEFORE the app's own row delete: the daemon owns the quarantine body,
+    /// the published project-memory section and the engine mirror, and it needs
+    /// the shared row's `project_id` to find them — so the local row must still
+    /// exist when the call lands, and a throwing call leaves every local byte
+    /// in place. Injected for the same reachable/unreachable test drive.
+    typealias AgentMemoryForgetting = @Sendable (
+        _ memoryID: MemoryID,
+        _ projectPath: String
+    ) async throws -> BurnBarProjectMemoryForgetResponse
 
     /// The shipping publisher: one `daemon.memory.review_status` call over the
     /// control socket, off the calling executor because the socket round trip is
     /// a blocking read (the house `daemonRPC` shape).
-    static let liveAgentMemoryReviewPublisher: AgentMemoryReviewPublishing = { memoryID, projectPath, status in
-        _ = try await Task.detached(priority: .userInitiated) {
+    static let liveAgentMemoryReviewPublisher: AgentMemoryReviewPublishing = { memoryID, projectPath, status, expectedUpdatedAt in
+        let response = try await Task.detached(priority: .userInitiated) {
             try OpenBurnBarDaemonSocketClient.memoryReviewStatus(
                 memoryID: memoryID,
                 projectPath: projectPath,
                 status: status,
+                expectedUpdatedAt: expectedUpdatedAt,
+                at: OpenBurnBarDaemonRuntimePaths.live().socketURL
+            )
+        }.value
+        return response.applied
+    }
+
+    /// The shipping forgetter: one `daemon.memory.forget` call over the control
+    /// socket. `requireCloudDelete` stays false — the daemon cannot mint the
+    /// member-keyed cloud tombstone; the app's own forget lane writes it.
+    static let liveAgentMemoryForgetter: AgentMemoryForgetting = { memoryID, projectPath in
+        try await Task.detached(priority: .userInitiated) {
+            try OpenBurnBarDaemonSocketClient.memoryForget(
+                memoryID: memoryID,
+                projectPath: projectPath,
                 at: OpenBurnBarDaemonRuntimePaths.live().socketURL
             )
         }.value
@@ -87,11 +120,14 @@ extension ControlPlaneStore {
         """
 
     /// One verdict waiting for the daemon: the row, and the root the DAEMON
-    /// itself recorded for it.
+    /// itself recorded for it. `verdictStamp` is the row's `updated_at` at
+    /// query time — the precondition the retry sends so a newer verdict that
+    /// landed in between is not overwritten (review #2565).
     struct PendingAgentMemoryPublication: Equatable, Sendable {
         let memoryID: MemoryID
         let projectPath: String
         let status: MemoryReviewStatus
+        let verdictStamp: String
     }
 
     /// Ask the daemon to publish one agent-lane verdict.
@@ -103,12 +139,18 @@ extension ControlPlaneStore {
     /// which is the honest reading of "approved, not yet published". The one
     /// thing that never happens is a silent success.
     ///
+    /// `expectedUpdatedAt` is the stamp this verdict was committed under; the
+    /// daemon refuses a stale one (`applied: false`), which reads here as
+    /// "superseded", not "deferred" — the row already carries a newer verdict,
+    /// so there is nothing left to retry.
+    ///
     /// - Returns: whether the daemon published it.
     @discardableResult
     func publishAgentMemoryReview(
         id: MemoryID,
         status: MemoryReviewStatus,
-        projectID: String?
+        projectID: String?,
+        expectedUpdatedAt: String
     ) async -> Bool {
         guard let projectID, projectID.isEmpty == false else {
             AppLogger.dataStore.notice(
@@ -139,8 +181,7 @@ extension ControlPlaneStore {
             return false
         }
         do {
-            try await publishAgentMemoryReviewStatus(id, projectPath, status)
-            return true
+            return try await publishAgentMemoryReviewStatus(id, projectPath, status, expectedUpdatedAt)
         } catch {
             AppLogger.dataStore.silentFailure(
                 "memory.agent_publication_deferred",
@@ -164,7 +205,7 @@ extension ControlPlaneStore {
             try Row.fetchAll(
                 db,
                 sql: """
-                SELECT m.id AS memory_id, m.review_status AS review_status, p.primary_path AS primary_path
+                SELECT m.id AS memory_id, m.review_status AS review_status, m.updated_at AS updated_at, p.primary_path AS primary_path
                 FROM agent_memories m
                 JOIN pcm_projects p ON p.project_id = m.project_id
                 WHERE \(Self.awaitingDaemonPublicationSQL)
@@ -177,8 +218,14 @@ extension ControlPlaneStore {
                 guard let memoryID: String = row["memory_id"],
                       let statusRaw: String = row["review_status"],
                       let status = MemoryReviewStatus(rawValue: statusRaw),
-                      let path: String = row["primary_path"] else { return nil }
-                return PendingAgentMemoryPublication(memoryID: memoryID, projectPath: path, status: status)
+                      let path: String = row["primary_path"],
+                      let stamp: String = row["updated_at"] else { return nil }
+                return PendingAgentMemoryPublication(
+                    memoryID: memoryID,
+                    projectPath: path,
+                    status: status,
+                    verdictStamp: stamp
+                )
             }
         }
     }
@@ -206,8 +253,24 @@ extension ControlPlaneStore {
         var published = 0
         for entry in pending {
             do {
-                try await publishAgentMemoryReviewStatus(entry.memoryID, entry.projectPath, entry.status)
-                published += 1
+                // `verdictStamp` is the row's `updated_at` read with the entry:
+                // a verdict committed after the query moved the stamp, so the
+                // daemon refuses this stale one (`applied == false`) rather
+                // than letting a drained Approve overwrite a newer Reject.
+                let applied = try await publishAgentMemoryReviewStatus(
+                    entry.memoryID,
+                    entry.projectPath,
+                    entry.status,
+                    entry.verdictStamp
+                )
+                if applied {
+                    published += 1
+                } else {
+                    AppLogger.dataStore.notice(
+                        "memory.agent_publication_superseded",
+                        metadata: ["memory_id": entry.memoryID, "review_status": entry.status.rawValue]
+                    )
+                }
             } catch {
                 AppLogger.dataStore.silentFailure(
                     "memory.agent_publication_retry_deferred",

@@ -801,7 +801,9 @@ final class TeamMemorySyncDomain: TeamMemorySyncCycling, Sendable {
                 skippedUnchanged += 1
                 continue
             }
-            guard let body = try await store.openAgentMemoryBody(id: memory.id), !body.isEmpty,
+            // `syncableAgentMemoryBody`, not the review opener: the team lane
+            // must never ship a quarantine-parked body (review #2565).
+            guard let body = try await store.syncableAgentMemoryBody(id: memory.id), !body.isEmpty,
                   let engineID = try await store.engineMemoryID(for: memory.id) else {
                 skippedIneligible += 1
                 continue

@@ -255,6 +255,12 @@ extension BurnBarProjectCodeMemoryStore {
         if hadReviewStatus == false {
             try execute("UPDATE agent_memories SET review_status = 'approved'", [])
         }
+        // `ensureColumn` is a no-op once the column exists, so a daemon database
+        // whose bootstrap wrote the column with the old `DEFAULT 'approved'`
+        // keeps that fail-open default forever — the `IF NOT EXISTS` create
+        // above cannot update it either (review #2565). The only fix is a table
+        // rebuild; this runs once and then sees the right default forever after.
+        try repairAgentMemoriesReviewStatusDefaultIfNeeded()
         // Mirrors the canonical migrator's v51 column. `code` is the shipped
         // default: only rows the Memory MCP engine mirrors are marked `agent`,
         // and only those may reach the blind sync lane.
@@ -572,5 +578,97 @@ extension BurnBarProjectCodeMemoryStore {
             []
         )
         try migrateLegacyPlaintextAgentMemories()
+    }
+
+    /// Review #2565: `ALTER TABLE … ADD COLUMN` sets a column's default once —
+    /// `ensureColumn` above is a no-op on a table that already carries
+    /// `review_status`, and an `IF NOT EXISTS` create never rewrites an
+    /// existing schema. An `agent_memories` table bootstrapped by an older
+    /// daemon therefore keeps `DEFAULT 'approved'` indefinitely: every insert
+    /// that omits the column lands pre-approved, fail-open. The only fix is a
+    /// table rebuild — `agent_memories` predates the review lifecycle, so a
+    /// stale default is the ONLY thing the rebuild changes; every column and
+    /// row is carried verbatim.
+    ///
+    /// The rebuild is generic rather than a fixed column list because the app's
+    /// GRDB migrator has since added columns this bootstrap never names
+    /// (`user_id`, `agent_id`, `run_id`, `app_id`): rebuilding from a canned
+    /// schema would silently drop them.
+    private func repairAgentMemoriesReviewStatusDefaultIfNeeded() throws {
+        let columns = try queryRows("PRAGMA table_info(agent_memories)", [])
+        guard columns.isEmpty == false,
+              let reviewColumn = columns.first(where: { $0.string(1) == "review_status" }) else { return }
+        // `dflt_value` arrives as it was declared — `'quarantined'`, quotes
+        // included, or NULL when no default exists. Both need the rebuild.
+        let declaredDefault = reviewColumn.optionalString(4)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+        guard declaredDefault != MemoryReviewStatus.quarantined.rawValue else { return }
+
+        var definitions: [String] = []
+        var quotedNames: [String] = []
+        var primaryKeyColumns: [String] = []
+        for column in columns {
+            let name = column.string(1)
+            guard name.isEmpty == false else { continue }
+            let type = column.string(2).isEmpty ? "TEXT" : column.string(2)
+            var definition = "\"\(name)\" \(type)"
+            if column.string(3) == "1" { definition += " NOT NULL" }
+            if name == "review_status" {
+                definition += " DEFAULT 'quarantined'"
+            } else if let other = column.optionalString(4) {
+                definition += " DEFAULT \(other)"
+            }
+            definitions.append(definition)
+            quotedNames.append("\"\(name)\"")
+            if column.int64(5) > 0 { primaryKeyColumns.append("\"\(name)\"") }
+        }
+        if primaryKeyColumns.isEmpty == false {
+            definitions.append("PRIMARY KEY (\(primaryKeyColumns.joined(separator: ", ")))")
+        }
+
+        // foreign_keys cannot toggle inside a transaction, so the pragma moves
+        // first and restores after COMMIT — nothing declares an FK into this
+        // table today, but the rebuild must not start failing the day one does.
+        try execute("PRAGMA foreign_keys = OFF", [])
+        do {
+            try execute("BEGIN IMMEDIATE", [])
+            try execute(
+                """
+                CREATE TABLE agent_memories__review_default_repair (
+                    \(definitions.joined(separator: ",\n    "))
+                )
+                """,
+                []
+            )
+            let names = quotedNames.joined(separator: ", ")
+            try execute(
+                "INSERT INTO agent_memories__review_default_repair (\(names)) SELECT \(names) FROM agent_memories",
+                []
+            )
+            try execute("DROP TABLE agent_memories", [])
+            try execute("ALTER TABLE agent_memories__review_default_repair RENAME TO agent_memories", [])
+            try execute("COMMIT", [])
+        } catch {
+            try? execute("ROLLBACK", [])
+            try? execute("DROP TABLE IF EXISTS agent_memories__review_default_repair", [])
+            try execute("PRAGMA foreign_keys = ON", [])
+            throw error
+        }
+        try execute("PRAGMA foreign_keys = ON", [])
+        try execute(
+            "CREATE INDEX IF NOT EXISTS agent_memories_review_status_idx ON agent_memories(project_id, review_status, updated_at)",
+            []
+        )
+        try execute("CREATE INDEX IF NOT EXISTS agent_memories_project_idx ON agent_memories(project_id, scope, updated_at)", [])
+        // The app's v51 index names columns only the GRDB migrator adds; a
+        // daemon-only database has none of them, so recreate it only when ALL
+        // the columns it indexes are actually there.
+        let scopeColumns: Set<String> = ["\"user_id\"", "\"agent_id\"", "\"run_id\"", "\"app_id\""]
+        if scopeColumns.isSubset(of: Set(quotedNames)) {
+            try execute(
+                "CREATE INDEX IF NOT EXISTS agent_memories_chat_scope_idx ON agent_memories(source_kind, user_id, agent_id, run_id, app_id, updated_at)",
+                []
+            )
+        }
     }
 }

@@ -650,8 +650,11 @@ final class MemoryCloudSyncService: Sendable {
             // their document on the engine's own id so every device converges on one
             // document (the daemon id is derived from a path-dependent project id).
             let isAgent = memory.sourceKind == .agent
+            // The sync opener is the publication-landed body ONLY (review
+            // #2565): `openAgentMemoryBody` falls back to the quarantine copy,
+            // and sealing that would upload an unreviewed body.
             let resolvedBody = isAgent
-                ? try await store.openAgentMemoryBody(id: memory.id)
+                ? try await store.syncableAgentMemoryBody(id: memory.id)
                 : try await store.openChatMemoryBody(id: memory.id)
             // A forgotten mirrored row keeps its id mapping with an emptied body;
             // it must not be re-uploaded as an empty memory.

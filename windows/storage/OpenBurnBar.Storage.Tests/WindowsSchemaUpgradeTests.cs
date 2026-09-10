@@ -34,8 +34,8 @@ public sealed class WindowsSchemaUpgradeTests
 {
     private const string PreviousEndpoint = "v59_founder_lens";
     private const long PreviousMigrationCount = 60;
-    private const string CurrentEndpoint = "v67_agent_memory_inbox";
-    private const long CurrentMigrationCount = 68;
+    private const string CurrentEndpoint = "v68_agent_memories_review_default_repair";
+    private const long CurrentMigrationCount = 69;
 
     private const string Passphrase = "OBB-WinPort-SchemaUpgrade-Test-Key-0000000=";
     private const string KeyProvenance = "test-static:schema-upgrade";
@@ -166,7 +166,7 @@ public sealed class WindowsSchemaUpgradeTests
         // history must stay a strict PREFIX for the upgrade path to engage.
         Execute(
             profile.DatabasePath,
-            "DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies', 'v66_agent_memory_bodies', 'v67_agent_memory_inbox')");
+            "DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies', 'v66_agent_memory_bodies', 'v67_agent_memory_inbox', 'v68_agent_memories_review_default_repair')");
 
         WindowsStorageProvisioningReport report =
             provisioner.EnsureReady(profile.DatabasePath, Passphrase, KeyProvenance);
@@ -355,7 +355,7 @@ public sealed class WindowsSchemaUpgradeTests
             DROP TABLE IF EXISTS agent_memory_bodies;
             DROP INDEX IF EXISTS agent_memory_inbox_user_applied_idx;
             DROP TABLE IF EXISTS agent_memory_inbox;
-            DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies', 'v66_agent_memory_bodies', 'v67_agent_memory_inbox');
+            DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory', 'v62_war_room_originator', 'v63_standing_orders', 'v64_token_usage_start_time_index', 'v65_memory_quarantine_bodies', 'v66_agent_memory_bodies', 'v67_agent_memory_inbox', 'v68_agent_memories_review_default_repair');
             """);
     }
 

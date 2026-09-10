@@ -102,7 +102,7 @@ extension OpenBurnBarDaemonManager {
         // disk, and this is the first point on a launch where the daemon has
         // been health-checked. Idempotent — a published row stops matching the
         // backlog query — and silent when there is nothing to drain.
-        if let store = dataStore?.controlPlaneStore {
+        if let store = dataStore?.actor.controlPlaneStore {
             await store.retryPendingAgentMemoryPublications()
         }
     }

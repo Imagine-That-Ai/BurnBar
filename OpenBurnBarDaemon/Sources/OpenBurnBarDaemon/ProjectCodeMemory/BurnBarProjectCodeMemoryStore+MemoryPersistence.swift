@@ -133,7 +133,7 @@ extension BurnBarProjectCodeMemoryStore {
             do {
                 let rows = try queryRows(
                     """
-                    SELECT kind, scope, tags_json, source_path, review_status
+                    SELECT kind, scope, tags_json, source_path, review_status, updated_at
                     FROM agent_memories
                     WHERE id = ? AND project_id = ?
                     LIMIT 1
@@ -144,6 +144,45 @@ extension BurnBarProjectCodeMemoryStore {
                     throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
                 }
                 let currentStatus = MemoryReviewStatus(rawValue: row.string(4)) ?? .approved
+                let currentUpdatedAt = row.string(5)
+
+                // Version-conditional transition (review #2565): a caller that
+                // committed a verdict locally at `expectedUpdatedAt` must not
+                // overwrite a NEWER verdict that landed meanwhile — an Approve
+                // RPC arriving after the member's later Reject would otherwise
+                // resurrect the rejected body into publication. The comparison
+                // uses the exact stored stamp and verdict: date conversion can
+                // round distinct stamps together, and equal timestamps alone
+                // cannot distinguish Approve from Reject. Refusal makes no status
+                // write, no body move, no review event. The audit row IS
+                // written — a refused publish is exactly the event a postmortem
+                // looks for.
+                if let expected = request.expectedUpdatedAt {
+                    let stale = expected.isEmpty || currentUpdatedAt != expected || currentStatus != request.status
+                    if stale {
+                        let auditHash = try auditEvent(
+                            action: "memory.review_status_stale",
+                            domain: "memory",
+                            projectID: projectID,
+                            subjectID: memoryID,
+                            labels: [
+                                "review_status:\(request.status.rawValue)",
+                                "current_status:\(currentStatus.rawValue)",
+                                "expected_updated_at:\(expected)",
+                                "current_updated_at:\(currentUpdatedAt)"
+                            ]
+                        )
+                        try execute("COMMIT", [])
+                        return BurnBarProjectMemoryReviewStatusResponse(
+                            traceID: traceID,
+                            projectID: projectID,
+                            memoryID: memoryID,
+                            status: currentStatus,
+                            auditHash: auditHash,
+                            applied: false
+                        )
+                    }
+                }
                 // Where the body IS depends on where the row has been, not only on
                 // what `review_status` says right now. The macOS app writes its own
                 // approval into this shared table and THEN calls
@@ -211,10 +250,18 @@ extension BurnBarProjectCodeMemoryStore {
                     try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: now)
                     bodyReference = Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)
                 }
+                // The applied row keeps the caller's verdict stamp, not a fresh
+                // clock read: the next preconditioned call compares `updated_at`
+                // against the stamp ITS verdict was committed under, and the two
+                // must be the same instant or every second call would look stale
+                // to itself.
+                let statusStamp = request.expectedUpdatedAt?.isEmpty == false
+                    ? request.expectedUpdatedAt ?? now
+                    : now
                 try execute(
                     "UPDATE agent_memories SET body_redacted = ?, review_status = ?, updated_at = ? WHERE id = ? AND project_id = ?",
                     [
-                        .text(bodyReference), .text(request.status.rawValue), .text(now),
+                        .text(bodyReference), .text(request.status.rawValue), .text(statusStamp),
                         .text(memoryID), .text(projectID)
                     ]
                 )

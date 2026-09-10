@@ -22,8 +22,8 @@ public sealed class WindowsStorageDevHostRuntimeTests : IDisposable
     // Both move together on every new migration; the count equals the length of
     // WindowsSqlCipherProvisioner.AppliedMigrationIdentifiers (= the Swift
     // migrator's registration count).
-    private const string ExpectedSchemaEndpoint = "v67_agent_memory_inbox";
-    private const long ExpectedMigrationCount = 68;
+    private const string ExpectedSchemaEndpoint = "v68_agent_memories_review_default_repair";
+    private const long ExpectedMigrationCount = 69;
 
     public void Dispose()
     {

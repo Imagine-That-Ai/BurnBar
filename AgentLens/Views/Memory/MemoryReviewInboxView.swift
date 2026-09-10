@@ -278,8 +278,12 @@ struct MemoryReviewInboxHost: View {
         store: ControlPlaneStore,
         scope: MemoryScope,
         sourceFilter: MemoryReviewInboxModel.SourceFilter = .all,
-        /// The signed-in member, for the user-scoped `agent_memory_inbox` read
-        /// behind "Arrived from <device>". Nil simply names no device.
+        /// The signed-in member — the account the agent partition scopes itself
+        /// to (review #2565): a mirrored row renders, opens and is actionable
+        /// here only while unclaimed or claimed by this account. It also names
+        /// the member for the user-scoped `agent_memory_inbox` read behind
+        /// "Arrived from <device>". Nil simply names no device and sees only
+        /// unclaimed agent rows.
         userID: String? = nil,
         afterStatusChange: @escaping @MainActor () async -> Void = {}
     ) {
@@ -294,25 +298,31 @@ struct MemoryReviewInboxHost: View {
             scope: scope,
             sourceFilter: sourceFilter,
             loadPage: { request, sourceKinds in
-                try await store.memoryPage(request, sourceKinds: sourceKinds)
+                try await store.memoryPage(
+                    request,
+                    sourceKinds: sourceKinds,
+                    actingAccountUserID: userID
+                )
             },
             // Sealed bodies are fetched by memory id and carry their own source
             // kind, so the chat-named opener serves usage rows too. A mirrored
             // agent-lane memory keeps its body in the daemon's tables instead,
             // so the opener falls through to those when the snapshot has none;
             // both readers are keyed on the same memory id, so the chain resolves
-            // exactly one body and chat rows never take the second read.
+            // exactly one body and chat rows never take the second read. The
+            // agent opener applies the same account guard the page fetch did.
             openBody: { id in
                 if let snapshotBody = try await store.openChatMemoryBody(id: id) {
                     return snapshotBody
                 }
-                return try await store.openAgentMemoryBody(id: id)
+                return try await store.openAgentMemoryBody(id: id, actingAccountUserID: userID)
             },
             setStatus: { id, status, sourceKinds in
                 let changed = try await store.setMemoryReviewStatus(
                     id: id,
                     status: status,
                     sourceKinds: sourceKinds,
+                    actingAccountUserID: userID,
                     now: Date()
                 )
                 await afterStatusChange()
@@ -322,6 +332,7 @@ struct MemoryReviewInboxHost: View {
                 let changed = try await store.deleteMemoryAuthorityRecord(
                     id: id,
                     sourceKinds: sourceKinds,
+                    actingAccountUserID: userID,
                     now: Date()
                 )
                 // A forgotten approved memory must leave the exported set the

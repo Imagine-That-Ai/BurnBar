@@ -216,16 +216,59 @@ extension ControlPlaneStore {
         return memoryFactTombstoneID(memoryID: "\(memoryID)#engine:\(engineMemoryID)")
     }
 
+    /// The delete-time half of `enqueueTombstonesForUnsyncableAgentMemories`:
+    /// that helper discovers stale rows by joining `agent_memories`, so once the
+    /// row itself is deleted there is nothing left to join — the tombstone must
+    /// be written in the same transaction as the delete. Same shape as the
+    /// enqueue path writes: no source refs (a mirrored memory has no chat
+    /// citations) and the engine-keyed id.
+    static func insertAgentMemoryFactTombstone(
+        db: Database,
+        memoryID: MemoryID,
+        userID: String,
+        engineMemoryID: String?,
+        reason: String,
+        now: Date
+    ) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO memory_fact_tombstones (
+                id, user_id, memory_id, source_refs_json, reason, created_at, replicated_at
+            ) VALUES (?, ?, ?, '[]', ?, ?, NULL)
+            ON CONFLICT(id) DO UPDATE SET
+                user_id = excluded.user_id,
+                reason = excluded.reason,
+                created_at = excluded.created_at,
+                replicated_at = NULL
+            """,
+            arguments: [
+                agentMemoryFactTombstoneID(memoryID: memoryID, engineMemoryID: engineMemoryID),
+                userID,
+                memoryID,
+                normalizedMemoryForgetReason(reason),
+                now
+            ]
+        )
+    }
+
     /// Rows the cloud lane may replicate: member-authored chat memories and the
     /// memories the Memory MCP engine mirrored (`agent`). Repository knowledge
     /// (`code`) and the passive usage kinds never leave the device.
+    ///
+    /// A mirrored row awaiting daemon publication is excluded even though it
+    /// reads `approved` (review #2565): its `agent_memory_bodies` body is still
+    /// empty — the plaintext is parked in `memory_quarantine_bodies` — so
+    /// sealing it would upload an EMPTY fact under the engine id, or (through
+    /// the quarantine fallback opener the sync lane used to take) an
+    /// UNREVIEWED one. The retry lane republishes it; the next cycle uploads.
     func cloudSyncCandidateChatMemories(userID: String) async throws -> [Memory] {
         try await claimUnownedAgentMemories(userID: userID)
         return try await fetchActiveMemoryAuthorityRecords(sourceKinds: [.chat, .agent])
             .filter { memory in
                 memory.reviewStatus == .approved &&
                 memory.validTo == nil &&
-                memory.scope.userID == userID
+                memory.scope.userID == userID &&
+                Self.isAwaitingDaemonPublication(memory) == false
             }
     }
 

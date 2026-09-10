@@ -26,13 +26,22 @@ final class ControlPlaneStore: Sendable {
     /// RPC. See `ControlPlaneStore+MemoryPublication.swift`.
     let publishAgentMemoryReviewStatus: AgentMemoryReviewPublishing
 
+    /// How an agent-lane forget reaches the daemon BEFORE the app's own row
+    /// delete (review #2565): the daemon owns the quarantine body, the
+    /// published section and the engine mirror, and a throwing call leaves the
+    /// local row untouched. See `deleteMemoryAuthorityRecord`.
+    let forgetAgentMemory: AgentMemoryForgetting
+
     init(
         dbQueue: any DatabaseWriter,
         publishAgentMemoryReviewStatus: @escaping AgentMemoryReviewPublishing =
-            ControlPlaneStore.liveAgentMemoryReviewPublisher
+            ControlPlaneStore.liveAgentMemoryReviewPublisher,
+        forgetAgentMemory: @escaping AgentMemoryForgetting =
+            ControlPlaneStore.liveAgentMemoryForgetter
     ) {
         self.dbQueue = dbQueue
         self.publishAgentMemoryReviewStatus = publishAgentMemoryReviewStatus
+        self.forgetAgentMemory = forgetAgentMemory
     }
 
     // MARK: - Operating Action History
