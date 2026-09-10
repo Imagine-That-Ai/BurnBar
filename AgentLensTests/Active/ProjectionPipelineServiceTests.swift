@@ -666,6 +666,37 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         )
     }
 
+    /// A re-embed lease covers at most one embedding slice
+    /// (`ProjectionPipelineRuntimeTuning.reembedSliceSize`) and then parks the same
+    /// durable row on a future `availableAt`, so a corpus wider than one slice
+    /// converges across passes instead of spiking CPU inside a single lease. Drive
+    /// that continuation the way the worker does — sweep, let the pacing delay
+    /// elapse on the injected clock, sweep again — until the row reaches
+    /// `.completed`, and report how many re-embed jobs finished. The count is a
+    /// delta: draining the initial projection already completes the rebuild's own
+    /// re-embed, so an absolute count would read as "done" before this job runs.
+    private func drainReembedJob(
+        service: ProjectionPipelineService,
+        store: DataStore,
+        clock: OpenBurnBarFakeClock,
+        maxSweeps: Int = 64
+    ) async throws -> Int {
+        let completedBefore = try await completedReembedJobCount(in: store)
+        for _ in 0 ..< maxSweeps {
+            _ = try await service.runSweep(maxJobs: 10)
+            let completedNow = try await completedReembedJobCount(in: store)
+            if completedNow > completedBefore { return completedNow - completedBefore }
+            clock.advance(seconds: ProjectionPipelineRuntimeTuning.reembedContinuationDelaySeconds)
+        }
+        return 0
+    }
+
+    private func completedReembedJobCount(in store: DataStore) async throws -> Int {
+        try await store.fetchProjectionJobs(statuses: [.completed], limit: 500)
+            .filter { $0.jobType == .reembed }
+            .count
+    }
+
     // MARK: - VAL-INDEX-004: Unchanged chunks are skipped
 
     func test_unchangedChunks_areSkipped_duringReprojection() async throws {
@@ -1553,15 +1584,17 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Create a new version embedder and trigger re-embed for ALL chunks
         let embedderV2 = DeterministicFakeEmbeddingProvider(versionTag: "reembed-pg-v2", seed: "reembed-pg-v2-seed")
+        let clock = OpenBurnBarFakeClock(now: base)
         let serviceV2 = ProjectionPipelineService(
             dataStore: store,
             leaseOwner: "worker-reembed-v2",
+            nowProvider: { clock.now() },
             chunkEmbedder: embedderV2
         )
         try await serviceV2.enqueueReembedJob(reason: "test-reembed-pagination", priority: 1)
 
-        let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
-        XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
+        let completedReembedJobs = try await drainReembedJob(service: serviceV2, store: store, clock: clock)
+        XCTAssertEqual(completedReembedJobs, 1, "Re-embed job should complete.")
 
         // Verify all chunks got re-embedded in the new version
         let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
@@ -3610,16 +3643,18 @@ extension ProjectionPipelineServiceTests {
 
         // Trigger re-embed with new version — must paginate through all documents
         let embedderV2 = DeterministicFakeEmbeddingProvider(versionTag: "reembed-boundary-v2", seed: "reembed-boundary-v2-seed")
+        let clock = OpenBurnBarFakeClock(now: base)
         let serviceV2 = ProjectionPipelineService(
             dataStore: store,
             leaseOwner: "worker-reembed-boundary-v2",
+            nowProvider: { clock.now() },
             chunkEmbedder: embedderV2,
             paginationPageSize: 100
         )
         try await serviceV2.enqueueReembedJob(reason: "test-reembed-boundary", priority: 1)
 
-        let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
-        XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
+        let completedReembedJobs = try await drainReembedJob(service: serviceV2, store: store, clock: clock)
+        XCTAssertEqual(completedReembedJobs, 1, "Re-embed job should complete.")
 
         let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)
         let v2Embeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: versionV2ID)

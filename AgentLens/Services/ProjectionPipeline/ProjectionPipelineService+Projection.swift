@@ -123,7 +123,9 @@ extension ProjectionPipelineService {
         )
     }
 
-    @discardableResult
+    // Deliberately NOT `@discardableResult`: dropping `hasMore` is exactly how a
+    // full-corpus re-embed got truncated at one slice, so the compiler should
+    // object the next time someone tries.
     internal func processReembed(_ job: ProjectionJobRecord) async throws -> ReembedSliceResult {
         // Read one bounded slice plus one look-ahead row. The look-ahead tells
         // the queue whether to defer this same durable job without a corpus
