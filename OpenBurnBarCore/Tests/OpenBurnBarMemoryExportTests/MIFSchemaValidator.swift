@@ -316,6 +316,13 @@ final class MIFSchemaValidator {
     private func numeric(_ value: Any?) -> Double? {
         guard let value, isBool(value) == false else { return nil }
         if let number = value as? NSNumber { return number.doubleValue }
+        // swift-corelibs-foundation hands JSON numbers back as native Swift numbers that do not
+        // always bridge to NSNumber through `Any`; match them by type before giving up.
+        if let int = value as? Int { return Double(int) }
+        if let int = value as? Int64 { return Double(int) }
+        if let uint = value as? UInt64 { return Double(uint) }
+        if let double = value as? Double { return double }
+        if let float = value as? Float { return Double(float) }
         return nil
     }
 
