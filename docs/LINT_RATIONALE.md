@@ -167,6 +167,8 @@ reject the advisory again instead of letting the ignore rot.
 
 Current entries:
 
+- **GHSA-82fw-gwwq-j7x9** (vitest mocker path traversal, moderate, expires 2026-12-09): dev-only test runner; syncpack pins vitest 4.1.8 monorepo-wide and website's lockfile cannot be re-locked at 4.1.11 with npm 10.9.8. Paired entries in `osv-scanner.toml` and `scripts/ci/check-npm-audit-fail-closed.mjs`.
+- **GHSA-2q42-4q24-7rgv** (TypeSpec compiler/openapi3, expires 2026-12-09): devDependencies of `tools/schema-sync`, which only reads developer-selected local spec files; OSV lists no fixed version. Paired entries in `osv-scanner.toml` and `scripts/ci/check-npm-audit-fail-closed.mjs`.
 - **GHSA-528h-pc64-c93x** (stream-json path-filter DoS, expires 2026-12-03):
   `pick`/`ignore`/`filter`/`replace` recompute the whole path string per token,
   so deeply nested JSON costs O(depth²). The only depender is `firebase-tools`,
@@ -187,6 +189,14 @@ Current entries:
   command, not untrusted request bodies on a served event loop, which is the
   attack the advisory describes. Remove the entries when `firebase-tools`
   migrates to `stream-json` 3.x.
+- **GHSA-8cw4-87c7-c6xx** (csv-parse prototype replacement, expires 2026-12-09):
+  a duplicated `__proto__` header replaces the parsed record's prototype when
+  `columns` and `group_columns_by_name` are both set. The only depender is
+  `firebase-tools`, a `functions/` **devDependency** that never reaches a deployed
+  bundle and only parses developer-selected local CSV files (`firebase auth:import`).
+  The only fixed line is 7.0.2, a major firebase-tools has not adopted, and an
+  override is untested against auth:import. Paired entries in `osv-scanner.toml`
+  and `scripts/ci/check-npm-audit-fail-closed.mjs`.
 
 The previous entry (GHSA-mh99-v99m-4gvg, brace-expansion DoS, expiring
 2026-08-21) was retired when the vendored callable CommonJS shim in

@@ -54,6 +54,24 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // callable shim in functions/vendor/openburnbar/brace-expansion-cjs removed the
 // final vulnerable 1.x copies from the dependency tree.
 export const ADVISORY_ALLOWLIST = {
+  "GHSA-82fw-gwwq-j7x9": {
+    // reason: @vitest/mocker redirect-mock path traversal (moderate) in the
+    // dev-only vitest 4.1.8 the monorepo is syncpack-pinned to; the fixed
+    // 4.1.11 cannot be re-locked in website with npm 10.9.8 (arborist
+    // `edgesOut` fault). Paired with the osv-scanner.toml entry.
+    reason:
+      "vitest mocker path traversal: moderate, dev-only test runner; monorepo-wide bump to 4.1.11 is a follow-up",
+    expires: "2026-12-09",
+  },
+  "GHSA-2q42-4q24-7rgv": {
+    // reason: @typespec/compiler and @typespec/openapi3 1.15.0 are
+    // devDependencies of tools/schema-sync, a schema-generation tool that only
+    // reads developer-selected local spec files. OSV lists no fixed version, so
+    // there is nothing to bump to. Paired with the osv-scanner.toml entry.
+    reason:
+      "TypeSpec compiler/openapi3 advisory: dev-only schema-sync tooling over local files, no fixed release published",
+    expires: "2026-12-09",
+  },
   "GHSA-528h-pc64-c93x": {
     // reason: quadratic path-recompute DoS in stream-json's pick/ignore/filter/
     // replace filters. Only firebase-tools depends on it, as a devDependency,
@@ -70,6 +88,18 @@ export const ADVISORY_ALLOWLIST = {
     reason:
       "stream-json filter DoS: dev-only transitive of firebase-tools, which requires the 1.x CommonJS entry points; the only fix (3.5.0+) is ESM-only with renamed exports and breaks database:import/auth:import/Next.js at load time, and no patched 1.x exists.",
     expires: "2026-12-03",
+  },
+  "GHSA-8cw4-87c7-c6xx": {
+    // reason: csv-parse 5.6.0 replaces a parsed record's prototype when a CSV
+    // carries a duplicated `__proto__` header with `columns` and
+    // `group_columns_by_name` both set. Only firebase-tools depends on it, as a
+    // functions/ devDependency that never reaches a deployed bundle, and it only
+    // parses developer-selected local files (`firebase auth:import`). The only
+    // fixed line is 7.0.2, a major firebase-tools has not adopted; an override
+    // is untested against auth:import. Paired with the osv-scanner.toml entry.
+    reason:
+      "csv-parse prototype replacement via duplicated __proto__ header: dev-only transitive of firebase-tools over developer-selected local CSV files; the only fix (7.0.2) is a major firebase-tools has not adopted",
+    expires: "2026-12-09",
   },
 };
 

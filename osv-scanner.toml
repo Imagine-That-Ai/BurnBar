@@ -31,3 +31,35 @@ ignoreUntil = 2026-12-03T00:00:00Z
 # devDependency that is not part of any deployed functions bundle. Re-evaluate
 # when firebase-tools migrates to stream-json 3.x.
 reason = "stream-json filter DoS (GHSA-528h-pc64-c93x): dev-only transitive of firebase-tools, which requires the 1.x CommonJS entry points; the only fix (3.5.0+) is ESM-only with renamed exports and breaks database:import/auth:import/Next.js at load time, and no patched 1.x exists. Unreachable in this consumer (local developer files via CLI, never a served event loop). Time-boxed pending an upstream firebase-tools migration."
+
+[[IgnoredVulns]]
+id = "GHSA-2q42-4q24-7rgv"
+ignoreUntil = 2026-12-09T00:00:00Z
+# reason: @typespec/compiler and @typespec/openapi3 1.15.0 in
+# tools/schema-sync (devDependencies of a schema-generation tool that runs
+# only on developer-selected local spec files). OSV lists no fixed version;
+# re-evaluate when TypeSpec publishes a patched line.
+reason = "TypeSpec compiler/openapi3 advisory: dev-only schema-sync tooling over local files, no fixed release published; re-evaluate by 2026-12-09"
+
+[[IgnoredVulns]]
+id = "GHSA-82fw-gwwq-j7x9"
+ignoreUntil = 2026-12-09T00:00:00Z
+# reason: @vitest/mocker redirect-mock path traversal (moderate, 5.9) in vitest
+# 4.1.8, a devDependency of the test runner only. syncpack pins vitest to one
+# version across the monorepo and website/package-lock.json cannot be
+# re-resolved at 4.1.11 with npm 10.9.8 (arborist `edgesOut` fault), so the
+# monorepo-wide bump is a follow-up; the fixed line is 4.1.11.
+reason = "vitest mocker path traversal: moderate, dev-only test runner; monorepo-wide bump to 4.1.11 blocked by the npm arborist fault on website's lockfile; re-evaluate by 2026-12-09"
+
+
+[[IgnoredVulns]]
+id = "GHSA-8cw4-87c7-c6xx"
+ignoreUntil = 2026-12-09T00:00:00Z
+# reason: csv-parse 5.6.0 prototype replacement through a duplicated
+# `__proto__` header when `columns` and `group_columns_by_name` are both set.
+# The only depender is firebase-tools (a functions/ devDependency, never a
+# deployed bundle), which reads developer-selected local CSV files for
+# `firebase auth:import`. The only fixed line is 7.0.2, a major firebase-tools
+# has not adopted; forcing it through an override is untested against
+# auth:import. Re-evaluate when firebase-tools bumps csv-parse.
+reason = "csv-parse prototype replacement via duplicated __proto__ header: dev-only transitive of firebase-tools over developer-selected local CSV files; the only fix (7.0.2) is a major firebase-tools has not adopted; re-evaluate by 2026-12-09"
