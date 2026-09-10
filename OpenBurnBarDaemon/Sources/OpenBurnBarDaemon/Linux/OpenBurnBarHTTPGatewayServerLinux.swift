@@ -138,6 +138,8 @@ public actor BurnBarHTTPGatewayServer {
 
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
+    /// Accepted for launch parity with the macOS server; the Linux gateway does not yet route memory publication.
+    let memoryEgress: BurnBarMemoryEgressEnforcer?
 
     public init(
         configuration: BurnBarGatewayConfiguration,
@@ -151,8 +153,10 @@ public actor BurnBarHTTPGatewayServer {
         modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
         modelCatalogCacheTTL: TimeInterval = 0,
         logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
+        memoryEgress: BurnBarMemoryEgressEnforcer? = nil,
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
+        self.memoryEgress = memoryEgress
         self.configuration = configuration
         self.configStore = configStore
         self.usageRecorder = usageRecorder
