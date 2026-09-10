@@ -11,6 +11,18 @@ final class LinuxCLICapabilityTests: XCTestCase {
         let profile = BurnBarPeerCapabilityProfile.cliSupport
         let commandRPCs: Set<BurnBarRPCMethod> = [
             .health,
+            // Signed CLI courier for the Python MCP on signed installs
+            // (`openburnbar-cli search-sql|memory-remember|memory-forget|
+            // memory-model-policy`, #2499/#2501), the Memory Blind Sync
+            // inbox drain (`memory-sync-inbox-list|memory-sync-inbox-ack`,
+            // #2519) and the `code-explore` courier command (#2552).
+            .searchSQL,
+            .memoryRemember,
+            .memoryForget,
+            .memoryModelPolicy,
+            .memorySyncInboxList,
+            .memorySyncInboxAck,
+            .codeExplore,
             .controllerSummary,
             .questionsList,
             .followupsList,
@@ -65,7 +77,8 @@ final class LinuxCLICapabilityTests: XCTestCase {
             .computerUseSessionStart,
             .computerUseInvoke,
             .missionCreate,
-            .memoryRemember,
+            // A memory write the CLI has no command for stays outside its agency.
+            .memoryReviewStatus,
             .codeOpsDiagnostics,
             .clientDetach
         ] {
