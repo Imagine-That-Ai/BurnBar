@@ -278,8 +278,12 @@ struct MemoryReviewInboxHost: View {
         store: ControlPlaneStore,
         scope: MemoryScope,
         sourceFilter: MemoryReviewInboxModel.SourceFilter = .all,
-        /// The signed-in member, for the user-scoped `agent_memory_inbox` read
-        /// behind "Arrived from <device>". Nil simply names no device.
+        /// The signed-in member — the account the agent partition scopes itself
+        /// to (review #2565): a mirrored row renders, opens and is actionable
+        /// here only while unclaimed or claimed by this account. It also names
+        /// the member for the user-scoped `agent_memory_inbox` read behind
+        /// "Arrived from <device>". Nil simply names no device and sees only
+        /// unclaimed agent rows.
         userID: String? = nil,
         afterStatusChange: @escaping @MainActor () async -> Void = {}
     ) {
@@ -294,16 +298,31 @@ struct MemoryReviewInboxHost: View {
             scope: scope,
             sourceFilter: sourceFilter,
             loadPage: { request, sourceKinds in
-                try await store.memoryPage(request, sourceKinds: sourceKinds)
+                try await store.memoryPage(
+                    request,
+                    sourceKinds: sourceKinds,
+                    actingAccountUserID: userID
+                )
             },
             // Sealed bodies are fetched by memory id and carry their own source
-            // kind, so the chat-named opener serves usage rows too.
-            openBody: { id in try await store.openChatMemoryBody(id: id) },
+            // kind, so the chat-named opener serves usage rows too. A mirrored
+            // agent-lane memory keeps its body in the daemon's tables instead,
+            // so the opener falls through to those when the snapshot has none;
+            // both readers are keyed on the same memory id, so the chain resolves
+            // exactly one body and chat rows never take the second read. The
+            // agent opener applies the same account guard the page fetch did.
+            openBody: { id in
+                if let snapshotBody = try await store.openChatMemoryBody(id: id) {
+                    return snapshotBody
+                }
+                return try await store.openAgentMemoryBody(id: id, actingAccountUserID: userID)
+            },
             setStatus: { id, status, sourceKinds in
                 let changed = try await store.setMemoryReviewStatus(
                     id: id,
                     status: status,
                     sourceKinds: sourceKinds,
+                    actingAccountUserID: userID,
                     now: Date()
                 )
                 await afterStatusChange()
@@ -313,6 +332,7 @@ struct MemoryReviewInboxHost: View {
                 let changed = try await store.deleteMemoryAuthorityRecord(
                     id: id,
                     sourceKinds: sourceKinds,
+                    actingAccountUserID: userID,
                     now: Date()
                 )
                 // A forgotten approved memory must leave the exported set the
@@ -391,7 +411,7 @@ private struct MemoryReviewEmptyState: View {
 // MARK: - Row
 
 /// One reviewable memory card. Shows the transiently-opened body (truncated), a kind
-/// badge, a source tag for usage rows, a confidence hint, the source citation chip
+/// badge, a source tag for usage and agent rows, a confidence hint, the source citation chip
 /// (read-only — `onJumpToLocal: nil` self-disables it), and the review actions.
 /// Pending rows offer Approve / Reject (reject behind a destructive confirmation);
 /// approved rows show an "Approved" mark and offer Revoke. Every row offers "Forget
@@ -427,6 +447,9 @@ struct MemoryReviewRow: View {
                     kindBadge
                     if let sourceTag {
                         sourceTagView(sourceTag)
+                    }
+                    if item.isAwaitingPublication {
+                        sourceTagView(Self.pendingPublicationTag)
                     }
                     confidenceHint
                     Spacer(minLength: 0)
@@ -489,10 +512,21 @@ struct MemoryReviewRow: View {
         switch item.memory.sourceKind {
         case .safariAsk: ("Safari ask", "safari")
         case .agentSession: ("Agent session", "terminal")
-        // Engine memories arrive approved, so they never reach this inbox.
-        case .chat, .code, .agent: nil
+        // A memory a coding agent asked BurnBar to remember. It waits here like
+        // any other now (D-0005), and it says so — without the tag a member
+        // could not tell it apart from something they said in a chat.
+        case .agent: ("Coding agent", "curlybraces")
+        // Repository knowledge is the daemon's and never reaches this inbox.
+        case .chat, .code: nil
         }
     }
+
+    /// Shown beside "Coding agent" while the member's verdict is taken and the
+    /// daemon has not published the body (I-56): the daemon was unreachable at
+    /// the moment of approval, the decision is kept, and the next launch retries
+    /// it. Saying nothing here would make an in-app approval look complete while
+    /// the agent's own recall still could not serve the memory.
+    private static let pendingPublicationTag = (label: "Pending publication", icon: "clock.arrow.circlepath")
 
     private func sourceTagView(_ tag: (label: String, icon: String)) -> some View {
         HStack(spacing: DesignSystem.Spacing.xxs) {

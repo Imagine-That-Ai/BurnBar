@@ -97,5 +97,13 @@ extension OpenBurnBarDaemonManager {
         }
         await refreshDaemonMembershipCache(reason: "launch")
         await updateMemoryEgressPolicy(onlyIfChanged: true)
+        // The retry half of I-56: an agent-lane memory the member approved while
+        // the daemon was unreachable is approved in the app and unpublished on
+        // disk, and this is the first point on a launch where the daemon has
+        // been health-checked. Idempotent — a published row stops matching the
+        // backlog query — and silent when there is nothing to drain.
+        if let store = dataStore?.actor.controlPlaneStore {
+            await store.retryPendingAgentMemoryPublications()
+        }
     }
 }

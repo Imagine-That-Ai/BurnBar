@@ -8,6 +8,14 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
     public let tags: [String]
     public let confidence: Double
     public let sourcePath: String?
+    /// Where the written row lands in review. The default is `quarantined`, and
+    /// that is the whole point: `daemon.memory.remember` has no human caller —
+    /// every request on this wire is an agent write (the Memory MCP engine's
+    /// mirror, the signed CLI courier it speaks through, a `burnbar_remember`
+    /// turn). ADR R10 / decision D-0005 say a write whose origin is not a person
+    /// lands `quarantined`, so a caller that omits the field gets review, not
+    /// trust. A caller that genuinely carries a human verdict — the review lane
+    /// re-mirroring an already-approved row — says `approved` explicitly.
     public let reviewStatus: MemoryReviewStatus
     /// Present means the `agent` partition and keys its blind-sync document; `nil` keeps `"code"`.
     public let engineMemoryID: String?
@@ -20,7 +28,7 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         tags: [String] = [],
         confidence: Double = 1.0,
         sourcePath: String? = nil,
-        reviewStatus: MemoryReviewStatus = .approved,
+        reviewStatus: MemoryReviewStatus = .quarantined,
         engineMemoryID: String? = nil
     ) {
         self.text = text
@@ -47,7 +55,7 @@ public struct BurnBarProjectMemoryRememberRequest: Codable, Hashable, Sendable {
         self.tags = try values.decodeIfPresent([String].self, forKey: .tags) ?? []
         self.confidence = try values.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
         self.sourcePath = try values.decodeIfPresent(String.self, forKey: .sourcePath)
-        self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .approved
+        self.reviewStatus = try values.decodeIfPresent(MemoryReviewStatus.self, forKey: .reviewStatus) ?? .quarantined
         self.engineMemoryID = try values.decodeIfPresent(String.self, forKey: .engineMemoryID)
     }
 }
@@ -192,11 +200,24 @@ public struct BurnBarProjectMemoryReviewStatusRequest: Codable, Hashable, Sendab
     public let memoryID: String
     public let projectPath: String?
     public let status: MemoryReviewStatus
+    /// The `agent_memories.updated_at` stamp the caller committed this verdict
+    /// under. When present, the daemon applies the transition only while the
+    /// row has not moved past that stamp — a verdict that lost a race (a later
+    /// Reject already landed) is refused rather than resurrected. Absent means
+    /// "no precondition", which is what older clients and the daemon's own
+    /// tools send.
+    public let expectedUpdatedAt: String?
 
-    public init(memoryID: String, projectPath: String? = nil, status: MemoryReviewStatus) {
+    public init(
+        memoryID: String,
+        projectPath: String? = nil,
+        status: MemoryReviewStatus,
+        expectedUpdatedAt: String? = nil
+    ) {
         self.memoryID = memoryID
         self.projectPath = projectPath
         self.status = status
+        self.expectedUpdatedAt = expectedUpdatedAt
     }
 }
 
@@ -206,13 +227,41 @@ public struct BurnBarProjectMemoryReviewStatusResponse: Codable, Hashable, Senda
     public let memoryID: String
     public let status: MemoryReviewStatus
     public let auditHash: String
+    /// `false` when the daemon refused the transition because the row had moved
+    /// past the request's `expected_updated_at` stamp; `status` then reports
+    /// the verdict currently on the row. Wire-compatible by construction: a
+    /// daemon predating the precondition never sends the member, and decode
+    /// defaults it to `true`.
+    public let applied: Bool
 
-    public init(traceID: String, projectID: String, memoryID: String, status: MemoryReviewStatus, auditHash: String) {
+    public init(
+        traceID: String,
+        projectID: String,
+        memoryID: String,
+        status: MemoryReviewStatus,
+        auditHash: String,
+        applied: Bool = true
+    ) {
         self.traceID = traceID
         self.projectID = projectID
         self.memoryID = memoryID
         self.status = status
         self.auditHash = auditHash
+        self.applied = applied
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case traceID, projectID, memoryID, status, auditHash, applied
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.traceID = try values.decode(String.self, forKey: .traceID)
+        self.projectID = try values.decode(String.self, forKey: .projectID)
+        self.memoryID = try values.decode(String.self, forKey: .memoryID)
+        self.status = try values.decode(MemoryReviewStatus.self, forKey: .status)
+        self.auditHash = try values.decode(String.self, forKey: .auditHash)
+        self.applied = try values.decodeIfPresent(Bool.self, forKey: .applied) ?? true
     }
 }
 

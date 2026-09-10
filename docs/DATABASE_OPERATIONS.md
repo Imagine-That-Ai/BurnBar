@@ -115,6 +115,7 @@ No current migration is classified as independently reversible. SQL snippets pri
 | 66 | `v65_memory_quarantine_bodies` | atomic | unapplied-only | backup-restore | Encrypted review holding table for quarantined memory bodies |
 | 67 | `v66_agent_memory_bodies` | atomic | unapplied-only | backup-restore | Approved bodies for engine-mirrored memories, the copy blind sync seals and uploads |
 | 68 | `v67_agent_memory_inbox` | atomic | unapplied-only | backup-restore | Landing zone for memory facts pulled back from the member's cloud vault, drained by the engine |
+| 69 | `v68_agent_memories_review_default_repair` | atomic | unapplied-only | backup-restore | Rebuilds agent_memories so review_status defaults to quarantined (fail closed) where an older bootstrap left DEFAULT approved; columns, rows and indexes carried verbatim; no-op when the default is already correct |
 <!-- END GENERATED MIGRATION CATALOG -->
 
 Regenerate and verify the table with:

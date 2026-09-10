@@ -12,9 +12,14 @@ extension ControlPlaneStore {
         id: MemoryID,
         patch: MemoryPatch,
         sourceKinds: Set<MemorySourceKind>,
+        actingAccountUserID: String? = nil,
         now: Date = Date()
     ) async throws -> Bool {
-        guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
+        guard let existing = try await fetchMemoryAuthorityRecord(
+            id: id,
+            sourceKinds: sourceKinds,
+            actingAccountUserID: actingAccountUserID
+        ) else { return false }
         let partition = MemoryStoragePartition(existing.sourceKind)
         let patchedBody = patch.text?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let patchedBody {
@@ -115,9 +120,14 @@ extension ControlPlaneStore {
         id: MemoryID,
         status: MemoryReviewStatus,
         sourceKinds: Set<MemorySourceKind>,
+        actingAccountUserID: String? = nil,
         now: Date = Date()
     ) async throws -> Bool {
-        guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
+        guard let existing = try await fetchMemoryAuthorityRecord(
+            id: id,
+            sourceKinds: sourceKinds,
+            actingAccountUserID: actingAccountUserID
+        ) else { return false }
         let partition = MemoryStoragePartition(existing.sourceKind)
         let auditLabels = [
             "memory_id:\(id)",
@@ -157,7 +167,7 @@ extension ControlPlaneStore {
                 WHERE id = ?
                   AND source_kind = ?
                 """,
-                arguments: [status.rawValue, now, id, existing.sourceKind.rawValue]
+                arguments: [status.rawValue, nowString, id, existing.sourceKind.rawValue]
             )
             try Self.insertMemoryAuditEvent(
                 db: db,
@@ -166,6 +176,25 @@ extension ControlPlaneStore {
                 subjectID: id,
                 labels: auditLabels,
                 nowString: nowString
+            )
+        }
+        // The verdict is durable and audited above; publishing the BODY is the
+        // daemon's, so an agent-lane verdict is handed to
+        // `daemon.memory.review_status` and the daemon stays the single
+        // publisher (I-56). The call never throws and never undoes the verdict:
+        // an unreachable daemon leaves the row in the derived
+        // pending-publication state the inbox shows and the next launch
+        // retries. Chat and usage rows keep their bodies in the app's own
+        // snapshot table and have nothing to hand over.
+        if existing.sourceKind == .agent {
+            // The stamp is the `updated_at` this verdict was committed under:
+            // sent as the daemon's precondition so an RPC that lands after a
+            // newer verdict is refused instead of resurrecting it (#2565-F4).
+            await publishAgentMemoryReview(
+                id: id,
+                status: status,
+                projectID: existing.scope.projectID,
+                expectedUpdatedAt: nowString
             )
         }
         return true
@@ -178,18 +207,68 @@ extension ControlPlaneStore {
     func deleteMemoryAuthorityRecord(
         id: MemoryID,
         sourceKinds: Set<MemorySourceKind>,
+        actingAccountUserID: String? = nil,
         now: Date = Date()
     ) async throws -> Bool {
-        guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
+        guard let existing = try await fetchMemoryAuthorityRecord(
+            id: id,
+            sourceKinds: sourceKinds,
+            actingAccountUserID: actingAccountUserID
+        ) else { return false }
         let partition = MemoryStoragePartition(existing.sourceKind)
         let auditLabels = [
             "memory_id:\(id)",
             "source_kind:\(existing.sourceKind.rawValue)"
         ]
         let nowString = Self.iso8601String(now)
+
+        // Review #2565-F1: an agent-lane forget goes to the daemon FIRST and
+        // fails closed. The daemon owns the mirrored memory's other halves —
+        // the quarantined plaintext in `memory_quarantine_bodies`, the
+        // published project-memory section, the engine mirror — and it needs
+        // this row's `project_id` to find them, so the row must still exist
+        // when the call lands. A refused or unreachable daemon throws and
+        // every local byte stays: a forget that cannot reach the daemon is
+        // not a forget.
+        let engineMemoryID: String?
+        if existing.sourceKind == .agent {
+            let resolvedEngineID = try await self.engineMemoryID(for: id)
+            guard let projectID = existing.scope.projectID, projectID.isEmpty == false,
+                  let root = try await memoryProjectRecordedRoot(engineProjectID: projectID) else {
+                throw ChatMemoryAuthorityError.agentForgetRequiresDaemon
+            }
+            let response = try await forgetAgentMemory(id, root)
+            guard response.localDeleted,
+                  response.memoryID == id,
+                  response.projectID == projectID else {
+                throw ChatMemoryAuthorityError.agentForgetRequiresDaemon
+            }
+            engineMemoryID = resolvedEngineID
+        } else {
+            engineMemoryID = nil
+        }
+
         try await dbQueue.write { db in
-            if existing.reviewStatus == .approved,
-               existing.scope.userID != nil {
+            // The sealed cloud copy deletes through a fact tombstone — keyed on
+            // the engine id for a mirrored row, the same spelling
+            // `enqueueTombstonesForUnsyncableAgentMemories` uses, because that
+            // is what the cloud document is named. A mirrored row that was ever
+            // owned may have been uploaded under ANY earlier verdict, so the
+            // tombstone is not gated on `review_status` the way the chat path's
+            // is: a rejected or still-parked row can still have a cloud copy.
+            if existing.sourceKind == .agent {
+                if let owner = existing.scope.userID ?? actingAccountUserID {
+                    try Self.insertAgentMemoryFactTombstone(
+                        db: db,
+                        memoryID: id,
+                        userID: owner,
+                        engineMemoryID: engineMemoryID,
+                        reason: "user_delete",
+                        now: now
+                    )
+                }
+            } else if existing.reviewStatus == .approved,
+                      existing.scope.userID != nil {
                 try Self.insertMemoryFactTombstone(
                     db: db,
                     memory: existing,
@@ -201,6 +280,21 @@ extension ControlPlaneStore {
             try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, existing.sourceKind.rawValue])
             try db.execute(sql: "DELETE FROM memory_body_snapshots WHERE memory_id = ?", arguments: [id])
+            // The daemon's forget already removed its own copies; these are the
+            // same shared tables, so the deletes are belt-and-suspenders for a
+            // pre-forget daemon build or a row it never saw. The sync-body row
+            // is BLANKED, not deleted: `engine_memory_id` is a routing label,
+            // not memory content, and it is the only handle the fact-tombstone
+            // drain has on the sealed cloud document — deleting the row would
+            // make `cloudFactIdentity` fall back to the local id and leave the
+            // engine-keyed copy behind for ever.
+            if existing.sourceKind == .agent {
+                try db.execute(sql: "DELETE FROM memory_quarantine_bodies WHERE memory_id = ?", arguments: [id])
+                try db.execute(
+                    sql: "UPDATE agent_memory_bodies SET body = '', body_hash = '', updated_at = ? WHERE memory_id = ?",
+                    arguments: [nowString, id]
+                )
+            }
             try Self.insertMemoryAuditEvent(
                 db: db,
                 action: "memory.delete",

@@ -19,8 +19,29 @@ final class ControlPlaneStore: Sendable {
     /// purpose: the daemon never publishes, and no enforcement outlives the app.
     let memoryDeviceSyncGeneration = Locked<UInt64>(0)
 
-    init(dbQueue: any DatabaseWriter) {
+    /// How an agent-lane review verdict reaches the daemon, which is the only
+    /// process that may publish a quarantined body (I-56). Injected rather than
+    /// called straight through, so a test can drive a reachable and an
+    /// unreachable daemon; production takes the default, which is one socket
+    /// RPC. See `ControlPlaneStore+MemoryPublication.swift`.
+    let publishAgentMemoryReviewStatus: AgentMemoryReviewPublishing
+
+    /// How an agent-lane forget reaches the daemon BEFORE the app's own row
+    /// delete (review #2565): the daemon owns the quarantine body, the
+    /// published section and the engine mirror, and a throwing call leaves the
+    /// local row untouched. See `deleteMemoryAuthorityRecord`.
+    let forgetAgentMemory: AgentMemoryForgetting
+
+    init(
+        dbQueue: any DatabaseWriter,
+        publishAgentMemoryReviewStatus: @escaping AgentMemoryReviewPublishing =
+            ControlPlaneStore.liveAgentMemoryReviewPublisher,
+        forgetAgentMemory: @escaping AgentMemoryForgetting =
+            ControlPlaneStore.liveAgentMemoryForgetter
+    ) {
         self.dbQueue = dbQueue
+        self.publishAgentMemoryReviewStatus = publishAgentMemoryReviewStatus
+        self.forgetAgentMemory = forgetAgentMemory
     }
 
     // MARK: - Operating Action History
