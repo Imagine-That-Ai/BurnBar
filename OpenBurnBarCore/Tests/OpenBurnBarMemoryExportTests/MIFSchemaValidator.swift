@@ -295,22 +295,23 @@ final class MIFSchemaValidator {
     }
 
     private func isBool(_ value: Any) -> Bool {
-        #if canImport(Darwin)
-        (value as? NSNumber).map { CFGetTypeID($0) == CFBooleanGetTypeID() } ?? false
-        #else
-        // swift-corelibs-foundation decodes JSON true/false as `Bool`, never as a number-shaped
-        // NSNumber, and the CoreFoundation type-id check only exists on Darwin.
-        value is Bool
-        #endif
+        if let number = value as? NSNumber {
+            #if canImport(Darwin)
+            if CFGetTypeID(number) == CFBooleanGetTypeID() { return true }
+            #endif
+            // swift-corelibs-foundation boxes JSON booleans as NSNumber too, and there
+            // `NSNumber(1) is Bool` answers true, so the type check cannot tell 1 from
+            // true. The C type code can: a boolean NSNumber carries `c`; JSON integers
+            // and doubles never do.
+            return String(cString: number.objCType) == "c"
+        }
+        return value is Bool
     }
 
     private func boolValue(_ value: Any) -> Bool? {
         guard isBool(value) else { return nil }
-        #if canImport(Darwin)
-        return (value as? NSNumber)?.boolValue
-        #else
+        if let number = value as? NSNumber { return number.boolValue }
         return value as? Bool
-        #endif
     }
 
     private func numeric(_ value: Any?) -> Double? {
