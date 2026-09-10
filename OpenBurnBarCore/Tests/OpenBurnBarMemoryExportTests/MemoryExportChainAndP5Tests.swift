@@ -4,6 +4,7 @@
 
 import GRDB
 import XCTest
+@testable import OpenBurnBarData
 @testable import OpenBurnBarMemoryExport
 
 final class MemoryExportChainAndP5Tests: XCTestCase {
@@ -302,6 +303,122 @@ final class MemoryExportChainAndP5Tests: XCTestCase {
             identity,
             "a write to the store must not re-mint every canonical id"
         )
+    }
+
+    // MARK: - v51 tombstones (review #2564)
+
+    /// A store migrated only to v51 has `memory_source_tombstones` WITHOUT
+    /// `user_id`/`replicated_at` — v53 adds them — and the reader's
+    /// unconditional SELECT of both used to fail inside the read-only
+    /// transaction, killing the export of a store it could have carried.
+    func test_aV51EraSourceTombstoneReadsWithItsMissingColumnsNil() throws {
+        let queue = try DatabaseQueue(path: ":memory:")
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v51_chat_memory_authority")
+        try queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO memory_source_tombstones
+                    (id, thread_logical_id, message_id, content_hash, reason, created_at)
+                VALUES ('tmb_src_1', 'thread-1', 'msg-1', 'hash-1', 'source_deleted',
+                        '2026-01-01T00:00:00.000Z')
+                """
+            )
+        }
+        let snapshot = try queue.read { try MemoryExportStoreReader.read($0) }
+        let row = try XCTUnwrap(
+            snapshot.sourceTombstones.first { $0.id == "tmb_src_1" },
+            "the v51-shaped row must read"
+        )
+        XCTAssertNil(row.userID)
+        XCTAssertNil(row.replicatedAt)
+        XCTAssertEqual(row.threadLogicalID, "thread-1")
+        // And the fully migrated store still reads both columns when present.
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+        try queue.write { db in
+            try db.execute(
+                sql: "UPDATE memory_source_tombstones SET user_id = 'u-1', replicated_at = '2026-02-02T00:00:00.000Z' WHERE id = 'tmb_src_1'"
+            )
+        }
+        let upgraded = try XCTUnwrap(
+            try queue.read { try MemoryExportStoreReader.read($0) }
+                .sourceTombstones.first { $0.id == "tmb_src_1" }
+        )
+        XCTAssertEqual(upgraded.userID, "u-1")
+        XCTAssertEqual(upgraded.replicatedAt, "2026-02-02T00:00:00.000Z")
+    }
+
+    // MARK: - p5 digest leg (review #2564)
+
+    /// The CLI's P5 check used to pass `digestMismatch: []` unconditionally —
+    /// the leg existed in the report and never ran. The shared recipe is the
+    /// unkeyed `sha256(UTF-8(normalize(body)))` both stores compute over their
+    /// own rows: a row whose body differs between source and target is a hold
+    /// NAMED by id, not a count.
+    func test_aCorruptedRowFailsTheP5DigestLegByName() throws {
+        let queue = try MemoryExportFixtureStore.makeQueue()
+        try queue.write { db in
+            try MemoryExportFixtureStore.insertAppMemory(
+                db, id: "row-good", body: "the body both sides agree on."
+            )
+            try MemoryExportFixtureStore.insertAppMemory(
+                db, id: "row-bad", body: "the body the target corrupted."
+            )
+        }
+        let sourceDigests = try queue.read { try MemoryExportStoreReader.liveMemoryDigests($0) }
+        XCTAssertEqual(sourceDigests.count, 2)
+
+        let storeID = try XCTUnwrap(
+            try queue.read { try MemoryExportStoreReader.storeIdentity($0) }
+        )
+        let good = try XCTUnwrap(sourceDigests["row-good"])
+        let corrupted = String(repeating: "f", count: 64)
+        // As the CLI does: canonicalise the source ids, then diff against the
+        // target's map — one row agrees, one does not.
+        let canonicalDigests = Dictionary(uniqueKeysWithValues: sourceDigests.map { id, digest in
+            (MemoryExportIdentity.canonicalMemoryID(id, storeID: storeID), digest)
+        })
+        let canonicalGood = MemoryExportIdentity.canonicalMemoryID("row-good", storeID: storeID)
+        let canonicalBad = MemoryExportIdentity.canonicalMemoryID("row-bad", storeID: storeID)
+        let targetDigests = [canonicalGood: good, canonicalBad: corrupted]
+        let mismatch = Set(canonicalDigests.compactMap { id, digest -> String? in
+            guard let target = targetDigests[id] else { return nil }
+            return target == digest ? nil : id
+        })
+        XCTAssertEqual(mismatch, [canonicalBad], "exactly the corrupted row is named")
+
+        let result = MemoryExportP5Check.run(
+            gates: passingGates,
+            headBefore: 7,
+            headAfter: 7,
+            sourceLiveIDs: [canonicalGood, canonicalBad],
+            targetLiveIDs: [canonicalGood, canonicalBad],
+            digestMismatch: mismatch,
+            storeID: storeID
+        )
+        XCTAssertFalse(result.passed)
+        XCTAssertEqual(result.holdReasons, [.reconciliationMismatch])
+        guard case .object(let diff) = result.report.idSetDiff,
+              case .array(let named) = diff["digest_mismatch"] else {
+            XCTFail("the report must name the mismatched ids")
+            return
+        }
+        XCTAssertEqual(named, [.string(canonicalBad)])
+    }
+
+    /// The id-set leg alone cannot see a body swap — same ids both sides.
+    /// The digest leg is what makes the diff more than a count.
+    func test_theDigestLegIsSeparateFromTheIdSetLeg() throws {
+        let result = MemoryExportP5Check.run(
+            gates: passingGates,
+            headBefore: 1,
+            headAfter: 1,
+            sourceLiveIDs: ["a"],
+            targetLiveIDs: ["a"],
+            digestMismatch: ["a"],
+            storeID: "store-1"
+        )
+        XCTAssertFalse(result.passed, "equal id sets must not pass with a digest mismatch")
+        XCTAssertEqual(result.holdReasons, [.reconciliationMismatch])
     }
 
 }

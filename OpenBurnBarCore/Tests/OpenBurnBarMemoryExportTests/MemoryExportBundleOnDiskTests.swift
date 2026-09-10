@@ -796,4 +796,149 @@ return }
         }
         return names.sorted()
     }
+
+    // MARK: - atomic out (review #2564)
+
+    /// `--out` into an existing directory used to leave a stale `NNNNN.seg`
+    /// behind when a re-export produced FEWER segments — the manifest declares
+    /// the new count while a leftover file sits beside it. The write is now
+    /// staged and swapped: the destination is always the previous complete
+    /// bundle or the new one.
+    func test_aReExportLeavesNoStaleSegmentBehind() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        // First export at a tiny rotation size → several segments.
+        _ = try export(maxSectionBytes: 512, to: directory, seed: "rotate-re")
+        let bodiesDir = directory.appendingPathComponent("sections/06-bodies")
+        let firstFiles = try FileManager.default.contentsOfDirectory(atPath: bodiesDir.path)
+        XCTAssertGreaterThan(firstFiles.count, 1, "the first export must rotate to be a witness")
+
+        // Re-export into the same path at a size that fits one segment.
+        _ = try export(maxSectionBytes: 256 * 1024 * 1024, to: directory, seed: "rotate-re")
+        let secondFiles = try FileManager.default.contentsOfDirectory(atPath: bodiesDir.path)
+        XCTAssertEqual(secondFiles, ["00000.seg"], "no stale segment may survive the re-export")
+
+        // And the same holds for a stray file the export never wrote.
+        try Data("stale".utf8).write(to: bodiesDir.appendingPathComponent("99999.seg"))
+        _ = try export(maxSectionBytes: 256 * 1024 * 1024, to: directory, seed: "rotate-re")
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(atPath: bodiesDir.path),
+            ["00000.seg"],
+            "a file the writer did not produce must not survive the swap"
+        )
+    }
+
+    /// The temp staging dir is cleaned up — a completed export leaves exactly
+    /// the bundle, not its scaffolding.
+    func test_theStagingDirectoryDoesNotSurviveTheSwap() throws {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let directory = parent.appendingPathComponent("bundle")
+        _ = try export(maxSectionBytes: 512, to: directory, seed: "staging")
+
+        let siblings = try FileManager.default.contentsOfDirectory(atPath: parent.path)
+        XCTAssertEqual(
+            siblings.filter { $0.contains(".tmp-") || $0.contains(".old-") },
+            [],
+            "staging and replaced directories are cleaned, got: \(siblings)"
+        )
+        // The signing-key descriptor is the one deliberate neighbour.
+        XCTAssertTrue(siblings.contains("exporter-signing-key.json"))
+    }
+
+    // MARK: - signing-key descriptor (review #2564)
+
+    /// A bundle verifies against the key the DESCRIPTOR carries — nothing
+    /// injected. The descriptor beside the bundle is parsed, proves its own
+    /// self-signature, and its `signing_key_id` pairs with the manifest's
+    /// `exporter_device_key_id`; then the signature verifies with the
+    /// descriptor's public key alone.
+    func test_aBundleVerifiesAgainstTheCarriedSigningKeyDescriptor() throws {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let directory = parent.appendingPathComponent("bundle")
+        _ = try export(maxSectionBytes: 512, to: directory, seed: "signing-descriptor")
+
+        let descriptorData = try Data(
+            contentsOf: parent.appendingPathComponent("exporter-signing-key.json")
+        )
+        let descriptor = try MemoryExportSigningKeyDescriptor.parse(descriptor: descriptorData)
+        XCTAssertEqual(
+            descriptor.keyID,
+            MemoryExportCrypto.deviceKeyID(Self.signingKey.publicKey),
+            "the descriptor names the key that signed the bundle"
+        )
+
+        // The verification runs with NO injected key — the descriptor is the
+        // whole handoff.
+        let verification = try MemoryExportBundleVerifier.verify(
+            bundleAt: directory,
+            signingPublicKey: descriptor.publicKey,
+            recipient: recipient
+        )
+        XCTAssertTrue(verification.signatureVerified)
+        XCTAssertTrue(verification.isIntact, "problems: \(verification.problems)")
+        XCTAssertEqual(
+            verification.manifestExporterDeviceKeyID, descriptor.keyID,
+            "the signed manifest and the descriptor must name the same edk_"
+        )
+    }
+
+    /// A tampered descriptor — right shape, wrong key bytes or a signature
+    /// that does not verify — is refused at parse, never consulted.
+    func test_aForgedSigningKeyDescriptorIsRefusedAtParse() throws {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mif-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let directory = parent.appendingPathComponent("bundle")
+        _ = try export(maxSectionBytes: 512, to: directory, seed: "forged-descriptor")
+
+        let descriptorURL = parent.appendingPathComponent("exporter-signing-key.json")
+        var object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: try Data(contentsOf: descriptorURL)
+            ) as? [String: Any]
+        )
+        // Swap the key bytes for a different Ed25519 public key: the id no
+        // longer follows from the key AND the self-signature no longer verifies.
+        object["public_key"] = MemoryExportBase64URL.encode(
+            Curve25519.Signing.PrivateKey().publicKey.rawRepresentation
+        )
+        XCTAssertThrowsError(
+            try MemoryExportSigningKeyDescriptor.parse(
+                descriptor: try JSONSerialization.data(withJSONObject: object)
+            )
+        ) { error in
+            // Either refusal is correct — the parse never yields the forged key.
+            guard case MemoryExportSigningKeyDescriptor.DescriptorError.keyIDMismatch = error else {
+                XCTAssertEqual(error as? MemoryExportSigningKeyDescriptor.DescriptorError,
+                               .signatureInvalid)
+                return
+            }
+        }
+    }
+
+    /// The descriptor signature is over sha256(JCS(the three members)) —
+    /// recomputed here against a descriptor built by hand, not the writer's.
+    func test_theDescriptorSelfSignatureIsReproducibleFromTheDocumentedRecipe() throws {
+        let descriptor = MemoryExportSigningKeyDescriptor(
+            signingKey: Self.signingKey,
+            storeID: "sto_" + String(repeating: "b", count: 32)
+        )
+        let data = try descriptor.data(signingKey: Self.signingKey)
+        let parsed = try MemoryExportSigningKeyDescriptor.parse(descriptor: data)
+        XCTAssertEqual(parsed.keyID, descriptor.keyID)
+        XCTAssertEqual(parsed.storeID, descriptor.storeID)
+        XCTAssertEqual(
+            parsed.publicKey.rawRepresentation,
+            Self.signingKey.publicKey.rawRepresentation
+        )
+    }
 }

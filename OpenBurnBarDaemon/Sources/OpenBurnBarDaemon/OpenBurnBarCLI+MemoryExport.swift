@@ -4,10 +4,9 @@
 //
 // One `case "memory"` with the verbs `export | export-status | verify |
 // p5-check`. The parsing and the engine both live in
-// `OpenBurnBarCore/Sources/OpenBurnBarMemoryExport`, because the artefact users
-// actually run is the Xcode-built binary inside `OpenBurnBar.app` whose "Export
-// memory" action calls the same engine IN-PROCESS. Two call sites, one parser,
-// no drift.
+// `OpenBurnBarCore/Sources/OpenBurnBarMemoryExport` so the CLI is a thin shell
+// over the same code a future in-app action would call — today the command is
+// the only shipped caller (review #2564).
 //
 // **R9 is a shipping rule, not a note.** Evidence conflicts on whether the
 // SPM-built binary carries a SQLCipher codec on macOS, so this refuses to read
@@ -60,16 +59,21 @@ extension BurnBarCLIRunner {
       bundle is sealed to a key nobody holds and is refused as a rehearsal
       bundle besides.
 
-    verify --bundle DIR [--recipient PATH]
+    verify --bundle DIR [--recipient PATH] [--signing-key PATH]
       Checks the signature, the manifest's self-consistency and the section
       files on disk. It cannot check the plaintext: the bundle key is wrapped to
       the recipient and never kept here.
+      --signing-key points at an `exporter-signing-key.json` descriptor — the
+      public half the export writes BESIDE the bundle. Without the flag the
+      adjacent descriptor is tried first, then this device's own key.
 
-    p5-check --target-ids FILE --required-version X.Y.Z
+    p5-check --target-ids FILE --target-digests FILE --required-version X.Y.Z
              [--socket-token-rotated] [--memory-write-withdrawn]
       Reads audit_head either side of the source's live id set and diffs that
-      set against the target's. The two gate flags are operator assertions and
-      default to false, so an unasserted gate holds.
+      set against the target's — ids, and the per-row
+      sha256(UTF-8(normalize(body))) digests in --target-digests (one
+      `memory_id digest` pair per line). The two gate flags are operator
+      assertions and default to false, so an unasserted gate holds.
     """
 
     func runMemoryCommand(_ arguments: [String]) throws -> String {
@@ -100,12 +104,23 @@ extension BurnBarCLIRunner {
         let path = Self.memoryStoreURL.path
         let present = FileManager.default.fileExists(atPath: path)
         let encrypted = present && BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: path)
+        // The signing key the bundle's `manifest.sig` and the importer's TOFU
+        // pin hang on: presence, where it lives, and the `edk_` id a first
+        // import will be asked to confirm.
+        let signingKey: String
+        if let key = try? Self.loadSigningKey() {
+            signingKey = "present (\(MemoryExportCrypto.deviceKeyID(key.publicKey))) at "
+                + Self.signingKeyLocation()
+        } else {
+            signingKey = Self.signingKeyLocation()
+        }
         return """
         store:            \(path)
         present:          \(present)
         encrypted:        \(encrypted)
         codec available:  \(BurnBarDaemonDatabaseCipher.isCipherAvailable())
         key resolvable:   \(BurnBarDaemonDatabaseCipher.validatedKeyForGRDB() != nil)
+        signing key:      \(signingKey)
         flag:             \(MemoryExportFeatureFlag.name) (default OFF)
         """
     }
@@ -153,7 +168,7 @@ extension BurnBarCLIRunner {
             sourceVersion: BurnBarDaemonVersion.current,
             userID: nil,
             recipient: try Self.resolveRecipient(command),
-            signingKey: try Self.loadSigningKey(),
+            signingKey: try Self.loadOrProvisionSigningKey(),
             options: MemoryExportOptions(
                 enabled: true,
                 carryOrphans: command.carryOrphans,
@@ -164,10 +179,24 @@ extension BurnBarCLIRunner {
                 partialSources: command.unreadableSources
             )
         )
+        // `--deterministic-nonces` swaps the RANDOM bundle key for a seeded one
+        // — the segment nonces are derived from it, so a fixed key is what makes
+        // two runs byte-identical. The flag and this branch are DEBUG-only
+        // (validate() refuses it outright in a release build, so on release the
+        // random arm is unconditional).
+        let bundleKey: SymmetricKey
+        #if DEBUG
+        bundleKey = command.deterministicNonces
+            ? MemoryExportCrypto.deterministicBundleKey(seed: storeID)
+            : MemoryExportCrypto.randomBundleKey()
+        #else
+        bundleKey = MemoryExportCrypto.randomBundleKey()
+        #endif
         let result = try exporter.export(
             snapshot,
             mode: command.mode,
-            to: command.out.map { URL(fileURLWithPath: $0) }
+            to: command.out.map { URL(fileURLWithPath: $0) },
+            bundleKey: bundleKey
         )
         if command.json {
             return MIFCanonicalJSON.serialize(result.report.json)
@@ -220,11 +249,32 @@ extension BurnBarCLIRunner {
         // reason: validate() refuses verify without --bundle
         // swiftlint:disable:next force_unwrapping
         let url = URL(fileURLWithPath: command.bundle!)
-        let verification = try MemoryExportBundleVerifier.verify(
+
+        // The key the signature verifies against, in precedence order:
+        //   1. `--signing-key FILE` — the descriptor the operator carried over;
+        //   2. `exporter-signing-key.json` BESIDE the bundle — the file the
+        //      export writes there, which is what lets a bundle verify with no
+        //      key material on this machine at all (review #2564);
+        //   3. this device's own provisioned key — the right answer when the
+        //      bundle was signed here.
+        // Whatever wins is cross-checked against the signed manifest's
+        // `exporter_device_key_id`: a descriptor or local key naming a
+        // different `edk_` is a finding, not a shrug.
+        let verificationKey = try Self.resolveVerificationKey(command: command, bundle: url)
+        var verification = try MemoryExportBundleVerifier.verify(
             bundleAt: url,
-            signingPublicKey: try? Self.loadSigningKey().publicKey,
+            signingPublicKey: verificationKey?.publicKey,
             recipient: try command.recipient.map(Self.loadRecipient)
         )
+        if let key = verificationKey {
+            verification.checksRun.append("signing key ← \(key.origin)")
+            if let declared = verification.manifestExporterDeviceKeyID, declared != key.keyID {
+                verification.problems.append(
+                    "manifest's exporter_device_key_id \(declared) is not the \(key.origin) key \(key.keyID)"
+                )
+                verification.signatureVerified = false
+            }
+        }
         if command.json {
             return MIFCanonicalJSON.serialize(.object([
                 "bundle": .string(url.path),
@@ -263,6 +313,33 @@ extension BurnBarCLIRunner {
                 .filter { $0.isEmpty == false }
         )
 
+        // Step 3's second leg: `memory_id digest` pairs, one per line, where
+        // the digest is `sha256(UTF-8(normalize(body)))` — the unkeyed recipe
+        // both stores can compute over their own rows (the bundle's keyed
+        // `body_norm_digest` died with the discarded bundle key).
+        // reason: validate() refuses p5-check without --target-digests
+        // swiftlint:disable:next force_unwrapping
+        let digestPath = command.targetDigests!
+        guard let digestText = try? String(
+            contentsOf: URL(fileURLWithPath: digestPath),
+            encoding: .utf8
+        ) else {
+            throw BurnBarCLIError.missingArgument(
+                "cannot read the target digest map at \(digestPath)."
+            )
+        }
+        var targetDigests: [String: String] = [:]
+        for line in digestText.split(whereSeparator: \.isNewline) {
+            let parts = line.split(whereSeparator: \.isWhitespace)
+            guard parts.count == 2 else {
+                throw BurnBarCLIError.missingArgument(
+                    "target digests at \(digestPath) carry `memory_id digest` pairs, one per line."
+                )
+            }
+            targetDigests[String(parts[0])] = String(parts[1])
+        }
+        let sourceDigests = try queue.read { try MemoryExportStoreReader.liveMemoryDigests($0) }
+
         // R6 — the export lane refuses above; this lane refused nothing and
         // seeded every canonical id from the literal `"unknown"`. Same code,
         // same sentence, refused the same way.
@@ -277,6 +354,27 @@ extension BurnBarCLIRunner {
             )
         }
 
+        // The diff is between two CANONICAL id spaces. The importer's live-id
+        // set is `mem_<32 hex>` — but the source's app-lane rows carry raw
+        // UUID ids that the bundle canonicalises at export (D-BB-E-1), so a
+        // raw-vs-canonical subtract reports every app-lane row as
+        // `only_in_source` and holds a healthy migration (review #2564).
+        // Canonicalise the source side with the same store id the bundle used.
+        let canonicalSourceIDs = Set(sourceLiveIDs.map {
+            MemoryExportIdentity.canonicalMemoryID($0, storeID: p5StoreID)
+        })
+        // The digest map lives in the same canonical space: a raw UUID id on
+        // this side is `mem_<hex>` on the other, exactly as the id set is.
+        let canonicalSourceDigests = Dictionary(
+            uniqueKeysWithValues: sourceDigests.map { id, digest in
+                (MemoryExportIdentity.canonicalMemoryID(id, storeID: p5StoreID), digest)
+            }
+        )
+        let digestMismatch = Set(canonicalSourceDigests.compactMap { id, digest -> String? in
+            guard let target = targetDigests[id] else { return nil }
+            return target == digest ? nil : id
+        })
+
         let result = MemoryExportP5Check.run(
             gates: MemoryExportP5Gates(
                 sourceVersion: BurnBarDaemonVersion.current,
@@ -288,8 +386,9 @@ extension BurnBarCLIRunner {
             ),
             headBefore: headBefore.seq,
             headAfter: headAfter.seq,
-            sourceLiveIDs: sourceLiveIDs,
+            sourceLiveIDs: canonicalSourceIDs,
             targetLiveIDs: targetLiveIDs,
+            digestMismatch: digestMismatch,
             storeID: p5StoreID
         )
         if command.json {
@@ -357,6 +456,37 @@ extension BurnBarCLIRunner {
     /// `validate()` has already refused an export with neither `--recipient`
     /// nor `--rehearsal`, so the throwaway branch is reachable only under
     /// rehearsal — and on a release build it does not exist at all.
+    /// The key `verify` checks `manifest.sig` against, with where it came
+    /// from — `--signing-key` first, then the descriptor the export writes
+    /// beside every signed bundle, then this device's own provisioned key.
+    /// A descriptor that fails to parse fails the verification with its
+    /// reason rather than silently falling through to a different key.
+    private static func resolveVerificationKey(
+        command: MemoryExportCommand,
+        bundle url: URL
+    ) throws -> (publicKey: Curve25519.Signing.PublicKey, keyID: String, origin: String)? {
+        if let path = command.signingKeyPath {
+            let descriptorURL = URL(fileURLWithPath: path)
+            guard let data = try? Data(contentsOf: descriptorURL) else {
+                throw BurnBarCLIError.missingArgument(
+                    "cannot read the signing-key descriptor at \(path)."
+                )
+            }
+            let descriptor = try MemoryExportSigningKeyDescriptor.parse(descriptor: data)
+            return (descriptor.publicKey, descriptor.keyID, "--signing-key \(path)")
+        }
+        let beside = url.deletingLastPathComponent()
+            .appendingPathComponent("exporter-signing-key.json")
+        if let data = try? Data(contentsOf: beside),
+           let descriptor = try? MemoryExportSigningKeyDescriptor.parse(descriptor: data) {
+            return (descriptor.publicKey, descriptor.keyID, beside.path)
+        }
+        if let local = try? loadSigningKey() {
+            return (local.publicKey, MemoryExportCrypto.deviceKeyID(local.publicKey), "this device's key")
+        }
+        return nil
+    }
+
     private static func resolveRecipient(_ command: MemoryExportCommand) throws -> MemoryExportRecipient {
         if let path = command.recipient { return try loadRecipient(path) }
         #if DEBUG
@@ -398,19 +528,156 @@ extension BurnBarCLIRunner {
         }
     }
 
-    /// `com.openburnbar.memory-export` / `export-signing-key-v1`. Absent is a
-    /// refusal, not an unsigned bundle: the importer pins this key on first
-    /// import and must reject a bundle that carries none.
-    static func loadSigningKey() throws -> Curve25519.Signing.PrivateKey {
-        let url = BurnBarDaemonPaths.supportDirectoryURL
+    /// `com.openburnbar.memory-export` / `export-signing-key-v1` — the
+    /// service/account pair the contract names, `WhenUnlockedThisDeviceOnly`
+    /// on macOS; a `0600` file under the daemon's support dir on Linux and
+    /// wherever Keychain is unavailable (review #2564: nothing used to create
+    /// the key, so every real export died `EXPORT_KEY_UNAVAILABLE`).
+    ///
+    /// The support-dir file is still READ on every platform — installs from
+    /// before the Keychain store carry the key there and the format has not
+    /// changed — but a key this build MINTS lands where the contract says.
+    private static let signingKeychainService = "com.openburnbar.memory-export"
+    private static let signingKeychainAccount = "export-signing-key-v1"
+
+    /// The test seam: `OPENBURNBAR_EXPORT_SIGNING_KEYCHAIN_DISABLED=1` forces
+    /// the file store so a test never writes a throwaway key into the real
+    /// login Keychain.
+    private static var signingKeychainDisabled: Bool {
+        ProcessInfo.processInfo.environment["OPENBURNBAR_EXPORT_SIGNING_KEYCHAIN_DISABLED"] == "1"
+    }
+
+    static var signingKeyFileURL: URL {
+        BurnBarDaemonPaths.supportDirectoryURL
             .appendingPathComponent("memory-export-signing-key-v1")
-        guard let raw = try? Data(contentsOf: url), raw.count == 32 else {
+    }
+
+    /// Read-only. `verify` tolerates absent (`try?` at the call site); the
+    /// export path calls `loadOrProvisionSigningKey` instead, because a fresh
+    /// install has no key and refusing to mint one made the verb unreachable.
+    static func loadSigningKey() throws -> Curve25519.Signing.PrivateKey {
+        guard let raw = signingKeyMaterial() else {
             throw BurnBarCLIError.missingArgument(
-                "\(MIFExportError.keyUnavailable.rawValue): no export signing key at \(url.path). "
-                    + "Provision it before the first export; the exporter never mints one."
+                "\(MIFExportError.keyUnavailable.rawValue): no export signing key for this device. "
+                    + "Any `memory export` provisions one (Keychain on macOS, a 0600 file under the "
+                    + "daemon's support dir on Linux)."
             )
         }
         return try Curve25519.Signing.PrivateKey(rawRepresentation: raw)
+    }
+
+    /// First-use provisioning: mint the Ed25519 key, store it at
+    /// Keychain-class protection where the contract names it, and return it.
+    /// The mint is idempotent across processes — a second exporter reads what
+    /// the first stored; two racing mints converge because the file write is
+    /// create-only (the loser re-reads) and the Keychain add fails benignly.
+    static func loadOrProvisionSigningKey() throws -> Curve25519.Signing.PrivateKey {
+        if let raw = signingKeyMaterial() {
+            return try Curve25519.Signing.PrivateKey(rawRepresentation: raw)
+        }
+        let minted = Curve25519.Signing.PrivateKey()
+        let raw = minted.rawRepresentation
+        if storeSigningKeyInKeychain(raw) == false {
+            try storeSigningKeyInFile(raw)
+        }
+        // Re-read rather than returning the minted bytes: if a racer won the
+        // store, the surviving key is theirs and both halves of the device
+        // must sign under ONE identity — the pinned `edk_` is that identity.
+        guard let stored = signingKeyMaterial() else {
+            throw BurnBarCLIError.missingArgument(
+                "\(MIFExportError.keyUnavailable.rawValue): provisioned a signing key but could not "
+                    + "read it back from either store."
+            )
+        }
+        return try Curve25519.Signing.PrivateKey(rawRepresentation: stored)
+    }
+
+    /// The raw 32 key bytes wherever they live, or nil.
+    private static func signingKeyMaterial() -> Data? {
+        if let raw = readSigningKeyFromKeychain() {
+            return raw
+        }
+        guard let raw = try? Data(contentsOf: signingKeyFileURL), raw.count == 32 else {
+            return nil
+        }
+        return raw
+    }
+
+    /// Where the key material resolves to, for `export-status`: the operator
+    /// needs to know WHICH store the first import's TOFU pin will trust.
+    static func signingKeyLocation() -> String {
+        if readSigningKeyFromKeychain() != nil {
+            return "keychain \(signingKeychainService)/\(signingKeychainAccount)"
+        }
+        if let raw = try? Data(contentsOf: signingKeyFileURL), raw.count == 32 {
+            return "file \(signingKeyFileURL.path) (0600)"
+        }
+        return "absent (provisioned on first export)"
+    }
+
+#if canImport(Security)
+    private static func readSigningKeyFromKeychain() -> Data? {
+        guard signingKeychainDisabled == false else { return nil }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: signingKeychainService,
+            kSecAttrAccount as String: signingKeychainAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        let status = withKeychainUserInteractionDisabled {
+            SecItemCopyMatching(query as CFDictionary, &item)
+        }
+        guard status == errSecSuccess, let data = item as? Data, data.count == 32 else {
+            return nil
+        }
+        return data
+    }
+
+    private static func storeSigningKeyInKeychain(_ raw: Data) -> Bool {
+        guard signingKeychainDisabled == false else { return false }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: signingKeychainService,
+            kSecAttrAccount as String: signingKeychainAccount,
+            kSecValueData as String: raw,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
+        let status = withKeychainUserInteractionDisabled {
+            SecItemAdd(query as CFDictionary, nil)
+        }
+        // errSecDuplicateItem means a racer won — the surviving key is the
+        // one to sign under, which the re-read above resolves.
+        return status == errSecSuccess || status == errSecDuplicateItem
+    }
+#else
+    private static func readSigningKeyFromKeychain() -> Data? { nil }
+
+    private static func storeSigningKeyInKeychain(_ raw: Data) -> Bool { false }
+#endif
+
+    /// The Linux and fallback store: create-only at 0600 — an existing file
+    /// is the surviving key, never overwritten, because a re-mint would fork
+    /// the device identity every importer pinned.
+    private static func storeSigningKeyInFile(_ raw: Data) throws {
+        let url = signingKeyFileURL
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if FileManager.default.fileExists(atPath: url.path) {
+            return
+        }
+        guard FileManager.default.createFile(
+            atPath: url.path,
+            contents: raw,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw BurnBarCLIError.missingArgument(
+                "\(MIFExportError.keyUnavailable.rawValue): could not create \(url.path) at 0600."
+            )
+        }
     }
 
     // MARK: - Rendering
@@ -457,6 +724,13 @@ extension BurnBarCLIRunner {
         }
         if let url = result.bundleURL {
             lines.append("written to:  \(url.path)")
+            if let keyID = report.exporterDeviceKeyID {
+                // The importer's TOFU pin needs this file; name it, or it is
+                // discoverable only by reading this code.
+                lines.append(
+                    "signed by:   \(keyID) (public half: exporter-signing-key.json beside the bundle)"
+                )
+            }
         } else {
             lines.append("dry run:     nothing written (\(result.wouldWriteBytes) bytes would be)")
         }

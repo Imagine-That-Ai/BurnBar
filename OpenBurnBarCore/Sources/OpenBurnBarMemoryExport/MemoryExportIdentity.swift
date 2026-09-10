@@ -25,10 +25,20 @@ public enum MemoryExportIdentity {
     /// The unit separator the spec's id recipes use between components.
     static let separator = "\u{1F}"
 
+    /// ASCII-only lowercase hex. `Character.isNumber`/`isHexDigit` are
+    /// Unicode-aware and pass full-width digits (`０`…`９`) and letters
+    /// (`ａ`…`ｆ`), which the schema's `[0-9a-f]` patterns do not admit — an id
+    /// carrying one would be "canonical" here and invalid on the importer
+    /// (review #2564). The check is over `asciiValue`, not the character.
+    public static func isASCIILowerHex(_ character: Character) -> Bool {
+        guard let ascii = character.asciiValue else { return false }
+        return (0x30...0x39).contains(ascii) || (0x61...0x66).contains(ascii)
+    }
+
     public static func isCanonicalMemoryID(_ value: String) -> Bool {
         guard value.hasPrefix("mem_") else { return false }
         let body = value.dropFirst(4)
-        return body.count == 32 && body.allSatisfy { $0.isNumber || ("a"..."f").contains($0) }
+        return body.count == 32 && body.allSatisfy(isASCIILowerHex)
     }
 
     /// A conforming `memory_id`. Already-conforming ids pass through untouched,

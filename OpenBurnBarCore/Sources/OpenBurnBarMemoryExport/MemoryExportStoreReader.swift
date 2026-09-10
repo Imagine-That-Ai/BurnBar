@@ -122,12 +122,19 @@ public enum MemoryExportStoreReader {
         }
 
         if try tableExists(db, "memory_source_tombstones") {
+            // A v51/v52 store predates v53's `user_id`/`replicated_at` columns,
+            // and an unconditional SELECT of a column that does not exist is a
+            // SQL error inside the read-only transaction — the export died
+            // reading a store it could have carried (review #2564). Probe the
+            // column set and select only what exists; the absent columns read
+            // as the nil they semantically are.
+            let sourceColumns = try columnNames(db, table: "memory_source_tombstones")
+            let selected = [
+                "id", "user_id", "thread_logical_id", "message_id",
+                "content_hash", "reason", "created_at", "replicated_at"
+            ].filter { sourceColumns.contains($0) }
             snapshot.sourceTombstones = try Row
-                .fetchAll(db, sql: """
-                    SELECT id, user_id, thread_logical_id, message_id, content_hash, reason,
-                           created_at, replicated_at
-                    FROM memory_source_tombstones
-                    """)
+                .fetchAll(db, sql: "SELECT \(selected.joined(separator: ", ")) FROM memory_source_tombstones")
                 .map { row in
                     MemoryExportSourceTombstoneRow(
                         id: row["id"] ?? "",
@@ -304,6 +311,44 @@ public enum MemoryExportStoreReader {
             ? "SELECT id FROM agent_memories WHERE review_status <> 'forgotten'"
             : "SELECT id FROM agent_memories"
         return Set(try String.fetchAll(db, sql: sql))
+    }
+
+    /// The live rows' per-row digests, for P5 step 3's second leg. §5 names
+    /// "the per-row digest roll-up" without pinning a recipe, and the one the
+    /// bundle itself carries — `body_norm_digest` — is an HMAC under the
+    /// per-export bundle key, which this side discarded at wrap time and can
+    /// never recompute. The honest unkeyed equivalent both stores CAN compute
+    /// over their own rows is `sha256(UTF-8(normalize(body)))`, with the same
+    /// §0.1 `normalize` the keyed digest runs over — it catches a corrupted or
+    /// mis-attached body, which is the mismatch this leg exists to name
+    /// (review #2564).
+    ///
+    /// A live row whose body does not resolve contributes NO entry rather than
+    /// a digest of nothing: the export's `lost.csv` already named it, and a
+    /// fabricated digest would let a lost body diff clean.
+    public static func liveMemoryDigests(_ db: Database) throws -> [String: String] {
+        let liveIDs = try liveMemoryIDs(db)
+        guard liveIDs.isEmpty == false else { return [:] }
+        let snapshot = try read(db)
+        let stores = MemoryExportBodyStores(
+            snapshotsByMemoryID: Dictionary(
+                snapshot.bodySnapshots.map { ($0.memoryID, $0) },
+                uniquingKeysWith: { first, _ in first }
+            ),
+            projectSnapshotJSONBySlug: snapshot.projectSnapshots,
+            quarantineBodiesByMemoryID: snapshot.quarantineBodies
+        )
+        var digests: [String: String] = [:]
+        for memory in snapshot.memories where liveIDs.contains(memory.id) {
+            guard case .resolved(let resolved) = MemoryExportBodyResolver.resolve(
+                memory: memory,
+                stores: stores
+            ) else { continue }
+            digests[memory.id] = MemoryExportDigest.sha256Hex(
+                Data(MemoryExportCrypto.normalize(resolved.body).utf8)
+            )
+        }
+        return digests
     }
 
     // MARK: - Probes

@@ -108,14 +108,73 @@ public enum MIFCanonicalJSON {
 
     /// Shortest decimal that round-trips back to the same `Double`. Swift's
     /// `description` is already shortest-round-trip (Errol/Ryu), but it renders
-    /// integral values as `1.0` and large ones in exponent form, neither of
-    /// which matches ECMAScript `Number.prototype.toString` that JCS defers to.
+    /// integral values as `1.0` and uses a different scientific notation than
+    /// ECMAScript `Number.prototype.toString`, which JCS defers to: Swift
+    /// `1e-06` where ECMAScript prints `0.000001` (the plain-decimal window
+    /// reaches an exponent of −5), Swift `1e-07` where ECMAScript prints
+    /// `1e-7` (its exponents are never zero-padded), and Swift `1e+21` where
+    /// ECMAScript switches only at 1e21 — one order later than a guesser
+    /// assumes (review #2564).
+    ///
+    /// The rewrite keeps Swift's shortest-round-trip DIGITS — computing those
+    /// is the hard half and Swift already does it — and re-renders the
+    /// exponent under ECMAScript's rules: with `s` the digit string of length
+    /// `k` and `n` the exponent such that `value = s × 10^(n−k)`, print plain
+    /// decimal while `−6 < n ≤ 21` and `d[.ddd]e±(n−1)` outside it.
     static func numberLiteral(_ value: Double) -> String {
         guard value.isFinite else { return "null" }
         if value == value.rounded(), abs(value) < 1e15 {
             return String(Int64(value))
         }
-        return String(value)
+        var text = String(value)
+        var negative = false
+        if text.hasPrefix("-") {
+            negative = true
+            text.removeFirst()
+        }
+        // `mantissa e exp`: split the two, then walk the mantissa counting
+        // the digits left of its point into `n`.
+        let halves = text.split(separator: "e", omittingEmptySubsequences: false)
+        var n = halves.count > 1 ? Int(halves[1]) ?? 0 : 0
+        var digits = ""
+        var leftOfPoint = true
+        for character in halves[0] {
+            if character == "." {
+                leftOfPoint = false
+                continue
+            }
+            digits.append(character)
+            if leftOfPoint { n += 1 }
+        }
+        // Leading zeros are padding, not digits: "0.75" scans as s="075" and
+        // every stripped zero moves the decimal point one place left.
+        let stripped = digits.drop(while: { $0 == "0" })
+        n -= digits.count - stripped.count
+        digits = String(stripped)
+        // Trailing zeros are padding too — Swift renders integral doubles
+        // below 1e16 as "NNN.0", whose ".0" would otherwise inflate k — and
+        // ECMAScript's k is as small as possible: "1000000000000000.0" is s=1,
+        // not s=10000000000000000.
+        digits = String(digits.reversed().drop(while: { $0 == "0" }).reversed())
+        if digits.isEmpty { digits = "0" }
+        let k = digits.count
+        let sign = negative ? "-" : ""
+        if k <= n, n <= 21 {
+            return sign + digits + String(repeating: "0", count: n - k)
+        }
+        if n > 0, n <= 21 {
+            let point = digits.index(digits.startIndex, offsetBy: n)
+            return sign + String(digits[..<point]) + "." + String(digits[point...])
+        }
+        if n > -6, n <= 0 {
+            return sign + "0." + String(repeating: "0", count: -n) + digits
+        }
+        let exponent = n - 1
+        let head = String(digits.prefix(1))
+        let rest = String(digits.dropFirst())
+        return sign + head
+            + (rest.isEmpty ? "" : "." + rest)
+            + "e" + (exponent < 0 ? "-" : "+") + String(abs(exponent))
     }
 
     private static func writeString(_ text: String, into out: inout String) {

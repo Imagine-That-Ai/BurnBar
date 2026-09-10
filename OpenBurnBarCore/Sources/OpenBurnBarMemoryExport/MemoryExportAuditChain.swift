@@ -165,6 +165,12 @@ public enum MemoryExportAuditChain {
 /// two must not be confused, because §2's whole point is that a raw body hash is
 /// a dictionary-invertible oracle and never enters MIF.
 public enum MemoryExportDigest {
+    /// Raw digest bytes — `manifest.sig` and the signing-key descriptor sign
+    /// the 32 raw bytes, not the hex spelling (D-0031 ruling 1's preimage).
+    public static func sha256(_ data: Data) -> Data {
+        Data(SHA256.hash(data: data))
+    }
+
     public static func sha256Hex(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }

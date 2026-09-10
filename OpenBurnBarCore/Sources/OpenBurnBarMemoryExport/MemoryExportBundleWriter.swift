@@ -257,6 +257,18 @@ public enum MemoryExportBundleWriter {
             )
         }
 
+        // The verification key cannot travel INSIDE the bundle — the manifest
+        // member list and Q-60's file set are both closed — so the exporter's
+        // public half is a self-authenticating descriptor written beside the
+        // bundle, the out-of-band handoff the importer's TOFU pin consumes
+        // (review #2564). A bundle signed by no key carries no descriptor:
+        // `inputs.signingKey` is nil only where no `manifest.sig` exists.
+        let signingKeyDescriptor = try inputs.signingKey.map {
+            try MemoryExportSigningKeyDescriptor(
+                signingKey: $0,
+                storeID: inputs.context.storeID
+            ).data(signingKey: $0)
+        }
         try write(
             destination: destination,
             manifestData: manifestData,
@@ -270,7 +282,8 @@ public enum MemoryExportBundleWriter {
             ordered: ordered,
             lostCSV: lostCSV,
             idMapCSV: idMapCSV,
-            reportData: reportData
+            reportData: reportData,
+            signingKeyDescriptor: signingKeyDescriptor
         )
         return MemoryExportBundleResult(
             bundleURL: destination,
@@ -646,21 +659,34 @@ public enum MemoryExportBundleWriter {
         ordered: [MemoryExportSectionBuffer],
         lostCSV: String,
         idMapCSV: String,
-        reportData: Data
+        reportData: Data,
+        signingKeyDescriptor: Data?
     ) throws {
         let manager = FileManager.default
-        try manager.createDirectory(at: destination, withIntermediateDirectories: true)
-        try manifestData.write(to: destination.appendingPathComponent("manifest.json"))
-        try reportData.write(to: destination.appendingPathComponent("report.json"))
-        try Data(lostCSV.utf8).write(to: destination.appendingPathComponent("lost.csv"))
-        try Data(idMapCSV.utf8).write(to: destination.appendingPathComponent("id-map.csv"))
+        // Stage into a sibling directory and swap it into place (review
+        // #2564): in-place writes let a stale `NNNNN.seg` from an earlier,
+        // LONGER export survive a shorter re-export — the manifest would
+        // declare fewer segments than the directory holds — and a crash
+        // mid-write leaves a bundle that verifies as truncated. The named
+        // path is therefore always the previous complete bundle or the new
+        // complete one, never a mix.
+        let parent = destination.deletingLastPathComponent()
+        let staging = parent.appendingPathComponent(
+            ".\(destination.lastPathComponent).tmp-\(UUID().uuidString)"
+        )
+        defer { try? manager.removeItem(at: staging) }
+        try manager.createDirectory(at: staging, withIntermediateDirectories: true)
+        try manifestData.write(to: staging.appendingPathComponent("manifest.json"))
+        try reportData.write(to: staging.appendingPathComponent("report.json"))
+        try Data(lostCSV.utf8).write(to: staging.appendingPathComponent("lost.csv"))
+        try Data(idMapCSV.utf8).write(to: staging.appendingPathComponent("id-map.csv"))
 
         if let signature {
             // D-0031 ruling 1: the file is the b64url rendering, not raw
             // signature bytes — like every other binary in the format.
-            try Data(signature.utf8).write(to: destination.appendingPathComponent("manifest.sig"))
+            try Data(signature.utf8).write(to: staging.appendingPathComponent("manifest.sig"))
         }
-        let keys = destination.appendingPathComponent("keys")
+        let keys = staging.appendingPathComponent("keys")
         try manager.createDirectory(at: keys, withIntermediateDirectories: true)
         // §2.1: `b64url(enc) ‖ "." ‖ b64url(ct)`, both unpadded. A raw
         // concatenation is unreadable by anything but its own writer.
@@ -697,9 +723,9 @@ public enum MemoryExportBundleWriter {
             }))
         ]
         let tree = MIFJSON.object(treeMembers)
-        try MIFCanonicalJSON.data(tree).write(to: destination.appendingPathComponent("hashtree.json"))
+        try MIFCanonicalJSON.data(tree).write(to: staging.appendingPathComponent("hashtree.json"))
 
-        let sections = destination.appendingPathComponent("sections")
+        let sections = staging.appendingPathComponent("sections")
         try manager.createDirectory(at: sections, withIntermediateDirectories: true)
         for buffer in ordered {
             let directory = sections.appendingPathComponent(buffer.section.rawValue)
@@ -711,6 +737,35 @@ public enum MemoryExportBundleWriter {
             for (index, segment) in (segments[buffer.section] ?? []).enumerated() {
                 try segment.write(to: directory.appendingPathComponent(Self.segmentFilename(index)))
             }
+        }
+
+        // The swap: an existing destination is a COMPLETE older bundle. Move
+        // it aside first so a failed move of the staging dir can put it back —
+        // then the named path is never a half-written bundle and never gone.
+        if manager.fileExists(atPath: destination.path) {
+            let prior = parent.appendingPathComponent(
+                ".\(destination.lastPathComponent).old-\(UUID().uuidString)"
+            )
+            try manager.moveItem(at: destination, to: prior)
+            do {
+                try manager.moveItem(at: staging, to: destination)
+            } catch {
+                try? manager.moveItem(at: prior, to: destination)
+                throw error
+            }
+            try manager.removeItem(at: prior)
+        } else {
+            try manager.moveItem(at: staging, to: destination)
+        }
+
+        // Beside the bundle, not inside it: Q-60's closed set makes a
+        // descriptor in the directory a `MANIFEST_INVALID`, so the
+        // verification key travels the way `lost.csv` does — in the parent.
+        if let signingKeyDescriptor {
+            try signingKeyDescriptor.write(
+                to: parent.appendingPathComponent("exporter-signing-key.json"),
+                options: .atomic
+            )
         }
     }
 

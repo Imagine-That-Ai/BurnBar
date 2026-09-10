@@ -480,8 +480,15 @@ public enum MemoryExportCrypto {
     /// Hex-decode a digest into its raw bytes. Internal so the verifier shares
     /// the exact preimage the signer signed — two spellings of "the 32 raw
     /// bytes" is how interop breaks.
+    ///
+    /// Strict about what a digest IS: lowercase ASCII hex only, matching the
+    /// contract's `hex64`/`[0-9a-f]` patterns. `UInt8(_, radix: 16)` already
+    /// refuses full-width digits but would take UPPERCASE — a digest spelling
+    /// the schema's pattern does not admit, so it fails here first (review
+    /// #2564).
     static func hexToData(_ hex: String) -> Data? {
-        guard hex.count % 2 == 0 else { return nil }
+        guard hex.count % 2 == 0,
+              hex.allSatisfy(MemoryExportIdentity.isASCIILowerHex) else { return nil }
         var out = Data()
         out.reserveCapacity(hex.count / 2)
         var index = hex.startIndex

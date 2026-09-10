@@ -28,6 +28,57 @@ final class MemoryExportCanonicalJSONTests: XCTestCase {
         XCTAssertEqual(MIFCanonicalJSON.numberLiteral(-0), "0")
     }
 
+    /// Review #2564: `String(Double)` is NOT ECMAScript. The two notations
+    /// disagree at every exponent boundary — Swift's plain window is narrower
+    /// (it switches at 1e-7 on the low end and prints a zero-padded, signed
+    /// exponent in scientific), ECMAScript's runs to n ≤ 21 on the high end
+    /// and −6 < n ≤ 0 below. The expected strings below are the ECMAScript
+    /// renderings — `(x).toString()` in any JS engine — and the Python
+    /// cross-check under them proves each literal parses back to the exact
+    /// same double (`json.loads`/`json.dumps` round-trip the bits, which is
+    /// the property JCS actually needs across implementations).
+    func test_numberLiteralIsECMAScriptAtEveryExponentBoundary() {
+        let vectors: [(Double, String)] = [
+            // Plain-decimal low boundary: n=−5 stays decimal …
+            (1e-6, "0.000001"),
+            (1.234e-6, "0.000001234"),
+            // … n=−6 switches to scientific, exponent unpadded …
+            (1e-7, "1e-7"),
+            (-1.5e-7, "-1.5e-7"),
+            (Double.leastNonzeroMagnitude, "5e-324"),
+            // … interior stays plain …
+            (0.1, "0.1"),
+            (123.456, "123.456"),
+            (1e15, "1000000000000000"),
+            (1e20, "100000000000000000000"),
+            (1.5e20, "150000000000000000000"),
+            (1.2345678901234568e20, "123456789012345680000"),
+            // … and n > 21 is scientific with a signed, unpadded exponent.
+            (1e21, "1e+21"),
+            (1.23e21, "1.23e+21"),
+            (-1e21, "-1e+21"),
+            (1.7976931348623157e308, "1.7976931348623157e+308")
+        ]
+        for (value, expected) in vectors {
+            XCTAssertEqual(
+                MIFCanonicalJSON.numberLiteral(value), expected,
+                "ECMAScript renders \(value) as \(expected)"
+            )
+            // Round-trip: the emitted literal must read back to the identical
+            // Double, or the manifest's digest is not portable.
+            XCTAssertEqual(
+                Double(expected), value,
+                "\(expected) must parse back to the same double"
+            )
+        }
+        // Python's repr-style spelling disagrees with ECMAScript's on the
+        // boundary rows — `json.dumps(1e-6)` is "1e-06" — which is exactly why
+        // the serializer cannot defer to a host language's own printer.
+        // The cross-check is therefore on VALUE: every expected literal
+        // re-parses to the same bits, whatever spelling another host chose.
+        XCTAssertEqual(MIFCanonicalJSON.numberLiteral(1e-6), "0.000001")
+    }
+
     func test_controlCharactersAndQuotesEscapePerRFC8785() {
         let text = "a\"b\\c\nd" + String(UnicodeScalar(1))
         let expected = "\"a\\\"b\\\\c\\nd\\u0001\""
@@ -207,20 +258,27 @@ final class MemoryExportCanonicalJSONTests: XCTestCase {
         let verify = try MemoryExportCommand.parse(["verify", "--bundle", "/tmp/b"])
         XCTAssertEqual(verify.bundle, "/tmp/b")
 
-        // Step 3 is an id-set diff and step 0(a) is a version gate; neither
-        // input exists on this side, so neither gets a default.
+        // Step 3 is an id-set AND digest diff and step 0(a) is a version gate;
+        // none of the three inputs exists on this side, so none gets a default
+        // — a p5-check missing one would hold the finding it could not run.
         XCTAssertThrowsError(try MemoryExportCommand.parse(["p5-check"]))
         XCTAssertThrowsError(try MemoryExportCommand.parse(["p5-check", "--target-ids", "/tmp/ids"]))
-        let check = try MemoryExportCommand.parse([
+        XCTAssertThrowsError(try MemoryExportCommand.parse([
             "p5-check", "--target-ids", "/tmp/ids", "--required-version", "1.0.42"
+        ]))
+        let check = try MemoryExportCommand.parse([
+            "p5-check", "--target-ids", "/tmp/ids", "--target-digests", "/tmp/digests",
+            "--required-version", "1.0.42"
         ])
         XCTAssertEqual(check.requiredVersion, "1.0.42")
+        XCTAssertEqual(check.targetDigests, "/tmp/digests")
         // 0(b) and 0(c) are assertions the operator makes, and an unasserted
         // gate holds rather than passing.
         XCTAssertFalse(check.socketTokenRotated)
         XCTAssertFalse(check.memoryWriteWithdrawn)
         let asserted = try MemoryExportCommand.parse([
-            "p5-check", "--target-ids", "/tmp/ids", "--required-version", "1.0.42",
+            "p5-check", "--target-ids", "/tmp/ids", "--target-digests", "/tmp/d",
+            "--required-version", "1.0.42",
             "--socket-token-rotated", "--memory-write-withdrawn"
         ])
         XCTAssertTrue(asserted.socketTokenRotated)

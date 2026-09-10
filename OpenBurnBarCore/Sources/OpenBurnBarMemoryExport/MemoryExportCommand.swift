@@ -45,10 +45,23 @@ public struct MemoryExportCommand: Sendable, Equatable {
     public var recipient: String?
     /// `verify` and `p5-check` read an existing bundle rather than writing one.
     public var bundle: String?
+    /// `verify`: the exporter's signing-key descriptor (`exporter-signing-key.json`,
+    /// written beside the bundle by the export and carried to the verifier by
+    /// the operator — the out-of-band half of the TOFU pin, review #2564).
+    /// Absent means "verify against this device's own key", which is correct
+    /// exactly when the bundle was exported here.
+    public var signingKeyPath: String?
     /// `p5-check`: the target's live memory ids, one per line, as the importer
     /// publishes them. Step 3 is an id-set diff, and there is no honest way to
     /// obtain the other side's set from this one.
     public var targetIDs: String?
+    /// `p5-check`: the target's per-row digests — `memory_id` then the row's
+    /// `sha256(UTF-8(normalize(body)))` hex, whitespace-separated, one pair per
+    /// line. The keyed `body_norm_digest` cannot be recomputed here (the
+    /// bundle key was wrapped and discarded), so the shared recipe is the
+    /// unkeyed normalized-body digest both stores can compute over their own
+    /// rows (review #2564).
+    public var targetDigests: String?
     /// `p5-check` step 0(a): the release whose daemon carries no
     /// `daemon.memory.*` handler and no `agent_memories` writer. No default —
     /// inventing a version number here would turn the gate into a formality.
@@ -132,8 +145,8 @@ public struct MemoryExportCommand: Sendable, Equatable {
             case "--socket-token-rotated": command.socketTokenRotated = true
             case "--memory-write-withdrawn": command.memoryWriteWithdrawn = true
             case "--out", "--recipient", "--source", "--since-audit-seq", "--since-updated-at-ms",
-                 "--snapshot", "--max-section-bytes", "--bundle", "--target-ids", "--required-version",
-                 "--store-id":
+                 "--snapshot", "--max-section-bytes", "--bundle", "--target-ids", "--target-digests",
+                 "--required-version", "--store-id", "--signing-key":
                 index += 1
                 guard index < arguments.count else {
                     throw MemoryExportCommandError.usage("\(argument) needs a value")
@@ -154,6 +167,8 @@ public struct MemoryExportCommand: Sendable, Equatable {
         case "--recipient": recipient = value
         case "--bundle": bundle = value
         case "--target-ids": targetIDs = value
+        case "--target-digests": targetDigests = value
+        case "--signing-key": signingKeyPath = value
         case "--store-id": storeID = value
         case "--required-version": requiredVersion = value
         case "--source":
@@ -179,8 +194,17 @@ public struct MemoryExportCommand: Sendable, Equatable {
             }
             snapshot = parsed
         case "--max-section-bytes":
-            guard let parsed = Int(value), parsed > 0 else {
-                throw MemoryExportCommandError.usage("--max-section-bytes must be positive")
+            // A section's rotation boundary is measured in CIPHERTEXT, and
+            // every sealed segment carries a 16-byte Poly1305 tag — so a limit
+            // at or below the AEAD overhead leaves zero bytes of plaintext
+            // capacity and writes `limit`-byte-segment bundles no manifest can
+            // declare honestly (review #2564).
+            guard let parsed = Int(value),
+                  parsed > MemoryExportCrypto.sealOverheadBytes else {
+                throw MemoryExportCommandError.usage(
+                    "--max-section-bytes must exceed the AEAD overhead "
+                        + "(\(MemoryExportCrypto.sealOverheadBytes) bytes of tag per segment)"
+                )
             }
             maxSectionBytes = parsed
         default:
@@ -228,6 +252,14 @@ public struct MemoryExportCommand: Sendable, Equatable {
                 throw MemoryExportCommandError.usage(
                     "memory p5-check needs --target-ids <file>: the target's live memory ids, one per line, "
                         + "as `memoryctl memory live-ids` prints them. Step 3 is an id-set diff."
+                )
+            }
+            if targetDigests == nil {
+                throw MemoryExportCommandError.usage(
+                    "memory p5-check needs --target-digests <file>: the target's per-row digests, "
+                        + "`memory_id` then `sha256(UTF-8(normalize(body)))` hex, whitespace-separated, "
+                        + "one pair per line. Step 3 is an id-set AND digest diff; without the second "
+                        + "leg a corrupted row diffs clean."
                 )
             }
             if requiredVersion == nil {

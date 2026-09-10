@@ -89,10 +89,12 @@ public struct MemoryExportRecipient: Sendable {
     /// line 32's CHECK on `schema_meta.store_id` written as a pattern
     /// [D-0039 ruling 7]. Hand-rolled rather than `NSRegularExpression`: the
     /// set is four characters and thirty-two hex digits, and a regex engine is
-    /// a dependency for a `hasPrefix` and a scan.
+    /// a dependency for a `hasPrefix` and a scan. The digits are ASCII —
+    /// `isHexDigit`/`isNumber`/`isLowercase` all pass the full-width forms
+    /// (`０`…`９`, `ａ`…`ｆ`), which the importer's pattern refuses (review #2564).
     public static func isValidStoreID(_ storeID: String) -> Bool {
         guard storeID.count == 36, storeID.hasPrefix("sto_") else { return false }
-        return storeID.dropFirst(4).allSatisfy { $0.isHexDigit && ($0.isNumber || $0.isLowercase) }
+        return storeID.dropFirst(4).allSatisfy(MemoryExportIdentity.isASCIILowerHex)
     }
 
     /// Mint one, from 16 random bytes. `memoryctl memory export-recipient`

@@ -51,6 +51,10 @@ public struct MemoryExportVerification: Sendable, Equatable {
     public var contentDigest: String?
     public var recipientKeyID: String?
     public var recipientStoreID: String?
+    /// The manifest's declared `exporter_device_key_id`, surfaced so a caller
+    /// that supplied the verification key out-of-band can prove the bundle was
+    /// signed by the key that file names (review #2564).
+    public var manifestExporterDeviceKeyID: String?
     public var signatureVerified = false
 
     public var isIntact: Bool { problems.isEmpty }
@@ -110,6 +114,7 @@ public enum MemoryExportBundleVerifier {
         let bundleID = manifest["bundle_id"] as? String
         result.contentDigest = contentDigest
         result.bundleID = bundleID
+        result.manifestExporterDeviceKeyID = manifest["exporter_device_key_id"] as? String
         if let contentDigest, let bundleID {
             let expected = MemoryExportIdentity.bundleID(contentDigest: contentDigest)
             if expected != bundleID {

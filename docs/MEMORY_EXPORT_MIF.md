@@ -23,8 +23,12 @@ approved for itself arrive needing your review.*
 ## 1. What ships
 
 `OpenBurnBarCore/Sources/OpenBurnBarMemoryExport/` — a SwiftPM library target,
-AGPL-3.0-only like the rest of BurnBar, linked by **both** the Xcode app target
-(whose "Export memory" action calls it in-process) and `openburnbar-cli`.
+AGPL-3.0-only like the rest of BurnBar, linked by `openburnbar-cli` (the
+`memory` verbs). The in-app "Export memory" action is **not** in this change —
+no app target links the library yet; the CLI is the shipped surface while the
+feature sits behind `OPENBURNBAR_MEMORY_EXPORT` (review #2564: the claim was
+struck rather than wired, because a UI action for a flag-gated verb would ship
+an affordance that cannot work).
 
 | File | Spec | What it owns |
 |---|---|---|
@@ -70,7 +74,15 @@ key exists nowhere, and the type refuses to represent one.
 
 Producing `<out>/manifest.json`, `manifest.sig`, `keys/wrapped-bundle-key`,
 `hashtree.json`, `sections/<NN-name>/<index:05>.seg`, `lost.csv`, `id-map.csv`
-and `report.json`.
+and `report.json` — staged into a sibling `.tmp` directory and swapped into
+place, so the destination is always the previous complete bundle or the new
+one (a re-export can leave no stale `.seg` behind) — plus
+`exporter-signing-key.json` **beside** the bundle, the self-authenticating
+`{signing_key_id, public_key, store_id, key_signature}` descriptor the
+importer's TOFU pin consumes. The verification key cannot travel inside the
+bundle — the manifest member list and Q-60's file set are both closed — so
+the descriptor is the out-of-band handoff the spec's first-import pin assumed
+existed.
 
 ---
 
@@ -561,19 +573,22 @@ authority as `approved` with `origin_kind: human`.
 
 ## 6. Tests
 
-`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, **139 tests**, run on the
-Swift door by `scripts/test-openburnbar-swift.sh`:
+`OpenBurnBarCore/Tests/OpenBurnBarMemoryExportTests/`, **154 tests**, run on the
+Swift door by `scripts/test-openburnbar-swift.sh` — plus three daemon-side tests
+(`OpenBurnBarDaemonTests/OpenBurnBarMemoryExportSigningKeyTests`) covering the
+CLI end to end:
 
 ```
 swift test --package-path OpenBurnBarCore --filter MemoryExport
-→ Executed 139 tests, with 0 failures (0 unexpected)
+→ Executed 154 tests, with 0 failures (0 unexpected)
 ```
 
 The count reconciles: `grep -h "func test"` over the target's files sums to
-139, and there is no swift-testing `@Test` anywhere in it, so 139 declared is
-139 executed (135 at interop run 1's fix pass + 4: the `edk_` shape pin, the
-Q-56/Q-60 narrowings pin, and interop-fixture-v4's pin plus its regeneration
-proof).
+154, and there is no swift-testing `@Test` anywhere in it, so 154 declared is
+154 executed (135 at interop run 1's fix pass + 4 then, and +15 at the #2564
+fix pass: the ECMAScript number boundaries, the v51 tombstone probe, the P5
+digest leg, the atomic `--out` and stale-segment coverage, and the
+signing-key descriptor round-trip, forgery refusal and recipe reproduction).
 
 Fixtures are built by **BurnBar's own migrator** (`OpenBurnBarDatabase.migrator`,
 the `OpenBurnBarData` mirror), so the schema under test is the one production
@@ -591,7 +606,18 @@ hex>` value, legacy-plaintext recovery, the quarantine store, and
 unreconstructible loss · determinism, dry-run parity, the delete obligation, the
 gate · the delta window counting rows across three windows · every table's
 closed sum over its own source rows · segment rotation and the four corruptions
-`verify` can catch on disk · and the P5 gates.
+`verify` can catch on disk · and the P5 gates — including the digest leg, which
+diffs `sha256(UTF-8(normalize(body)))` per row between the source and
+`--target-digests`, because the keyed `body_norm_digest` died with the wrapped
+bundle key and the unkeyed recipe is the one both stores can compute · JCS
+numbers rendered by ECMAScript's `Number::toString` rules at every exponent
+boundary · a v51-era `memory_source_tombstones` read (no `user_id` or
+`replicated_at` columns there until v53) · the staged-and-swapped `--out`, where
+a shorter re-export leaves no stale segment · and the signing-key lifecycle:
+first-use provisioning (Keychain on macOS, `0600` file elsewhere), the
+`exporter-signing-key.json` descriptor the export writes beside the bundle, and
+`verify --signing-key` resolving the public half — with the daemon-level test
+proving a bundle verifies on a machine holding no key material at all.
 
 **Three tests exist to fail when a fix is removed**, and each was run against
 the un-fixed code to prove it: the forgotten-memory regression (F-2) fails on
@@ -698,7 +724,12 @@ required for a dry run too, since a dry run holds the same long read.
 
 ## 8. What BB-E does not do
 
-- It never writes to the source store, never mints a key, and never re-keys.
+- It never writes to the source store and never re-keys it. The **export
+  signing key** is the one thing it DOES mint — at first use, once: Keychain
+  (`com.openburnbar.memory-export` / `export-signing-key-v1`,
+  `WhenUnlockedThisDeviceOnly`) on macOS, a `0600` file under the daemon's
+  support dir on Linux. A re-mint would fork the `edk_` every importer pinned,
+  so the store is create-only and `export-status` names where the key lives.
 - It never stops `com.openburnbar.daemon` and never changes the store file's
   mode. D-0007 forbids both: that LaunchAgent and that one `openburnbar.sqlite`
   serve roughly twenty unrelated RPC families, and BurnBar must keep working
