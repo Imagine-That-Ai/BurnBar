@@ -455,10 +455,18 @@ final class MemoryExportBundleOnDiskTests: XCTestCase {
             let rhs = try Data(contentsOf: second.appendingPathComponent(name))
             if lhs != rhs { differing.append(name) }
         }
+        // CryptoKit randomizes Ed25519 signatures (the D-BB-E-5 departure this
+        // test evidences); swift-crypto on Linux signs deterministically per
+        // RFC 8032, so there the signature is one more byte-identical member.
+        #if canImport(Darwin)
+        let expectedDiffering = ["keys/wrapped-bundle-key", "manifest.sig"]
+        #else
+        let expectedDiffering = ["keys/wrapped-bundle-key"]
+        #endif
         XCTAssertEqual(
             differing,
-            ["keys/wrapped-bundle-key", "manifest.sig"],
-            "only the two artefacts §2's determinism claim already excludes"
+            expectedDiffering,
+            "only the artefacts §2's determinism claim already excludes"
         )
 
         // A randomized signature is still a valid one, over the same raw
