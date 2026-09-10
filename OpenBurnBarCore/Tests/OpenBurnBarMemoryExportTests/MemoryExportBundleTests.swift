@@ -257,6 +257,18 @@ final class MemoryExportBundleTests: XCTestCase {
         }
     }
 
+    /// The Linux runner refuses every fixture export with `sourceIntegrityFailed`, which means
+    /// `PRAGMA quick_check` on the freshly migrated in-memory store answered something other
+    /// than `ok` there. This pins the expectation and, when it fails, names the actual answer.
+    func test_theMigratedInMemoryFixtureStorePassesQuickCheck() throws {
+        let snapshot = try MemoryExportFixtureStore.snapshot(try makeStore())
+        XCTAssertEqual(
+            snapshot.sourceQuickCheck,
+            "ok",
+            "PRAGMA quick_check answered: \(snapshot.sourceQuickCheck)"
+        )
+    }
+
     func test_aRecordWithAValueOutsideAClosedSetIsRejected() throws {
         let validator = try MIFSchemaValidator(schemaData: try contractData())
         var record = try XCTUnwrap(sampleMemoryRecord() as? [String: Any])
