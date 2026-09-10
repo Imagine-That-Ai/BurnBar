@@ -152,6 +152,6 @@ final class OpenBurnBarDataReviewDefaultRepairMigrationTests: XCTestCase {
             tableSQLBefore, tableSQLAfter,
             "a correct default must not trigger the rebuild — the probe returns early"
         )
-        XCTAssertTrue(tableSQLAfter?.contains("DEFAULT 'quarantined'") == true)
+        XCTAssertTrue(try XCTUnwrap(tableSQLAfter).contains("DEFAULT 'quarantined'"))
     }
 }
