@@ -167,8 +167,8 @@ sleep 5
         self.assertEqual(
             report,
             {
-                "suiteCount": 9,
-                "minimumExecutedTests": 92,
+                "suiteCount": 10,
+                "minimumExecutedTests": 192,
                 "executionStrategy": "direct-xctest-isolated-per-test",
                 "perTestTimeoutSeconds": 300,
             },
