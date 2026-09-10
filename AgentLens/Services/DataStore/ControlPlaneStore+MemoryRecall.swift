@@ -222,20 +222,16 @@ extension ControlPlaneStore {
     }
 
     func openChatMemoryBody(id: MemoryID) async throws -> String? {
-        let snapshotSlug = Self.memorySnapshotSlug(id)
-        return try await dbQueue.read { db in
-            guard let snapshotJSON = try String.fetchOne(
-                db,
-                sql: "SELECT snapshot_json FROM memory_body_snapshots WHERE id = ? AND memory_id = ?",
-                arguments: [snapshotSlug, id]
-            ),
-                  let data = snapshotJSON.data(using: .utf8)
-            else {
-                return nil
-            }
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(MemoryBodySnapshot.self, from: data).body
+        try await openMemoryBodySnapshot(id: id)?.body
+    }
+
+    /// The whole sealed snapshot, including the A-MEM `context` sentence usage
+    /// extractions attach. Callers that only need the fact text should use
+    /// `openChatMemoryBody`; this exists for paths that must round-trip the
+    /// sealed payload (the reseal in `updateMemoryAuthorityRecord`).
+    func openMemoryBodySnapshot(id: MemoryID) async throws -> MemoryBodySnapshot? {
+        try await dbQueue.read { db in
+            try Self.memoryBodySnapshot(db: db, id: id)
         }
     }
 
