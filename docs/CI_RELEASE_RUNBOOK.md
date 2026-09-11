@@ -10,12 +10,41 @@ ordered by how much time each section saves.
 
 ---
 
-## 1. The two silent failure modes
+## 1. The silent failure mode: a green check that never ran
 
-A failing job gets noticed. **A job that never runs does not.** Both of these
-present as "green CI, nothing shipped".
+A failing job gets noticed. **A job that never ran does not.**
 
-### 1.1 Skip propagation through `needs`
+Every root cause of the August 2026 outage was one failure mode wearing
+different clothes: **a green check that never executed its assertion.** Not a
+check that ran and reached the wrong answer — a check that reported success
+without ever doing its work.
+
+That is why a month passed. Nobody ignored a red signal; there was no signal.
+
+So when something breaks behind a gate that was supposed to catch it, the useful
+question is not
+
+> did this check pass?
+
+but
+
+> **did this check actually run — and did it run the thing I think it ran?**
+
+Two confirmed instances, and one mechanism that can manufacture a third. They
+look unrelated in the logs. The list is almost certainly not finished.
+
+| # | | Never… | Presents as |
+| --- | --- | --- | --- |
+| 1.1 | Skip propagation through `needs` | …scheduled | green |
+| 1.2 | Path-filter drift | …triggered | green |
+| 1.3 | Copied-CLI fixture on macOS | …executed | **either** — see below |
+
+`1.3` earns its place for a reason worth stating up front: the same mechanism
+produces a **loud red** or a **silent green** depending only on what the test
+happens to assert. We hit the loud half and caught it in minutes. The silent
+half is the one this section is about, and nothing would have told us.
+
+### 1.1 Skip propagation through `needs` — never scheduled
 
 GitHub replaces a job's implicit `success()` guard **only** when its `if:` calls
 a status-check function (`always()`, `!cancelled()`, `success()`, `failure()`,
@@ -55,7 +84,7 @@ also runs during cancellation.
 preflight gating it skipped. So the gate is a ratchet, not a ban: declare
 intentional cases in `governance/workflow-reachability.json` with a real reason.
 
-### 1.2 Path-filter drift
+### 1.2 Path-filter drift — never triggered
 
 A `push.paths` filter that omits a script the workflow runs means **editing that
 script triggers nothing**. The fix merges, main advances, and the old artifact
@@ -68,14 +97,123 @@ changed file, `scripts/lib/firebase-hosting-rest-url.mjs`, was not in
 **Rule:** every local script a workflow invokes — and every local module those
 scripts import, transitively — belongs in the filter.
 
-### Both are enforced
+### 1.3 A self-test that cannot run on the dev platform — never executed
+
+The newest instance, found 2026-08-20, and the one that shows the class is not
+limited to workflow wiring. **A test file can be the thing that never runs.**
+
+`scripts/ci/check-firestore-rules-size.test.mjs` spawns the real CLI from a
+fixture under `mkdtempSync(join(tmpdir(), …))` and asserts it exits non-zero.
+On macOS `tmpdir()` returns a `/var` symlink, and Node realpaths
+`import.meta.url` but **not** `argv` — so the CLI's run-as-main guard
+
+```js
+resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+```
+
+never matched inside the fixture. **`main()` never ran** and the spawn exited 0.
+
+**Be precise about what happened next, because it decides the taxonomy.** That
+test asserts a *non-zero* exit, so the assertion **did run, and it failed
+loudly** — the file was red on every Mac and green on Linux, where the CLI
+executed correctly. It was never a vacuously-green check, and calling it one
+would teach the wrong lesson.
+
+What makes it belong here is the *other* branch of the same mechanism. Flip the
+expectation — a test that copies a CLI in and asserts it **succeeds** — and the
+identical bug produces the identical exit code 0, the assertion passes, and the
+check is green forever without the CLI ever having run. Same cause, opposite
+symptom:
+
+| the test asserts | CLI silently doesn't run | you find out |
+| --- | --- | --- |
+| non-zero exit | assertion fails | immediately, loudly |
+| **success** | **assertion passes** | **never** |
+
+So the honest statement is: we found the loud half, and the loud half is a gift.
+It told us the mechanism exists before the silent half bit us.
+
+**Fix:** realpath the fixture root — `mkdtempSync` under `realpathSync(tmpdir())`.
+
+**This is a class, not a bug** — but the signature is narrower than it first
+looks, and being imprecise here just produces noise nobody reads. All three
+conditions must hold:
+
+1. a fixture root from `mkdtempSync(join(tmpdir(), …))` — not realpathed, and
+2. an executable **copied into** that fixture (`copyFileSync`/`cpSync`), and
+3. that copy spawned as `node <path-inside-fixture>`, relying on its
+   run-as-main guard to fire.
+
+Spawning a script from the real `scripts/ci/` is safe: `argv[1]` is then a real
+path and matches. It is the copy-into-tmpdir step that creates the mismatch.
+
+```bash
+grep -rl 'mkdtempSync(join(tmpdir()' scripts/ci/ \
+  | xargs grep -lE 'copyFileSync|cpSync' \
+  | xargs grep -lE 'spawnSync|execFileSync'
+```
+
+Surveyed 2026-08-20: **11 files match, 9 of them self-tests, and all 9 pass on
+macOS** — so no second live instance was found. Note the list includes
+`check-firestore-rules-size.test.mjs` itself, which is how you know the recipe
+finds the real thing.
+
+A match is a **candidate, not a bug**. Confirm it by positive control (below),
+because the two halves fail very differently:
+
+- a test asserting a **non-zero** exit fails loudly when it hits this — that is
+  how this instance was found at all
+- a test asserting **success passes vacuously**, and looks green forever
+
+The second half is the dangerous one, and greping cannot tell you which you have.
+
+### Detecting the next one
+
+The instances differ; the detection does not. **Reproduce the exact CI
+invocation, not a subset of it** — same entrypoint, same working directory,
+same platform. Most of these hide precisely in the gap between "the command I
+ran locally" and "the command CI ran".
+
+Two habits catch them cheaply:
+
+- **Positive-control your gates.** Before trusting a green verdict, prove the
+  gate still fails on a known-bad input. Several lanes here already do this
+  (`Self-test the diff-coverage gate`, `Positive control first: prove the gate
+  still fails…`). A gate that cannot be made to fail is not passing — it is
+  not running.
+- **Read the log for evidence of work, not for the word "passed".** A check
+  that emits no counts, no filenames and no findings usually did nothing. "0
+  problems found" and "found nothing because it scanned nothing" render
+  identically in a green tick.
+
+When a gate is green and the thing it guards broke anyway, assume it never ran
+until you have seen it do work.
+
+### What is enforced, and what is not
+
+`1.1` and `1.2` are enforced:
 
 ```bash
 node scripts/ci/verify-workflow-reachability.mjs
 ```
 
-Runs in `Workflow Lint` on every PR. It reports the offending job or path and
+Runs in `Workflow Lint` on every PR, reports the offending job or path, and
 tells you which of the two you hit.
+
+**`1.3` is not enforced by anything yet, and the two obvious controls do not
+work.** Say plainly what each one can and cannot do:
+
+- **Running the self-tests on a Mac** catches only the loud half. A test whose
+  copied CLI silently exits 0 while asserting success stays green on macOS and
+  Linux alike.
+- **The grep** yields *candidates*. It cannot establish that any candidate's
+  assertions actually executed — which is the only question that matters.
+
+The control that does work is a **positive control per candidate**: feed the
+gate a known-bad input and prove it goes red. A gate that cannot be made to
+fail is not passing; it is not running. Until that is automated, "I ran the
+grep" and "it is green on my Mac" are **not** evidence that 1.3 was checked, and
+the green `Workflow Lint` tick is not coverage for it either.
 
 ---
 
