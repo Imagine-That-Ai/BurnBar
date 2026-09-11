@@ -96,6 +96,21 @@ public enum ACPStdioClient {
         let stdin = Pipe()
         let stdout = Pipe()
         let stderr = Pipe()
+        // A write to the child's stdin must never raise SIGPIPE. Foundation
+        // closes the parent's copy of the read end inside run(), so once the
+        // child exits or closes fd 0 the next write(2) has no reader and the
+        // default disposition kills the whole process, not just this session.
+        // That is how the PR Native Fast Gate's SwiftPM job died three times
+        // on 2026-09-10 with `xctest ... exited with unexpected signal code 13`
+        // in the middle of testRunSessionDrivesPermissionModeAndPrompt (runs
+        // 34499517283, 34529898345, 34549947613): the mock agent exits right
+        // after answering session/prompt while this loop is still replying to
+        // its earlier set_mode / request_permission frames. F_SETNOSIGPIPE
+        // turns that write into an EPIPE error `send` can absorb. A shell-side
+        // `trap '' PIPE` around `swift test` cannot do this: SwiftPM spawns
+        // xctest with POSIX_SPAWN_SETSIGDEF, so the child always starts with
+        // SIGPIPE at its default disposition whatever the parent set.
+        _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
@@ -106,7 +121,19 @@ public enum ACPStdioClient {
 
         var nextID = 1
         let scanner = LineScanner()
-        func write(_ method: String, params: [String: Any], notification: Bool = false) throws {
+        /// Writes one NDJSON frame to the child. Returns false when the child
+        /// has already closed its stdin (EPIPE); the caller decides whether
+        /// that is fatal. Any other write failure still throws.
+        func send(_ data: Data) throws -> Bool {
+            do {
+                try stdin.fileHandleForWriting.write(contentsOf: data)
+                return true
+            } catch let error where isBrokenPipe(error) {
+                return false
+            }
+        }
+        @discardableResult
+        func write(_ method: String, params: [String: Any], notification: Bool = false) throws -> Bool {
             var body: [String: Any] = ["jsonrpc": "2.0", "method": method, "params": params]
             if !notification {
                 body["id"] = nextID
@@ -114,9 +141,11 @@ public enum ACPStdioClient {
             }
             var data = try JSONSerialization.data(withJSONObject: body)
             data.append(0x0A)
-            try stdin.fileHandleForWriting.write(contentsOf: data)
+            return try send(data)
         }
 
+        // A child that is already gone during the handshake surfaces below as
+        // `acp_handshake_failed` once its stdout yields no session.
         try write("initialize", params: [
             "protocolVersion": 1,
             "clientInfo": ["name": "OpenBurnBar", "version": "1"],
@@ -157,7 +186,10 @@ public enum ACPStdioClient {
                     }
                     var data = try JSONSerialization.data(withJSONObject: response)
                     data.append(0x0A)
-                    try stdin.fileHandleForWriting.write(contentsOf: data)
+                    // Replies to child-initiated requests are best effort: a
+                    // child that exited after asking still has buffered stdout
+                    // worth draining, so a closed stdin is not an error here.
+                    _ = try send(data)
                 }
                 continue
             }
@@ -176,7 +208,7 @@ public enum ACPStdioClient {
                     ]
                     var data = try JSONSerialization.data(withJSONObject: response)
                     data.append(0x0A)
-                    try stdin.fileHandleForWriting.write(contentsOf: data)
+                    _ = try send(data)
                 }
                 continue
             }
@@ -202,10 +234,13 @@ public enum ACPStdioClient {
             }
             if sessionID != nil && !promptSent {
                 promptSent = true
-                try write("session/prompt", params: [
+                let delivered = try write("session/prompt", params: [
                     "sessionId": sessionID as Any,
                     "prompt": [["type": "text", "text": prompt]]
                 ])
+                if !delivered {
+                    throw Error(code: "acp_child_exited", message: "ACP child closed stdin before session/prompt could be sent.")
+                }
             }
             if promptSent, let result = obj["result"] as? [String: Any], result["stopReason"] != nil {
                 break
@@ -216,6 +251,19 @@ public enum ACPStdioClient {
             throw Error(code: "acp_handshake_failed", message: "ACP stdio handshake produced no session.")
         }
         return assistant
+    }
+
+    /// True when `error` is, or wraps, POSIX EPIPE. FileHandle reports the
+    /// failed write as NSCocoaErrorDomain 512 with the POSIX error underneath.
+    private static func isBrokenPipe(_ error: Swift.Error) -> Bool {
+        var current: NSError? = error as NSError
+        while let candidate = current {
+            if candidate.domain == NSPOSIXErrorDomain && candidate.code == Int(EPIPE) {
+                return true
+            }
+            current = candidate.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return false
     }
 
     private static func nestedText(_ params: [String: Any]) -> String? {
