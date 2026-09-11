@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
+import { parseCargoLock } from "./check-cargo-dependency-confusion.mjs";
 import { acceptedAdvisoryIds, collectFindings, evaluate } from "./check-cargo-audit-fail-closed.mjs";
 import { loadPolicy } from "./rust-supply-chain-policy.mjs";
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
  * The exact shape cargo-audit 0.22.2 emits, captured from a real run against
@@ -191,4 +197,35 @@ test("the committed policy is valid and currently covers the arrayref yank", () 
     accepted.some((entry) => entry.finding.kind === "yanked" && /blake3/u.test(entry.reason)),
     "the acceptance rationale should name the blocker that makes it necessary",
   );
+});
+
+/**
+ * Tony Arcieri yanked der 0.8.0 on 2026-09-05 13:29 UTC. pkcs8 0.11 / spki 0.8
+ * already accept ^0.8, and unyanked 0.8.1 has been on crates.io since July.
+ * Merge-group cargo-audit fail-closed on the yank and kicked every MQ
+ * candidate, including the style-dictionary bump. The real fix is the
+ * lockfile pin, not a policy acceptance — this test fails if 0.8.0 comes back.
+ */
+test("iroh and burnbar-remote lockfiles do not pin yanked der 0.8.0", () => {
+  const snippet = `[[package]]
+name = "der"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+`;
+  assert.deepEqual(
+    parseCargoLock(snippet).map((entry) => `${entry.name}@${entry.version}`),
+    ["der@0.8.0"],
+    "the lock parser must actually see a yanked 0.8.0 pin so the live assertion is not a tautology",
+  );
+
+  for (const rel of ["crates/openburnbar-iroh/Cargo.lock", "crates/burnbar-remote/Cargo.lock"]) {
+    const versions = parseCargoLock(readFileSync(join(REPO_ROOT, rel), "utf8"))
+      .filter((entry) => entry.name === "der")
+      .map((entry) => entry.version);
+    assert.ok(versions.length > 0, `${rel} must lock der`);
+    assert.ok(
+      !versions.includes("0.8.0"),
+      `${rel} still pins yanked der 0.8.0 (${versions.join(", ")}); cargo update -p der@0.8.0 --precise 0.8.1`,
+    );
+  }
 });

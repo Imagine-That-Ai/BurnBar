@@ -155,6 +155,15 @@ what the attack wants.
    moving.
 4. Only then, time-box an acceptance naming the blocker that makes it necessary.
 
+Worked example, **2026-09-05**: Tony Arcieri yanked `der` 0.8.0 at 08:29 CT
+(no yank message). `pkcs8` 0.11.0 requires `^0.8.0-rc.12` and `spki` 0.8.0
+requires `^0.8`; unyanked `0.8.1` has been on crates.io since 2026-07-09.
+That is step 1 — upgrade, do not accept. The lockfiles in
+`crates/openburnbar-iroh` and `crates/burnbar-remote` pin `0.8.1`
+(`a69dedd701da44b0536442edf09c81a64b0ab97a7a4a5e3d1971f00027cbc63d`).
+Merge-group Rust SAST was fail-closed on the yank and kicking every merge-queue
+candidate until that pin moved.
+
 ## Adding an acceptance
 
 ```jsonc
