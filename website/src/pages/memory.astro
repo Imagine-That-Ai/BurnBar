@@ -38,6 +38,7 @@ import {
   HOWTO_DOC,
   HOWTO_URL,
   INSTALL_ROUTES,
+  ONE_CLICK_COUNT,
   LIFECYCLE_EVENTS,
   LIMITS,
   MEASUREMENTS,
@@ -1328,9 +1329,9 @@ const PARTS = [
       <section class="routes" aria-labelledby="routes-h">
         <h3 id="routes-h" class="routes__h">Which agents the installer covers</h3>
         <p class="routes__sub">
-          Three clients are one click in <strong>Settings → Agents → CLIs</strong>. Two take a
-          config block by hand. Everything else is honest about being unwired rather than given a
-          path we have not verified.
+          {ONE_CLICK_COUNT} clients are one click in <strong>Settings → Agents → CLIs</strong> — the same
+          card the app's first run shows you. Two take a config block by hand. Everything else is honest
+          about being unwired rather than given a path we have not verified.
         </p>
         <ul class="routes__list">
           {
