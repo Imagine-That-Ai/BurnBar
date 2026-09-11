@@ -1,0 +1,959 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imagine-that.ai/schemas/memory/mif-v1.schema.json",
+  "title": "Memory Interchange Format v1 — bundle, records, and reconciliation report",
+  "description": "Owned by MEMORY_MIGRATION_SPEC.md v1.1 §2. One vocabulary, two profiles ('sync' = device<->device over a pairing channel; 'migration' = one-shot BurnBar->core). Canonical column names come from MEMORY_SCHEMA.md §10 / schema/memory-v1.sql. INVARIANT ENFORCED BY THIS FILE: no record carries an authority-computed keyed field. 'content_key', 'body_hmac', 'xdevice_hmac' and 'subject_content_key' are absent from every record type and every record object sets additionalProperties:false, so a bundle carrying one fails validation (MEMORY_MIGRATION_SPEC v1.1 M-05, review item 1, SCHEMA INV-15). MIF MINOR 2 [D-0021]: the manifest declares its crypto profile in a required 'crypto' object; record_memory gains the optional 'source_memory_id'; record_tombstone gains the optional 'scope_kind'; record_body.recovered_from gains 'memory_quarantine_bodies'. Every addition is additive, so min_importer_mif_version stays 1.",
+  "oneOf": [
+    { "$ref": "#/$defs/manifest" },
+    { "$ref": "#/$defs/reconciliation_report" },
+    { "$ref": "#/$defs/hashtree_file" }
+  ],
+  "$defs": {
+    "section_record_map": {
+      "$comment": "Machine-readable name -> record $def mapping. A section's NDJSON lines validate against the pointer named here.",
+      "const": {
+        "00-tombstones": "#/$defs/record_tombstone",
+        "01-tombstone_receipts": "#/$defs/record_tombstone_receipt",
+        "02-review_events": "#/$defs/record_review_event",
+        "03-supersessions": "#/$defs/record_supersession",
+        "04-projects": "#/$defs/record_project",
+        "05-memories": "#/$defs/record_memory",
+        "06-bodies": "#/$defs/record_body",
+        "07-provenance": "#/$defs/record_provenance",
+        "08-embeddings": "#/$defs/record_embedding_count",
+        "09-audit_evidence": "#/$defs/record_audit_evidence",
+        "10-findings": "#/$defs/record_finding"
+      }
+    },
+
+    "profile":        { "enum": ["sync", "migration"] },
+    "ts_ms":          { "type": "integer", "minimum": 0 },
+    "ts_ms_null":     { "type": ["integer", "null"], "minimum": 0 },
+    "hex64":          { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hex64_null":     { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "recipient_key_id_null": { "type": ["string", "null"], "pattern": "^rcp_[0-9a-f]{32}$",
+      "$comment": "D-0025: recipient_key_id = \"rcp_\" + sha256(public_key)[0..32] - the first 16 bytes as 32 lowercase hex, in the wire s1.4 `rcp_` id grammar. v1.1 typed this hex64 and MEMORY_MIGRATION_SPEC s2 wrote `sha256(pubkey)`; one form now, because `aad = recipient_key_id` in the HPKE wrap (D-0021 ruling 1) makes the exact string load-bearing - two implementations that disagree about it produce bundles neither can open. The exporter recomputes it from `public_key` in the recipient descriptor and REFUSES on mismatch." },
+    "exporter_device_key_id_null": { "type": ["string", "null"], "pattern": "^edk_[0-9a-f]{32}$",
+      "$comment": "D-0041 (Q-62): exporter_device_key_id = \"edk_\" + sha256(Ed25519 verifying key)[0..32] - the first 16 bytes as 32 lowercase hex. The importer pins this key on first import (TOFU) and verifies both the manifest signature and every human verdict under it, so the exact string is load-bearing the way recipient_key_id is: two implementations that disagree about it produce bundles neither can open. Null stays admissible (an unsigned rehearsal carries no key); a present string that is not edk_+32hex fails validation." },
+    "lamport":        { "type": "integer", "minimum": 0 },
+    "b64url":         { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+    "memory_id":      { "type": "string", "pattern": "^mem_[0-9a-f]{32}$" },
+    "memory_id_null": { "type": ["string", "null"], "pattern": "^mem_[0-9a-f]{32}$" },
+    "tombstone_id":   { "type": "string", "pattern": "^tmb_[0-9a-f]{32}$" },
+    "event_id":       { "type": "string", "pattern": "^rev_[0-9a-f]{32}$" },
+    "supersession_id":{ "type": "string", "pattern": "^sup_[0-9a-f]{32}$" },
+    "citation_id":    { "type": "string", "pattern": "^cit_[0-9a-f]{32}$" },
+    "bundle_id":      { "type": "string", "pattern": "^bnd_[0-9a-f]{32}$" },
+    "bundle_id_null": { "type": ["string", "null"], "pattern": "^bnd_[0-9a-f]{32}$" },
+    "scope_kind":     { "enum": ["global","user","org","project","repo","branch","session","agent","harness","device"] },
+    "scope_key":      { "type": "string", "minLength": 1, "not": { "pattern": "(^\\|)|(\\|$)|(\\|\\|)" } },
+    "origin_kind":    { "enum": ["human","agent","extractor","import","enrichment"] },
+    "actor_kind":     { "enum": ["human","agent","extractor","system","import"] },
+    "verdict_kind":   { "enum": ["human_verdict","automatic"] },
+    "review_status":  { "enum": ["quarantined","approved","rejected","forgotten"] },
+    "deletion_state": { "enum": ["live","tombstoned","body_purged"] },
+    "memory_type":    { "enum": ["preference","decision","project_fact","procedure","finding","episode","summary","correction","observation"] },
+    "dedup_partition":{ "enum": ["chat","usage","code","enrichment","system","import"] },
+    "classification": { "enum": ["public","internal","confidential","restricted"] },
+    "redaction_state":{ "enum": ["clean","redacted","held_for_review"] },
+    "citation_state": { "enum": ["live","unavailable","pruned","revoked","unknown"] },
+    "tombstone_kind": { "enum": ["fact","source"] },
+    "tombstone_reason": { "enum": ["user_forget","source_deleted","retention","policy","secret_leak","legal"] },
+    "tombstone_origin_label": { "enum": ["daemon_forgotten","cloud_receipt","local","sync"] },
+    "synthesis_reason": {
+      "$comment": "MIF-only. 'app_deleted' has no member in memory_tombstones.reason (schema CHECK); the importer stores reason='user_forget' + origin_label='local' + evidence label 'synthesis:app_deleted'. Residual drift AD-6.",
+      "enum": ["app_deleted","forgotten_status","cloud_receipt","source_tombstone","native", null]
+    },
+    "supersession_reason": { "enum": ["duplicate","correction","refinement","contradiction","policy","merge"] },
+    "alias_kind":     { "enum": ["burnbar_v2","burnbar_legacy32","burnbar_legacy16","podex_folder","podex_workspace","repo_slug"] },
+    "alias_source_label": { "enum": ["observed","migration:burnbar","migration:podex","import:bundle"] },
+    "source_type":    { "enum": ["conversation","agent_message","user_message","code_file","commit","pull_request","issue","artifact","release","deployment_observation","delivery_ref","external_doc"] },
+    "body_integrity": { "enum": ["verified","mismatch","divergent","recovered_legacy_plaintext","absent"] },
+    "body_ref_convention": { "enum": ["snapshot_slug","sha256","adversarial_slug_hex","unknown","absent"] },
+    "body_verdict_binding": { "enum": ["bound","body_mutated_after_verdict","unprovable"] },
+    "valid_to_origin": { "enum": ["scoped","oracle_unconditional_dedup","none"] },
+    "severity":       { "enum": ["info","warn","error"] },
+    "snapshot_mode":  { "$comment": "D-0009 ladder, in order: a keyed VACUUM INTO only when an executed test has pinned it on the shipped artifact, else sqlcipher_export, else backup_api (a keyed page copy through SQLite's online backup API). read_txn is the --allow-long-read fallback. EXPORT_SNAPSHOT_UNAVAILABLE when no rung holds.", "enum": ["vacuum","sqlcipher_export","backup_api","read_txn"] },
+    "store_kind":     { "enum": ["authority","authority_mas_container","legacy_plaintext","legacy_plaintext_secondary","cloud","podex_native"] },
+
+    "import_origin_detail": {
+      "$comment": "Report-only break-out; replaces v1.0's invented `origin` vocabulary (review item 5).",
+      "enum": ["human_verdict","as_stored","rejected_retained_unproven","daemon_default","mcp_default","v51_backfill","cloud","absent_column","unknown_value","verdict_on_broken_chain","approved_body_mutated_after_verdict","partition_pseudo_project","unknown"]
+    },
+    "not_exported_reason": {
+      "enum": ["forgotten_to_tombstone","restricted_classification","source_unreadable","cloud_already_local","out_of_window","orphan_body_not_carried","orphan_provenance_no_memory","dangling_supersession","unmigratable_source","extraction_job_outbox","embedding_vector_disposable","path_alias_not_transported","derived_edge_recomputed_locally"]
+    },
+    "skipped_reason": {
+      "$comment": "D-0033 ruling 2: the four sync-slice values with no contract spelling join here - all four are rows seen and set aside, never malformed (memory_not_applied: a row the importer read and deliberately did not apply; path_alias_dropped: a path alias that could not be minted; receipt_unknown_tombstone: a tombstone receipt naming no tombstone carried or held; reverse_edge_exists: a supersession edge whose reverse already stands).",
+      "enum": ["already_present_same_id","duplicate_bundle_row","tombstoned","superseded_by_local","local_human_verdict_wins","receipt_unknown_peer","verdict_orphaned_discarded","memory_not_applied","path_alias_dropped","receipt_unknown_tombstone","reverse_edge_exists"]
+    },
+    "rejected_reason": {
+      "$comment": "D-0033 ruling 2: the two Q-18 retirement cases gain names - retired_by_non_subject_memory (retired_by_memory_id is not the tombstone's own subject_memory_id) and retirement_on_content_key_tombstone (a retirement carried where no memory can be retired from). Both folded into malformed_record before; the importer that knows more says more.",
+      "enum": ["body_unreconstructible","body_norm_digest_mismatch","record_too_large","schema_version_too_new","malformed_record","human_origin_without_audit_evidence","verdict_on_broken_chain_claimed_human","unknown_required_section","retired_by_non_subject_memory","retirement_on_content_key_tombstone"]
+    },
+    "hold_reason": {
+      "$comment": "D-0031 ruling 3: THE hold vocabulary, and it is closed - every one of these is a HELD REPORT carrying the reason, never an Err that produces no report, and the importer's enum is generated from this list or pinned by a test against it. `INVARIANT_FAILED:<inv>` is the one parameterised member and it is closed too: `<inv>` is one of the eight names of `reconciliation_report.integrity.invariants`, so a reader of a hold reason can always find the boolean it refers to. `BUNDLE_CLOCK_SKEW` is D-0032 ruling 3 - the ONLY reason that reads the importer's local clock, and it holds the whole bundle. `RECIPIENT_MISMATCH` is `manifest.recipient_store_id` not naming this store: right key, wrong store (sync review F-7), which the HPKE `aad` does not cover. `MANIFEST_INVALID` is D-0039 ruling 6 (Q-53): a manifest - or `hashtree.json` - that does not parse or does not validate is a HELD REPORT, never a serde error with no report, which is where interop run 1 stopped. Its parameterised form `MANIFEST_INVALID:<path>` is spelled like INVARIANT_FAILED's and the path grammar is the wire's closed one (MEMORY_WIRE_CONTRACT_V1.md s4.1): rooted at `manifest`, dotted member names and [index] steps. Q-60 rules the bundle directory a CLOSED set of files (MEMORY_MIGRATION_SPEC.md s2), so a file the layout does not name is the same held report with a second root: `bundle/` plus slash-separated segments (each starting alnum, which already excludes `.` and `..`, 128 chars max), e.g. `MANIFEST_INVALID:bundle/sections/05-memories/notes.txt`. An importer that cannot render the path emits the BARE member rather than escaping bundle text into a hold reason.",
+      "type": "string",
+      "anyOf": [
+        { "enum": ["RECONCILIATION_MISMATCH","ROLLUP_DIGEST_MISMATCH","UNMIGRATABLE_SOURCE_PRESENT","RECIPIENT_KEY_UNAVAILABLE","SOURCE_INTEGRITY_FAILED","SIGNATURE_UNVERIFIED","HASHTREE_MISMATCH","EXPORTER_KEY_UNPINNED","TARGET_NOT_KEYED","GATE_UNAVAILABLE","MIF_VERSION_UNSUPPORTED","MIF_PROFILE_UNSUPPORTED","MIF_REQUIRED_SECTION_MISSING","MIF_REHEARSAL_BUNDLE_REFUSED","UNSCOPED_ROWS_NO_USER","P5_SOURCE_NOT_QUIESCED","P5_SOURCE_BUILD_TOO_OLD","MIGRATION_WINDOW_EXPIRED","VERDICT_WALL_MS_IN_FUTURE","RECIPIENT_MISMATCH","BUNDLE_CLOCK_SKEW","MANIFEST_INVALID"] },
+        { "pattern": "^INVARIANT_FAILED:(no_unproven_approved|no_resurrected_tombstone|all_bodies_digest_match|rollup_digests_match|no_keyed_field_in_bundle|target_keyed|audit_evidence_present_for_human_origin|no_orphan_verdict_applied)$" },
+        { "pattern": "^MANIFEST_INVALID:manifest(\\.[A-Za-z_][A-Za-z0-9_]{0,63}|\\[[0-9]{1,9}\\])*$" },
+        { "pattern": "^MANIFEST_INVALID:bundle(/[A-Za-z0-9][A-Za-z0-9_.\\-]{0,127})+$" }
+      ]
+    },
+    "export_error": {
+      "enum": ["EXPORT_KEY_UNAVAILABLE","EXPORT_SOURCE_NOT_KEYED","EXPORT_SOURCE_ROOT_OVERRIDDEN","EXPORT_RECIPIENT_UNVERIFIED","EXPORT_DISK_SPACE","EXPORT_SNAPSHOT_UNAVAILABLE","EXPORT_DELETE_WITHOUT_TOMBSTONE","EXPORT_RECIPIENT_REQUIRED","EXPORT_HPKE_UNAVAILABLE"],
+      "$comment": "The closed set of export refusals. `EXPORT_RECIPIENT_REQUIRED` (D-0025 ruling 3) and `EXPORT_HPKE_UNAVAILABLE` (D-0021 ruling 1: CryptoKit HPKE is macOS 14 / iOS 17, and below it the exporter refuses rather than falling back to a construction no importer can open) both fire BEFORE any bundle or report is written, so neither is ever observed in `reconciliation_report.export_error` on a real run - they are here because this enum is the contract's list of the names an exporter may print, and a name an exporter uses that this set does not carry is a divergence (Q-24)."
+    },
+    "finding_code": {
+      "enum": ["body_hash_mismatch","body_divergent_stores","body_ref_unknown_convention","body_unreconstructible","body_recovered_legacy_plaintext","orphan_body","orphan_provenance","dangling_supersession","alias_conflict","fingerprint_downgraded","review_status_unknown_value","verdict_on_broken_chain","approved_body_mutated_after_verdict","chain_broken","chain_fork","seq_divergence","partition_pseudo_project","tombstone_content_key_unknown","secret_gate_held","record_too_large","source_unreadable","spool_not_carried","receipt_unknown_peer","valid_to_dropped_scope_mismatch","audit_label_stripped","unknown_fields_ignored","concurrent_writes","snapshot_mode_degraded","mas_container_store_present","content_conflict","verdict_orphaned_discarded","source_tombstone_suppressor_armed","delete_without_tombstone_synthesized","forged_human_verdict_refused","unmigratable_source_present","staged_verdict_bundle_scoped"]
+    },
+
+    "bundle_digest": {
+      "$comment": "Bundle-local HMAC under K_join = HKDF(bundle_key,'mif1/join/v1'). NOT sha256(body): a raw body hash is a dictionary-invertible oracle (SCHEMA §2.1) and never enters MIF. The bundle key is random per export, so these values are meaningless outside one bundle.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bundle_digest_null": { "type": ["string","null"], "pattern": "^[0-9a-f]{64}$" },
+
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mif_version","mif_minor","profile","bundle_id","producer_store_id","producer_device_id","user_id","created_at_ms","window","sections","schema_version","content_digest","crypto","hashtree","determinism","rehearsal","min_importer_mif_version"],
+      "properties": {
+        "mif_version":  { "type": "integer", "const": 1 },
+        "mif_minor":    { "type": "integer", "minimum": 0 },
+        "profile":      { "$ref": "#/$defs/profile" },
+        "bundle_id":    { "$ref": "#/$defs/bundle_id" },
+        "prev_bundle_id": { "$ref": "#/$defs/bundle_id_null" },
+        "producer_store_id":  { "type": "string", "minLength": 1 },
+        "producer_device_id": { "type": "string", "minLength": 1 },
+        "user_id":      { "type": ["string","null"] },
+        "created_at_ms":{ "$ref": "#/$defs/ts_ms" },
+        "window":       {
+          "type": "object", "additionalProperties": false,
+          "required": ["from_lamport","to_lamport"],
+          "properties": { "from_lamport": { "$ref": "#/$defs/lamport" }, "to_lamport": { "$ref": "#/$defs/lamport" } }
+        },
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "sections":     { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/section_header" } },
+        "min_importer_mif_version": {
+          "$comment": "MIF minor 2 [D-0021] adds only optional record members and one required manifest object, so it does not raise this floor: a minor-2 bundle still declares 1. `crypto` is required UNCONDITIONALLY rather than gated on mif_minor because no bundle written before D-0021 exists outside test fixtures.",
+          "type": "integer", "minimum": 1
+        },
+        "content_digest": { "$ref": "#/$defs/hex64" },
+        "crypto": {
+          "$comment": "D-0021 ruling 3: the manifest declares what sealed the bundle, so a CryptoKit exporter and a Rust importer can both be correct. Every v1 importer accepts BOTH aead values and BOTH compression values; an exporter emits xchacha20poly1305 + zstd where its platform has them and declares what it used otherwise. `wrap` and `key_schedule` are const because D-0021 ruling 1 admits exactly one wrap (RFC 9180 HPKE mode_base, DHKEM(X25519,HKDF-SHA256)/HKDF-SHA256/ChaCha20Poly1305, info 'mif1/keywrap/v1', aad = recipient_key_id) and ruling 2 exactly one key schedule (mif1-hkdf-v1). A hand-rolled wrap therefore fails validation rather than being negotiated.",
+          "type": "object", "additionalProperties": false,
+          "required": ["aead","compression","wrap","key_schedule"],
+          "properties": {
+            "aead": { "enum": ["xchacha20poly1305","chacha20poly1305"] },
+            "compression": { "enum": ["none","zstd"] },
+            "wrap": { "const": "hpke-base-x25519-hkdf-sha256-chacha20poly1305" },
+            "key_schedule": { "const": "mif1-hkdf-v1" }
+          }
+        },
+        "hashtree": {
+          "$comment": "review item 18 / attack M-19: keyed AND over ciphertext, so the manifest leaks nothing and a section is verified before it is decrypted, in one pass.",
+          "type": "object", "additionalProperties": false,
+          "required": ["alg","over","chunk_bytes","root","key_derivation"],
+          "properties": {
+            "alg": { "const": "hmac-sha256" },
+            "over": { "const": "ciphertext" },
+            "chunk_bytes": { "type": "integer", "const": 4194304 },
+            "root": { "$ref": "#/$defs/hex64" },
+            "key_derivation": { "const": "HKDF(bundle_key,'mif1/hashtree/v1')" }
+          }
+        },
+        "determinism": {
+          "type": "object", "additionalProperties": false,
+          "required": ["canonicalization","sort_keys"],
+          "properties": {
+            "canonicalization": { "const": "JCS" },
+            "sort_keys": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } }
+          }
+        },
+        "rehearsal": { "type": "boolean" },
+        "recipient_key_id": { "$ref": "#/$defs/recipient_key_id_null" },
+        "recipient_store_id": {
+          "$comment": "D-0039 ruling 7 (Q-53): the IMPORTER's store id, in the DDL's own grammar - `stores.store_id` is CHECK(GLOB 'sto_[0-9a-f]*' AND length = 36), i.e. 'sto_' + 32 lowercase hex (schema/memory-v1.sql). v1.1 typed it as any string, so a bundle could carry a recipient store id no store could ever hold and still validate, while RECIPIENT_MISMATCH is the hold that compares it to this store. The BurnBar exporter filled it with the SOURCE fingerprint (D-0025 rule 2), which a real store id makes visible instead of plausible.",
+          "type": ["string","null"], "pattern": "^sto_[0-9a-f]{32}$"
+        },
+        "exporter_device_key_id": { "$ref": "#/$defs/exporter_device_key_id_null" },
+        "export_mode": { "enum": ["full","delta"] },
+        "since_audit_seq": { "type": ["integer","null"], "minimum": 0 },
+        "delta_watermarks": {
+          "$comment": "review item 24: audit seq alone is not a completeness predicate on a chain with seq divergence and forks.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/ts_ms" }
+        },
+        "snapshot_mode": { "$ref": "#/$defs/snapshot_mode" },
+        "source": {
+          "type": "object", "additionalProperties": false,
+          "required": ["product","version","build_kind","store_kind","store_fingerprint","platform","keyed"],
+          "properties": {
+            "product": { "type": "string" },
+            "version": { "type": "string" },
+            "build_kind": { "enum": ["xcode_app_bundle","spm_cli","mas_container","rehearsal_fixture"] },
+            "store_kind": { "$ref": "#/$defs/store_kind" },
+            "store_fingerprint": { "$ref": "#/$defs/hex64" },
+            "platform": { "enum": ["macos","ios","android","windows","linux"] },
+            "keyed": { "type": "boolean" },
+            "cipher_version": { "type": ["string","null"] },
+            "schema_variant": { "type": "object" },
+            "support_root_overridden": { "type": "boolean" }
+          }
+        },
+        "source_integrity": { "enum": ["ok","failed"] },
+        "concurrent_writes": { "type": "boolean" },
+        "partial_sources": { "type": "array", "items": { "type": "object", "required": ["source","reason"], "properties": { "source": { "type": "string" }, "reason": { "type": "string" } } } },
+        "not_exported": { "type": "object", "propertyNames": { "$ref": "#/$defs/not_exported_reason" }, "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "findings_summary": { "type": "object", "propertyNames": { "$ref": "#/$defs/finding_code" }, "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "rollups": {
+          "$comment": "attack M-19: counts alone cannot catch a body attached to the wrong id. One digest per section over the sorted (id, digest) list; the importer recomputes it post-apply. Per-row digests never appear here.",
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["section","tuple","rollup_digest","row_count"],
+            "properties": {
+              "section": { "type": "string" },
+              "tuple": { "type": "array", "items": { "type": "string" } },
+              "rollup_digest": { "$ref": "#/$defs/hex64" },
+              "row_count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "profile": { "const": "migration" } }, "required": ["profile"] },
+          "then": { "required": ["source","source_integrity","concurrent_writes","partial_sources","not_exported","export_mode","snapshot_mode","recipient_key_id","recipient_store_id","exporter_device_key_id","rollups","findings_summary"] }
+        },
+        {
+          "$comment": "M-20: section 09 is required whenever any record claims human origin. The exporter sets audit_evidence.required=true; the importer refuses `origin_kind:'human'` records when it is absent or unverified.",
+          "if": {
+            "properties": { "findings_summary": { "type": "object" } },
+            "required": ["sections"]
+          },
+          "then": { "properties": { "sections": { "type": "array" } } }
+        }
+      ]
+    },
+
+    "section_header": {
+      "$comment": "D-0039 ruling 6 (Q-53): `rollup_digest` is REQUIRED on all eleven sections and is no longer nullable. Every tuple D-0031 ruling 2 names is computable from contract-legal members after the Q-51 reconciliation, so there is no section left that can honestly write null - and nullable is what made ROLLUP_DIGEST_MISMATCH unreachable for eight of them while the counts still balanced. This is the one NON-additive move in this file; a manifest written before it no longer validates, which costs nothing because no bundle written before D-0021 exists outside test fixtures.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name","rank","required","row_count","record_type","subroot","bytes","rollup_digest"],
+      "properties": {
+        "name": { "enum": ["00-tombstones","01-tombstone_receipts","02-review_events","03-supersessions","04-projects","05-memories","06-bodies","07-provenance","08-embeddings","09-audit_evidence","10-findings"] },
+        "rank": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "required": { "type": "boolean" },
+        "mergeable": { "type": "boolean" },
+        "row_count": { "type": "integer", "minimum": 0 },
+        "record_type": { "type": "string", "pattern": "^#/\\$defs/record_[a-z_]+$" },
+        "subroot": { "$ref": "#/$defs/hex64" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "segments": { "type": "integer", "minimum": 1 },
+        "rollup_digest": { "$ref": "#/$defs/hex64" }
+      }
+    },
+
+    "hashtree_file": {
+      "$comment": "D-0039 ruling 8 (Q-53): `hashtree.json` is a file a streaming verifier reads BEFORE it has parsed the manifest, and until now it had no $def at all - so the one artefact whose whole purpose is to be checked was the one artefact nothing checked. It is validated exactly like the manifest, and a file that does not parse or does not validate is the same held report, MANIFEST_INVALID. `subroots` is keyed by SECTION ID (the section_header `name` enum, numeric prefix included), so a reader knows which section each digest belongs to without positional guessing; `root` is the fold over those subroots as RAW 32-byte values in section order (D-0039 ruling 2) and is the same bytes as `manifest.hashtree.root` - a bundle whose two roots disagree is rejected before a section is opened (MIGRATION SPEC s2).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg","leaf_key_derivation","subroots","root"],
+      "properties": {
+        "alg": { "const": "hmac-sha256" },
+        "leaf_key_derivation": { "const": "HKDF(bundle_key,'mif1/hashtree/v1')" },
+        "subroots": {
+          "type": "object",
+          "propertyNames": { "enum": ["00-tombstones","01-tombstone_receipts","02-review_events","03-supersessions","04-projects","05-memories","06-bodies","07-provenance","08-embeddings","09-audit_evidence","10-findings"] },
+          "additionalProperties": { "$ref": "#/$defs/hex64" }
+        },
+        "root": { "$ref": "#/$defs/hex64" },
+        "chunk_sha256": {
+          "$comment": "Q-56 (exporter fixer 4, D-BB-E-17; Commander ruling 2026-09-09): the UNKEYED per-chunk digests that let `verify` name WHICH chunk of a section was flipped, rather than only that the section's subroot disagrees. They live HERE, inside the one file whose whole purpose is to be checked, and NEVER as a `segments.sha256.json` sidecar - one file per concept. Keyed by SECTION ID exactly as `subroots` is (the section directory's `NN-name`, numeric prefix included, which is the `section_header` name enum and is the set of names MIGRATION SPEC s2's layout admits); the value is one sha256 per CIPHERTEXT chunk of that section, in chunk order, over the chunking `manifest.hashtree.chunk_bytes` declares. OPTIONAL, and OUTSIDE `content_digest`: that digest binds the manifest and the tree `root` and nothing else in this file (MIGRATION SPEC s2), so these are a VERIFICATION AID and never an authority - the keyed HMAC tree over ciphertext decides whether a section is intact, and `chunk_sha256` only LOCALISES a failure the tree has already found. `additionalProperties:false` on this object is what refuses a sidecar-style member beside them.",
+          "type": "object",
+          "propertyNames": { "enum": ["00-tombstones","01-tombstone_receipts","02-review_events","03-supersessions","04-projects","05-memories","06-bodies","07-provenance","08-embeddings","09-audit_evidence","10-findings"] },
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/hex64" } }
+        }
+      }
+    },
+
+    "record_tombstone": {
+      "type": "object", "additionalProperties": false,
+      "$comment": "MIGRATION SPEC s15 item 7 was closed by the Wave 2 consistency pass as `scope_kind` is NOT carried, because `memory_tombstones` has no such column (it carries project_id, user_id and scope_key) and a tombstone is keyed by id or content key, never by scope. REOPENED AND REVERSED BY D-0021 RULING 4: the BurnBar exporter proved the asymmetry unworkable in practice, so MIF minor 2 carries `scope_kind` OPTIONALLY (required in the next major). It stays an interchange field only: the importer still derives the routing it needs from scope_key's own leading tag (SCHEMA s2.3) and never writes a tombstone column that does not exist, so a record whose `scope_kind` disagrees with `scope_key`'s tag is a finding, not a store write. `record_memory` and `record_supersession` keep scope_kind as a stored column, because those tables DO have it.",
+      "required": ["profile","tombstone_id","schema_version","tombstone_kind","scope_key","reason","origin_label","actor_kind","verdict_kind","lamport","wall_ms","origin_device_id","created_at_ms","subject_content_key_known"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "tombstone_id": { "$ref": "#/$defs/tombstone_id" },
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "tombstone_kind": { "$ref": "#/$defs/tombstone_kind" },
+        "subject_memory_id": { "$ref": "#/$defs/memory_id_null" },
+        "subject_content_key_known": {
+          "$comment": "review item 2 / M-06: the keyed subject_content_key never travels. The importer computes it from ITS OWN copy of the body before purging; where it never held the row (every legacy tombstone whose body was hard-deleted or blanked) INV-08 degrades to id-only and the row is counted `tombstone_content_key_unknown`.",
+          "type": "boolean"
+        },
+        "content_key_version": { "type": ["integer","null"], "minimum": 1 },
+        "subject_source_refs": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["source_type"],
+            "properties": {
+              "source_type": { "$ref": "#/$defs/source_type" },
+              "thread_id": { "type": ["string","null"] },
+              "message_id": { "type": ["string","null"] },
+              "repo_origin_normalized": { "type": ["string","null"] },
+              "file_path": { "type": ["string","null"] },
+              "source_content_hash": { "$ref": "#/$defs/hex64_null" }
+            }
+          }
+        },
+        "project_fingerprint": { "type": ["string","null"] },
+        "user_id": { "type": ["string","null"] },
+        "scope_kind": { "$ref": "#/$defs/scope_kind" },
+        "scope_key": { "$ref": "#/$defs/scope_key" },
+        "reason": { "$ref": "#/$defs/tombstone_reason" },
+        "origin_label": { "$ref": "#/$defs/tombstone_origin_label" },
+        "synthesis_reason": { "$ref": "#/$defs/synthesis_reason" },
+        "actor_kind": { "enum": ["human","system"] },
+        "actor_id": { "type": ["string","null"] },
+        "verdict_kind": { "$ref": "#/$defs/verdict_kind" },
+        "hard_delete_after_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "retired_at_ms": {
+          "$comment": "The retirement, carried so it can cross a bundle at all [Q-18, from sync R-10 divergence 4]. Named for the DDL's own columns — `memory_tombstones.retired_at_ms`, `retired_by_memory_id`, `retired_lamport`, `retired_wall_ms`, `retired_device_id` — because a MIF record's job here is to move those five values, not to describe them again. There is no retirement REASON and no retirement ACTOR column in the DDL, so neither is minted: S-04 makes the retiring act self-describing (a retirement names the memory it revives, and revival is a new human write with a new memory_id), and `record_review_event` carries the human act itself. Optional from MIF minor 2: an un-retired tombstone omits all five, which is `memory_tombstones`'s NULL leg.",
+          "$ref": "#/$defs/ts_ms"
+        },
+        "retired_by_memory_id": {
+          "$comment": "S-04: a retirement must NAME the row it revives, and the importer rejects one whose name is not the tombstone's own `subject_memory_id`. A content-key-only tombstone can never be retired (trigger `memory_tombstones_retire_bu`), which is why this is the subject and not a free choice.",
+          "$ref": "#/$defs/memory_id"
+        },
+        "retired_lamport": { "$ref": "#/$defs/lamport" },
+        "retired_wall_ms": {
+          "$comment": "The retirement carries its OWN HLC triple because it merges on its own key: schema §5's retirement comparison is (retired_wall_ms, retired_lamport, retired_device_id) with a final tombstone_id tie-break [D-0018]. The creation triple below cannot order two retirements of the same tombstone.",
+          "$ref": "#/$defs/ts_ms"
+        },
+        "retired_device_id": { "type": "string", "minLength": 1 },
+        "audit_chain_epoch": { "type": ["integer","null"], "minimum": 1 },
+        "audit_seq": { "type": ["integer","null"], "minimum": 1 },
+        "lamport": { "$ref": "#/$defs/lamport" },
+        "wall_ms": { "$ref": "#/$defs/ts_ms" },
+        "origin_device_id": { "type": "string", "minLength": 1 },
+        "created_at_ms": { "$ref": "#/$defs/ts_ms" },
+        "origin_store": { "type": "string" }
+      },
+      "dependentRequired": {
+        "retired_at_ms":        ["retired_by_memory_id","retired_lamport","retired_wall_ms","retired_device_id"],
+        "retired_by_memory_id": ["retired_at_ms","retired_lamport","retired_wall_ms","retired_device_id"],
+        "retired_lamport":      ["retired_at_ms","retired_by_memory_id","retired_wall_ms","retired_device_id"],
+        "retired_wall_ms":      ["retired_at_ms","retired_by_memory_id","retired_lamport","retired_device_id"],
+        "retired_device_id":    ["retired_at_ms","retired_by_memory_id","retired_lamport","retired_wall_ms"]
+      },
+      "allOf": [
+        { "if": { "properties": { "tombstone_kind": { "const": "fact" } }, "required": ["tombstone_kind"] },
+          "then": { "required": ["subject_memory_id"], "properties": { "subject_memory_id": { "$ref": "#/$defs/memory_id" } } } },
+        { "$comment": "`tombstone_retire_ck` and `memory_tombstones_retire_bu`, at the bundle boundary: the five retired_* members travel together or not at all (dependentRequired above), and only a `fact` tombstone can carry them — a content-key-only tombstone is never retired [S-04].",
+          "if": { "required": ["retired_at_ms"] },
+          "then": { "properties": { "tombstone_kind": { "const": "fact" } }, "required": ["subject_memory_id"] } },
+        { "if": { "properties": { "tombstone_kind": { "const": "source" } }, "required": ["tombstone_kind"] },
+          "then": { "required": ["subject_source_refs"], "properties": { "subject_source_refs": { "minItems": 1 } } } },
+        { "if": { "properties": { "verdict_kind": { "const": "human_verdict" } }, "required": ["verdict_kind"] },
+          "then": { "properties": { "actor_kind": { "const": "human" } } } }
+      ]
+    },
+
+    "record_tombstone_receipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile","tombstone_id","peer_label","attempts"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "tombstone_id": { "$ref": "#/$defs/tombstone_id" },
+        "peer_label": {
+          "$comment": "review item 12: the oracle's single `replicated_at` exploded per replica. Migration has no sync_peers row, so the label names the replica and the importer mints peer_kind='migration_source', trust='read_only'; an unknown label drops the receipt with reason `receipt_unknown_peer`.",
+          "type": "string", "pattern": "^(cloud|windows_feed|device:[A-Za-z0-9_.:-]{1,64})$"
+        },
+        "peer_public_key": { "type": ["string","null"] },
+        "delivered_at_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "acked_at_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "ack_signature": { "type": ["string","null"] },
+        "attempts": { "type": "integer", "minimum": 0 }
+      },
+      "allOf": [
+        { "if": { "properties": { "acked_at_ms": { "type": "integer" } }, "required": ["acked_at_ms"] },
+          "then": { "properties": { "delivered_at_ms": { "type": "integer" } }, "required": ["delivered_at_ms"] } }
+      ]
+    },
+
+    "record_review_event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile","event_id","memory_id","from_status","to_status","actor_kind","verdict_kind","decided_at_ms","lamport","wall_ms","origin_device_id","body_verdict_binding"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "event_id": {
+          "$comment": "review item 10: deterministic or two exports of one store mint different ids and INV-07 / R1 convergence fail. Migration: 'rev_' + sha256(producer_store_id || 0x1F || audit_seq)[:32].",
+          "$ref": "#/$defs/event_id"
+        },
+        "memory_id": { "$ref": "#/$defs/memory_id" },
+        "from_status": { "type": ["string","null"], "enum": ["quarantined","approved","rejected","forgotten",null] },
+        "to_status": {
+          "$comment": "M-13: read from the audit row's `review_status:<raw>` LABEL, never from the action verb. BurnBar writes action 'memory.reject' for every non-approved transition, including approved->quarantined.",
+          "$ref": "#/$defs/review_status"
+        },
+        "actor_kind": { "$ref": "#/$defs/actor_kind" },
+        "actor_id": { "type": ["string","null"] },
+        "client_id": { "type": "null" },
+        "verdict_kind": { "$ref": "#/$defs/verdict_kind" },
+        "policy_id": { "type": "null" },
+        "reason_label": { "type": ["string","null"], "pattern": "^[a-z0-9][a-z0-9._:-]{0,63}$" },
+        "decided_at_ms": { "$ref": "#/$defs/ts_ms" },
+        "lamport": { "$ref": "#/$defs/lamport" },
+        "wall_ms": { "$ref": "#/$defs/ts_ms" },
+        "origin_device_id": { "type": "string", "minLength": 1 },
+        "event_signature": { "type": ["string","null"] },
+        "signing_key_id": { "type": ["string","null"] },
+        "audit_chain_epoch": { "type": ["integer","null"], "minimum": 1 },
+        "audit_seq": { "type": ["integer","null"], "minimum": 1 },
+        "audit_row_hash": { "$ref": "#/$defs/hex64_null" },
+        "chain_verified": { "type": "boolean" },
+        "body_hash_at_verdict": {
+          "$comment": "M-01: a verdict binds a memory id, not a body. Emitted ONLY when the body snapshot's updated_at <= the verdict's ts; otherwise null with body_verdict_binding='body_mutated_after_verdict' and the row exports quarantined. Same bundle-local K_join space as record_body.body_join_key, so M-02's staged-verdict match is exact.",
+          "$ref": "#/$defs/bundle_digest_null"
+        },
+        "body_verdict_binding": { "$ref": "#/$defs/body_verdict_binding" }
+      },
+      "allOf": [
+        { "if": { "properties": { "verdict_kind": { "const": "human_verdict" } }, "required": ["verdict_kind"] },
+          "then": { "properties": { "actor_kind": { "const": "human" }, "chain_verified": { "const": true }, "body_verdict_binding": { "const": "bound" } },
+                    "required": ["actor_kind","chain_verified","audit_seq","audit_chain_epoch","audit_row_hash","body_hash_at_verdict"] } },
+        { "if": { "properties": { "profile": { "const": "migration" } }, "required": ["profile"] },
+          "then": { "properties": { "lamport": { "const": 0 }, "origin_device_id": { "pattern": "^migration:" } } } }
+      ]
+    },
+
+    "record_supersession": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile","supersession_id","schema_version","superseded_id","superseded_by_id","scope_kind","scope_key","reason","derivation","actor_kind","verdict_kind","decided_at_ms","lamport","wall_ms","origin_device_id","created_at_ms"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "supersession_id": { "$ref": "#/$defs/supersession_id" },
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "superseded_id": { "$ref": "#/$defs/memory_id" },
+        "superseded_by_id": { "$ref": "#/$defs/memory_id" },
+        "scope_kind": { "$ref": "#/$defs/scope_kind" },
+        "scope_key": { "$ref": "#/$defs/scope_key" },
+        "reason": { "$ref": "#/$defs/supersession_reason" },
+        "derivation": {
+          "$comment": "SCHEMA §8 transports AUTHORED edges only; derived_dedup edges are recomputed locally per §5.2 (M-09).",
+          "const": "authored"
+        },
+        "actor_kind": { "$ref": "#/$defs/actor_kind" },
+        "actor_id": { "type": ["string","null"] },
+        "verdict_kind": { "$ref": "#/$defs/verdict_kind" },
+        "evidence_labels": { "type": "array", "items": { "type": "string" } },
+        "decided_at_ms": { "$ref": "#/$defs/ts_ms" },
+        "lamport": { "$ref": "#/$defs/lamport" },
+        "wall_ms": { "$ref": "#/$defs/ts_ms" },
+        "origin_device_id": { "type": "string", "minLength": 1 },
+        "retracted_at_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "retracted_lamport": { "type": ["integer","null"], "minimum": 0 },
+        "retracted_wall_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "retracted_device_id": { "type": ["string","null"] },
+        "created_at_ms": { "$ref": "#/$defs/ts_ms" },
+        "valid_to_ms_carried": { "$ref": "#/$defs/ts_ms_null" },
+        "valid_to_origin": {
+          "$comment": "review item 13 / M-30: the oracle's mergeDuplicateMemories sets valid_to unconditionally on the loser; SCHEMA §4 sets it only when the edge's scope_key equals the superseded row's own. A carried valid_to whose scope differs is DROPPED and counted `valid_to_dropped_scope_mismatch`.",
+          "$ref": "#/$defs/valid_to_origin"
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "verdict_kind": { "const": "human_verdict" } }, "required": ["verdict_kind"] },
+          "then": { "properties": { "actor_kind": { "const": "human" } } } },
+        { "$comment": "superseded_id <> superseded_by_id is SCHEMA supersession_not_self_ck; JSON Schema cannot compare two sibling values, so the importer enforces it and rejects a self-edge with reason `malformed_record`." }
+      ]
+    },
+
+    "record_project": {
+      "type": "object", "additionalProperties": false,
+      "$comment": "D-0033 ruling 1: project identity is the DDL pair (project_id PRIMARY KEY, fingerprint UNIQUE) - matching is on the computed fingerprint, and neither a root commit alone (merges vela with velafork) nor an origin alone (not unique-indexed on projects) is identity. Both members travel together or neither does: set when the exporter computed them, absent when it carries inputs only.",
+      "required": ["profile","identity_version","display_name","aliases","created_at_ms","updated_at_ms","fingerprint_inputs_available"],
+      "dependentRequired": { "project_id": ["fingerprint"], "fingerprint": ["project_id"] },
+      "allOf": [
+        {
+          "$comment": "D-0033 ruling 1, enforced after audit B F-2: the pair travels together or not at all, and a null beside a set value is not the inputs-only form - it is a half-computed identity. `dependentRequired` closes the presence half; these two branches close the null half. Before F-2 the rule was stated in this $def's $comment, in I-30 and in D-0033, and enforced by nothing: `project_id` alone, `fingerprint` alone and `{project_id: null, fingerprint: \"fp3:...\"}` all validated.",
+          "if": { "properties": { "project_id": { "type": "null" } }, "required": ["project_id"] },
+          "then": { "properties": { "fingerprint": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "project_id": { "type": "string" } }, "required": ["project_id"] },
+          "then": { "properties": { "fingerprint": { "type": "string" } } }
+        }
+      ],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "identity_version": { "type": "integer", "minimum": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "project_id": {
+          "$comment": "D-0033 ruling 1: the importer's computed id (`prj_` + 32 hex, DDL projects.project_id) when the exporter could compute it; null with fingerprint when it carries inputs only.",
+          "type": ["string","null"], "pattern": "^prj_[0-9a-f]{32}$"
+        },
+        "fingerprint": {
+          "$comment": "D-0033 ruling 1: the v3 fingerprint when computed, else null beside a null project_id. Matching key; the D-0031 ruling 2 roll-up tuple already reads (project_id, fingerprint, \"\").",
+          "type": ["string","null"], "minLength": 1
+        },
+        "primary_path": { "type": ["string","null"] },
+        "fingerprint_v3": {
+          "$comment": "review item 15: the v3 fingerprint must be RECOMPUTED under v3 normalization (normalized remote + ALL sorted root commits), which needs a live checkout. The exporter carries the INPUTS; the importer computes project_id. Unreachable checkout => path-fallback + `fingerprint_downgraded`.",
+          "type": ["string","null"]
+        },
+        "origin_normalized": {
+          "$comment": "D-0033 ruling 1: repo_origin_normalized is a carried input and an alias, NEVER a project match key. It is the identity of repos (repos_origin_idx), not of projects.",
+          "type": ["string","null"]
+        },
+        "root_commits": { "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{40}$" } },
+        "fingerprint_inputs_available": { "type": "boolean" },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["alias_kind","alias_value","first_seen_ms","last_seen_ms","source_label"],
+            "properties": {
+              "alias_kind": { "$ref": "#/$defs/alias_kind" },
+              "alias_value": { "type": "string", "minLength": 1 },
+              "first_seen_ms": { "$ref": "#/$defs/ts_ms" },
+              "last_seen_ms": { "$ref": "#/$defs/ts_ms" },
+              "source_label": { "$ref": "#/$defs/alias_source_label" }
+            }
+          }
+        },
+        "created_at_ms": { "$ref": "#/$defs/ts_ms" },
+        "updated_at_ms": { "$ref": "#/$defs/ts_ms" }
+      }
+    },
+
+    "record_memory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile","memory_id","schema_version","store_id","memory_type","scope_kind","scope_key","origin_kind","origin_ingest","confidence","confidence_bits","classification","sensitivity_labels","redaction_state","review_status","dedup_partition","body_join_key","body_norm_digest","byte_len","tags","valid_from_ms","deletion_state","lamport","wall_ms","origin_device_id","created_at_ms","updated_at_ms"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "memory_id": {
+          "$comment": "SCHEMA §10: the oracle id is preserved VERBATIM so audit, provenance and tombstone references migrate intact. The residual body-oracle leak is named and accepted there.",
+          "$ref": "#/$defs/memory_id"
+        },
+        "source_memory_id": {
+          "$comment": "MIF minor 2 [D-0021 ruling 4]. The producer's ORIGINAL id, carried whenever `memory_id` had to be canonicalised because the producer's value is not already `mem_` + 32 hex — the BurnBar app lane mints UUID strings (`ControlPlaneStore.addMemoryAuthorityRecord`), which fail `memory_id`'s pattern. Absent when the oracle id was already canonical. It makes `id-map.csv` a convenience rather than the only record of the mapping. It is a producer-supplied opaque string, never an authority-computed value, so INV-15 is untouched.",
+          "type": ["string","null"], "maxLength": 256
+        },
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "store_id": { "type": "string", "minLength": 1 },
+        "memory_type": { "$ref": "#/$defs/memory_type" },
+        "memory_type_source": { "enum": ["mapped","unknown_defaulted"] },
+        "scope_kind": { "$ref": "#/$defs/scope_kind" },
+        "scope_key": { "$ref": "#/$defs/scope_key" },
+        "project_fingerprint": { "type": ["string","null"] },
+        "repo_origin_normalized": { "type": ["string","null"] },
+        "branch": { "type": ["string","null"] },
+        "org_id": { "type": "null" },
+        "user_id": { "type": ["string","null"] },
+        "session_id": { "type": ["string","null"] },
+        "agent_id": { "type": ["string","null"] },
+        "harness_id": { "type": ["string","null"] },
+        "device_id": { "type": ["string","null"] },
+        "origin_kind": { "$ref": "#/$defs/origin_kind" },
+        "origin_actor_id": { "type": ["string","null"] },
+        "origin_client_id": { "type": "null" },
+        "origin_ingest": { "enum": ["local","sync","migration"] },
+        "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "confidence_bits": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "classification": { "$ref": "#/$defs/classification" },
+        "sensitivity_labels": { "type": "array", "items": { "type": "string" } },
+        "redaction_state": { "$ref": "#/$defs/redaction_state" },
+        "review_status": { "$ref": "#/$defs/review_status" },
+        "review_policy_id": { "type": "null" },
+        "dedup_partition": { "$ref": "#/$defs/dedup_partition" },
+        "body_join_key": { "$ref": "#/$defs/bundle_digest" },
+        "body_norm_digest": { "$ref": "#/$defs/bundle_digest" },
+        "byte_len": { "type": "integer", "minimum": 0 },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "valid_from_ms": { "$ref": "#/$defs/ts_ms" },
+        "valid_to_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "valid_to_origin": { "$ref": "#/$defs/valid_to_origin" },
+        "deletion_state": { "$ref": "#/$defs/deletion_state" },
+        "forgotten_at_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "body_purged_at_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "lamport": { "$ref": "#/$defs/lamport" },
+        "wall_ms": { "$ref": "#/$defs/ts_ms" },
+        "origin_device_id": { "type": "string", "minLength": 1 },
+        "created_at_ms": { "$ref": "#/$defs/ts_ms" },
+        "updated_at_ms": { "$ref": "#/$defs/ts_ms" },
+        "original_review_status": { "type": ["string","null"] },
+        "import_origin_detail": { "$ref": "#/$defs/import_origin_detail" },
+        "body_ref_convention": { "$ref": "#/$defs/body_ref_convention" },
+        "body_integrity": { "$ref": "#/$defs/body_integrity" },
+        "source_kind_inferred": { "type": ["string","null"] },
+        "verdict_audit_seq": { "type": ["integer","null"], "minimum": 1 },
+        "verdict_event_id": { "type": ["string","null"], "pattern": "^rev_[0-9a-f]{32}$" }
+      },
+      "allOf": [
+        {
+          "$comment": "R10 / SCHEMA memories_promotion_ck: `approved` requires origin_kind='human'. No MIF record can carry an approved row with any other origin, and a human origin must name the audit row that proves it (M-03, M-20).",
+          "if": { "properties": { "review_status": { "const": "approved" } }, "required": ["review_status"] },
+          "then": { "properties": { "origin_kind": { "const": "human" } }, "required": ["verdict_audit_seq","verdict_event_id"] }
+        },
+        {
+          "if": { "properties": { "origin_kind": { "const": "human" } }, "required": ["origin_kind"] },
+          "then": { "required": ["verdict_audit_seq","verdict_event_id","origin_actor_id"], "properties": { "origin_actor_id": { "type": "string", "pattern": "^migration:app:" } } }
+        },
+        {
+          "if": { "properties": { "profile": { "const": "migration" } }, "required": ["profile"] },
+          "then": {
+            "required": ["original_review_status","import_origin_detail","body_ref_convention","body_integrity"],
+            "properties": { "lamport": { "const": 0 }, "origin_ingest": { "const": "migration" }, "origin_device_id": { "pattern": "^migration:" } }
+          }
+        },
+        {
+          "if": { "properties": { "deletion_state": { "const": "live" } }, "required": ["deletion_state"] },
+          "then": { "properties": { "forgotten_at_ms": { "type": "null" }, "body_purged_at_ms": { "type": "null" } } }
+        }
+      ]
+    },
+
+    "record_body": {
+      "$comment": "D-0038 as amended (Q-52): the join is CONTENT-KEYED and this record carries NO `memory_id` - two memories with identical bodies share one body record, which is the join's purpose. `body_join_key` = HMAC-SHA256(K_join, canonical body bytes) and `body_norm_digest` = HMAC-SHA256(K_join, UTF-8(normalize(body))) under the SAME K_join = HKDF-SHA256(salt 'imaginethat.memory.hkdf.v1', bundle_key, 'mif1/join/v1', 32); `normalize` is MEMORY_SCHEMA.md s0.1's, the only one. The importer's private LP64(memory_id, body) form is deleted, and additionalProperties:false is what refuses it.",
+      "type": "object", "additionalProperties": false,
+      "required": ["profile","body_join_key","body_norm_digest","byte_len"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "body_join_key": { "$ref": "#/$defs/bundle_digest" },
+        "body_norm_digest": { "$ref": "#/$defs/bundle_digest" },
+        "byte_len": { "type": "integer", "minimum": 0, "$comment": "The length of the CANONICAL bytes - the body as stored - not of the base64url rendering in `body`." },
+        "body": {
+          "$comment": "D-0038 ruling 2 (Q-52): base64url of the canonical body bytes, UNPADDED (s0.1's rendering for every binary in this format). The section AEAD seals the record; the record itself stays text-safe. `contentEncoding` has no registered base64url value, so the alphabet is the fence: a generator that writes the PLAINTEXT body - which is what the Wave 13 generator did, and why every memory row was rejected body_unreconstructible - fails validation at the exporter rather than at the importer's digest check.",
+          "type": "string", "pattern": "^[A-Za-z0-9_-]*$"
+        },
+        "body_object": { "$ref": "#/$defs/hex64" },
+        "summary": { "type": ["string","null"] },
+        "recovered_from": {
+          "$comment": "MIF minor 2 [D-0021 ruling 4] adds `memory_quarantine_bodies`, the daemon lane's table, which holds every quarantined and rejected body. Without a member for it the whole daemon review queue is lost silently at export.",
+          "enum": ["memory_body_snapshots","project_memory_snapshots","body_redacted_legacy_plaintext","memory_quarantine_bodies"]
+        }
+      },
+      "oneOf": [ { "required": ["body"] }, { "required": ["body_object"] } ]
+    },
+
+    "record_provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile","memory_id","citation_id","schema_version","source_type","citation_state","occurrence","origin_kind","created_at_ms"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "memory_id": { "$ref": "#/$defs/memory_id" },
+        "citation_id": { "$ref": "#/$defs/citation_id" },
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "source_type": { "$ref": "#/$defs/source_type" },
+        "citation_state": {
+          "$comment": "review item 14: replaces the invented `resolvable_hint`. Source not migrated => 'unknown' (acceptance item 11's literal word); source known deleted => 'unavailable'.",
+          "$ref": "#/$defs/citation_state"
+        },
+        "thread_id": { "type": ["string","null"] },
+        "message_id": { "type": ["string","null"] },
+        "role": { "type": ["string","null"], "enum": ["human","agent","notice","injected",null] },
+        "occurrence": { "type": "integer", "minimum": 0 },
+        "repo_origin_normalized": { "type": ["string","null"] },
+        "file_path": { "type": ["string","null"] },
+        "commit_sha": { "type": ["string","null"], "pattern": "^[0-9a-f]{40}$" },
+        "pr_number": { "type": ["integer","null"] },
+        "issue_key": { "type": ["string","null"] },
+        "artifact_digest": { "type": ["string","null"] },
+        "release_id": { "type": ["string","null"] },
+        "deployment_id": { "type": ["string","null"] },
+        "source_uri": { "type": ["string","null"], "pattern": "^(https://|file://)" },
+        "source_content_hash": {
+          "$comment": "Unkeyed sha256 over the CITED SOURCE text, computed by the exporter and carried inside the sealed segment only. The importer stores it as memory_provenance.content_hash and derives the keyed xdevice_hmac itself under K_prov (review item 1). A citation with no source_content_hash cannot be 'live' (SCHEMA provenance_live_hash_ck).",
+          "$ref": "#/$defs/hex64_null"
+        },
+        "origin_kind": { "$ref": "#/$defs/origin_kind" },
+        "origin_actor_id": { "type": ["string","null"] },
+        "origin_client_id": { "type": "null" },
+        "authored_at_ms": { "$ref": "#/$defs/ts_ms_null" },
+        "created_at_ms": { "$ref": "#/$defs/ts_ms" }
+      },
+      "allOf": [
+        { "if": { "properties": { "citation_state": { "const": "live" } }, "required": ["citation_state"] },
+          "then": { "required": ["source_content_hash"], "properties": { "source_content_hash": { "$ref": "#/$defs/hex64" } } } }
+      ]
+    },
+
+    "record_embedding_count": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile","lane_label","model_id","version_tag","dim","distance_metric","row_count","disposable","reason","source_table"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "lane_label": { "type": "string" },
+        "model_id": { "type": "string" },
+        "model_revision": { "type": ["string","null"] },
+        "version_tag": { "type": "string" },
+        "dim": { "type": "integer", "minimum": 1 },
+        "distance_metric": { "enum": ["cosine","dot","l2"] },
+        "normalization": { "type": ["string","null"], "enum": ["l2","none",null] },
+        "row_count": { "type": "integer", "minimum": 0 },
+        "disposable": { "const": true },
+        "reason": { "enum": ["non-semantic","unpinned_embedder","cloaked_server_readable","dormant_lane"] },
+        "source_table": { "type": "string" }
+      },
+      "$comment": "v1 carries COUNTS ONLY. There is no `vector` property in this record type and additionalProperties:false, so a bundle physically cannot carry a vector."
+    },
+
+    "record_audit_evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile","peer_store_id","chain_epoch","peer_seq","payload","labels","hash","recomputed_ok","sanitized"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/profile" },
+        "peer_store_id": { "type": "string", "minLength": 1 },
+        "chain_epoch": { "type": "integer", "minimum": 1, "$comment": "BurnBar's v2 chain has no epoch; migration synthesizes 1 (SCHEMA §8.2)." },
+        "peer_seq": { "type": "integer", "minimum": 1 },
+        "payload_seq": { "type": ["integer","null"], "minimum": 0, "$comment": "the payload's own seq; differs from peer_seq after any deletion (seq_divergence)." },
+        "ts": { "type": ["string","null"] },
+        "actor": { "type": ["string","null"] },
+        "action": { "type": ["string","null"] },
+        "domain": { "type": ["string","null"] },
+        "project_id_raw": { "type": ["string","null"] },
+        "subject_id": { "type": ["string","null"] },
+        "payload": { "type": "string", "not": { "pattern": "body_ref:" } },
+        "labels": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,63}$", "not": { "pattern": "^[0-9a-f]{64}$" } } },
+        "stripped_labels": { "type": "array", "items": { "type": "string" } },
+        "prev_hash": { "$ref": "#/$defs/hex64_null" },
+        "hash": { "$ref": "#/$defs/hex64" },
+        "recomputed_ok": { "type": "boolean" },
+        "sanitized": { "const": true, "$comment": "SCHEMA §8.2: `body_ref:<sha256(body)>` labels are stripped at EXPORT so the oracle never leaves BurnBar; the importer's CHECK + trigger make the strip non-optional on the way in as well." },
+        "in_broken_span": { "type": "boolean" },
+        "in_fork": { "type": "boolean" }
+      }
+    },
+
+    "record_finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile","code","severity","count","detail"],
+      "properties": {
+        "profile": { "const": "migration" },
+        "code": { "$ref": "#/$defs/finding_code" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "count": { "type": "integer", "minimum": 0 },
+        "table": { "type": ["string","null"] },
+        "sample_source_ids": { "type": "array", "maxItems": 5, "items": { "type": "string" } },
+        "detail": { "type": "string" },
+        "lost_records": {
+          "$comment": "M-29: a count is not a name. For code='body_unreconstructible' this array is the source of `lost.csv` beside the bundle.",
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["memory_id","created_at_ms","reason_detail"],
+            "properties": {
+              "memory_id": { "$ref": "#/$defs/memory_id" },
+              "created_at_ms": { "$ref": "#/$defs/ts_ms" },
+              "tags": { "type": "array", "items": { "type": "string" } },
+              "first_citation": { "type": ["string","null"] },
+              "reason_detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "table_reconciliation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name","source_rows","exported","not_exported","imported","skipped","rejected","balanced"],
+      "properties": {
+        "name": { "type": "string" },
+        "source_rows": { "type": "integer", "minimum": 0 },
+        "exported": { "type": "integer", "minimum": 0 },
+        "not_exported": { "type": "object", "propertyNames": { "$ref": "#/$defs/not_exported_reason" }, "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "imported": { "type": "integer", "minimum": 0 },
+        "imported_detail": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "clean": { "type": "integer", "minimum": 0 },
+            "gate_held": { "type": "integer", "minimum": 0, "$comment": "review item 9: a secret/PII hit is imported with redaction_state='held_for_review' + quarantined + labels. It is NEVER dropped; dropping it would be silent loss." },
+            "recovered_legacy_plaintext": { "type": "integer", "minimum": 0 },
+            "content_conflict": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "skipped": { "type": "object", "propertyNames": { "$ref": "#/$defs/skipped_reason" }, "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "rejected": { "type": "object", "propertyNames": { "$ref": "#/$defs/rejected_reason" }, "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "balanced": { "type": "boolean" }
+      }
+    },
+
+    "reconciliation_report": {
+      "type": "object", "additionalProperties": false,
+      "required": ["report_version","phase","decision","hold_reasons","bundle","tables","integrity","counts_hash"],
+      "properties": {
+        "report_version": { "const": "1.1" },
+        "phase": { "enum": ["export","import","dry_run","p5_reconcile"] },
+        "decision": { "enum": ["applied","held","discarded","already_applied","exported","refused"] },
+        "hold_reasons": { "type": "array", "items": { "$ref": "#/$defs/hold_reason" } },
+        "export_error": { "$ref": "#/$defs/export_error" },
+        "bundle": {
+          "type": "object", "additionalProperties": false,
+          "required": ["bundle_id","mif_version","profile","content_digest"],
+          "properties": {
+            "bundle_id": { "$ref": "#/$defs/bundle_id" },
+            "mif_version": { "type": "integer" },
+            "mif_minor": {
+              "$comment": "D-0039 ruling 5 (Q-53): this value MUST EQUAL `manifest.mif_minor` for the same bundle. The two live in two files, so no JSON Schema keyword can express the equality - it is one of the very few rules in this format that is prose (MIGRATION SPEC s10) plus a check (eval/checks/validate_mif.py, which pairs a report with its manifest and refuses a disagreeing pair). Interop run 1's exporter wrote manifest 2 beside report 1 for one bundle (M-9) and every schema on both sides was satisfied.",
+              "type": "integer"
+            },
+            "profile": { "$ref": "#/$defs/profile" },
+            "content_digest": { "$ref": "#/$defs/hex64" },
+            "exporter_device_key_id": { "$ref": "#/$defs/exporter_device_key_id_null" },
+            "signature_verified": { "type": "boolean" },
+            "hashtree_verified": { "type": "boolean" },
+            "rollups_verified": { "type": "boolean" },
+            "rehearsal": { "type": "boolean" },
+            "unknown_fields": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "source": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "product": { "type": "string" }, "version": { "type": "string" },
+            "store_kind": { "$ref": "#/$defs/store_kind" }, "store_fingerprint": { "$ref": "#/$defs/hex64" },
+            "source_integrity": { "enum": ["ok","failed"] }, "concurrent_writes": { "type": "boolean" },
+            "snapshot_mode": { "$ref": "#/$defs/snapshot_mode" },
+            "partial_sources": { "type": "array", "items": { "type": "object" } },
+            "schema_variant": { "type": "object" },
+            "inventoried_stores": {
+              "$comment": "M-08: every store class on disk is inventoried by path with per-table row counts, including the MAS sandbox container (S1b). Excluding a store is a decision the user must see.",
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["label","store_kind","present","migratable"],
+                "properties": {
+                  "label": { "type": "string" }, "store_kind": { "$ref": "#/$defs/store_kind" },
+                  "present": { "type": "boolean" }, "migratable": { "type": "boolean" },
+                  "reason": { "type": ["string","null"] },
+                  "table_counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+                }
+              }
+            }
+          }
+        },
+        "target": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "store_fingerprint_before": { "type": ["string","null"] },
+            "store_fingerprint_after": { "type": ["string","null"] },
+            "keyed": { "type": "boolean" },
+            "quiesced": { "type": "boolean" }
+          }
+        },
+        "write_lease_taken": { "$comment": "A-CD-02: a run that holds before it takes the single-writer lease reports false, so 'no lease was taken' is measurable rather than inferred from an absent field.", "type": "boolean" },
+        "staging_files_created": { "$comment": "A-CD-02: true iff the run wrote at least one staging file under the target's staging root. The rehearsal fixture counts them (`eval/migration-profiles.json` variants[].observed.staging_files_created); this member is that count > 0.", "type": "boolean" },
+        "clients_drained": { "$comment": "A-CD-02: true iff at least one connected client was drained. The rehearsal fixture counts them; this member is that count > 0.", "type": "boolean" },
+        "tables": { "type": "array", "items": { "$ref": "#/$defs/table_reconciliation" } },
+        "reclassifications": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "approved_to_quarantined": { "type": "object", "propertyNames": { "$ref": "#/$defs/import_origin_detail" }, "additionalProperties": { "type": "integer", "minimum": 0 } },
+            "other_to_quarantined": { "type": "object", "propertyNames": { "$ref": "#/$defs/import_origin_detail" }, "additionalProperties": { "type": "integer", "minimum": 0 } },
+            "audit_proven_human": { "type": "integer", "minimum": 0 },
+            "approved_rows_in_source": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "verdict_conflicts": { "type": "array", "items": { "type": "object" } },
+        "chain": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "verified_through_seq": { "type": "integer", "minimum": 0 },
+            "broken_at": { "type": "array", "items": { "type": "integer" } },
+            "forks": { "type": "array", "items": { "type": "integer" } },
+            "seq_divergence": { "type": "boolean" },
+            "labels_stripped": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "gate_classes": {
+          "$comment": "D-0008's three pre-persistence policy classes. On the migration path all three land in imported_detail.gate_held (D-0008's hold row covers every migrated body with a gate finding), so these three MUST sum to it; the split says which class held the row without opening a body. A reject-class span is replaced by [REDACTED:<class>] and is never persisted; no class drops a row.",
+          "type": "object", "additionalProperties": false,
+          "required": ["reject","redact","hold"],
+          "properties": {
+            "reject": { "type": "integer", "minimum": 0 },
+            "redact": { "type": "integer", "minimum": 0 },
+            "hold":   { "type": "integer", "minimum": 0 }
+          }
+        },
+        "counters": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "gate_held": { "type": "integer", "minimum": 0 },
+            "tombstones_without_content_key": { "type": "integer", "minimum": 0 },
+            "fingerprint_downgraded": { "type": "integer", "minimum": 0 },
+            "partition_pseudo_project": { "type": "integer", "minimum": 0 },
+            "verdict_orphaned_discarded": { "type": "integer", "minimum": 0 },
+            "delete_without_tombstone_synthesized": { "type": "integer", "minimum": 0 },
+            "source_tombstone_suppressors": { "type": "integer", "minimum": 0 },
+            "bodies_recovered_legacy_plaintext": { "type": "integer", "minimum": 0 },
+            "bodies_unreconstructible": { "type": "integer", "minimum": 0 },
+            "orphan_bodies": { "type": "integer", "minimum": 0 },
+            "derived_dedup_edges": { "type": "integer", "minimum": 0 },
+            "spool_files": { "type": "integer", "minimum": 0 },
+            "spool_bytes": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "integrity": {
+          "type": "object", "additionalProperties": false,
+          "required": ["invariants"],
+          "properties": {
+            "source_quick_check": { "type": ["string","null"] },
+            "target_quick_check": { "type": ["string","null"] },
+            "target_integrity_check": { "type": ["string","null"] },
+            "invariants": {
+              "type": "object", "additionalProperties": false,
+              "required": ["no_unproven_approved","no_resurrected_tombstone","all_bodies_digest_match","rollup_digests_match","no_keyed_field_in_bundle","target_keyed"],
+              "properties": {
+                "no_unproven_approved": { "type": "boolean" },
+                "no_resurrected_tombstone": { "type": "boolean" },
+                "all_bodies_digest_match": { "type": "boolean" },
+                "rollup_digests_match": { "type": "boolean" },
+                "no_keyed_field_in_bundle": { "type": "boolean" },
+                "target_keyed": { "type": "boolean" },
+                "audit_evidence_present_for_human_origin": { "type": "boolean" },
+                "no_orphan_verdict_applied": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "embedding_provenance": { "type": "array", "items": { "$ref": "#/$defs/record_embedding_count" } },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/record_finding" } },
+        "id_set_diff": {
+          "$comment": "M-04/M-19: P5's reconcile is an id-set + digest diff, never counts alone.",
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "source_live_count": { "type": "integer", "minimum": 0 },
+            "target_live_count": { "type": "integer", "minimum": 0 },
+            "only_in_source": { "type": "array", "items": { "$ref": "#/$defs/memory_id" } },
+            "only_in_target": { "type": "array", "items": { "$ref": "#/$defs/memory_id" } },
+            "digest_mismatch": { "type": "array", "items": { "$ref": "#/$defs/memory_id" } },
+            "empty": { "type": "boolean" }
+          }
+        },
+        "human_summary": {
+          "$comment": "review rec 10: a fixed template with named slots, or it drifts and is untestable. <= 20 rendered lines.",
+          "type": "object", "additionalProperties": false,
+          "required": ["memories_in","memories_out","status_changes","not_carried","still_elsewhere","backup_location","next_action"],
+          "properties": {
+            "memories_in": { "type": "integer", "minimum": 0 },
+            "memories_out": { "type": "integer", "minimum": 0 },
+            "status_changes": { "type": "array", "items": { "type": "string" } },
+            "not_carried": { "type": "array", "items": { "type": "string" } },
+            "still_elsewhere": { "type": "array", "items": { "type": "string" } },
+            "backup_location": { "type": "string" },
+            "lost_csv_path": { "type": ["string","null"] },
+            "next_action": { "type": "string" }
+          }
+        },
+        "counts_hash": { "$ref": "#/$defs/hex64" }
+      }
+    }
+  }
+}

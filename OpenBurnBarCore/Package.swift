@@ -275,6 +275,17 @@ if !buildForLinuxBoundary {
             targets: ["OpenBurnBarData"]
         )
     )
+    // Release BB-E, the BurnBar side of the memory migration
+    // (docs/MEMORY_EXPORT_MIF.md). Linked by BOTH the Xcode app target — whose
+    // "Export memory" action calls it in-process — and the CLI, so the two
+    // cannot drift. It reads the store through GRDB, so it is pruned off the
+    // Linux-boundary graph exactly as OpenBurnBarData is.
+    packageProductsBase.append(
+        .library(
+            name: "OpenBurnBarMemoryExport",
+            targets: ["OpenBurnBarMemoryExport"]
+        )
+    )
 }
 // Usage-insights models and deterministic analysis are Foundation-only and are
 // consumed by the Linux daemon RPC as well as Apple presentation surfaces.
@@ -1625,6 +1636,37 @@ let firstPartyTargets: [Target] = platformFirstPartyTargetsBase
         ] + swiftTestingAppleDependencies,
         resources: [
             .process("Fixtures")
+        ],
+        swiftSettings: [.swiftLanguageMode(.v5)]
+    ),
+    // BB-E. Depends on OpenBurnBarKernel for the ONE secret/PII gate — a
+    // migration-private scanner would be a third corpus to drift against — and
+    // on GRDB to read the store. It does NOT depend on OpenBurnBarData: the
+    // exporter reads whatever schema it finds and probes for columns, so the
+    // migrator is a test fixture rather than a production dependency.
+    .target(
+        name: "OpenBurnBarMemoryExport",
+        dependencies: [
+            "OpenBurnBarKernel",
+            .product(name: "GRDB", package: "GRDB-SQLCipher"),
+            swiftCryptoNonAppleDependency
+        ]
+    ),
+    .testTarget(
+        name: "OpenBurnBarMemoryExportTests",
+        dependencies: [
+            "OpenBurnBarMemoryExport",
+            // The fixture stores are built by BurnBar's OWN migrator, so the
+            // tests exercise the shape production actually has rather than one
+            // this target invented.
+            "OpenBurnBarData",
+            .product(name: "GRDB", package: "GRDB-SQLCipher")
+        ] + swiftTestingAppleDependencies,
+        resources: [
+            // An embedded copy of contracts/mif-v1.schema.json. The emitted
+            // JSON is validated against it in-process, so the check cannot
+            // fail open when an optional validator dependency is missing.
+            .process("Contracts")
         ],
         swiftSettings: [.swiftLanguageMode(.v5)]
     )

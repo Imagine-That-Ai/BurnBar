@@ -135,6 +135,12 @@ public struct BurnBarCLIRunner {
                     storageBudgetBytes: storageBudgetBytes
                 )
             )
+        #if OPENBURNBAR_MEMORY_EXPORT
+        case "memory":
+            // Release BB-E, the BurnBar side of the memory migration. Behind
+            // `burnbar.memory.export.enabled`, default OFF and user-initiated.
+            return try runMemoryCommand(Array(effectiveArguments.dropFirst()))
+        #endif
         case "config":
             let args = Array(effectiveArguments.dropFirst())
             return formatProjectMemoryConfig(try client.codeIndexStatus(projectPath: optionValue("--cwd", in: args)))
