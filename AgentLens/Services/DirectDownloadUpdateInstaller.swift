@@ -73,15 +73,22 @@ enum DirectDownloadUpdateInstaller {
             try prepareInstall(dmgURL: dmgURL, currentBuild: currentBuild)
         }.value
 
+        guard case let .ready(install) = prepared else {
+            // Same CFBundleVersion is already on disk. The feed can still look
+            // "newer" when marketing strings differ (`1.0.40+repair.36` vs
+            // `1.0.40`); do not swap or relaunch.
+            return
+        }
+
         do {
             try spawnTrampoline(
                 appPID: appPID,
-                sourcePath: prepared.appPath,
-                mountPoint: prepared.mountPoint,
+                sourcePath: install.appPath,
+                mountPoint: install.mountPoint,
                 destinationPath: destinationPath
             )
         } catch {
-            detach(prepared.mountPoint)
+            detach(install.mountPoint)
             throw error
         }
         // The trampoline is now an independent session; finishing the swap once
@@ -100,36 +107,55 @@ enum DirectDownloadUpdateInstaller {
         let appPath: String
     }
 
-    private nonisolated static func prepareInstall(dmgURL: URL, currentBuild: Int) throws -> PreparedInstall {
+    private enum PreparedOutcome {
+        case alreadyInstalled
+        case ready(PreparedInstall)
+    }
+
+    private nonisolated static func prepareInstall(dmgURL: URL, currentBuild: Int) throws -> PreparedOutcome {
         let mountPoint = try mount(dmgURL)
         do {
             let appPath = try locateApp(in: mountPoint)
             try validateSignature(at: appPath)
             // Anti-downgrade/replay: even a validly-signed but OLD DMG (served by
             // a tampered, unsigned feed claiming a higher version) must not be
-            // installed over a newer/equal build.
-            try validateNotDowngrade(at: appPath, currentBuild: currentBuild)
-            return PreparedInstall(mountPoint: mountPoint, appPath: appPath)
+            // installed over a newer build. Equal build is already installed.
+            guard let comparison = compareOfferedBuild(at: appPath, currentBuild: currentBuild) else {
+                throw DirectDownloadUpdateInstallError.versionUnreadable
+            }
+            switch comparison {
+            case .orderedAscending:
+                let offered = offeredBundleBuild(at: appPath) ?? 0
+                throw DirectDownloadUpdateInstallError.downgradeBlocked(current: currentBuild, offered: offered)
+            case .orderedSame:
+                detach(mountPoint)
+                return .alreadyInstalled
+            case .orderedDescending:
+                return .ready(PreparedInstall(mountPoint: mountPoint, appPath: appPath))
+            }
         } catch {
             detach(mountPoint)
             throw error
         }
     }
 
-    /// Reads the mounted bundle's `CFBundleVersion` and refuses anything that is
-    /// not strictly newer than what's installed. The mounted image is the
+    /// Reads the mounted bundle's `CFBundleVersion`. The mounted image is the
     /// authenticated artifact (Ed25519 over the DMG bytes); this closes the
     /// downgrade window the unsigned feed metadata would otherwise leave open.
-    private nonisolated static func validateNotDowngrade(at appPath: String, currentBuild: Int) throws {
+    nonisolated static func compareOfferedBuild(at appPath: String, currentBuild: Int) -> ComparisonResult? {
+        guard let offeredBuild = offeredBundleBuild(at: appPath) else { return nil }
+        if offeredBuild < currentBuild { return .orderedAscending }
+        if offeredBuild > currentBuild { return .orderedDescending }
+        return .orderedSame
+    }
+
+    private nonisolated static func offeredBundleBuild(at appPath: String) -> Int? {
         let infoPlistPath = (appPath as NSString).appendingPathComponent("Contents/Info.plist")
         guard let info = NSDictionary(contentsOfFile: infoPlistPath),
-              let buildString = info["CFBundleVersion"] as? String,
-              let offeredBuild = Int(buildString) else {
-            throw DirectDownloadUpdateInstallError.versionUnreadable
+              let buildString = info["CFBundleVersion"] as? String else {
+            return nil
         }
-        guard offeredBuild > currentBuild else {
-            throw DirectDownloadUpdateInstallError.downgradeBlocked(current: currentBuild, offered: offeredBuild)
-        }
+        return Int(buildString)
     }
 
     private nonisolated static func mount(_ dmgURL: URL) throws -> String {

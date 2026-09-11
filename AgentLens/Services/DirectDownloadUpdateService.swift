@@ -411,11 +411,11 @@ final class DirectDownloadUpdateChecker {
                 await MainActor.run { self?.phase = .installing }
                 try await DirectDownloadUpdateInstaller.installAndRelaunch(dmgAt: fileURL)
 
-                // installAndRelaunch terminates the app on success; reaching
-                // here means it scheduled the relaunch.
+                // installAndRelaunch terminates the app on a real swap. Reaching
+                // here means the packet was already the installed build.
                 await MainActor.run {
                     self?.isBusy = false
-                    self?.phase = .relaunching
+                    self?.phase = .upToDate
                 }
             } catch {
                 try? FileManager.default.removeItem(at: destination) // try?-ok(temp cleanup best-effort)
