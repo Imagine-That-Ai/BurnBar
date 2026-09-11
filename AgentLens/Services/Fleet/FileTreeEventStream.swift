@@ -67,6 +67,15 @@ final class FileTreeEventStream {
 
     deinit { stopStream() }
 
+#if canImport(CoreServices)
+    /// Kernel flags for the stream. `UseCFTypes` is the crash invariant:
+    /// dropping it turns `eventPaths` into `char **` and the callback into a
+    /// use-after-type-confusion. Tests assert this bitmask directly.
+    static let creationFlags: FSEventStreamCreateFlags = FSEventStreamCreateFlags(
+        kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes
+    )
+#endif
+
     /// Arms the watcher. Returns false when the stream could not be created —
     /// callers must surface that as `unobservable` rather than silently
     /// rendering an agent as quiet.
@@ -87,13 +96,11 @@ final class FileTreeEventStream {
         )
 
         // `UseCFTypes` is not optional here, it is load-bearing. Without it
-        // FSEvents delivers `eventPaths` as a C `char **`, and the callback
-        // bitcasts that pointer to `NSArray` and sends it a message — which is
-        // an objc_msgSend into raw path bytes, and exactly why the crash
-        // address (`0x656e756f3674`) reads as ASCII. With the flag set, the
-        // parameter really is a `CFArray` of `CFString` and the bridge in
-        // `fileTreeEventCallback` is sound.
-        let flags = UInt32(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes)
+        // FSEvents delivers `eventPaths` as a C `char **`. 1.0.40 (81) bitcast
+        // that pointer to `NSArray` and bridged `as? [String]`, which is
+        // `objc_msgSend` into path bytes — SIGSEGV at an ASCII-looking address
+        // (`0x656e756ec694`, incident 5478AABD). With the flag set, the
+        // parameter really is a `CFArray` of `CFString`.
         guard let created = FSEventStreamCreate(
             kCFAllocatorDefault,
             fileTreeEventCallback,
@@ -105,7 +112,7 @@ final class FileTreeEventStream {
             // stale timestamps the sleep gap exists to suppress.
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
             latency,
-            flags
+            FileTreeEventStream.creationFlags
         ) else {
             // Balance the retain we passed in, or the stream leaks `self`.
             if let info = context.info {
@@ -160,14 +167,28 @@ private func fileTreeEventCallback(
 ) {
     guard let info, count > 0 else { return }
     let watcher = Unmanaged<FileTreeEventStream>.fromOpaque(info).takeUnretainedValue()
-    let cfArray = Unmanaged<CFArray>.fromOpaque(paths).takeUnretainedValue()
-    let length = min(count, CFArrayGetCount(cfArray))
-    var collected: [String] = []
-    collected.reserveCapacity(length)
-    for index in 0..<length {
-        guard let value = CFArrayGetValueAtIndex(cfArray, index) else { continue }
-        collected.append(Unmanaged<CFString>.fromOpaque(value).takeUnretainedValue() as String)
+    watcher.deliver(paths: FileTreeEventPathDecoder.collect(from: paths, count: count))
+}
+
+/// Copies FSEvents `eventPaths` into Swift strings.
+///
+/// Only valid when the stream was created with `UseCFTypes`. The 1.0.40 (81)
+/// crash was `unsafeBitCast(..., to: NSArray.self) as? [String]` on a `char **`.
+enum FileTreeEventPathDecoder {
+    static func collect(from paths: UnsafeMutableRawPointer, count: Int) -> [String] {
+        guard count > 0 else { return [] }
+        let cfArray = Unmanaged<CFArray>.fromOpaque(paths).takeUnretainedValue()
+        guard CFGetTypeID(cfArray) == CFArrayGetTypeID() else { return [] }
+        let length = min(count, CFArrayGetCount(cfArray))
+        var collected: [String] = []
+        collected.reserveCapacity(length)
+        for index in 0..<length {
+            guard let value = CFArrayGetValueAtIndex(cfArray, index) else { continue }
+            let cfString = Unmanaged<CFString>.fromOpaque(value).takeUnretainedValue()
+            guard CFGetTypeID(cfString) == CFStringGetTypeID() else { continue }
+            collected.append(cfString as String)
+        }
+        return collected
     }
-    watcher.deliver(paths: collected)
 }
 #endif

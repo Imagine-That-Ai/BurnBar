@@ -455,6 +455,7 @@ struct DashboardView: View {
                 style: FillStyle(antialiased: true)
             )
         }
+        .toolbar(removing: .sidebarToggle)
         // Draw the title strip into the transparent titlebar so back/forward
         // and ⌘K sit beside the traffic lights instead of opening a second
         // empty toolbar row below them.
