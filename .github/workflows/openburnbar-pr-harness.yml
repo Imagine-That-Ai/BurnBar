@@ -24,6 +24,15 @@ name: OpenBurnBar Full Harness
 #
 #   The pre-existing platform-confidence-gate and targeted-e2e-gate aggregates
 #   are retained so no coverage is dropped; the new aggregates layer on top.
+#
+#   macos-26 fail-fast + cost caps (Full Harness #2465 / run 33107412004):
+#     Platform Misc is the cheap ubuntu classifier. When it is red, remaining
+#     macos-26 jobs on that run must not start (`needs: platform-misc`). Tonight
+#     they ran in parallel and burned ~3h after the classifier was already red.
+#     Informational jobs stay informational: a skip after a red classifier is
+#     not a new required failure. ios-mobile (informational) is capped at 45
+#     minutes so a non-blocking lane cannot hold a macos-26 runner all night.
+#     app-xctest stays required at 75 minutes and stays red on timeout.
 
 permissions:
   contents: read
@@ -324,6 +333,8 @@ jobs:
 
   node-evals:
     name: Node Evals
+    needs:
+      - platform-misc
     runs-on: macos-26
     timeout-minutes: 15
     steps:
@@ -387,6 +398,8 @@ jobs:
 
   swift-core:
     name: Swift Core
+    needs:
+      - platform-misc
     runs-on: macos-26
     # The WS6 safety harness builds Rust FFI deps; on a cold cache + slow
     # runner the old 20 min budget was hit mid-compile.
@@ -427,8 +440,13 @@ jobs:
 
   app-xctest:
     name: App XCTest
+    needs:
+      - platform-misc
     runs-on: macos-26
-    # 3000+ tests and growing; 45 min was hit at suite tail on slow runners.
+    # Required / harness-required. 3000+ tests; 45 min was hit at suite tail
+    # on slow runners. Full Harness #2465 cancelled mid-suite at 75 minutes,
+    # so a shorter ceiling would lose honest XCTest evidence. Keep the
+    # required red timeout — do not convert timeout into skip/success.
     timeout-minutes: 75
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     env:
@@ -573,14 +591,15 @@ jobs:
 
   ios-mobile:
     name: iOS Mobile
+    needs:
+      - platform-misc
     runs-on: macos-26
-    # Internal hosted macOS runs build Signal FFI, compile the full mobile
-    # target, then execute the full OpenBurnBarMobileTests bundle. The June 18,
-    # 2026 main proof run hit the previous 90-minute cap while XCTest was still
-    # making progress through the StoreKit-backed quota tests. Keep the lane
-    # bounded, but give the full-confidence mobile proof enough room to finish
-    # instead of failing after all earlier platform gates have passed.
-    timeout-minutes: 180
+    # Informational / non-blocking. The 180-minute ceiling held a macos-26
+    # runner for the full 3h on Full Harness #2465 after the classifier was
+    # already red. Cap well under 3h so a non-blocking lane cannot occupy the
+    # scarce hosted-macOS pool all night; timeout stays a visible
+    # informational failure, not skip/success.
+    timeout-minutes: 45
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     env:
       INTERNAL_RUN: "true"
@@ -637,6 +656,8 @@ jobs:
 
   retrieval-evals:
     name: Retrieval Evals
+    needs:
+      - platform-misc
     runs-on: macos-26
     # Cold macOS runners can spend most of the first 20 minutes compiling the
     # Signal FFI before the replay suite starts, so keep this lane bounded but
@@ -938,7 +959,9 @@ jobs:
         run: bash scripts/ci/verify-hermes-gateway-e2ee-remediation.sh
 
   hermes-iroh-e2e:
-    needs: [path-filter]
+    needs:
+      - path-filter
+      - platform-misc
     if: needs.path-filter.outputs.hermes_iroh == 'true'
     runs-on: macos-26
     timeout-minutes: 30
@@ -1014,7 +1037,9 @@ jobs:
           script: ./scripts/e2e/android-iroh-chat.sh
 
   computer-use-e2e:
-    needs: [path-filter]
+    needs:
+      - path-filter
+      - platform-misc
     if: needs.path-filter.outputs.computer_use == 'true'
     # macos-26 like every other Swift job: Vendor/libsignal/swift declares
     # swift-tools-version 6.0, which macos-14's default toolchain (5.10) rejects.
@@ -1043,7 +1068,9 @@ jobs:
         run: bash scripts/test-computer-use-loopback.sh
 
   mercury-media-e2e:
-    needs: [path-filter]
+    needs:
+      - path-filter
+      - platform-misc
     if: needs.path-filter.outputs.mercury_media == 'true'
     runs-on: macos-26
     # This job intentionally proves both Android media and the iOS Mercury/media
