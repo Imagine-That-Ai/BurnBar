@@ -23,6 +23,7 @@ extension ControlPlaneStore {
         case disabled
         case emptyBody
         case secretRejected(labels: [String])
+        case agentForgetRequiresDaemon
 
         var errorDescription: String? {
             switch self {
@@ -32,6 +33,8 @@ extension ControlPlaneStore {
                 "Chat memory body is empty."
             case .secretRejected(let labels):
                 "Chat memory body was rejected by the secret scanner: \(labels.joined(separator: ", "))."
+            case .agentForgetRequiresDaemon:
+                "The daemon could not hard-forget this memory, so nothing was deleted."
             }
         }
     }

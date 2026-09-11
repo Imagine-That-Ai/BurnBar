@@ -12,8 +12,8 @@ namespace OpenBurnBar.Storage;
 
 public sealed partial class WindowsSqlCipherProvisioner
 {
-    public const string CurrentMigrationEndpoint = "v67_agent_memory_inbox";
-    public const long CurrentMigrationCount = 68;
+    public const string CurrentMigrationEndpoint = "v68_agent_memories_review_default_repair";
+    public const long CurrentMigrationCount = 69;
     public const long CurrentUserVersion = 0;
 
     private static readonly JsonSerializerOptions JsonOptions = new()

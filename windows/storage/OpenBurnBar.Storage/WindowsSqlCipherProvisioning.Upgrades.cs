@@ -133,6 +133,18 @@ public sealed partial class WindowsSqlCipherProvisioner
                 WindowsSchemaUpgradeStatement.Always(
                     "CREATE INDEX IF NOT EXISTS agent_memory_inbox_user_applied_idx ON agent_memory_inbox(user_id, applied_at)"),
             }),
+
+        // v68_agent_memories_review_default_repair — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift. The Mac/daemon
+        // migration rebuilds `agent_memories` when an older bootstrap left
+        // `review_status` with `DEFAULT 'approved'`. Windows provisioning never
+        // creates `agent_memories` (daemon-owned, see
+        // budgets/migrator-parity-baseline.json), so there is nothing to repair
+        // here: the step only advances the stamp, keeping an upgraded database
+        // identical to a freshly provisioned one.
+        new WindowsSchemaUpgradeStep(
+            "v68_agent_memories_review_default_repair",
+            Array.Empty<WindowsSchemaUpgradeStatement>()),
     };
 
     internal const string AgentMemoryInboxTableSql =

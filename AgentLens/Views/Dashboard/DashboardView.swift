@@ -1346,11 +1346,16 @@ struct DashboardView: View {
             return
         }
         do {
-            // The inbox serves chat + usage memories (U7), so the badge counts
-            // both — otherwise it would disagree with the inbox's own pill.
+            // The inbox serves chat + usage + agent-lane memories, so the badge
+            // counts all three — otherwise it would disagree with the inbox's
+            // own pill. The agent count takes the member, not a scope: those
+            // rows carry the daemon's project id and none of the app's scope
+            // columns, and the unclaimed-or-mine account rule keeps the badge
+            // honest about rows this account cannot act on (review #2565).
             let chatCount = try await store.pendingChatMemoryReviewCount(scope: memoryReviewScope)
             let usageCount = try await store.pendingUsageMemoryReviewCount(scope: memoryReviewScope)
-            pendingMemoryReviewCount = chatCount + usageCount
+            let agentCount = try await store.pendingAgentMemoryReviewCount(accountUserID: accountManager.userID)
+            pendingMemoryReviewCount = chatCount + usageCount + agentCount
         } catch {
             pendingMemoryReviewCount = nil
         }

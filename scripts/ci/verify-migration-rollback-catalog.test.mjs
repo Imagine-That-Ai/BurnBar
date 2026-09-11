@@ -102,12 +102,12 @@ test("extracts only complete migration contracts", () => {
 });
 
 test("current migration surfaces, catalog, and generated documentation agree", () => {
-  // 68 as of v67_agent_memory_inbox. This literal is a deliberate
+  // 69 as of v68_agent_memories_review_default_repair. This literal is a deliberate
   // tripwire, not a derived value: pinning it means adding a migration cannot
   // quietly pass by agreeing with itself, and forces the author past every
   // mirror. Bump it ONLY together with the migrator, the rollback catalog, the
   // Windows endpoint/count, and the byte-compat vector.
-  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 68);
+  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 69);
 });
 
 test("registration reorder fails closed", (t) => {

@@ -471,7 +471,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             BurnBarProjectMemoryRememberRequest(
                 text: "Use the project code memory store for lexical symbol fallback.",
                 projectPath: fixture.project.path,
-                tags: ["architecture"]
+                tags: ["architecture"],
+                reviewStatus: .approved
             )
         )
         XCTAssertTrue(remembered.memoryID.hasPrefix("mem_"))
@@ -536,14 +537,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             BurnBarProjectMemoryRememberRequest(
                 text: "signed bridge signed bridge signed bridge daemon",
                 projectPath: fixture.project.path,
-                kind: "note"
+                kind: "note",
+                reviewStatus: .approved
             )
         )
         let weak = try store.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "signed bridge daemon plus unrelated filler words that dilute the document",
                 projectPath: fixture.project.path,
-                kind: "note"
+                kind: "note",
+                reviewStatus: .approved
             )
         )
         try sqliteExecute(
@@ -580,14 +583,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 text: "Always compile Swift code before pushing to main branch.",
                 projectPath: fixture.project.path,
                 kind: "procedure",
-                sourcePath: "docs/superpowers/rules.md"
+                sourcePath: "docs/superpowers/rules.md",
+                reviewStatus: .approved
             )
         )
         _ = try store.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "Python memory engine maintains under 1500 lines per module.",
                 projectPath: fixture.project.path,
-                kind: "fact"
+                kind: "fact",
+                reviewStatus: .approved
             )
         )
 
@@ -673,7 +678,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                     BurnBarProjectMemoryRememberRequest(
                         text: text,
                         projectPath: fixture.project.path,
-                        kind: index.isMultiple(of: 2) ? "procedure" : "fact"
+                        kind: index.isMultiple(of: 2) ? "procedure" : "fact",
+                        reviewStatus: .approved
                     )
                 ).memoryID
             )
@@ -793,14 +799,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 text: "Cut the tag after the smoke checks pass.",
                 projectPath: fixture.project.path,
                 kind: "procedure",
-                sourcePath: "docs/release/runbook.md"
+                sourcePath: "docs/release/runbook.md",
+                reviewStatus: .approved
             )
         )
         _ = try store.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "Use purple accents for the dashboard.",
                 projectPath: fixture.project.path,
-                kind: "preference"
+                kind: "preference",
+                reviewStatus: .approved
             )
         )
 
@@ -822,14 +830,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             BurnBarProjectMemoryRememberRequest(
                 text: "Reattempt the failed connection with progressive delays.",
                 projectPath: fixture.project.path,
-                kind: "procedure"
+                kind: "procedure",
+                reviewStatus: .approved
             )
         )
         _ = try store.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "Use purple accents for the dashboard.",
                 projectPath: fixture.project.path,
-                kind: "preference"
+                kind: "preference",
+                reviewStatus: .approved
             )
         )
 
@@ -852,10 +862,18 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             embeddingProvider: DisabledEmbeddingProvider()
         )
         let first = try store.remember(
-            BurnBarProjectMemoryRememberRequest(text: "rollout alpha", projectPath: fixture.project.path)
+            BurnBarProjectMemoryRememberRequest(
+                text: "rollout alpha",
+                projectPath: fixture.project.path,
+                reviewStatus: .approved
+            )
         )
         let second = try store.remember(
-            BurnBarProjectMemoryRememberRequest(text: "rollout bravo", projectPath: fixture.project.path)
+            BurnBarProjectMemoryRememberRequest(
+                text: "rollout bravo",
+                projectPath: fixture.project.path,
+                reviewStatus: .approved
+            )
         )
         let highSalienceID = max(first.memoryID, second.memoryID)
         let lowSalienceID = min(first.memoryID, second.memoryID)
@@ -1134,7 +1152,8 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let candidate = try original.remember(
             BurnBarProjectMemoryRememberRequest(
                 text: "Reattempt the failed connection with progressive delays.",
-                projectPath: fixture.project.path
+                projectPath: fixture.project.path,
+                reviewStatus: .approved
             )
         )
         XCTAssertEqual(try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM memory_embedding_refs"), 0)
@@ -1191,7 +1210,12 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let body = "Use snapshot canonical storage for the agent memory raw body boundary."
 
         let remembered = try store.remember(
-            BurnBarProjectMemoryRememberRequest(text: body, projectPath: fixture.project.path, tags: ["boundary"])
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                tags: ["boundary"],
+                reviewStatus: .approved
+            )
         )
 
         let agentIndex = try sqliteStrings(database: fixture.database, sql: "SELECT body_redacted FROM agent_memories")
@@ -1322,8 +1346,16 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))
         let repoAIndex = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: repoA.path, maxFiles: 20))
         _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: repoB.path, maxFiles: 20))
-        _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "alpha memory alphaonlymemoryterm.", projectPath: repoA.path))
-        _ = try store.remember(BurnBarProjectMemoryRememberRequest(text: "beta memory betaonlymemoryterm.", projectPath: repoB.path))
+        _ = try store.remember(BurnBarProjectMemoryRememberRequest(
+                text: "alpha memory alphaonlymemoryterm.",
+                projectPath: repoA.path,
+                reviewStatus: .approved
+            ))
+        _ = try store.remember(BurnBarProjectMemoryRememberRequest(
+                text: "beta memory betaonlymemoryterm.",
+                projectPath: repoB.path,
+                reviewStatus: .approved
+            ))
 
         // Hybrid semantic search returns repoA's OWN nearest chunks for any query (a general
         // embedder rates even unrelated short code as somewhat similar), so the bleed invariant
@@ -2802,7 +2834,567 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         return SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
     }
 
+    // MARK: - Review #2565 — verdict versioning and the repaired default
+
+    func testPublicationRequiresTheExactCommittedStampAndVerdict() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "review-precondition-test")
+        )
+        let body = "Fixture release approvals require a human reviewer."
+        let written = try store.remember(BurnBarProjectMemoryRememberRequest(
+            text: body,
+            projectPath: fixture.project.path,
+            engineMemoryID: "mem_ab12cd34ef56ab78cd90ef12ab34cd56"
+        ))
+        let committedStamp = "2026-09-10T12:00:01.000Z"
+        try sqliteExecute(database: fixture.database, sql: """
+            UPDATE agent_memories SET review_status = 'rejected', updated_at = \(sqlLiteral(committedStamp))
+            WHERE id = \(sqlLiteral(written.memoryID))
+            """)
+        for expectedStamp in [
+            committedStamp,
+            "2026-09-10T12:00:01.001Z",
+            "2026-09-10T12:00:00.9999Z",
+            "invalid-stamp",
+            ""
+        ] {
+            let response = try store.setReviewStatus(BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: written.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved,
+                expectedUpdatedAt: expectedStamp
+            ))
+            XCTAssertFalse(response.applied, "precondition must refuse: \(expectedStamp)")
+            XCTAssertEqual(response.status, .rejected)
+            XCTAssertEqual(try sqliteStrings(database: fixture.database, sql: """
+                SELECT review_status || '|' || updated_at FROM agent_memories
+                WHERE id = \(sqlLiteral(written.memoryID))
+                """), ["rejected|\(committedStamp)"])
+            XCTAssertEqual(try sqliteStrings(database: fixture.database, sql: """
+                SELECT body FROM memory_quarantine_bodies WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """), [body])
+            XCTAssertEqual(try sqliteStrings(database: fixture.database, sql: """
+                SELECT body FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """), [""])
+        }
+    }
+
+    /// The race the precondition exists for (review #2565): a caller commits a
+    /// verdict locally at stamp T, then a NEWER verdict lands before the first
+    /// one's RPC arrives — the app's serialized queue can interleave exactly
+    /// this way on a socket retry. Without the stamp the stale Approve
+    /// republishes a body the member already rejected. With it, the daemon
+    /// refuses, says which verdict actually holds, and moves nothing.
+    func testAStaleVerdictIsRefusedAndResurrectsNothing() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "review-version-test")
+        )
+        let body = "The release branch is cut on Thursdays."
+        let written = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                engineMemoryID: "mem_ab12cd34ef56ab78cd90ef12ab34cd56"
+            )
+        )
+
+        // The member approves, then rejects — the app's own write path, stamped.
+        let approveStamp = "2026-09-10T12:00:00.000Z"
+        let rejectStamp = "2026-09-10T12:00:01.000Z"
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            UPDATE agent_memories SET review_status = 'approved', updated_at = \(sqlLiteral(approveStamp)) \
+            WHERE id = \(sqlLiteral(written.memoryID))
+            """
+        )
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            UPDATE agent_memories SET review_status = 'rejected', updated_at = \(sqlLiteral(rejectStamp)) \
+            WHERE id = \(sqlLiteral(written.memoryID))
+            """
+        )
+
+        // The earlier Approve RPC lands last — the exact reordering the app can
+        // produce when two verdicts race on a retried socket.
+        let stale = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: written.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved,
+                expectedUpdatedAt: approveStamp
+            )
+        )
+        XCTAssertFalse(stale.applied, "the row moved past this verdict's stamp — the transition is refused")
+        XCTAssertEqual(stale.status, .rejected, "and the response says which verdict actually holds")
+
+        let row = try sqliteStrings(
+            database: fixture.database,
+            sql: "SELECT review_status || '|' || body_redacted FROM agent_memories WHERE id = \(sqlLiteral(written.memoryID))"
+        )
+        XCTAssertEqual(row.count, 1)
+        XCTAssertTrue(row[0].hasPrefix("rejected|"), "the rejected verdict stands: \(row)")
+        XCTAssertTrue(
+            row[0].contains("Quarantine body ref:"),
+            "the body stays parked — a refused transition publishes nothing"
+        )
+        XCTAssertEqual(
+            try sqliteInt(
+                database: fixture.database,
+                sql: "SELECT COUNT(*) FROM project_memory_snapshots WHERE snapshotJSON LIKE \(sqlLiteral("%" + body + "%"))"
+            ),
+            0,
+            "nothing entered the project snapshot either"
+        )
+        let audit = try store.auditTrail(
+            BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path)
+        )
+        XCTAssertTrue(
+            audit.events.contains { $0.action == "memory.review_status_stale" },
+            "a refused transition is exactly the event a postmortem looks for"
+        )
+        XCTAssertFalse(
+            audit.events.contains {
+                $0.action == "memory.review_status" && $0.labels.contains("review_status:approved")
+            },
+            "and it is NOT recorded as a publication — it was none"
+        )
+    }
+
+    /// The in-order half: the precondition accepts the verdict whose stamp
+    /// matches the row, and the applied row keeps the caller's stamp — the next
+    /// preconditioned call compares against the instant the writer observed,
+    /// not a second clock read on this side of the socket.
+    func testAVersionedVerdictAppliesAndKeepsTheCallersStamp() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "review-version-test")
+        )
+        let written = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Staging deploys are cut from the release branch.",
+                projectPath: fixture.project.path,
+                engineMemoryID: "mem_99887766554433221100ffeeddccbbaa"
+            )
+        )
+        // As the app leaves it after its own verdict write.
+        let verdictStamp = "2026-09-10T13:00:00.000Z"
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            UPDATE agent_memories SET review_status = 'approved', updated_at = \(sqlLiteral(verdictStamp)) \
+            WHERE id = \(sqlLiteral(written.memoryID))
+            """
+        )
+
+        let published = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: written.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved,
+                expectedUpdatedAt: verdictStamp
+            )
+        )
+        XCTAssertTrue(published.applied)
+        XCTAssertEqual(published.status, .approved)
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT updated_at FROM agent_memories WHERE id = \(sqlLiteral(written.memoryID))"
+            ),
+            [verdictStamp],
+            "the applied row carries the caller's verdict stamp, so the next precondition compares equal"
+        )
+    }
+
+    /// No precondition at all is the shape older clients and the daemon's own
+    /// tools send — it must still apply unconditionally. Wire-compat pinned by
+    /// `BurnBarProjectMemoryReviewStatusResponse`'s defaulted `applied`.
+    func testAnUnversionedVerdictStillAppliesUnconditionally() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "review-version-test")
+        )
+        let written = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: "Provider failovers page the primary on-call.",
+                projectPath: fixture.project.path,
+                engineMemoryID: "mem_0123456789abcdef0123456789abcdef"
+            )
+        )
+        let approved = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: written.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
+        )
+        XCTAssertTrue(approved.applied)
+        XCTAssertEqual(approved.status, .approved)
+    }
+
+    /// The stale `DEFAULT 'approved'` that shipped before the fail-closed
+    /// default (review #2565-F3): `ALTER ADD COLUMN` sets a default once, and
+    /// `CREATE TABLE IF NOT EXISTS` never rewrites a schema, so a table
+    /// bootstrapped by an older daemon kept approving every insert that omitted
+    /// `review_status` — forever. Bootstrap now rebuilds the table when the
+    /// declared default is wrong.
+    func testBootstrapRepairsAStaleApprovedReviewStatusDefault() throws {
+        let fixture = try makeFixture()
+        // The shape a stale install actually reaches bootstrap in: the table an
+        // older daemon binary wrote with the wrong default, PLUS columns the
+        // app's GRDB migrator added meanwhile — the rebuild must carry every
+        // one of them verbatim or it is a data-loss migration.
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            CREATE TABLE agent_memories (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                body_ref TEXT NOT NULL,
+                body_redacted TEXT NOT NULL,
+                tags_json TEXT NOT NULL,
+                source_path TEXT,
+                valid_from TEXT NOT NULL,
+                valid_to TEXT,
+                superseded_by TEXT,
+                review_status TEXT NOT NULL DEFAULT 'approved',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                source_kind TEXT NOT NULL DEFAULT 'code',
+                user_id TEXT
+            );
+            INSERT INTO agent_memories
+                (id, project_id, kind, scope, confidence, body_ref, body_redacted, tags_json,
+                 valid_from, created_at, updated_at, source_kind, user_id)
+            VALUES
+                ('mem_stale_default_row', 'prj_fixture', 'fact', 'project', 0.9, 'ref', 'redacted', '[]',
+                 '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z', 'agent', 'member-1');
+            """
+        )
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "review-default-repair-test")
+        )
+        _ = store
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT dflt_value FROM pragma_table_info('agent_memories') WHERE name = 'review_status'"
+            ),
+            ["'quarantined'"],
+            "the rebuilt table carries the fail-closed default"
+        )
+        // Rows and later columns both survive the rebuild.
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT review_status || '|' || COALESCE(user_id, '<null>') FROM agent_memories WHERE id = 'mem_stale_default_row'"
+            ),
+            ["approved|member-1"],
+            "the existing row — verdict and claimed owner alike — is preserved verbatim"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT name FROM pragma_table_info('agent_memories') WHERE name IN ('user_id', 'source_kind') ORDER BY name"
+            ),
+            ["source_kind", "user_id"],
+            "and columns the rebuild did not write — the app's and the daemon's — are all still there"
+        )
+        // The point of the repair: an insert that names no review_status lands
+        // in review, never in production.
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            INSERT INTO agent_memories
+                (id, project_id, kind, scope, confidence, body_ref, body_redacted, tags_json,
+                 valid_from, created_at, updated_at)
+            VALUES
+                ('mem_no_status_insert', 'prj_fixture', 'fact', 'project', 0.9, 'ref', 'redacted', '[]',
+                 '2026-09-02T00:00:00Z', '2026-09-02T00:00:00Z', '2026-09-02T00:00:00Z')
+            """
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT review_status FROM agent_memories WHERE id = 'mem_no_status_insert'"
+            ),
+            ["quarantined"],
+            "an insert omitting the column lands in review — fail-closed, as the wire promises"
+        )
+    }
+
+    /// The already-correct half: a fresh database gets `DEFAULT 'quarantined'`
+    /// without a rebuild — the repair is a probe, not a rewrite.
+    func testBootstrapLeavesAnAlreadyCorrectReviewStatusDefaultAlone() throws {
+        let fixture = try makeFixture()
+        _ = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "review-default-repair-test")
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT dflt_value FROM pragma_table_info('agent_memories') WHERE name = 'review_status'"
+            ),
+            ["'quarantined'"]
+        )
+    }
+
     // MARK: - Blind sync
+
+    /// The agent lane waits for a person. `burnbar_remember` reaches this store
+    /// through the Memory MCP engine's mirror, which sends `engineMemoryID` and
+    /// NO `reviewStatus` (`tools/openburnbar-mcp/server.py`, `_memory_mirror_remember`),
+    /// so the request is built here the way the wire builds it — from that JSON —
+    /// rather than from the memberwise initialiser a test controls. Before the
+    /// contract default flipped it landed `approved` and went straight into
+    /// recall: a second memory authority with no review step (baseline BL-1).
+    func testAgentLaneRememberLandsInReviewInsteadOfRecall() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "agent-lane-quarantine-test")
+        )
+        let engineID = "mem_0123456789abcdef0123456789abcdef"
+        let body = "The release branch is cut on Thursdays."
+        let wirePayload = Data("""
+        {"text": "\(body)",
+         "projectPath": "\(fixture.project.path)",
+         "kind": "fact",
+         "scope": "project",
+         "engineMemoryID": "\(engineID)"}
+        """.utf8)
+        let request = try JSONDecoder().decode(
+            BurnBarProjectMemoryRememberRequest.self,
+            from: wirePayload
+        )
+        XCTAssertEqual(request.reviewStatus, .quarantined, "the wire default is the whole fix")
+
+        let written = try store.remember(request)
+
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT source_kind || '|' || review_status FROM agent_memories \
+                WHERE id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            ["agent|quarantined"],
+            "an agent-lane write lands quarantined under the agent source kind (D-0005)"
+        )
+        XCTAssertTrue(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(query: "release branch", projectPath: fixture.project.path)
+            ).hits.isEmpty,
+            "default recall serves approved rows only, so nothing is injected before review"
+        )
+        XCTAssertEqual(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(
+                    query: "release branch",
+                    projectPath: fixture.project.path,
+                    includeQuarantined: true
+                )
+            ).hits.first?.reviewStatus,
+            .quarantined,
+            "and the row is waiting in the review feed, not lost"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT engine_memory_id || '|' || body FROM agent_memory_bodies \
+                WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            ["\(engineID)|"],
+            """
+            the sync lane's table keeps the engine id — the sealed cloud document \
+            keys on it, so approval later has something to address — and no body, \
+            because unapproved content must never reach that lane
+            """
+        )
+    }
+
+    /// The other half: review is a round trip, not a dead end. Approving the row
+    /// the previous test parked republishes it to recall AND restores the body
+    /// blind sync seals, so a memory that waited for its member is not silently
+    /// dropped from the cloud copy the way an unrestored mapping would drop it.
+    func testApprovingAnAgentLaneMemoryRepublishesItAndItsSyncBody() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "agent-lane-approval-test")
+        )
+        let engineID = "mem_fedcba9876543210fedcba9876543210"
+        let body = "The release branch is cut on Thursdays."
+        let written = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: body,
+                projectPath: fixture.project.path,
+                kind: "fact",
+                scope: "project",
+                engineMemoryID: engineID
+            )
+        )
+
+        let approved = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: written.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
+        )
+
+        XCTAssertEqual(approved.status, .approved)
+        XCTAssertFalse(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(query: "release branch", projectPath: fixture.project.path)
+            ).hits.isEmpty,
+            "an approved agent memory is recallable like any other"
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT engine_memory_id || '|' || body FROM agent_memory_bodies \
+                WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            ["\(engineID)|\(body)"],
+            "approval refills the syncable body under the engine id it was parked with"
+        )
+        let audit = try store.auditTrail(
+            BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path)
+        )
+        XCTAssertTrue(
+            audit.events.contains {
+                $0.action == "memory.review_status" && $0.labels.contains("review_status:approved")
+            },
+            "the approval is audited in the same shape the review lane already writes"
+        )
+    }
+
+    /// I-56: the macOS app approves in ITS half of this shared database and then
+    /// calls `daemon.memory.review_status`, so the daemon stays the single
+    /// publisher.
+    ///
+    /// That ordering is the whole test. `ControlPlaneStore.setMemoryReviewStatus`
+    /// flips `review_status` in `agent_memories` and writes its `memory.approve`
+    /// audit row; it never touches a body. So by the time this call arrives the
+    /// row already SAYS approved while its body is still parked in
+    /// `memory_quarantine_bodies` and its syncable `body_hash` is still empty —
+    /// which is exactly the state the residual describes, and which the daemon
+    /// must publish out of rather than refuse.
+    func testAnAppApprovedAgentLaneMemoryIsPublishedWhenTheAppCallsTheDaemon() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "agent-lane-app-approval-test")
+        )
+        let engineID = "mem_9f8e7d6c5b4a39281706f5e4d3c2b1a0"
+        let body = "Staging deploys are cut from the release branch."
+        // Quarantined by the mirror: no `reviewStatus` on the wire at all.
+        let request = try JSONDecoder().decode(
+            BurnBarProjectMemoryRememberRequest.self,
+            from: Data("""
+            {"text": "\(body)",
+             "projectPath": "\(fixture.project.path)",
+             "kind": "fact",
+             "scope": "project",
+             "engineMemoryID": "\(engineID)"}
+            """.utf8)
+        )
+        XCTAssertEqual(request.reviewStatus, .quarantined)
+        let written = try store.remember(request)
+
+        // The app's half, byte for byte the UPDATE
+        // `ControlPlaneStore+MemoryWrite.setMemoryReviewStatus` issues: the
+        // verdict, and nothing else.
+        try sqliteExecute(
+            database: fixture.database,
+            sql: """
+            UPDATE agent_memories SET review_status = 'approved' \
+            WHERE id = \(sqlLiteral(written.memoryID)) AND source_kind = 'agent'
+            """
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT body_hash FROM agent_memory_bodies WHERE memory_id = \(sqlLiteral(written.memoryID))"
+            ),
+            [""],
+            "the residual: an app-approved row syncs with an empty hash until the daemon publishes it"
+        )
+        XCTAssertTrue(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(query: "staging deploys", projectPath: fixture.project.path)
+            ).hits.isEmpty,
+            "and the agent's own recall does not serve it yet"
+        )
+
+        // The call the app now makes right after its own approval.
+        let published = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: written.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
+        )
+
+        XCTAssertEqual(published.status, .approved)
+        let expectedHash = SHA256.hash(data: Data(body.utf8)).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: """
+                SELECT engine_memory_id || '|' || body_hash FROM agent_memory_bodies \
+                WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            ["\(engineID)|\(expectedHash)"],
+            "the sync body is refilled under the engine id, so the convergence fold can dedupe it"
+        )
+        XCTAssertEqual(
+            try sqliteInt(
+                database: fixture.database,
+                sql: """
+                SELECT COUNT(*) FROM memory_quarantine_bodies \
+                WHERE memory_id = \(sqlLiteral(written.memoryID))
+                """
+            ),
+            0,
+            "the body left quarantine — one home, and it is now the project snapshot"
+        )
+        XCTAssertEqual(
+            try store.recall(
+                BurnBarProjectMemoryRecallRequest(query: "staging deploys", projectPath: fixture.project.path)
+            ).hits.first?.memoryID,
+            written.memoryID,
+            "and the daemon's own recall serves it, which is what the residual asked for"
+        )
+        let reviewEvents = try store.auditTrail(
+            BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path)
+        ).events.filter {
+            $0.action == "memory.review_status" && $0.subjectID == written.memoryID
+        }
+        XCTAssertEqual(reviewEvents.count, 1, "one publication, one audit row — the app's call is not a second verdict")
+        XCTAssertTrue(try XCTUnwrap(reviewEvents.first).labels.contains("review_status:approved"))
+    }
 
     func testEngineMirroredMemoriesKeepAnApprovedBodyForBlindSync() throws {
         let fixture = try makeFixture()
@@ -2814,6 +3406,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
                 text: "We deploy from the release branch on Fridays.",
                 projectPath: fixture.project.path,
                 tags: ["release"],
+                reviewStatus: .approved,
                 engineMemoryID: engineID
             )
         )

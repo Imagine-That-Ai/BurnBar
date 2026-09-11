@@ -21,15 +21,31 @@ extension ControlPlaneStore {
     /// explicit project. Chat keeps its shipped `chat:` prefix byte-identical;
     /// both usage kinds share `usage:` so cross-source dedup and corroboration
     /// happen inside the existing project-scoped queries.
+    ///
+    /// The agent lane is the odd one out and has its own case: the daemon writes
+    /// those rows under its own per-project `project_id` and fills in none of the
+    /// app's scope columns, so they live in no app-shaped bucket at all. The case
+    /// exists to say that, not to name a prefix — a mirrored row always carries a
+    /// real `project_id`, so `memoryStorageProjectID` never falls through to the
+    /// `agent:` spelling. See `fetchActiveMemoryAuthorityRecords`.
     enum MemoryStoragePartition: String {
         case chat
         case usage
+        case agent
 
         init(_ sourceKind: MemorySourceKind) {
-            self = MemorySourceKind.usageKinds.contains(sourceKind) ? .usage : .chat
+            if sourceKind == .agent {
+                self = .agent
+            } else {
+                self = MemorySourceKind.usageKinds.contains(sourceKind) ? .usage : .chat
+            }
         }
 
         init(_ sourceKinds: Set<MemorySourceKind>) {
+            if sourceKinds.isEmpty == false, sourceKinds.isSubset(of: [.agent]) {
+                self = .agent
+                return
+            }
             let isUsage = sourceKinds.isEmpty == false
                 && sourceKinds.isSubset(of: MemorySourceKind.usageKinds)
             self = isUsage ? .usage : .chat
@@ -44,8 +60,9 @@ extension ControlPlaneStore {
         _ kinds: Set<MemorySourceKind>
     ) -> [Set<MemorySourceKind>] {
         let usage = kinds.intersection(MemorySourceKind.usageKinds)
-        let chatLike = kinds.subtracting(MemorySourceKind.usageKinds)
-        return [chatLike, usage].filter { $0.isEmpty == false }
+        let agent = kinds.intersection([.agent])
+        let chatLike = kinds.subtracting(MemorySourceKind.usageKinds).subtracting([.agent])
+        return [chatLike, usage, agent].filter { $0.isEmpty == false }
     }
 
     static func memorySnapshotSlug(_ id: MemoryID) -> String {

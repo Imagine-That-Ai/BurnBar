@@ -1,3 +1,4 @@
+import Foundation
 import GRDB
 
 extension OpenBurnBarDatabase {
@@ -94,6 +95,88 @@ extension OpenBurnBarDatabase {
                 ON agent_memory_inbox(user_id, applied_at)
                 """
             )
+        }
+        // Review #2565: v51's `add(column:)` is a no-op on an `agent_memories`
+        // table that already carried `review_status` — and a daemon binary that
+        // bootstrapped the shared table first could have written it with
+        // `DEFAULT 'approved'`. SQLite never updates a column default on
+        // `ALTER`/`CREATE IF NOT EXISTS`, so those installs keep a fail-open
+        // default: any insert omitting `review_status` lands pre-approved. The
+        // only repair is a table rebuild, done generically off `table_info` so
+        // every column — including ones added after this migration was written —
+        // survives verbatim. The daemon's bootstrap runs the same repair, so
+        // the default is corrected no matter which first-party process opens a
+        // stale profile first.
+        migrator.registerMigration("v68_agent_memories_review_default_repair") { db in
+            let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(agent_memories)")
+            guard columns.isEmpty == false,
+                  let reviewColumn = columns.first(where: { ($0["name"] as? String) == "review_status" }) else { return }
+            // `dflt_value` arrives as declared — `'quarantined'` with quotes —
+            // or NULL when no default exists; both need the rebuild.
+            let declaredDefault = (reviewColumn["dflt_value"] as? String)?
+                .trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+            guard declaredDefault != "quarantined" else { return }
+
+            var definitions: [String] = []
+            var quotedNames: [String] = []
+            var primaryKeyColumns: [String] = []
+            for column in columns {
+                guard let name = column["name"] as? String, name.isEmpty == false else { continue }
+                let type = (column["type"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "TEXT"
+                var definition = "\"\(name)\" \(type)"
+                let notNull: Int64 = column["notnull"] ?? 0
+                if notNull == 1 { definition += " NOT NULL" }
+                if name == "review_status" {
+                    definition += " DEFAULT 'quarantined'"
+                } else if let other = column["dflt_value"] as? String {
+                    definition += " DEFAULT \(other)"
+                }
+                definitions.append(definition)
+                quotedNames.append("\"\(name)\"")
+                let pk: Int64 = column["pk"] ?? 0
+                if pk > 0 { primaryKeyColumns.append("\"\(name)\"") }
+            }
+            if primaryKeyColumns.isEmpty == false {
+                definitions.append("PRIMARY KEY (\(primaryKeyColumns.joined(separator: ", ")))")
+            }
+
+            try db.execute(
+                sql: """
+                CREATE TABLE agent_memories__review_default_repair (
+                    \(definitions.joined(separator: ",\n    "))
+                )
+                """
+            )
+            let names = quotedNames.joined(separator: ", ")
+            try db.execute(
+                sql: "INSERT INTO agent_memories__review_default_repair (\(names)) SELECT \(names) FROM agent_memories"
+            )
+            try db.execute(sql: "DROP TABLE agent_memories")
+            try db.execute(sql: "ALTER TABLE agent_memories__review_default_repair RENAME TO agent_memories")
+            // DROP took the table's indexes with it; recreate the three the
+            // schema owns. `chat_scope_idx` names columns the daemon bootstrap
+            // may not have added, so it reappears only when ALL of them exist.
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS agent_memories_project_idx
+                ON agent_memories(project_id, scope, updated_at)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS agent_memories_review_status_idx
+                ON agent_memories(project_id, review_status, updated_at)
+                """
+            )
+            let scopeColumns: Set<String> = ["\"user_id\"", "\"agent_id\"", "\"run_id\"", "\"app_id\""]
+            if scopeColumns.isSubset(of: Set(quotedNames)) {
+                try db.execute(
+                    sql: """
+                    CREATE INDEX IF NOT EXISTS agent_memories_chat_scope_idx
+                    ON agent_memories(source_kind, user_id, agent_id, run_id, app_id, updated_at)
+                    """
+                )
+            }
         }
     }
 }

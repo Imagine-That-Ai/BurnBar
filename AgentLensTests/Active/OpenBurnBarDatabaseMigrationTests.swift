@@ -88,7 +88,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         )
     }
 
-    func test_runMigrationsSafely_usesTransactionalFastLane_forAdditiveV61Upgrade() async throws {
+    /// Review #2565-F3 made the fast-lane boundary real: the pending set of a
+    /// v60-era install ends in `v68_agent_memories_review_default_repair`, which
+    /// rewrites pre-existing rows and is therefore deliberately NOT in
+    /// `additiveTransactionalMigrationIdentifiers`. An upgrade that includes it
+    /// pays the full integrity-check + backup cost — the additive fast lane
+    /// exists so routine additive upgrades skip that, and a table rebuild must
+    /// never slip through it.
+    func test_runMigrationsSafely_usesFullProtectionLane_whenPendingIncludesTheV68Rebuild() async throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -119,23 +126,24 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         let backups = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
             .filter { $0.contains(".backup.") }
-        XCTAssertTrue(
+        XCTAssertFalse(
             backups.isEmpty,
-            "The reviewed additive v61 migration must not copy the entire database: \(backups)"
+            "An upgrade whose pending set contains the v68 rebuild must copy the database first."
         )
 
         lock.lock()
         let migrationSQL = tracedSQL
         lock.unlock()
-        XCTAssertFalse(
+        XCTAssertTrue(
             migrationSQL.contains { $0.contains("integrity_check") },
-            "The reviewed additive v61 migration must not scan the entire database before first paint."
+            "An upgrade whose pending set contains the v68 rebuild must scan the database first."
         )
 
         let applied = try await queue.read { db in
             try OpenBurnBarDatabase.migrator.appliedIdentifiers(db)
         }
         XCTAssertTrue(applied.contains("v61_usage_memory"))
+        XCTAssertTrue(applied.contains("v68_agent_memories_review_default_repair"))
     }
 
     func test_preMigrationProtection_failsClosed_forUnreviewedMigrations() {
@@ -152,6 +160,14 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(
             OpenBurnBarDatabase.requiresFullPreMigrationProtection(
                 pendingMigrationIdentifiers: ["v62_unreviewed"]
+            )
+        )
+        // v68 rewrites `agent_memories` rows wholesale — it stays off the
+        // additive fast lane by design, so name it explicitly rather than
+        // hiding the pin behind a synthetic identifier.
+        XCTAssertTrue(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: ["v68_agent_memories_review_default_repair"]
             )
         )
     }
@@ -315,6 +331,156 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             )
         }
         XCTAssertEqual(indexes, ["memory_quarantine_bodies_project_idx"])
+    }
+
+    /// Review #2565-F3, app half (the daemon bootstrap test is
+    /// `testBootstrapRepairsAStaleApprovedReviewStatusDefault`): an install whose
+    /// `agent_memories` table an older daemon binary created carries
+    /// `DEFAULT 'approved'` on `review_status`, and neither `ALTER` nor an
+    /// `IF NOT EXISTS` create can rewrite a column default — so v68 rebuilds
+    /// the table. The rebuild is generic off `table_info`: every column and row
+    /// must survive verbatim, and an insert that names no verdict must land in
+    /// review afterwards.
+    func test_v68ReviewStatusDefaultRepair_rebuildsAStaleApprovedDefaultFailClosed() async throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v67_agent_memory_inbox")
+
+        // The stale shape, verbatim: every column the v50–v67 migrator produced,
+        // but `review_status` declared the way the older daemon bootstrap did.
+        try await queue.write { db in
+            try db.execute(sql: "DROP TABLE agent_memories")
+            try db.execute(
+                sql: """
+                CREATE TABLE agent_memories (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    body_ref TEXT NOT NULL,
+                    body_redacted TEXT NOT NULL,
+                    tags_json TEXT NOT NULL,
+                    source_path TEXT,
+                    valid_from TEXT NOT NULL,
+                    valid_to TEXT,
+                    superseded_by TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    source_kind TEXT NOT NULL DEFAULT 'code',
+                    review_status TEXT NOT NULL DEFAULT 'approved',
+                    user_id TEXT,
+                    agent_id TEXT,
+                    run_id TEXT,
+                    app_id TEXT
+                )
+                """
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memories (
+                    id, project_id, kind, scope, confidence, body_ref, body_redacted,
+                    tags_json, source_path, valid_from, valid_to, superseded_by,
+                    created_at, updated_at, source_kind, review_status, user_id
+                ) VALUES (
+                    'legacy-approved-row', 'project-1', 'fact', 'project', 0.9, 'ref',
+                    'redacted', '[]', NULL, '2026-01-01T00:00:00Z', NULL, NULL,
+                    '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'agent',
+                    'approved', 'member-1'
+                )
+                """
+            )
+        }
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let declaredDefault = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT dflt_value FROM pragma_table_info('agent_memories') WHERE name = 'review_status'"
+            )
+        }
+        XCTAssertEqual(
+            declaredDefault, "'quarantined'",
+            "the rebuilt table must carry the fail-closed default"
+        )
+        let preserved = try await queue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: "SELECT review_status, user_id FROM agent_memories WHERE id = 'legacy-approved-row'"
+            )
+        }
+        XCTAssertEqual(preserved?["review_status"] as? String, "approved")
+        XCTAssertEqual(preserved?["user_id"] as? String, "member-1")
+        let rebuiltColumns = try await queue.read { db in
+            try Self.columnNames(db, table: "agent_memories")
+        }
+        for column in ["source_kind", "user_id", "agent_id", "run_id", "app_id"] {
+            XCTAssertTrue(rebuiltColumns.contains(column), "rebuild dropped column \(column)")
+        }
+        let indexes = try await queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'agent_memories_%'"
+            )
+        }
+        for index in ["agent_memories_project_idx", "agent_memories_review_status_idx", "agent_memories_chat_scope_idx"] {
+            XCTAssertTrue(indexes.contains(index), "rebuild lost index \(index)")
+        }
+
+        // The point of the repair: a write that names no verdict lands in review.
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO agent_memories (
+                    id, project_id, kind, scope, confidence, body_ref, body_redacted,
+                    tags_json, source_path, valid_from, valid_to, superseded_by,
+                    created_at, updated_at
+                ) VALUES (
+                    'unvouched-insert', 'project-1', 'fact', 'project', 0.5, 'ref',
+                    'redacted', '[]', NULL, '2026-01-02T00:00:00Z', NULL, NULL,
+                    '2026-01-02T00:00:00Z', '2026-01-02T00:00:00Z'
+                )
+                """
+            )
+        }
+        let landedStatus = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT review_status FROM agent_memories WHERE id = 'unvouched-insert'"
+            )
+        }
+        XCTAssertEqual(
+            landedStatus, "quarantined",
+            "an insert that names no verdict must land in review, never in production"
+        )
+    }
+
+    /// The already-correct half: a fresh database gets `DEFAULT 'quarantined'`
+    /// from v51's add-column, so the v68 probe must not rewrite the table —
+    /// it is a probe, not a rewrite.
+    func test_v68ReviewStatusDefaultRepair_leavesAnAlreadyCorrectDefaultAlone() async throws {
+        let queue = try DatabaseQueue()
+        try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v67_agent_memory_inbox")
+        let tableSQLBefore = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_memories'"
+            )
+        }
+
+        try OpenBurnBarDatabase.migrator.migrate(queue)
+
+        let tableSQLAfter = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_memories'"
+            )
+        }
+        XCTAssertEqual(
+            tableSQLBefore, tableSQLAfter,
+            "a correct default must not trigger the rebuild — the probe returns early"
+        )
+        XCTAssertEqual(tableSQLAfter?.contains("DEFAULT 'quarantined'"), true)
     }
 
     func test_v52MemoryExtractionJobsBackfillsIntentAndAddsLease() async throws {

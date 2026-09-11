@@ -18,10 +18,14 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
 
     // MARK: - Migrator wiring
 
-    func test_migrator_latestIdentifier_isV67AgentMemoryInbox() {
+    func test_migrator_latestIdentifier_isV68AgentMemoriesReviewDefaultRepair() {
         XCTAssertEqual(
             OpenBurnBarDatabase.latestMigrationIdentifier,
-            "v67_agent_memory_inbox"
+            "v68_agent_memories_review_default_repair"
+        )
+        XCTAssertTrue(
+            OpenBurnBarDatabase.migrator.migrations.contains("v68_agent_memories_review_default_repair"),
+            "registerCommandBoardIndexMigrations must wire the review-default repair"
         )
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v61_usage_memory"),
@@ -73,7 +77,14 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
         XCTAssertEqual(indexes, ["memory_quarantine_bodies_project_idx"])
     }
 
-    func test_v61AdditiveMigration_usesTransactionalFastLane() throws {
+    /// Review #2565-F3 made the fast-lane boundary real: a v60-era install's
+    /// pending set now ends in `v68_agent_memories_review_default_repair`,
+    /// which rewrites pre-existing `agent_memories` rows and is therefore
+    /// deliberately NOT in `additiveTransactionalMigrationIdentifiers`. An
+    /// upgrade that includes it pays the full integrity-check + backup cost —
+    /// the fast lane exists so routine additive upgrades skip that, and a
+    /// table rebuild must never slip through it.
+    func test_runMigrationsSafely_usesFullProtectionLane_whenPendingIncludesTheV68Rebuild() throws {
         let tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(
@@ -109,17 +120,18 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
             atPath: tempDirectory.path
         )
         .filter { $0.contains(".backup.") }
-        XCTAssertTrue(backups.isEmpty)
+        XCTAssertFalse(backups.isEmpty)
 
         lock.lock()
         let migrationSQL = tracedSQL
         lock.unlock()
-        XCTAssertFalse(migrationSQL.contains { $0.contains("integrity_check") })
+        XCTAssertTrue(migrationSQL.contains { $0.contains("integrity_check") })
 
         let applied = try queue.read { db in
             try OpenBurnBarDatabase.migrator.appliedIdentifiers(db)
         }
         XCTAssertTrue(applied.contains("v61_usage_memory"))
+        XCTAssertTrue(applied.contains("v68_agent_memories_review_default_repair"))
     }
 
     func test_additiveMigrationFastLane_failsClosed_forUnknownIdentifiers() {
@@ -131,6 +143,14 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
         XCTAssertTrue(
             OpenBurnBarDatabase.requiresFullPreMigrationProtection(
                 pendingMigrationIdentifiers: ["v61_usage_memory", "v62_unreviewed"]
+            )
+        )
+        // v68 rewrites `agent_memories` rows wholesale — it stays off the
+        // additive fast lane by design, so name it explicitly rather than
+        // hiding the pin behind a synthetic identifier.
+        XCTAssertTrue(
+            OpenBurnBarDatabase.requiresFullPreMigrationProtection(
+                pendingMigrationIdentifiers: ["v68_agent_memories_review_default_repair"]
             )
         )
     }

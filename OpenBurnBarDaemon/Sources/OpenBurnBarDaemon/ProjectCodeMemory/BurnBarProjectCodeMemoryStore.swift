@@ -385,9 +385,29 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                         now: now
                     )
                     try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
-                    // Remirrored as unapproved after an upload: blank, never delete, so
-                    // the sync lane can still address the sealed copy (see the helper).
-                    try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: now)
+                    if let engineMemoryID {
+                        // Quarantined-from-birth is the ordinary arrival for a mirrored
+                        // row now that the wire defaults to review, so the engine id has
+                        // to be recorded here: it is what the sealed cloud document keys
+                        // on, and without it an approval later has nothing to address and
+                        // the member's memory would silently never sync. The body stays
+                        // out — `agent_memory_bodies` carries approved content only, and
+                        // `setReviewStatus` refills it on approval. Writing an empty body
+                        // over an existing row is also exactly the blanking an approved,
+                        // already-uploaded memory needs when it is remirrored unapproved.
+                        try upsertAgentMemoryBody(
+                            projectID: projectID,
+                            memoryID: memoryID,
+                            engineMemoryID: engineMemoryID,
+                            body: "",
+                            bodyHash: "",
+                            now: now
+                        )
+                    } else {
+                        // Remirrored as unapproved after an upload: blank, never delete, so
+                        // the sync lane can still address the sealed copy (see the helper).
+                        try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: now)
+                    }
                 }
                 let bodyReference = reviewStatus == .approved
                     ? Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
