@@ -886,11 +886,17 @@ jobs:
           fi
           (cd "$stage" && sha256sum --check --strict SHA256SUMS)
 
+      - name: Materialize Node pin without a full checkout
+        run: |
+          set -euo pipefail
+          # deploy-functions only downloads the prepared artifact, so repo
+          # .nvmrc is not in the workspace. Write the same pin the rest of
+          # the repo uses so setup-node can resolve node-version-file.
+          printf '22\n' > .nvmrc
+
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          # deploy-functions has no checkout; the prepared artifact is the
-          # workspace. Pin the same major as repo .nvmrc (22).
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Select verified deploy tools
         working-directory: ${{ runner.temp }}/domain-core-functions-prepared-deploy
