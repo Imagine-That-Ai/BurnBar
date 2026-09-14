@@ -903,6 +903,12 @@ jobs:
           chmod 0700 sentry-cli/node_modules/@sentry/cli/bin/sentry-cli
           find sentry-cli -type f -name sentry-cli -exec chmod 0700 {} +
           test -x sentry-cli/node_modules/@sentry/cli/bin/sentry-cli
+          # upload-artifact restores 0644; firebase-tools 15 spawns
+          # node_modules/.bin/firebase-functions during analysis.
+          if [[ -d functions/node_modules/.bin ]]; then
+            find functions/node_modules/.bin -type f -exec chmod 0700 {} +
+            test -x functions/node_modules/.bin/firebase-functions
+          fi
           echo "FIREBASE_TOOLS_BIN=$PWD/functions/node_modules/firebase-tools/lib/bin/firebase.js" >> "$GITHUB_ENV"
           echo "SENTRY_CLI_BIN=$PWD/sentry-cli/node_modules/@sentry/cli/bin/sentry-cli" >> "$GITHUB_ENV"
 
@@ -1124,11 +1130,16 @@ jobs:
             exit 1
           fi
 
+          extra=()
+          if [[ "${{ needs.prepare-functions-deploy.outputs.break_glass }}" == "true" ]]; then
+            extra+=(--debug)
+          fi
           node "$FIREBASE_TOOLS_BIN" deploy \
             --only functions \
             --project burnbar \
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
-            --non-interactive
+            --non-interactive \
+            "${extra[@]}"
 
           descriptions="$RUNNER_TEMP/domain-core-functions-descriptions.jsonl"
           : > "$descriptions"
