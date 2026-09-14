@@ -1150,16 +1150,24 @@ jobs:
           fi
 
           extra=()
+          only="functions"
           if [[ "${{ needs.prepare-functions-deploy.outputs.break_glass }}" == "true" ]]; then
             extra+=(--debug)
+            # Live production has team-* functions the 2026-09-02 tag payload
+            # does not export. A full --only functions deploy would delete
+            # them. Break-glass ships identity/health only.
+            only="functions:healthReady,healthLive,healthCheck"
           fi
           node "$FIREBASE_TOOLS_BIN" deploy \
-            --only functions \
+            --only "$only" \
             --project burnbar \
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
             --non-interactive \
             "${extra[@]}"
 
+          if [[ "${{ needs.prepare-functions-deploy.outputs.break_glass }}" == "true" ]]; then
+            echo "::warning::break_glass health-only deploy: skipping full Functions inventory describe."
+          else
           descriptions="$RUNNER_TEMP/domain-core-functions-descriptions.jsonl"
           : > "$descriptions"
           while IFS= read -r target; do
@@ -1178,6 +1186,7 @@ jobs:
             --commit "${{ needs.prepare-functions-deploy.outputs.commit }}" \
             --artifact-sha256 "${{ needs.prepare-functions-deploy.outputs.runtime_manifest_sha256 }}" \
             --output "domain-core-functions-deploy-proof/domain-core-functions-provider-coordinates.json"
+          fi
 
       - name: Upload exact deployed Functions proof inputs
         if: steps.stable-replay.outputs.reused != 'true'
@@ -1189,6 +1198,7 @@ jobs:
           retention-days: 90
 
       - name: Verify parity-critical Linux callables deployed
+        if: needs.prepare-functions-deploy.outputs.break_glass != 'true'
         env:
           FIREBASE_PROJECT: burnbar
         run: |
