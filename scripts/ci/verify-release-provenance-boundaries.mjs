@@ -283,11 +283,12 @@ function requireNoContinueOnError(file, source, message) {
 }
 
 // Dry-runs prove tag binding and source integrity without claiming the
-// product lane is launch-ready, so the production deploy workflow may skip
-// the product preflight for dry-runs only. This is the sole condition the
-// protected step may carry, and only where allowDryRunSkip is set.
+// product lane is launch-ready. Break-glass existing-tag retries skip product
+// ceremony because production environment approval is the remaining human
+// gate. Those two outputs are the only allowed skip conditions, and only
+// where allowDryRunSkip is set.
 const DRY_RUN_SKIP_GUARD =
-  /^(?:\$\{\{\s*)?steps\.tag\.outputs\.dry_run\s*!=\s*'true'(?:\s*\}\})?$/u;
+  /^(?:\$\{\{\s*)?steps\.tag\.outputs\.dry_run\s*!=\s*'true'(?:\s*&&\s*steps\.tag\.outputs\.break_glass\s*!=\s*'true')?(?:\s*\}\})?$/u;
 
 function requireProductReleasePreflight(
   file,
