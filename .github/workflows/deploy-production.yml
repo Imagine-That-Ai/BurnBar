@@ -1156,7 +1156,7 @@ jobs:
             # Live production has team-* functions the 2026-09-02 tag payload
             # does not export. A full --only functions deploy would delete
             # them. Break-glass ships identity/health only.
-            only="functions:healthReady,healthLive,healthCheck"
+            only="functions:healthReady,functions:healthLive,functions:healthCheck"
           fi
           node "$FIREBASE_TOOLS_BIN" deploy \
             --only "$only" \
