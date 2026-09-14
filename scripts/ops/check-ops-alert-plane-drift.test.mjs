@@ -123,6 +123,23 @@ test("out-of-band openburnbar policy is flagged; foreign policy is ignored", () 
   assert.equal(foreignResult.ok, true, JSON.stringify(foreignResult.differences, null, 2));
 });
 
+test("live null thresholdValue matches committed 0 (GCP omits protobuf default 0)", () => {
+  const snap = manifestSnapshot();
+  let nulled = 0;
+  for (const policy of snap) {
+    for (const condition of policy.conditions || []) {
+      const t = condition.conditionThreshold;
+      if (t && t.thresholdValue === 0) {
+        t.thresholdValue = null;
+        nulled += 1;
+      }
+    }
+  }
+  assert.ok(nulled > 0, "fixture must include at least one thresholdValue: 0 policy");
+  const result = diffAlertPlane(snap, expectedPolicySet());
+  assert.equal(result.ok, true, JSON.stringify(result.differences, null, 2));
+});
+
 test("filter clause reordering still MATCHes (normalization is order-independent)", () => {
   const snap = manifestSnapshot();
   const p = snap.find((x) => x.conditions?.[0]?.conditionThreshold?.filter?.includes(" AND "));
