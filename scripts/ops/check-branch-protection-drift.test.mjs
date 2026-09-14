@@ -143,6 +143,14 @@ test("merge-queue-only ruleset layers over classic governance", () => {
   assert.equal(result.ok, true, JSON.stringify(result.differences, null, 2));
 });
 
+test("GitHub pull_request.required_review_thread_resolution counts as conversation resolution", () => {
+  const ruleset = matchingRuleset();
+  ruleset.rules = ruleset.rules.filter((rule) => rule.type !== "required_conversation_resolution");
+  ruleset.rules.find((rule) => rule.type === "pull_request").parameters.required_review_thread_resolution = true;
+  const live = canonicalizeLive({ classic: null, ruleset });
+  assert.equal(live.requireConversationResolution, true);
+});
+
 test("empty live protection (nothing enforcing main) reports DRIFT with critical reviews-wiped", () => {
   const live = canonicalizeLive({ classic: null, ruleset: null });
   const result = diffBranchProtection(live, desired);
