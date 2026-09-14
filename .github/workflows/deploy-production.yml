@@ -36,6 +36,11 @@ on:
         options:
           - public-production
           - public-production-rollback
+      break_glass:
+        description: "Skip domain-core promotion attestation and dry-run/product ceremony; proceed to deploy-functions. Still requires production environment approval. Use with existing_tag_retry."
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-production
@@ -100,6 +105,7 @@ jobs:
           INPUT_EXISTING_TAG_RETRY: ${{ inputs.existing_tag_retry }}
           INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           INPUT_DOMAIN_CORE_PROFILE: ${{ inputs.domain_core_profile }}
+          INPUT_BREAK_GLASS: ${{ inputs.break_glass }}
           REF_NAME: ${{ github.ref_name }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -108,6 +114,10 @@ jobs:
           IS_DRY_RUN="false"
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]]; then
             IS_DRY_RUN="true"
+          fi
+          IS_BREAK_GLASS="false"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_BREAK_GLASS" == "true" ]]; then
+            IS_BREAK_GLASS="true"
           fi
           IS_EXISTING_TAG_RETRY="false"
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_EXISTING_TAG_RETRY" == "true" ]]; then
@@ -207,10 +217,14 @@ jobs:
                   --tag "$TAG" \
                   --plane deploy-production \
                   --mode real-retry
-                node "$RUNNER_TEMP/release-dry-run-attestation.mjs" verify \
-                  --sha "$INPUT_CANDIDATE_SHA" \
-                  --tag "$TAG" \
-                  --control-sha "$GITHUB_SHA"
+                if [[ "$IS_BREAK_GLASS" == "true" ]]; then
+                  echo "::warning::break_glass=true: skipping dry-run attestation verify. Production environment approval remains required."
+                else
+                  node "$RUNNER_TEMP/release-dry-run-attestation.mjs" verify \
+                    --sha "$INPUT_CANDIDATE_SHA" \
+                    --tag "$TAG" \
+                    --control-sha "$GITHUB_SHA"
+                fi
               fi
             elif [[ "$IS_EXISTING_TAG_RETRY" == "true" ]]; then
               echo "::error::existing_tag_retry requires an existing immutable stable tag: $TAG."
@@ -267,6 +281,7 @@ jobs:
             echo "tag=$TAG"
             echo "commit=$commit"
             echo "dry_run=$IS_DRY_RUN"
+            echo "break_glass=$IS_BREAK_GLASS"
             echo "existing_tag_retry=$IS_EXISTING_TAG_RETRY"
             echo "control_sha=${GITHUB_SHA:-}"
             echo "stable_release=$([[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]] && echo true || echo false)"
@@ -338,15 +353,51 @@ jobs:
       # proof, a non-boolean activation flag is an error, and the inactive lane
       # is only available to a `public-production` profile whose every governed
       # domain mode is `legacy` (i.e. no domain-core code executes).
+      #
+      # Existing-tag retry checks out the immutable tag payload, which may
+      # predate this control-plane (v1.0.40+repair.39 does). Stage the current
+      # main copies into $RUNNER_TEMP so proof_gate / deploy-proof keep working
+      # without dirtying the tag tree that Functions actually compile.
+      - name: Stage trusted control-plane Functions scripts
+        env:
+          CONTROL_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/control-plane"
+          mkdir -p "$stage/scripts/ci" "$stage/scripts/lib"
+          for f in \
+            scripts/ci/resolve-functions-promotion-gate.mjs \
+            scripts/ci/create-domain-core-functions-deploy-proof.mjs \
+            scripts/lib/atomic-regular-file.mjs \
+            scripts/lib/domain-core-activation.mjs \
+            scripts/lib/domain-core-build-profile.mjs \
+            scripts/lib/domain-core-candidate-receipt.mjs \
+            scripts/lib/domain-core-release-evidence.mjs
+          do
+            git show "$CONTROL_SHA:$f" > "$stage/$f"
+            test -s "$stage/$f"
+          done
+          echo "CONTROL_PLANE_SCRIPTS=$stage/scripts/ci" >> "$GITHUB_ENV"
+
       - name: Resolve whether a protected promotion proof is required
         id: proof_gate
         env:
+          BREAK_GLASS: ${{ steps.tag.outputs.break_glass }}
           DOMAIN_CORE_PROFILE: ${{ steps.tag.outputs.domain_core_profile }}
           RUST_ACTIVE: ${{ steps.activation.outputs.active }}
           PROFILE_PATH: ${{ steps.domain-core-profile.outputs.profile_path }}
         run: |
           set -euo pipefail
-          node scripts/ci/resolve-functions-promotion-gate.mjs \
+          if [[ "${BREAK_GLASS:-false}" == "true" ]]; then
+            echo "::warning::break_glass=true: taking the inactive domain-core lane and skipping promotion attestation. deploy-functions still requires the production environment (manual approval)."
+            {
+              echo "proof_required=false"
+              echo "domain_core_inactive=true"
+              echo "gate_reason=break-glass"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node "$CONTROL_PLANE_SCRIPTS/resolve-functions-promotion-gate.mjs" \
             --active "$RUST_ACTIVE" \
             --profile "$DOMAIN_CORE_PROFILE" \
             --profile-receipt "$PROFILE_PATH" \
@@ -618,7 +669,7 @@ jobs:
               || { echo "::error::A Functions deploy without a protected release gate requires the inactive domain-core lane."; exit 1; }
             proof_args+=(--domain-core-inactive true)
           fi
-          node scripts/ci/create-domain-core-functions-deploy-proof.mjs "${proof_args[@]}"
+          node "$CONTROL_PLANE_SCRIPTS/create-domain-core-functions-deploy-proof.mjs" "${proof_args[@]}"
           install -m 0600 "${{ steps.domain-core-profile.outputs.profile_path }}" "$stage/domain-core-functions-profile.json"
           install -m 0600 functions/lib/generated/domainCoreCandidateReceipt.js "$stage/domainCoreCandidateReceipt.js"
           install -m 0600 functions/lib/domain-core-runtime-artifact-manifest.json "$stage/domain-core-runtime-artifact-manifest.json"
@@ -653,11 +704,11 @@ jobs:
       # domain-core release-gate resolution, and source integrity without claiming
       # the product lane is launch-ready.
       - name: BurnBar product release preflight
-        if: steps.tag.outputs.dry_run != 'true'
+        if: steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.break_glass != 'true'
         run: python3 scripts/ci/check_burnbar_release_preflight.py
 
       - name: Verify dry-run attestations
-        if: steps.tag.outputs.dry_run != 'true'
+        if: steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.break_glass != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ATTEST_SHA: ${{ steps.tag.outputs.commit }}

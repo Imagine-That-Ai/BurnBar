@@ -39,6 +39,10 @@ after the fact.
 
 ## Procedure
 
+Prefer the protected `deploy-production.yml` dispatch (production environment
+approval still required). Local `firebase deploy` is last resort and only from
+a clean `main` checkout.
+
 ```bash
 # 1. Record the break-glass invocation BEFORE deploying.
 COMMIT=$(git rev-parse HEAD)
@@ -47,14 +51,24 @@ gh issue create \
   --label "P0 - Critical" --label "area: infra" \
   --body "Incident: <one line>. Commit: ${COMMIT}. Operator: $(git config user.name). Preflight bypassed: <which gate and why>."
 
-# 2. Build + deploy functions only (no hosting, no rules).
-npm ci --prefix functions && npm run build --prefix functions
-npx firebase-tools deploy --only functions --project burnbar
+# 2. Preferred: current-main control plane, immutable existing tag payload.
+#    break_glass skips promotion attestation + dry-run/product ceremony.
+#    deploy-functions still waits on the production environment reviewer.
+gh workflow run deploy-production.yml --ref main \
+  -f domain_core_profile=public-production \
+  -f existing_tag_retry=true \
+  -f break_glass=true \
+  -f tag='<existing stable tag>' \
+  -f candidate_sha='<40-char tag peel>'
 
-# 3. Verify the deploy took.
+# 3. Approve the pending production deployment as the required reviewer, then:
 curl -s https://us-central1-burnbar.cloudfunctions.net/healthReady | jq .version
-gcloud functions describe <fixed-function> --project=burnbar \
-  --format='value(updateTime)'   # must postdate the fix commit
+gcloud functions describe healthReady --project=burnbar --region=us-central1 \
+  --format='value(updateTime)'   # must postdate the deploy
+
+# Last resort (clean main only; never a dirty feature branch):
+# npm ci --prefix functions && npm run build --prefix functions
+# npx firebase-tools deploy --only functions --project burnbar
 
 # 4. Close the loop within 72h:
 #    - the fix ships again through the NORMAL tag lane at the next release
