@@ -78,6 +78,7 @@ jobs:
       signer_run_id: ${{ steps.domain-core-gate.outputs.signer_run_id }}
       signer_run_attempt: ${{ steps.domain-core-gate.outputs.signer_run_attempt }}
       domain_core_inactive: ${{ steps.proof_gate.outputs.domain_core_inactive }}
+      break_glass: ${{ steps.tag.outputs.break_glass }}
       proof_artifact: ${{ steps.domain-core-proof.outputs.artifact_name }}
       prepared_artifact: ${{ steps.prepared-artifact.outputs.artifact_name }}
     steps:
@@ -901,6 +902,7 @@ jobs:
           # upload-artifact restores regular files as 0644. Restore execute
           # permission only after the artifact content checksum has passed.
           chmod 0700 sentry-cli/node_modules/@sentry/cli/bin/sentry-cli
+          find sentry-cli -type f -name sentry-cli -exec chmod 0700 {} +
           test -x sentry-cli/node_modules/@sentry/cli/bin/sentry-cli
           echo "FIREBASE_TOOLS_BIN=$PWD/functions/node_modules/firebase-tools/lib/bin/firebase.js" >> "$GITHUB_ENV"
           echo "SENTRY_CLI_BIN=$PWD/sentry-cli/node_modules/@sentry/cli/bin/sentry-cli" >> "$GITHUB_ENV"
@@ -1050,7 +1052,7 @@ jobs:
           echo "Sentry release ${RELEASE_NAME} created."
 
       - name: Require matching rules before Functions deploy
-        if: steps.stable-replay.outputs.reused != 'true'
+        if: steps.stable-replay.outputs.reused != 'true' && needs.prepare-functions-deploy.outputs.break_glass != 'true'
         working-directory: ${{ runner.temp }}/domain-core-functions-prepared-deploy
         env:
           FIREBASE_PROJECT: burnbar
