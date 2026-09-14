@@ -34,6 +34,18 @@ function toNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+/** GCP budgets store `projects/<number>`; the contract names `projects/<id>`. */
+export function projectFilterAliases(committed) {
+  const aliases = new Set([`projects/${committed.projectId}`]);
+  if (committed.projectNumber) aliases.add(`projects/${committed.projectNumber}`);
+  return aliases;
+}
+
+export function projectFilterMatches(aliases, liveProjects) {
+  if (!Array.isArray(liveProjects) || liveProjects.length === 0) return false;
+  return liveProjects.every((ref) => aliases.has(ref));
+}
+
 function amountUsd(budget) {
   const money = budget?.amount?.specifiedAmount;
   if (!money) return null;
@@ -79,10 +91,10 @@ export function diffBillingBudget(committed, liveBudgets) {
   }
 
   const liveProjects = [...(live?.budgetFilter?.projects ?? [])].sort();
-  const wantProjects = [`projects/${committed.projectId}`];
-  if (JSON.stringify(liveProjects) !== JSON.stringify(wantProjects)) {
+  const wantProjects = projectFilterAliases(committed);
+  if (!projectFilterMatches(wantProjects, liveProjects)) {
     differences.push(
-      `project filter: live [${liveProjects.join(", ") || "account-wide"}], committed [${wantProjects.join(", ")}]`,
+      `project filter: live [${liveProjects.join(", ") || "account-wide"}], committed [${[...wantProjects].join(", ")}]`,
     );
   }
 
