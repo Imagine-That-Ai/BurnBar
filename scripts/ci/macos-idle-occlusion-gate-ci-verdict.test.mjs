@@ -14,7 +14,22 @@ test("VirtualMac helper-timeout is infra skip, not a budget red", () => {
     reasonCode: "helper-timeout",
     machineIdentity: { hardware: { model: "VirtualMac2,1" } },
   };
-  assert.deepEqual(ciVerdict(evidence), { exitCode: 0, reason: "virtual-mac-infra" });
+  assert.deepEqual(ciVerdict(evidence), { exitCode: 0, reason: "virtual-mac-helper-timeout" });
+});
+
+test("VirtualMac launch-failed and no-backdrop-ack stay red", () => {
+  for (const reasonCode of ["launch-failed", "no-backdrop-ack"]) {
+    assert.equal(
+      ciVerdict({
+        status: "infra-failed",
+        failureClass: "infra",
+        reasonCode,
+        machineIdentity: { hardware: { model: "VirtualMac2,1" } },
+      }).exitCode,
+      1,
+      reasonCode,
+    );
+  }
 });
 
 test("real-Mac infra and budget failures stay red", () => {

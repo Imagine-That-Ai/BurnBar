@@ -290,7 +290,7 @@ jobs:
 
   standing-failure:
     name: Standing failure issue
-    needs: [verify, skipped-no-gcp-key]
+    needs: [drift-check-selftest, alert-plane-drift, verify, skipped-no-gcp-key]
     if: always() && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -301,10 +301,23 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           persist-credentials: false
+      - id: verdict
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          failed = sorted(name for name, job in needs.items() if job.get("result") == "failure")
+          mode = "open" if failed else "close"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"mode={mode}\n")
+          print(f"ops-plane standing-failure mode={mode} failed={failed}")
+          PY
       - uses: ./.github/actions/ops-failure-issue
         with:
-          mode: ${{ needs.verify.result == 'success' && 'close' || 'open' }}
+          mode: ${{ steps.verdict.outputs.mode }}
           lane: ops-plane-verify
           title-prefix: "Ops plane verify standing failure"
-          summary: "Scheduled ops-plane-verify ended verify=${{ needs.verify.result }} skipped-no-gcp=${{ needs.skipped-no-gcp-key.result }}."
+          summary: "Scheduled ops-plane-verify needs=${{ toJSON(needs) }}."
           paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
