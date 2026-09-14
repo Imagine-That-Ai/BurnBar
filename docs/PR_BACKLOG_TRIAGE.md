@@ -62,6 +62,20 @@ This is the single most important knob in the tool, and
 `MIN_SIGNIFICANT_LENGTH` is deliberately exported so the test suite can
 mutate it. Dropping the floor to `0` fails the suite — that is intentional.
 
+### Generated lockfiles are excluded
+
+Two versions of a lockfile share an enormous number of byte-identical lines —
+every pinned transitive dependency that did not move. Scoring them produces a
+number that looks like partial supersession and means nothing: BurnBar #2426, a
+routine `functions/package-lock.json` bump that no other open PR touched,
+scored **55.0%** purely from that overlap.
+
+So `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`,
+`Package.resolved`, `Gemfile.lock`, `poetry.lock`, `uv.lock`, `composer.lock`,
+`go.sum`, `gradle.lockfile`, `packages.lock.json` and `npm-shrinkwrap.json` are
+treated like binaries — counted as unscoreable rather than scored wrongly. With
+the exclusion, #2426 reads `active` at 0%, which is the truth.
+
 ### Verdicts
 
 | Verdict | Coverage | Meaning |
@@ -113,7 +127,7 @@ Run it when triaging the backlog.
 node --test scripts/ci/find-superseded-prs.test.mjs
 ```
 
-22 tests. The pure core — significance filtering, diff parsing, scoring,
+27 tests. The pure core — significance filtering, diff parsing, scoring,
 classification — is tested directly. Three integration tests build real
 throwaway git repositories, including one that reproduces the #2456 shape: a
 branch adds a file, `main` independently reimplements it with extra lines, and
@@ -126,3 +140,5 @@ The suite is mutation-checked. Each of these breaks it:
 | `MIN_SIGNIFICANT_LENGTH` 8 → 0 | 1 |
 | `DEFAULT_SUPERSEDED_THRESHOLD` 0.95 → 0.50 | 2 |
 | Stop excluding `+++`/`---` diff headers | 2 |
+| `isGeneratedLockfile` always returns `false` | 3 |
+| Stop skipping generated entries when analysing | 1 |

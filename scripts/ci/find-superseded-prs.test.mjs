@@ -10,6 +10,7 @@ import {
   DEFAULT_SUPERSEDED_THRESHOLD,
   fileOnRef,
   formatReport,
+  isGeneratedLockfile,
   isSignificantLine,
   parseUnifiedDiff,
   scoreFile,
@@ -282,6 +283,90 @@ test("fileOnRef returns null for a path missing from the ref", () => {
     run("add", "."); run("commit", "--quiet", "-m", "seed");
     assert.equal(fileOnRef("main", "does/not/exist.txt", { cwd: dir }), null);
     assert.notEqual(fileOnRef("main", "seed.txt", { cwd: dir }), null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── generated lockfiles ────────────────────────────────────────────────────
+// BurnBar #2426 scored 55.0% on a routine functions/package-lock.json bump,
+// purely from lines two lockfile versions share. That is a meaningless number,
+// not a weak one, so these paths must never be scored.
+
+test("lockfiles across ecosystems are recognised as generated", () => {
+  for (const path of [
+    "functions/package-lock.json",
+    "package-lock.json",
+    "website/yarn.lock",
+    "app/pnpm-lock.yaml",
+    "crates/podex/Cargo.lock",
+    "Packages/Package.resolved",
+    "Gemfile.lock",
+    "poetry.lock",
+    "uv.lock",
+    "composer.lock",
+    "services/go.sum",
+    "android/gradle.lockfile",
+    "Apps/Windows/packages.lock.json",
+    "npm-shrinkwrap.json",
+  ]) {
+    assert.equal(isGeneratedLockfile(path), true, path);
+  }
+});
+
+test("ordinary sources are not mistaken for lockfiles", () => {
+  for (const path of [
+    "functions/package.json",
+    "src/lock.ts",
+    "docs/Cargo.lock.md",
+    "AgentLens/Services/LockManager.swift",
+    "a/package-lock.json.bak",
+  ]) {
+    assert.equal(isGeneratedLockfile(path), false, path);
+  }
+});
+
+test("a lockfile in a diff is flagged generated, not scored", () => {
+  const diff = [
+    "diff --git a/functions/package-lock.json b/functions/package-lock.json",
+    "@@ -1,2 +1,3 @@",
+    '+    "resolved": "https://registry.npmjs.org/example/-/example-1.2.3.tgz",',
+  ].join("\n");
+  const entry = parseUnifiedDiff(diff).get("functions/package-lock.json");
+  assert.equal(entry.generated, true);
+});
+
+test("a source file in a diff is not flagged generated", () => {
+  const diff = [
+    "diff --git a/functions/src/index.ts b/functions/src/index.ts",
+    "@@ -1 +1,2 @@",
+    "+export const somethingRealHere = true;",
+  ].join("\n");
+  assert.equal(parseUnifiedDiff(diff).get("functions/src/index.ts").generated, false);
+});
+
+test("a lockfile-only PR is indeterminate, never superseded (the #2426 shape)", () => {
+  const { dir, run } = makeRepo();
+  try {
+    writeFileSync(join(dir, "seed.txt"), "seed content line here\n");
+    // main carries a lockfile whose lines the branch will mostly repeat.
+    const shared = Array.from({ length: 40 }, (_, i) => `    "resolvedDependency${i}": "https://registry.example/pkg-${i}.tgz",`).join("\n");
+    writeFileSync(join(dir, "package-lock.json"), `{\n${shared}\n}\n`);
+    run("add", "."); run("commit", "--quiet", "-m", "seed");
+
+    run("checkout", "--quiet", "-b", "bump");
+    writeFileSync(join(dir, "package-lock.json"), `{\n${shared}\n    "newlyAddedDependency": "https://registry.example/pkg-new.tgz",\n}\n`);
+    run("add", "."); run("commit", "--quiet", "-m", "bump");
+    const head = run("rev-parse", "HEAD").trim();
+    run("checkout", "--quiet", "main");
+
+    const result = analyzePullRequest(
+      { number: 4, title: "bump", headRefOid: head },
+      { baseRef: "main", cwd: dir },
+    );
+    // Without the exclusion this scored as high-coverage shared lockfile lines.
+    assert.equal(result.verdict, VERDICTS.INDETERMINATE);
+    assert.equal(result.files.length, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
