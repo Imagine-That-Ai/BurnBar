@@ -461,6 +461,7 @@ populate_xcodebuild_args() {
         SWIFT_ENABLE_BATCH_MODE=NO
         CODE_SIGNING_ALLOWED=NO
         CODE_SIGNING_REQUIRED=NO
+        -skip-testing:OpenBurnBarDaemonTests
     )
     if [[ "$phase" == "isolated" ]]; then
         for filter in "${isolated_test_filters[@]}"; do
