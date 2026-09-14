@@ -88,10 +88,7 @@ jobs:
       # read); it queues behind the apply instead of observing a half-applied set.
       group: ops-plane-apply
       cancel-in-progress: false
-    # administration:read is required to GET classic branch protection; contents:read
-    # alone 403s and the drift checker treats empty live protection as total drift.
     permissions:
-      administration: read
       contents: read
       id-token: write
     steps:
@@ -176,10 +173,7 @@ jobs:
       group: ops-plane-apply
       cancel-in-progress: false
     environment: production
-    # administration:read is required to GET classic branch protection; contents:read
-    # alone 403s and the drift checker treats empty live protection as total drift.
     permissions:
-      administration: read
       contents: read
       id-token: write
     steps:

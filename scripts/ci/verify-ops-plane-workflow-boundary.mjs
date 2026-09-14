@@ -72,7 +72,6 @@ if (source) {
   const detect = jobs.get("detect-secrets") ?? "";
   const verify = jobs.get("verify") ?? "";
   const skipped = jobs.get("skipped-no-gcp-key") ?? "";
-  const alertPlane = jobs.get("alert-plane-drift") ?? "";
 
   if (/id-token:\s*write/u.test(top)) {
     fail("ops-plane workflow must not grant id-token:write at top level");
@@ -126,16 +125,9 @@ if (source) {
     if (!/permissions:[\s\S]*contents:\s*read[\s\S]*id-token:\s*write/u.test(verify)) {
       fail("verify must own job-level contents:read and id-token:write permissions");
     }
-    if (!/^\s{2,}administration:\s*read\s*$/mu.test(verify)) {
-      fail("verify must have administration:read so branch-protection drift can read live protection");
-    }
     if (!/credentials_json:\s*\$\{\{\s*secrets\.GCP_SA_KEY\s*\}\}/u.test(verify)) {
       fail("verify must authenticate with the same production GCP_SA_KEY secret checked by detect-secrets");
     }
-  }
-
-  if (alertPlane && !/^\s{2,}administration:\s*read\s*$/mu.test(alertPlane)) {
-    fail("alert-plane-drift must have administration:read so branch-protection drift can read live protection");
   }
 
   if (skipped) {

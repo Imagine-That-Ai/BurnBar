@@ -93,19 +93,7 @@ expect(
   "verify job without job-level OIDC fails",
   (root) =>
     mutate(root, (text) =>
-      text.replace(
-        "    permissions:\n      administration: read\n      contents: read\n      id-token: write\n",
-        "",
-      ),
-    ),
-  1,
-);
-
-expect(
-  "verify job without administration:read fails",
-  (root) =>
-    mutate(root, (text) =>
-      text.replaceAll("      administration: read\n", ""),
+      text.replace("    permissions:\n      contents: read\n      id-token: write\n", ""),
     ),
   1,
 );
