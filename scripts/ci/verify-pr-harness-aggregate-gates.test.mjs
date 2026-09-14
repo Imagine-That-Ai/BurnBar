@@ -421,6 +421,7 @@ const rafStep = appBuildSteps.get("macOS rAF pause prerequisite (P-PERF-3)");
 const buildStep = appBuildSteps.get("Build AgentLens app for real-process CPU gate");
 const realGateStep = appBuildSteps.get("Enforce real macOS idle/occluded CPU budget (P-PERF-3)");
 const evidenceStep = appBuildSteps.get("Upload macOS idle/occlusion CPU evidence");
+const verdictStep = appBuildSteps.get("Fail on CPU budget regression (not VirtualMac helper infra)");
 const appTestStep = appBuildSteps.get("Build + run bounded AgentLens app smoke tests");
 
 check("P-PERF-3 runs the deterministic rAF test before building the real OpenBurnBar app", () => {
@@ -442,9 +443,20 @@ check("P-PERF-3 invokes only the real-process gate output sink and cannot contin
     stepRun(realGateStep).trim().replace(/\s+/gu, " "),
     'node scripts/ci/macos-idle-occlusion-gate.mjs --output "$RUNNER_TEMP/macos-idle-occlusion-evidence/result.json"',
   );
-  for (const step of [rafStep, buildStep, realGateStep]) {
+  assert.equal(optionalStepField(realGateStep, "continue-on-error"), "true");
+  assert.ok(verdictStep, "missing P-PERF-3 CI verdict step");
+  assert.match(
+    stepRun(verdictStep),
+    /macos-idle-occlusion-gate-ci-verdict\.mjs/u,
+  );
+  assert.equal(optionalStepField(verdictStep, "continue-on-error"), undefined);
+  for (const step of [rafStep, buildStep]) {
     assert.equal(optionalStepField(step, "continue-on-error"), undefined);
   }
+  assert.ok(
+    appBuildJob.indexOf("Fail on CPU budget regression (not VirtualMac helper infra)")
+      < appBuildJob.indexOf("Build + run bounded AgentLens app smoke tests"),
+  );
 });
 
 check("P-PERF-3 always uploads required evidence and fails when evidence is absent", () => {
