@@ -52,7 +52,8 @@ gh issue create \
   --body "Incident: <one line>. Commit: ${COMMIT}. Operator: $(git config user.name). Preflight bypassed: <which gate and why>."
 
 # 2. Preferred: current-main control plane, immutable existing tag payload.
-#    break_glass skips promotion attestation + dry-run/product ceremony.
+#    break_glass skips promotion attestation + dry-run attestation verify.
+#    Product preflight still runs. Production environment approval remains.
 #    deploy-functions still waits on the production environment reviewer.
 gh workflow run deploy-production.yml --ref main \
   -f domain_core_profile=public-production \

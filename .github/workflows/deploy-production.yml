@@ -37,7 +37,7 @@ on:
           - public-production
           - public-production-rollback
       break_glass:
-        description: "Skip domain-core promotion attestation and dry-run/product ceremony; proceed to deploy-functions. Still requires production environment approval. Use with existing_tag_retry."
+        description: "Skip domain-core promotion attestation and dry-run attestation verify; proceed to deploy-functions. Product preflight still runs. Still requires production environment approval. Use with existing_tag_retry."
         required: false
         type: boolean
         default: false
@@ -704,7 +704,7 @@ jobs:
       # domain-core release-gate resolution, and source integrity without claiming
       # the product lane is launch-ready.
       - name: BurnBar product release preflight
-        if: steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.break_glass != 'true'
+        if: steps.tag.outputs.dry_run != 'true'
         run: python3 scripts/ci/check_burnbar_release_preflight.py
 
       - name: Verify dry-run attestations

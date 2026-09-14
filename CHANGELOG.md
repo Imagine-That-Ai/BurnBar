@@ -39,9 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Functions break-glass dispatch.** `deploy-production.yml` accepts
   `break_glass=true` on a main `existing_tag_retry` so production Cloud
   Functions can ship when the domain-core promotion attestation is missing.
-  The inactive-lane proof gate stays; the tag tree is not dirtied — control
-  scripts are staged from current main into `$RUNNER_TEMP`. Production
-  environment approval is still required.
+  The inactive-lane proof gate and product preflight stay; the tag tree is
+  not dirtied — control scripts are staged from current main into
+  `$RUNNER_TEMP`. Production environment approval is still required.
 - **Remote-access agent: Developer-ID signing + client-side server authentication (M-10).**
   `scripts/install-remote-access-agent.sh` now signs the root
   `OpenBurnBarRemoteAccessAgent` with the Developer ID identity (hardened runtime +
