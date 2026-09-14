@@ -346,7 +346,8 @@ packageTargets.append(contentsOf: [
         name: "OpenBurnBarDaemonTests",
         dependencies: [
             "OpenBurnBarDaemon",
-            .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore")
+            .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore"),
+            .product(name: "OpenBurnBarMemoryExport", package: "OpenBurnBarCore"),
         ],
         // Harness-only test target stays Swift 5 (region-isolation checker gaps).
         swiftSettings: [.swiftLanguageMode(.v5)]
