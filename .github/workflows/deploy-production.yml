@@ -735,7 +735,6 @@ jobs:
             "$stage/scripts/ci" \
             "$stage/scripts/lib"
           rsync -aL --delete \
-            --exclude 'node_modules/.bin/' \
             --exclude '.env*' \
             functions/ "$stage/functions/"
           node scripts/ci/prepare-functions-runtime-package.mjs \
