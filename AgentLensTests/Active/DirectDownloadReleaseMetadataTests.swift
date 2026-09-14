@@ -41,10 +41,23 @@ final class DirectDownloadReleaseMetadataTests: XCTestCase {
         XCTAssertFalse(release.isNewer(thanBuild: "202", currentVersion: "1.0.0"))
     }
 
-    func testEqualBuildFallsBackToNumericVersionComparison() {
-        XCTAssertTrue(makeRelease(version: "1.10.0", build: "200").isNewer(thanBuild: "200", currentVersion: "1.9.0"))
-        XCTAssertFalse(makeRelease(version: "1.9.0", build: "200").isNewer(thanBuild: "200", currentVersion: "1.10.0"))
-        XCTAssertFalse(makeRelease(version: "1.9.0", build: "200").isNewer(thanBuild: "200", currentVersion: "1.9.0"))
+    func testEqualNumericBuildIsNotNewerEvenWithRepairMarketingSuffix() {
+        XCTAssertFalse(
+            makeRelease(version: "1.0.40+repair.36", build: "82")
+                .isNewer(thanBuild: "82", currentVersion: "1.0.40")
+        )
+        XCTAssertFalse(
+            makeRelease(version: "1.10.0", build: "200")
+                .isNewer(thanBuild: "200", currentVersion: "1.9.0")
+        )
+        XCTAssertFalse(
+            makeRelease(version: "1.9.0", build: "200")
+                .isNewer(thanBuild: "200", currentVersion: "1.10.0")
+        )
+        XCTAssertFalse(
+            makeRelease(version: "1.9.0", build: "200")
+                .isNewer(thanBuild: "200", currentVersion: "1.9.0")
+        )
     }
 
     func testNonNumericBuildFallsBackToVersionComparison() {
