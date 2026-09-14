@@ -11,9 +11,11 @@ const PROJECT = process.env.OPENBURNBAR_FIREBASE_PROJECT
   || "burnbar";
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
+  const env = { ...process.env, ...(options.env || {}), CLOUDSDK_CORE_DISABLE_PROMPTS: "1" };
+  const argv = command === "gcloud" ? ["--quiet", ...args] : args;
+  const result = spawnSync(command, argv, {
     cwd: options.cwd || process.cwd(),
-    env: options.env || process.env,
+    env,
     encoding: "utf8",
     timeout: options.timeout ?? 120_000,
   });

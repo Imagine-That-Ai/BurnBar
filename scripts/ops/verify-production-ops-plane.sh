@@ -93,9 +93,12 @@ from datetime import datetime, timezone
 steps = [s for s in os.environ.get("STEPS_CSV", "").split(",") if s]
 launch = {}
 gate_path = os.environ.get("GATE_JSON", "")
-if gate_path and os.path.isfile(gate_path):
+if gate_path and os.path.isfile(gate_path) and os.path.getsize(gate_path) > 0:
     with open(gate_path) as f:
-        launch = json.load(f)
+        try:
+            launch = json.load(f)
+        except json.JSONDecodeError:
+            launch = {}
 
 checks = launch.get("checks", {})
 ops = checks.get("opsAlerts", {})
