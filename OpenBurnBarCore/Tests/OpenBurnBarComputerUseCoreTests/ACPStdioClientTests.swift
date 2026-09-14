@@ -136,6 +136,41 @@ final class ACPStdioClientTests: XCTestCase {
         XCTAssertTrue(output.contains("!"))
     }
 
+    /// The child closes its stdin before the client can send the prompt.
+    /// Until F_SETNOSIGPIPE was set on that pipe the write raised SIGPIPE and
+    /// killed the whole xctest process after every other suite had passed
+    /// (PR Native Fast Gate runs 34499517283, 34529898345, 34549947613 on
+    /// 2026-09-10, all inside testRunSessionDrivesPermissionModeAndPrompt).
+    /// `os.close(0)` runs before the mock emits anything, so the prompt write
+    /// always finds the reader gone, whatever the scheduler does.
+    func testChildClosingStdinReportsExitInsteadOfSIGPIPE() async throws {
+        let script = """
+        import json, os, sys, time
+        os.close(0)
+        def send(obj):
+            sys.stdout.write(json.dumps(obj) + "\\n")
+            sys.stdout.flush()
+        send({"jsonrpc": "2.0", "id": 90, "method": "session/set_mode", "params": {"mode": "default"}})
+        send({"jsonrpc": "2.0", "id": 3, "result": {"sessionId": "s1"}})
+        time.sleep(5)
+        """
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("acp-mock-\(UUID().uuidString).py")
+        try script.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        do {
+            _ = try await ACPStdioClient.runSession(
+                executable: "/usr/bin/python3",
+                arguments: [url.path],
+                prompt: "say hi",
+                timeoutSeconds: 8,
+                onPermission: { _ in true }
+            )
+            XCTFail("a prompt to a child that closed stdin must throw")
+        } catch let error as ACPStdioClient.Error {
+            XCTAssertEqual(error.code, "acp_child_exited")
+        }
+    }
+
     func testLineScannerKeepsLeftoverAfterFirstNewline() {
         let scanner = ACPStdioClient.LineScanner()
         let chunk = Data("{\"id\":1,\"result\":{\"sessionId\":\"s1\"}}\n{\"id\":2,\"result\":{\"ok\":true}}\n".utf8)
