@@ -515,8 +515,6 @@ targets:
     scheme:
       testTargets:
         - OpenBurnBarTests
-        - name: OpenBurnBarDaemonTests
-          skipped: true
 
   # The Safari Web Extension that ships inside OpenBurnBar.app. The web payload is
   # the committed bundle at extensions/safari/dist; this target wraps it in the
