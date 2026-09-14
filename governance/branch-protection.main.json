@@ -11,12 +11,18 @@
       "Functions (security vitest)",
       "OSV Scanner (open source vulnerabilities)",
       "Secret Detection (gitleaks)",
-      "Domain Core Trusted Deletion Guard"
+      "Domain Core Trusted Deletion Guard",
+      "Analyze (javascript-typescript)",
+      "Analyze (python)",
+      "Fast Feedback Gate"
     ]
   },
   "_pending_required_status_checks": {
     "_comment": "Component contexts are enforced by governance/burnbar-ci-gate.json, not classic branch protection. These remain informational or path-scoped.",
-    "contexts": ["diff-coverage (PR)", "Domain Core PR Gate"]
+    "contexts": [
+      "diff-coverage (PR)",
+      "Domain Core PR Gate"
+    ]
   },
   "merge_queue": {
     "merge_method": "SQUASH",

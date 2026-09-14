@@ -65,6 +65,9 @@ def test_domain_core_trusted_guard_is_required_and_pr_gate_is_pending() -> None:
         "OSV Scanner (open source vulnerabilities)",
         "Secret Detection (gitleaks)",
         "Domain Core Trusted Deletion Guard",
+        "Analyze (javascript-typescript)",
+        "Analyze (python)",
+        "Fast Feedback Gate",
     ]
     assert "Domain Core Trusted Deletion Guard" in gate["required_contexts"]
     assert "Domain Core Trusted Deletion Guard" not in pending
