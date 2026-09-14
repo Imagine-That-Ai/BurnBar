@@ -140,6 +140,16 @@ test("live null thresholdValue matches committed 0 (GCP omits protobuf default 0
   assert.equal(result.ok, true, JSON.stringify(result.differences, null, 2));
 });
 
+test("malformed live thresholdValue does not collapse to MATCH against committed 0", () => {
+  const snap = manifestSnapshot();
+  const policy = snap.find((x) => x.conditions?.[0]?.conditionThreshold?.thresholdValue === 0);
+  assert.ok(policy, "need a committed-0 threshold policy");
+  policy.conditions[0].conditionThreshold.thresholdValue = "not-a-number";
+  const result = diffAlertPlane(snap, expectedPolicySet());
+  assert.equal(result.ok, false);
+  assert.ok(result.differences.some((d) => d.kind === "conditions"));
+});
+
 test("filter clause reordering still MATCHes (normalization is order-independent)", () => {
   const snap = manifestSnapshot();
   const p = snap.find((x) => x.conditions?.[0]?.conditionThreshold?.filter?.includes(" AND "));
