@@ -745,10 +745,10 @@ jobs:
           # node_modules/_virtual instead of firebase-functions/lib/_virtual.
           # Artifact policy forbids symlinks, so write a CJS shim.
           mkdir -p "$stage/functions/node_modules/.bin"
-          cat > "$stage/functions/node_modules/.bin/firebase-functions" <<'EOF'
-#!/usr/bin/env node
-require("../firebase-functions/lib/bin/firebase-functions.js");
-EOF
+          printf '%s\n' \
+            '#!/usr/bin/env node' \
+            'require("../firebase-functions/lib/bin/firebase-functions.js");' \
+            > "$stage/functions/node_modules/.bin/firebase-functions"
           chmod 0700 "$stage/functions/node_modules/.bin/firebase-functions"
           test -f "$stage/functions/node_modules/firebase-functions/lib/bin/firebase-functions.js"
           mkdir -p "$stage/sentry-cli"
@@ -921,10 +921,10 @@ EOF
           # Rewrite the analysis shim in case the artifact still has a
           # dereference copy of the rolldown bundle.
           mkdir -p functions/node_modules/.bin
-          cat > functions/node_modules/.bin/firebase-functions <<'EOF'
-#!/usr/bin/env node
-require("../firebase-functions/lib/bin/firebase-functions.js");
-EOF
+          printf '%s\n' \
+            '#!/usr/bin/env node' \
+            'require("../firebase-functions/lib/bin/firebase-functions.js");' \
+            > functions/node_modules/.bin/firebase-functions
           chmod 0700 functions/node_modules/.bin/firebase-functions
           test -f functions/node_modules/firebase-functions/lib/bin/firebase-functions.js
           test -x functions/node_modules/.bin/firebase-functions
