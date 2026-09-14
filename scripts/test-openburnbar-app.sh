@@ -212,7 +212,18 @@ isolated_test_filters=(
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
     "OpenBurnBarTests/ProjectionStoreLifecycleTests"
 )
-isolated_test_expected_count=138
+isolated_test_expected_count=2
+for isolated_test_file in \
+    "$repo_root/AgentLensTests/Active/MemoryActivationEndToEndTests.swift" \
+    "$repo_root/AgentLensTests/Active/MemoryCitationJumpThreadResolutionTests.swift" \
+    "$repo_root/AgentLensTests/Active/MemoryCloudSyncDomainTests.swift" \
+    "$repo_root/AgentLensTests/Active/MemoryDropTelemetryTests.swift" \
+    "$repo_root"/AgentLensTests/Active/Projection*Tests.swift
+do
+    isolated_test_expected_count=$((
+        isolated_test_expected_count + $(grep -Ec '^    func test[^ (]*\(' "$isolated_test_file")
+    ))
+done
 main_skip_test_filters=()
 run_isolated_test_phase=0
 if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
