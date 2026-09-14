@@ -1042,4 +1042,5 @@ export async function main(argumentsToParse = process.argv.slice(2)) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
+  process.exit(process.exitCode ?? 0);
 }

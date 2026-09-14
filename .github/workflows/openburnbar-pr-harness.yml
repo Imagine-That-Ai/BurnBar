@@ -27,6 +27,7 @@ name: OpenBurnBar Full Harness
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: full-harness-${{ github.event_name }}-${{ github.ref }}
@@ -723,6 +724,27 @@ jobs:
             exit 1
           fi
           echo "### Harness Required: All deterministic gates passed" >> "$GITHUB_STEP_SUMMARY"
+
+  standing-failure:
+    name: Standing failure issue
+    needs: [harness-required]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: ${{ needs.harness-required.result == 'success' && 'close' || 'open' }}
+          lane: full-harness
+          title-prefix: "Full Harness standing failure"
+          summary: "Scheduled Full Harness required gates ended ${{ needs.harness-required.result }}."
+          paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}
 
   harness-informational:
     name: Harness Informational (external/emulator/virtualization)
