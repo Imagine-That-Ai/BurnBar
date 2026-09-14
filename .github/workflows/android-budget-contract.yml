@@ -41,6 +41,8 @@ jobs:
           distribution: temurin
           cache: gradle
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1 (node24-native)
+        with:
+          packages: platform-tools
       - name: Seed google-services.json (template — no secrets needed for unit tests)
         run: cp android/app/google-services.json.template android/app/google-services.json
       - name: Run budget-enforcement unit tests
