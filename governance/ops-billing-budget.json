@@ -1,6 +1,7 @@
 {
   "displayName": "burnbar-ops-alert-budget",
   "projectId": "burnbar",
+  "projectNumber": "246956661961",
   "amountUsd": 200,
   "thresholdPercents": [
     0.5,

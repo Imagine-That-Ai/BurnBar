@@ -12,6 +12,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { diffBillingBudget, faithfulSnapshot, loadCommitted } from "./check-billing-budget-drift.mjs";
 
+test("GCP project-number filter matches the committed project id", () => {
+  const snapshot = faithfulSnapshot(committed);
+  snapshot[0].budgetFilter.projects = [`projects/${committed.projectNumber}`];
+  assert.equal(diffBillingBudget(committed, snapshot).ok, true);
+  snapshot[0].budgetFilter.projects = ["projects/someone-else"];
+  assert.equal(diffBillingBudget(committed, snapshot).ok, false);
+});
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, "check-billing-budget-drift.mjs");
 const committed = loadCommitted();
@@ -19,6 +27,7 @@ const committed = loadCommitted();
 test("committed contract is complete and scoped to the project", () => {
   assert.equal(committed.displayName, "burnbar-ops-alert-budget");
   assert.equal(committed.projectId, "burnbar");
+  assert.equal(committed.projectNumber, "246956661961");
   assert.ok(committed.amountUsd > 0);
   assert.deepEqual(committed.thresholdPercents, [0.5, 0.9, 1.0]);
   assert.match(committed.pubsubTopic, /^projects\/burnbar\/topics\//u);
