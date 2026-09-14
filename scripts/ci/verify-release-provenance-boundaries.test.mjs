@@ -463,6 +463,17 @@ expect(
 );
 
 expect(
+  "production deploy break-glass conjunct on product preflight is allowed",
+  GOOD_RELEASE,
+  GOOD_SUPPLY_CHAIN,
+  0,
+  GOOD_DEPLOY_PRODUCTION.replace(
+    "        if: steps.tag.outputs.dry_run != 'true'\n",
+    "        if: steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.break_glass != 'true'\n",
+  ),
+);
+
+expect(
   "release workflow dry-run skip on product preflight fails",
   GOOD_RELEASE.replace(
     "      - name: BurnBar product release preflight\n",
