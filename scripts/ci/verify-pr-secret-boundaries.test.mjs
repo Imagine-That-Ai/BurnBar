@@ -363,6 +363,15 @@ expect(
   1,
 );
 
+expect(
+  "workflow-lint actionlint Go pin reverted to 1.24.4 fails",
+  (root) =>
+    mutate(root, ".github/workflows/workflow-lint.yml", (text) =>
+      text.replace('go-version: "1.25.0"', 'go-version: "1.24.4"'),
+    ),
+  1,
+);
+
 if (failed > 0) {
   console.error(
     `\nFAIL: ${failed} self-test case(s) failed; ${passed} passed.`,
