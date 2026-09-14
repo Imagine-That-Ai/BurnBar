@@ -271,6 +271,17 @@ var packageTargets: [Target] = [
 ] + linuxSupportTargets
 
 #if os(macOS)
+var daemonTestDependencies: [Target.Dependency] = [
+    "OpenBurnBarDaemon",
+    .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore")
+]
+var daemonTestExcludes: [String] = []
+if !buildForLinuxBoundary {
+    daemonTestDependencies.append(.product(name: "OpenBurnBarMemoryExport", package: "OpenBurnBarCore"))
+} else {
+    daemonTestExcludes.append("OpenBurnBarMemoryExportSigningKeyTests.swift")
+}
+
 packageProducts.append(contentsOf: [
     .executable(
         name: "OpenBurnBarRemoteAccessAgent",
@@ -344,10 +355,8 @@ packageTargets.append(contentsOf: [
     ),
     .testTarget(
         name: "OpenBurnBarDaemonTests",
-        dependencies: [
-            "OpenBurnBarDaemon",
-            .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore")
-        ],
+        dependencies: daemonTestDependencies,
+        exclude: daemonTestExcludes,
         // Harness-only test target stays Swift 5 (region-isolation checker gaps).
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),
