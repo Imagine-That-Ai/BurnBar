@@ -366,7 +366,7 @@ expect(
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        "      - name: Verify dry-run attestations\n        if: steps.tag.outputs.dry_run != 'true'\n",
+        "      - name: Verify dry-run attestations\n        if: steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.break_glass != 'true'\n",
         "",
       ),
     ),
