@@ -116,7 +116,7 @@ jobs:
             IS_DRY_RUN="true"
           fi
           IS_BREAK_GLASS="false"
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_BREAK_GLASS" == "true" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "${INPUT_BREAK_GLASS:-false}" == "true" ]]; then
             IS_BREAK_GLASS="true"
           fi
           IS_EXISTING_TAG_RETRY="false"
