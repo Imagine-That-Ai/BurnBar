@@ -768,11 +768,13 @@ final class AgentConversationExtractionSourceTests: XCTestCase {
             AgentConversationExtractionSource.threadID(forConversationID: "conv-quiet")
         )
 
-        // Idempotency: an unchanged conversation collapses onto its existing job.
+        // Idempotency: the sweep drops content states that already carry a job
+        // before it enqueues anything, so an unchanged conversation costs zero
+        // enqueues on the next pass…
         let second = try await stores.controlPlane.harvestAgentConversationExtractions(now: now)
-        XCTAssertEqual(second, 1, "The sweep re-visits the row…")
+        XCTAssertEqual(second, 0, "An already-harvested content state is skipped, not re-enqueued.")
         let jobsAfter = try await pendingJobs(in: stores.controlPlane)
-        XCTAssertEqual(jobsAfter.count, 1, "…but the idempotency key keeps it ONE job.")
+        XCTAssertEqual(jobsAfter.count, 1, "…and it stays ONE job.")
 
         // Growth: new content state becomes exactly one new job.
         let grown = makeConversation(

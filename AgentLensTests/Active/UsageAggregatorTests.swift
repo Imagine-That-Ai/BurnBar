@@ -204,11 +204,17 @@ final class UsageAggregatorTests: XCTestCase {
             summary: nil
         )
         try await dataStore.upsertConversation(conversation)
+        // Hash the STORED record, not the in-memory one: the content hash folds in
+        // `startTime`/`endTime`, and `Date()` carries more precision than the column
+        // keeps. Hashing the un-round-tripped record makes gap repair see phantom
+        // drift and slip an extra reproject-and-embed into this pacing measurement.
+        let storedConversations = try await dataStore.fetchConversations(ids: [conversation.id])
+        let storedConversation = try XCTUnwrap(storedConversations.first)
         let document = SearchDocumentRecord(
             id: "doc-worker-paced-reembed",
             sourceKind: .conversation,
             sourceID: conversation.id,
-            sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: conversation),
+            sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: storedConversation),
             provider: "codex",
             projectName: "OpenBurnBar",
             title: "Worker paced re-embed",
@@ -216,7 +222,7 @@ final class UsageAggregatorTests: XCTestCase {
             bodyPreview: "Pacing fixture",
             sourceUpdatedAt: now,
             indexedAt: now,
-            contentHash: ProjectionIdentity.conversationContentHash(for: conversation),
+            contentHash: ProjectionIdentity.conversationContentHash(for: storedConversation),
             createdAt: now,
             updatedAt: now
         )
