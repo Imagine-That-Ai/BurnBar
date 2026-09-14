@@ -127,6 +127,10 @@ jobs:
             echo "::error::dry_run and existing_tag_retry are mutually exclusive."
             exit 1
           fi
+          if [[ "$IS_BREAK_GLASS" == "true" && "$IS_EXISTING_TAG_RETRY" != "true" ]]; then
+            echo "::error::break_glass requires existing_tag_retry=true from main."
+            exit 1
+          fi
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_TAG" ]]; then
             TAG="$INPUT_TAG"
