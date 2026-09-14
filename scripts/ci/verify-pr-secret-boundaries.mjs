@@ -665,6 +665,8 @@ function validateWorkflowLintWiring() {
   for (const needle of [
     "node scripts/ci/verify-pr-secret-boundaries.test.mjs",
     "node scripts/ci/verify-pr-secret-boundaries.mjs",
+    'go-version: "1.25.0"',
+    "github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
   ]) {
     requireIncludes(
       file,
