@@ -19,12 +19,15 @@
   },
   "_pending_required_status_checks": {
     "_comment": "Component contexts are enforced by governance/burnbar-ci-gate.json, not classic branch protection. These remain informational or path-scoped.",
-    "contexts": ["diff-coverage (PR)", "Domain Core PR Gate"]
+    "contexts": [
+      "diff-coverage (PR)",
+      "Domain Core PR Gate"
+    ]
   },
   "merge_queue": {
     "merge_method": "SQUASH",
     "grouping_strategy": "ALLGREEN",
-    "check_response_timeout_minutes": 90,
+    "check_response_timeout_minutes": 300,
     "max_entries_to_build": 5,
     "min_entries_to_merge": 1,
     "max_entries_to_merge": 5,
