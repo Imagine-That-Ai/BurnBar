@@ -84,8 +84,8 @@ public final class MuseParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult {
         try parseSynchronously(options: .default)
@@ -147,6 +147,10 @@ public final class MuseParser: LogParser, Sendable {
                             usages: [u]
                         )
                         cacheMutated = true
+                        // Persist per file so a later 100MB+ transcript cannot
+                        // discard the live sessions already counted this pass.
+                        cacheStore.persist(parseCache)
+                        cacheMutated = false
                     }
                 }
                 if let c = pair.conversation { conversations.append(c) }
@@ -189,7 +193,16 @@ public final class MuseParser: LogParser, Sendable {
         ) {
             out.append(contentsOf: contents.filter { $0.pathExtension == "jsonl" })
         }
-        return out.sorted { $0.path < $1.path }
+        // Newest transcripts first. Path order hits 100MB+ August files before
+        // today's sessions, so a usage tick never finishes and Muse burn stays 0.
+        return out.sorted { lhs, rhs in
+            let left = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            let right = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            if left != right { return left > right }
+            return lhs.path < rhs.path
+        }
     }
 
     // MARK: - Per-file

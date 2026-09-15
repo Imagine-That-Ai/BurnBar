@@ -440,6 +440,12 @@ final class DirectDownloadUpdateChecker {
             release.version,
             String(describing: error)
         )
+        if case let DirectDownloadUpdateInstallError.downgradeBlocked(current, offered) = error,
+           offered <= current {
+            phase = .upToDate
+            presentAlreadyInstalledAlert(release: release, currentBuild: current)
+            return
+        }
         phase = .failed(message: error.localizedDescription)
         presentVerificationFailureAlert(release: release, error: error)
     }
@@ -502,6 +508,17 @@ final class DirectDownloadUpdateChecker {
         alert.alertStyle = .informational
         alert.messageText = "You're up to date"
         alert.informativeText = "OpenBurnBar \(version) is the newest version available."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func presentAlreadyInstalledAlert(release: DirectDownloadRelease, currentBuild: Int) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "You're up to date"
+        alert.informativeText = """
+        OpenBurnBar \(release.version) is the same build (\(currentBuild)) already installed. Nothing on disk was changed.
+        """
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }

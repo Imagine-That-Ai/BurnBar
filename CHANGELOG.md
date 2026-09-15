@@ -36,6 +36,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- Direct-download macOS updates no longer offer a same-build repair tag as an
+  upgrade. The live feed advertises `1.0.40+repair.36` at build 82 while the
+  installed app reports Apple marketing `1.0.40` at build 82; the checker used
+  to treat the `+repair.N` string as newer, download the DMG, then refuse the
+  swap. Offer and install now both require a strictly greater
+  `CFBundleVersion`. `openburnbar app update` matches that rule. Bumped
+  `CURRENT_PROJECT_VERSION` to `86` so this cut is a real update over live
+  build 82 and GitHub Latest `v1.0.40+repair.40` build 85.
+- **Home spend curve** — the 24h chart no longer dumps a session's lifetime
+  total onto `endTime`. Long-running Antigravity and Claude Code rows are
+  prorated to the overlap with the window and spread across the buckets they
+  actually cover, so a quiet day no longer grows two mountains at the moments
+  BurnBar last read the log.
+- Muse burn no longer stays at $0 when `~/.local/share/muse/sessions` has
+  huge older transcripts. Discovery now reads newest `session.jsonl` files
+  first and persists the usage cache per file so a later 100MB+ log cannot
+  discard the live sessions already counted. `lastSessionScanCount` /
+  `lastSessionCacheHitCount` are public again after the parser moved to
+  OpenBurnBarCore.
 - **Functions break-glass dispatch.** `deploy-production.yml` accepts
   `break_glass=true` on a main `existing_tag_retry` so production Cloud
   Functions can ship when the domain-core promotion attestation is missing.

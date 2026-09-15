@@ -372,7 +372,9 @@ test("version comparison matches the desktop updater", () => {
   assert.equal(compareNumericVersion("1.0.35", "1.0.20"), 1);
   assert.equal(isNewerRelease({ version: "1.0.0", build: "201" }, { version: "1.0.0", build: "200" }), true);
   assert.equal(isNewerRelease({ version: "1.0.0", build: "200" }, { version: "1.0.0", build: "201" }), false);
-  assert.equal(isNewerRelease({ version: "1.10.0", build: "200" }, { version: "1.9.0", build: "200" }), true);
+  assert.equal(isNewerRelease({ version: "1.10.0", build: "200" }, { version: "1.9.0", build: "200" }), false);
+  assert.equal(isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "82" }), false);
+  assert.equal(isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "81" }), true);
 });
 
 test("Apple-visible version strips SemVer +build metadata used on the public feed", () => {

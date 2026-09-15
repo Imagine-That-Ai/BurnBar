@@ -177,6 +177,9 @@ try {
     releaseNotesUrl,
     sha256: dmgSha256,
     sparkleEdSignature: edSignature || null,
+    // `version` is the git tag (may include `+repair.N`). The in-app updater
+    // and Sparkle compare `build` / `sparkle:version` only — never this string
+    // — because Apple forbids `+` in CFBundleShortVersionString.
     version,
     zip: zipName,
   };
