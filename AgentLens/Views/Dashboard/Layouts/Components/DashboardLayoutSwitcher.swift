@@ -71,6 +71,8 @@ struct DashboardLayoutSwitcher: View {
                     .font(.system(size: 10 * scale, weight: .semibold))
                 Text(selection.displayName)
                     .font(.system(size: 12 * scale, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 7 * scale, weight: .bold))
                     .foregroundStyle(ink.icon)
@@ -87,6 +89,8 @@ struct DashboardLayoutSwitcher: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .fixedSize(horizontal: true, vertical: false)
+        .layoutPriority(1)
         .help("Choose a dashboard layout")
         .accessibilityHint("Opens the layout gallery")
     }

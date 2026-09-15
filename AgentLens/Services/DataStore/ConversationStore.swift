@@ -109,6 +109,16 @@ final class ConversationStore: Sendable {
         )
     }
 
+    /// Identity and recency columns for background polls. Deliberately omits
+    /// `fullText` and `lastAssistantMessage` — those decrypt overflow pages.
+    static let conversationMetadataSelectSQL = """
+        id, provider, sessionId, projectName, startTime, endTime, messageCount, \
+        userWordCount, assistantWordCount, keyFiles, keyCommands, keyTools, \
+        inferredTaskTitle, indexedAt, workingDirectory, fileModifiedAt, summary, \
+        summaryTitle, summaryUpdatedAt, summaryProvider, summaryModel, sourceType, \
+        sourceDeviceId, sourceDeviceName, isRemote, deletedAt, version
+        """
+
     static func conversation(from row: Row) -> OpenBurnBarCore.ConversationRecord? {
         guard let id = row["id"] as? String,
               let providerRaw = row["provider"] as? String,

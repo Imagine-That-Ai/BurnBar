@@ -135,6 +135,70 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
 
     // MARK: - CLI Session Close Monitor Tests
 
+    func test_fetchConversationsWithoutTranscripts_omitsOverflowBodies() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let store = ConversationStore(dbQueue: dbQueue)
+        let blob = String(repeating: "transcript-body ", count: 4_000)
+        try await store.upsertConversation(
+            ConversationRecord(
+                id: "conv-no-transcript",
+                provider: .claudeCode,
+                sessionId: "session-no-transcript",
+                projectName: "BurnBar",
+                startTime: Date(),
+                endTime: nil,
+                messageCount: 3,
+                userWordCount: 10,
+                assistantWordCount: 20,
+                keyFiles: ["CLISessionCloseMonitor.swift"],
+                keyCommands: [],
+                keyTools: ["Edit"],
+                inferredTaskTitle: "Keep burn live",
+                lastAssistantMessage: blob,
+                fullText: blob,
+                workingDirectory: "/tmp",
+                fileModifiedAt: Date(),
+                summaryModel: "claude-opus"
+            )
+        )
+
+        let metadata = try await store.fetchConversationsWithoutTranscripts(limit: 10)
+        let full = try await store.fetchConversations(limit: 10)
+        let row = try XCTUnwrap(metadata.first)
+        XCTAssertEqual(row.sessionId, "session-no-transcript")
+        XCTAssertEqual(row.messageCount, 3)
+        XCTAssertTrue(row.fullText.isEmpty, "close-monitor poll must not decrypt transcript overflow pages")
+        XCTAssertTrue(row.lastAssistantMessage.isEmpty)
+        XCTAssertEqual(try XCTUnwrap(full.first).fullText, blob)
+    }
+
+    @MainActor
+    func test_cliSessionCloseMonitor_ingestsFromRecentUsageWithoutConversationScan() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: dbQueue)
+        let usageStore = UsageStore(dbQueue: dbQueue)
+        let now = Date()
+        try await usageStore.insert(TokenUsage(
+            provider: .codex,
+            sessionId: "session-usage-only",
+            projectName: "BurnBar",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 40,
+            costUSD: 0.5,
+            startTime: now.addingTimeInterval(-30),
+            endTime: now
+        ))
+
+        let monitor = CLISessionCloseMonitor(dataStore: dataStore)
+        monitor.quietPeriodSeconds = 60
+        await monitor.checkClosedSessions(now: now)
+
+        XCTAssertEqual(monitor.activeSessions.count, 1)
+        XCTAssertEqual(monitor.activeSessions["session-usage-only"]?.harness, "Codex CLI")
+        XCTAssertEqual(monitor.activeSessions["session-usage-only"]?.costUSD, 0.5, accuracy: 0.001)
+    }
+
     @MainActor
     func test_cliSessionCloseMonitor_harnessResolution() {
         XCTAssertEqual(CLISessionCloseMonitor.resolveHarnessName(for: .claudeCode), "Claude Code")
