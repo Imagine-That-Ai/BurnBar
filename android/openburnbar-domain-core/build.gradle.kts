@@ -52,10 +52,10 @@ android {
 
 dependencies {
     // UniFFI Kotlin bindings load the Rust cdylib through JNA.
-    api("net.java.dev.jna:jna:5.19.0@aar")
+    api("net.java.dev.jna:jna:5.19.1@aar")
 
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test:runner:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
     // The production app attaches the native-only AAR directly. Attach it to
     // the test APK as well so the instrumentation smoke exercises Android ELF,
     // not a host substitute.
