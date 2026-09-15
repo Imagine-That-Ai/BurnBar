@@ -587,7 +587,7 @@ Existing page; this PR added navigation, accessibility and one signpost. New cla
 
 | Claim                                        | Source                                                                                                                                                                                                                                                                                                     |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Current public macOS DMG                     | `website/src/data/site.ts`; `https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.40+repair.40/OpenBurnBar-1.0.40+repair.40-macOS.dmg` — notarized Developer ID GitHub Release asset (2026-09-15)                                                                                             |
+| Current public macOS DMG                     | `website/src/data/site.ts`; `https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.40+repair.41/OpenBurnBar-1.0.40+repair.41-macOS.dmg` — notarized Developer ID GitHub Release asset, build 86 (2026-09-15)                                                                                   |
 | Branded direct-download lane live            | `website/src/data/site.ts`, `docs/RELEASE_MACOS.md`; `downloads.burnbar.ai` remains the Sparkle/R2 host for the previous cut; this cut's Download button uses the GitHub Release asset until R2 promote. `website/scripts/test-download-provenance.mjs` pins and live-checks the audited DMG URL           |
 | macOS Sonoma min                             | `README.md:272`, `homebrew/burnbar.rb:22`                                                                                                                                                                                                                                                                  |
 | iOS on the App Store (v1.0, 2026-05-26)      | iTunes Lookup API for `com.openburnbar.app` (checked 2026-07-11); store page https://apps.apple.com/us/app/openburnbar/id6766366964                                                                                                                                                                        |
@@ -597,7 +597,7 @@ Existing page; this PR added navigation, accessibility and one signpost. New cla
 
 Before website deployment, `npm run test:download-provenance --prefix website` must prove the
 exact customer-facing DMG URL is live. The audited URL is pinned to
-`https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.40+repair.40/OpenBurnBar-1.0.40+repair.40-macOS.dmg`; changing the public DMG URL must
+`https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.40+repair.41/OpenBurnBar-1.0.40+repair.41-macOS.dmg`; changing the public DMG URL must
 update that pin in the same PR, after the replacement artifact is published and verified.
 
 ---

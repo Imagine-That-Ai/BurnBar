@@ -114,12 +114,12 @@ export const SITE = {
   },
   // Public macOS download and update feeds. The first-party host is backed by
   // the verified openburnbar-downloads R2 bucket.
-  macReleaseLatest: "1.0.40+repair.40",
-  macReleaseFile: "OpenBurnBar-1.0.40+repair.40-macOS.dmg",
+  macReleaseLatest: "1.0.40+repair.41",
+  macReleaseFile: "OpenBurnBar-1.0.40+repair.41-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
   macDownloadBaseUrl:
-    "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.40+repair.40",
+    "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.40+repair.41",
   macUpdateBaseUrl: "",
   macMin: "macOS 14 Sonoma",
   // Public Linux download. First release ships aarch64/ARM64 artifacts from the
