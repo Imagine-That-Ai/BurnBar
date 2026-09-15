@@ -192,7 +192,12 @@ final class CLISessionCloseMonitor {
         }
     }
 
+    private var checkInFlight = false
+
     func checkClosedSessions(now: Date = Date()) async {
+        guard !checkInFlight else { return }
+        checkInFlight = true
+        defer { checkInFlight = false }
         await ingestRecentSessionsFromDataStore(now: now)
 
         var sessionsToClose: [ActiveCLISession] = []
@@ -216,28 +221,71 @@ final class CLISessionCloseMonitor {
     }
 
     private func ingestRecentSessionsFromDataStore(now: Date) async {
-        guard let recentConvs = try? await dataStore.fetchConversations(limit: 30) else { return } // try?-ok(background poll returns empty on error)
+        // Drive from `token_usage` (startTime index + LIMIT). A conversations
+        // ORDER BY still walks the transcript table even without fullText, and
+        // a 10s poll of that starves dashboard burn hydration after login.
+        _ = now
         let recentUsages = (try? await dataStore.fetchRecentUsage(limit: 150)) ?? [] // try?-ok(background poll returns empty on error)
         let usagesBySession = Dictionary(grouping: recentUsages, by: \.sessionId)
 
-        for conv in recentConvs {
-            guard !conv.sessionId.isEmpty else { continue }
-            guard !closedSessionIDs.contains(conv.sessionId) else { continue }
-
-            // If a receipt was already persisted for this session, skip minting
-            if (try? await dataStore.fetchReceiptForSession(sessionId: conv.sessionId)) != nil { // try?-ok(receipt absence check)
-                closedSessionIDs.insert(conv.sessionId)
+        for (sessionId, usages) in usagesBySession {
+            guard !sessionId.isEmpty else { continue }
+            guard !closedSessionIDs.contains(sessionId) else { continue }
+            if activeSessions[sessionId] == nil,
+               (try? await dataStore.fetchReceiptForSession(sessionId: sessionId)) != nil { // try?-ok(receipt absence check)
+                closedSessionIDs.insert(sessionId)
                 continue
             }
+            recordActivity(usages: usages)
+        }
+    }
 
-            let usages = usagesBySession[conv.sessionId] ?? []
-            let isCandidate = !usages.isEmpty || conv.messageCount > 0
-            guard isCandidate else { continue }
+    private func recordActivity(usages: [TokenUsage]) {
+        guard let seed = usages.max(by: { $0.endTime < $1.endTime }) else { return }
+        let sid = seed.sessionId
+        guard !closedSessionIDs.contains(sid) else { return }
 
-            recordActivity(
-                conversation: conv,
-                usages: usages,
-                hasExplicitEnd: conv.endTime != nil
+        let harness = Self.resolveHarnessName(for: seed.provider)
+        let now = Date()
+        let totalIn = usages.reduce(0) { $0 + $1.inputTokens }
+        let totalOut = usages.reduce(0) { $0 + $1.outputTokens }
+        let totalRead = usages.reduce(0) { $0 + $1.cacheReadTokens }
+        let totalWrite = usages.reduce(0) { $0 + $1.cacheWriteTokens }
+        let totalCost = usages.reduce(0.0) { $0 + $1.costUSD }
+        let modelFromUsage = usages.first(where: { !$0.model.isEmpty })?.model ?? "unknown"
+        let start = usages.map(\.startTime).min() ?? seed.startTime
+
+        if var existing = activeSessions[sid] {
+            existing.lastActiveAt = now
+            existing.inputTokens = max(existing.inputTokens, totalIn)
+            existing.outputTokens = max(existing.outputTokens, totalOut)
+            existing.cacheReadTokens = max(existing.cacheReadTokens, totalRead)
+            existing.cacheWriteTokens = max(existing.cacheWriteTokens, totalWrite)
+            existing.costUSD = max(existing.costUSD, totalCost)
+            if modelFromUsage != "unknown" { existing.modelName = modelFromUsage }
+            activeSessions[sid] = existing
+        } else {
+            activeSessions[sid] = ActiveCLISession(
+                id: sid,
+                provider: seed.provider,
+                harness: harness,
+                projectName: seed.projectName.isEmpty ? "Default" : seed.projectName,
+                projectPath: nil,
+                modelName: modelFromUsage,
+                startTime: start,
+                lastActiveAt: seed.endTime,
+                inputTokens: totalIn,
+                outputTokens: totalOut,
+                cacheReadTokens: totalRead,
+                cacheWriteTokens: totalWrite,
+                costUSD: totalCost,
+                promptSummary: "",
+                filesTouched: [],
+                toolsUsed: [],
+                lastAssistantMessage: nil,
+                gitBranch: nil,
+                gitCommit: nil,
+                hasExplicitlyEnded: false
             )
         }
     }

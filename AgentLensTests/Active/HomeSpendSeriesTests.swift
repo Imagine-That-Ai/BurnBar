@@ -37,6 +37,31 @@ final class HomeSpendSeriesTests: XCTestCase {
         XCTAssertEqual(cube.totalsPerBucket.reduce(0, +), 5, accuracy: 0.0001)
     }
 
+    /// A long-running session that *ended* today still did most of its work
+    /// last week. Dumping the lifetime total onto `endTime` is the Home
+    /// chart's "two mountains and a flat day" lie.
+    func test_aLongRunningSessionIsProratedAcrossTheOverlapNotDumpedAtEndTime() {
+        let started = now.addingTimeInterval(-10 * 24 * 3600)
+        let ended = now.addingTimeInterval(-2 * 3600)
+        let row = TokenUsage(
+            provider: .antigravity,
+            sessionId: "long-runner",
+            projectName: "BurnBar",
+            model: "gemini-3",
+            inputTokens: 1_000,
+            outputTokens: 50,
+            costUSD: 240,
+            startTime: started,
+            endTime: ended
+        )
+        let cube = makeCube([row], buckets: 24)
+        let total = cube.totalsPerBucket.reduce(0, +)
+        // 22h overlap / 238h duration × $240 ≈ $22.18
+        XCTAssertEqual(total, 22.18, accuracy: 0.05)
+        XCTAssertLessThan(cube.totalsPerBucket.max() ?? 0, 8, "must not become one bucket")
+        XCTAssertGreaterThan(cube.totalsPerBucket.filter { $0 > 0 }.count, 8)
+    }
+
     // MARK: - The partition
 
     /// Both cuts are complete partitions of the same rows, so both must sum to the same

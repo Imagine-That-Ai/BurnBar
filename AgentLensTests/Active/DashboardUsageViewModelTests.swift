@@ -213,6 +213,46 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(today.providerSummaries.map(\.provider), [.codex])
     }
 
+    func test_quickTodaySnapshot_usesStartTimeIndexAndIgnoresYesterday() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        let earlyToday = todayStart.addingTimeInterval(60 * 60)
+        let yesterday = todayStart.addingTimeInterval(-60 * 60)
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "quick-today",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 50,
+            costUSD: 4.25,
+            startTime: earlyToday,
+            endTime: earlyToday.addingTimeInterval(60)
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "quick-yesterday",
+            model: "droid",
+            inputTokens: 1_000,
+            outputTokens: 1_000,
+            costUSD: 99,
+            startTime: yesterday,
+            endTime: yesterday.addingTimeInterval(60)
+        ))
+
+        let snapshot = try await usageStore.fetchQuickTodayUsageSnapshot(loadedUsageLimit: 100)
+        let today = try XCTUnwrap(snapshot.windowSummaries[.today])
+
+        XCTAssertEqual(today.sessionCount, 1)
+        XCTAssertEqual(today.totalCost, 4.25, accuracy: 0.001)
+        XCTAssertEqual(today.totalTokens, 150)
+        XCTAssertEqual(today.providerSummaries.map(\.provider), [.codex])
+        XCTAssertEqual(snapshot.loadedUsages.map(\.sessionId), ["quick-today"])
+    }
+
     func test_usageTotals_fetchesOnlyScalarTotalsForAnArbitraryWindow() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)

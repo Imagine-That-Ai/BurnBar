@@ -14,7 +14,7 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
     MARKETING_VERSION: "1.0.40"
-    CURRENT_PROJECT_VERSION: 85
+    CURRENT_PROJECT_VERSION: 86
     CODE_SIGN_STYLE: Automatic
     # Release scripts override only this host-specific variable. Keeping the
     # Safari appex's CODE_SIGN_ENTITLEMENTS target-local prevents a command-line
@@ -1002,7 +1002,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 85
+        CURRENT_PROJECT_VERSION: 86
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
@@ -1305,7 +1305,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 85
+        CURRENT_PROJECT_VERSION: 86
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
@@ -1357,7 +1357,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarKeyboard
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.keyboard
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 85
+        CURRENT_PROJECT_VERSION: 86
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements

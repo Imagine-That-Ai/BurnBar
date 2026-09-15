@@ -413,7 +413,7 @@ Each release includes:
 | `OpenBurnBar-VERSION-macOS.dmg`                   | Signed, notarized DMG installer                                                                           |
 | `OpenBurnBar-VERSION-macOS.zip`                   | Signed app archive                                                                                        |
 | `appcast.xml`                                     | Sparkle-compatible direct-download update appcast; production releases must include `sparkle:edSignature` |
-| `latest-macos.json`                               | Machine-readable latest release feed consumed by the direct-download app; unsigned metadata is ignored    |
+| `latest-macos.json`                               | Machine-readable latest release feed consumed by the direct-download app; unsigned metadata is ignored. `version` is the git tag (may include `+repair.N`); `build` is `CFBundleVersion` and is the only install-or-not identity. Same-build tags are not updates. |
 | `checksums-vVERSION.txt`                          | SHA256/SHA512 checksums for DMG, ZIP, source archive, appcast, and latest metadata                        |
 | `checksums-vVERSION.txt.asc`                      | GPG detached signature (if configured)                                                                    |
 | `sbom-vVERSION.spdx.json`                         | Software Bill of Materials (SPDX format)                                                                  |

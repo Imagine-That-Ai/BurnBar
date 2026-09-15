@@ -512,6 +512,8 @@ final class DataStoreCoordinator {
             }
         }
 
+        await publishQuickTodayUsageIfNeeded()
+
         do {
             let marker = await actor.usageTableWriteMarker
             let snapshot = try await actor.fetchDashboardUsageSnapshot(loadedUsageLimit: Self.quickHydrationLimit)
@@ -520,6 +522,20 @@ final class DataStoreCoordinator {
             replaceUsageSnapshot(snapshot)
         } catch {
             AppLogger.dataStore.silentFailure("refresh_failed", error: error)
+        }
+    }
+
+    /// Puts burn on screen from the newest `token_usage` rows before the full
+    /// multi-window GROUP BY. `startTime >= today` misses overnight sessions;
+    /// newest-N is index-backed (`ORDER BY startTime DESC LIMIT`) and the
+    /// in-memory window filter includes anything in that set that overlaps today.
+    private func publishQuickTodayUsageIfNeeded() async {
+        guard !hasLoadedUsagePresentation else { return }
+        do {
+            let rows = try await actor.usageStore.fetchRecentUsage(limit: Self.quickHydrationLimit)
+            replaceUsages(rows)
+        } catch {
+            AppLogger.dataStore.silentFailure("quick_today_usage_failed", error: error)
         }
     }
 
@@ -534,6 +550,7 @@ final class DataStoreCoordinator {
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
+            await self.publishQuickTodayUsageIfNeeded()
             await self.refresh()
         }
         usagePresentationLoadTask = task

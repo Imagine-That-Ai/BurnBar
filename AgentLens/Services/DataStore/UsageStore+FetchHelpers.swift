@@ -222,6 +222,55 @@ extension UsageStore {
 
     static let startTimeRangeWhereSQL = "WHERE startTime >= ? AND startTime < ?"
 
+    /// Index-backed GROUP BY for sessions that *started* in a window.
+    ///
+    /// Dashboard overlap (`dateRangePredicate`) cannot use `startTime` alone
+    /// and full-scans an 8GB ledger. First paint of Today's burn uses this.
+    static func fetchUsageAggregateRowsStartingIn(
+        db: Database,
+        dateRange: Range<Date>
+    ) throws -> [UsageAggregateRow] {
+        guard dateRange.lowerBound < dateRange.upperBound else { return [] }
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+                SELECT provider,
+                       model,
+                       executionSourceID,
+                       executionSourceName,
+                       executionSourceKind,
+                       executionSourceConfidence,
+                       provenanceConfidence,
+                       provenanceMethod,
+                       projectName,
+                       providerAccountID,
+                       providerAccountLabel,
+                       providerAccountSource,
+                       MAX(startTime) AS latestStartTime,
+                       COUNT(*) AS sessionCount,
+                       COALESCE(SUM(inputTokens), 0) AS inputTokens,
+                       COALESCE(SUM(outputTokens), 0) AS outputTokens,
+                       COALESCE(SUM(cacheCreationTokens), 0) AS cacheCreationTokens,
+                       COALESCE(SUM(cacheReadTokens), 0) AS cacheReadTokens,
+                       COALESCE(SUM(reasoningTokens), 0) AS reasoningTokens,
+                       COALESCE(SUM(totalTokens), 0) AS totalTokens,
+                       COALESCE(SUM(cost), 0) AS cost
+                FROM token_usage
+                \(startTimeRangeWhereSQL)
+                GROUP BY provider, model, executionSourceID, executionSourceName,
+                         executionSourceKind, executionSourceConfidence,
+                         provenanceConfidence, provenanceMethod,
+                         projectName, providerAccountID, providerAccountLabel,
+                         providerAccountSource
+                """,
+            arguments: [
+                OpenBurnBarDatabase.sqliteDateString(dateRange.lowerBound),
+                OpenBurnBarDatabase.sqliteDateString(dateRange.upperBound)
+            ]
+        )
+        return rows.compactMap(UsageAggregateRow.init(row:))
+    }
+
     static func fetchWindowSummary( // pure-move: was private
         db: Database,
         dateRange: ClosedRange<Date>?,

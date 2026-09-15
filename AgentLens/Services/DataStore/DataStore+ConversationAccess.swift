@@ -40,6 +40,10 @@ extension DataStore {
         try await actor.conversationStore.fetchConversations(limit: limit)
     }
 
+    func fetchConversationsWithoutTranscripts(limit: Int) async throws -> [OpenBurnBarCore.ConversationRecord] {
+        try await actor.conversationStore.fetchConversationsWithoutTranscripts(limit: limit)
+    }
+
     func fetchConversationActivitySummaries(limit: Int) async throws -> [ConversationActivitySummary] {
         try await actor.conversationStore.fetchConversationActivitySummaries(limit: limit)
     }

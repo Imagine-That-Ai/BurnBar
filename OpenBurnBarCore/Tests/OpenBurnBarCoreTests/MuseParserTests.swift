@@ -196,6 +196,38 @@ final class MuseParserTests: XCTestCase {
         XCTAssertTrue(result.usages.isEmpty)
     }
 
+    func testNewestSessionIsCountedWhenOlderSessionsAlsoExist() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let oldFile = try writeSession(
+            dir: dir,
+            sessionId: "aaa-old",
+            content: [
+                metadataEnvelope(sessionId: "aaa-old"),
+                modelCompletedEnvelope(sessionId: "aaa-old", input: 10, output: 1)
+            ].joined(separator: "\n")
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-3600)],
+            ofItemAtPath: oldFile.path
+        )
+        _ = try writeSession(
+            dir: dir,
+            sessionId: "zzz-new",
+            content: [
+                metadataEnvelope(sessionId: "zzz-new"),
+                modelCompletedEnvelope(sessionId: "zzz-new", input: 999, output: 5)
+            ].joined(separator: "\n")
+        )
+        let parser = MuseParser(logDirectoryOverride: dir.path)
+        let result = try await parser.parse()
+        XCTAssertEqual(result.usages.count, 2)
+        XCTAssertEqual(
+            result.usages.first { $0.sessionId == "zzz-new" }?.inputTokens,
+            999
+        )
+    }
+
     func testTruncatedLogGracefullySkipped() async throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

@@ -629,6 +629,7 @@ extension DashboardView {
 
             DashboardLayoutSwitcher(selection: dashboardDeckLayoutBinding, scale: scale)
                 .accessibilityIdentifier(OBBAccessibilityID.dashboardLayoutSwitcher)
+                .layoutPriority(3)
 
             Spacer(minLength: 12)
 

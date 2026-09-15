@@ -92,6 +92,58 @@ extension UsageStore {
         }
     }
 
+    /// Today's burn from the `startTime` index, for first dashboard paint.
+    ///
+    /// The full snapshot GROUP-BYs every overlapping window across the whole
+    /// ledger. On a multi-gigabyte SQLCipher file that can sit behind other
+    /// readers for minutes, leaving the burn rail at 0. This path is exact for
+    /// sessions that started today; long-runners that started yesterday land
+    /// on the subsequent full snapshot.
+    func fetchQuickTodayUsageSnapshot(
+        loadedUsageLimit: Int,
+        now: Date = Date()
+    ) async throws -> DashboardUsageSnapshot {
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: now)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: todayStart)
+            ?? todayStart.addingTimeInterval(86_400)
+        let starting = todayStart..<tomorrow
+
+        return try await dbQueue.read { db in
+            let covering = try Self.fetchUsageRows(
+                db: db,
+                startingIn: starting,
+                limit: loadedUsageLimit
+            )
+            let aggregates = try Self.fetchUsageAggregateRowsStartingIn(
+                db: db,
+                dateRange: starting
+            )
+            let today = Self.makeWindowSummary(
+                loadedUsages: covering,
+                aggregateRows: aggregates
+            )
+            return DashboardUsageSnapshot(
+                loadedUsages: covering,
+                windowSummaries: [
+                    .today: today,
+                    .last7Days: .empty,
+                    .last30Days: .empty,
+                    .thisMonth: .empty,
+                    .allTime: .empty
+                ],
+                rollingDailyAverage: today.totalCost,
+                distinctUsageDayCount: today.sessionCount > 0 ? 1 : 0,
+                last7DayCosts: Array(repeating: 0, count: 6) + [today.totalCost],
+                last7DayTokenTotals: Array(repeating: 0, count: 6) + [today.totalTokens],
+                dailySummaries: [],
+                topProviderToday: today.providerSummaries
+                    .max { $0.totalCost < $1.totalCost }
+                    .map { ($0.provider, $0.totalCost) }
+            )
+        }
+    }
+
     func fetchDashboardUsageSnapshot(
         loadedUsageLimit: Int,
         now: Date = Date()

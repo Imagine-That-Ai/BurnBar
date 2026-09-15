@@ -215,6 +215,29 @@ extension ConversationStore {
             }
         }
 
+        /// Recent sessions without transcript bodies.
+        ///
+        /// `fullText` and `lastAssistantMessage` live on encrypted overflow
+        /// pages. A 10s close-monitor poll that `SELECT *` those columns
+        /// decrypts the corpus and starves dashboard usage hydration.
+        func fetchConversationsWithoutTranscripts(limit: Int) async throws -> [OpenBurnBarCore.ConversationRecord] {
+            guard limit > 0 else { return [] }
+            return try await dbQueue.read { db in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT \(Self.conversationMetadataSelectSQL)
+                    FROM conversations
+                    WHERE deletedAt IS NULL
+                    ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
+                    LIMIT ?
+                    """,
+                    arguments: [limit]
+                )
+                return rows.compactMap { Self.conversation(from: $0) }
+            }
+        }
+
         /// Metadata-only activity feed for the daemon controller snapshot.
         ///
         /// Do not widen this projection to `SELECT *`: `fullText` and

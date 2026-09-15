@@ -261,14 +261,14 @@ test("default feed URL is the desktop updater URL and is not a pinned old versio
   assert.match(source, /downloads\.burnbar\.ai\/latest-macos\.json/);
 });
 
-test("package is 0.2.2 and never downloads the Mac app during npm install", () => {
+test("package is 0.2.4 and never downloads the Mac app during npm install", () => {
   const pkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
     name: string;
     version: string;
     scripts?: Record<string, string>;
   };
   assert.equal(pkg.name, "openburnbar");
-  assert.equal(pkg.version, "0.2.2");
+  assert.equal(pkg.version, "0.2.4");
   assert.equal(pkg.scripts?.postinstall, undefined);
   assert.equal(pkg.scripts?.install, undefined);
   assert.equal(pkg.scripts?.prepare, undefined);
@@ -372,7 +372,9 @@ test("version comparison matches the desktop updater", () => {
   assert.equal(compareNumericVersion("1.0.35", "1.0.20"), 1);
   assert.equal(isNewerRelease({ version: "1.0.0", build: "201" }, { version: "1.0.0", build: "200" }), true);
   assert.equal(isNewerRelease({ version: "1.0.0", build: "200" }, { version: "1.0.0", build: "201" }), false);
-  assert.equal(isNewerRelease({ version: "1.10.0", build: "200" }, { version: "1.9.0", build: "200" }), true);
+  assert.equal(isNewerRelease({ version: "1.10.0", build: "200" }, { version: "1.9.0", build: "200" }), false);
+  assert.equal(isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "82" }), false);
+  assert.equal(isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "81" }), true);
 });
 
 test("Apple-visible version strips SemVer +build metadata used on the public feed", () => {

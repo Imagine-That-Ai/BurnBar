@@ -291,10 +291,10 @@ export function isNewerRelease(
 ): boolean {
   const remoteBuild = Number.parseInt(remote.build, 10);
   const localBuild = Number.parseInt(local.build, 10);
-  if (Number.isFinite(remoteBuild) && Number.isFinite(localBuild) && remoteBuild !== localBuild) {
+  if (Number.isFinite(remoteBuild) && Number.isFinite(localBuild)) {
     return remoteBuild > localBuild;
   }
-  return compareNumericVersion(remote.version, local.version) > 0;
+  return false;
 }
 
 export function parseMountPoint(plistText: string): string | undefined {
