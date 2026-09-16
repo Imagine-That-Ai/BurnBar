@@ -248,6 +248,7 @@ function audit(
   client,
   domainCoreVerifier = () => {},
   domainCoreProfile = files.domainCoreProfile,
+  activationResolver = () => true,
 ) {
   return auditExistingRelease(
     {
@@ -258,7 +259,7 @@ function audit(
       receiptPath: files.receiptPath,
       domainCoreProfile,
     },
-    { client, domainCoreVerifier },
+    { client, domainCoreVerifier, activationResolver },
   );
 }
 
@@ -559,6 +560,86 @@ test("a declared profile that mismatches the published asset set fails closed", 
     );
     assert.equal(mutations(client).length, 0);
   });
+});
+
+test("a Rust-inactive public-production release without domain-core evidence audits and promotes", () => {
+  // The documented legacy lane: publication accepts rust_active=false under
+  // public-production and publishes no domain-core evidence and no iOS assets.
+  // The audit must derive that mode from the activation resolver — never from
+  // the release's own assets — and then treat the evidence set as
+  // verify-if-present, exactly like a governed rollback release.
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    const result = audit(
+      files,
+      client,
+      verifyDomainCoreBundles,
+      PUBLIC_PROFILE,
+      () => false,
+    );
+    assert.equal(
+      result.release.identity.assets.some((asset) =>
+        asset.name.includes("-domain-core"),
+      ),
+      false,
+    );
+    const receipt = JSON.parse(readFileSync(files.receiptPath, "utf8"));
+    assert.equal(receipt.domainCoreProfile, PUBLIC_PROFILE);
+    assert.equal(receipt.rustActive, false);
+    client.calls.length = 0;
+    assert.deepEqual(promoteAuditedRelease(files.receiptPath, { client }), {
+      promoted: true,
+      promotionApplied: true,
+    });
+  }, ROLLBACK_PROFILE);
+});
+
+test("a Rust-active public-production release still requires every evidence asset", () => {
+  // The resolver says active, so the same legacy-shaped release fails closed:
+  // rustActive can only relax the audit when the activation authority at the
+  // release commit actually says the release is the legacy lane.
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    assert.throws(
+      () =>
+        audit(
+          files,
+          client,
+          verifyDomainCoreBundles,
+          PUBLIC_PROFILE,
+          () => true,
+        ),
+      /asset set mismatch/u,
+    );
+    assert.equal(mutations(client).length, 0);
+  }, ROLLBACK_PROFILE);
+});
+
+test("a Rust-inactive release that still publishes evidence verifies it instead of skipping it", () => {
+  // Verify-if-present never means skip-what-exists: a legacy release that
+  // carries a domain-core bundle must still have it cryptographically
+  // verified. The fake client's `attestation` command is unsupported, so the
+  // verification demand surfaces as the fake client's unsupported-command
+  // error rather than a silent pass.
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    client.assets.set(
+      `OpenBurnBar-${VERSION}-apple-quota-domain-core.sigstore.json`,
+      Buffer.from("bundle"),
+    );
+    assert.throws(
+      () =>
+        audit(
+          files,
+          client,
+          verifyDomainCoreBundles,
+          PUBLIC_PROFILE,
+          () => false,
+        ),
+      /unsupported fake command: attestation/u,
+    );
+    assert.equal(mutations(client).length, 0);
+  }, ROLLBACK_PROFILE);
 });
 
 test("an ungoverned domain-core profile is rejected before any release lookup", () => {

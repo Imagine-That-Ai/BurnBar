@@ -513,6 +513,7 @@ export function preflightR2Publication({
       tag,
       commit,
       domainCoreProfile: receipt.domainCoreProfile,
+      rustActive: receipt.rustActive,
     },
     downloads,
   );
