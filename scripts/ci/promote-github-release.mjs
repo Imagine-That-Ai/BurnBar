@@ -6,6 +6,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveActiveDomainCoreActivation } from "../lib/domain-core-activation.mjs";
 import {
   DOMAIN_CORE_RELEASE_PREDICATE_TYPE,
   DOMAIN_CORE_REPOSITORY,
@@ -20,6 +21,7 @@ import {
 } from "../lib/domain-core-native-release.mjs";
 import { validateManifest } from "./publish-domain-core-release-evidence.mjs";
 
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const COMMIT = /^[0-9a-f]{40}$/u;
 const STABLE_TAG =
   /^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$/u;
@@ -200,6 +202,22 @@ export function validateDomainCoreProfile(domainCoreProfile) {
   return domainCoreProfile;
 }
 
+/// Resolve whether the release at `commit` carries a Rust-active
+/// public-production activation, using the same authority publication used
+/// (`resolveActiveDomainCoreActivation`). Returns true for every Rust-active
+/// release and false for the documented legacy lane
+/// (docs/CI_RELEASE_RUNBOOK.md § "Legacy domain-core releases"). Runs against
+/// the promotion job's exact tag checkout, so the answer is a pure function of
+/// the tag's committed activation config.
+export function resolveReleaseRustActivity({ commit }) {
+  const activation = resolveActiveDomainCoreActivation({
+    repoRoot: ROOT,
+    activationCommit: commit,
+    requireClean: false,
+  });
+  return activation.active !== false;
+}
+
 export function domainCoreBundleAssetName(consumer, version, domain) {
   return consumer === "ios"
     ? `OpenBurnBar-${version}-iOS-${domain}-domain-core-attestation.sigstore.json`
@@ -224,7 +242,9 @@ function sigstoreSidecarStem(subject) {
   return subject.replace(/[^A-Za-z0-9._-]/gu, "_");
 }
 
-export function expectedReleaseAssets(version, domainCoreProfile) {
+export function expectedReleaseAssets(version, domainCoreProfile, {
+  rustActive = true,
+} = {}) {
   validateDomainCoreProfile(domainCoreProfile);
   const required = new Set([
     `OpenBurnBar-${version}-macOS.dmg`,
@@ -256,7 +276,13 @@ export function expectedReleaseAssets(version, domainCoreProfile) {
   // Domain-core evidence exists exactly when the release was published with a
   // Rust-active public-production profile. A governed public-production-rollback
   // release publishes the legacy artifacts with no native domain-core evidence
-  // and no App Store iOS lane, so those assets become verify-if-present.
+  // and no App Store iOS lane, so those assets become verify-if-present. A
+  // Rust-inactive public-production release is the documented legacy lane
+  // (docs/CI_RELEASE_RUNBOOK.md § "Legacy domain-core releases"): publication
+  // accepts it with rust_active=false and publishes no domain-core evidence,
+  // so the same verify-if-present rule applies. The caller derives
+  // rustActive from the same activation resolver publication used — never
+  // from the release's own assets, which would make the check self-fulfilling.
   const domainCoreEvidence = new Set([
     `OpenBurnBar-${version}-iOS.xcarchive.zip`,
     `OpenBurnBar-${version}-iOS-app-store-connect-receipt.json`,
@@ -271,7 +297,7 @@ export function expectedReleaseAssets(version, domainCoreProfile) {
 
   const optional = new Set([`checksums-v${version}.txt.asc`]);
   for (const name of domainCoreEvidence) {
-    (domainCoreProfile === DOMAIN_CORE_ROLLBACK_PROFILE
+    (domainCoreProfile === DOMAIN_CORE_ROLLBACK_PROFILE || !rustActive
       ? optional
       : required
     ).add(name);
@@ -280,10 +306,16 @@ export function expectedReleaseAssets(version, domainCoreProfile) {
   return { required, optional };
 }
 
-function requireExactAssetSet(version, assets, domainCoreProfile) {
+function requireExactAssetSet(
+  version,
+  assets,
+  domainCoreProfile,
+  { rustActive = true } = {},
+) {
   const { required, optional } = expectedReleaseAssets(
     version,
     domainCoreProfile,
+    { rustActive },
   );
   const names = new Set(assets.keys());
   const missing = [...required].filter((name) => !names.has(name));
@@ -685,12 +717,16 @@ export function verifyUpdateMetadata(
   const iosReceiptName = `OpenBurnBar-${expected.version}-iOS-app-store-connect-receipt.json`;
   const iosArchiveName = `OpenBurnBar-${expected.version}-iOS.xcarchive.zip`;
   if (
-    expected.domainCoreProfile === DOMAIN_CORE_ROLLBACK_PROFILE &&
+    (expected.domainCoreProfile === DOMAIN_CORE_ROLLBACK_PROFILE ||
+      expected.rustActive === false) &&
     !downloads.has(iosReceiptName) &&
     !downloads.has(iosArchiveName)
   ) {
-    // A governed rollback release has no App Store iOS lane; when neither iOS
-    // asset was published there is nothing to bind.
+    // A governed rollback release has no App Store iOS lane, and a
+    // Rust-inactive public-production release may legitimately exclude the
+    // failed iOS lane (a broken iOS target must not block a macOS release —
+    // docs/CI_RELEASE_RUNBOOK.md §9); when neither iOS asset was published
+    // there is nothing to bind. Anything present is still verified below.
     return { latest, metadata, dmg };
   }
   const iosReceipt = objectValue(
@@ -767,6 +803,13 @@ export function verifyDomainCoreBundles(
   const rollbackProfile =
     validateDomainCoreProfile(expected.domainCoreProfile) ===
     DOMAIN_CORE_ROLLBACK_PROFILE;
+  // A governed rollback release and a Rust-inactive public-production release
+  // both publish no domain-core evidence for a consumer whose bundle assets
+  // are entirely absent; anything that is present is still verified below.
+  // rustActive comes from the receipt, which derives it from the same
+  // activation resolver publication used — never from the release's own
+  // assets, so an attacker cannot delete bundles to relax this check.
+  const evidenceOptional = rollbackProfile || expected.rustActive === false;
   for (const consumer of ["apple", "android", "ios"]) {
     const contract = RELEASE_CONSUMERS[consumer];
     const bundleNames = contract.domains.map((domain) => [
@@ -774,11 +817,9 @@ export function verifyDomainCoreBundles(
       domainCoreBundleAssetName(consumer, expected.version, domain),
     ]);
     if (
-      rollbackProfile &&
+      evidenceOptional &&
       bundleNames.every(([, assetName]) => !downloads.has(assetName))
     ) {
-      // A governed rollback release publishes no domain-core evidence for this
-      // consumer; anything that is present is still verified below.
       continue;
     }
     const artifactPath = requiredPath(
@@ -786,7 +827,7 @@ export function verifyDomainCoreBundles(
       contract.fileName(expected.version),
     );
     for (const [domain, assetName] of bundleNames) {
-      if (rollbackProfile && !downloads.has(assetName)) continue;
+      if (evidenceOptional && !downloads.has(assetName)) continue;
       const bundlePath = requiredPath(downloads, assetName);
       const predicates = verifiedPredicates(
         client,
@@ -861,6 +902,10 @@ function validateExpectedCoordinates({
     commit,
     notesSha256: hashBytes("sha256", Buffer.from(notes)),
     domainCoreProfile: validateDomainCoreProfile(domainCoreProfile),
+    // Derived below in auditExistingRelease from the same activation resolver
+    // publication used. Defaults to true so every other caller keeps the
+    // strict evidence-required contract.
+    rustActive: true,
   };
 }
 
@@ -873,6 +918,7 @@ function receiptContents(expected, release) {
     commit: expected.commit,
     notesSha256: expected.notesSha256,
     domainCoreProfile: expected.domainCoreProfile,
+    rustActive: expected.rustActive,
     releaseIdentity: release.identity,
   };
 }
@@ -990,6 +1036,7 @@ export function auditExistingRelease(
   {
     client = createGhClient(),
     domainCoreVerifier = verifyDomainCoreBundles,
+    activationResolver = resolveReleaseRustActivity,
   } = {},
 ) {
   const expected = validateExpectedCoordinates({
@@ -998,6 +1045,14 @@ export function auditExistingRelease(
     notesPath,
     domainCoreProfile,
   });
+  // Publication accepts a Rust-inactive public-production release (the
+  // documented legacy lane) and then publishes no domain-core evidence. Derive
+  // the same flag here, from the same activation authority, so the audit
+  // demands evidence exactly when the publication actually minted it. This is
+  // deliberately a function of the tag's committed config, never of the
+  // release's own assets: deleting bundles from a published release cannot
+  // relax the audit.
+  expected.rustActive = activationResolver({ commit: expected.commit });
   const directory = resolve(assetDirectory);
   prepareAssetDirectory(directory);
   const release = lookupRelease(client, expected);
@@ -1005,6 +1060,7 @@ export function auditExistingRelease(
     expected.version,
     release.assets,
     expected.domainCoreProfile,
+    { rustActive: expected.rustActive },
   );
   const downloads = downloadAssets(client, expected, release, directory);
   verifyChecksums(expected.version, downloads);
@@ -1021,6 +1077,7 @@ export function auditExistingRelease(
     expected.version,
     final.assets,
     expected.domainCoreProfile,
+    { rustActive: expected.rustActive },
   );
   if (!sameIdentity(release.identity, final.identity)) {
     throw new Error("release changed during the promotion audit");
@@ -1040,6 +1097,7 @@ export function validatePromotionReceipt(raw) {
       "commit",
       "notesSha256",
       "domainCoreProfile",
+      "rustActive",
       "releaseIdentity",
     ],
     "release promotion receipt",
@@ -1056,6 +1114,10 @@ export function validatePromotionReceipt(raw) {
   ) {
     throw new Error("release promotion receipt coordinates are invalid");
   }
+  // The receipt carries the audited Rust-activity as a boolean; `exactObject`
+  // pins the exact key set, so a missing field fails closed below and a
+  // forged field is rejected outright.
+  const rustActive = value.rustActive === true;
   const identity = objectValue(
     value.releaseIdentity,
     "release promotion receipt identity",
@@ -1085,6 +1147,7 @@ export function validatePromotionReceipt(raw) {
     value.version,
     new Map(assets.map((asset) => [asset.name, asset])),
     value.domainCoreProfile,
+    { rustActive },
   );
   return {
     repository: DOMAIN_CORE_REPOSITORY,
@@ -1093,6 +1156,7 @@ export function validatePromotionReceipt(raw) {
     commit: value.commit,
     notesSha256: value.notesSha256,
     domainCoreProfile: value.domainCoreProfile,
+    rustActive,
     identity: releaseIdentity(identity.releaseID, assets),
   };
 }

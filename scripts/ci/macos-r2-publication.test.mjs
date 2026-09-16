@@ -336,6 +336,7 @@ set -euo pipefail
         commit: COMMIT,
         notesSha256: hash("release notes\n"),
         domainCoreProfile: ROLLBACK_PROFILE,
+        rustActive: false,
         releaseIdentity: {
           releaseID: 9001,
           assets: identityAssets,
