@@ -53,6 +53,13 @@
  *      depends on is explained somewhere on the page.
  *  14. The platform statement names Windows and Linux, and the page never
  *      claims to run on them.
+ *  15b. Every "one click in the app" install route equals a real case of
+ *      `MCPClientWiringTarget` in
+ *      AgentLens/Services/CLIBridge/MCPClientWiring.swift — by display name
+ *      and by the config path that target's `configURL(for:)` writes — in both
+ *      directions. Wiring a new client into the app used to leave the page
+ *      quietly claiming a shorter list (it did, between #2554 and #2555);
+ *      now the page fails until it is re-counted.
  *
  * And, since the review round, the three places a number could still be
  * asserted vacuously or published as something it is not:
@@ -710,6 +717,81 @@ check(
     `(assert len(matrix) == ${realShapes.length}) for the page to badge it Pinned`
 );
 
+/* ── 15b · one-click install routes match the app's real wiring targets ── */
+
+/* The claim "one click in the app" is a claim about Swift, so read the Swift.
+ * `MCPClientWiringTarget` is the enum MCPInstallCard renders a row per, and
+ * `configURL(for:)` is the exact file each row discloses before it writes. */
+
+const wiringSrc = readFileSync(
+  join(REPO, "AgentLens", "Services", "CLIBridge", "MCPClientWiring.swift"),
+  "utf8"
+);
+
+const displayBlock = wiringSrc.match(
+  /var displayName: String \{\s*switch self \{([\s\S]*?)\}\s*\}/
+);
+assert.ok(displayBlock, "could not find MCPClientWiringTarget.displayName in MCPClientWiring.swift");
+const wiringNames = new Map(
+  [...displayBlock[1].matchAll(/case \.([A-Za-z]+):\s*return "([^"]+)"/g)].map((m) => [m[1], m[2]])
+);
+assert.ok(
+  wiringNames.size >= 3,
+  `parsed only ${wiringNames.size} wiring display names — the parser is wrong`
+);
+
+const configBlock = wiringSrc.match(
+  /func configURL\(for target: MCPClientWiringTarget\) -> URL \{\s*switch target \{([\s\S]*?)\n {8}\}/
+);
+assert.ok(configBlock, "could not find MCPClientWiring.configURL(for:) in MCPClientWiring.swift");
+const wiringPaths = new Map(
+  [...configBlock[1].matchAll(
+    /case \.([A-Za-z]+): return (home|configHome)\.appendingPathComponent\("([^"]+)"\)/g
+  )].map((m) => [m[1], `${m[2] === "home" ? "~" : "~/.config"}/${m[3]}`])
+);
+assert.ok(
+  wiringPaths.size === wiringNames.size,
+  `parsed ${wiringPaths.size} config paths for ${wiringNames.size} wiring targets — the parser is wrong`
+);
+
+const routesBlock = dataSrc.match(/INSTALL_ROUTES: InstallRoute\[\] = \[([\s\S]*?)\n\];/);
+assert.ok(routesBlock, "could not find INSTALL_ROUTES in src/data/memory.ts");
+const pageRoutes = [
+  ...routesBlock[1].matchAll(
+    /client: "([^"]+)",\s*\n\s*how: "([^"]+)",\s*\n\s*where: "([^"]+)",\s*\n\s*route: "([^"]+)"/g
+  )
+].map((m) => ({ client: m[1], how: m[2], where: m[3], route: m[4] }));
+assert.ok(pageRoutes.length >= 4, `parsed only ${pageRoutes.length} install routes — the parser is wrong`);
+
+const pageOneClick = new Map(
+  pageRoutes.filter((r) => r.route === "one-click").map((r) => [r.client, r.where])
+);
+const realOneClick = new Map(
+  [...wiringNames].map(([kase, name]) => [name, wiringPaths.get(kase)])
+);
+
+for (const [name, where] of realOneClick) {
+  const onPage = pageOneClick.get(name);
+  check(
+    onPage !== undefined,
+    `MCPClientWiring wires "${name}" one-click, but INSTALL_ROUTES does not list it as one-click`
+  );
+  check(
+    onPage === undefined || onPage === where,
+    `INSTALL_ROUTES says "${name}" writes ${onPage}; configURL(for:) writes ${where}`
+  );
+}
+for (const name of pageOneClick.keys()) {
+  check(
+    realOneClick.has(name),
+    `INSTALL_ROUTES claims one-click install for "${name}", which MCPClientWiringTarget does not wire`
+  );
+}
+check(
+  text.includes(`${realOneClick.size} clients are one click`),
+  `the page should say "${realOneClick.size} clients are one click" — it wires ${realOneClick.size}`
+);
+
 /* ── 14 · the platform statement stays honest ───────────────────────── */
 
 check(
@@ -748,5 +830,7 @@ console.log(
     `ministry_*/castle_*/bench_*); ${atlasEntries.filter((e) => e.memory).length} marked ` +
     `memory-toolset; ${gatedCount} capability-gated tools match their denial sites, ` +
     `${guardedTotal} of those guarded and annotated with the condition that reaches them; ` +
-    `${pageCapEnv.size} capability env vars match server.py; platform claim is honest.`
+    `${pageCapEnv.size} capability env vars match server.py; platform claim is honest.\n` +
+    `\u2713 install routes: ${realOneClick.size} one-click clients and their config paths match ` +
+    `MCPClientWiringTarget in MCPClientWiring.swift.`
 );
