@@ -115,6 +115,23 @@ public sealed class QuotaModelTests
     }
 
     [Fact]
+    public void UsedOnlyMeter_shows_used_tokens_without_fake_remaining()
+    {
+        QuotaBucket b = Bucket(
+            used: 165,
+            limit: -1,
+            remaining: 0,
+            meta: new() { ["unit"] = "tokens", ["limitKind"] = "used-only" });
+        Assert.True(b.IsUsedOnlyMeter);
+        Assert.Null(b.DisplayRemainingFraction);
+        Assert.Equal("165 used", b.RemainingText());
+        Assert.Equal("165 used", b.FullRemainingText());
+        Assert.Equal("Remaining unavailable", b.UsageText);
+        Assert.Equal("—", b.RemainingPercentText);
+        Assert.DoesNotContain("/", b.RemainingText());
+    }
+
+    [Fact]
     public void RemainingPercentText_handles_sub_one_and_missing()
     {
         Assert.Equal("0.5%", Bucket(99.5, 100, 0.5).RemainingPercentText);

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Google Gemini used-token meters.** The Providers wizard now treats Gemini
+  as a meter connection, not a routing key: Gemini CLI session logs on the Mac
+  report tokens used in the last 24 hours and 7 days. Remaining AI Studio
+  rate limits, Vertex spend, and Gemini app / Verizon Google AI Pro quota stay
+  explicitly unavailable — Google does not publish those to an API key.
+  Antigravity remains the estimated 5-hour coding-window adapter. Firebase
+  Google sign-in is unchanged and still does not read Gemini usage.
 - **app.burnbar.ai is now reachable from every surface.** The member Data &
   Privacy Control Center existed only as a bare URL — nothing linked to it.
   The website's header More menu, mobile nav, footer trust column, and the

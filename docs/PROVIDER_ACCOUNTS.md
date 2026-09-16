@@ -107,6 +107,22 @@ vendor identity (`AgentProvider.xAI`, catalog id `xai`) and adds a Switcher CLI 
 CLI sessions sync to Firestore as **archive-only** (`CLIAgentRuntime.grok`); native
 resume (`grok -r`) is not yet in `native_eligible`.
 
+## Google Gemini
+
+Google is catalog provider `google` (alias `gemini`, quota adapter `AgentProvider.geminiCLI`).
+It is **not** Firebase “Sign in to BurnBar with Google.”
+
+| Lane | What you connect | Meters |
+|---|---|---|
+| Gemini CLI sessions | Detect `~/.gemini` on the Mac | Used tokens for the last 24 hours and 7 days from session logs. Remaining quota is unavailable. |
+| Antigravity | Local Antigravity profile | Estimated 5-hour coding windows from `AntigravityQuotaAdapter`. |
+| AI Studio API key (`AIza…`) | Daemon slot | Key saved only. Does **not** unlock remaining RPD/RPM/TPM. |
+| Google AI Pro / Gemini app (including Verizon) | Label only | Remaining app quota is **not published**. BurnBar will not invent a percentage. |
+
+Cloud Functions does not refresh Google accounts. Snapshots stay Mac-local, like Claude and Antigravity.
+
+See [PROVIDERS.md](PROVIDERS.md) for the adapter contract.
+
 ## Endpoint profiles
 
 Some providers expose multiple inference clusters or billing lanes behind

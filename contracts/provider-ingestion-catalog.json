@@ -363,7 +363,7 @@
       "coverageNote": "Local parser registered in ParserRegistry.",
       "xdgBehavior": "home-relative",
       "symlinkBehavior": "identity-on-resolved-path",
-      "quotaSignal": false
+      "quotaSignal": true
     },
     {
       "providerId": "antigravity",
