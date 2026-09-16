@@ -2,7 +2,7 @@
 
 **Canonical agent contract:** [`AGENTS.md`](AGENTS.md) (edit that file when updating standards or repo workflow).
 
-The section below duplicates **§ The completion bar** from `AGENTS.md` so tools that only ingest `CLAUDE.md` still load the bar without following links. **Keep in sync** with `AGENTS.md`.
+The sections below duplicate **§ The completion bar** and **§ Standing develop rule** from `AGENTS.md` so tools that only ingest `CLAUDE.md` still load them without following links. **Keep in sync** with `AGENTS.md`.
 
 ---
 
@@ -22,15 +22,27 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 
 ---
 
+## Standing develop rule
+
+Cheap + fast + quality, permanently.
+
+- **Merge door:** fast checks that finish in minutes. A PR does not need a Mac app build to merge.
+- **Mac app build:** nightly, or on `main` after merge. It is not a merge requirement.
+- **No fake-green:** nightly still has to prove the Mac app. Fast merge checks do not stand in for that proof.
+- **Fewer, fatter PRs:** one theme per PR, not ten thin slices. Do not open new slice PRs.
+- **Worktrees:** local only. They do not replace CI.
+
+---
+
 ## Software factory PR loop
 
 BurnBar uses a software-factory PR loop to remove CI/review babysitting, not to launder sloppy work into `main`.
 
 Portable prompt and machine setup notes live in [`docs/SOFTWARE_FACTORY_PR_LOOP.md`](docs/SOFTWARE_FACTORY_PR_LOOP.md).
 
-The rule is not "always make tiny PRs." The rule is to ship the smallest reviewable coherent unit, with enough evidence for an independent reviewer to make a real decision.
+Follow the standing develop rule: one theme per PR, not ten thin slices. Do not open new slice PRs. A large PR is fine when it is one theme and an independent reviewer can still make a real decision. Do not mix unrelated goals.
 
-Use the right lane: fast lane for mechanical/narrow work; structured large lane for genuinely atomic cross-cutting work; spike lane for exploratory draft PRs; reject lane for known-broken, vague, mixed-goal, or mystery work. Agents should run cheap relevant local checks, commit, push, open a clear PR, include validation and risks in the PR body, request/label the factory review loop, then keep moving unless Alberto explicitly asked for CI babysitting. Large PRs are acceptable when splitting would make review or validation worse, but they need a review map, major areas touched, invariants preserved, validation matrix, known risks, and rollback or containment notes.
+Use the right lane: fast lane for mechanical/narrow work; structured large lane for genuinely atomic cross-cutting work; spike lane for exploratory draft PRs; reject lane for known-broken, vague, mixed-goal, or mystery work. Agents should run cheap relevant local checks, commit, push, open a clear PR, include validation and risks in the PR body, request/label the factory review loop, then keep moving unless Alberto explicitly asked for CI babysitting. Large PRs are acceptable when they are one theme, but they need a review map, major areas touched, invariants preserved, validation matrix, known risks, and rollback or containment notes.
 
 The factory handles review, small fix loops, CI waiting, re-review, merge, close, and named blockers. Every selected PR should end as `MERGED`, `CLOSED`, or `OPEN_WITH_NAMED_BLOCKER`.
 

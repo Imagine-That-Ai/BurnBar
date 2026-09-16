@@ -20,13 +20,25 @@ Time is not an excuse. Fatigue is not an excuse. Complexity is not an excuse. **
 
 ---
 
+## Standing develop rule
+
+Cheap + fast + quality, permanently.
+
+- **Merge door:** fast checks that finish in minutes. A PR does not need a Mac app build to merge.
+- **Mac app build:** nightly, or on `main` after merge. It is not a merge requirement.
+- **No fake-green:** nightly still has to prove the Mac app. Fast merge checks do not stand in for that proof.
+- **Fewer, fatter PRs:** one theme per PR, not ten thin slices. Do not open new slice PRs.
+- **Worktrees:** local only. They do not replace CI.
+
+---
+
 ## Software factory PR loop
 
 BurnBar uses a software-factory PR loop to remove CI/review babysitting, not to launder sloppy work into `main`.
 
 Portable prompt and machine setup notes live in [`docs/SOFTWARE_FACTORY_PR_LOOP.md`](docs/SOFTWARE_FACTORY_PR_LOOP.md).
 
-The rule is not "always make tiny PRs." The rule is: ship the smallest reviewable coherent unit, with enough evidence for an independent reviewer to make a real decision.
+Follow the standing develop rule: one theme per PR, not ten thin slices. Do not open new slice PRs. A large PR is fine when it is one theme and an independent reviewer can still make a real decision. Do not mix unrelated goals.
 
 Use the right lane:
 
@@ -37,7 +49,7 @@ Use the right lane:
 
 When a task needs code changes, agents should:
 
-1. Finish the smallest reviewable coherent unit. This can be large when the change is genuinely atomic, but avoid vague mega-PRs that mix unrelated goals.
+1. Finish one coherent theme. This can be large. Do not open thin slice PRs, and do not mix unrelated goals.
 2. Run the cheapest relevant local checks for the touched area.
 3. Commit the work.
 4. Push a branch and open a clear PR.
@@ -96,7 +108,7 @@ Export `MEM0_BURNBAR_API_KEY` (the BurnBar mem0 project key) in your shell to re
 - **Circuit breakers:** Use `functions/src/resilienceHelpers.ts` (`stripeWithResilience`, `firestoreWithResilience`, `pushWithResilience`, `resilientFetch`, etc.). New provider HTTP must use `providerFetch` from `functions/src/providers/httpClient.ts`. CI enforces no raw `await fetch` in `functions/src`: `bash scripts/ci/verify-resilience-wiring.sh`.
 - **Production callables:** Prefer `onCallProduction(name, options, handler)` from `logging.ts` for new exports (logging + Sentry).
 - **Ops readiness:** `bash scripts/ci/verify-ops-readiness.sh` before release; production plane: `bash scripts/ops/verify-production-ops-plane.sh`; tag deploy runs `.github/workflows/deploy-production.yml`.
-- **Fast CI:** `.github/workflows/fast-feedback.yml` runs lint + typecheck + unit tests in <5 min on every PR. The full macOS build runs separately. Fix fast-feedback failures first.
+- **Fast CI:** `.github/workflows/fast-feedback.yml` runs lint + typecheck + unit tests in minutes on every PR. Those fast checks are the merge door. The Mac app build is nightly (or on `main` after merge) and is not required to merge — see **Standing develop rule**. Fix fast-feedback failures first.
 - **Automated review:** `.github/workflows/pr-review.yml` posts a structured review comment on every internal PR. Check the comment before merging.
 - **Extension alerting:** import from `extensions/openburnbar/src/alerting.ts` — `alertDaemonUnreachable()`, `alertRunFailed()`, etc. Never use `vscode.window.showError*` directly.
 - **Profiling functions:** `npm run profile --prefix functions` generates a `.cpuprofile` file for Chrome DevTools analysis.
