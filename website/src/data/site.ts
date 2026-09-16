@@ -120,7 +120,7 @@ export const SITE = {
   macUpdateFeedFile: "latest-macos.json",
   macDownloadBaseUrl:
     "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.40+repair.41",
-  macUpdateBaseUrl: "",
+  macUpdateBaseUrl: "https://downloads.burnbar.ai",
   macMin: "macOS 14 Sonoma",
   // Public Linux download. First release ships aarch64/ARM64 artifacts from the
   // ubuntu-24.04-arm release lane; served from GitHub Releases under the Linux-only

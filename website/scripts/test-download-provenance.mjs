@@ -139,6 +139,7 @@ if (macUpdateBaseUrlRaw) {
   const macUpdateBaseUrl = new URL(macUpdateBaseUrlRaw);
   assert(
     macUpdateBaseUrl.hostname === "github.com" ||
+      macUpdateBaseUrl.hostname === "downloads.burnbar.ai" ||
       macUpdateBaseUrl.hostname === macDownloadBaseUrl.hostname,
     "SITE.macUpdateBaseUrl must be GitHub Releases or the first-party download host"
   );
