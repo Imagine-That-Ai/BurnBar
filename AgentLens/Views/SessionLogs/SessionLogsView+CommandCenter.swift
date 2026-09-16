@@ -150,22 +150,27 @@ extension SessionLogsView {
     // MARK: - Filter Bar
 
     private var filterBar: some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
-            ForEach(SessionLogSourceFilter.allCases) { filter in
-                sourceFilterButton(filter)
+        // Sidebar column is 190–235pt. All + Provider + Assistant plus the
+        // grouping/export icons in one HStack compresses the text chips to a
+        // few pixels, and SwiftUI wraps each letter onto its own line — the
+        // tall "P-r-o-v-i-d-e-r" buttons in the session-log rail.
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    ForEach(SessionLogSourceFilter.allCases) { filter in
+                        sourceFilterButton(filter)
+                    }
+                }
             }
-
-            Spacer()
-
-            groupModePicker
-
-            if hasMultipleDevices {
-                deviceFilterMenu
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Spacer(minLength: 0)
+                groupModePicker
+                if hasMultipleDevices {
+                    deviceFilterMenu
+                }
+                exportButton
+                dataSourceMenu
             }
-
-            exportButton
-
-            dataSourceMenu
         }
     }
 
@@ -201,7 +206,9 @@ extension SessionLogsView {
             Text(filter.rawValue)
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(isActive ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted)
-                .padding(.horizontal, DesignSystem.Spacing.md)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, DesignSystem.Spacing.sm)
                 .padding(.vertical, DesignSystem.Spacing.xs)
                 .background(
                     RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous)
