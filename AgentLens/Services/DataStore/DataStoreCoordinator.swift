@@ -60,9 +60,15 @@ final class DataStoreCoordinator {
     /// The expensive dashboard aggregate snapshot is presentation state, not a
     /// prerequisite for the menu-bar process or its background services.
     /// Keep it cold until the user actually opens the tray or dashboard.
+    /// Set ONLY by the full snapshot apply (`replaceUsageSnapshot`): while a
+    /// quick hydration has published approximate rows, this stays false so a
+    /// failed full snapshot keeps the next explicit load retryable.
     private var hasLoadedUsagePresentation = false
     /// One-shot: the status item is hydrated after the FIRST ingestion only.
     private var didHydrateForStatusItem = false
+    /// One-shot: the quick newest-N publish runs once per launch attempt;
+    /// `hasLoadedUsagePresentation` takes over once the full snapshot applies.
+    private var didPublishQuickUsage = false
     /// Coalesces simultaneous first-open requests from the tray, dashboard,
     /// deep links, or automation into one aggregate query.
     @ObservationIgnored private var usagePresentationLoadTask: Task<Void, Never>?
@@ -457,8 +463,11 @@ final class DataStoreCoordinator {
     // MARK: - Cache Refresh
 
     func replaceUsages(_ newUsages: [TokenUsage]) {
+        // Quick-path publish only: it deliberately does NOT mark the
+        // presentation loaded — `hasLoadedUsagePresentation` means the full
+        // multi-window snapshot has applied, so a failed full query stays
+        // retryable (see `publishQuickTodayUsageIfNeeded`).
         guard applyGateAdmits(newUsages) else { return }
-        hasLoadedUsagePresentation = true
         lastAppliedSnapshotFingerprint = nil
         let sortedUsages = newUsages.sorted { $0.startTime > $1.startTime }
         usages = sortedUsages
@@ -529,11 +538,20 @@ final class DataStoreCoordinator {
     /// multi-window GROUP BY. `startTime >= today` misses overnight sessions;
     /// newest-N is index-backed (`ORDER BY startTime DESC LIMIT`) and the
     /// in-memory window filter includes anything in that set that overlaps today.
+    ///
+    /// This quick publish deliberately does not mark the presentation loaded:
+    /// `hasLoadedUsagePresentation` is reserved for the full snapshot apply.
+    /// Marking it here would strand the newest-N approximation as final
+    /// whenever the full query throws — later explicit loads would early
+    /// return and idle ticks would skip the retry. With the marker unset, the
+    /// quick rows stay on screen while the next explicit presentation demand
+    /// retries the full snapshot.
     private func publishQuickTodayUsageIfNeeded() async {
-        guard !hasLoadedUsagePresentation else { return }
+        guard !hasLoadedUsagePresentation, !didPublishQuickUsage else { return }
         do {
             let rows = try await actor.usageStore.fetchRecentUsage(limit: Self.quickHydrationLimit)
             replaceUsages(rows)
+            didPublishQuickUsage = true
         } catch {
             AppLogger.dataStore.silentFailure("quick_today_usage_failed", error: error)
         }
@@ -615,7 +633,9 @@ final class DataStoreCoordinator {
             // icon-only until the user opened the popover, defeating the
             // automatic first number. Hydrate exactly once, after the first
             // ingestion; every later background tick still returns cheaply
-            // because `hasLoadedUsagePresentation` is set by then.
+            // because this one-shot flag is spent, whether or not the first
+            // full snapshot attempt succeeded. A failed full snapshot stays
+            // retryable through the next explicit presentation demand.
             if didHydrateForStatusItem == false {
                 didHydrateForStatusItem = true
                 await loadUsagePresentationIfNeeded()

@@ -195,8 +195,59 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
         await monitor.checkClosedSessions(now: now)
 
         XCTAssertEqual(monitor.activeSessions.count, 1)
-        XCTAssertEqual(monitor.activeSessions["session-usage-only"]?.harness, "Codex CLI")
-        XCTAssertEqual(monitor.activeSessions["session-usage-only"]?.costUSD, 0.5, accuracy: 0.001)
+        let ingestedSession = try XCTUnwrap(monitor.activeSessions["session-usage-only"])
+        XCTAssertEqual(ingestedSession.harness, "Codex CLI")
+        XCTAssertEqual(ingestedSession.costUSD, 0.5, accuracy: 0.001)
+    }
+
+    @MainActor
+    func test_cliSessionCloseMonitor_idleUsagePollDoesNotResetQuietPeriodClock() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: dbQueue)
+        let now = Date()
+        // Session last burned 30s ago; no conversation record exists, so the
+        // monitor only ever sees it through the usage poll.
+        try await dataStore.insert(TokenUsage(
+            provider: .claudeCode,
+            sessionId: "session-quiet-period",
+            projectName: "BurnBar",
+            model: "claude-3-7-sonnet",
+            inputTokens: 80,
+            outputTokens: 20,
+            costUSD: 0.02,
+            startTime: now.addingTimeInterval(-90),
+            endTime: now.addingTimeInterval(-30)
+        ))
+
+        var printedReceipt: ReceiptRecord?
+        let monitor = CLISessionCloseMonitor(
+            dataStore: dataStore,
+            settingsManager: .shared,
+            onReceiptPrinted: { receipt in
+                printedReceipt = receipt
+            }
+        )
+        monitor.quietPeriodSeconds = 60
+
+        // First poll discovers the session; activity is the persisted end
+        // time, not the wall clock.
+        await monitor.checkClosedSessions(now: now)
+        XCTAssertEqual(monitor.activeSessions.count, 1)
+        let trackedSession = try XCTUnwrap(monitor.activeSessions["session-quiet-period"])
+        XCTAssertEqual(
+            trackedSession.lastActiveAt.timeIntervalSince1970,
+            now.addingTimeInterval(-30).timeIntervalSince1970,
+            accuracy: 1.0
+        )
+        XCTAssertNil(printedReceipt, "The quiet period has not elapsed yet")
+
+        // Second poll 35s later re-reads the SAME unchanged rows: it must
+        // not treat itself as fresh activity, so the 60s quiet period since
+        // the last persisted burn has elapsed and the receipt finalizes.
+        await monitor.checkClosedSessions(now: now.addingTimeInterval(35))
+
+        XCTAssertTrue(monitor.activeSessions.isEmpty, "An idle poll must not keep the session alive forever")
+        XCTAssertEqual(printedReceipt?.sessionId, "session-quiet-period")
     }
 
     @MainActor
@@ -471,6 +522,13 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
         XCTAssertEqual(printedReceipt?.projectName, "AutoIngestProject")
         XCTAssertEqual(printedReceipt?.harness, "Claude Code")
         XCTAssertEqual(printedReceipt?.totalCostUSD, 0.08)
+
+        // Conversation evidence must survive the usage-driven ingestion path:
+        // prompt, files, and tools come from the metadata-only conversation
+        // fetch, not just from the usage rows.
+        XCTAssertEqual(printedReceipt?.promptSummary, "Auto-ingestion test task")
+        XCTAssertEqual(printedReceipt?.filesTouched, ["Test.swift"])
+        XCTAssertEqual(printedReceipt?.toolsUsed, ["write_to_file"])
 
         // Verify receipt is persisted in DataStore
         let saved = try await dataStore.fetchReceipt(id: "rcpt_session-auto-1")

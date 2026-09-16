@@ -15,8 +15,8 @@ final class CLISessionCloseMonitor {
         let id: String
         let provider: AgentProvider
         let harness: String
-        let projectName: String
-        let projectPath: String?
+        var projectName: String
+        var projectPath: String?
         var modelName: String
         let startTime: Date
         var lastActiveAt: Date
@@ -226,7 +226,19 @@ final class CLISessionCloseMonitor {
         // a 10s poll of that starves dashboard burn hydration after login.
         _ = now
         let recentUsages = (try? await dataStore.fetchRecentUsage(limit: 150)) ?? [] // try?-ok(background poll returns empty on error)
+        guard !recentUsages.isEmpty else { return }
         let usagesBySession = Dictionary(grouping: recentUsages, by: \.sessionId)
+
+        // Metadata-only conversation lookup for the discovered sessions: the
+        // scalar projection omits `fullText` / `lastAssistantMessage` (they
+        // live on encrypted overflow pages), so receipt evidence — task
+        // title, files, tools, project path, explicit end — arrives without
+        // decrypting transcript bodies.
+        let recentConversations = (try? await dataStore.fetchConversationsWithoutTranscripts(limit: 150)) ?? [] // try?-ok(background poll treats missing metadata as absent)
+        var conversationBySession: [String: ConversationRecord] = [:]
+        for conversation in recentConversations where !conversation.sessionId.isEmpty {
+            conversationBySession[conversation.sessionId] = conversation
+        }
 
         for (sessionId, usages) in usagesBySession {
             guard !sessionId.isEmpty else { continue }
@@ -236,17 +248,16 @@ final class CLISessionCloseMonitor {
                 closedSessionIDs.insert(sessionId)
                 continue
             }
-            recordActivity(usages: usages)
+            recordActivity(usages: usages, conversation: conversationBySession[sessionId])
         }
     }
 
-    private func recordActivity(usages: [TokenUsage]) {
+    private func recordActivity(usages: [TokenUsage], conversation: ConversationRecord?) {
         guard let seed = usages.max(by: { $0.endTime < $1.endTime }) else { return }
         let sid = seed.sessionId
         guard !closedSessionIDs.contains(sid) else { return }
 
         let harness = Self.resolveHarnessName(for: seed.provider)
-        let now = Date()
         let totalIn = usages.reduce(0) { $0 + $1.inputTokens }
         let totalOut = usages.reduce(0) { $0 + $1.outputTokens }
         let totalRead = usages.reduce(0) { $0 + $1.cacheReadTokens }
@@ -256,21 +267,28 @@ final class CLISessionCloseMonitor {
         let start = usages.map(\.startTime).min() ?? seed.startTime
 
         if var existing = activeSessions[sid] {
-            existing.lastActiveAt = now
+            // Advance activity only when a newer persisted row appeared. The
+            // poll re-reads the same newest-150 set every 10s; an idle poll
+            // over unchanged rows must not reset the quiet-period clock, or
+            // usage-only sessions can never finalize.
+            if seed.endTime > existing.lastActiveAt {
+                existing.lastActiveAt = seed.endTime
+            }
             existing.inputTokens = max(existing.inputTokens, totalIn)
             existing.outputTokens = max(existing.outputTokens, totalOut)
             existing.cacheReadTokens = max(existing.cacheReadTokens, totalRead)
             existing.cacheWriteTokens = max(existing.cacheWriteTokens, totalWrite)
             existing.costUSD = max(existing.costUSD, totalCost)
             if modelFromUsage != "unknown" { existing.modelName = modelFromUsage }
+            if let conversation { mergeConversationEvidence(into: &existing, conversation: conversation) }
             activeSessions[sid] = existing
         } else {
             activeSessions[sid] = ActiveCLISession(
                 id: sid,
                 provider: seed.provider,
                 harness: harness,
-                projectName: seed.projectName.isEmpty ? "Default" : seed.projectName,
-                projectPath: nil,
+                projectName: Self.ingestedProjectName(seed: seed, conversation: conversation),
+                projectPath: conversation?.workingDirectory,
                 modelName: modelFromUsage,
                 startTime: start,
                 lastActiveAt: seed.endTime,
@@ -279,15 +297,54 @@ final class CLISessionCloseMonitor {
                 cacheReadTokens: totalRead,
                 cacheWriteTokens: totalWrite,
                 costUSD: totalCost,
-                promptSummary: "",
-                filesTouched: [],
-                toolsUsed: [],
+                promptSummary: Self.ingestedPromptSummary(conversation: conversation),
+                filesTouched: Set(conversation?.keyFiles ?? []),
+                toolsUsed: Set(conversation?.keyTools ?? []),
+                // `lastAssistantMessage` lives on encrypted overflow pages and
+                // is deliberately absent from the metadata-only fetch; the
+                // conversation-event path still supplies it.
                 lastAssistantMessage: nil,
                 gitBranch: nil,
                 gitCommit: nil,
-                hasExplicitlyEnded: false
+                hasExplicitlyEnded: conversation?.endTime != nil
             )
         }
+    }
+
+    /// Fills receipt evidence from a metadata-only conversation record. The
+    /// lightweight projection omits `lastAssistantMessage` / `fullText`, so
+    /// those stay unset here; the conversation-event path still supplies them
+    /// whenever transcripts are actually read.
+    private func mergeConversationEvidence(
+        into session: inout ActiveCLISession,
+        conversation: ConversationRecord
+    ) {
+        if !conversation.inferredTaskTitle.isEmpty {
+            session.promptSummary = conversation.inferredTaskTitle
+        } else if session.promptSummary.isEmpty, let summary = conversation.summary, !summary.isEmpty {
+            session.promptSummary = summary
+        }
+        if !conversation.keyFiles.isEmpty { session.filesTouched.formUnion(conversation.keyFiles) }
+        if !conversation.keyTools.isEmpty { session.toolsUsed.formUnion(conversation.keyTools) }
+        if session.projectPath == nil, let directory = conversation.workingDirectory {
+            session.projectPath = directory
+        }
+        if session.projectName == "Default", !conversation.projectName.isEmpty {
+            session.projectName = conversation.projectName
+        }
+        if conversation.endTime != nil { session.hasExplicitlyEnded = true }
+    }
+
+    private static func ingestedProjectName(seed: TokenUsage, conversation: ConversationRecord?) -> String {
+        if !seed.projectName.isEmpty { return seed.projectName }
+        if let conversation, !conversation.projectName.isEmpty { return conversation.projectName }
+        return "Default"
+    }
+
+    private static func ingestedPromptSummary(conversation: ConversationRecord?) -> String {
+        guard let conversation else { return "" }
+        if !conversation.inferredTaskTitle.isEmpty { return conversation.inferredTaskTitle }
+        return conversation.summary ?? ""
     }
 
     // MARK: - Receipt Finalization
