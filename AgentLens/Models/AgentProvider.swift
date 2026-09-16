@@ -91,6 +91,7 @@ extension AgentProvider {
         case .xAI: return "summary.json"
         case .mimo: return "mimo-no-local-logs"
         case .openBurnBar: return "openburnbar-no-local-logs"
+        case .together: return "together-no-local-logs"
         case .junie, .primeAgent, .muse: return "*.jsonl"
         case .fx: return "*.json"
         }
@@ -103,7 +104,7 @@ extension AgentProvider {
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
-        case .openAI, .deepSeek, .openBurnBar:
+        case .openAI, .deepSeek, .openBurnBar, .together:
             return .supported
         case .mimo:
             return .supported
@@ -121,7 +122,7 @@ extension AgentProvider {
         case .factory, .claudeCode, .codex, .openCode, .omp, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude, .junie, .primeAgent, .muse, .fx:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
-        case .openAI, .deepSeek, .openBurnBar:
+        case .openAI, .deepSeek, .openBurnBar, .together:
             return .exact
         case .mimo:
             return .exact

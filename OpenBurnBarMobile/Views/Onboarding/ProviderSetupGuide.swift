@@ -177,6 +177,8 @@ extension ProviderSetupGuide {
             return primeAgentGuide(for: provider)
         case .muse:
             return museGuide(for: provider)
+        case .together:
+            return togetherGuide(for: provider)
         case .fx:
             return fxGuide(for: provider)
 
@@ -737,6 +739,27 @@ extension ProviderSetupGuide {
             ],
             credentialPlaceholder: "Devin API key",
             credentialFooterMarkdown: "Devin sessions are not read from disk yet — usage stays estimated until a Devin session parser ships.",
+            supportsHosted: false,
+            supportsSelfHosted: false
+        )
+    }
+
+    private static func togetherGuide(for provider: AgentProvider) -> ProviderSetupGuide {
+        ProviderSetupGuide(
+            provider: provider,
+            kinds: [.token, .bearer],
+            defaultKind: .bearer,
+            labelSuggestion: "Together / Meta Llama",
+            dashboardURL: URL(string: "https://api.together.ai/settings/api-keys"),
+            dashboardCTA: "Open Together API keys",
+            oneLineHint: "Together API key reports month-to-date Llama usage. Console sign-in is Google or GitHub, not Facebook.",
+            instructions: [
+                GuideStep(1, "Open Together API keys", detail: "Sign in at api.together.ai with Google or GitHub — Facebook is not a Together meter path."),
+                GuideStep(2, "Create a Together API key", detail: "Use the same org that routes Meta Llama models."),
+                GuideStep(3, "Paste it below", detail: "BurnBar refreshes GET /v1/billing/usage. Remaining prepaid credits stay on Together billing settings. A 404 means that remaining-credit window is unsupported — routing still works.")
+            ],
+            credentialPlaceholder: "Together API key",
+            credentialFooterMarkdown: "Together reports month-to-date spend, not remaining prepaid credits. Remaining balance is console-only.",
             supportsHosted: false,
             supportsSelfHosted: false
         )

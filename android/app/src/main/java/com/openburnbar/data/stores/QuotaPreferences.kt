@@ -297,6 +297,7 @@ class QuotaPreferences private constructor(private val context: Context) {
                 AgentProvider.ANTIGRAVITY,
                 AgentProvider.XAI,
                 AgentProvider.MIMO,
+                AgentProvider.TOGETHER,
             )
 
         @Volatile private var instance: QuotaPreferences? = null

@@ -148,7 +148,7 @@ enum DesignSystem {
             case .junie:      return Color(hex: "48E054")
             case .fx:         return Color(hex: "A1A1AA")
             case .primeAgent: return Color(hex: "582CFF")
-            case .muse:       return Color(hex: "0668E1")
+            case .muse, .together: return Color(hex: "0668E1")
             }
         }
 
@@ -190,7 +190,7 @@ enum DesignSystem {
             case .junie:      return Color(hex: "6FE87F")
             case .fx:         return Color.adaptive(light: "4A4A4A", dark: "D4D4D8")
             case .primeAgent: return Color(hex: "9370FF")
-            case .muse:       return Color(hex: "3B82F6")
+            case .muse, .together: return Color(hex: "3B82F6")
             }
         }
 

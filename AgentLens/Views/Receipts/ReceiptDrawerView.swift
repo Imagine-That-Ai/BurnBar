@@ -355,7 +355,7 @@ struct ReceiptDrawerView: View {
             return Color(red: 0.25, green: 0.55, blue: 0.95) // Cursor Blue
         case .xAI:
             return Color(red: 0.92, green: 0.32, blue: 0.32) // Grok Blaze
-        case .muse:
+        case .muse, .together:
             return Color(red: 0.02, green: 0.41, blue: 0.88) // Meta blue
         case .aider:
             return Color(red: 0.45, green: 0.75, blue: 0.35) // Mint

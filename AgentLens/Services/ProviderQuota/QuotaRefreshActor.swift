@@ -591,6 +591,8 @@ private func daemonProviderID(for provider: AgentProvider) -> String? {
         return "moonshot"
     case .xAI:
         return "xai"
+    case .together:
+        return "meta"
     default:
         return nil
     }
@@ -873,6 +875,17 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
         identifiers.append(contentsOf: [
             "mimo",
             "provider.mimo.apiKey"
+        ])
+    case .together:
+        identifiers.append(contentsOf: [
+            "together",
+            "meta",
+            "llama",
+            "meta-together-key",
+            "together_api_key",
+            "together-api-key",
+            "provider.together.apiKey",
+            "provider.meta.apiKey"
         ])
     default:
         break

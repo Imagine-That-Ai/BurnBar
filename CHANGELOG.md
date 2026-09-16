@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Together / Meta Llama usage meters.** Connections → Meta Llama now
+  pastes a Together API key and refreshes `GET /v1/billing/usage` for
+  month-to-date Together spend. Remaining prepaid credits stay on the
+  Together billing console (Google or GitHub sign-in — not Facebook, and
+  not Firebase IdP). A 404 from that beta endpoint is an explicit
+  unsupported remaining-credit state; routing still works. No WKWebView
+  session scrape. `TogetherQuotaAdapter` + `unlocksQuotaRefresh` on
+  `meta-together-key`.
 - **app.burnbar.ai is now reachable from every surface.** The member Data &
   Privacy Control Center existed only as a bare URL — nothing linked to it.
   The website's header More menu, mobile nav, footer trust column, and the

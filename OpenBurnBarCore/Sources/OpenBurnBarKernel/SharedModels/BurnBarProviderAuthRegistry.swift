@@ -876,18 +876,18 @@ public enum BurnBarProviderAuthRegistry {
                 id: "meta-together-key",
                 kind: .apiKey,
                 displayName: "Together / Llama API Key",
-                summary: "Routes Llama traffic via Together (OpenAI-compatible).",
-                helperText: "Use a Together.ai key to route Llama models. Direct Meta API access isn't generally available.",
+                summary: "Routes Llama traffic via Together and reports month-to-date usage.",
+                helperText: "Paste a Together API key to route Llama models and refresh Together billing usage. Together console sign-in is Google or GitHub — Facebook is not a meter path. Remaining prepaid credits stay on Together billing settings.",
                 placeholder: "…",
-                dashboardURL: "https://api.together.xyz/settings/api-keys",
+                dashboardURL: "https://api.together.ai/settings/api-keys",
                 dashboardLabel: "Together API keys",
                 storage: .daemonSlot,
                 unlocksProxyRouting: true,
-                unlocksQuotaRefresh: false
+                unlocksQuotaRefresh: true
             )
         ],
-        summary: "Meta Llama via Together — OpenAI-compatible routing.",
+        summary: "Meta Llama via Together — OpenAI-compatible routing plus Together usage meters.",
         proxyHint: "Routed via api.together.xyz (OpenAI-compatible).",
-        quotaHint: nil
+        quotaHint: "Live usage comes from Together GET /v1/billing/usage when the org has the beta enabled. Remaining prepaid credits are console-only. A 404 is an unsupported remaining-credit state, not a fake meter."
     )
 }

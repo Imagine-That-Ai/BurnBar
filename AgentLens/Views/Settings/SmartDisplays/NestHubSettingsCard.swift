@@ -779,6 +779,7 @@ private struct NestHubProviderChip: View {
         case .fx:           return "fx"
         case .primeAgent:   return "Prime Agent"
         case .muse:         return "Muse"
+        case .together:     return "Together"
         }
     }
 }

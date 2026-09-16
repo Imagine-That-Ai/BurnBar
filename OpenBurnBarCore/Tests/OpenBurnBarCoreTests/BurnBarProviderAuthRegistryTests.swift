@@ -231,6 +231,34 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("xai"), .xAI)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("x-ai"), .xAI)
         XCTAssertEqual(AgentProvider.fromCatalogProviderID("grok"), .xAI)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("meta"), .together)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("llama"), .together)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("together"), .together)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("together-ai"), .together)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("meta-muse"), .muse)
+        XCTAssertNotEqual(AgentProvider.fromCatalogProviderID("muse"), .together)
+    }
+
+    func test_metaLlama_togetherKeyUnlocksQuotaRefreshWithoutFacebookLogin() {
+        let viaMeta = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "meta")
+        let viaTogether = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "together")
+        let viaLlama = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "llama")
+
+        XCTAssertEqual(viaMeta?.providerID, "meta")
+        XCTAssertEqual(viaTogether?.providerID, "meta")
+        XCTAssertEqual(viaLlama?.providerID, "meta")
+        XCTAssertEqual(viaMeta?.displayName, "Meta Llama")
+
+        let method = viaMeta?.method(id: "meta-together-key")
+        XCTAssertEqual(method?.kind, .apiKey)
+        XCTAssertTrue(method?.unlocksProxyRouting ?? false)
+        XCTAssertTrue(method?.unlocksQuotaRefresh ?? false)
+        XCTAssertTrue(method?.helperText.localizedCaseInsensitiveContains("google or github") ?? false)
+        XCTAssertTrue(method?.helperText.localizedCaseInsensitiveContains("facebook is not a meter path") ?? false)
+        XCTAssertFalse(method?.helperText.localizedCaseInsensitiveContains("sign in with facebook") ?? true)
+        XCTAssertTrue(viaMeta?.quotaHint?.localizedCaseInsensitiveContains("billing/usage") ?? false)
+        XCTAssertTrue(viaMeta?.quotaHint?.localizedCaseInsensitiveContains("404") ?? false)
+        XCTAssertEqual(method?.dashboardURL, "https://api.together.ai/settings/api-keys")
     }
 
     func test_xaiDescriptor_exposesInferenceAndManagementMethods() {
