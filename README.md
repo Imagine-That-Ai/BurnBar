@@ -199,6 +199,7 @@ The external launch settings that cannot be inferred from the working tree alone
 | Junie (JetBrains) | Supported | `~/.junie/sessions/<id>/events.jsonl` + `index.jsonl` | Exact (explicit usage) / Estimated (fallback) | Unavailable (no public quota API) |
 | Prime Agent (Prime Intellect) | Supported | `~/.prime/agent/sessions/*.jsonl` | Exact | Unavailable (no public quota API; exact cost from `message.usage.cost.total`) |
 | Muse (Meta) | Supported | `~/.local/share/muse/sessions/**/*.jsonl` | Exact | Unavailable (no public quota API; pricing from `model-catalog` + catalog fallback) |
+| Together / Meta Llama | Routed via Together API key | `GET https://api.together.ai/v1/billing/usage` | Exact spend when the org has billing-usage enabled | Month-to-date Together spend. Remaining prepaid credits are console-only (Together signs in with Google or GitHub, not Facebook). A 404 is an honest unsupported remaining-credit state. |
 | Codex (OpenAI) | Partial | `~/.codex/state_5.sqlite` + rollout JSONL | Estimated | Supported via the latest local Codex rollout/session rate-limit snapshot |
 | Kimi (Moonshot) | Partial | `~/.kimi/sessions/*.jsonl` | Estimated | Unavailable |
 | Z.ai | Partial | via Factory sessions | Estimated | Supported via official monitor quota endpoints |

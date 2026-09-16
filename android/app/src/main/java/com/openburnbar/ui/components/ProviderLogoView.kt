@@ -73,6 +73,7 @@ object ProviderLogo {
         AgentProvider.ANTIGRAVITY -> R.drawable.logo_antigravity
         AgentProvider.MIMO -> R.drawable.mimo_logo
         AgentProvider.MUSE -> R.drawable.logo_meta
+        AgentProvider.TOGETHER -> R.drawable.logo_meta
         AgentProvider.FX -> R.drawable.logo_fx
     }
 

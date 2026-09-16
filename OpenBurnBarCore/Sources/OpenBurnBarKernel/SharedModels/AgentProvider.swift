@@ -40,6 +40,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case junie = "Junie"
     case primeAgent = "Prime Agent"
     case muse = "Muse"
+    case together = "Together"
     case fx = "fx"
 
     public var id: String { rawValue }
@@ -84,6 +85,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .warp,
         .cursorAgent,
         .muse,
+        .together,
         .fx
     ]
 
@@ -109,7 +111,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .antigravity,
         .xAI,
         .mimo,
-        .cursorAgent
+        .cursorAgent,
+        .together
     ]
 
     public var isQuotaSignalProvider: Bool {
@@ -315,6 +318,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .primeAgent
         case "muse", "muse-code", "musecode", "meta-muse", "metamuse":
             return .muse
+        case "meta", "llama", "together", "togetherai", "together.ai", "together-ai":
+            return .together
         case "fx", "vercel-fx", "vercelfx", "vercel fx":
             return .fx
         default:
@@ -364,6 +369,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .junie:      return "JunieLogo"
         case .primeAgent: return "PrimeAgentLogo"
         case .muse: return "MetaLogo"
+        case .together: return "MetaLogo"
         case .fx: return "FxLogo"
         }
     }
@@ -407,6 +413,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .junie: return "j.circle.fill"
         case .primeAgent: return "arrow.triangle.2.circlepath"
         case .muse: return "brain.head.profile"
+        case .together: return "gauge.with.needle"
         case .fx: return "forward.fill"
         }
     }

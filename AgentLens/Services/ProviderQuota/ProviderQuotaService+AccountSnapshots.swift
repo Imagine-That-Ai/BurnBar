@@ -35,7 +35,8 @@ enum QuotaCapableProviderMap {
         .openCode: ["opencode", "open-code"],
         .deepSeek: ["deepseek", "deep-seek"],
         .kimi: ["moonshot", "kimi"],
-        .xAI: ["xai", "x-ai", "x.ai", "grok"]
+        .xAI: ["xai", "x-ai", "x.ai", "grok"],
+        .together: ["together", "meta", "llama", "together-ai", "togetherai"]
     ]
 
     private static let providersByDaemonProviderID: [String: AgentProvider] = daemonProviderIDAliases

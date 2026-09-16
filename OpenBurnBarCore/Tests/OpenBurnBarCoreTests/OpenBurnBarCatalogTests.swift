@@ -306,6 +306,16 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(BurnBarCatalogProvider.bundledLogoName(forProviderID: "bedrock"), "AmazonProviderLogo")
     }
 
+    func test_bundledCatalog_metaLlamaIsAPublicTogetherRoute() throws {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        let meta = try XCTUnwrap(catalog.provider(id: "meta"))
+        XCTAssertEqual(meta.displayName, "Meta Llama")
+        XCTAssertEqual(meta.visibility, .public)
+        XCTAssertEqual(meta.baseURL, "https://api.together.xyz/v1")
+        XCTAssertTrue(meta.capabilities.contains(.routing))
+        XCTAssertEqual(meta.bundledLogoName, "MetaProviderLogo")
+    }
+
     func test_bundledCatalog_resolvesGrokBuildCanonicalID() {
         let catalog = BurnBarCatalogLoader.bundledCatalog
         XCTAssertEqual(catalog.canonicalModelID(forModelName: "grok-build-0.1"), "grok-build-0.1")

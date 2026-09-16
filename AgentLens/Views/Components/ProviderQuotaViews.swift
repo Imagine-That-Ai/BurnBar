@@ -30,6 +30,8 @@ func providerQuotaManagementURL(
         "https://cursor.com/pricing"
     case .xAI:
         "https://grok.com/plans"
+    case .together:
+        "https://api.together.ai/settings/billing"
     default:
         nil
     }

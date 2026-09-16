@@ -506,6 +506,19 @@ public enum AgentProviderIngestionCatalog {
             ingestion: .localParser,
             coverageNote: "Local parser registered in ParserRegistry.",
             quotaSignal: false
+        ),
+        Entry(
+            provider: .together,
+            agentProviderCase: "together",
+            providerID: "together",
+            displayLabel: "Together",
+            aliases: ["meta", "llama", "together-ai"],
+            linuxLogicalPath: "~/.codex",
+            macOSLogicalPath: "~/.codex",
+            filePattern: "together-no-local-logs",
+            ingestion: .apiBacked,
+            coverageNote: "No local parser; Llama usage meters come from Together GET /v1/billing/usage.",
+            quotaSignal: true
         )
     ]
 

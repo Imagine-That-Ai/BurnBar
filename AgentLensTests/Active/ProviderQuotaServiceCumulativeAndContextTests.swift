@@ -323,7 +323,11 @@ extension ProviderQuotaServiceTests {
             "kimi": .kimi,
             "xai": .xAI,
             "x-ai": .xAI,
-            "grok": .xAI
+            "grok": .xAI,
+            "together": .together,
+            "meta": .together,
+            "llama": .together,
+            "together-ai": .together
         ]
         for (providerID, provider) in expected {
             XCTAssertEqual(
@@ -363,6 +367,18 @@ extension ProviderQuotaServiceTests {
         XCTAssertEqual(
             QuotaCapableProviderMap.canonicalProviderID(forDaemonProviderID: "moonshot"),
             AgentProvider.kimi.providerID
+        )
+        for alias in ["together", "meta", "llama", "together-ai"] {
+            XCTAssertEqual(
+                QuotaCapableProviderMap.canonicalProviderID(forDaemonProviderID: alias),
+                AgentProvider.together.providerID,
+                "daemon providerID \(alias) must resolve to Together"
+            )
+        }
+        XCTAssertNotEqual(
+            QuotaCapableProviderMap.provider(forDaemonProviderID: "muse"),
+            .together,
+            "Muse stays local-usage; meta-muse must not steal the Together meter"
         )
     }
 

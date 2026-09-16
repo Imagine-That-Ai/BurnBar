@@ -3641,9 +3641,9 @@
     },
     {
       "id": "meta",
-      "displayName": "Meta",
+      "displayName": "Meta Llama",
       "baseURL": "https://api.together.xyz/v1",
-      "visibility": "hidden",
+      "visibility": "public",
       "logoKey": "MetaProviderLogo",
       "capabilities": [
         "routing",

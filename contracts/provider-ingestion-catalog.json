@@ -649,6 +649,26 @@
       "xdgBehavior": "home-relative",
       "symlinkBehavior": "identity-on-resolved-path",
       "quotaSignal": false
+    },
+    {
+      "providerId": "together",
+      "agentProviderCase": "together",
+      "displayLabel": "Together",
+      "aliases": [
+        "meta",
+        "llama",
+        "together-ai"
+      ],
+      "paths": {
+        "linux": "~/.codex",
+        "macos": "~/.codex"
+      },
+      "filePattern": "together-no-local-logs",
+      "ingestion": "api-backed",
+      "coverageNote": "No local parser; Llama usage meters come from Together GET /v1/billing/usage.",
+      "xdgBehavior": "no-local-logs",
+      "symlinkBehavior": "identity-on-resolved-path",
+      "quotaSignal": true
     }
   ],
   "goldenUsageVectors": [
