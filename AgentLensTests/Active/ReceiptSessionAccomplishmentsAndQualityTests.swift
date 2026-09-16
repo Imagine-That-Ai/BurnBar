@@ -197,7 +197,10 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
         XCTAssertEqual(monitor.activeSessions.count, 1)
         let ingestedSession = try XCTUnwrap(monitor.activeSessions["session-usage-only"])
         XCTAssertEqual(ingestedSession.harness, "Codex CLI")
-        XCTAssertEqual(ingestedSession.costUSD, 0.5, accuracy: 0.001)
+        // Unwrap before the accuracy assert: the pinned Xcode 26 XCTest has no
+        // Optional-friendly accuracy overload (local Xcode 27 silently accepted
+        // the Double? operand — release run 35060876665 App Test Gate failed on it).
+        XCTAssertEqual(try XCTUnwrap(ingestedSession.costUSD), 0.5, accuracy: 0.001)
     }
 
     @MainActor
