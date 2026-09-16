@@ -441,6 +441,62 @@ final class UsageMemorySourceKindTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(audit).contains("source_kind:safari_ask"))
     }
 
+    /// A sentence sealed before the add path scanned context can hold a secret.
+    /// `.preserve` would carry it into the reseal, so G7 must reject the edit.
+    func test_preservedLegacyContextSecretIsRejectedBeforeReseal() async throws {
+        let (queue, store) = try makeStore()
+        let now = Date(timeIntervalSince1970: 1_800_000_850)
+        try await addUsageMemoryWithContext(store: store, id: "mem-usage-legacy-secret", now: now)
+        let legacyContext = "Asked right after pasting sk-ant-1234567890abcdef1234567890."
+        try await queue.write { db in
+            try db.execute(
+                sql: "UPDATE memory_body_snapshots SET snapshot_json = replace(snapshot_json, ?, ?) WHERE memory_id = ?",
+                arguments: ["Asked while reading the GRDB migration docs.", legacyContext, "mem-usage-legacy-secret"]
+            )
+        }
+
+        do {
+            _ = try await store.updateMemoryAuthorityRecord(
+                id: "mem-usage-legacy-secret",
+                patch: MemoryPatch(text: "Prefers GRDB migrations reviewed by two people.", confidence: 0.75),
+                sourceKinds: MemorySourceKind.usageKinds,
+                now: now.addingTimeInterval(60)
+            )
+            XCTFail("Expected a preserved secret-bearing context sentence to be rejected before the reseal.")
+        } catch {
+            XCTAssertEqual(
+                error as? ControlPlaneStore.ChatMemoryAuthorityError,
+                .secretRejected(labels: ["anthropic-api-key"])
+            )
+        }
+
+        let (_, unchanged) = try await snapshot(queue, memoryID: "mem-usage-legacy-secret")
+        XCTAssertEqual(unchanged.body, "Prefers GRDB migrations reviewed before merge.")
+        XCTAssertEqual(unchanged.context, legacyContext)
+        let rejection = try await queue.read { db in
+            try String.fetchOne(
+                db,
+                sql: """
+                SELECT labels_json FROM memory_audit
+                WHERE subject_id = 'mem-usage-legacy-secret' AND action = 'memory.secret_rejected'
+                """
+            )
+        }
+        XCTAssertTrue(try XCTUnwrap(rejection).contains("anthropic-api-key"))
+
+        // `.replace(nil)` never carries the stored sentence, so it clears it.
+        let cleared = try await store.updateMemoryAuthorityRecord(
+            id: "mem-usage-legacy-secret",
+            patch: MemoryPatch(),
+            sourceKinds: MemorySourceKind.usageKinds,
+            context: .replace(nil),
+            now: now.addingTimeInterval(120)
+        )
+        XCTAssertTrue(cleared)
+        let (_, scrubbed) = try await snapshot(queue, memoryID: "mem-usage-legacy-secret")
+        XCTAssertNil(scrubbed.context)
+    }
+
     /// Same gate on the add path: the context sentence is sealed alongside the
     /// body, so it must be scanned there as well.
     func test_addPathRejectsSecretInContextSentence() async throws {

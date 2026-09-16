@@ -59,7 +59,7 @@ extension ControlPlaneStore {
                 secretLabels.append(label)
             }
         }
-        if secretLabels.isEmpty == false {
+        func rejectSecrets(_ labels: [String]) async throws {
             try await appendMemoryAuditEvent(
                 action: "memory.secret_rejected",
                 projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
@@ -67,11 +67,14 @@ extension ControlPlaneStore {
                 labels: [
                     "memory_id": id,
                     "source_kind": existing.sourceKind.rawValue,
-                    "labels": secretLabels.joined(separator: ",")
+                    "labels": labels.joined(separator: ",")
                 ],
                 now: now
             )
-            throw ChatMemoryAuthorityError.secretRejected(labels: secretLabels)
+            throw ChatMemoryAuthorityError.secretRejected(labels: labels)
+        }
+        if secretLabels.isEmpty == false {
+            try await rejectSecrets(secretLabels)
         }
 
         // A reseal is needed when this call changes sealed content: a new body,
@@ -83,7 +86,7 @@ extension ControlPlaneStore {
             "source_kind:\(existing.sourceKind.rawValue)"
         ]
         let nowString = Self.iso8601String(now)
-        try await dbQueue.write { db in
+        let preservedContextLabels = try await dbQueue.write { db -> [String] in
             // Read the stored snapshot inside the write transaction so a
             // concurrent reseal cannot slip between the read and the rewrite.
             let stored = try resealsSnapshot ? Self.memoryBodySnapshot(db: db, id: id) : nil
@@ -95,6 +98,12 @@ extension ControlPlaneStore {
                 switch context {
                 case .preserve: resealContext = stored?.context
                 case .replace: resealContext = replacementContext
+                }
+                // A preserved sentence may predate the add-path G7 scan, so it is
+                // scanned here; a hit returns before anything is written.
+                if context == .preserve, let resealContext {
+                    let labels = Self.memoryGateFindingIDs(in: resealContext)
+                    if labels.isEmpty == false { return labels }
                 }
                 let bodyHash = Self.sha256Hex(resealBody)
                 let bodyRef = Self.memorySnapshotRef(snapshotSlug)
@@ -156,6 +165,10 @@ extension ControlPlaneStore {
                 labels: auditLabels,
                 nowString: nowString
             )
+            return []
+        }
+        if preservedContextLabels.isEmpty == false {
+            try await rejectSecrets(preservedContextLabels)
         }
         return true
     }
