@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
 
 ### Fixed
+- Grok Build CLI's Chat Completions probe no longer pings the first advertised
+  gateway model (usually default local Codex) and then show a missing-`codex`
+  503 on the Grok card. The probe now prefers an advertised `xai` model and
+  fail-closes with the existing "No route-ready xAI account" copy when none is
+  present. Routed-client probe failures also name the model and provider that
+  were actually pinged ([#2616](https://github.com/Imagine-That-Ai/BurnBar/issues/2616)).
 - Direct-download macOS updates no longer offer a same-build repair tag as an
   upgrade. The live feed advertises `1.0.40+repair.36` at build 82 while the
   installed app reports Apple marketing `1.0.40` at build 82; the checker used

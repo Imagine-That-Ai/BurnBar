@@ -1164,6 +1164,199 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(result, .ok(modelID: "glm-5"))
     }
 
+    func test_probeGrokWithOnlyCodexFailsClosedBeforeHTTP() async {
+        let session = makeProbeSession { _ in
+            XCTFail("Grok probe must not hit the gateway when no xAI model is advertised")
+            return Data()
+        }
+
+        let result = await makeWiring().probe(
+            target: .grok,
+            gateway: exampleGateway(token: "probe-token"),
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "gpt-5.6",
+                    displayName: "GPT-5.6",
+                    providerID: "codex",
+                    providerName: "Codex",
+                    servedEndpoints: ["/v1/chat/completions", "/v1/responses"],
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "glm-5",
+                    displayName: "GLM-5",
+                    providerID: "zai",
+                    providerName: "Z.AI",
+                    servedEndpoints: ["/v1/chat/completions"],
+                    routeEligible: true
+                )
+            ],
+            session: session
+        )
+
+        guard case .failed(let status, let message, let modelID, let providerID) = result else {
+            return XCTFail("Expected fail-closed Grok probe, got \(result)")
+        }
+        XCTAssertEqual(status, 503)
+        XCTAssertEqual(message, RoutingClientWiringTarget.grok.missingRouteReadyAccountMessage)
+        XCTAssertNil(modelID)
+        XCTAssertNil(providerID)
+        XCTAssertFalse(
+            message.localizedCaseInsensitiveContains("codex executable"),
+            "Default-only Codex must not blame a missing Codex binary on the Grok card: \(message)"
+        )
+        XCTAssertEqual(
+            RoutingClientWiring.userVisibleProbeFailure(
+                status: status,
+                upstreamMessage: message,
+                modelID: modelID,
+                providerID: providerID,
+                target: .grok
+            ),
+            RoutingClientWiringTarget.grok.missingRouteReadyAccountMessage
+        )
+    }
+
+    func test_probeGrokPrefersAdvertisedXAIModel() async throws {
+        let session = makeProbeSession { request in
+            XCTAssertEqual(request.url?.path, "/v1/chat/completions")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer probe-token")
+            let body = try Self.jsonBody(from: request)
+            XCTAssertEqual(body["model"] as? String, "grok-code-fast-1")
+            XCTAssertEqual(body["max_completion_tokens"] as? Int, 1)
+            let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+            XCTAssertEqual(messages.first?["content"] as? String, "ping")
+            return Data(#"{"id":"chatcmpl_test","choices":[{"message":{"content":"ok"}}]}"#.utf8)
+        }
+
+        let result = await makeWiring().probe(
+            target: .grok,
+            gateway: exampleGateway(token: "probe-token"),
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "gpt-5.6",
+                    displayName: "GPT-5.6",
+                    providerID: "codex",
+                    providerName: "Codex",
+                    servedEndpoints: ["/v1/chat/completions", "/v1/responses"],
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "grok-code-fast-1",
+                    displayName: "Grok Code Fast",
+                    providerID: "xai",
+                    providerName: "xAI",
+                    servedEndpoints: ["/v1/chat/completions"],
+                    routeEligible: true
+                )
+            ],
+            session: session
+        )
+
+        XCTAssertEqual(result, .ok(modelID: "grok-code-fast-1"))
+    }
+
+    func test_probeFailureAttributionIncludesModelAndProvider() async {
+        RoutingProbeURLProtocol.statusCode = 503
+        let session = makeProbeSession { request in
+            XCTAssertEqual(request.url?.path, "/v1/chat/completions")
+            let body = try Self.jsonBody(from: request)
+            XCTAssertEqual(body["model"] as? String, "grok-code-fast-1")
+            return Data("xAI upstream unavailable".utf8)
+        }
+
+        let result = await makeWiring().probe(
+            target: .grok,
+            gateway: exampleGateway(token: "probe-token"),
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "gpt-5.6",
+                    displayName: "GPT-5.6",
+                    providerID: "codex",
+                    providerName: "Codex",
+                    servedEndpoints: ["/v1/chat/completions"],
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "grok-code-fast-1",
+                    displayName: "Grok Code Fast",
+                    providerID: "XAI",
+                    providerName: "xAI",
+                    servedEndpoints: ["/v1/chat/completions"],
+                    routeEligible: true
+                )
+            ],
+            session: session
+        )
+
+        guard case .failed(let status, let message, let modelID, let providerID) = result else {
+            return XCTFail("Expected attributed Grok probe failure, got \(result)")
+        }
+        XCTAssertEqual(status, 503)
+        XCTAssertEqual(message, "xAI upstream unavailable")
+        XCTAssertEqual(modelID, "grok-code-fast-1")
+        XCTAssertEqual(providerID, "XAI")
+        XCTAssertEqual(
+            RoutingClientWiring.userVisibleProbeFailure(
+                status: status,
+                upstreamMessage: message,
+                modelID: modelID,
+                providerID: providerID,
+                target: .grok
+            ),
+            "Local gateway returned HTTP 503 while probing `grok-code-fast-1` (provider `XAI`) for Grok Build CLI. xAI upstream unavailable"
+        )
+    }
+
+    func test_userVisibleProbeFailureMatchesRCAAttributionFormat() {
+        XCTAssertEqual(
+            RoutingClientWiring.userVisibleProbeFailure(
+                status: 503,
+                upstreamMessage: "Codex executable was not found in trusted install locations.",
+                modelID: "gpt-5.6",
+                providerID: "codex",
+                target: .grok
+            ),
+            "Local gateway returned HTTP 503 while probing `gpt-5.6` (provider `codex`) for Grok Build CLI. Codex executable was not found in trusted install locations."
+        )
+    }
+
+    func test_probeCodexStillUsesResponsesWhenGrokSelectionChanges() async throws {
+        let session = makeProbeSession { request in
+            XCTAssertEqual(request.url?.path, "/v1/responses")
+            let body = try Self.jsonBody(from: request)
+            XCTAssertEqual(body["model"] as? String, "openburnbar/gpt-5.6")
+            XCTAssertEqual(body["input"] as? String, "ping")
+            return Data(#"{"id":"resp_test","output_text":"ok"}"#.utf8)
+        }
+
+        let result = await makeWiring().probe(
+            target: .codex,
+            gateway: exampleGateway(token: "probe-token"),
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "gpt-5.6",
+                    displayName: "GPT-5.6",
+                    providerID: "codex",
+                    providerName: "Codex",
+                    servedEndpoints: ["/v1/responses"],
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "grok-code-fast-1",
+                    displayName: "Grok Code Fast",
+                    providerID: "xai",
+                    providerName: "xAI",
+                    servedEndpoints: ["/v1/chat/completions"],
+                    routeEligible: true
+                )
+            ],
+            session: session
+        )
+
+        XCTAssertEqual(result, .ok(modelID: "openburnbar/gpt-5.6"))
+    }
+
     // Regression test: when the gateway auth token rotates after the last wire
     // (e.g. a new token is generated on daemon restart), the stored API key in
     // Droid's JSON config files no longer authenticates → every request gets a
@@ -1771,9 +1964,11 @@ final class RoutingClientWiringTests: XCTestCase {
 
 private final class RoutingProbeURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> Data)?
+    nonisolated(unsafe) static var statusCode: Int = 200
 
     static func reset() {
         handler = nil
+        statusCode = 200
     }
 
     override static func canInit(with request: URLRequest) -> Bool {
@@ -1793,7 +1988,7 @@ private final class RoutingProbeURLProtocol: URLProtocol, @unchecked Sendable {
             let body = try handler(request)
             let response = HTTPURLResponse(
                 url: request.url!,
-                statusCode: 200,
+                statusCode: Self.statusCode,
                 httpVersion: "HTTP/1.1",
                 headerFields: ["Content-Type": "application/json"]
             )!

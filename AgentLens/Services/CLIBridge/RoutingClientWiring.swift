@@ -105,6 +105,22 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Empty-state copy when this row has no route-ready account. Shared by
+    /// the Connections card and the Grok probe's fail-closed path so a
+    /// Codex-only catalog cannot surface a missing-`codex` 503 on Grok.
+    var missingRouteReadyAccountMessage: String {
+        switch self {
+        case .claudeCode:
+            return "No route-ready OpenBurnBar model is enabled for /v1/messages. Add or enable a provider account first."
+        case .codex, .opencode, .forge, .droid, .cursorAgent:
+            return "No route-ready OpenBurnBar account is enabled for this gateway endpoint. Add or enable a provider account first."
+        case .antigravity:
+            return "No route-ready Antigravity profile is enabled. Add or enable an Antigravity account first."
+        case .grok:
+            return "No route-ready xAI account is enabled. Add or enable an xAI API key first."
+        }
+    }
+
     /// Compact badge label for the endpoint shape badge in the routing
     /// cockpit row. Shorter than `endpointDescription` since it sits inside
     /// a capsule next to the client name.
@@ -337,7 +353,10 @@ struct RoutingClientWiringChange: Sendable {
 enum RoutingClientWiringProbe: Sendable, Equatable {
     case skipped(reason: String)
     case ok(modelID: String)
-    case failed(status: Int, message: String)
+    /// `modelID` / `providerID` are the advertised row the ping actually
+    /// used. Both are nil when the probe fails closed before HTTP (no
+    /// eligible model for this target).
+    case failed(status: Int, message: String, modelID: String?, providerID: String?)
 }
 
 enum RoutingClientModelSyncStatus: Sendable, Equatable {
