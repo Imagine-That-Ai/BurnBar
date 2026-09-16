@@ -3,6 +3,10 @@ import XCTest
 @testable import OpenBurnBarKernel
 @testable import OpenBurnBarQuota
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 final class TogetherQuotaAdapterTests: XCTestCase {
     private let fixedNow = Date(timeIntervalSince1970: 1_784_275_200) // 2026-07-15T00:00:00Z
 
