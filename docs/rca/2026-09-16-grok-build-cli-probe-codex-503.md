@@ -1,6 +1,7 @@
 # RCA: Grok Build CLI probe returns HTTP 503 about a missing Codex executable
 
-**Issue:** [#2616](https://github.com/Imagine-That-Ai/BurnBar/issues/2616)
+**Filed as:** https://github.com/Imagine-That-Ai/BurnBar/issues/2616  
+**Issue:** [#2616](https://github.com/Imagine-That-Ai/BurnBar/issues/2616) — Grok Build CLI probe: HTTP 503 — Codex executable not found in trusted install locations  
 **Status:** RCA only. No product fix in this change — the defect is a probe-selection / attribution mismatch, not a one-line bug.
 **Primary evidence:** screenshot below, captured on OpenBurnBar `1.0.40+repair.41` (build 86).
 
