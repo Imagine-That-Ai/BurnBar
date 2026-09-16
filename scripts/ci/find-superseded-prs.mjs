@@ -58,7 +58,7 @@ export const MIN_SIGNIFICANT_LENGTH = 8;
 // signal, it is a meaningless one, so these paths are treated like binaries:
 // counted as unscoreable rather than scored wrongly.
 export const GENERATED_LOCKFILE_PATTERN =
-  /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|Package\.resolved|Gemfile\.lock|poetry\.lock|uv\.lock|composer\.lock|go\.sum|gradle\.lockfile|packages\.lock\.json)$/u;
+  /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lock|Cargo\.lock|Package\.resolved|Gemfile\.lock|poetry\.lock|uv\.lock|composer\.lock|go\.sum|gradle\.lockfile|packages\.lock\.json)$/u;
 
 export function isGeneratedLockfile(path) {
   return GENERATED_LOCKFILE_PATTERN.test(path);
@@ -180,16 +180,21 @@ export function classify(
 
 // ── git / gh access ────────────────────────────────────────────────────────
 
-function git(args, { cwd = process.cwd(), allowFailure = false } = {}) {
+function git(args, { cwd = process.cwd(), allowFailure = false, quiet = false } = {}) {
   try {
     return execFileSync("git", args, {
       cwd,
       encoding: "utf8",
       maxBuffer: 256 * 1024 * 1024,
-      // A path absent from the base branch is a normal, meaningful answer here
-      // (scoreFile treats null as "not landed"), so git's "fatal: path ... does
-      // not exist" must not spill onto the console and read like a failure.
-      stdio: ["ignore", "pipe", "ignore"],
+      // Only the `git show <ref>:<path>` lookup passes `quiet`: a path absent
+      // from the base branch is a normal, meaningful answer there (scoreFile
+      // treats null as "not landed"), so its "fatal: path ... does not exist"
+      // must not spill onto the console and read like a failure. Every other
+      // command keeps Node's default stderr forwarding — a `fetch` that fails
+      // on a missing remote, expired auth or no network is infrastructure
+      // breakage, and silencing it would let `indeterminate` verdicts pass for
+      // a valid triage result.
+      ...(quiet ? { stdio: ["ignore", "pipe", "ignore"] } : {}),
     });
   } catch (error) {
     if (allowFailure) return null;
@@ -198,7 +203,7 @@ function git(args, { cwd = process.cwd(), allowFailure = false } = {}) {
 }
 
 export function fileOnRef(ref, path, options = {}) {
-  return git(["show", `${ref}:${path}`], { ...options, allowFailure: true });
+  return git(["show", `${ref}:${path}`], { ...options, allowFailure: true, quiet: true });
 }
 
 export function listOpenPullRequests({ repo, limit = 200, cwd } = {}) {

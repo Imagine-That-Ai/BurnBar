@@ -299,6 +299,7 @@ test("lockfiles across ecosystems are recognised as generated", () => {
     "package-lock.json",
     "website/yarn.lock",
     "app/pnpm-lock.yaml",
+    "plugins/openburnbar/bun.lock",
     "crates/podex/Cargo.lock",
     "Packages/Package.resolved",
     "Gemfile.lock",

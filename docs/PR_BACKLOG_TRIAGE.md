@@ -70,7 +70,7 @@ number that looks like partial supersession and means nothing: BurnBar #2426, a
 routine `functions/package-lock.json` bump that no other open PR touched,
 scored **55.0%** purely from that overlap.
 
-So `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`,
+So `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `bun.lock`, `Cargo.lock`,
 `Package.resolved`, `Gemfile.lock`, `poetry.lock`, `uv.lock`, `composer.lock`,
 `go.sum`, `gradle.lockfile`, `packages.lock.json` and `npm-shrinkwrap.json` are
 treated like binaries — counted as unscoreable rather than scored wrongly. With
