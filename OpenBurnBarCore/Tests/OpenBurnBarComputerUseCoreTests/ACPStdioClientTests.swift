@@ -56,13 +56,19 @@ final class ACPStdioClientTests: XCTestCase {
         XCTAssertEqual(CLIArgumentBuilderForbiddenFlags.hits(in: ["--yolo"]), ["--yolo"])
     }
 
+    /// A child that is already gone must fail the handshake as soon as the read
+    /// loop can see it is gone, not at the deadline. `LineScanner.readLine` only
+    /// returns nil once the instant it is handed has passed, so before the loop
+    /// read in slices this spent the entire `timeoutSeconds` — 180 seconds on
+    /// the production default — before reporting a definitively dead child.
     func testHandshakeFailureWhenChildExits() async {
+        let started = Date()
         do {
             _ = try await ACPStdioClient.runSession(
                 executable: "/usr/bin/true",
                 arguments: [],
                 prompt: "hi",
-                timeoutSeconds: 2,
+                timeoutSeconds: 20,
                 onPermission: { _ in true }
             )
             XCTFail("empty handshake must throw")
@@ -71,6 +77,7 @@ final class ACPStdioClientTests: XCTestCase {
         } catch {
             XCTFail("unexpected \(error)")
         }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "a dead child must not be waited out")
     }
 
     func testInterruptTerminatesBeforeHandshake() async {

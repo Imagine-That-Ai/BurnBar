@@ -144,15 +144,22 @@ public enum ACPStdioClient {
             return try send(data)
         }
 
-        // A child that is already gone during the handshake surfaces below as
-        // `acp_handshake_failed` once its stdout yields no session.
-        try write("initialize", params: [
+        // A child that is already gone rejects one of these writes with EPIPE,
+        // and there is no session to wait for after that: fail the handshake on
+        // the spot instead of letting the read loop burn the whole timeout.
+        let initializeDelivered = try write("initialize", params: [
             "protocolVersion": 1,
             "clientInfo": ["name": "OpenBurnBar", "version": "1"],
             "capabilities": ["fs": false, "terminal": false]
         ])
-        try write("notifications/initialized", params: [:], notification: true)
-        try write("session/new", params: ["cwd": workingDirectory?.path ?? FileManager.default.currentDirectoryPath])
+        let initializedDelivered = try write("notifications/initialized", params: [:], notification: true)
+        let sessionDelivered = try write(
+            "session/new",
+            params: ["cwd": workingDirectory?.path ?? FileManager.default.currentDirectoryPath]
+        )
+        if !(initializeDelivered && initializedDelivered && sessionDelivered) {
+            throw Error(code: "acp_handshake_failed", message: "ACP child closed stdin during the handshake.")
+        }
 
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         var sessionID: String?
@@ -166,7 +173,13 @@ public enum ACPStdioClient {
                 process.terminate()
                 throw Error(code: "interrupted", message: "ACP session interrupted.")
             }
-            guard let line = scanner.readLine(from: stdoutHandle, until: deadline) else {
+            // Read in slices so a child that dies quietly is noticed within a
+            // quarter second rather than at the deadline: `readLine` only
+            // returns nil when the instant it is handed has passed, so passing
+            // `deadline` here would hide both the liveness and interrupt checks
+            // above for the full timeout.
+            let slice = min(deadline, Date().addingTimeInterval(0.25))
+            guard let line = scanner.readLine(from: stdoutHandle, until: slice) else {
                 if !process.isRunning { break }
                 continue
             }
@@ -208,7 +221,17 @@ public enum ACPStdioClient {
                     ]
                     var data = try JSONSerialization.data(withJSONObject: response)
                     data.append(0x0A)
-                    _ = try send(data)
+                    // A refusal that never reached the agent must not end up
+                    // reported as a completed mission, so a dropped denial is
+                    // fatal. A dropped approval stays best effort: the agent is
+                    // already gone and cannot act on a grant it never read.
+                    let delivered = try send(data)
+                    if !delivered && !allowed {
+                        throw Error(
+                            code: "acp_child_exited",
+                            message: "ACP child closed stdin before the permission denial could be delivered."
+                        )
+                    }
                 }
                 continue
             }
