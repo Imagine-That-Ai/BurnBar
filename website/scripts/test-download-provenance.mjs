@@ -144,8 +144,8 @@ if (macUpdateBaseUrlRaw) {
   );
 }
 
-assert.match(downloadPage, /macOS DMG is served from the signed GitHub Release for this cut/);
-assert.match(downloadPage, /checksum\s+matches the immutable GitHub Release asset/);
+assert.match(downloadPage, /macOS\s+DMG\s+is\s+served\s+from\s+the\s+signed\s+GitHub\s+Release\s+for\s+this\s+cut/);
+assert.match(downloadPage, /checksum\s+matches\s+the\s+immutable\s+GitHub\s+Release\s+asset/);
 assert.match(
   downloadPage,
   /<BaseLayout[\s\S]*?ambientEffects=\{false\}[\s\S]*?>/,
