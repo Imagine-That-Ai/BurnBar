@@ -75,17 +75,28 @@ The adapter then reports the exact prepaid credit balance from
 rolling 24h / 7d / 30d spend from `POST /v1/billing/teams/{team_id}/usage`. The
 team id is auto-discovered via `GET /v1/teams` and cached.
 
-### Connect via SuperGrok login (consumer pacing estimate)
+### SuperGrok remaining prompts (estimated — no vendor login)
 
-SuperGrok Lite / SuperGrok / SuperGrok Heavy have no public consumer-quota
-endpoint, so OpenBurnBar estimates a rolling 2-hour prompt window from local
-routing activity. Pick the matching tier in the plan picker; the rolling cap is
-community-estimated (Lite 30 / SuperGrok 100 / Heavy 400 prompts per 2h) and the
-snapshot is flagged as estimated. Add an `xai-…` inference key in Accounts so the
-Mac proxy can route Grok traffic, which also populates the pacing log
+SuperGrok Lite / SuperGrok / SuperGrok Heavy have no public consumer remaining-quota
+API, and OpenBurnBar does not offer a SuperGrok OAuth or grok.com session capture.
+Pick the matching tier in the quota card; the rolling cap is community-estimated
+(Lite 30 / SuperGrok 100 / Heavy 400 prompts per 2h) and the snapshot is flagged
+as estimated. Add an `xai-…` inference key so the Mac proxy can route Grok
+traffic, which populates the pacing log
 (`~/Library/Application Support/OpenBurnBar/xai/superGrok-events.jsonl`).
+This is not a vendor login.
 
 See [grok.com/plans](https://grok.com/plans) for current tier pricing.
+
+### Grok Build CLI login (`~/.grok/auth.json`)
+
+`grok login` writes `~/.grok/auth.json` (OIDC session or `xai::api_key`).
+OpenBurnBar detects that file the same way it detects Codex `auth.json`: presence
+of a non-empty `key` field, plus a safe email label when the CLI stored one.
+A bare `~/.grok` folder or `sessions/` tree is not a login. CLI auth is
+historical session usage via `GrokParser`, not SuperGrok remaining quota and not
+GrokBuild prepaid credits. Connections → Grok Build only routes the CLI through
+the local gateway.
 
 ### Grok Build CLI (Mac Switcher + gateway wiring)
 
@@ -106,6 +117,35 @@ vendor identity (`AgentProvider.xAI`, catalog id `xai`) and adds a Switcher CLI 
 
 CLI sessions sync to Firestore as **archive-only** (`CLIAgentRuntime.grok`); native
 resume (`grok -r`) is not yet in `native_eligible`.
+
+### Manual Mac check (three xAI lanes)
+
+This is vendor-meter setup, not BurnBar Firebase sign-in. Do not use Settings → Account.
+
+**Lane 1 — GrokBuild (exact credits)**
+
+1. Open [console.x.ai/team/api-keys](https://console.x.ai/team/api-keys) and create a Management Key (`xai-mgmt-…`). Do not paste an `xai-…` inference key here.
+2. BurnBar menu bar → Quotas (or Settings → Quotas) → xAI card → expand.
+3. Confirm the card shows three lanes: **GrokBuild credits**, **SuperGrok (estimated)**, **Grok CLI**.
+4. Paste the management key into GrokBuild → pick **GrokBuild** in the plan picker → **Save & refresh**.
+5. Expect prepaid credit balance plus 24h / 7d / 30d spend. A rejected key must say the key was rejected, not “quota connected.”
+6. Settings → Connections → **Grok Build** is still “route the CLI.” Connecting it does not refresh GrokBuild meters.
+
+**Lane 2 — Grok CLI (`~/.grok/auth.json`)**
+
+1. Install the official `grok` CLI. Run `grok login` in Terminal (or Account Switcher → Grok Build → Add Account).
+2. Confirm `~/.grok/auth.json` exists and has a non-empty `key` under an `https://auth.x.ai…` or `xai::api_key` entry. An empty `~/.grok` folder or `sessions/` tree alone is not a login.
+3. Re-open Quotas → xAI. The Grok CLI lane should show the email from `auth.json` (or “Grok CLI API key” / `XAI_API_KEY`).
+4. That lane is presence-only. It does not fill SuperGrok remaining prompts or GrokBuild credits.
+
+**Lane 3 — SuperGrok (estimated, no vendor login)**
+
+1. Quotas → xAI → SuperGrok lane. There is no Connect / Sign in / WKWebView.
+2. Pick SuperGrok Lite / SuperGrok / SuperGrok Heavy → **Save & refresh**.
+3. Expect an estimated 2-hour prompt window (30 / 100 / 400) flagged estimated. Status copy must say remaining-quota is estimated and that xAI has no SuperGrok remaining-quota API.
+4. Routing still needs an `xai-…` inference key. Routed Grok traffic fills `~/Library/Application Support/OpenBurnBar/xai/superGrok-events.jsonl`.
+
+Inference key ≠ meter: an `xai-…` key only routes. `xai-mgmt-…` only meters GrokBuild. CLI `auth.json` only proves `grok login`.
 
 ## Endpoint profiles
 

@@ -241,6 +241,7 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         let methodIDs = Set(descriptor.methods.map(\.id))
         XCTAssertTrue(methodIDs.contains("xai-api-key"))
         XCTAssertTrue(methodIDs.contains("xai-management-key"))
+        XCTAssertTrue(methodIDs.contains("xai-grok-cli"))
 
         guard let management = descriptor.methods.first(where: { $0.id == "xai-management-key" }) else {
             XCTFail("Management-key method missing")
@@ -248,6 +249,14 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         }
         XCTAssertTrue(management.unlocksQuotaRefresh)
         XCTAssertEqual(management.prefixHint, "xai-mgmt-")
+
+        guard let grokCLI = descriptor.methods.first(where: { $0.id == "xai-grok-cli" }) else {
+            XCTFail("Grok CLI method missing")
+            return
+        }
+        XCTAssertEqual(grokCLI.kind, .localRuntime)
+        XCTAssertFalse(grokCLI.unlocksQuotaRefresh)
+        XCTAssertFalse(grokCLI.unlocksProxyRouting)
     }
 
     func test_storageScope_appKeychainHasAccountIdentifier() {

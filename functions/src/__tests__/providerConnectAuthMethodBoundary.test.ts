@@ -33,6 +33,7 @@ describe("provider account cloud auth method boundary", () => {
       ["openai", "openai-codex-oauth"],
       ["kimi", "kimi-session-token"],
       ["xai", "xai-api-key"],
+      ["xai", "xai-grok-cli"],
     ] as const) {
       expect(() => normalizeCloudConnectAuthMethodID(provider, method)).toThrow(
         /local-only or daemon-managed/,
