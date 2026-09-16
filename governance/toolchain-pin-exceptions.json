@@ -8,6 +8,14 @@
     "expiresOn": "2026-12-01"
   },
   {
+    "path": ".github/workflows/deploy-hosting.yml",
+    "line": 580,
+    "pin": 22,
+    "reason": "The credentialed deploy-hosting job never checks out the repo, so node-version-file cannot resolve .nvmrc in its workspace — the #2483 pin-file conversion broke this lane (setup-node exited 'node version file does not exist'). Bare literal equals the .nvmrc pin (22). Convert to a pin-file form only with a mechanism that materializes the pin without a checkout.",
+    "owner": "Ajnunezg",
+    "expiresOn": "2026-12-01"
+  },
+  {
     "path": ".github/workflows/domain-core-console-release-evidence.yml",
     "line": 97,
     "pin": 24,
