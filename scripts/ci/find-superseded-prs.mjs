@@ -49,6 +49,21 @@ export const DEFAULT_PARTIAL_THRESHOLD = 0.5;
 // something. This is the single most important knob in the file.
 export const MIN_SIGNIFICANT_LENGTH = 8;
 
+// Generated dependency lockfiles are excluded from scoring entirely.
+// Two versions of a lockfile share an enormous number of byte-identical lines
+// — pinned transitive deps that did not move — so coverage against main reports
+// something like 55% for a routine bump that supersedes nothing. BurnBar #2426
+// (a functions/package-lock.json bump, no other open PR touching that
+// directory) scored 55.0% purely from that overlap. The number is not a weak
+// signal, it is a meaningless one, so these paths are treated like binaries:
+// counted as unscoreable rather than scored wrongly.
+export const GENERATED_LOCKFILE_PATTERN =
+  /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lock|Cargo\.lock|Package\.resolved|Gemfile\.lock|poetry\.lock|uv\.lock|composer\.lock|go\.sum|gradle\.lockfile|packages\.lock\.json)$/u;
+
+export function isGeneratedLockfile(path) {
+  return GENERATED_LOCKFILE_PATTERN.test(path);
+}
+
 const IDENTIFIER_PATTERN = /[A-Za-z0-9_]/u;
 
 /**
@@ -75,7 +90,7 @@ export function parseUnifiedDiff(diffText) {
 
   const ensure = (path) => {
     if (!files.has(path)) {
-      files.set(path, { path, added: [], binary: false });
+      files.set(path, { path, added: [], binary: false, generated: false });
     }
     return files.get(path);
   };
@@ -86,6 +101,7 @@ export function parseUnifiedDiff(diffText) {
       // Use the post-image path so renames are attributed to where the content
       // now lives, which is the path we will look up on the base branch.
       current = ensure(header[2]);
+      if (isGeneratedLockfile(current.path)) current.generated = true;
       continue;
     }
     if (!current) continue;
@@ -164,12 +180,21 @@ export function classify(
 
 // ── git / gh access ────────────────────────────────────────────────────────
 
-function git(args, { cwd = process.cwd(), allowFailure = false } = {}) {
+function git(args, { cwd = process.cwd(), allowFailure = false, quiet = false } = {}) {
   try {
     return execFileSync("git", args, {
       cwd,
       encoding: "utf8",
       maxBuffer: 256 * 1024 * 1024,
+      // Only the `git show <ref>:<path>` lookup passes `quiet`: a path absent
+      // from the base branch is a normal, meaningful answer there (scoreFile
+      // treats null as "not landed"), so its "fatal: path ... does not exist"
+      // must not spill onto the console and read like a failure. Every other
+      // command keeps Node's default stderr forwarding — a `fetch` that fails
+      // on a missing remote, expired auth or no network is infrastructure
+      // breakage, and silencing it would let `indeterminate` verdicts pass for
+      // a valid triage result.
+      ...(quiet ? { stdio: ["ignore", "pipe", "ignore"] } : {}),
     });
   } catch (error) {
     if (allowFailure) return null;
@@ -178,7 +203,7 @@ function git(args, { cwd = process.cwd(), allowFailure = false } = {}) {
 }
 
 export function fileOnRef(ref, path, options = {}) {
-  return git(["show", `${ref}:${path}`], { ...options, allowFailure: true });
+  return git(["show", `${ref}:${path}`], { ...options, allowFailure: true, quiet: true });
 }
 
 export function listOpenPullRequests({ repo, limit = 200, cwd } = {}) {
@@ -236,7 +261,7 @@ export function analyzePullRequest(pr, { baseRef, cwd } = {}) {
   const fileScores = [];
   const files = [];
   for (const entry of parsed.values()) {
-    if (entry.binary) continue;
+    if (entry.binary || entry.generated) continue;
     const baseContent = fileOnRef(baseRef, entry.path, { cwd });
     const score = scoreFile({ added: entry.added, baseContent });
     fileScores.push(score);
