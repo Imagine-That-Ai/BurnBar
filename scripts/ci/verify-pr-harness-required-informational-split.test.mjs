@@ -13,6 +13,10 @@
  *      platform-confidence-gate, or targeted-e2e-gate) — no coverage dropped.
  *   4. android-hermes-smoke uses runs-on: ubuntu-24.04 and arch: x86_64
  *      (not macos-26 or arm64-v8a) and has a KVM enable step.
+ *   5. macos-26 jobs wait for platform-misc (fail-fast: no hosted-macOS burn
+ *      after a red classifier). ios-mobile stays informational and is capped
+ *      at 30-45 minutes. app-xctest stays required at 75 minutes and is not
+ *      continue-on-error (timeout stays honest-red).
  *
  * Run: node scripts/ci/verify-pr-harness-required-informational-split.test.mjs
  * Exits 0 on pass, 1 on fail.
@@ -370,6 +374,76 @@ const allJobNames = [...jobs.keys()];
       `${name} has a KVM enable step`,
       /KVM/u.test(block),
       "no KVM reference found in job block",
+    );
+  }
+}
+
+// --- Assertion 5: fail-fast + informational iOS cap + required XCTest timeout ---
+{
+  const macosJobs = [];
+  for (const [name, block] of jobs) {
+    if (/^    runs-on:\s*macos-26\s*$/mu.test(block)) {
+      macosJobs.push(name);
+    }
+  }
+
+  expect("at least one macos-26 job exists", macosJobs.length > 0);
+
+  for (const name of macosJobs) {
+    const needs = extractNeeds(jobs.get(name));
+    expect(
+      `${name} waits for platform-misc (fail-fast: no macos-26 burn after red classifier)`,
+      needs.includes("platform-misc"),
+      `needs: [${needs.join(", ")}]`,
+    );
+  }
+
+  const ios = jobs.get("ios-mobile");
+  expect("ios-mobile job exists", ios !== undefined);
+  if (ios) {
+    const timeoutMatch = /^    timeout-minutes:\s*(\d+)\s*$/mu.exec(ios);
+    const timeout = timeoutMatch ? Number(timeoutMatch[1]) : NaN;
+    expect(
+      "ios-mobile timeout is 30-45 minutes (informational must not hold macos-26 all night)",
+      timeout >= 30 && timeout <= 45,
+      `found timeout-minutes: ${timeoutMatch ? timeoutMatch[1] : "(missing)"}`,
+    );
+    expect(
+      "ios-mobile job is not continue-on-error (timeout stays visible, not skip/success)",
+      !/^    continue-on-error:/mu.test(ios),
+    );
+  }
+
+  const app = jobs.get("app-xctest");
+  expect("app-xctest job exists", app !== undefined);
+  if (app) {
+    const timeoutMatch = /^    timeout-minutes:\s*(\d+)\s*$/mu.exec(app);
+    const timeout = timeoutMatch ? Number(timeoutMatch[1]) : NaN;
+    expect(
+      "app-xctest keeps the required 75-minute red timeout (do not shrink away XCTest evidence)",
+      timeout === 75,
+      `found timeout-minutes: ${timeoutMatch ? timeoutMatch[1] : "(missing)"}`,
+    );
+    expect(
+      "app-xctest job is not continue-on-error (timeout stays honest-red)",
+      !/^    continue-on-error:/mu.test(app),
+    );
+  }
+
+  const platformMisc = jobs.get("platform-misc");
+  expect("platform-misc job exists", platformMisc !== undefined);
+  if (platformMisc) {
+    expect(
+      "platform-misc still runs the app-test log classifier (do not delete or skip the honest-red step)",
+      /Test OpenBurnBar app-test log classifier/u.test(platformMisc),
+    );
+    const classifierIdx = platformMisc.indexOf("Test OpenBurnBar app-test log classifier");
+    const classifierTail = platformMisc.slice(classifierIdx);
+    const nextStep = classifierTail.search(/\n      - (?:name:|uses:)/u);
+    const classifierStep = nextStep === -1 ? classifierTail : classifierTail.slice(0, nextStep);
+    expect(
+      "classifier step is not continue-on-error (stay honest-red)",
+      !/continue-on-error:/u.test(classifierStep),
     );
   }
 }
