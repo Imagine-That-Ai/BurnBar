@@ -704,11 +704,24 @@ public enum BurnBarProviderAuthRegistry {
                 storage: .appKeychain(account: "provider.xai.managementKey"),
                 unlocksProxyRouting: false,
                 unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "xai-grok-cli",
+                kind: .localRuntime,
+                displayName: "Grok Build CLI login",
+                summary: "Detects ~/.grok/auth.json from `grok login`. Historical session tokens only — not remaining quota.",
+                helperText: "Run `grok login` on this Mac. OpenBurnBar reads auth.json for presence and a safe email label only. This does not unlock SuperGrok remaining-quota or GrokBuild credits. An xai-… inference key still routes traffic.",
+                placeholder: "~/.grok/auth.json",
+                dashboardURL: "https://console.x.ai",
+                dashboardLabel: "xAI console",
+                storage: .daemonSlot,
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: false
             )
         ],
-        summary: "xAI Grok — OpenAI-compatible routing plus Management-API quota reporting (GrokBuild + SuperGrok tiers).",
-        proxyHint: "Routed via api.x.ai (OpenAI-compatible).",
-        quotaHint: "Add a Management Key for exact GrokBuild credit balance; SuperGrok tiers use local pacing estimates."
+        summary: "xAI Grok — OpenAI-compatible routing plus Management-API quota reporting (GrokBuild) and estimated SuperGrok pacing.",
+        proxyHint: "Routed via api.x.ai (OpenAI-compatible). Inference keys are not quota meters.",
+        quotaHint: "Management Key for exact GrokBuild credits. SuperGrok remaining-quota is estimated locally — xAI has no consumer quota API. Grok CLI ~/.grok/auth.json is a local login, not a meter."
     )
 
     private static let mimoDescriptor = BurnBarProviderAuthDescriptor(

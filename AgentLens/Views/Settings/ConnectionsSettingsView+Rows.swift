@@ -1132,6 +1132,9 @@ struct AppConnectRow: View {
         }
         switch state {
         case .connected:
+            if target == .grok {
+                return "Routes Grok CLI through the local gateway. Quota meters live under Settings → Quotas."
+            }
             if modelSummary?.openburnbarModelCount == nil, !target.supportsModelSync {
                 return "Connected via local gateway"
             }
@@ -1158,7 +1161,7 @@ struct AppConnectRow: View {
         case .antigravity:
             return "No route-ready Antigravity profile is enabled. Add or enable an Antigravity account first."
         case .grok:
-            return "No route-ready xAI account is enabled. Add or enable an xAI API key first."
+            return "No route-ready xAI inference key. That key routes Grok CLI traffic; it is not a GrokBuild or SuperGrok quota meter."
         }
     }
 
