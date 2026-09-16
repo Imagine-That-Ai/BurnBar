@@ -1326,14 +1326,32 @@ jobs:
       - name: Install Sparkle signing tools
         run: |
           set -euo pipefail
-          brew install --cask sparkle
-          SPARKLE_CASKROOM="$(brew --prefix)/Caskroom/sparkle"
+          # Homebrew hard-disabled the sparkle cask on 2026-09-01 (upstream
+          # release binaries are ad-hoc signed and fail the Gatekeeper check),
+          # so `brew install --cask sparkle` can never succeed again. Fetch the
+          # exact tarball the cask pinned — same URL scheme, same published
+          # sha256 from Homebrew/homebrew-cask Casks/s/sparkle.rb @ 2.9.6 — and
+          # keep every containment property the cask step enforced: pinned
+          # version, pinned digest, quarantine stripped, regular file, single
+          # owned root directory.
+          SPARKLE_VERSION="2.9.6"
+          SPARKLE_SHA256="52bf9e88cdd972fc0c81501377a880e90d47031bd8ca5462488f843e2609e192"
+          SPARKLE_CASKROOM="${RUNNER_TEMP:-/tmp}/sparkle-caskroom"
+          rm -rf "$SPARKLE_CASKROOM"
+          mkdir -p "$SPARKLE_CASKROOM"
+          SPARKLE_TARBALL="$SPARKLE_CASKROOM/Sparkle-$SPARKLE_VERSION.tar.xz"
+          curl --fail --location --silent --show-error \
+            --output "$SPARKLE_TARBALL" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          echo "$SPARKLE_SHA256  $SPARKLE_TARBALL" | shasum --algorithm 256 --check -
+          tar --extract --file "$SPARKLE_TARBALL" --directory "$SPARKLE_CASKROOM" ./bin/sign_update
+          rm -f "$SPARKLE_TARBALL"
           xattr -dr com.apple.quarantine "$SPARKLE_CASKROOM" 2>/dev/null || true
           SPARKLE_SIGN_UPDATE="$(
             find "$SPARKLE_CASKROOM" -name sign_update -type f -print -quit 2>/dev/null || true
           )"
           if [[ -z "$SPARKLE_SIGN_UPDATE" ]]; then
-            echo "::error::Sparkle sign_update tool was not found after cask install."
+            echo "::error::Sparkle sign_update tool was not found after pinned-tarball extraction."
             echo "::group::Sparkle install tree"
             find "$SPARKLE_CASKROOM" -path '*Sparkle*' -print 2>/dev/null || true
             echo "::endgroup::"
@@ -1342,13 +1360,13 @@ jobs:
           SPARKLE_CASKROOM_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_CASKROOM")"
           SPARKLE_SIGN_UPDATE_REAL="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$SPARKLE_SIGN_UPDATE")"
           if [[ -L "$SPARKLE_SIGN_UPDATE" ]]; then
-            echo "::error::Sparkle sign_update must be a regular file from the Homebrew cask, not a symlink: $SPARKLE_SIGN_UPDATE"
+            echo "::error::Sparkle sign_update must be a regular file from the pinned Sparkle caskroom, not a symlink: $SPARKLE_SIGN_UPDATE"
             exit 1
           fi
           case "$SPARKLE_SIGN_UPDATE_REAL" in
             "$SPARKLE_CASKROOM_REAL"/*) ;;
             *)
-              echo "::error::Sparkle sign_update resolved outside the Homebrew Sparkle cask: $SPARKLE_SIGN_UPDATE_REAL"
+              echo "::error::Sparkle sign_update resolved outside the pinned Sparkle caskroom: $SPARKLE_SIGN_UPDATE_REAL"
               exit 1
               ;;
           esac
