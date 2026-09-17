@@ -267,6 +267,18 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertEqual(Set(providerIDs).count, providerIDs.count)
     }
 
+    func test_cursor_registersMeterConnectMethodsWithoutProxyRouting() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "cursor")
+        XCTAssertEqual(descriptor?.providerID, "cursor")
+        XCTAssertEqual(descriptor?.primaryMethod.id, "cursor-cookie-paste")
+        XCTAssertTrue(descriptor?.supportsQuotaRefresh ?? false)
+        XCTAssertFalse(descriptor?.supportsProxyRouting ?? true)
+        XCTAssertEqual(descriptor?.method(id: "cursor-workos-session")?.kind, .browserLogin)
+        XCTAssertEqual(descriptor?.method(id: "cursor-editor-vscdb")?.kind, .localRuntime)
+        XCTAssertFalse(descriptor?.quotaHint?.contains("$200") ?? true)
+        XCTAssertTrue(descriptor?.quotaHint?.contains("usage-summary") ?? false)
+    }
+
     func test_eachRegisteredDescriptorHasAtLeastOneMethod() {
         for descriptor in BurnBarProviderAuthRegistry.descriptors {
             XCTAssertFalse(descriptor.methods.isEmpty, "\(descriptor.providerID) has no methods")

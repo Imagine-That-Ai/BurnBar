@@ -2,205 +2,156 @@ import Foundation
 #if os(macOS)
 import AppKit
 #endif
-import WebKit
+import OpenBurnBarCore
 
 // MARK: - Cursor Login Helper
 
-/// Opens a WKWebView pointed at cursor.com so the user can sign in
-/// via Google, GitHub, or email. After successful authentication, the
-/// `WorkosCursorSessionToken` cookie is captured and stored in Keychain
-/// for use by `CursorQuotaAdapter`.
+/// Captures a Cursor *product* session so usage-summary meters can refresh.
+/// This is not BurnBar / Firebase sign-in and invents no OAuth client IDs.
 ///
-/// Cursor uses WorkOS for authentication. The actual OAuth PKCE flow
-/// is handled by WorkOS/Google/GitHub — we only need to open cursor.com
-/// and capture the resulting session cookies.
+/// Web capture reuses `FactoryLoginHelper` (non-persistent WKWebView, Google
+/// popup routing, Safari UA). Success requires `WorkosCursorSessionToken`.
+/// The cookie is persisted to `ProviderAPIKeyStore` (`cursor_cookie` / per-seat
+/// accounts) — the store `CursorQuotaAdapter` already reads.
+///
+/// Quota refresh must never call these methods.
 
 @MainActor
-final class CursorLoginHelper: NSObject, WKNavigationDelegate {
-    private static var activeHelpers: [ObjectIdentifier: CursorLoginHelper] = [:]
-
-    // MARK: - Types
+enum CursorLoginHelper {
 
     struct LoginResult: Sendable {
         let cookieHeader: String
-        let cookies: [HTTPCookie]
+        let persist: CursorMeterPersistPlan
     }
 
-    // MARK: - Public API
-
-    /// Opens a Cursor login window and waits for the user to authenticate.
-    ///
-    /// - Returns: The captured cookie header, or throws if the user cancels
-    ///   or authentication fails.
-    /// - Throws: `CursorLoginError` on failure or user cancellation.
-    static func login() async throws -> LoginResult {
-        try await withCheckedThrowingContinuation { continuation in
-            let helper = CursorLoginHelper(continuation: continuation)
-            activeHelpers[ObjectIdentifier(helper)] = helper
-            helper.start()
-        }
+    enum PersistOutcome: Sendable {
+        case persisted(CursorMeterPersistPlan)
+        case needsConfirmation(CursorMeterPersistPlan)
     }
 
-    /// Compatibility wrapper for quota code that treats cancelled login as
-    /// missing credentials.
+    /// Opens Cursor's own login window. Cancel returns nil without changing secrets.
+    /// Compatibility wrapper — popover/wizard should call `captureWebSession` then persist.
     static func runLoginFlow() async -> String? {
-        try? await login().cookieHeader // try?-ok(cancel means no creds)
+        try? await captureWebSession()
     }
 
-    // MARK: - Private
-
-    private var continuation: CheckedContinuation<LoginResult, any Error>?
-    private var webView: WKWebView?
-    private var windowLifecycleHandler: WindowDelegate?
-
-    private init(continuation: CheckedContinuation<LoginResult, any Error>) {
-        self.continuation = continuation
-        super.init()
+    static func captureWebSession() async throws -> String {
+        guard let header = await FactoryLoginHelper.runCursorLoginFlow() else {
+            throw CursorLoginError.userCancelled
+        }
+        guard CursorMeterSeatPlanning.workosCookieValue(fromCookieHeader: header) != nil else {
+            throw CursorLoginError.noCookiesFound
+        }
+        return header
     }
 
-    private func start() {
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
-
-        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 480, height: 640), configuration: config)
-        webView.navigationDelegate = self
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
-
-        self.webView = webView
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),
-            styleMask: [.titled, .closable, .miniaturizable],
-            backing: .buffered,
-            defer: false
+    static func login(
+        installLabel: String = "Cursor",
+        confirmAddSeat: Bool = false,
+        replaceExistingDefault: Bool = false,
+        keyStore: ProviderAPIKeyStore = .shared
+    ) async throws -> LoginResult {
+        let header = try await captureWebSession()
+        let outcome = try persistCookie(
+            header,
+            installLabel: installLabel,
+            confirmAddSeat: confirmAddSeat,
+            replaceExistingDefault: replaceExistingDefault,
+            keyStore: keyStore
         )
-        window.title = "Sign in to Cursor"
-        window.contentView = webView
-        window.center()
-
-        // Close window → user cancelled
-        let windowLifecycleHandler = WindowDelegate(onClose: { [weak self] in
-            self?.finish(.failure(CursorLoginError.userCancelled))
-        })
-        self.windowLifecycleHandler = windowLifecycleHandler
-        window.delegate = windowLifecycleHandler
-
-        window.makeKeyAndOrderFront(nil)
-
-        guard let url = URL(string: "https://cursor.com") else {
-            finish(.failure(CursorLoginError.invalidURL))
-            return
-        }
-        webView.load(URLRequest(url: url))
-    }
-
-    // MARK: - WKNavigationDelegate
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard let currentURL = webView.url?.absoluteString.lowercased() else { return }
-
-        // Successful login indicators:
-        // - cursor.com/dashboard (post-login landing)
-        // - cursor.com/settings (account page)
-        // - cursor.com/? (home with auth query params stripped, user is logged in)
-        let isPostLogin = currentURL.contains("cursor.com/dashboard")
-            || currentURL.contains("cursor.com/settings")
-            || (currentURL.contains("cursor.com") && !currentURL.contains("login") && !currentURL.contains("signin"))
-
-        guard isPostLogin else { return }
-
-        // Give cookies a moment to settle, then capture them
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms // try?-ok(cancellation only)
-            await self?.captureCookies()
+        switch outcome {
+        case .persisted(let plan):
+            return LoginResult(cookieHeader: plan.seat.cookieHeader, persist: plan)
+        case .needsConfirmation:
+            throw CursorLoginError.needsSeatConfirmation
         }
     }
 
-    private func captureCookies() async {
-        guard let webView else { return }
-
-        let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
-        let cookies = await cookieStore.allCookies()
-
-        // Find Cursor session cookies
-        let cursorCookies = cookies.filter { cookie in
-            let domain = cookie.domain.lowercased()
-            return domain.hasSuffix("cursor.com") || domain == "cursor.sh"
+    static func persistCookie(
+        _ incomingCookie: String,
+        installLabel: String,
+        email: String? = nil,
+        membershipType: String? = nil,
+        sourcePath: String? = nil,
+        confirmAddSeat: Bool = false,
+        replaceExistingDefault: Bool = false,
+        keyStore: ProviderAPIKeyStore = .shared
+    ) throws -> PersistOutcome {
+        let trimmed = incomingCookie.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            throw CursorLoginError.missingCookie
+        }
+        guard let workos = CursorMeterSeatPlanning.workosCookieValue(fromCookieHeader: trimmed) else {
+            throw CursorLoginError.invalidCookie
+        }
+        if CursorMeterSeatPlanning.isJWTExpired(CursorMeterSeatPlanning.accessToken(fromWorkosValue: workos)) {
+            throw CursorLoginError.expiredSession
         }
 
-        guard !cursorCookies.isEmpty else { return }
-
-        let cookieHeader = cursorCookies
-            .map { "\($0.name)=\($0.value)" }
-            .joined(separator: "; ")
-
-        guard !cookieHeader.isEmpty else { return }
-
-        // Store in Keychain
-        storeInKeychain(cookieHeader: cookieHeader)
-
-        // Close window
-        webView.window?.close()
-
-        let result = LoginResult(
-            cookieHeader: cookieHeader,
-            cookies: cursorCookies
+        let existingDefault = keyStore.apiKey(for: CursorMeterSeat.defaultCookieAccount)
+        let existingSeatIDs = CursorMeterSeatPlanning.parseSeatIDs(
+            fromIndexJSON: keyStore.apiKey(for: CursorMeterSeat.seatIndexAccount)
         )
-        finish(.success(result))
+        guard let plan = CursorMeterSeatPlanning.planPersist(
+            incomingCookie: trimmed,
+            existingDefaultCookie: existingDefault,
+            existingSeatIDs: existingSeatIDs,
+            installLabel: installLabel,
+            email: email,
+            membershipType: membershipType,
+            sourcePath: sourcePath,
+            replaceExistingDefault: replaceExistingDefault
+        ) else {
+            throw CursorLoginError.invalidCookie
+        }
+
+        if plan.avoidedOverwrite, !confirmAddSeat, !replaceExistingDefault {
+            return .needsConfirmation(plan)
+        }
+
+        try CursorMeterSeatPlanning.apply(plan) { account, value in
+            try keyStore.setAPIKey(value, for: account)
+        }
+        return .persisted(plan)
     }
 
-    private func finish(_ result: Result<LoginResult, any Error>) {
-        guard let continuation else { return }
-        self.continuation = nil
-
-        let window = webView?.window
-        webView?.navigationDelegate = nil
-        webView = nil
-        window?.delegate = nil
-        window?.close()
-        windowLifecycleHandler = nil
-        Self.activeHelpers.removeValue(forKey: ObjectIdentifier(self))
-
-        switch result {
-        case let .success(loginResult):
-            continuation.resume(returning: loginResult)
-        case let .failure(error):
-            continuation.resume(throwing: error)
-        }
+    static func persistEditorSession(
+        _ discovered: CursorCookieExtractor.DiscoveredSession,
+        confirmAddSeat: Bool = false,
+        replaceExistingDefault: Bool = false,
+        keyStore: ProviderAPIKeyStore = .shared
+    ) throws -> PersistOutcome {
+        try persistCookie(
+            discovered.session.cookieHeader,
+            installLabel: discovered.install.label,
+            email: discovered.session.email,
+            membershipType: discovered.session.membershipType,
+            sourcePath: discovered.install.stateDatabasePath,
+            confirmAddSeat: confirmAddSeat,
+            replaceExistingDefault: replaceExistingDefault,
+            keyStore: keyStore
+        )
     }
 
-    private func storeInKeychain(cookieHeader: String) {
-        let keychain = KeychainStore()
-        do {
-            try keychain.set(cookieHeader, for: "cursor_cookie")
-        } catch {
-            // Non-fatal: cookie works for this session even without keychain persistence
-            AppLogger.dataStore.silentFailure("CursorLoginHelper: Failed to store cookie in keychain", error: error)
-        }
+    static func discoverEditorSessions() -> [CursorCookieExtractor.DiscoveredSession] {
+        CursorCookieExtractor.readAllSessions()
+    }
+
+    static func configuredSeats(keyStore: ProviderAPIKeyStore = .shared) -> [CursorMeterSeat] {
+        CursorMeterSeatPlanning.configuredSeats(
+            fromResolvedKeys: CursorMeterSeatPlanning.loadResolvedKeys { keyStore.apiKey(for: $0) }
+        )
     }
 }
 
-// MARK: - Window Delegate
-
-private final class WindowDelegate: NSObject, NSWindowDelegate {
-    private let onClose: () -> Void
-
-    init(onClose: @escaping () -> Void) {
-        self.onClose = onClose
-        super.init()
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        onClose()
-    }
-}
-
-// MARK: - Error
-
-enum CursorLoginError: LocalizedError {
+enum CursorLoginError: LocalizedError, Equatable {
     case userCancelled
     case invalidURL
     case noCookiesFound
+    case missingCookie
+    case invalidCookie
+    case expiredSession
+    case needsSeatConfirmation
 
     var errorDescription: String? {
         switch self {
@@ -209,7 +160,15 @@ enum CursorLoginError: LocalizedError {
         case .invalidURL:
             return "Could not open Cursor login page."
         case .noCookiesFound:
-            return "Authentication succeeded but no Cursor session cookies were found."
+            return "Cursor signed in, but no WorkosCursorSessionToken cookie was found."
+        case .missingCookie:
+            return "Paste a WorkosCursorSessionToken to connect this meter."
+        case .invalidCookie:
+            return "That cookie is not a WorkosCursorSessionToken. Paste the Cursor session cookie and try again."
+        case .expiredSession:
+            return "That Cursor session has expired. Sign in to Cursor again, then reconnect."
+        case .needsSeatConfirmation:
+            return "This Cursor session is a different account. Confirm to add it as another meter seat."
         }
     }
 }

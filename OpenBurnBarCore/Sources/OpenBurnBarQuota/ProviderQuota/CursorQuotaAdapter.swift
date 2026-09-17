@@ -17,10 +17,16 @@ import FoundationNetworking
 /// This database is always readable without Full Disk Access (unlike Safari's
 /// binarycookies), making this a zero-config, zero-permission approach.
 ///
-/// ## Resolution chain (first wins)
-/// 1. `CURSOR_COOKIE_HEADER` environment variable
+/// Live URL: `GET https://cursor.sh/api/usage-summary` (docs also name cursor.com).
+/// Limits come from the JSON (`plan.limit` cents ÷ 100). Do not hard-code $200/$400.
+///
+/// ## Resolution chain
+/// Default seat:
+/// 1. `CURSOR_COOKIE_HEADER` environment variable (debug / CI)
 /// 2. Keychain-stored `cursor_cookie` value
-/// 3. Auto-extract JWT from `state.vscdb` via `CursorCookieExtractor.readSession()`
+/// 3. Auto-extract JWT from discovered `state.vscdb` installs, skipping expired JWTs
+/// Extra seats (`OPENBURNBAR_QUOTA_ACCOUNT_ID` set): only that seat's cookie.
+/// Refresh never opens a login window.
 ///
 /// If no source yields a session: returns `confidence: .unavailable` (NOT estimated).
 ///
@@ -36,7 +42,14 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        // 1. Try cookie header resolution (env -> keychain -> Cursor SQLite JWT)
+        if let stored = configuredCookie(from: context),
+           CursorMeterSeatPlanning.cookieHeaderIsExpired(stored) {
+            return unavailableSnapshot(
+                statusMessage: "Cursor signed this seat out. Reconnect to refresh the meter."
+            )
+        }
+
+        // Cookie resolution (env / seat keychain / matching editor JWT). Never opens login.
         if let credential = await resolveCursorCookieHeader(context: context) {
             do {
                 let usageSummaryData = try await fetchCursorUsageSummaryData(
@@ -58,15 +71,16 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
             } catch {
                 if credential.source == .configured, isAuthenticationRejection(error) {
                     return unavailableSnapshot(
-                        statusMessage: "Cursor rejected the configured cookie. Update the Cursor cookie in Settings or sign in to Cursor again."
+                        statusMessage: "Cursor rejected this session. Reconnect Cursor to refresh the meter."
                     )
                 }
                 // If an auto-discovered cookie is invalid, try the next source.
             }
         }
-        // No session available — return unavailable, NOT an estimate
         return unavailableSnapshot(
-            statusMessage: "Sign in to Cursor, reconnect Cursor in OpenBurnBar, or set CURSOR_COOKIE_HEADER."
+            statusMessage: extraSeatAccountID(from: context) == nil
+                ? "Connect Cursor to see included usage and Ultra spend."
+                : "Cursor signed this seat out. Reconnect to refresh the meter."
         )
     }
 
@@ -83,30 +97,83 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private func resolveCursorCookieHeader(context: ProviderQuotaAdapterContext) async -> ResolvedCursorCookie? {
-        // 1. Environment variable override (CURSOR_COOKIE_HEADER)
-        if let envValue = context.environment["CURSOR_COOKIE_HEADER"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !envValue.isEmpty {
+        let extraSeatID = extraSeatAccountID(from: context)
+
+        if extraSeatID != nil {
+            if let stored = configuredCookie(from: context) {
+                return ResolvedCursorCookie(cookieHeader: stored, source: .configured)
+            }
+            return extractedCookieMatchingPinnedSeat(context: context)
+        }
+
+        // 1. Environment variable override (CURSOR_COOKIE_HEADER) — default seat only
+        if let envValue = quotaNonEmpty(context.environment["CURSOR_COOKIE_HEADER"]) {
             return ResolvedCursorCookie(cookieHeader: envValue, source: .configured)
         }
 
-        // 2. Stored API key (manual paste via Settings)
-        if let rawStoredValue = context.resolvedAPIKeys["cursor_cookie"] ?? nil {
-            let storedValue = rawStoredValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !storedValue.isEmpty {
-                return ResolvedCursorCookie(cookieHeader: storedValue, source: .configured)
-            }
+        // 2. Stored default-seat cookie (Connect / paste)
+        if let stored = configuredCookie(from: context) {
+            return ResolvedCursorCookie(cookieHeader: stored, source: .configured)
         }
 
         guard !isAutoAuthDisabled(context: context) else {
             return nil
         }
 
-        // 3. Auto-extract from Cursor's SQLite database (zero-config, no FDA needed)
+        // 3. Auto-extract from discovered Cursor installs (unconfigured default only)
         if let session = CursorCookieExtractor.readSession() {
             return ResolvedCursorCookie(cookieHeader: session.cookieHeader, source: .extracted)
         }
 
+        return nil
+    }
+
+    private func configuredCookie(from context: ProviderQuotaAdapterContext) -> String? {
+        if let extraSeatID = extraSeatAccountID(from: context) {
+            let account = CursorMeterSeatPlanning.cookieAccount(forSeatID: extraSeatID)
+            if let seatCookie = quotaNonEmpty(context.resolvedAPIKeys[account] ?? nil) {
+                return seatCookie
+            }
+        }
+        return quotaNonEmpty(context.resolvedAPIKeys[CursorMeterSeat.defaultCookieAccount] ?? nil)
+    }
+
+    private func extraSeatAccountID(from context: ProviderQuotaAdapterContext) -> String? {
+        guard let accountID = quotaNonEmpty(context.environment["OPENBURNBAR_QUOTA_ACCOUNT_ID"]),
+              accountID != CursorMeterSeat.defaultSeatID else {
+            return nil
+        }
+        return accountID
+    }
+
+    private func extractedCookieMatchingPinnedSeat(context: ProviderQuotaAdapterContext) -> ResolvedCursorCookie? {
+        guard !isAutoAuthDisabled(context: context) else { return nil }
+        guard let stored = configuredCookie(from: context),
+              let workos = CursorMeterSeatPlanning.workosCookieValue(fromCookieHeader: stored) else {
+            return nil
+        }
+        let pinned = CursorMeterSeat(
+            seatID: extraSeatAccountID(from: context) ?? CursorMeterSeat.defaultSeatID,
+            installLabel: "Cursor",
+            userID: CursorMeterSeatPlanning.userID(fromWorkosValue: workos),
+            email: nil,
+            membershipType: nil,
+            cookieHeader: stored,
+            keychainAccount: CursorMeterSeat.defaultCookieAccount,
+            sourcePath: nil
+        )
+        for discovered in CursorCookieExtractor.readAllSessions() {
+            if CursorMeterSeatPlanning.matchesPinnedIdentity(
+                sessionUserID: discovered.session.userId,
+                sessionEmail: discovered.session.email,
+                seat: pinned
+            ) {
+                return ResolvedCursorCookie(
+                    cookieHeader: discovered.session.cookieHeader,
+                    source: .extracted
+                )
+            }
+        }
         return nil
     }
 

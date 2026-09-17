@@ -5154,7 +5154,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         XCTAssertEqual(snapshot.source, .unavailable)
         XCTAssertEqual(snapshot.confidence, .unavailable)
-        XCTAssertTrue(snapshot.statusMessage?.contains("rejected the configured cookie") ?? false)
+        XCTAssertTrue(snapshot.statusMessage?.contains("Reconnect Cursor") ?? false)
     }
 
     func test_snapshotPrimaryBucket_prefersMostConstrainedWindow() {
@@ -5639,7 +5639,140 @@ extension ProviderQuotaServiceTests {
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertTrue((snapshot.statusMessage?.contains("Sign in") ?? false), "Expected sign-in prompt, got: \(snapshot.statusMessage ?? "nil")")
+        XCTAssertTrue((snapshot.statusMessage?.contains("Connect Cursor") ?? false), "Expected connect prompt, got: \(snapshot.statusMessage ?? "nil")")
+    }
+
+    func test_cursorRefresh_reportsJSONLimitNotHardCodedUltraPool() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let jwt = cursorTestJWT(sub: "user_json", exp: Date().addingTimeInterval(3_600).timeIntervalSince1970)
+        let keyStore = try makeKeyStore(
+            provider: "cursor_cookie",
+            value: "WorkosCursorSessionToken=user_json::\(jwt)"
+        )
+        let session = makeStubSession { request in
+            if request.url?.absoluteString.contains("/api/usage-summary") ?? false {
+                return try self.httpResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    body: """
+                    {
+                      "membershipType": "ultra",
+                      "individualUsage": {
+                        "plan": { "used": 1111, "limit": 12345, "totalPercentUsed": 9 }
+                      },
+                      "isUnlimited": false
+                    }
+                    """
+                )
+            }
+            if request.url?.absoluteString.contains("/api/auth/me") ?? false {
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: #"{"email":"elioai@example.com"}"#)
+            }
+            throw URLError(.badURL)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            keyStore: keyStore,
+            session: session,
+            environment: ["OPENBURNBAR_DISABLE_CURSOR_AUTO_AUTH": "1"]
+        )
+        await service.refresh(provider: .cursor, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .cursor))
+        let plan = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "cursor-plan" }))
+        XCTAssertEqual(plan.limitValue, 123.45, accuracy: 0.01)
+        XCTAssertEqual(plan.usedValue, 11.11, accuracy: 0.01)
+        XCTAssertNotEqual(plan.limitValue, 400)
+        XCTAssertNotEqual(plan.limitValue, 200)
+        XCTAssertTrue(snapshot.statusMessage?.contains("Ultra") ?? false)
+        XCTAssertTrue(snapshot.statusMessage?.contains("elioai@example.com") ?? false)
+    }
+
+    func test_cursorLoginHelper_persistPaths_missingBadSuccessAndMultiSeat() throws {
+        let keyStore = ProviderAPIKeyStore(
+            keychain: KeychainStore(
+                service: "tests.cursor.persist.\(UUID().uuidString)",
+                legacyServices: [],
+                backend: TestKeychainBackend()
+            )
+        )
+
+        XCTAssertThrowsError(try CursorLoginHelper.persistCookie("", installLabel: "Cursor", keyStore: keyStore)) { error in
+            XCTAssertEqual(error as? CursorLoginError, .missingCookie)
+        }
+        XCTAssertThrowsError(try CursorLoginHelper.persistCookie("session=nope", installLabel: "Cursor", keyStore: keyStore)) { error in
+            XCTAssertEqual(error as? CursorLoginError, .invalidCookie)
+        }
+
+        let liveA = cursorTestJWT(sub: "user_a", exp: Date().addingTimeInterval(3_600).timeIntervalSince1970)
+        let liveB = cursorTestJWT(sub: "user_b", exp: Date().addingTimeInterval(3_600).timeIntervalSince1970)
+        let expired = cursorTestJWT(sub: "user_z", exp: Date().addingTimeInterval(-30).timeIntervalSince1970)
+
+        XCTAssertThrowsError(
+            try CursorLoginHelper.persistCookie(
+                "WorkosCursorSessionToken=user_z::\(expired)",
+                installLabel: "Cursor",
+                keyStore: keyStore
+            )
+        ) { error in
+            XCTAssertEqual(error as? CursorLoginError, .expiredSession)
+        }
+
+        switch try CursorLoginHelper.persistCookie(
+            "WorkosCursorSessionToken=user_a::\(liveA)",
+            installLabel: "Cursor",
+            email: "elioai@example.com",
+            keyStore: keyStore
+        ) {
+        case .persisted(let plan):
+            XCTAssertFalse(plan.avoidedOverwrite)
+            XCTAssertEqual(keyStore.apiKey(for: "cursor_cookie"), plan.seat.cookieHeader)
+        case .needsConfirmation:
+            XCTFail("first seat should persist without confirmation")
+        }
+
+        switch try CursorLoginHelper.persistCookie(
+            "WorkosCursorSessionToken=user_b::\(liveB)",
+            installLabel: "Cursor-2",
+            email: "gmail@example.com",
+            keyStore: keyStore
+        ) {
+        case .needsConfirmation(let plan):
+            XCTAssertTrue(plan.avoidedOverwrite)
+            XCTAssertEqual(keyStore.apiKey(for: "cursor_cookie")?.contains("user_a"), true)
+            XCTAssertNil(keyStore.apiKey(for: plan.seat.keychainAccount))
+        case .persisted:
+            XCTFail("second Ultra seat must not silently overwrite")
+        }
+
+        switch try CursorLoginHelper.persistCookie(
+            "WorkosCursorSessionToken=user_b::\(liveB)",
+            installLabel: "Cursor-2",
+            email: "gmail@example.com",
+            confirmAddSeat: true,
+            keyStore: keyStore
+        ) {
+        case .persisted(let plan):
+            XCTAssertTrue(plan.avoidedOverwrite)
+            XCTAssertTrue(keyStore.apiKey(for: "cursor_cookie")?.contains("user_a") ?? false)
+            XCTAssertEqual(keyStore.apiKey(for: plan.seat.keychainAccount), plan.seat.cookieHeader)
+            XCTAssertEqual(CursorLoginHelper.configuredSeats(keyStore: keyStore).count, 2)
+        case .needsConfirmation:
+            XCTFail("confirmed add should persist the extra seat")
+        }
+    }
+
+    private func cursorTestJWT(sub: String, exp: TimeInterval) -> String {
+        func encode(_ object: [String: Any]) -> String {
+            let data = try! JSONSerialization.data(withJSONObject: object)
+            return data.base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .trimmingCharacters(in: CharacterSet(charactersIn: "="))
+        }
+        return "\(encode(["alg": "none", "typ": "JWT"])).\(encode(["sub": "auth0|\(sub)", "exp": exp])).sig"
     }
 
     // MARK: - Ollama Cloud
