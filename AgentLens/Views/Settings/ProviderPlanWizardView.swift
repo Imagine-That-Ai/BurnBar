@@ -154,6 +154,14 @@ struct ProviderPlanWizardView: View {
 
     @State var localMimoBillingCycle: MimoTokenPlanBillingCycle = .monthly
 
+    @State var cursorConnectMessage: String?
+
+    @State var cursorConnectIsError = false
+
+    @State var cursorPendingPlan: CursorMeterPersistPlan?
+
+    @State var cursorDiscoveredSessions: [CursorCookieExtractor.DiscoveredSession] = []
+
     // Strategy step state
     @State var selectedStrategy: ProviderPlanStrategy = .auto
 
@@ -683,7 +691,12 @@ extension OpenBurnBarDaemonProviderConfiguration {
 
 extension BurnBarProviderAuthMethod {
     var usesExternalLogin: Bool {
-        kind == .browserLogin || kind == .localRuntime
+        if id.hasPrefix("cursor-") { return false }
+        return kind == .browserLogin || kind == .localRuntime
+    }
+
+    var isCursorMeterConnect: Bool {
+        id == "cursor-workos-session" || id == "cursor-editor-vscdb" || id == "cursor-cookie-paste"
     }
 
     var isClaudeOAuthBearer: Bool {

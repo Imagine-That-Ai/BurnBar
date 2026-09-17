@@ -298,8 +298,10 @@ actor QuotaRefreshActor {
         providers: Set<AgentProvider>
     ) async -> [String: ProviderQuotaSnapshot] {
         let runtimeKeyStore = self.providerRuntimeKeyStore
+        let meterKeyStore = self.keyStore
         let credentials = await MainActor.run {
-            resolveDaemonAccountCredentials(providerRuntimeKeyStore: runtimeKeyStore)
+            (resolveDaemonAccountCredentials(providerRuntimeKeyStore: runtimeKeyStore)
+                + resolveCursorMeterSeatCredentials(keyStore: meterKeyStore))
                 .filter { providers.contains($0.provider) }
         }
         guard !credentials.isEmpty else { return [:] }
@@ -389,10 +391,18 @@ actor QuotaRefreshActor {
         for identifier in quotaKeyIdentifiers(for: credential.provider) {
             resolvedKeys[identifier] = credential.apiKey
         }
+        if credential.provider == .cursor {
+            resolvedKeys[CursorMeterSeat.defaultCookieAccount] = credential.apiKey
+            resolvedKeys[CursorMeterSeatPlanning.cookieAccount(forSeatID: credential.accountID)] = credential.apiKey
+        }
 
         var accountContext = context.withResolvedAPIKeys(resolvedKeys)
         var environment = accountContext.environment
         environment["OPENBURNBAR_QUOTA_ACCOUNT_ID"] = credential.accountID
+        if credential.provider == .cursor {
+            environment.removeValue(forKey: "CURSOR_COOKIE_HEADER")
+            environment["OPENBURNBAR_DISABLE_CURSOR_AUTO_AUTH"] = "1"
+        }
         accountContext = accountContext.withEnvironment(environment)
         if credential.provider == .claudeCode,
            let credentials = claudeOAuthCredentials(fromStoredRouteCredential: credential.apiKey) {
@@ -520,7 +530,9 @@ private func resolveAllAPIKeys(
         }
     }
 
-    resolvedKeys["cursor_cookie"] = keyStore.apiKey(for: "cursor_cookie")
+    for (account, value) in CursorMeterSeatPlanning.loadResolvedKeys({ keyStore.apiKey(for: $0) }) {
+        resolvedKeys[account] = value
+    }
     for identifier in ["factory_cookie_header", "factory_cookie", "ollama_cookie_header", "ollama_cookie", "kimi_auth_token"] {
         resolvedKeys[identifier] = keyStore.apiKey(for: identifier)
     }
@@ -647,6 +659,27 @@ private func resolveDaemonAccountCredentials(
     }
 
     return credentials
+}
+
+@MainActor
+private func resolveCursorMeterSeatCredentials(
+    keyStore: ProviderAPIKeyStore
+) -> [ProviderQuotaAccountCredential] {
+    let seats = CursorMeterSeatPlanning.configuredSeats(
+        fromResolvedKeys: CursorMeterSeatPlanning.loadResolvedKeys { keyStore.apiKey(for: $0) }
+    )
+    return seats.compactMap { seat in
+        guard seat.seatID != CursorMeterSeat.defaultSeatID else { return nil }
+        return ProviderQuotaAccountCredential(
+            provider: .cursor,
+            providerID: AgentProvider.cursor.providerID,
+            accountID: seat.seatID,
+            label: seat.displayIdentity,
+            storageScope: .deviceKeychain,
+            sourceID: "cursor-meter:\(seat.seatID)",
+            apiKey: seat.cookieHeader
+        )
+    }
 }
 
 private func resolveSwitcherCLIQuotaProfiles(

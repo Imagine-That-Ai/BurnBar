@@ -211,6 +211,8 @@ extension ProviderPlanWizardView {
                 methodHeroCard(method)
                 if method.usesExternalLogin {
                     externalLoginPanel(method)
+                } else if method.isCursorMeterConnect {
+                    cursorMeterConnectFields(method)
                 } else {
                     planLabelField
                     credentialField(method)
@@ -489,6 +491,166 @@ extension ProviderPlanWizardView {
                 .strokeBorder(statusColor.opacity(0.45), lineWidth: 0.75)
         )
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+    }
+
+    @ViewBuilder
+    func cursorMeterConnectFields(_ method: BurnBarProviderAuthMethod) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text("OpenBurnBar will use this Cursor session only to read your usage meter. It does not sign you into BurnBar.")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if method.id != "cursor-cookie-paste" {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    if method.id == "cursor-workos-session" {
+                        Button("Sign in to Cursor") {
+                            Task { await connectCursorWebSessionFromWizard() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.blaze)
+                        .disabled(isSaving)
+                    }
+                    if method.id == "cursor-editor-vscdb" {
+                        Button("Use this Mac’s Cursor app session") {
+                            Task { await connectCursorEditorSessionFromWizard() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.blaze)
+                        .disabled(isSaving)
+                    }
+                }
+            }
+
+            if !cursorDiscoveredSessions.isEmpty {
+                ForEach(cursorDiscoveredSessions, id: \.install.stateDatabasePath) { discovered in
+                    Button {
+                        Task { await persistDiscoveredCursorSessionFromWizard(discovered) }
+                    } label: {
+                        Text(cursorWizardSessionLabel(discovered))
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+
+            if let cursorPendingPlan {
+                Text("This meter is for a different Cursor account. Add \(cursorPendingPlan.seat.displayIdentity) as another seat so the existing Ultra pool stays put.")
+                    .font(DesignSystem.Typography.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Add as another seat") {
+                        Task { await confirmPendingCursorSeatFromWizard(replaceDefault: false) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button("Replace this meter") {
+                        Task { await confirmPendingCursorSeatFromWizard(replaceDefault: true) }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+
+            if method.id == "cursor-cookie-paste" {
+                planLabelField
+                credentialField(method)
+            }
+
+            if let cursorConnectMessage {
+                miniHintCard(
+                    symbol: cursorConnectIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
+                    text: cursorConnectMessage
+                )
+            }
+        }
+    }
+
+    func cursorWizardSessionLabel(_ discovered: CursorCookieExtractor.DiscoveredSession) -> String {
+        let email = discovered.session.email.map { " · \($0)" } ?? ""
+        let membership = discovered.session.membershipType.map { " · \($0)" } ?? ""
+        return "\(discovered.install.label)\(email)\(membership)"
+    }
+
+    func connectCursorWebSessionFromWizard() async {
+        cursorConnectIsError = false
+        cursorConnectMessage = nil
+        do {
+            let header = try await CursorLoginHelper.captureWebSession()
+            try await applyWizardCursorPersist(
+                CursorLoginHelper.persistCookie(header, installLabel: "Cursor")
+            )
+        } catch {
+            presentWizardCursorError(error)
+        }
+    }
+
+    func connectCursorEditorSessionFromWizard() async {
+        cursorConnectIsError = false
+        cursorConnectMessage = nil
+        let sessions = CursorLoginHelper.discoverEditorSessions()
+        cursorDiscoveredSessions = sessions
+        if sessions.isEmpty {
+            cursorConnectIsError = true
+            cursorConnectMessage = "Cursor on this Mac has no session. Sign in to Cursor, then refresh the meter."
+            return
+        }
+        if sessions.count == 1, let only = sessions.first {
+            cursorDiscoveredSessions = []
+            do {
+                try await applyWizardCursorPersist(CursorLoginHelper.persistEditorSession(only))
+            } catch {
+                presentWizardCursorError(error)
+            }
+        }
+    }
+
+    func persistDiscoveredCursorSessionFromWizard(
+        _ discovered: CursorCookieExtractor.DiscoveredSession
+    ) async {
+        do {
+            try await applyWizardCursorPersist(CursorLoginHelper.persistEditorSession(discovered))
+            cursorDiscoveredSessions = []
+        } catch {
+            presentWizardCursorError(error)
+        }
+    }
+
+    func confirmPendingCursorSeatFromWizard(replaceDefault: Bool) async {
+        guard let plan = cursorPendingPlan else { return }
+        do {
+            let outcome = try CursorLoginHelper.persistCookie(
+                plan.seat.cookieHeader,
+                installLabel: plan.seat.installLabel,
+                email: plan.seat.email,
+                membershipType: plan.seat.membershipType,
+                sourcePath: plan.seat.sourcePath,
+                confirmAddSeat: !replaceDefault,
+                replaceExistingDefault: replaceDefault
+            )
+            try await applyWizardCursorPersist(outcome)
+        } catch {
+            presentWizardCursorError(error)
+        }
+    }
+
+    func applyWizardCursorPersist(_ outcome: CursorLoginHelper.PersistOutcome) async throws {
+        switch outcome {
+        case .needsConfirmation(let plan):
+            cursorPendingPlan = plan
+            cursorConnectIsError = false
+            cursorConnectMessage = CursorLoginError.needsSeatConfirmation.errorDescription
+        case .persisted(let plan):
+            cursorPendingPlan = nil
+            apiKeyInput = plan.seat.cookieHeader
+            cursorConnectIsError = false
+            cursorConnectMessage = plan.avoidedOverwrite
+                ? "Added \(plan.seat.displayIdentity) as another meter seat."
+                : "Connected \(plan.seat.displayIdentity)."
+            await quotaService.refresh(provider: .cursor, dataStore: dataStore)
+        }
+    }
+
+    func presentWizardCursorError(_ error: any Error) {
+        cursorConnectIsError = true
+        cursorConnectMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     @ViewBuilder

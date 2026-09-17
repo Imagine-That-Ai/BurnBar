@@ -58,6 +58,26 @@ enum FactoryLoginHelper {
         )
     }
 
+    static func runCursorLoginFlow() async -> String? {
+        await runCookieLogin(
+            title: "Sign in to Cursor",
+            url: URL(string: "https://cursor.com")!,
+            domainMatch: { domain in
+                domain.contains("cursor.com") || domain.contains("cursor.sh")
+            },
+            cookieMatch: { cookie in
+                cookie.name == "WorkosCursorSessionToken"
+            },
+            transform: { cookies in
+                guard let cookie = cookies.first(where: { $0.name == "WorkosCursorSessionToken" }) else {
+                    return nil
+                }
+                return "WorkosCursorSessionToken=\(cookie.value)"
+            },
+            allowsPopupNavigation: true
+        )
+    }
+
     static func runKimiLoginFlow() async -> String? {
         await runCookieLogin(
             title: "Connect Kimi",
@@ -288,6 +308,7 @@ enum FactoryLoginHelper {
     static func runLoginFlow() async -> String? { nil }
     static func runOllamaLoginFlow() async -> String? { nil }
     static func runKimiLoginFlow() async -> String? { nil }
+    static func runCursorLoginFlow() async -> String? { nil }
 }
 
 #endif

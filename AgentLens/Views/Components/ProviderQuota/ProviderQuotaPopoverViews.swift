@@ -27,6 +27,12 @@ struct QuotaPopoverBar: View {
     @State private var localXaiManagementKey = ""
     @State private var localZaiKey = ""
     @State private var localCursorCookie = ""
+    @State private var cursorConnectMessage: String?
+    @State private var cursorConnectIsError = false
+    @State private var cursorShowPasteField = false
+    @State private var cursorPendingPlan: CursorMeterPersistPlan?
+    @State private var cursorDiscoveredSessions: [CursorCookieExtractor.DiscoveredSession] = []
+    @State private var cursorConfiguredSeats: [CursorMeterSeat] = []
     @State private var localMimoRegion: ProviderEndpointRegion = .sgp
     @State private var localMimoTier: MimoTokenPlanTier = .standard
     @State private var localMimoBillingCycle: MimoTokenPlanBillingCycle = .monthly
@@ -249,7 +255,7 @@ struct QuotaPopoverBar: View {
             && snapshot?.hasDisplayableQuotaSignal == true
             && (snapshot?.hourlyBucket?.resetsAt != nil || snapshot?.weeklyBucket?.resetsAt != nil)
         let hasWindowDetail = snapshot?.hourlyBucket != nil || snapshot?.weeklyBucket != nil
-        let isExpandable = needsSetup || hasRoutingDetail || canExtend || hasWindowDetail
+        let isExpandable = needsSetup || hasRoutingDetail || canExtend || hasWindowDetail || provider == .cursor
 
         VStack(spacing: 0) {
             // Main row — always visible: logo + single primary bar.
@@ -340,7 +346,7 @@ struct QuotaPopoverBar: View {
                         .padding(.trailing, DesignSystem.Spacing.sm)
                     }
 
-                    if needsSetup {
+                    if needsSetup || provider == .cursor {
                         providerSetupPanel(provider: provider)
                     }
 
@@ -714,31 +720,130 @@ struct QuotaPopoverBar: View {
 
     @ViewBuilder
     private var cursorSetupPanel: some View {
+        let snapshot = quotaService.snapshot(for: .cursor)
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text("Session Cookie")
+            Text("Connect Cursor to refresh usage")
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+            Text("OpenBurnBar will use this Cursor session only to read your usage meter. It does not sign you into BurnBar.")
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-            SecureField("Paste cookie value...", text: $localCursorCookie)
-                .font(DesignSystem.Typography.monoSmall)
-                .textFieldStyle(.plain)
-                .padding(DesignSystem.Spacing.sm)
-                .background(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(DesignSystem.Colors.surface)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
-                )
+            if let snapshot, snapshot.confidence == .exact, let status = snapshot.statusMessage {
+                Text(status)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                Button("Save") { Task { await saveAndRefresh(for: .cursor) } }
-                    .buttonStyle(GlassButtonStyle(prominent: true))
-                    .disabled(isWorking)
-                Button("Cancel") { expandedProvider = nil }
+            if cursorConfiguredSeats.count > 1 {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Meter seats")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    ForEach(cursorConfiguredSeats, id: \.seatID) { seat in
+                        Text(seat.displayIdentity)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    }
+                }
+            }
+
+            if let cursorPendingPlan {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text("This meter is for a different Cursor account. Add \(cursorPendingPlan.seat.displayIdentity) as another seat so the existing Ultra pool stays put.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Button("Add as another seat") {
+                            Task { await confirmPendingCursorSeat(replaceDefault: false) }
+                        }
+                        .buttonStyle(GlassButtonStyle(prominent: true))
+                        .disabled(isWorking)
+                        Button("Replace this meter") {
+                            Task { await confirmPendingCursorSeat(replaceDefault: true) }
+                        }
+                        .buttonStyle(GlassButtonStyle(prominent: false))
+                        .disabled(isWorking)
+                        Button("Cancel") { cursorPendingPlan = nil }
+                    }
+                    .font(DesignSystem.Typography.caption)
+                }
+            }
+
+            if !cursorDiscoveredSessions.isEmpty, cursorPendingPlan == nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Choose which Cursor app session to use")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    ForEach(cursorDiscoveredSessions, id: \.install.stateDatabasePath) { discovered in
+                        Button {
+                            Task { await persistDiscoveredCursorSession(discovered) }
+                        } label: {
+                            Text(cursorDiscoveredSessionLabel(discovered))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(GlassButtonStyle(prominent: false))
+                        .disabled(isWorking)
+                    }
+                }
+                .font(DesignSystem.Typography.caption)
+            }
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Button("Sign in to Cursor") {
+                    Task { await connectCursorWebSession() }
+                }
+                .buttonStyle(GlassButtonStyle(prominent: true))
+                .disabled(isWorking)
+
+                Button("Use this Mac’s Cursor app session") {
+                    Task { await connectCursorEditorSession() }
+                }
+                .buttonStyle(GlassButtonStyle(prominent: false))
+                .disabled(isWorking)
+
+                Button(cursorShowPasteField ? "Hide paste cookie" : "Paste WorkosCursorSessionToken") {
+                    cursorShowPasteField.toggle()
+                }
+                .buttonStyle(GlassButtonStyle(prominent: false))
+                .disabled(isWorking)
             }
             .font(DesignSystem.Typography.caption)
+
+            if cursorShowPasteField {
+                SecureField("WorkosCursorSessionToken=…", text: $localCursorCookie)
+                    .font(DesignSystem.Typography.monoSmall)
+                    .textFieldStyle(.plain)
+                    .padding(DesignSystem.Spacing.sm)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(DesignSystem.Colors.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                    )
+
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button("Save cookie") { Task { await saveAndRefresh(for: .cursor) } }
+                        .buttonStyle(GlassButtonStyle(prominent: true))
+                        .disabled(isWorking)
+                    Button("Cancel") { expandedProvider = nil }
+                }
+                .font(DesignSystem.Typography.caption)
+            }
+
+            if let cursorConnectMessage {
+                Text(cursorConnectMessage)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(cursorConnectIsError ? DesignSystem.Colors.coral : DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -764,6 +869,11 @@ struct QuotaPopoverBar: View {
             localZaiKey = ks.apiKey(for: "zai") ?? ""
         case .cursor:
             localCursorCookie = ks.apiKey(for: "cursor_cookie") ?? ""
+            cursorConfiguredSeats = CursorLoginHelper.configuredSeats(keyStore: ks)
+            cursorConnectMessage = nil
+            cursorConnectIsError = false
+            cursorPendingPlan = nil
+            cursorDiscoveredSessions = []
         case .factory:
             localFactoryTier = settingsManager.factoryQuotaPlanTier
         case .xAI:
@@ -801,10 +911,12 @@ struct QuotaPopoverBar: View {
             }
         case .cursor:
             do {
-                let trimmed = localCursorCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty { try ks.removeAPIKey(for: "cursor_cookie") } else { try ks.setAPIKey(trimmed, for: "cursor_cookie") }
+                try await persistPastedCursorCookie()
             } catch {
                 AppLogger.dataStore.silentFailure("saveAPIKey(cursor_cookie)", error: error)
+                cursorConnectIsError = true
+                cursorConnectMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                return
             }
         case .factory:
             settingsManager.factoryQuotaPlanTier = localFactoryTier
@@ -829,7 +941,131 @@ struct QuotaPopoverBar: View {
         }
 
         await quotaService.refresh(provider: provider, dataStore: dataStore)
-        expandedProvider = nil
+        if provider == .cursor {
+            cursorConfiguredSeats = CursorLoginHelper.configuredSeats()
+            cursorConnectIsError = false
+            cursorConnectMessage = "Meter refreshed."
+            cursorShowPasteField = false
+            cursorPendingPlan = nil
+        }
+        expandedProvider = provider == .cursor ? .cursor : nil
+    }
+
+    private func persistPastedCursorCookie() async throws {
+        let trimmed = localCursorCookie.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            throw CursorLoginError.missingCookie
+        }
+        switch try CursorLoginHelper.persistCookie(trimmed, installLabel: "Cursor") {
+        case .persisted:
+            cursorPendingPlan = nil
+        case .needsConfirmation(let plan):
+            cursorPendingPlan = plan
+            throw CursorLoginError.needsSeatConfirmation
+        }
+    }
+
+    private func connectCursorWebSession() async {
+        isWorking = true
+        defer { isWorking = false }
+        cursorConnectMessage = nil
+        cursorConnectIsError = false
+        do {
+            let header = try await CursorLoginHelper.captureWebSession()
+            try await applyCursorPersist(
+                CursorLoginHelper.persistCookie(header, installLabel: "Cursor")
+            )
+        } catch {
+            presentCursorConnectError(error)
+        }
+    }
+
+    private func connectCursorEditorSession() async {
+        isWorking = true
+        defer { isWorking = false }
+        cursorConnectMessage = nil
+        cursorConnectIsError = false
+        let sessions = CursorLoginHelper.discoverEditorSessions()
+        cursorDiscoveredSessions = sessions
+        if sessions.isEmpty {
+            cursorConnectIsError = true
+            cursorConnectMessage = "Cursor on this Mac has no session. Sign in to Cursor, then refresh the meter."
+            return
+        }
+        if sessions.count == 1, let only = sessions.first {
+            cursorDiscoveredSessions = []
+            do {
+                try await applyCursorPersist(CursorLoginHelper.persistEditorSession(only))
+            } catch {
+                presentCursorConnectError(error)
+            }
+        }
+    }
+
+    private func persistDiscoveredCursorSession(
+        _ discovered: CursorCookieExtractor.DiscoveredSession
+    ) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try await applyCursorPersist(CursorLoginHelper.persistEditorSession(discovered))
+            cursorDiscoveredSessions = []
+        } catch {
+            presentCursorConnectError(error)
+        }
+    }
+
+    private func confirmPendingCursorSeat(replaceDefault: Bool) async {
+        guard let plan = cursorPendingPlan else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let outcome = try CursorLoginHelper.persistCookie(
+                plan.seat.cookieHeader,
+                installLabel: plan.seat.installLabel,
+                email: plan.seat.email,
+                membershipType: plan.seat.membershipType,
+                sourcePath: plan.seat.sourcePath,
+                confirmAddSeat: !replaceDefault,
+                replaceExistingDefault: replaceDefault
+            )
+            try await applyCursorPersist(outcome)
+        } catch {
+            presentCursorConnectError(error)
+        }
+    }
+
+    private func applyCursorPersist(_ outcome: CursorLoginHelper.PersistOutcome) async throws {
+        switch outcome {
+        case .needsConfirmation(let plan):
+            cursorPendingPlan = plan
+            cursorConnectIsError = false
+            cursorConnectMessage = CursorLoginError.needsSeatConfirmation.errorDescription
+        case .persisted(let plan):
+            cursorPendingPlan = nil
+            cursorConfiguredSeats = CursorLoginHelper.configuredSeats()
+            cursorConnectIsError = false
+            cursorConnectMessage = plan.avoidedOverwrite
+                ? "Added \(plan.seat.displayIdentity) as another meter seat."
+                : "Connected \(plan.seat.displayIdentity)."
+            await quotaService.refresh(provider: .cursor, dataStore: dataStore)
+        }
+    }
+
+    private func presentCursorConnectError(_ error: any Error) {
+        if let loginError = error as? CursorLoginError, loginError == .needsSeatConfirmation {
+            cursorConnectIsError = false
+            cursorConnectMessage = loginError.errorDescription
+            return
+        }
+        cursorConnectIsError = true
+        cursorConnectMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    private func cursorDiscoveredSessionLabel(_ discovered: CursorCookieExtractor.DiscoveredSession) -> String {
+        let email = discovered.session.email.map { " · \($0)" } ?? ""
+        let membership = discovered.session.membershipType.map { " · \($0)" } ?? ""
+        return "\(discovered.install.label)\(email)\(membership)"
     }
 
     private func performClaudeAction(_ action: QuotaRowAction) async {

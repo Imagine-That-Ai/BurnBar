@@ -139,14 +139,14 @@ extension ProviderSetupGuide {
                 labelSuggestion: "Cursor",
                 dashboardURL: URL(string: "https://cursor.com/dashboard"),
                 dashboardCTA: "Open Cursor dashboard",
-                oneLineHint: "Sign in once and we capture the session cookie.",
+                oneLineHint: "Connect on the Mac to refresh Cursor usage.",
                 instructions: [
-                    GuideStep(1, "Open the Cursor dashboard", detail: "Sign in with the same account you use in the editor."),
-                    GuideStep(2, "Copy your session cookie", detail: "DevTools → Application → Cookies → cursor.com → WorkosCursorSessionToken.", codeSnippet: "WorkosCursorSessionToken=..."),
-                    GuideStep(3, "Paste the cookie below", detail: "We reuse Cursor's own auth — no separate key required.")
+                    GuideStep(1, "Connect Cursor on the Mac", detail: "In OpenBurnBar Quotas, expand Cursor and choose Sign in to Cursor or Use this Mac’s Cursor app session. That refreshes Included / Auto+Composer / API / On-demand from usage-summary."),
+                    GuideStep(2, "Confirm the install if you have two", detail: "Cursor and Cursor-2 can hold different emails. Confirm the Ultra seat so the other pool is not overwritten."),
+                    GuideStep(3, "Advanced: paste a cookie", detail: "Only if the Mac helper cannot run. DevTools → Cookies → WorkosCursorSessionToken.", codeSnippet: "WorkosCursorSessionToken=...")
                 ],
                 credentialPlaceholder: "WorkosCursorSessionToken=...",
-                credentialFooterMarkdown: "Cookies expire eventually. If quota refresh stops, sign in again and reconnect.",
+                credentialFooterMarkdown: "The phone reads the sanitized usage-summary snapshot from the Mac. Paste cookie is advanced; it does not sign you into BurnBar.",
                 supportsHosted: false,
                 supportsSelfHosted: false
             )
