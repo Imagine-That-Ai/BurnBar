@@ -259,9 +259,26 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertFalse(consumer?.unlocksQuotaRefresh ?? true)
         XCTAssertFalse(consumer?.unlocksProxyRouting ?? true)
 
+        let adc = descriptor?.method(id: "google-cloud-adc")
+        XCTAssertEqual(adc?.kind, .localRuntime)
+        XCTAssertTrue(adc?.unlocksQuotaRefresh ?? false)
+        XCTAssertFalse(adc?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(adc?.helperText.localizedCaseInsensitiveContains("application default") ?? false)
+        XCTAssertFalse(adc?.helperText.localizedCaseInsensitiveContains("client id") ?? true)
+
+        let serviceAccount = descriptor?.method(id: "google-cloud-service-account")
+        XCTAssertEqual(serviceAccount?.kind, .apiKey)
+        XCTAssertTrue(serviceAccount?.unlocksQuotaRefresh ?? false)
+        XCTAssertFalse(serviceAccount?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(serviceAccount?.validate(#"{"type":"service_account","client_email":"meter@burnbar-gemini.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY-----"}"#).isOK ?? false)
+        XCTAssertTrue(serviceAccount?.validate("AIzaSyNotARemainingKey123456").isWarning ?? false)
+        XCTAssertTrue(serviceAccount?.helperText.localizedCaseInsensitiveContains("not an ai studio") ?? false)
+
         XCTAssertTrue(descriptor?.supportsQuotaRefresh ?? false)
         XCTAssertNotNil(descriptor?.quotaHint)
         XCTAssertFalse(descriptor?.quotaHint?.localizedCaseInsensitiveContains("firebase") ?? true)
+        XCTAssertTrue(descriptor?.quotaHint?.localizedCaseInsensitiveContains("service usage") ?? false)
+        XCTAssertTrue(descriptor?.quotaHint?.localizedCaseInsensitiveContains("verizon") ?? false)
     }
 
     func test_xaiDescriptor_exposesInferenceAndManagementMethods() {

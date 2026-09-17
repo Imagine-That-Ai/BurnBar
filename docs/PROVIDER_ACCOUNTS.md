@@ -114,12 +114,24 @@ It is **not** Firebase “Sign in to BurnBar with Google.”
 
 | Lane | What you connect | Meters |
 |---|---|---|
-| Gemini CLI sessions | Detect `~/.gemini` on the Mac | Used tokens for the last 24 hours and 7 days from session logs. Remaining quota is unavailable. |
-| Antigravity | Local Antigravity profile | Estimated 5-hour coding windows from `AntigravityQuotaAdapter`. |
+| Gemini CLI sessions | Detect `~/.gemini` on the Mac | Used tokens for the last 24 hours and 7 days from session logs. Remaining is unavailable unless a Google Cloud identity is also present. |
+| Antigravity | Local Antigravity profile | Estimated 5-hour coding windows from `AntigravityQuotaAdapter`. Verizon / Gemini app remaining is still unpublished. |
+| Google Cloud ADC | `gcloud auth application-default login` on this Mac | Remaining Gemini API / Vertex **project** rate-allocation quotas via Service Usage + Cloud Monitoring. Not Firebase Sign in with Google. |
+| Google Cloud service account JSON | Keychain paste (`provider.google.serviceAccount`) | Same remaining project meters. Accepts `service_account` or `authorized_user` JSON. Not an `AIza…` key. |
 | AI Studio API key (`AIza…`) | Daemon slot | Key saved only. Does **not** unlock remaining RPD/RPM/TPM. |
 | Google AI Pro / Gemini app (including Verizon) | Label only | Remaining app quota is **not published**. BurnBar will not invent a percentage. |
 
 Cloud Functions does not refresh Google accounts. Snapshots stay Mac-local, like Claude and Antigravity.
+
+### Mac test steps
+
+1. Build the Mac app from this branch.
+2. Open **Settings → Connections** (or the Providers wizard) and find **Google Gemini**. Confirm it is not Firebase “Sign in to BurnBar with Google.”
+3. **Gemini CLI sessions on this Mac:** with recent `~/.gemini/tmp/**/session-*.json(l)` logs, used 24h/7d tokens appear. Remaining stays Unavailable unless a Cloud identity is also present.
+4. **Google Cloud ADC on this Mac:** run `gcloud auth application-default login` and `gcloud auth application-default set-quota-project PROJECT_ID`. Refresh quota. Remaining Gemini API / Vertex project buckets should appear (requests/tokens remaining today or this minute). No invented Verizon %.
+5. **Google Cloud service account JSON:** paste a `service_account` key that has Service Usage Consumer + Monitoring Viewer. Same remaining meters. An `AIza…` paste must warn and must not unlock remaining.
+6. **Antigravity on this Mac:** estimated 5-hour windows still appear. Do not regress those estimates.
+7. **Google AI Pro / Gemini app (including Verizon):** label-only. Remaining stays unpublished.
 
 See [PROVIDERS.md](PROVIDERS.md) for the adapter contract.
 

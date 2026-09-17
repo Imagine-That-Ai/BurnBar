@@ -406,18 +406,18 @@ Gemini CLI uses heuristic token estimation (`ASCII_TOKENS_PER_CHAR = 0.33`, `NON
 - Google AI Studio usage is **not billed** (free tier with rate limits). Paid tiers go through Vertex AI.
 
 ### Does Vertex AI expose a quota API?
-- **Yes**, but it's complex. Google Cloud Service Usage API:
-  - `GET https://serviceusage.googleapis.com/v1/{parent=*/*}/services/{service}/ quotas`
-  - Requires Google Cloud IAM, OAuth2, and the `monitoring.googleapis.com` scope.
-  - Returns quota limits, not actual usage.
-- **Actual usage data** lives in Google Cloud Billing exports (BigQuery), not a REST API.
+- **Limits:** Service Usage `consumerQuotaMetrics` (`GET https://serviceusage.googleapis.com/v1beta1/projects/{project}/services/{service}/consumerQuotaMetrics?view=FULL`) for `generativelanguage.googleapis.com` and `aiplatform.googleapis.com`.
+- **Usage:** Cloud Monitoring `serviceruntime.googleapis.com/quota/allocation/usage` (daily) and `quota/rate/net_usage` (per-minute). Remaining = limit − used.
+- **Auth:** Application Default Credentials or a service account. An AI Studio `AIza…` key cannot call these APIs.
+- **Not remaining tokens for the consumer Gemini app / Verizon Google AI Pro.** Those surfaces have no published remaining API.
+- **Billing export (BigQuery)** is spend history, not a remaining-token battery, and is too heavy for the menubar path.
 - Vertex AI responses include `usageMetadata` with `promptTokenCount`, `candidatesTokenCount`, `totalTokenCount` — per-request, exact, available in API responses.
 
 ### Recommendations
-1. **Gemini CLI parser is solid** — `GeminiCLIParser.swift` correctly reads exact token counts from session files.
-2. **Daemon event routing** could capture per-request `usageMetadata` from Gemini API responses for exact per-call data, same pattern as other providers.
-3. **Vertex AI billing API is not worth implementing** — the GCP billing export pipeline is too heavy for a macOS menubar app. If user has Vertex billing, recommend they connect via the daemon event route instead.
-4. **Google AI Studio: no billing API exists** — document this limitation.
+1. **Gemini CLI parser is solid** — `GeminiCLIParser.swift` correctly reads exact token counts from session files (used-only Phase 1).
+2. **Phase 2 remaining** uses ADC / service-account JSON → Service Usage + Cloud Monitoring. Implemented in `GoogleCloudQuotaClient.swift`.
+3. **Do not invent remaining %** for AI Studio keys or Verizon / Gemini app.
+4. **Google Cloud Billing export** stays out of the meter plane.
 
 ---
 
@@ -478,8 +478,8 @@ Token counts **must come from daemon event routing** — BurnBar's daemon can in
 | MiniMax | No documented API → daemon events | Per-request exact; aggregate N/A | Per-request | No |
 | Kimi (Moonshot) | `wire.jsonl` disk + `GET /v1/users/me/balance` | Exact (disk), balance (API) | Per-session (disk), real-time (balance) | No |
 | Gemini CLI | `~/.gemini/tmp/*/chats/session-*.json` | Exact (disk) | Per-session | No (must compute) |
-| Google AI Studio | No billing API | — | — | — |
-| Vertex AI | GCP Billing (BigQuery) + per-request metadata | Exact (per-request) | Per-request | No |
+| Google AI Studio | No remaining API on `AIza…` keys | — | — | — |
+| Vertex / Gemini API project | Service Usage + Cloud Monitoring (ADC / SA) | Exact remaining rate/allocation quota | On refresh | No |
 | Ollama | Per-response `/api/chat` metadata | Exact (per-request) | Per-request | $0 (local) |
 
 ---

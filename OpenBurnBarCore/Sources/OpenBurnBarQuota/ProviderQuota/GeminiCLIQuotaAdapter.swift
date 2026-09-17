@@ -6,24 +6,48 @@ import OpenBurnBarLogParsers
 import FoundationNetworking
 #endif
 
-/// Local Gemini CLI used-token meters.
+/// Gemini CLI used-token meters plus Google Cloud remaining project quotas.
 ///
-/// Google does not publish remaining AI Studio RPD/RPM/TPM or consumer Gemini
-/// app / Verizon Google AI Pro quota to an inference API key. This adapter
-/// reports tokens actually written into `~/.gemini/tmp` session logs and keeps
-/// remaining quota unavailable.
+/// Phase 1: tokens written into `~/.gemini/tmp` session logs (used-only).
+/// Phase 2: remaining Gemini API / Vertex rate-allocation quotas when ADC or
+/// a service account can call Service Usage + Cloud Monitoring.
+///
+/// AI Studio `AIza…` keys, Firebase Google sign-in, and Verizon / Gemini app
+/// subscriptions still have no remaining API. Those lanes stay explicitly
+/// unsupported instead of inventing a battery.
 public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
 
     public static let studioManagementURL = "https://aistudio.google.com"
     public static let consumerManagementURL = "https://gemini.google.com"
     public static let antigravityManagementURL = "https://antigravity.google"
+    public static let cloudQuotaURL = GoogleCloudQuotaClient.consoleURL
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let geminiRoot = context.homeDirectoryURL.appendingPathComponent(".gemini", isDirectory: true)
-        let authType = Self.readAuthType(root: geminiRoot, fileManager: context.fileManager)
+        let settings = Self.readSettings(root: geminiRoot, fileManager: context.fileManager)
+        let authType = settings.authType
+        let installed = context.fileManager.fileExists(atPath: geminiRoot.path)
 
-        guard context.fileManager.fileExists(atPath: geminiRoot.path) else {
+        var usedBuckets: [ProviderQuotaBucket] = []
+        var hasUsedTokens = false
+        var parseError: String?
+        if installed {
+            do {
+                let used = try await Self.loadUsedTokenBuckets(root: geminiRoot, context: context)
+                usedBuckets = used.buckets
+                hasUsedTokens = used.hasUsedTokens
+            } catch {
+                parseError = error.localizedDescription
+            }
+        }
+
+        let cloud = await Self.loadCloudRemaining(
+            context: context,
+            extraProjectIDs: [settings.projectID].compactMap { $0 }
+        )
+
+        if !installed, usedBuckets.isEmpty, cloud == nil {
             return ProviderQuotaSnapshot(
                 provider: .geminiCLI,
                 fetchedAt: Date(),
@@ -33,13 +57,65 @@ public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
                 statusMessage: Self.statusMessage(
                     installed: false,
                     hasUsedTokens: false,
-                    authType: authType
+                    authType: authType,
+                    cloud: nil,
+                    parseError: parseError
                 ),
                 buckets: []
             )
         }
 
-        let tmpRoot = geminiRoot.appendingPathComponent("tmp", isDirectory: true)
+        if let parseError, usedBuckets.isEmpty, cloud == nil {
+            throw QuotaServiceError.invalidResponse(parseError)
+        }
+
+        let remainingBuckets = cloud?.buckets ?? []
+        let buckets = usedBuckets + remainingBuckets
+        let hasRemaining = !remainingBuckets.isEmpty
+        let source: ProviderQuotaSourceKind
+        let confidence: ProviderQuotaConfidence
+        if hasRemaining {
+            source = .officialAPI
+            confidence = .exact
+        } else if hasUsedTokens {
+            source = .localSession
+            confidence = .exact
+        } else {
+            source = .unavailable
+            confidence = .unavailable
+        }
+
+        let managementURL: String
+        if hasRemaining {
+            managementURL = Self.cloudQuotaURL
+        } else if authType == .oauthPersonal {
+            managementURL = Self.consumerManagementURL
+        } else {
+            managementURL = Self.studioManagementURL
+        }
+
+        return ProviderQuotaSnapshot(
+            provider: .geminiCLI,
+            fetchedAt: Date(),
+            source: source,
+            confidence: confidence,
+            managementURL: managementURL,
+            statusMessage: Self.statusMessage(
+                installed: installed,
+                hasUsedTokens: hasUsedTokens,
+                authType: authType,
+                cloud: cloud,
+                parseError: parseError
+            ),
+            buckets: buckets
+        )
+    }
+
+    static func loadUsedTokenBuckets(
+        root: URL,
+        context: ProviderQuotaAdapterContext
+    ) async throws -> (buckets: [ProviderQuotaBucket], hasUsedTokens: Bool) {
+        let tmpRoot = root.appendingPathComponent("tmp", isDirectory: true)
         let parser = GeminiCLIParser(
             logDirectoryOverride: tmpRoot.path,
             fileManager: context.fileManager,
@@ -66,13 +142,13 @@ public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
         let hasUsedTokens = tokens24h > 0 || tokens7d > 0
         let buckets: [ProviderQuotaBucket] = hasUsedTokens
             ? [
-                Self.usedOnlyBucket(
+                usedOnlyBucket(
                     key: "tokens-24h",
                     label: "Tokens used in the last 24 hours",
                     windowKind: .rollingHours,
                     used: tokens24h
                 ),
-                Self.usedOnlyBucket(
+                usedOnlyBucket(
                     key: "tokens-7d",
                     label: "Tokens used in the last 7 days",
                     windowKind: .rollingDays,
@@ -80,22 +156,33 @@ public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
                 )
             ]
             : []
+        return (buckets, hasUsedTokens)
+    }
 
-        return ProviderQuotaSnapshot(
-            provider: .geminiCLI,
-            fetchedAt: now,
-            source: hasUsedTokens ? .localSession : .unavailable,
-            confidence: hasUsedTokens ? .exact : .unavailable,
-            managementURL: authType == .oauthPersonal
-                ? Self.consumerManagementURL
-                : Self.studioManagementURL,
-            statusMessage: Self.statusMessage(
-                installed: true,
-                hasUsedTokens: hasUsedTokens,
-                authType: authType
-            ),
-            buckets: buckets
-        )
+    static func loadCloudRemaining(
+        context: ProviderQuotaAdapterContext,
+        extraProjectIDs: [String]
+    ) async -> GoogleCloudQuotaFetchResult? {
+        switch await GoogleCloudQuotaCredentialResolver.resolve(
+            context: context,
+            extraProjectIDs: extraProjectIDs
+        ) {
+        case .success(let identity):
+            return await GoogleCloudQuotaClient.fetchRemaining(
+                identity: identity,
+                session: context.session
+            )
+        case .failure(let error):
+            if case .missing = error {
+                return nil
+            }
+            return GoogleCloudQuotaFetchResult(
+                buckets: [],
+                statusMessage: error.statusMessage,
+                projectID: extraProjectIDs.first ?? "",
+                hadAPIError: true
+            )
+        }
     }
 
     static func usedOnlyBucket(
@@ -126,14 +213,29 @@ public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
         case vertex
     }
 
-    static func readAuthType(root: URL, fileManager: FileManager) -> DetectedAuthType {
+    struct DetectedSettings: Equatable {
+        var authType: DetectedAuthType
+        var projectID: String?
+    }
+
+    static func readSettings(root: URL, fileManager: FileManager) -> DetectedSettings {
         let settingsURL = root.appendingPathComponent("settings.json")
         guard fileManager.fileExists(atPath: settingsURL.path),
               let data = try? Data(contentsOf: settingsURL),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return .unknown
+            return DetectedSettings(authType: .unknown, projectID: nil)
         }
+        return DetectedSettings(
+            authType: authType(from: object),
+            projectID: GoogleCloudQuotaCredentialResolver.projectID(fromGeminiSettings: object)
+        )
+    }
 
+    static func readAuthType(root: URL, fileManager: FileManager) -> DetectedAuthType {
+        readSettings(root: root, fileManager: fileManager).authType
+    }
+
+    private static func authType(from object: [String: Any]) -> DetectedAuthType {
         var selected = stringValue(object["selectedAuthType"]) ?? ""
         if let security = object["security"] as? [String: Any] {
             if selected.isEmpty, let auth = security["auth"] as? [String: Any] {
@@ -166,7 +268,9 @@ public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
     static func statusMessage(
         installed: Bool,
         hasUsedTokens: Bool,
-        authType: DetectedAuthType
+        authType: DetectedAuthType,
+        cloud: GoogleCloudQuotaFetchResult? = nil,
+        parseError: String? = nil
     ) -> String {
         var parts: [String] = []
         if !installed {
@@ -176,9 +280,22 @@ public struct GeminiCLIQuotaAdapter: ProviderQuotaAdapter {
         } else {
             parts.append("Gemini CLI is here, but there are no session tokens yet.")
         }
-        parts.append("Google does not publish remaining AI Studio rate limits or Gemini app quota to other apps.")
+        if let parseError, !parseError.isEmpty {
+            parts.append("Local session parse failed: \(parseError).")
+        }
+        if let cloud, !cloud.buckets.isEmpty {
+            parts.append(cloud.statusMessage)
+        } else if let cloud {
+            parts.append(cloud.statusMessage)
+        } else if authType == .vertex {
+            parts.append("Gemini CLI is using Vertex. Remaining project quotas need Application Default Credentials or a service account with Service Usage Consumer and Monitoring Viewer.")
+        } else {
+            parts.append("Google does not publish remaining AI Studio rate limits or Gemini app quota to an API key. Connect Google Cloud ADC or a service account to read project rate-quota remaining.")
+        }
         if authType == .oauthPersonal {
             parts.append("Personal Google login no longer serves Gemini CLI; use Antigravity for coding. Verizon / Gemini app remaining quota is not available.")
+        } else if cloud?.buckets.isEmpty != false {
+            parts.append("Verizon / Gemini app remaining is not published.")
         }
         return parts.joined(separator: " ")
     }
