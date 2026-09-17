@@ -714,7 +714,7 @@ public enum BurnBarProviderAuthRegistry {
                 kind: .localRuntime,
                 displayName: "Google Cloud ADC on this Mac",
                 summary: "Reads remaining Gemini API and Vertex project quotas from Application Default Credentials.",
-                helperText: "Run `gcloud auth application-default login` and `gcloud auth application-default set-quota-project PROJECT_ID`. BurnBar uses the ADC file already on this Mac. This is not Firebase Sign in with Google, and it does not invent a BurnBar OAuth client. Grant Service Usage Consumer and Monitoring Viewer on the project.",
+                helperText: "Run `gcloud auth application-default login` and `gcloud auth application-default set-quota-project PROJECT_ID`. BurnBar reads Application Default Credentials already on this Mac. This is not Firebase Sign in with Google, and it does not invent a BurnBar OAuth client. Grant Service Usage Consumer and Monitoring Viewer on the project.",
                 placeholder: "Application Default Credentials",
                 dashboardURL: "https://console.cloud.google.com/iam-admin/quotas",
                 dashboardLabel: "Open Cloud Quotas",
