@@ -756,10 +756,10 @@ extension ProviderSetupGuide {
             instructions: [
                 GuideStep(1, "Open Together API keys", detail: "Sign in at api.together.ai with Google or GitHub — Facebook is not a Together meter path."),
                 GuideStep(2, "Create a Together API key", detail: "Use the same org that routes Meta Llama models."),
-                GuideStep(3, "Paste it below", detail: "BurnBar refreshes GET /v1/billing/usage. Remaining prepaid credits stay on Together billing settings. A 404 means that remaining-credit window is unsupported — routing still works.")
+                GuideStep(3, "Paste it below", detail: "BurnBar refreshes GET /v1/billing/usage. Remaining prepaid credits are an explicit unsupported meter — Together has no Bearer balance API, and BurnBar does not scrape the Google/GitHub console. A 404 means that remaining-credit window is unsupported — routing still works.")
             ],
             credentialPlaceholder: "Together API key",
-            credentialFooterMarkdown: "Together reports month-to-date spend, not remaining prepaid credits. Remaining balance is console-only.",
+            credentialFooterMarkdown: "Together reports month-to-date spend. Remaining prepaid credits are an explicit unsupported meter — no Bearer balance API, no console scrape.",
             supportsHosted: false,
             supportsSelfHosted: false
         )

@@ -84,8 +84,16 @@ final class TogetherQuotaAdapterTests: XCTestCase {
         XCTAssertNil(bucket.limitValue)
         XCTAssertNil(bucket.remainingValue)
         XCTAssertNil(bucket.usedPercent)
-        XCTAssertEqual(snapshot.statusMessage?.contains("Remaining prepaid credits are console-only"), true)
+        XCTAssertTrue(bucket.isUsedOnlySpendSignal)
+        XCTAssertTrue(bucket.isDisplayableQuotaSignal)
+        XCTAssertNil(bucket.displayRemainingFraction, "Spend must not invent prepaid remaining %")
+        XCTAssertEqual(bucket.remainingText, "Unavailable")
+        XCTAssertTrue(bucket.usageText.contains("2.50"), "usageText should show the month spend, got \(bucket.usageText)")
+        XCTAssertTrue(bucket.usageText.lowercased().contains("used"))
+        XCTAssertTrue(snapshot.hasDisplayableQuotaSignal)
+        XCTAssertEqual(snapshot.statusMessage?.contains(TogetherRemainingCreditsMeter.unsupportedStatus), true)
         XCTAssertEqual(snapshot.statusMessage?.contains("not Facebook"), true)
+        Self.assertNeverRequestedFolkloreBalance(requestedURLs)
     }
 
     func test_billingUsage200_emptyMonth_reportsZeroSpend() async throws {
@@ -292,6 +300,128 @@ final class TogetherQuotaAdapterTests: XCTestCase {
             ]
         )
         XCTAssertEqual(TogetherQuotaAdapter.resolveAPIKey(context: context), "loose-together")
+    }
+
+    func test_phase2_neverRequestsFolkloreBalancePathsOnSuccessfulSpend() async throws {
+        var requestedURLs: [String] = []
+        TogetherMockURLProtocol.responder = { request in
+            requestedURLs.append(request.url?.absoluteString ?? "")
+            return Self.respond(
+                json: #"{ "billing_period": "2026-07", "data": [ { "line_items": [ { "cost": "9.99" } ] } ], "next_cursor": null }"#,
+                for: request
+            )
+        }
+
+        let snapshot = try await adapter().fetch(context: try makeContext(apiKey: "tog-no-balance"))
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(requestedURLs.count, 1)
+        Self.assertNeverRequestedFolkloreBalance(requestedURLs)
+        XCTAssertEqual(
+            TogetherQuotaAdapter.folkloreBalancePaths,
+            TogetherRemainingCreditsMeter.folkloreBalancePaths
+        )
+    }
+
+    func test_phase2_hugeSpendNeverBecomesRemainingCredits() async throws {
+        TogetherMockURLProtocol.responder = { request in
+            Self.respond(
+                json: #"{ "billing_period": "2026-07", "data": [ { "line_items": [ { "cost": "9999.50" }, { "cost": "0.50" } ] } ], "next_cursor": null }"#,
+                for: request
+            )
+        }
+
+        let snapshot = try await adapter().fetch(context: try makeContext(apiKey: "tog-huge"))
+        let bucket = try XCTUnwrap(snapshot.buckets.first)
+        XCTAssertEqual(bucket.usedValue ?? -1, 10_000, accuracy: 0.001)
+        XCTAssertNil(bucket.remainingValue)
+        XCTAssertNil(bucket.limitValue)
+        XCTAssertNotEqual(bucket.remainingValue, bucket.usedValue)
+        XCTAssertTrue(bucket.isUsedOnlySpendSignal)
+        XCTAssertFalse(bucket.isCreditBalance, "Used-only spend must not render as a prepaid wallet")
+        XCTAssertEqual(snapshot.statusMessage?.contains(TogetherRemainingCreditsMeter.unsupportedStatus), true)
+    }
+
+    func test_phase2_emptyMonthSpendIsDisplayableUsedOnly() async throws {
+        TogetherMockURLProtocol.responder = { request in
+            Self.respond(
+                json: #"{ "object": "list", "billing_period": "2026-07", "currency": "USD", "data": [], "next_cursor": null }"#,
+                for: request
+            )
+        }
+
+        let snapshot = try await adapter().fetch(context: try makeContext(apiKey: "tog-zero"))
+        let bucket = try XCTUnwrap(snapshot.buckets.first)
+        XCTAssertEqual(bucket.usedValue ?? -1, 0, accuracy: 0.001)
+        XCTAssertTrue(bucket.isUsedOnlySpendSignal)
+        XCTAssertTrue(bucket.isDisplayableQuotaSignal)
+        XCTAssertTrue(bucket.usageText.contains("0.00"), "zero-spend usageText should show used amount, got \(bucket.usageText)")
+        XCTAssertTrue(bucket.usageText.lowercased().contains("used"))
+        XCTAssertEqual(bucket.remainingText, "Unavailable")
+        XCTAssertTrue(snapshot.hasDisplayableQuotaSignal)
+    }
+
+    func test_phase2_errorStatusesNeverInventRemainingCredits() async throws {
+        let statuses = [401, 403, 404, 429]
+        for status in statuses {
+            TogetherMockURLProtocol.responder = { request in
+                Self.respond(status: status, json: "{}", for: request)
+            }
+            let snapshot = try await adapter().fetch(context: try makeContext(apiKey: "tog-err-\(status)"))
+            XCTAssertEqual(snapshot.confidence, .unavailable, "HTTP \(status) must stay unavailable")
+            XCTAssertTrue(snapshot.buckets.isEmpty, "HTTP \(status) must not invent buckets")
+            XCTAssertFalse(snapshot.hasDisplayableQuotaSignal, "HTTP \(status) is not a fake remaining-credit window")
+            XCTAssertEqual(snapshot.buckets.contains(where: { $0.remainingValue != nil }), false)
+        }
+    }
+
+    func test_phase2_paginationNeverCallsBalanceOrInventRemaining() async throws {
+        var requestedURLs: [String] = []
+        TogetherMockURLProtocol.responder = { request in
+            requestedURLs.append(request.url?.absoluteString ?? "")
+            let after = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "after" })?.value
+            if after == nil {
+                return Self.respond(
+                    json: #"{ "billing_period": "2026-07", "data": [ { "line_items": [ { "cost": "2.00" } ] } ], "next_cursor": "page-2" }"#,
+                    for: request
+                )
+            }
+            return Self.respond(
+                json: #"{ "billing_period": "2026-07", "data": [ { "line_items": [ { "cost": "3.00" } ] } ], "next_cursor": null }"#,
+                for: request
+            )
+        }
+
+        let snapshot = try await adapter().fetch(context: try makeContext(apiKey: "tog-pages-phase2"))
+        XCTAssertEqual(requestedURLs.count, 2)
+        Self.assertNeverRequestedFolkloreBalance(requestedURLs)
+        let bucket = try XCTUnwrap(snapshot.buckets.first)
+        XCTAssertEqual(bucket.usedValue ?? -1, 5.0, accuracy: 0.001)
+        XCTAssertNil(bucket.remainingValue)
+        XCTAssertTrue(bucket.isUsedOnlySpendSignal)
+    }
+
+    func test_phase2_missingKeyMentionsUnsupportedRemainingCredits() async throws {
+        let snapshot = try await adapter().fetch(context: try makeContext(apiKey: nil))
+        XCTAssertEqual(snapshot.statusMessage?.contains(TogetherRemainingCreditsMeter.unsupportedStatus), true)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+    }
+
+    func test_remainingCreditsMeterCopyNamesProvenAbsence() {
+        XCTAssertTrue(TogetherRemainingCreditsMeter.folkloreBalancePaths.contains("/v1/billing/balance"))
+        XCTAssertTrue(TogetherRemainingCreditsMeter.fullUnsupportedMessage.contains("/v1/billing/usage"))
+        XCTAssertTrue(TogetherRemainingCreditsMeter.fullUnsupportedMessage.contains("404"))
+        XCTAssertTrue(TogetherRemainingCreditsMeter.fullUnsupportedMessage.localizedCaseInsensitiveContains("not Facebook"))
+        XCTAssertFalse(TogetherRemainingCreditsMeter.fullUnsupportedMessage.localizedCaseInsensitiveContains("sign in with facebook"))
+    }
+
+    private static func assertNeverRequestedFolkloreBalance(_ urls: [String]) {
+        for path in TogetherRemainingCreditsMeter.folkloreBalancePaths {
+            XCTAssertFalse(
+                urls.contains(where: { $0.contains(path) }),
+                "Together remaining-credit meter must not request folklore path \(path). URLs: \(urls)"
+            )
+        }
     }
 
     private func adapter() -> TogetherQuotaAdapter {

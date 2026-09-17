@@ -38,6 +38,11 @@ struct ProviderQuotaBucketRow: View {
 
                         if bucket.isCreditBalance {
                             QuotaMicroBadge(text: "Balance", tint: DesignSystem.Colors.gold)
+                        } else if bucket.isUsedOnlySpendSignal {
+                            QuotaMicroBadge(text: "Spend", tint: theme.primaryColor)
+                            if let windowBadgeText {
+                                QuotaMicroBadge(text: windowBadgeText, tint: theme.primaryColor.opacity(0.85))
+                            }
                         } else if let windowBadgeText {
                             QuotaMicroBadge(text: windowBadgeText, tint: theme.primaryColor)
                         }
@@ -54,7 +59,7 @@ struct ProviderQuotaBucketRow: View {
                 QuotaFigureTile(bucket: bucket, provider: provider)
             }
 
-            if !bucket.isCreditBalance {
+            if !bucket.isCreditBalance && !bucket.isUsedOnlySpendSignal {
                 QuotaSignalView(bucket: bucket, provider: provider)
                     .frame(height: 104)
             }
@@ -107,6 +112,9 @@ struct QuotaFigureTile: View {
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
     private var descriptor: String {
+        if bucket.isUsedOnlySpendSignal {
+            return "month spend"
+        }
         if bucket.isCreditBalance {
             return "credit balance"
         }
@@ -138,7 +146,7 @@ struct QuotaFigureTile: View {
                 .font(DesignSystem.Typography.monoTiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
-            Text(bucket.remainingText)
+            Text(bucket.isUsedOnlySpendSignal ? bucket.usageText : bucket.remainingText)
                 .font(.system(size: 26, weight: .bold, design: .monospaced))
                 .foregroundStyle(theme.gradient)
                 .lineLimit(1)

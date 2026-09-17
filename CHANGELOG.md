@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Together remaining prepaid credits stay an explicit unsupported
+  meter.** Phase 2 re-checked Together after #2622: official OpenAPI
+  Billing is still only `GET /v1/billing/usage`. Live probes of
+  `/v1/billing/balance`, `/v1/credits`, and `/v1/account` 404 to the
+  console HTML app — not a Bearer wallet. BurnBar does not scrape
+  Together's Google/GitHub console or invent remaining % from spend.
+  Quotas now shows month-to-date spend as a used-only figure (no "Wide
+  Open" battery) plus a remaining-credits callout. 200/404/401 honesty
+  from the usage meter is unchanged.
 - **Together / Meta Llama usage meters.** Connections → Meta Llama now
   pastes a Together API key and refreshes `GET /v1/billing/usage` for
   month-to-date Together spend. Remaining prepaid credits stay on the

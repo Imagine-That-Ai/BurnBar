@@ -70,6 +70,9 @@ public extension ProviderQuotaBucket {
         if let usedPercent {
             return "\(Self.formatQuotaValue(usedPercent, unit: .percent)) used"
         }
+        if isUsedOnlySpendSignal, let usedValue {
+            return "\(Self.formatQuotaValue(usedValue, unit: unit)) used"
+        }
         return "No usage detail"
     }
 
