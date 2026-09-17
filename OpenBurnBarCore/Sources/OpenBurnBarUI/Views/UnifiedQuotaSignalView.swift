@@ -237,6 +237,9 @@ public struct UnifiedQuotaSignalView: View {
     }
 
     private var remainingText: String {
+        if bucket.isUsedOnlySpendSignal {
+            return "\(formatValue(bucket.used)) used"
+        }
         if bucketUnit == .unlimited { return "Unlimited" }
         switch displayMode {
         case "usedPercent":
@@ -266,6 +269,9 @@ public struct UnifiedQuotaSignalView: View {
     }
 
     var fullRemainingText: String {
+        if bucket.isUsedOnlySpendSignal {
+            return "\(formatValue(bucket.used)) used"
+        }
         if bucketUnit == .unlimited { return "Unlimited" }
         switch displayMode {
         case "usedPercent":
@@ -295,6 +301,9 @@ public struct UnifiedQuotaSignalView: View {
     }
 
     private var usageText: String {
+        if bucket.isUsedOnlySpendSignal {
+            return "\(formatValue(bucket.used)) used"
+        }
         if bucketUnit == .unlimited { return "No fixed cap" }
         let used = formatValue(bucket.used)
         let limit = formatValue(bucket.limit)

@@ -12,7 +12,7 @@
 | **Codex** | `CodexQuotaAdapter.swift` | `.exact` | `~/.codex/sessions/rollout-*.jsonl` | Rate-limit % (5h + 7d windows) |
 | **OpenAI** | `OpenAIQuotaAdapter` | `.exact` | `GET api.openai.com/v1/organization/usage/completions` | Org token usage (cost computed locally) |
 | **DeepSeek** | `DeepSeekQuotaAdapter` | `.exact` | `GET api.deepseek.com/v1` | Developer console credit balance and API usage |
-| **Together / Meta Llama** | `TogetherQuotaAdapter.swift` | `.exact` / `.unavailable` | `GET api.together.ai/v1/billing/usage` | Month-to-date Together spend in USD. Remaining prepaid credits are console-only. A 404 is an explicit unsupported remaining-credit state, not a fake meter. |
+| **Together / Meta Llama** | `TogetherQuotaAdapter.swift` | `.exact` / `.unavailable` | `GET api.together.ai/v1/billing/usage` | Month-to-date Together spend in USD. Remaining prepaid credits are an explicit unsupported meter (no Bearer balance API). A 404 is an unsupported remaining-credit state, not a fake meter. |
 | **Copilot** | `CopilotQuotaAdapter.swift` | `.estimated` | `POST api.github.com/copilot_internal/user` | Premium interactions and chat limits |
 | **Cursor** | `CursorQuotaAdapter.swift` | `.estimated` | `GET cursor.com/api/usage-summary` | Included usage, limits, and USD spent |
 | **Cursor Agent CLI**| `CursorAgentParser.swift` | `.exact` | `~/.cursor-agent/sessions/` (`transcript.jsonl`, `summary.json`, `*.jsonl`) | Local session tokens; exact token limits |
@@ -121,7 +121,7 @@ without durable source evidence stay `unknown`.
 | **Codex** | None | N/A (local file) | N/A | Reads `rollout-*.jsonl` from `~/.codex/sessions/` |
 | **OpenAI (usage)** | Admin API key | `sk-...` | `Authorization: Bearer {key}` | Requires organization admin key for completions usage |
 | **DeepSeek** | API key | `sk-...` | `Authorization: Bearer {key}` | Created at platform.deepseek.com |
-| **Together / Meta Llama** | Together API key | Together console key | `Authorization: Bearer {key}` | Created at api.together.ai/settings/api-keys. Together console sign-in is Google or GitHub — Facebook is not a meter path. Remaining prepaid credits stay on Together billing settings. |
+| **Together / Meta Llama** | Together API key | Together console key | `Authorization: Bearer {key}` | Created at api.together.ai/settings/api-keys. Together console sign-in is Google or GitHub — Facebook is not a meter path. Remaining prepaid credits are an explicit unsupported meter (no Bearer balance API). |
 | **Copilot** | GitHub OAuth / PAT | `ghp_...` or OAuth token | `Authorization: token {token}` | `read:user` scope required |
 | **Cursor** | Browser cookie | `WorkosCursorSessionToken={id}::{token}` | `Cookie: {cookieString}` | Extracted locally from database or Safari/Chrome |
 | **Cursor Agent** | None | N/A (local file) | N/A | Reads session logs from `~/.cursor-agent/sessions/` |
@@ -179,7 +179,7 @@ empty key by default.
 | Codex | `~/.codex/sessions/rollout-*.jsonl` | File read | `{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":...}}}}` |
 | Claude Code | `~/.claude/projects/**/*.jsonl` | File read | `{"type":"assistant","message":{"model":"...","usage":{"input_tokens":...,"output_tokens":...}}}` |
 | DeepSeek | `GET https://api.deepseek.com/user/balance` | HTTP | `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"...","real_time_balance":"..."}]}` |
-| Together / Meta Llama | `GET https://api.together.ai/v1/billing/usage?month=YYYY-MM&granularity=day` | HTTP | `{"billing_period":"2026-07","data":[{"line_items":[{"cost":"..."}]}],"next_cursor":null}` — org-gated beta; 404 means remaining-credit window unsupported |
+| Together / Meta Llama | `GET https://api.together.ai/v1/billing/usage?month=YYYY-MM&granularity=day` | HTTP | `{"billing_period":"2026-07","data":[{"line_items":[{"cost":"..."}]}],"next_cursor":null}` — org-gated beta; 404 means remaining-credit window unsupported. Folklore `/v1/billing/balance` is not an API (404 HTML). |
 | OpenAI | `GET https://api.openai.com/v1/organization/usage/completions` | HTTP | `{"data":[{"results":[{"input_tokens":...,"output_tokens":...}]}]}` |
 | Copilot | `POST https://api.github.com/copilot_internal/user` | HTTP | `{"copilot_plan":"pro","quota_snapshots":{"premium_interactions":{"remaining":180}}}` |
 | Cursor | `GET https://cursor.com/api/usage-summary` | HTTP | `{"individualUsage":{"plan":{"totalPercentUsed":...},"onDemand":{"used":...}}}` |
@@ -194,6 +194,38 @@ empty key by default.
 | OMP | `omp usage --json --redact` | Local process | Redacted machine-readable usage reports with provider windows and quota buckets |
 | Muse | `~/.local/share/muse/sessions/**/session.jsonl` | File read | Envelope JSONL (`runtime.session` → `model_completed` with `input_tokens`/`output_tokens`/`cached_tokens`/`cache_read_tokens`/`reasoning_tokens`, `tool_batch.effect.started` tools, `started` prompts; `session-index.db` is index-only, not parsed) |
 | Prime Agent | `~/.prime/agent/sessions/*.jsonl` | File read | Flat JSONL (`type: session` + `type: message` with `message.usage.{input,output,cacheRead,cacheWrite,cost}`) |
+
+---
+
+## Together remaining prepaid credits (Phase 2)
+
+Month-to-date Together spend shipped in #2622 via `GET /v1/billing/usage`.
+Remaining prepaid credits were left console-only pending a second API pass.
+
+**Re-check (2026-09-17):** remaining credits stay console-only. BurnBar
+surfaces that as an **explicit unsupported remaining-credit meter**, not a
+WKWebView scrape and not a number invented from spend.
+
+| Probe | Result |
+|-------|--------|
+| Official OpenAPI Billing tag (`docs.together.ai/openapi.yaml`) | Only `GET /billing/usage` (`getBillingUsage`). No `/billing/balance`, `/credits`, or wallet path. |
+| Credits docs (`docs.together.ai/docs/billing-credits`) | Prepaid credits, auto-recharge, and invoices are **billing-settings console** flows. No Bearer remaining-credit API. |
+| Live `GET https://api.together.ai/v1/billing/usage` with a dummy key | **403** `{"error":"Unauthorized"}` — route exists (same honesty as 401/403 in the adapter). |
+| Live `GET /v1/billing/balance`, `/v1/billing/credits`, `/v1/credits`, `/v1/account` | **404 HTML** (Together console Next.js app). Not a JSON wallet. |
+| Unofficial `/billing/balance` snippets | Third-party folklore. Not in Together OpenAPI. Not implemented. |
+| Fine-tune estimate `user_limit` | Job price-estimate field ("credit limit in dollars"), not remaining prepaid credits. |
+| Inference `x-remaining-credit` header | Unreliable; would require paid inference calls. Not a meter. |
+| Console scrape / WKWebView | Together signs in with **Google or GitHub**, not Facebook. Rejected: fragile, not proven, not required. |
+
+`TogetherQuotaAdapter` therefore:
+
+- keeps the #2622 200 / 404 / 401 / 403 / 429 honesty for month-to-date spend
+- never requests folklore balance paths
+- never invents `remainingValue`, `limitValue`, or `usedPercent` from spend
+- marks spend as a used-only currency signal so Quotas shows **$X.XX used**, not a "Wide Open" remaining battery
+- always states remaining prepaid credits are console-only
+
+Do not add Firebase / Sign in with Facebook for this meter.
 
 ---
 

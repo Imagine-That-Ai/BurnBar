@@ -258,6 +258,8 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertFalse(method?.helperText.localizedCaseInsensitiveContains("sign in with facebook") ?? true)
         XCTAssertTrue(viaMeta?.quotaHint?.localizedCaseInsensitiveContains("billing/usage") ?? false)
         XCTAssertTrue(viaMeta?.quotaHint?.localizedCaseInsensitiveContains("404") ?? false)
+        XCTAssertTrue(viaMeta?.quotaHint?.localizedCaseInsensitiveContains("no Bearer balance") ?? false)
+        XCTAssertTrue(method?.helperText.localizedCaseInsensitiveContains("billing/balance") ?? false)
         XCTAssertEqual(method?.dashboardURL, "https://api.together.ai/settings/api-keys")
     }
 

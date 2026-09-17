@@ -519,7 +519,7 @@ enum SettingsManifest {
         case .mimo:
             keywords += ["mimo", "xiaomi", "xiaomi mimo", "token plan"]
         case .together:
-            keywords += ["together", "meta", "llama", "together.ai", "facebook", "billing usage"]
+            keywords += ["together", "meta", "llama", "together.ai", "facebook", "billing usage", "remaining credits"]
         default:
             break
         }

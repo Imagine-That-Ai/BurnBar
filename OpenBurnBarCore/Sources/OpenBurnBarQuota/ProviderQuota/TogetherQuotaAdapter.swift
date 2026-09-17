@@ -11,16 +11,19 @@ import FoundationNetworking
 // (aliases llama / together). Together's documented meter is
 // `GET /v1/billing/usage` (Bearer API key, org-gated beta).
 //
-// Remaining prepaid credits are console-only in the public Together docs.
-// This adapter never invents a remaining-credit percentage. A 404 means
-// the org does not have billing-usage enabled — that is an explicit
-// unsupported remaining-credit state, not a fake meter.
+// Phase 2 remaining prepaid credits: still console-only. Official OpenAPI
+// has no Bearer balance/credits endpoint. Folklore `/v1/billing/balance`
+// 404s to the Together console HTML app. This adapter never requests those
+// paths, never scrapes WKWebView, and never invents remaining % / limit
+// from spend. A 404 on billing-usage is an explicit unsupported
+// remaining-credit state, not a fake meter.
 
 public struct TogetherQuotaAdapter: ProviderQuotaAdapter {
     public static let billingUsagePath = "/v1/billing/usage"
     public static let defaultAPIBaseURL = URL(string: "https://api.together.ai")!
     public static let managementURL = "https://api.together.ai/settings/billing"
     public static let maxUsagePages = 8
+    public static let folkloreBalancePaths = TogetherRemainingCreditsMeter.folkloreBalancePaths
 
     private let now: @Sendable () -> Date
 
@@ -33,7 +36,7 @@ public struct TogetherQuotaAdapter: ProviderQuotaAdapter {
             return unavailableSnapshot(
                 for: .together,
                 source: .officialAPI,
-                message: "Add a Together / Llama API key to report month-to-date Together usage."
+                message: "Add a Together / Llama API key to report month-to-date Together usage. \(TogetherRemainingCreditsMeter.unsupportedStatus)"
             )
         }
 
@@ -156,7 +159,7 @@ public struct TogetherQuotaAdapter: ProviderQuotaAdapter {
             source: .officialAPI,
             confidence: .exact,
             managementURL: Self.managementURL,
-            statusMessage: "Together billed \(formatted) in \(month). Remaining prepaid credits are console-only (Together signs in with Google or GitHub, not Facebook).",
+            statusMessage: "Together billed \(formatted) in \(month). \(TogetherRemainingCreditsMeter.fullUnsupportedMessage)",
             buckets: buckets
         )
     }
@@ -314,7 +317,7 @@ enum TogetherBillingUsageError: Error {
     var statusMessage: String {
         switch self {
         case .notEnabled:
-            return "Together has not enabled billing usage for this org. BurnBar will keep routing Llama and show harvested spend, not a remaining-credit window. Together console sign-in is Google or GitHub, not Facebook."
+            return "Together has not enabled billing usage for this org. BurnBar will keep routing Llama and show harvested spend, not a remaining-credit window. \(TogetherRemainingCreditsMeter.fullUnsupportedMessage)"
         case .unauthorized:
             return "Together rejected this API key. Reconnect a Together / Llama key to refresh usage meters."
         case .rateLimited:

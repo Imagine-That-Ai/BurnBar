@@ -877,7 +877,7 @@ public enum BurnBarProviderAuthRegistry {
                 kind: .apiKey,
                 displayName: "Together / Llama API Key",
                 summary: "Routes Llama traffic via Together and reports month-to-date usage.",
-                helperText: "Paste a Together API key to route Llama models and refresh Together billing usage. Together console sign-in is Google or GitHub — Facebook is not a meter path. Remaining prepaid credits stay on Together billing settings.",
+                helperText: "Paste a Together API key to route Llama models and refresh Together billing usage. Together console sign-in is Google or GitHub — Facebook is not a meter path. Remaining prepaid credits stay console-only: Together has no Bearer balance API (GET /v1/billing/balance is not a documented wallet).",
                 placeholder: "…",
                 dashboardURL: "https://api.together.ai/settings/api-keys",
                 dashboardLabel: "Together API keys",
@@ -888,6 +888,6 @@ public enum BurnBarProviderAuthRegistry {
         ],
         summary: "Meta Llama via Together — OpenAI-compatible routing plus Together usage meters.",
         proxyHint: "Routed via api.together.xyz (OpenAI-compatible).",
-        quotaHint: "Live usage comes from Together GET /v1/billing/usage when the org has the beta enabled. Remaining prepaid credits are console-only. A 404 is an unsupported remaining-credit state, not a fake meter."
+        quotaHint: "Live usage comes from Together GET /v1/billing/usage when the org has the beta enabled. Remaining prepaid credits are an explicit unsupported meter — Together's OpenAPI has no Bearer balance/credits endpoint, and BurnBar does not scrape the Google/GitHub console. A 404 is an unsupported remaining-credit state, not a fake meter."
     )
 }
