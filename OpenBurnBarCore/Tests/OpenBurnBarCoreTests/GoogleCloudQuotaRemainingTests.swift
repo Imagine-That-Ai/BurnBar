@@ -433,7 +433,7 @@ final class GoogleCloudQuotaRemainingTests: XCTestCase {
         {"role":"user","content":"hello","timestamp":"\(iso.string(from: timestamp))"}
         {"role":"model","content":"done","timestamp":"\(iso.string(from: timestamp))","usage":{"input_tokens":\(inputTokens),"output_tokens":\(outputTokens)}}
         """.write(
-            to: chats.appendingPathComponent("\(sessionID).jsonl"),
+            to: chats.appendingPathComponent("session-\(sessionID).jsonl"),
             atomically: true,
             encoding: .utf8
         )
@@ -473,7 +473,7 @@ final class GoogleCloudQuotaRemainingTests: XCTestCase {
     }
 }
 
-final class GoogleQuotaStubURLProtocol: URLProtocol, @unchecked Sendable {
+final class GoogleQuotaStubURLProtocol: URLProtocol {
     private static let lock = NSLock()
     private static var handler: ((URLRequest) -> (Int, String))?
 

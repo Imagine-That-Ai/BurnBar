@@ -87,6 +87,10 @@ public struct GoogleCloudQuotaUsage: Equatable, Sendable {
     }
 }
 
+struct GoogleCloudQuotaAPIError: Error, Equatable, Sendable {
+    let message: String
+}
+
 public enum GoogleCloudQuotaClient: Sendable {
     public static let serviceUsageHost = "https://serviceusage.googleapis.com"
     public static let monitoringHost = "https://monitoring.googleapis.com"
@@ -110,8 +114,8 @@ public enum GoogleCloudQuotaClient: Sendable {
             switch await fetchLimits(identity: identity, service: service, session: session) {
             case .success(let page):
                 limits.append(contentsOf: page)
-            case .failure(let message):
-                errors.append(message)
+            case .failure(let error):
+                errors.append(error.message)
             }
         }
 
@@ -124,8 +128,8 @@ public enum GoogleCloudQuotaClient: Sendable {
         ) {
         case .success(let points):
             usages.append(contentsOf: points)
-        case .failure(let message):
-            errors.append(message)
+        case .failure(let error):
+            errors.append(error.message)
         }
 
         switch await fetchUsage(
@@ -137,8 +141,8 @@ public enum GoogleCloudQuotaClient: Sendable {
         ) {
         case .success(let points):
             usages.append(contentsOf: points)
-        case .failure(let message):
-            errors.append(message)
+        case .failure(let error):
+            errors.append(error.message)
         }
 
         let buckets = selectBuckets(limits: limits, usage: usages)
@@ -279,30 +283,26 @@ public enum GoogleCloudQuotaClient: Sendable {
             let used = matchingUsage(limit: limit, usage: usage) ?? 0
             let remaining = max(0, limit.effectiveLimit - used)
             let usedPercent = min(100, max(0, (used / limit.effectiveLimit) * 100))
-            let bucket = ProviderQuotaBucket(
-                key: bucketKey(for: limit),
-                label: bucketLabel(for: limit),
-                windowKind: limit.window == .daily ? .daily : (limit.window == .minute ? .custom : .custom),
-                usedValue: used,
-                limitValue: limit.effectiveLimit,
-                remainingValue: remaining,
-                usedPercent: usedPercent,
-                resetsAt: nil,
-                unit: limit.kind == .tokens ? .tokens : .requests,
-                isEstimated: false
-            )
-            var meta = bucket.meta ?? [:]
-            meta["gcpService"] = productLabel(for: limit.service)
-            meta["gcpMetric"] = limit.metric
-            meta["gcpWindow"] = limit.window.rawValue
+            let windowKind: ProviderQuotaWindowKind = limit.window == .daily ? .daily : .custom
+            let unit: ProviderQuotaUnit = limit.kind == .tokens ? .tokens : .requests
+            var meta: [String: String] = [
+                "label": bucketLabel(for: limit),
+                "unit": unit.rawValue,
+                "usedPercent": String(usedPercent),
+                "gcpService": productLabel(for: limit.service),
+                "gcpMetric": limit.metric,
+                "gcpWindow": limit.window.rawValue
+            ]
+            if let location = limit.dimensions["region"] ?? limit.dimensions["location"] {
+                meta["gcpLocation"] = location
+            }
             let grouped = ProviderQuotaBucket(
-                name: bucket.key,
-                used: bucket.used,
-                limit: bucket.limit,
-                remaining: bucket.remaining,
-                window: bucket.window,
-                meta: meta,
-                resetsAt: nil
+                name: bucketKey(for: limit),
+                used: used,
+                limit: limit.effectiveLimit,
+                remaining: remaining,
+                window: windowKind.rawValue,
+                meta: meta
             )
             scored.append((
                 score(limit: limit, used: used),
@@ -373,7 +373,7 @@ public enum GoogleCloudQuotaClient: Sendable {
         identity: GoogleCloudQuotaIdentity,
         service: String,
         session: URLSession
-    ) async -> Result<[GoogleCloudQuotaLimit], String> {
+    ) async -> Result<[GoogleCloudQuotaLimit], GoogleCloudQuotaAPIError> {
         var all: [GoogleCloudQuotaLimit] = []
         var pageToken: String?
         for _ in 0..<maxPages {
@@ -389,19 +389,19 @@ public enum GoogleCloudQuotaClient: Sendable {
             }
             components.queryItems = items
             guard let url = components.url else {
-                return .failure("Service Usage URL for \(service) could not be built.")
+                return .failure(GoogleCloudQuotaAPIError(message: "Service Usage URL for \(service) could not be built."))
             }
             do {
                 let (data, status) = try await authorizedGET(url, identity: identity, session: session)
                 if let error = apiErrorMessage(status: status, data: data, projectID: identity.projectID, api: "Service Usage") {
-                    return .failure(error)
+                    return .failure(GoogleCloudQuotaAPIError(message: error))
                 }
                 let parsed = try parseConsumerQuotaMetrics(data: data, service: service)
                 all.append(contentsOf: parsed.limits)
                 pageToken = parsed.nextPageToken
                 if pageToken == nil { break }
             } catch {
-                return .failure("Service Usage request for \(service) failed: \(error.localizedDescription)")
+                return .failure(GoogleCloudQuotaAPIError(message: "Service Usage request for \(service) failed: \(error.localizedDescription)"))
             }
         }
         return .success(all)
@@ -413,7 +413,7 @@ public enum GoogleCloudQuotaClient: Sendable {
         metricType: String,
         start: Date,
         end: Date
-    ) async -> Result<[GoogleCloudQuotaUsage], String> {
+    ) async -> Result<[GoogleCloudQuotaUsage], GoogleCloudQuotaAPIError> {
         var components = URLComponents(
             string: "\(monitoringHost)/v3/projects/\(identity.projectID)/timeSeries"
         )!
@@ -427,16 +427,16 @@ public enum GoogleCloudQuotaClient: Sendable {
             URLQueryItem(name: "view", value: "FULL")
         ]
         guard let url = components.url else {
-            return .failure("Cloud Monitoring URL could not be built.")
+            return .failure(GoogleCloudQuotaAPIError(message: "Cloud Monitoring URL could not be built."))
         }
         do {
             let (data, status) = try await authorizedGET(url, identity: identity, session: session)
             if let error = apiErrorMessage(status: status, data: data, projectID: identity.projectID, api: "Cloud Monitoring") {
-                return .failure(error)
+                return .failure(GoogleCloudQuotaAPIError(message: error))
             }
             return .success(try parseTimeSeries(data: data))
         } catch {
-            return .failure("Cloud Monitoring request failed: \(error.localizedDescription)")
+            return .failure(GoogleCloudQuotaAPIError(message: "Cloud Monitoring request failed: \(error.localizedDescription)"))
         }
     }
 

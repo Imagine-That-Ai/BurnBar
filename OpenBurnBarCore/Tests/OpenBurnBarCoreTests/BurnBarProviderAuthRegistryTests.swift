@@ -264,7 +264,8 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertTrue(adc?.unlocksQuotaRefresh ?? false)
         XCTAssertFalse(adc?.unlocksProxyRouting ?? true)
         XCTAssertTrue(adc?.helperText.localizedCaseInsensitiveContains("application default") ?? false)
-        XCTAssertFalse(adc?.helperText.localizedCaseInsensitiveContains("client id") ?? true)
+        XCTAssertFalse(adc?.helperText.localizedCaseInsensitiveContains("client_id") ?? true)
+        XCTAssertTrue(adc?.helperText.localizedCaseInsensitiveContains("does not invent") ?? false)
 
         let serviceAccount = descriptor?.method(id: "google-cloud-service-account")
         XCTAssertEqual(serviceAccount?.kind, .apiKey)
