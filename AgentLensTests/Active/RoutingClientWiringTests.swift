@@ -1357,6 +1357,194 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(result, .ok(modelID: "openburnbar/gpt-5.6"))
     }
 
+    func test_preferredOpenAICompatProbeModelSkipsLocalCLIWhenHTTPProviderAdvertised() {
+        let wiring = makeWiring()
+        let selected = wiring.preferredOpenAICompatProbeModel(
+            localCLIPlusHTTPAdvertisedModels(),
+            target: .droid
+        )
+        XCTAssertEqual(selected?.id, "glm-5")
+        XCTAssertEqual(selected?.providerID, "zai")
+        XCTAssertFalse(
+            RoutingClientWiring.isLocalCLIExecutorProvider(selected?.providerID ?? ""),
+            "HTTP-provider catalogs must not select Codex or Factory as the probe oracle"
+        )
+    }
+
+    func test_preferredOpenAICompatProbeModelKeepsCodexWhenCatalogIsLocalOnly() {
+        let wiring = makeWiring()
+        let selected = wiring.preferredOpenAICompatProbeModel(
+            [
+                RoutingClientAdvertisedModel(
+                    id: "gpt-5.6",
+                    displayName: "GPT-5.6",
+                    providerID: "codex",
+                    providerName: "Codex",
+                    servedEndpoints: ["/v1/chat/completions", "/v1/responses"],
+                    routeEligible: true
+                ),
+                RoutingClientAdvertisedModel(
+                    id: "factory-claude-opus-4-8",
+                    displayName: "Claude Opus 4.8 via Factory",
+                    providerID: "factory",
+                    providerName: "Factory Droid",
+                    servedEndpoints: ["/v1/chat/completions"],
+                    routeEligible: true
+                )
+            ],
+            target: .droid
+        )
+        XCTAssertEqual(selected?.id, "gpt-5.6")
+        XCTAssertEqual(selected?.providerID, "codex")
+    }
+
+    func test_isLocalCLIExecutorProviderRecognizesCodexAndFactory() {
+        XCTAssertTrue(RoutingClientWiring.isLocalCLIExecutorProvider("codex"))
+        XCTAssertTrue(RoutingClientWiring.isLocalCLIExecutorProvider("CODEX"))
+        XCTAssertTrue(RoutingClientWiring.isLocalCLIExecutorProvider(" factory "))
+        XCTAssertFalse(RoutingClientWiring.isLocalCLIExecutorProvider("zai"))
+        XCTAssertFalse(RoutingClientWiring.isLocalCLIExecutorProvider("xai"))
+        XCTAssertFalse(RoutingClientWiring.isLocalCLIExecutorProvider("openai"))
+        XCTAssertFalse(RoutingClientWiring.isLocalCLIExecutorProvider("minimax"))
+    }
+
+    func test_probeOpenAICompatClientsSkipLocalCLIWhenHTTPProviderAdvertised() async throws {
+        for target in [RoutingClientWiringTarget.droid, .forge, .opencode] {
+            let session = makeProbeSession { request in
+                XCTAssertEqual(request.url?.path, "/v1/chat/completions")
+                let body = try Self.jsonBody(from: request)
+                XCTAssertEqual(
+                    body["model"] as? String,
+                    "glm-5",
+                    "\(target.displayName) must ping the HTTP provider, not Codex/Factory"
+                )
+                XCTAssertNotEqual(body["model"] as? String, "gpt-5.6")
+                XCTAssertNotEqual(body["model"] as? String, "factory-claude-opus-4-8")
+                return Data(#"{"id":"chatcmpl_test","choices":[{"message":{"content":"ok"}}]}"#.utf8)
+            }
+
+            let result = await makeWiring().probe(
+                target: target,
+                gateway: exampleGateway(token: "probe-token"),
+                advertisedModels: localCLIPlusHTTPAdvertisedModels(),
+                session: session
+            )
+            XCTAssertEqual(result, .ok(modelID: "glm-5"), "\(target.displayName) probe result")
+            RoutingProbeURLProtocol.reset()
+        }
+    }
+
+    func test_probeOpenAICompatCodexOnlyKeepsAttributedFailure() async {
+        for target in [RoutingClientWiringTarget.droid, .forge, .opencode] {
+            RoutingProbeURLProtocol.statusCode = 503
+            let session = makeProbeSession { request in
+                XCTAssertEqual(request.url?.path, "/v1/chat/completions")
+                let body = try Self.jsonBody(from: request)
+                XCTAssertEqual(body["model"] as? String, "gpt-5.6")
+                return Data("Codex executable was not found in trusted install locations.".utf8)
+            }
+
+            let result = await makeWiring().probe(
+                target: target,
+                gateway: exampleGateway(token: "probe-token"),
+                advertisedModels: [
+                    RoutingClientAdvertisedModel(
+                        id: "gpt-5.6",
+                        displayName: "GPT-5.6",
+                        providerID: "codex",
+                        providerName: "Codex",
+                        servedEndpoints: ["/v1/chat/completions", "/v1/responses"],
+                        routeEligible: true
+                    )
+                ],
+                session: session
+            )
+
+            guard case .failed(let status, let message, let modelID, let providerID) = result else {
+                return XCTFail("Expected attributed Codex-only \(target.displayName) failure, got \(result)")
+            }
+            XCTAssertEqual(status, 503)
+            XCTAssertEqual(message, "Codex executable was not found in trusted install locations.")
+            XCTAssertEqual(modelID, "gpt-5.6")
+            XCTAssertEqual(providerID, "codex")
+            let visible = RoutingClientWiring.userVisibleProbeFailure(
+                status: status,
+                upstreamMessage: message,
+                modelID: modelID,
+                providerID: providerID,
+                target: target
+            )
+            XCTAssertEqual(
+                visible,
+                "Local gateway returned HTTP 503 while probing `gpt-5.6` (provider `codex`) for \(target.displayName). Codex executable was not found in trusted install locations."
+            )
+            XCTAssertFalse(
+                visible.localizedCaseInsensitiveContains("\(target.displayName) is missing"),
+                "Codex-only failure must name Codex, not imply \(target.displayName) is missing: \(visible)"
+            )
+            RoutingProbeURLProtocol.reset()
+        }
+    }
+
+    func test_probeOpenAICompatFactoryOnlyTakesHonestLocalPath() async throws {
+        let session = makeProbeSession { request in
+            XCTAssertEqual(request.url?.path, "/v1/chat/completions")
+            let body = try Self.jsonBody(from: request)
+            XCTAssertEqual(body["model"] as? String, "factory-claude-opus-4-8")
+            return Data(#"{"id":"chatcmpl_test","choices":[{"message":{"content":"ok"}}]}"#.utf8)
+        }
+
+        let result = await makeWiring().probe(
+            target: .droid,
+            gateway: exampleGateway(token: "probe-token"),
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "factory-claude-opus-4-8",
+                    displayName: "Claude Opus 4.8 via Factory",
+                    providerID: "factory",
+                    providerName: "Factory Droid",
+                    servedEndpoints: ["/v1/chat/completions"],
+                    routeEligible: true
+                )
+            ],
+            session: session
+        )
+        XCTAssertEqual(result, .ok(modelID: "factory-claude-opus-4-8"))
+    }
+
+    func test_probeGrokStillPrefersXAIWhenLocalCLIAndHTTPProvidersAdvertised() async throws {
+        let session = makeProbeSession { request in
+            XCTAssertEqual(request.url?.path, "/v1/chat/completions")
+            let body = try Self.jsonBody(from: request)
+            XCTAssertEqual(
+                body["model"] as? String,
+                "grok-code-fast-1",
+                "P2 HTTP-preference must not override Grok P1 xAI-only selection"
+            )
+            return Data(#"{"id":"chatcmpl_test","choices":[{"message":{"content":"ok"}}]}"#.utf8)
+        }
+
+        var advertised = localCLIPlusHTTPAdvertisedModels()
+        advertised.append(
+            RoutingClientAdvertisedModel(
+                id: "grok-code-fast-1",
+                displayName: "Grok Code Fast",
+                providerID: "xai",
+                providerName: "xAI",
+                servedEndpoints: ["/v1/chat/completions"],
+                routeEligible: true
+            )
+        )
+
+        let result = await makeWiring().probe(
+            target: .grok,
+            gateway: exampleGateway(token: "probe-token"),
+            advertisedModels: advertised,
+            session: session
+        )
+        XCTAssertEqual(result, .ok(modelID: "grok-code-fast-1"))
+    }
+
     // Regression test: when the gateway auth token rotates after the last wire
     // (e.g. a new token is generated on daemon restart), the stored API key in
     // Droid's JSON config files no longer authenticates → every request gets a
@@ -1908,6 +2096,37 @@ final class RoutingClientWiringTests: XCTestCase {
 
     private func exampleGateway(token: String) -> RoutingClientGateway {
         RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: token)
+    }
+
+    /// Codex + Factory listed first (the default-install sort that made
+    /// `.first` a bad health oracle), then a route-ready HTTP provider.
+    private func localCLIPlusHTTPAdvertisedModels() -> [RoutingClientAdvertisedModel] {
+        [
+            RoutingClientAdvertisedModel(
+                id: "gpt-5.6",
+                displayName: "GPT-5.6",
+                providerID: "codex",
+                providerName: "Codex",
+                servedEndpoints: ["/v1/chat/completions", "/v1/responses"],
+                routeEligible: true
+            ),
+            RoutingClientAdvertisedModel(
+                id: "factory-claude-opus-4-8",
+                displayName: "Claude Opus 4.8 via Factory",
+                providerID: "factory",
+                providerName: "Factory Droid",
+                servedEndpoints: ["/v1/chat/completions"],
+                routeEligible: true
+            ),
+            RoutingClientAdvertisedModel(
+                id: "glm-5",
+                displayName: "GLM-5",
+                providerID: "zai",
+                providerName: "Z.AI",
+                servedEndpoints: ["/v1/chat/completions"],
+                routeEligible: true
+            )
+        ]
     }
 
     private func liveGatewayModels() -> [RoutingClientAdvertisedModel] {

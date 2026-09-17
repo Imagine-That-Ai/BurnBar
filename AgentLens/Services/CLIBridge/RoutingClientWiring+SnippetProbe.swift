@@ -360,7 +360,10 @@ extension RoutingClientWiring {
             let models = advertisedModels.isEmpty
                 ? await self.advertisedModels(gateway: gateway, session: session, timeoutSeconds: timeoutSeconds)
                 : advertisedModels
-            guard let liveModel = firstGatewayServedModel(models, target: target) else {
+            // P2: `.first` after provider-name sort is not a health oracle.
+            // Skip local-CLI executors when any HTTP provider is advertised
+            // so Droid / Forge / OpenCode do not ping Codex/Factory by default.
+            guard let liveModel = preferredOpenAICompatProbeModel(models, target: target) else {
                 return .failed(
                     status: 503,
                     message: "No route-eligible gateway models are advertised by /v1/models.",
@@ -428,6 +431,31 @@ extension RoutingClientWiring {
         gatewayServedModels(advertisedModels, target: .grok).first { model in
             model.providerID.caseInsensitiveCompare("xai") == .orderedSame
         }
+    }
+
+    /// Local-CLI executors that advertise OpenAI-compat rows and sort first
+    /// on a default install. A generic Chat Completions health ping must not
+    /// treat those rows as readiness when any HTTP provider is advertised —
+    /// that is how a Droid / Forge / OpenCode card showed a missing-`codex`
+    /// 503 (#2616 P2). Grok stays on `firstXAIGatewayServedModel` (P1).
+    static let localCLIExecutorProviderIDs: Set<String> = ["codex", "factory"]
+
+    static func isLocalCLIExecutorProvider(_ providerID: String) -> Bool {
+        localCLIExecutorProviderIDs.contains(
+            providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        )
+    }
+
+    /// Prefer an HTTP-provider row for generic OpenAI-compat probes. When
+    /// the catalog is local-CLI only, keep the first remaining row so a
+    /// Codex-only ping still carries P0 model + provider attribution.
+    func preferredOpenAICompatProbeModel(
+        _ advertisedModels: [RoutingClientAdvertisedModel],
+        target: RoutingClientWiringTarget
+    ) -> RoutingClientAdvertisedModel? {
+        let served = gatewayServedModels(advertisedModels, target: target)
+        let httpModels = served.filter { !Self.isLocalCLIExecutorProvider($0.providerID) }
+        return httpModels.first ?? served.first
     }
 
     // MARK: - Private helpers
