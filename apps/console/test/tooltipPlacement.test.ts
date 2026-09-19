@@ -38,4 +38,13 @@ describe("placeTooltip", () => {
     const p = placeTooltip({ x: 10, y: 80, width: 11, height: 11 }, card, tiny);
     expect(p.above).toBe(true);
   });
+
+  it("clamps vertically when the card is taller than both gutters", () => {
+    const short = { width: 400, height: 160 };
+    const card = { width: 176, height: 190 };
+    const p = placeTooltip({ x: 180, y: 100, width: 11, height: 11 }, card, short);
+    expect(p.above).toBe(true);
+    expect(p.top).toBe(TOOLTIP_MARGIN);
+    expect(p.top + card.height).toBeGreaterThan(short.height); // still overflows the short axis
+  });
 });
