@@ -58,6 +58,16 @@ describe("parseProfileFilters", () => {
     expect(f.entity).toBeNull();
   });
 
+  it("rejects impossible calendar dates and reversed ranges", () => {
+    expect(parseProfileFilters("?day=2026-99-99").day).toBeNull();
+    expect(parseProfileFilters("?from=2026-02-30").from).toBeNull();
+    expect(parseProfileFilters("?day=2026-02-29").day).toBeNull(); // 2026 is not a leap year
+    expect(parseProfileFilters("?day=2024-02-29").day).toBe("2024-02-29");
+    const reversed = parseProfileFilters("?from=2026-08-16&to=2026-08-01");
+    expect(reversed.from).toBeNull();
+    expect(reversed.to).toBeNull();
+  });
+
   it("dedupes facet values", () => {
     expect(parseProfileFilters("?p=a,a,b").facets.providers).toEqual(["a", "b"]);
   });

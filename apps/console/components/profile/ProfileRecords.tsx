@@ -70,18 +70,21 @@ export function ProfileRecords({
   onPinDay,
   onToggleProvider,
   onToggleModel,
+  onJumpToRhythm,
 }: {
   records: RecordsData;
   onPinDay: (day: string) => void;
   onToggleProvider: (id: string) => void;
   onToggleModel: (id: string) => void;
+  /** Longest-streak drill-in: scrolls to the burn-rhythm strip. */
+  onJumpToRhythm: () => void;
 }) {
   const v = (node: React.ReactNode) => (records.pending ? "—" : node);
   return (
     <section aria-label="All-time records">
       <div className="mb-token-4 flex items-baseline justify-between gap-token-4">
         <h2 className="eyebrow">Records</h2>
-        <span className="text-xs text-content-dim">the all-time hall of fame — click to dig in</span>
+        <span className="text-xs text-content-dim">the all-time hall of fame — tiles dig in</span>
       </div>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-6 lg:gap-0 lg:divide-x lg:divide-glass-line lg:rounded-lg lg:border lg:border-glass-line">
         <RecordTile
@@ -118,6 +121,8 @@ export function ProfileRecords({
           value={v(`${records.longestStreak}d`)}
           label="Longest streak"
           sub={records.pending ? undefined : `${records.activeDays} active days`}
+          title="Jump to the burn-rhythm strip"
+          onClick={records.pending ? undefined : onJumpToRhythm}
         />
         <RecordTile
           value={v(records.firstBurn ? formatDayLabel(records.firstBurn) : "—")}

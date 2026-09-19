@@ -43,6 +43,14 @@ export function ProfileHeatmapSection({
   // Click delegation: the SVG rects carry aria-labels starting with the
   // deterministic day label ("Aug 14, 2026 — …" / "Week of Aug 9, 2026 — …").
   // A click pins the matching day in the inspector; clicking it again unpins.
+  // Keyboard users get the same drill-in via focusable active-day cells
+  // (ContributionHeatmap `onSelectDay`) — Enter/Space pins the exact day.
+  const pinDay = React.useCallback(
+    (day: string) => {
+      onPinDay(pinnedDay === day ? null : day);
+    },
+    [onPinDay, pinnedDay],
+  );
   const onClick = React.useCallback(
     (e: React.MouseEvent<HTMLElement>) => {
       const target = e.target as Element | null;
@@ -51,9 +59,9 @@ export function ProfileHeatmapSection({
       const label = rect.getAttribute("aria-label") ?? "";
       const day = dayKeyFromLabel(label, points, today);
       if (!day) return;
-      onPinDay(pinnedDay === day ? null : day);
+      pinDay(day);
     },
-    [onPinDay, pinnedDay, points, today],
+    [pinDay, points, today],
   );
 
   return (
@@ -85,15 +93,15 @@ export function ProfileHeatmapSection({
         </div>
       </div>
       {/* Click delegation over the SVG grid: rects carry deterministic
-          day aria-labels (see dayKeyFromLabel). Matches the heatmap's
-          existing mouse-first idiom — keyboard users pin days via the
-          records tiles and ledger rows, which are native buttons. */}
+          day aria-labels (see dayKeyFromLabel). Active-day cells are also
+          keyboard-focusable via ContributionHeatmap's onSelectDay. */}
       <div onClick={onClick} title="Click a day to inspect it">
         <ContributionHeatmap
           points={points}
           mode={mode}
           today={today}
           dailyProviderTokens={dailyProviderTokens}
+          onSelectDay={pinDay}
         />
       </div>
       {pinnedDay && (

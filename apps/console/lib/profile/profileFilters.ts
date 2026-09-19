@@ -59,8 +59,19 @@ export interface ProfileFilters {
 
 const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function isDayKey(v: string): boolean {
-  return DAY_KEY_RE.test(v);
+/**
+ * Strict calendar day-key check: shape AND a real UTC date (rejects
+ * "2026-99-99", "2026-02-30"). Round-trips through Date.UTC so a shared URL
+ * can never smuggle an invalid Date into a Firestore constraint.
+ */
+export function isDayKey(v: string): boolean {
+  if (!DAY_KEY_RE.test(v)) return false;
+  const [y, m, d] = v.split("-").map(Number);
+  if (!y || !m || !d) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return (
+    dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d
+  );
 }
 
 function parseList(v: string | null): string[] {
@@ -123,8 +134,13 @@ export function parseProfileFilters(search: string): ProfileFilters {
   const window = parseWindow(params.get("w"));
   const fromRaw = params.get("from");
   const toRaw = params.get("to");
-  const from = fromRaw && isDayKey(fromRaw) ? fromRaw : null;
-  const to = toRaw && isDayKey(toRaw) ? toRaw : null;
+  let from = fromRaw && isDayKey(fromRaw) ? fromRaw : null;
+  let to = toRaw && isDayKey(toRaw) ? toRaw : null;
+  // A reversed custom range is a malformed URL, not a time machine — drop it.
+  if (from && to && from > to) {
+    from = null;
+    to = null;
+  }
   const dayRaw = params.get("day");
   const day = dayRaw && isDayKey(dayRaw) ? dayRaw : null;
   return {

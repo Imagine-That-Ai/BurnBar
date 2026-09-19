@@ -19,7 +19,7 @@ export function ProfileRhythmSection({
   pending: boolean;
 }) {
   return (
-    <section aria-label="Burn rhythm">
+    <section aria-label="Burn rhythm" id="profile-burn-rhythm" className="scroll-mt-24">
       <div className="mb-token-1 flex items-baseline justify-between gap-token-4">
         <h2 className="eyebrow">Burn rhythm</h2>
         <span className="text-xs text-content-dim">mean tokens by weekday, in view</span>

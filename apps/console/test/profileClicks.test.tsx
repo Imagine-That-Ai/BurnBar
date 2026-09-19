@@ -114,3 +114,29 @@ describe("ProfileHeatmapSection clicks", () => {
     expect(onPinDay).toHaveBeenCalledWith(null);
   });
 });
+
+describe("ProfileHeatmapSection keyboard", () => {
+  it("Enter on an active-day cell pins that day", () => {
+    const onPinDay = vi.fn();
+    const el = renderHeatmap(onPinDay);
+    const cell = [...el.querySelectorAll("rect")].find(
+      (r) =>
+        r.getAttribute("role") === "button" &&
+        r.getAttribute("aria-label")?.startsWith("Aug 15"),
+    )!;
+    act(() => {
+      cell.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(onPinDay).toHaveBeenCalledWith("2026-08-15");
+  });
+
+  it("only active days are focusable", () => {
+    const el = renderHeatmap(vi.fn());
+    const buttons = [...el.querySelectorAll('rect[role="button"]')];
+    // Three active days in the fixture; quiet cells stay out of tab order.
+    expect(buttons.length).toBe(3);
+    expect(
+      buttons.every((b) => (b.getAttribute("tabindex") ?? b.getAttribute("tabIndex")) === "0"),
+    ).toBe(true);
+  });
+});

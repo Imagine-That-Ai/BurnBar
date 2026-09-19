@@ -125,8 +125,14 @@ export function ProfileSessionLedger({
         </p>
       ) : error ? (
         <p className="rounded-lg border border-glass-line px-token-3 py-token-4 text-sm text-content-dim">
-          Could not read usage events ({error}). If this mentions an index, the
-          Firestore console link in the error builds it in one click.
+          {error}{" "}
+          <button
+            type="button"
+            onClick={onLoadMore}
+            className="underline-offset-2 hover:text-content-bright hover:underline"
+          >
+            Retry
+          </button>
         </p>
       ) : events.length === 0 && !loading ? (
         <p className="rounded-lg border border-glass-line px-token-3 py-token-4 text-sm text-content-dim">
