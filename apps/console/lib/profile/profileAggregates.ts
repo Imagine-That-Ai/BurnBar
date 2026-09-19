@@ -1,0 +1,176 @@
+/**
+ * Client aggregates over bounded-range usage events for the /profile explorer.
+ *
+ * Pure math over `ProfileUsageEvent[]` — the hour × weekday grid, token mix,
+ * and day mixes the rollup cannot answer. All keys are UTC (the server's
+ * rollup day format) and all output is deterministic.
+ */
+
+import type { ProfileUsageEvent } from "./profileEvents";
+
+/** 7 × 24 grid of event counts + tokens, Monday-first row order for display. */
+export interface HourWeekdayCell {
+  /** 0 = Sunday … 6 = Saturday (matches dayOfWeek). */
+  weekday: number;
+  hour: number;
+  events: number;
+  tokens: number;
+}
+
+export interface HourWeekdayGrid {
+  cells: HourWeekdayCell[];
+  maxTokens: number;
+  maxEvents: number;
+}
+
+function dayKeyOf(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+function weekdayOfDayKey(dayKey: string): number {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).getUTCDay();
+}
+
+/**
+ * Hour × weekday grid from event timestamps. Events without a timestamp are
+ * skipped (they still count in the ledger). `maxTokens`/`maxEvents` drive
+ * sqrt-scaled intensity at render time, same perceptual trick as the heatmap.
+ */
+export function hourWeekdayGrid(events: readonly ProfileUsageEvent[]): HourWeekdayGrid {
+  const byCell = new Map<string, { events: number; tokens: number }>();
+  for (const e of events) {
+    if (!e.startedAt || e.hourUtc == null) continue;
+    const weekday = weekdayOfDayKey(dayKeyOf(e.startedAt));
+    const key = `${weekday}:${e.hourUtc}`;
+    const cur = byCell.get(key) ?? { events: 0, tokens: 0 };
+    cur.events += 1;
+    cur.tokens += e.totalTokens;
+    byCell.set(key, cur);
+  }
+  const cells: HourWeekdayCell[] = [];
+  let maxTokens = 0;
+  let maxEvents = 0;
+  for (let weekday = 0; weekday < 7; weekday++) {
+    for (let hour = 0; hour < 24; hour++) {
+      const cur = byCell.get(`${weekday}:${hour}`) ?? { events: 0, tokens: 0 };
+      if (cur.tokens > maxTokens) maxTokens = cur.tokens;
+      if (cur.events > maxEvents) maxEvents = cur.events;
+      cells.push({ weekday, hour, ...cur });
+    }
+  }
+  return { cells, maxTokens, maxEvents };
+}
+
+export interface TokenMix {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
+  total: number;
+}
+
+/** Token mix over events — the footer currently admits this is missing. */
+export function tokenMix(events: readonly ProfileUsageEvent[]): TokenMix {
+  const mix: TokenMix = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: 0 };
+  for (const e of events) {
+    mix.input += e.inputTokens;
+    mix.output += e.outputTokens;
+    mix.cacheRead += e.cacheReadTokens;
+    mix.cacheWrite += e.cacheWriteTokens;
+    mix.reasoning += e.reasoningTokens;
+  }
+  mix.total = mix.input + mix.output + mix.cacheRead + mix.cacheWrite + mix.reasoning;
+  return mix;
+}
+
+export interface NamedShare {
+  key: string;
+  label: string;
+  tokens: number;
+  events: number;
+  cost: number;
+}
+
+/** Rank providers / models / harnesses / accounts / devices inside a day or range. */
+export function rankShares(
+  events: readonly ProfileUsageEvent[],
+  by: "provider" | "model" | "harness" | "account" | "device",
+): NamedShare[] {
+  const acc = new Map<string, { label: string; tokens: number; events: number; cost: number }>();
+  for (const e of events) {
+    let key: string | undefined;
+    let label: string | undefined;
+    switch (by) {
+      case "provider":
+        key = e.provider;
+        label = e.provider;
+        break;
+      case "model":
+        key = e.model ?? "unknown";
+        label = e.model ?? "Unknown model";
+        break;
+      case "harness":
+        key = e.harnessId ?? "unknown";
+        label = e.harnessName ?? e.harnessId ?? "Unknown";
+        break;
+      case "account":
+        key = e.accountId ?? `${e.providerID ?? e.provider}:unattributed`;
+        label = e.accountLabel ?? key;
+        break;
+      case "device":
+        key = e.deviceId ?? "unknown";
+        label = e.deviceId ?? "Unknown device";
+        break;
+    }
+    const cur = acc.get(key) ?? { label: label ?? key, tokens: 0, events: 0, cost: 0 };
+    cur.tokens += e.totalTokens;
+    cur.events += 1;
+    cur.cost += e.costUsd;
+    acc.set(key, cur);
+  }
+  return [...acc.entries()]
+    .map(([key, v]) => ({ key, ...v }))
+    .sort((a, b) => b.tokens - a.tokens || b.events - a.events);
+}
+
+export interface DayInspectorSummary {
+  day: string;
+  events: number;
+  tokens: number;
+  cost: number;
+  mix: TokenMix;
+  byProvider: NamedShare[];
+  byModel: NamedShare[];
+  byHarness: NamedShare[];
+}
+
+/** One day's events → the day inspector body (mix + top shares). */
+export function summarizeDay(
+  day: string,
+  events: readonly ProfileUsageEvent[],
+): DayInspectorSummary {
+  const dayEvents = events.filter((e) => e.startedAt && dayKeyOf(e.startedAt) === day);
+  return {
+    day,
+    events: dayEvents.length,
+    tokens: dayEvents.reduce((n, e) => n + e.totalTokens, 0),
+    cost: dayEvents.reduce((n, e) => n + e.costUsd, 0),
+    mix: tokenMix(dayEvents),
+    byProvider: rankShares(dayEvents, "provider").slice(0, 5),
+    byModel: rankShares(dayEvents, "model").slice(0, 5),
+    byHarness: rankShares(dayEvents, "harness").slice(0, 5),
+  };
+}
+
+/**
+ * Filter events to a single day (UTC) — the inspector's prev/next-day jump
+ * pages the ledger range once; day switches are client-side slices after that.
+ */
+export function eventsOnDay(
+  events: readonly ProfileUsageEvent[],
+  day: string,
+): ProfileUsageEvent[] {
+  return events.filter((e) => e.startedAt && dayKeyOf(e.startedAt) === day);
+}
