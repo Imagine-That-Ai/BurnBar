@@ -12,9 +12,9 @@ import {
   parseProviderAccountDoc,
   parseProviderAccountSecretRefDoc,
   parseProviderConnectionDoc,
-  parseUsageEventDoc,
   recordOrUndefined,
 } from "../lib/guards.js";
+import { parseUsageEventDoc } from "../lib/usageEventParse.js";
 
 assert.equal(isRecord({ ok: true }), true);
 assert.equal(isRecord(null), false);

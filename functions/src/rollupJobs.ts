@@ -55,7 +55,7 @@ export async function readRollupJobDirtiedAt(db: Firestore, uid: string): Promis
 export const FULL_REBUILD_ATTEMPT_STALE_MS = 12 * 60 * 1000;
 
 /** Fresh in-flight marker: a full rebuild may still be replacing counters. */
-export function isFreshFullRebuildInFlight(
+function isFreshFullRebuildInFlight(
   job: RollupJobDoc | undefined,
   nowMillis = Date.now(),
   staleAttemptMillis = FULL_REBUILD_ATTEMPT_STALE_MS,

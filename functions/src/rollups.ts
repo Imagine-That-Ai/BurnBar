@@ -31,7 +31,6 @@ export { computeUserRollups, computeUserRollupsFromCounters, rebuildUserRollupCo
 export {
   readRollupJobDirtiedAt,
   FULL_REBUILD_ATTEMPT_STALE_MS,
-  isFreshFullRebuildInFlight,
   RollupRebuildUnavailableError,
   beginFullRebuildAttempt,
   recordRollupRebuildFailure,

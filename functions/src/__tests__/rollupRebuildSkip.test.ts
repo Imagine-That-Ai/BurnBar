@@ -151,12 +151,12 @@ const JOB_PATH = `users/${UID}/rollup_jobs/current`;
 const USAGE_PATH = `users/${UID}/usage`;
 const ALL_TIME_PATH = `users/${UID}/usage_counter_totals/all_time`;
 const COUNTER_COLLECTIONS = [
+  // Pending deltas first so a concurrent cheap drain cannot apply stale
+  // increments onto counters the rebuild is about to replace.
+  `users/${UID}/pending_counter_deltas`,
   `users/${UID}/usage_counter_days`,
   `users/${UID}/usage_counter_totals`,
   `users/${UID}/usage_counter_keys`,
-  // The pending-delta queue (crosscut-011) is superseded by the raw usage
-  // rescan, so the full rebuild purges it alongside the counters.
-  `users/${UID}/pending_counter_deltas`,
 ];
 const WINDOW_KEYS: WindowKey[] = ["today", "7d", "30d", "90d", "all_time"];
 const T0 = "2026-06-09T00:00:00.000Z";

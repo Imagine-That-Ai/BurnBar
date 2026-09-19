@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parseProviderAccountDoc, parseUsageEventDoc } from "../guards.js";
+import { parseProviderAccountDoc } from "../guards.js";
+import { parseUsageEventDoc } from "../usageEventParse.js";
 
 /**
  * Characterization tests pinning the CURRENT observable behavior of

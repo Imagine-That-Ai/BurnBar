@@ -18,7 +18,8 @@ import type {
   ExecutionSourceSummary,
   ComboSummary,
 } from "./types.js";
-import { isProviderAccountStorageScope, parseProvider, parseUsageEventDoc, recordOrUndefined } from "./guards.js";
+import { isProviderAccountStorageScope, parseProvider, recordOrUndefined } from "./guards.js";
+import { parseUsageEventDoc } from "./usageEventParse.js";
 import { logError, logInfo } from "./logging.js";
 import { flushDomainCorePricingShadowEvidence } from "./pricing.js";
 import {

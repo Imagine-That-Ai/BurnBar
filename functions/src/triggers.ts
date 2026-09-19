@@ -9,7 +9,8 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { getFirestore } from "firebase-admin/firestore";
 import { enqueueUsageCounterDelta } from "./rollups.js";
-import { errorMessage, parseUsageEventDoc } from "./guards.js";
+import { errorMessage } from "./guards.js";
+import { parseUsageEventDoc } from "./usageEventParse.js";
 import { logError } from "./logging.js";
 import { runFirestoreTrigger } from "./scheduledOps.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
