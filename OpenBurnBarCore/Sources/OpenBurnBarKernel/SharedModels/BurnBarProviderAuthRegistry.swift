@@ -120,6 +120,9 @@ public struct BurnBarProviderAuthMethod: Codable, Hashable, Sendable, Identifiab
         if id == "opencode-auth-json" {
             return Self.validateOpenCodeRouteCredential(trimmed)
         }
+        if id == "google-cloud-service-account" {
+            return Self.validateGoogleCloudCredentialJSON(trimmed)
+        }
 
         if let prefix = prefixHint,
            !trimmed.lowercased().hasPrefix(prefix.lowercased()) {
@@ -200,6 +203,34 @@ public struct BurnBarProviderAuthMethod: Codable, Hashable, Sendable, Identifiab
         }
 
         return nil
+    }
+
+    private static func validateGoogleCloudCredentialJSON(_ trimmed: String) -> BurnBarProviderAuthValidation {
+        if trimmed.hasPrefix("AIza") {
+            return .warning("AI Studio AIza keys cannot read remaining quota. Paste a service account or ADC JSON instead.")
+        }
+        guard let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return .warning("Paste a Google Cloud service account or authorized_user ADC JSON object.")
+        }
+        let type = (object["type"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if type == "service_account" {
+            let email = (object["client_email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let key = (object["private_key"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if email.isEmpty || key.isEmpty {
+                return .warning("Service account JSON must include client_email and private_key.")
+            }
+            return .ok
+        }
+        if type == "authorized_user" {
+            let refresh = (object["refresh_token"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let clientID = (object["client_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if refresh.isEmpty || clientID.isEmpty {
+                return .warning("ADC JSON must include client_id and refresh_token from gcloud application-default login.")
+            }
+            return .ok
+        }
+        return .warning("Expected JSON type service_account or authorized_user. This is not an AI Studio key and not Sign in with Google.")
     }
 }
 
@@ -653,11 +684,63 @@ public enum BurnBarProviderAuthRegistry {
         aliasProviderIDs: ["gemini"],
         methods: [
             BurnBarProviderAuthMethod(
+                id: "google-gemini-cli-local",
+                kind: .localRuntime,
+                displayName: "Gemini CLI sessions on this Mac",
+                summary: "Reads used tokens from local Gemini CLI logs.",
+                helperText: "BurnBar reads ~/.gemini/tmp session logs and shows tokens used in the last 24 hours and 7 days. Google does not publish remaining AI Studio or Gemini app quota to other apps.",
+                placeholder: "Local Gemini CLI profile",
+                dashboardURL: "https://aistudio.google.com",
+                dashboardLabel: "Open Google AI Studio",
+                storage: .appKeychain(account: "provider.google.geminiCLI"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "google-antigravity-login",
+                kind: .localRuntime,
+                displayName: "Antigravity on this Mac",
+                summary: "Uses the Antigravity quota adapter for estimated 5-hour coding windows.",
+                helperText: "Sign in to Antigravity with the same Google AI Pro / Ultra account. Remaining Gemini app / Verizon quota is still not published. Exact remaining Antigravity credits are estimated from local activity.",
+                placeholder: "Local Antigravity profile",
+                dashboardURL: "https://antigravity.google",
+                dashboardLabel: "Open Antigravity",
+                storage: .appKeychain(account: "provider.google.antigravity"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "google-cloud-adc",
+                kind: .localRuntime,
+                displayName: "Google Cloud ADC on this Mac",
+                summary: "Reads remaining Gemini API and Vertex project quotas from Application Default Credentials.",
+                helperText: "Run `gcloud auth application-default login` and `gcloud auth application-default set-quota-project PROJECT_ID`. BurnBar reads Application Default Credentials already on this Mac. This is not Firebase Sign in with Google, and it does not invent a BurnBar OAuth client. Grant Service Usage Consumer and Monitoring Viewer on the project.",
+                placeholder: "Application Default Credentials",
+                dashboardURL: "https://console.cloud.google.com/iam-admin/quotas",
+                dashboardLabel: "Open Cloud Quotas",
+                storage: .appKeychain(account: "provider.google.cloudADC"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "google-cloud-service-account",
+                kind: .apiKey,
+                displayName: "Google Cloud service account JSON",
+                summary: "Reads remaining Gemini API and Vertex project quotas with a service account or ADC JSON.",
+                helperText: "Paste a service account key JSON (type service_account) or Application Default Credentials JSON (type authorized_user). This is not an AI Studio AIza key and is not Sign in with Google. The account needs Service Usage Consumer and Monitoring Viewer.",
+                placeholder: "{ \"type\": \"service_account\", … }",
+                dashboardURL: "https://console.cloud.google.com/iam-admin/serviceaccounts",
+                dashboardLabel: "Open service accounts",
+                storage: .appKeychain(account: "provider.google.serviceAccount"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
                 id: "google-api-key",
                 kind: .apiKey,
                 displayName: "Google AI API Key",
-                summary: "Tracks Gemini usage.",
-                helperText: "Get a key from Google AI Studio. Proxy routing for Gemini uses the native protocol and isn't enabled yet.",
+                summary: "Saves an AI Studio key. Does not unlock remaining quota.",
+                helperText: "Paste a key from Google AI Studio. The key cannot read remaining RPD, RPM, or TPM. Use Google Cloud ADC or a service account JSON for project remaining meters.",
                 placeholder: "AIza…",
                 prefixHint: "AIza",
                 dashboardURL: "https://aistudio.google.com/app/apikey",
@@ -665,11 +748,25 @@ public enum BurnBarProviderAuthRegistry {
                 storage: .daemonSlot,
                 unlocksProxyRouting: false,
                 unlocksQuotaRefresh: false
+            ),
+            BurnBarProviderAuthMethod(
+                id: "google-ai-pro-consumer",
+                kind: .browserLogin,
+                displayName: "Google AI Pro / Gemini app (including Verizon)",
+                summary: "Marks a consumer Gemini subscription. Remaining app quota is not available.",
+                helperText: "Verizon Google AI Pro and the Gemini app do not publish remaining quota to other apps. BurnBar will not invent a remaining percentage. Use Antigravity or Gemini CLI logs for used tokens on this Mac.",
+                placeholder: "Consumer Google AI Pro account",
+                dashboardURL: "https://gemini.google.com",
+                dashboardLabel: "Open Gemini",
+                storage: .appKeychain(account: "provider.google.consumer"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: false
             )
         ],
-        summary: "Google Gemini — tracking and accounting only.",
-        proxyHint: "Tracking only — Gemini uses a non-OpenAI protocol the proxy doesn't speak yet.",
-        quotaHint: nil
+        primaryMethodID: "google-gemini-cli-local",
+        summary: "Google Gemini — local used-token meters plus Google Cloud remaining project quotas.",
+        proxyHint: "Proxy routing for Gemini is not enabled yet. Connect to report usage and remaining project quotas.",
+        quotaHint: "Used tokens come from Gemini CLI session logs. Remaining Gemini API / Vertex rate quotas come from Google Cloud ADC or a service account via Service Usage and Cloud Monitoring. AI Studio keys and Verizon / Gemini app remaining stay unpublished."
     )
 
     private static let xaiDescriptor = BurnBarProviderAuthDescriptor(

@@ -30,7 +30,7 @@
 | **Aider** | `AiderQuotaAdapter.swift` | `.exact` | `~/.aider/analytics.jsonl` | Local interaction token stats (no vendor quota) |
 | **Forge** | `ForgeQuotaAdapter.swift` | `.estimated` | `~/forge/.forge.db` local SQLite | Session counts via OpenBurnBar local gateway |
 | **OpenCode** | `OpenCodeQuotaAdapter` | `.exact` | `~/.local/share/opencode/opencode.db` | Local SQLite session metrics and model details |
-| **Gemini CLI** | _none_ / Local scans | `.unavailable` | Local session files only | Session tokens only (no programmatic quota API) |
+| **Gemini CLI** | `GeminiCLIQuotaAdapter.swift` | `.exact` used; `.exact` remaining when ADC/SA is present | Local sessions + Google Cloud Service Usage / Monitoring | Used tokens in 24h and 7d windows. Remaining Gemini API / Vertex project rate quotas when ADC or a service account can read the project. AI Studio keys and Verizon / Gemini app remaining stay unpublished |
 | **Cline** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **Roo Code** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **Kilo Code** | `KiloCodeQuotaAdapter.swift` | `.exact` | Install detection | Visual environment detection only |
@@ -122,6 +122,7 @@ without durable source evidence stay `unknown`.
 | Provider | Auth Type | Credential Format | Header | Scope / Notes |
 |----------|-----------|-------------------|--------|---------------|
 | **Antigravity** | None | N/A (local file) | N/A | Reads `history.jsonl` from `~/.gemini/antigravity-cli/` |
+| **Gemini CLI** | Local files + optional Google Cloud ADC / service account | ADC, service-account JSON, or `gcloud` | `Authorization: Bearer {access_token}` | Used tokens from `~/.gemini/tmp/**/session-*.json(l)`. Remaining project quotas from Service Usage `consumerQuotaMetrics` + Cloud Monitoring `quota/allocation/usage` and `quota/rate/net_usage`. AI Studio keys and Verizon / Gemini app remaining are not published |
 | **Claude Code** | None | N/A (local file) | N/A | Reads `~/.claude/projects/**/*.jsonl` |
 | **Codex** | None | N/A (local file) | N/A | Reads `rollout-*.jsonl` from `~/.codex/sessions/` |
 | **OpenAI (usage)** | Admin API key | `sk-...` | `Authorization: Bearer {key}` | Requires organization admin key for completions usage |
@@ -180,6 +181,7 @@ empty key by default.
 | Provider | Endpoint | Method | Response Shape |
 |----------|----------|--------|---------------|
 | Antigravity | `~/.gemini/antigravity-cli/history.jsonl` | File read | Local history JSONL with detailed token count attributes |
+| Gemini CLI | `~/.gemini/tmp/**/session-*.json(l)` plus Service Usage / Cloud Monitoring | File read + HTTP | Used-only session totals; remaining project quotas from `consumerQuotaMetrics` + `quota/allocation/usage` / `quota/rate/net_usage` |
 | Codex | `~/.codex/sessions/rollout-*.jsonl` | File read | `{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":...}}}}` |
 | Claude Code | `~/.claude/projects/**/*.jsonl` | File read | `{"type":"assistant","message":{"model":"...","usage":{"input_tokens":...,"output_tokens":...}}}` |
 | DeepSeek | `GET https://api.deepseek.com/user/balance` | HTTP | `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"...","real_time_balance":"..."}]}` |
@@ -205,6 +207,7 @@ empty key by default.
 | Provider | Cadence | Auth Required |
 |----------|---------|---------------|
 | Antigravity | Real-time on CLI transaction | None |
+| Gemini CLI | On refresh (local session scan + optional Google Cloud quota APIs) | ADC / service account for remaining; none for used tokens |
 | Claude Code | Real-time on prompt interaction | None |
 | Codex | Real-time on next CLI invocation | None |
 | DeepSeek | On refresh (polled) | Yes |
