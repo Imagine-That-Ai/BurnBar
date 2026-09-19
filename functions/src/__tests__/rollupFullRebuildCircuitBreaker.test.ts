@@ -564,6 +564,24 @@ describe("rollupUserRebuild task processor", () => {
     expect(fake.recursiveDeletes).toEqual([]);
   });
 
+  it("does not drain pending deltas while a force rebuild is in flight", async () => {
+    const fake = new FakeFirestore();
+    fake.store.set(JOB_PATH, {
+      dirty: true,
+      dirtiedAt: T0,
+      fullRebuildAttemptInFlightAt: FRESH_MARKER,
+    });
+    seedQueue(fake, 2);
+
+    const result = await processRollupUserRebuild(fake.asFirestore(), UID, { taskDirtiedAt: T0 });
+
+    expect(result).toMatchObject({ status: "skipped", reason: "full_rebuild_in_flight" });
+    expect(queueSize(fake)).toBe(2);
+    expect(fake.recursiveDeletes).toEqual([]);
+    await expect(refreshUserRollups(fake.asFirestore(), UID)).rejects.toMatchObject({ reason: "in_flight" });
+    expect(queueSize(fake)).toBe(2);
+  });
+
   it("uses the full-rebuild repair path and clears failure state when the job carries lastErrorCode", async () => {
     const fake = new FakeFirestore();
     fake.store.set(JOB_PATH, { dirty: true, dirtiedAt: T0, lastErrorCode: "delta drain failed" });

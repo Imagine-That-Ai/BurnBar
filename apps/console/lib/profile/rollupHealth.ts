@@ -63,7 +63,7 @@ export function rebuildUsageErrorMessage(err: unknown): string {
   const retryAt = details?.retryAt;
   const message = errorMessage(err);
 
-  if (reason === "circuit_open" || code.endsWith("/unavailable")) {
+  if (reason === "circuit_open") {
     return retryAt
       ? `Usage repair is paused until ${retryAt} after repeated failures.`
       : "Usage repair is paused after repeated failures. Try again in an hour.";

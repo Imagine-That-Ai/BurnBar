@@ -54,6 +54,17 @@ export async function readRollupJobDirtiedAt(db: Firestore, uid: string): Promis
  */
 export const FULL_REBUILD_ATTEMPT_STALE_MS = 12 * 60 * 1000;
 
+/** Fresh in-flight marker: a full rebuild may still be replacing counters. */
+export function isFreshFullRebuildInFlight(
+  job: RollupJobDoc | undefined,
+  nowMillis = Date.now(),
+  staleAttemptMillis = FULL_REBUILD_ATTEMPT_STALE_MS,
+): boolean {
+  const attemptStartedAt = job?.fullRebuildAttemptInFlightAt;
+  const attemptStartedAtMillis = attemptStartedAt != null ? Date.parse(attemptStartedAt) : Number.NaN;
+  return Number.isFinite(attemptStartedAtMillis) && nowMillis - attemptStartedAtMillis < staleAttemptMillis;
+}
+
 /** lastErrorCode recorded when a stale marker is counted: the killed attempt
  * may have deleted the counters before dying mid-scan, so they must stay
  * marked untrusted and route the next pass through the repair path. */
@@ -388,6 +399,10 @@ export async function refreshUserRollups(
   let rollups: Record<WindowKey, UsageRollupDoc>;
   if (rebuiltCounters) {
     rollups = await refreshViaFullRebuild(db, uid, job, options);
+  } else if (isFreshFullRebuildInFlight(job)) {
+    // Cheap drain would apply mid-rebuild events onto counters the in-flight
+    // rescan is about to delete, then drop the queue docs. Leave them queued.
+    throw new RollupRebuildUnavailableError("in_flight", job?.fullRebuildAttemptInFlightAt);
   } else {
     // Fold queued trigger deltas into the counters first so the served
     // rollups include every event enqueued up to this point. A drain failure
@@ -447,6 +462,17 @@ export async function processRollupUserRebuild(
     }
 
     const needsFullRebuild = job?.lastErrorCode != null;
+    // A force rebuild leaves lastErrorCode empty. Cheap drain would apply
+    // mid-scan events onto counters the rescan is about to delete.
+    if (!needsFullRebuild && isFreshFullRebuildInFlight(job)) {
+      return {
+        status: "skipped",
+        uid,
+        reason: "full_rebuild_in_flight",
+        taskDirtiedAt: options.taskDirtiedAt,
+        currentDirtiedAt: job?.dirtiedAt,
+      };
+    }
     if (needsFullRebuild) {
       const gate = await beginFullRebuildAttempt(db, uid, {
         maxConsecutiveFullRebuildFailures: rollupMaxConsecutiveFullRebuildFailures,

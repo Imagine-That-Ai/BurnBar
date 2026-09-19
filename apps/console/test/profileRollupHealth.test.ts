@@ -101,4 +101,8 @@ describe("rebuildUsageErrorMessage", () => {
   it("falls back to the Error message", () => {
     expect(rebuildUsageErrorMessage(new Error("firestore denied"))).toBe("firestore denied");
   });
+
+  it("does not treat a bare functions/unavailable as a circuit break", () => {
+    expect(rebuildUsageErrorMessage({ code: "functions/unavailable", message: "UNAVAILABLE" })).toBe("UNAVAILABLE");
+  });
 });

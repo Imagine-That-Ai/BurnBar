@@ -59,6 +59,25 @@ const DASHED_PROVIDER_ALIASES: Readonly<Record<string, Provider>> = {
 };
 
 /**
+ * Model-vendor / catalog IDs that are valid `providerID` values but are not
+ * AgentProvider cases. A rebuild must not rewrite these onto the display
+ * provider ("anthropic" → "claude-code") or daily/account splits drift.
+ */
+const CATALOG_ONLY_PROVIDER_IDS: ReadonlySet<string> = new Set([
+  "amazon",
+  "anthropic",
+  "bedrock",
+  "cohere",
+  "google",
+  "grok",
+  "mistral",
+  "moonshot",
+  "openrouter",
+  "perplexity",
+  "qwen",
+]);
+
+/**
  * Normalizes a provider token the way Swift `ProviderID` does: trim,
  * lowercase, spaces/underscores/dashes collapsed so display names
  * ("Claude Code"), tokens ("claudecode"), and canonical IDs ("claude-code")
@@ -85,13 +104,22 @@ function resolveProviderToken(value: unknown): Provider | undefined {
  * Resolves the canonical provider for a raw usage event.
  *
  * Uploaders write BOTH `provider` (display name, e.g. "Claude Code") and
- * `providerID` (canonical ID, e.g. "claude-code"). The canonical ID wins when
- * present; otherwise the display name is normalized onto the catalog. Returns
- * undefined only for values outside the catalog — with the full catalog in
- * `SUPPORTED_PROVIDERS`, no real uploader output is ever dropped.
+ * `providerID` (canonical ID, e.g. "claude-code"). An AgentProvider
+ * `providerID` wins; a catalog-only ID ("anthropic") does not steal the
+ * display/harness slot. Returns undefined only when neither field is an
+ * AgentProvider.
  */
 export function resolveUsageEventProvider(raw: Record<string, unknown>): Provider | undefined {
+  // AgentProvider ID wins when it is one; a catalog-only providerID must not
+  // steal the display/harness slot (or reject the event when the display name
+  // is a real AgentProvider).
   return resolveProviderToken(raw.providerID) ?? resolveProviderToken(raw.provider);
+}
+
+function preservedProviderID(raw: Record<string, unknown>, fallback: Provider): string {
+  if (typeof raw.providerID !== "string" || !raw.providerID.trim()) return fallback;
+  const token = raw.providerID.trim();
+  return resolveProviderToken(token) ?? (CATALOG_ONLY_PROVIDER_IDS.has(normalizeProviderToken(token)) ? token : fallback);
 }
 
 export function stringValue(raw: unknown): string | undefined {
@@ -586,9 +614,9 @@ export function parseUsageEventDoc(raw: unknown): UsageEventDoc | undefined {
   assignUsageEventStringFields(doc, raw);
   assignUsageEventNumberFields(doc, raw);
   assignUsageEventRawTimeFields(doc, raw);
-  // Canonicalize the stored ID: a garbage-but-present `providerID` must not
-  // shadow the resolved provider downstream (counter splits, logical keys).
-  doc.providerID = resolveProviderToken(raw.providerID) ?? provider;
+  // Keep a valid catalog-only ID (anthropic, grok, …). Garbage tokens still
+  // fall back to the resolved AgentProvider so they cannot shadow splits.
+  doc.providerID = preservedProviderID(raw, provider);
   return doc;
 }
 

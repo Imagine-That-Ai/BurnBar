@@ -370,6 +370,16 @@ describe("parseUsageEventDoc (characterization)", () => {
         recordedAt: "2026-09-01T00:00:00.000Z",
       }),
     ).toBeUndefined();
+    // Catalog-only vendor IDs stay on providerID; the AgentProvider display
+    // name still owns `provider`. Rewriting anthropic → claude-code drifted
+    // daily/account splits.
+    expect(
+      parseUsageEventDoc({
+        provider: "Claude Code",
+        providerID: "anthropic",
+        recordedAt: "2026-09-01T00:00:00.000Z",
+      }),
+    ).toMatchObject({ provider: "claude-code", providerID: "anthropic" });
   });
 
   it("returns undefined when no recordedAt can be synthesized", () => {

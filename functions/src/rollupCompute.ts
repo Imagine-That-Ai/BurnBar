@@ -567,7 +567,9 @@ export async function rebuildUserRollupCounters(
 ): Promise<RebuildUserRollupCountersResult> {
   // The pending-delta queue is purged BEFORE the raw usage scan: everything
   // enqueued so far is superseded by the scan itself, while deltas enqueued
-  // mid-scan survive the purge and replay idempotently on the next drain.
+  // mid-scan survive the purge. Cheap drains refuse to run while the
+  // in-flight marker is fresh, so those surviving docs are not applied onto
+  // counters this rebuild is about to delete.
   //
   // The counter collections are deleted only AFTER the scan below produces
   // countable winners (see the zero-parse guard). Deleting first turned a
