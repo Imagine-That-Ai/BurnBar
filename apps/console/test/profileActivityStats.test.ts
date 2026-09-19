@@ -10,6 +10,7 @@ import {
   peakDay,
   toDayKey,
   weekStart,
+  weekdayRhythm,
   weeklyTotals,
 } from "../lib/profile/activityStats";
 import type { DailyPoint } from "../lib/usage";
@@ -111,6 +112,43 @@ describe("series math", () => {
       { weekStart: "2026-02-01", tokens: 3 },
       { weekStart: "2026-02-08", tokens: 4 },
     ]);
+  });
+});
+
+describe("weekdayRhythm", () => {
+  it("averages by weekday over calendar occurrences, Monday first", () => {
+    // Two full weeks: weekdays burn 1M, weekends stay quiet.
+    const points: DailyPoint[] = [];
+    for (let d = 0; d < 14; d++) {
+      const day = addDays("2026-07-27", d); // a Monday
+      const dow = dayOfWeek(day);
+      if (dow !== 0 && dow !== 6) points.push({ day, tokens: 1_000_000 });
+    }
+    const rhythm = weekdayRhythm(points, "2026-07-27", "2026-08-09");
+    expect(rhythm.map((r) => r.label)).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+    for (const r of rhythm.slice(0, 5)) {
+      expect(r.days).toBe(2);
+      expect(r.avg).toBe(1_000_000);
+    }
+    expect(rhythm[5]).toMatchObject({ label: "Sat", avg: 0, days: 2 });
+    expect(rhythm[6]).toMatchObject({ label: "Sun", avg: 0, days: 2 });
+  });
+
+  it("a skipped weekday dilutes instead of vanishing", () => {
+    const rhythm = weekdayRhythm(
+      [{ day: "2026-08-03", tokens: 700 }], // one Monday
+      "2026-08-03",
+      "2026-08-16", // through Sunday: two Mondays on the calendar
+    );
+    const monday = rhythm[0];
+    expect(monday).toMatchObject({ label: "Mon", tokens: 700, days: 2, avg: 350 });
+  });
+
+  it("empty history yields a zeroed week", () => {
+    const rhythm = weekdayRhythm([], "2026-08-16", "2026-08-16");
+    expect(rhythm).toHaveLength(7);
+    expect(rhythm.every((r) => r.avg === 0 && r.tokens === 0)).toBe(true);
+    expect(rhythm.find((r) => r.weekday === 0)?.days).toBe(1); // the Sunday itself
   });
 });
 

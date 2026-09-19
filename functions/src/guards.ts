@@ -46,6 +46,54 @@ export function parseProvider(value: unknown): Provider | undefined {
   return isProvider(value) ? value : undefined;
 }
 
+/**
+ * Uploader display names whose canonical ID keeps a dash after the spaces are
+ * stripped. Everything else in the `AgentProvider` catalog normalizes
+ * directly: lowercase + strip spaces/underscores/dashes (Swift
+ * `persistedToken`), e.g. "Pi Agent" → "piagent", "xAI" → "xai".
+ */
+const DASHED_PROVIDER_ALIASES: Readonly<Record<string, Provider>> = {
+  claudecode: "claude-code",
+  cursoragent: "cursor-agent",
+  primeagent: "prime-agent",
+};
+
+/**
+ * Normalizes a provider token the way Swift `ProviderID` does: trim,
+ * lowercase, spaces/underscores/dashes collapsed so display names
+ * ("Claude Code"), tokens ("claudecode"), and canonical IDs ("claude-code")
+ * all resolve alike.
+ */
+function normalizeProviderToken(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_\-]+/g, "");
+}
+
+/** Resolves one raw token (canonical ID or display name) onto the catalog. */
+function resolveProviderToken(value: unknown): Provider | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  if (isProvider(value)) return value;
+  const normalized = normalizeProviderToken(value);
+  const aliased = DASHED_PROVIDER_ALIASES[normalized];
+  if (aliased) return aliased;
+  for (const candidate of SUPPORTED_PROVIDERS) {
+    if (normalizeProviderToken(candidate) === normalized) return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * Resolves the canonical provider for a raw usage event.
+ *
+ * Uploaders write BOTH `provider` (display name, e.g. "Claude Code") and
+ * `providerID` (canonical ID, e.g. "claude-code"). The canonical ID wins when
+ * present; otherwise the display name is normalized onto the catalog. Returns
+ * undefined only for values outside the catalog — with the full catalog in
+ * `SUPPORTED_PROVIDERS`, no real uploader output is ever dropped.
+ */
+export function resolveUsageEventProvider(raw: Record<string, unknown>): Provider | undefined {
+  return resolveProviderToken(raw.providerID) ?? resolveProviderToken(raw.provider);
+}
+
 export function stringValue(raw: unknown): string | undefined {
   return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 }
@@ -519,20 +567,28 @@ function assignUsageEventRawTimeFields(doc: UsageEventDoc, raw: Record<string, u
 }
 
 export function parseUsageEventDoc(raw: unknown): UsageEventDoc | undefined {
-  if (!isRecord(raw) || !isProvider(raw.provider)) {
+  if (!isRecord(raw)) {
     return undefined;
   }
+  // Uploaders store the display name in `provider` ("Claude Code") and the
+  // canonical ID in `providerID` ("claude-code"). Resolve to the canonical ID
+  // so counter buckets, daily splits, and console breakdowns all key alike.
+  const provider = resolveUsageEventProvider(raw);
+  if (!provider) return undefined;
   const schemaVersion = typeof raw.schemaVersion === "number" ? raw.schemaVersion : 1;
   const recordedAt = synthesizeRecordedAt(raw);
   if (!recordedAt) return undefined;
   const doc: UsageEventDoc = {
-    provider: raw.provider,
+    provider,
     recordedAt,
     schemaVersion,
   };
   assignUsageEventStringFields(doc, raw);
   assignUsageEventNumberFields(doc, raw);
   assignUsageEventRawTimeFields(doc, raw);
+  // Canonicalize the stored ID: a garbage-but-present `providerID` must not
+  // shadow the resolved provider downstream (counter splits, logical keys).
+  doc.providerID = resolveProviderToken(raw.providerID) ?? provider;
   return doc;
 }
 

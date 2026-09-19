@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Console profile sync** — `rebuildUsageRollups` no longer inherits the
+  gen2 60s / 256MiB defaults. Production at 2026-09-19 10:10 UTC killed
+  Alberto's first-sync with "Memory limit of 256 MiB exceeded with 258 MiB
+  used" (and an earlier 60s Cloud Run timeout), which is why Profile sat on
+  "Syncing" with dashed lifetime stats while the heatmap still had days.
+  The callable and the `rollupUserRebuild` Cloud Task now share a 540s / 1GiB
+  envelope; the console client waits the same 540s instead of the SDK's 70s
+  default; the profile paints any existing rollup *before* that wait and
+  surfaces circuit / in-flight / cooldown / OOM instead of swallowing them.
+- **Console profile sync (providers)** — the usage-event parser required a
+  13-provider lowercase allowlist, but uploaders write display names
+  ("Claude Code") plus the canonical `providerID`, across a 37-provider
+  catalog. The rescan silently parsed 0 of 91,682 docs and a "successful"
+  rebuild wiped the account's counters to zero. The parser now resolves
+  `providerID`-first with display-name normalization over the full catalog,
+  and the rebuild refuses to wipe when history exists but nothing parses
+  (`rollup.rescan_zero_parsed`, counters left intact, breaker advances).
+  Also created the documented `rollup-user-rebuilds` Cloud Tasks queue —
+  only a camelCase lookalike existed, so every 5-minute scheduler tick
+  failed with `5 NOT_FOUND` and the background worker path was dead.
+
+### Changed
+- **Console profile glow-up** — the heatmap hover card portals out of the
+  scroll container (it used to clip on every side) with viewport-aware
+  placement; breakdowns render in fixed per-provider brand hues mirrored
+  from native with display names ("GPT 5.6 Sol", "Claude Code") instead of
+  raw slugs; wide screens get a centered 12-column composition with a
+  weekday burn-rhythm strip and an all-time records band (busiest provider,
+  loyal model, biggest day, longest streak, first burn, burn rate).
+
 ### Added
 - **app.burnbar.ai is now reachable from every surface.** The member Data &
   Privacy Control Center existed only as a bare URL — nothing linked to it.

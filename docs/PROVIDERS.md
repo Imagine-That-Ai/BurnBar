@@ -61,7 +61,13 @@
 
 Token usage stores three independent identities:
 
-- `provider` / `providerID`: who served or owns the model.
+- `provider` / `providerID`: who served or owns the model. `provider` is the
+  uploader display name ("Claude Code"); `providerID` is the canonical
+  lowercase ID ("claude-code"). The server parser (`resolveUsageEventProvider`)
+  accepts both and every new `AgentProvider` case MUST extend
+  `SUPPORTED_PROVIDERS` — on 2026-09-19 the list covered 13 of 37 catalog
+  providers, so a force rebuild parsed 0 of 91,682 docs and wiped the
+  account's counters (now guarded by `rollup.rescan_zero_parsed`).
 - `usageSource`: how OpenBurnBar learned about the usage (`provider_log`,
   `daemon`, `billing_api`, and so on).
 - `executionSourceID` / `executionSourceName` / `executionSourceKind`: the

@@ -50,13 +50,21 @@ export function brandKey(idOrName: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+/**
+ * Exact-then-loose lookup in a brand-keyed table: "factory-droid" resolves
+ * to factory, "roo code nightly" to roo-code. Shared by the logo and color
+ * resolvers so both agree on what a provider id means.
+ */
+export function matchBrandKey<T>(idOrName: string, table: Record<string, T>): T | undefined {
+  const key = brandKey(idOrName);
+  if (table[key] !== undefined) return table[key];
+  for (const [known, value] of Object.entries(table)) {
+    if (key.startsWith(`${known}-`) || key.endsWith(`-${known}`)) return value;
+  }
+  return undefined;
+}
+
 export function brandLogo(idOrName: string | undefined): string | null {
   if (!idOrName) return null;
-  const key = brandKey(idOrName);
-  if (LOGOS[key]) return LOGOS[key];
-  // Loose pass: "factory-droid" → factory, "roo code nightly" → roo-code.
-  for (const [known, src] of Object.entries(LOGOS)) {
-    if (key === known || key.startsWith(`${known}-`) || key.endsWith(`-${known}`)) return src;
-  }
-  return null;
+  return matchBrandKey(idOrName, LOGOS) ?? null;
 }

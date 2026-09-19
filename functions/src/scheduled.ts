@@ -27,7 +27,7 @@ import { anchorAuditHeads } from "./callables/auditLog.js";
 import { errorMessage, parseProvider, parseRollupJobDoc } from "./guards.js";
 import { logError } from "./logging.js";
 import { runScheduledJob, scheduledFirestore } from "./scheduledOps.js";
-import { FUNCTIONS_REGION } from "./runtimeOptions.js";
+import { FUNCTIONS_REGION, FULL_USAGE_REBUILD_RUNTIME } from "./runtimeOptions.js";
 
 type RollupUserRebuildQueueJob = NonNullable<ReturnType<typeof parseRollupUserRebuildTaskData>>;
 
@@ -42,11 +42,7 @@ export const rebuildRollups = onSchedule(
     schedule: "every 5 minutes",
     region: FUNCTIONS_REGION,
     // Use the default compute service account; no special invoker needed.
-    // The repair path replays a user's FULL usage history (recursiveDelete of
-    // four counter collections + a paginated raw-usage rescan held in memory)
-    // and must outlive the 60 s / 256 MiB scheduler defaults: a timeout here
-    // used to kill the rebuild mid-flight, leaving users deleted-but-unrebuilt
-    // with the kill invisible to the in-process circuit breaker.
+    // This handler only lists dirty jobs and enqueues `rollupUserRebuild`.
     timeoutSeconds: 540,
     memory: "512MiB",
   },
@@ -80,8 +76,7 @@ export const rebuildRollups = onSchedule(
 export const rollupUserRebuild = onTaskDispatched(
   {
     region: FUNCTIONS_REGION,
-    timeoutSeconds: 540,
-    memory: "512MiB",
+    ...FULL_USAGE_REBUILD_RUNTIME,
     invoker: "private",
     retryConfig: {
       maxAttempts: 5,

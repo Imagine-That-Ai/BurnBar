@@ -14,8 +14,15 @@ import type {
   RegistrationResponseJSON,
 } from "@simplewebauthn/browser";
 
-async function call<Req, Res>(name: string, payload?: Req): Promise<Res> {
-  const fn = httpsCallable<Req, Res>(functions(), name);
+async function call<Req, Res>(
+  name: string,
+  payload?: Req,
+  options?: { timeout?: number },
+): Promise<Res> {
+  const fn =
+    options?.timeout != null
+      ? httpsCallable<Req, Res>(functions(), name, { timeout: options.timeout })
+      : httpsCallable<Req, Res>(functions(), name);
   const res: HttpsCallableResult<Res> = await fn(payload as Req);
   return res.data;
 }
@@ -59,12 +66,20 @@ export const getDataDomainUsage = () =>
 // ── rebuildUsageRollups ─────────────────────────────────────────────────────
 // Recomputes the member's usage_rollups server-side before a fresh read.
 // `force: true` rebuilds even when the rollup job reports clean.
+// Timeout matches FULL_USAGE_REBUILD_RUNTIME (540s). The JS SDK default is
+// 70s, which aborted the client while the server was still (or already
+// OOM-killed) rebuilding a real account's history.
+export const REBUILD_USAGE_ROLLUPS_TIMEOUT_MS = 540_000;
 export interface RebuildUsageRollupsResponse {
   ok?: boolean;
   computedAt?: string;
 }
 export const rebuildUsageRollups = (force = false) =>
-  call<{ force?: boolean }, RebuildUsageRollupsResponse>("rebuildUsageRollups", { force });
+  call<{ force?: boolean }, RebuildUsageRollupsResponse>(
+    "rebuildUsageRollups",
+    { force },
+    { timeout: REBUILD_USAGE_ROLLUPS_TIMEOUT_MS },
+  );
 
 // ── Pensieve connected repos ────────────────────────────────────────────────
 // A connected repo stores only an opaque keyed match token + a vault-sealed
