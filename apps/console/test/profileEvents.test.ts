@@ -210,6 +210,20 @@ describe("eventTimeToIso", () => {
 });
 
 describe("normalizeProfileEvent", () => {
+  it("reads the canonical costUSD field first (Elder Wand spelling)", () => {
+    const e = normalizeProfileEvent("doc-cost", {
+      provider: "openburnbar",
+      costUSD: 0.42,
+      costUsd: 0.11,
+      cost: 0.07,
+      recordedAt: "2026-08-15T12:00:00.000Z",
+    });
+    expect(e.costUsd).toBe(0.42);
+    expect(
+      normalizeProfileEvent("doc-cost-legacy", { provider: "x", costUsd: 0.11 }).costUsd,
+    ).toBe(0.11);
+  });
+
   it("sums the token mix and derives the UTC hour", () => {
     const e = normalizeProfileEvent("doc-1", {
       provider: "Claude Code",
@@ -319,6 +333,17 @@ describe("profileAggregates", () => {
     expect(byModel.map((r) => r.key)).toEqual(["m-1", "m-2"]);
     expect(byModel[0]).toMatchObject({ tokens: 450, events: 2, cost: 3 });
     expect(rankShares(events, "harness").map((r) => r.key)).toContain("h-1");
+  });
+
+  it("rankShares groups providers by canonical id, not display name", () => {
+    const mixed = [
+      ev({ id: "p1", provider: "Claude Code", providerID: "claude-code", totalTokens: 100, costUsd: 1 }),
+      ev({ id: "p2", provider: "claude-code", providerID: "claude-code", totalTokens: 50, costUsd: 0.5 }),
+      ev({ id: "p3", provider: "Codex", totalTokens: 25, costUsd: 0.25 }),
+    ];
+    const byProvider = rankShares(mixed, "provider");
+    expect(byProvider.map((r) => r.key)).toEqual(["claude-code", "Codex"]);
+    expect(byProvider[0]).toMatchObject({ tokens: 150, events: 2, cost: 1.5 });
   });
 
   it("summarizeDay + eventsOnDay slice one day", () => {

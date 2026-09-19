@@ -74,13 +74,15 @@ export function useProfileEvents(
   });
 
   // Running pagination state lives in refs so a filter change can't strand a
-  // stale cursor or counter inside an in-flight fetch closure.
+  // stale cursor or counter inside an in-flight fetch closure. rawRef counts
+  // RAW server docs (pre client-filter) so zero-match gaps can't end the
+  // pass early or run it forever.
   const cursorRef = React.useRef<DocumentSnapshot<DocumentData> | null>(null);
-  const totalRef = React.useRef(0);
+  const rawRef = React.useRef(0);
 
   React.useEffect(() => {
     cursorRef.current = null;
-    totalRef.current = 0;
+    rawRef.current = 0;
     setEvents([]);
     setHasMore(false);
     setCapped(false);
@@ -122,10 +124,13 @@ export function useProfileEvents(
       try {
         // Sequential auto-page: every page lands in state as it arrives so
         // the ledger paints progressively; aggregates settle when the pass
-        // completes or the cap hits.
+        // completes or the cap hits. Exhaustion is RAW server truth
+        // (page.serverHasMore) — a full page of zero client matches is a gap,
+        // not the end; later pages can still match. The raw-doc counter
+        // bounds the pass so a never-matching filter cannot page forever.
         for (;;) {
           if (cancelled) return;
-          if (totalRef.current >= PROFILE_EVENTS_AGGREGATE_CAP) {
+          if (rawRef.current >= PROFILE_EVENTS_AGGREGATE_CAP) {
             setCapped(true);
             setHasMore(false);
             return;
@@ -139,14 +144,13 @@ export function useProfileEvents(
           if (cancelled) return;
           if (err) {
             setError(err);
-            // Keep what already loaded; hasMore stays true only when a
-            // cursor exists to continue from.
+            // Keep what already loaded; a cursor means the pass can continue.
             setHasMore(cursorRef.current != null);
             return;
           }
           setError(null);
           cursorRef.current = page.cursor;
-          totalRef.current += page.events.length;
+          rawRef.current += page.rawCount;
           if (page.events.length > 0) {
             setEvents((prev) => {
               const room = PROFILE_EVENTS_AGGREGATE_CAP - prev.length;
@@ -154,11 +158,11 @@ export function useProfileEvents(
               return [...prev, ...page.events.slice(0, room)];
             });
           }
-          if (!page.hasMore || page.events.length === 0) {
+          if (!page.serverHasMore) {
             setHasMore(false);
             return;
           }
-          if (totalRef.current >= PROFILE_EVENTS_AGGREGATE_CAP) {
+          if (rawRef.current >= PROFILE_EVENTS_AGGREGATE_CAP) {
             setCapped(true);
             setHasMore(false);
             return;

@@ -21,7 +21,7 @@
  * Server events carry `startTime` as a Firestore Timestamp (legacy desktop
  * shape, see `functions/src/guards.ts`); docs that only carry
  * `recordedAt`/`timestamp` strings (e.g. Elder Wand fusion rows) are fetched
- * by a second `startTime == null` pass and merged client-side.
+ * by a second `recordedAt`-ranged pass and merged client-side.
  */
 
 import {
@@ -144,10 +144,12 @@ function serverEquality(
 ): { field: string; value: string } | null {
   const single = (values: readonly string[]): string | null =>
     values.length === 1 ? (values[0] ?? null) : null;
+  // Providers AND devices never constrain server-side: both groups can match
+  // stored rows through a fallback field (providerID, sourceDeviceId) that a
+  // `==` on the primary field would silently exclude. Models, harnesses, and
+  // raw account IDs are canonical server-side and safe to constrain.
   const model = single(facets.models);
   if (model) return { field: "model", value: model };
-  const device = single(facets.devices);
-  if (device) return { field: "deviceId", value: device };
   const harness = single(facets.harnesses);
   if (harness) return { field: "executionSourceID", value: harness };
   const account = single(facets.accounts);
@@ -274,7 +276,10 @@ export function normalizeProfileEvent(id: string, raw: unknown): ProfileUsageEve
     cacheWriteTokens,
     reasoningTokens,
     totalTokens: total,
-    costUsd: num(r.costUsd ?? r.cost),
+    // Canonical generated field is costUSD (uppercase — Elder Wand writes
+    // billed search cost under that spelling); legacy desktop rows use
+    // costUsd/cost. All three, in that precedence.
+    costUsd: num(r.costUSD ?? r.costUsd ?? r.cost),
     startedAt,
     hourUtc,
     durationSeconds,
@@ -284,8 +289,10 @@ export function normalizeProfileEvent(id: string, raw: unknown): ProfileUsageEve
 export interface ProfileEventPageResult {
   events: ProfileUsageEvent[];
   cursor: DocumentSnapshot<DocumentData> | null;
-  /** True when another page exists (page came back full). */
-  hasMore: boolean;
+  /** Raw server truth: the page came back full, so older docs may exist. */
+  serverHasMore: boolean;
+  /** Raw server docs fetched this page (pre client-filter) — bounds the pass. */
+  rawCount: number;
 }
 
 /**
@@ -293,12 +300,11 @@ export interface ProfileEventPageResult {
  * at most one equality + the range; remaining facets filter client-side via
  * `matchEventFacets` so cross-facet combos never hit a missing index.
  *
- * On the first page only, a second `startTime == null` pass picks up docs
- * the `orderBy("startTime")` excludes (Elder Wand fusion rows carry
- * `recordedAt` but no `startTime`); they merge client-side, range-filtered
- * by their normalized timestamp. Fail-soft: denied / index-missing reads
- * resolve to an empty page with a stable error KIND — the UI renders its own
- * recovery copy, never the raw Firebase text.
+ * On the first page of a BOUNDED range, a second `recordedAt`-ordered pass
+ * picks up docs the `orderBy("startTime")` excludes (Elder Wand fusion rows
+ * carry `recordedAt` but no `startTime`); docs carrying both fields dedupe by
+ * id. Fail-soft: failures resolve to an empty page with a stable error KIND —
+ * the UI renders its own recovery copy, never the raw Firebase text.
  */
 export async function fetchProfileEventPage(
   firestore: Firestore,
@@ -314,49 +320,53 @@ export async function fetchProfileEventPage(
       .filter((e) => matchEventFacets(e, q.facets));
     const events = [...matched];
 
-    // Timeless pass: docs without startTime are invisible to the ordered
-    // query. Bound by the same range client-side (their normalized timestamp
-    // still carries recordedAt/timestamp), capped at one page.
-    if (!cursor) {
+    const last = snap.docs[snap.docs.length - 1] ?? null;
+    const result: ProfileEventPageResult = {
+      events,
+      cursor: last,
+      serverHasMore: snap.docs.length >= PROFILE_EVENTS_PAGE_SIZE,
+      rawCount: snap.docs.length,
+    };
+
+    // Timeless pass: docs WITHOUT startTime are invisible to the ordered
+    // query (Elder Wand fusion rows carry recordedAt only). A second pass
+    // ordered by recordedAt with the same range recovers them
+    // deterministically — no reliance on `== null` missing-field semantics.
+    // Single-field range + order needs no composite index. Docs carrying both
+    // fields dedupe by id below.
+    if (!cursor && q.range.fromDay && q.range.toDay) {
       try {
         const timeless = await getDocs(
           query(
             collection(firestore, "users", uid, "usage"),
-            where("startTime", "==", null),
+            where("recordedAt", ">=", `${q.range.fromDay}T00:00:00.000Z`),
+            where("recordedAt", "<=", `${q.range.toDay}T23:59:59.999Z`),
+            orderBy("recordedAt", "desc"),
             limit(PROFILE_EVENTS_PAGE_SIZE),
           ),
         );
-        const inRange = timeless.docs
-          .map((d) => normalizeProfileEvent(d.id, d.data()))
-          .filter((e) => matchEventFacets(e, q.facets))
-          .filter((e) => {
-            if (!e.startedAt) return false;
-            const day = e.startedAt.slice(0, 10);
-            if (q.range.fromDay && day < q.range.fromDay) return false;
-            if (q.range.toDay && day > q.range.toDay) return false;
-            return true;
-          });
-        const seen = new Set(events.map((e) => e.id));
-        for (const e of inRange) {
-          if (!seen.has(e.id)) {
-            seen.add(e.id);
-            events.push(e);
-          }
+        const seen = new Set(result.events.map((e) => e.id));
+        for (const d of timeless.docs) {
+          if (seen.has(d.id)) continue;
+          const data = d.data() as Record<string, unknown>;
+          // Covered by the ordered pass already — skip (it sorts correctly).
+          if (data.startTime != null) continue;
+          const e = normalizeProfileEvent(d.id, data);
+          if (!matchEventFacets(e, q.facets)) continue;
+          seen.add(e.id);
+          result.events.push(e);
         }
-        events.sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
+        result.events.sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""));
+        result.rawCount += timeless.docs.length;
       } catch {
         /* timeless pass is best-effort; the ordered page still stands */
       }
     }
 
-    const last = snap.docs[snap.docs.length - 1] ?? null;
-    return {
-      page: { events, cursor: last, hasMore: snap.docs.length >= PROFILE_EVENTS_PAGE_SIZE },
-      error: null,
-    };
+    return { page: result, error: null };
   } catch (err) {
     return {
-      page: { events: [], cursor: cursor ?? null, hasMore: false },
+      page: { events: [], cursor: cursor ?? null, serverHasMore: false, rawCount: 0 },
       error: classifyProfileEventError(err),
     };
   }

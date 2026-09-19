@@ -72,15 +72,20 @@ export function ProfileInspector({
   selection,
   events,
   loading,
+  error,
+  onRetry,
   onClose,
   onPinDay,
   onPrevDay,
   onNextDay,
 }: {
   selection: InspectorSelection | null;
-  /** Events for the active bounded range (day slices are client-side). */
+  /** Events for the pinned day (day query) or the active range (entity focus). */
   events: ProfileUsageEvent[];
   loading: boolean;
+  /** Stable member-facing failure copy (never raw Firebase text), or null. */
+  error: string | null;
+  onRetry: () => void;
   onClose: () => void;
   onPinDay: (day: string) => void;
   onPrevDay: () => void;
@@ -125,6 +130,17 @@ export function ProfileInspector({
       >
         {loading ? (
           <p className="text-sm text-content-dim">Reading events…</p>
+        ) : error && focused.length === 0 ? (
+          <div className="text-sm text-content-dim">
+            <p>{error}</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2 underline-offset-2 hover:text-content-bright hover:underline"
+            >
+              Retry
+            </button>
+          </div>
         ) : (
           <>
             <div className="flex items-baseline gap-token-4">
@@ -205,6 +221,17 @@ export function ProfileInspector({
     >
       {loading && dayEvents.length === 0 ? (
         <p className="text-sm text-content-dim">Reading that day&apos;s events…</p>
+      ) : error && dayEvents.length === 0 ? (
+        <div className="text-sm text-content-dim">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-2 underline-offset-2 hover:text-content-bright hover:underline"
+          >
+            Retry
+          </button>
+        </div>
       ) : dayEvents.length === 0 ? (
         <div className="text-sm text-content-dim">
           <p>No usage events loaded for this day.</p>

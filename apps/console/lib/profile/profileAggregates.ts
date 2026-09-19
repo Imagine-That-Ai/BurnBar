@@ -104,7 +104,10 @@ export function rankShares(
     let label: string | undefined;
     switch (by) {
       case "provider":
-        key = e.provider;
+        // Canonical ID groups ("claude-code"); display label kept separate —
+        // producers store "Claude Code" and "claude-code" interchangeably in
+        // `provider`, and grouping by display would split one provider.
+        key = e.providerID ?? e.provider;
         label = e.provider;
         break;
       case "model":

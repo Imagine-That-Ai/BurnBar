@@ -397,6 +397,13 @@ export default function ProfilePage() {
   const num = (v: number) => (pending ? "—" : formatCompact(v));
   const sharePct = (part: number, whole: number): string =>
     whole > 0 ? `${Math.round((part / whole) * 100)}%` : "—";
+  /** Winner share under the ACTIVE metric (tokens/runs/spend all divide alike). */
+  const metricShare = (tokens: number, runs: number, cost: number): string =>
+    metric === "tokens"
+      ? sharePct(tokens, rollup.totals.tokens)
+      : metric === "runs"
+        ? sharePct(runs, rollup.totals.requests)
+        : sharePct(cost, rollup.totals.costUsd);
 
   // All-time records: computed from the UNSLICED lifetime series so the
   // hall of fame never shrinks with the window. Busiest/loyal follow the
@@ -421,14 +428,21 @@ export default function ProfilePage() {
   const windowKey =
     filters.from || filters.to ? null : filters.window === "all" ? "all_time" : filters.window;
   const [windowRollup, setWindowRollup] = React.useState<typeof rollup | null>(null);
+  // A FAILED window-doc read must never silently render lifetime data under
+  // a window label — track it explicitly and say so in the hero.
+  const [windowRollupFailed, setWindowRollupFailed] = React.useState(false);
   React.useEffect(() => {
     if (!user || !windowKey || windowKey === "all_time") {
       setWindowRollup(null);
+      setWindowRollupFailed(false);
       return;
     }
     let cancelled = false;
+    setWindowRollupFailed(false);
     getWindowRollup(user.uid, windowKey).then((r) => {
-      if (!cancelled) setWindowRollup(r);
+      if (cancelled) return;
+      setWindowRollup(r);
+      setWindowRollupFailed(r == null);
     });
     return () => {
       cancelled = true;
@@ -437,9 +451,11 @@ export default function ProfilePage() {
   /** Totals/summaries source: window doc when preset-windowed, else all_time. */
   const totalsRollup = windowRollup ?? rollup;
 
-  // Hero stat row: metric-aware (Tokens / Runs / Spend) from the totals
-  // source above. Event facets override with bounded event aggregates and an
-  // explicit "events" label (the rollup cannot recompute those groups).
+  // Hero stat row: metric-aware (Tokens / Runs / Spend).
+  // - Event facets active → bounded event aggregates, labeled "events".
+  // - Provider-only facets → the provider-filtered series (tokens) and the
+  //   range event pass (runs/spend when bounded, else lifetime-labeled).
+  // - No facets → the totals source (window doc when preset-windowed).
   // Token-native series (heatmap, rhythm, trend, hour grid, mix) keep token
   // labels — the metric ranks summaries, not time series.
   const hero = React.useMemo(() => {
@@ -465,6 +481,8 @@ export default function ProfilePage() {
         avgPerDay: undefined as string | undefined,
       };
     }
+    const providerOnly =
+      filters.facets.providers.length > 0 && !hasEventFacets;
     const t = totalsRollup.totals;
     const scope =
       windowKey === null
@@ -472,22 +490,53 @@ export default function ProfilePage() {
         : windowKey === "all_time"
           ? "Lifetime"
           : `in last ${filters.window}`;
+    const fallbackNote = windowRollupFailed ? " · window unavailable, lifetime shown" : "";
+    // Tokens follow the provider-filtered series when a provider facet is
+    // active; runs/spend follow the range event pass when bounded.
+    const tokenValue = providerOnly
+      ? sumTokens(providerFilteredPoints)
+      : windowKey
+        ? t.tokens
+        : (stats?.totalTokens ?? 0);
+    const eventSums =
+      rangeEnabled && !rangeEvents.error
+        ? {
+            runs: rangeEvents.events.length,
+            cost: rangeEvents.events.reduce((n, e) => n + e.costUsd, 0),
+          }
+        : null;
     const value =
       metric === "tokens"
-        ? formatCompact(windowKey ? t.tokens : (stats?.totalTokens ?? 0))
+        ? formatCompact(tokenValue)
         : metric === "runs"
-          ? formatCompact(t.requests)
-          : formatUsd(t.costUsd);
+          ? formatCompact(eventSums ? eventSums.runs : t.requests)
+          : formatUsd(eventSums ? eventSums.cost : t.costUsd);
     const unit = metric === "tokens" ? "Tokens" : metric === "runs" ? "Runs" : "Spend";
+    const eventSourced = metric !== "tokens" && eventSums != null && !providerOnly;
     return {
       value,
-      label: `${unit} ${scope === "Lifetime" ? "· lifetime" : scope}`,
+      label: `${unit} ${scope === "Lifetime" ? "· lifetime" : scope}${eventSourced ? " · events" : ""}${fallbackNote}`,
       peak: num(stats?.peak?.tokens ?? 0),
       peakLabel: stats?.peak ? formatDayLabel(stats.peak.day) : undefined,
       activeDays: pending ? "—" : String(stats?.activeDays ?? 0),
       avgPerDay: stats ? `${formatCompact(stats.avgPerActiveDay)} avg/day` : undefined,
     };
-  }, [scopedStats, metric, totalsRollup, windowKey, filters.window, stats, pending]);
+  }, [
+    scopedStats,
+    metric,
+    totalsRollup,
+    windowKey,
+    filters.window,
+    filters.facets.providers.length,
+    hasEventFacets,
+    providerFilteredPoints,
+    rangeEnabled,
+    rangeEvents.events,
+    rangeEvents.error,
+    stats,
+    pending,
+    windowRollupFailed,
+  ]);
 
   // Hour-cell → pin the most active day of that weekday in range: the honest
   // client-side resolution without a server hour field.
@@ -525,14 +574,23 @@ export default function ProfilePage() {
     [applyFilters, filters],
   );
 
-  const mvOf = (m: (typeof rollup.modelSummaries)[number]) =>
+  const mvOf = (m: (typeof totalsRollup.modelSummaries)[number]) =>
     metric === "tokens" ? m.tokens : metric === "runs" ? m.requests : m.cost;
-  const topProviderByMetric = [...rollup.providerSummaries].sort((a, b) => {
+  // Window-scoped model winner for the insight rail (the records band
+  // keeps its own lifetime values below).
+  const topModelByMetric = [...totalsRollup.modelSummaries].sort((a, b) => mvOf(b) - mvOf(a))[0];
+  // Lifetime-scoped winners for the records band — the hall of fame never
+  // shrinks with the window, and shares divide lifetime totals.
+  const recordProvider = [...rollup.providerSummaries].sort((a, b) => {
     const va = metric === "tokens" ? a.totalTokens : metric === "runs" ? a.totalRequests : a.totalCost;
     const vb = metric === "tokens" ? b.totalTokens : metric === "runs" ? b.totalRequests : b.totalCost;
     return vb - va;
   })[0];
-  const topModelByMetric = [...rollup.modelSummaries].sort((a, b) => mvOf(b) - mvOf(a))[0];
+  const recordModel = [...rollup.modelSummaries].sort((a, b) => {
+    const va = metric === "tokens" ? a.tokens : metric === "runs" ? a.requests : a.cost;
+    const vb = metric === "tokens" ? b.tokens : metric === "runs" ? b.requests : b.cost;
+    return vb - va;
+  })[0];
   const ledgerHint =
     !rangeEnabled && !loading
       ? "Pick a 7/30/90-day window (or a custom range) to page the runs behind this mine."
@@ -773,29 +831,37 @@ export default function ProfilePage() {
       </div>
 
       {/* Records — the all-time hall of fame, always lifetime-scoped.
-          Busiest/loyal follow the active metric; day/streak tiles pin days
-          or jump to the rhythm strip. */}
+          Busiest/loyal follow the active metric INCLUDING their shares;
+          day/streak tiles pin days or jump to the rhythm strip. */}
       <div className="reveal mt-token-12" style={REVEAL.records}>
         <ProfileRecords
           records={{
-            busiestProvider: topProviderByMetric
+            busiestProvider: recordProvider
               ? {
-                  id: topProviderByMetric.provider,
-                  label: providerDisplayName(topProviderByMetric.provider),
-                  share: sharePct(topProviderByMetric.totalTokens, rollup.totals.tokens),
+                  id: recordProvider.provider,
+                  label: providerDisplayName(recordProvider.provider),
+                  share: metricShare(
+                    recordProvider.totalTokens,
+                    recordProvider.totalRequests,
+                    recordProvider.totalCost,
+                  ),
                   title: fmtFull(
-                    topProviderByMetric.totalTokens,
-                    topProviderByMetric.totalRequests,
-                    topProviderByMetric.totalCost,
+                    recordProvider.totalTokens,
+                    recordProvider.totalRequests,
+                    recordProvider.totalCost,
                   ),
                 }
               : null,
-            loyalModel: topModelByMetric
+            loyalModel: recordModel
               ? {
-                  id: topModelByMetric.model,
-                  label: topModelByMetric.model,
-                  share: sharePct(topModelByMetric.tokens, rollup.totals.tokens),
-                  title: topModelByMetric.model,
+                  id: recordModel.model,
+                  label: recordModel.model,
+                  share: metricShare(
+                    recordModel.tokens,
+                    recordModel.requests,
+                    recordModel.cost,
+                  ),
+                  title: recordModel.model,
                 }
               : null,
             biggestDay: lifetime?.peak ? { day: lifetime.peak.day, tokens: lifetime.peak.tokens } : null,
@@ -835,11 +901,22 @@ export default function ProfilePage() {
       </div>
 
       {/* Inspector slide-over — the pinned day (own query) or an entity from
-          the range pass. Prev/next clamps to the active range. */}
+          the range pass. Prev/next clamps to the active range. Query failures
+          surface stable copy + retry, never a false zero. */}
       <ProfileInspector
         selection={inspector}
         events={inspectorEvents}
         loading={inspectorLoading}
+        error={
+          filters.day
+            ? dayEvents.error
+              ? profileEventErrorCopy(dayEvents.error)
+              : null
+            : rangeEvents.error
+              ? profileEventErrorCopy(rangeEvents.error)
+              : null
+        }
+        onRetry={filters.day ? dayEvents.loadMore : rangeEvents.loadMore}
         onClose={() => applyFilters({ ...filters, day: null, entity: null })}
         onPinDay={(day) => applyFilters({ ...filters, day })}
         onPrevDay={() => stepDay(-1)}
