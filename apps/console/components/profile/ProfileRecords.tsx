@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Clickable all-time records band for the explorer. Every tile pins the
- * inspector or sets the matching facet: biggest day / first burn pin the day,
- * busiest provider / loyal model set the facet chip, streak tiles jump to the
- * rhythm section.
+ * Clickable all-time records band for the explorer. Tiles pin the inspector
+ * or set the matching facet: biggest day / first burn pin the day, busiest
+ * provider / loyal model pin the matching entity AND set the facet chip, the
+ * streak tile jumps to the rhythm strip. Closing the inspector never strands
+ * it — every tile reopens it.
  */
 
 import { formatDayLabel } from "@/lib/profile/activityStats";
@@ -70,12 +71,16 @@ export function ProfileRecords({
   onPinDay,
   onToggleProvider,
   onToggleModel,
+  onInspectEntity,
   onJumpToRhythm,
 }: {
   records: RecordsData;
   onPinDay: (day: string) => void;
   onToggleProvider: (id: string) => void;
   onToggleModel: (id: string) => void;
+  /** Busiest/loyal drill-in: focuses the entity in the inspector (and sets
+   *  the facet chip so the whole page follows). */
+  onInspectEntity: (kind: "provider" | "model", id: string) => void;
   /** Longest-streak drill-in: scrolls to the burn-rhythm strip. */
   onJumpToRhythm: () => void;
 }) {
@@ -94,7 +99,10 @@ export function ProfileRecords({
           title={records.busiestProvider?.title}
           onClick={
             records.busiestProvider
-              ? () => onToggleProvider(records.busiestProvider!.id)
+              ? () => {
+                  onToggleProvider(records.busiestProvider!.id);
+                  onInspectEntity("provider", records.busiestProvider!.id);
+                }
               : undefined
           }
         />
@@ -106,7 +114,12 @@ export function ProfileRecords({
           sub={records.pending ? undefined : records.loyalModel?.share}
           title={records.loyalModel?.title}
           onClick={
-            records.loyalModel ? () => onToggleModel(records.loyalModel!.id) : undefined
+            records.loyalModel
+              ? () => {
+                  onToggleModel(records.loyalModel!.id);
+                  onInspectEntity("model", records.loyalModel!.id);
+                }
+              : undefined
           }
         />
         <RecordTile

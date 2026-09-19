@@ -43,6 +43,9 @@ import {
   profileEventErrorCopy,
 } from "../lib/profile/profileEvents";
 import {
+  blendShareFill,
+  dailyModelTokenSplit,
+  dominantShareFill,
   eventsOnDay,
   hourWeekdayGrid,
   rankShares,
@@ -351,5 +354,39 @@ describe("profileAggregates", () => {
     const day = summarizeDay("2026-08-14", events);
     expect(day).toMatchObject({ day: "2026-08-14", events: 2, tokens: 450, cost: 3 });
     expect(day.byModel[0]).toMatchObject({ key: "m-1", tokens: 450 });
+  });
+
+  it("dailyModelTokenSplit groups tokens by day and model", () => {
+    const split = dailyModelTokenSplit(events);
+    expect(split["2026-08-14"]).toEqual({ "m-1": 450 });
+    expect(split["2026-08-15"]).toEqual({ "m-2": 50 });
+    expect(split["2026-08-16"]).toBeUndefined();
+  });
+
+  it("dominantShareFill wears the winner's hue at sqrt-scaled opacity", () => {
+    const colorFor = (key: string) => `color:${key}`;
+    // 800/1000 → sqrt(0.8) ≈ 0.89 → bucket 4 → opacity 1.
+    expect(
+      dominantShareFill({ anthropic: 800, openai: 200 }, 1000, colorFor),
+    ).toEqual({ fill: "color:anthropic", fillOpacity: 1 });
+    // 100/1600 → sqrt(1/16) = 0.25 → bucket 1 → opacity 0.28.
+    expect(
+      dominantShareFill({ x: 100 }, 1600, colorFor),
+    ).toEqual({ fill: "color:x", fillOpacity: 0.28 });
+    expect(dominantShareFill({}, 100, colorFor)).toBeNull();
+    expect(dominantShareFill(undefined, 100, colorFor)).toBeNull();
+    expect(dominantShareFill({ x: 0 }, 100, colorFor)).toBeNull();
+  });
+
+  it("blendShareFill weights up to three shares as hard-stop bands", () => {
+    const colorFor = (key: string) => `color:${key}`;
+    const blend = blendShareFill({ a: 600, b: 400 }, colorFor)!;
+    expect(blend.startsWith("linear-gradient")).toBe(true);
+    expect(blend).toContain("color:a 0.0% 60.0%");
+    expect(blend).toContain("color:b 60.0% 100.0%");
+    // A single share is a solid fill, not a gradient.
+    expect(blendShareFill({ a: 600 }, colorFor)).toBe("color:a");
+    expect(blendShareFill({}, colorFor)).toBeNull();
+    expect(blendShareFill(undefined, colorFor)).toBeNull();
   });
 });

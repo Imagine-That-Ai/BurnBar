@@ -32,6 +32,7 @@ function render(
   mode: "daily" | "weekly" | "cumulative",
   today = TODAY,
   dailyProviderTokens?: Record<string, Record<string, number>>,
+  dailyModelTokens?: Record<string, Record<string, number>>,
 ) {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -43,6 +44,7 @@ function render(
         mode={mode}
         today={today}
         dailyProviderTokens={dailyProviderTokens}
+        dailyModelTokens={dailyModelTokens}
       />,
     );
   });
@@ -227,5 +229,66 @@ describe("ContributionHeatmap", () => {
       window.dispatchEvent(new Event("scroll"));
     });
     expect(document.querySelector(".glass-pane--elevated")).toBeNull();
+  });
+
+  it("paints daily cells in the dominant provider's brand hue", () => {
+    const el = render(pts(["2026-08-14", 1000]), "daily", TODAY, {
+      "2026-08-14": { anthropic: 800, openai: 200 },
+    });
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Aug 14"),
+    )!;
+    // Anthropic wins 800/1000 — the cell wears its fill, not the accent.
+    expect(cell.getAttribute("fill")).not.toBe("var(--accent)");
+    expect(cell.getAttribute("fill")).toContain("#CC785C");
+    const title = cell.querySelector("title")!;
+    expect(title.textContent).toContain("Anthropic leads");
+  });
+
+  it("falls back to the accent when a day has no split", () => {
+    const el = render(pts(["2026-08-14", 1000]), "daily", TODAY, {
+      "2026-08-15": { anthropic: 500 },
+    });
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Aug 14"),
+    )!;
+    expect(cell.getAttribute("fill")).toBe("var(--accent)");
+  });
+
+  it("paints daily cells by dominant model when the provider split is absent", () => {
+    const el = render(
+      pts(["2026-08-14", 1000]),
+      "daily",
+      TODAY,
+      undefined,
+      { "2026-08-14": { "gpt-5.3": 700, "kimi-k2": 300 } },
+    );
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Aug 14"),
+    )!;
+    expect(cell.getAttribute("fill")).not.toBe("var(--accent)");
+    // Model mix reaches the hover card when providers can't.
+    hoverDay(el, "Aug 14");
+    const card = document.querySelector(".glass-pane--elevated")!;
+    expect(card.textContent).toContain("GPT 5.3");
+    expect(card.textContent).toContain("70%");
+  });
+
+  it("blends weekly columns across the week's top shares", () => {
+    const el = render(pts(["2026-08-14", 600], ["2026-08-15", 400]), "weekly", TODAY, {
+      "2026-08-14": { anthropic: 600 },
+      "2026-08-15": { openai: 400 },
+    });
+    const labels = [...el.querySelectorAll("rect")].map((r) => r.getAttribute("aria-label"));
+    const weekLabel = labels.find((l) => l?.startsWith("Week of Aug 9"));
+    expect(weekLabel).toBe("Week of Aug 9, 2026 — 1K tokens");
+    const cell = [...el.querySelectorAll("rect")].find(
+      (r) => r.getAttribute("aria-label") === weekLabel,
+    )!;
+    const fill = cell.getAttribute("fill") ?? "";
+    expect(fill.startsWith("linear-gradient")).toBe(true);
+    // Two hues (anthropic #CC785C pulled toward text, openai #00A67E pulled
+    // toward text) share the kernel 60/40.
+    expect(fill).toContain("60.0%");
   });
 });

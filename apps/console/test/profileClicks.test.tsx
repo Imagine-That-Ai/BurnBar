@@ -92,6 +92,7 @@ describe("ProfileHeatmapSection clicks", () => {
   it("shows the pinned day with an unpin action", () => {
     const el = renderHeatmap(vi.fn(), "2026-08-15");
     expect(el.textContent).toContain("Inspecting Aug 15, 2026");
+    expect(el.textContent).toContain("in the inspector");
     const unpin = [...el.querySelectorAll("button")].find(
       (b) => b.textContent === "Unpin",
     )!;
@@ -112,6 +113,12 @@ describe("ProfileHeatmapSection clicks", () => {
       unpin.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(onPinDay).toHaveBeenCalledWith(null);
+  });
+
+  it("names every reopen path when nothing is pinned", () => {
+    const el = renderHeatmap(vi.fn(), null);
+    expect(el.textContent).toContain("record tile");
+    expect(el.textContent).toContain("ledger time");
   });
 });
 

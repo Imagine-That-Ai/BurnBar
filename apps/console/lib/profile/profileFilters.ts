@@ -239,6 +239,7 @@ export function needsEventPath(f: ProfileFilters): boolean {
 /**
  * The 91k-event guard: a model / harness / account facet on an unbounded
  * "All" window would scan the whole history. Snap to 90d and say so once.
+ * Day/entity pins ride along unchanged — they only narrow the query.
  * Returns the snapped filters, or null when no snap is needed.
  */
 export function snapWindowForEventFacets(f: ProfileFilters): ProfileFilters | null {

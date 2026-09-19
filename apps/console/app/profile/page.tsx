@@ -50,6 +50,7 @@ import {
   type ProfileFilters,
 } from "@/lib/profile/profileFilters";
 import {
+  dailyModelTokenSplit,
   hourWeekdayGrid,
   rankShares,
   tokenMix,
@@ -149,9 +150,11 @@ export default function ProfilePage() {
   // window), then replaceState on every change — shareable, reload-stable,
   // and Suspense-free for the static export. The restore path runs the same
   // 91k-event guard as interactive changes so a shared `?m=…` on All snaps
-  // to 90d before any read fires.
+  // to 90d before any read fires. Mount-guarded: the auth listener can
+  // re-fire on tab refocus and must never reset an in-progress mine.
   const [filters, setFilters] = React.useState<ProfileFilters>(() => emptyFilters());
   const [snapNotice, setSnapNotice] = React.useState<string | null>(null);
+  const restoredUrl = React.useRef(false);
   const writeUrl = React.useCallback((next: ProfileFilters) => {
     try {
       const qs = serializeProfileFilters(next);
@@ -161,6 +164,8 @@ export default function ProfilePage() {
     }
   }, []);
   React.useEffect(() => {
+    if (restoredUrl.current) return;
+    restoredUrl.current = true;
     try {
       const parsed = parseProfileFilters(window.location.search);
       const snapped = snapWindowForEventFacets(parsed);
@@ -361,6 +366,13 @@ export default function ProfilePage() {
   const mix = React.useMemo(
     () => (rangeEnabled && !rangeEvents.error ? tokenMix(rangeEvents.events) : null),
     [rangeEnabled, rangeEvents.events, rangeEvents.error],
+  );
+  // Per-day per-model split from the SAME bounded pass (no extra reads):
+  // colors heatmap cells by the day's dominant model wherever the rollup's
+  // provider split is absent, and feeds the hover mix.
+  const modelSplitForHeatmap = React.useMemo(
+    () => (rangeEnabled && !rangeEvents.error ? dailyModelTokenSplit(rangeEvents.events) : undefined),
+    [rangeEnabled, rangeEvents.error, rangeEvents.events],
   );
 
   // Facet-scoped hero: when model/harness/account/device facets are active
@@ -709,12 +721,13 @@ export default function ProfilePage() {
           {/* Token activity heatmap — click a day to pin the inspector.
               Anchored on the view's right edge so a historical range never
               renders a blank tail past its end. */}
-          <div className="reveal" style={REVEAL.heatmap}>
+          <div className="reveal min-w-0" style={REVEAL.heatmap}>
             {viewToday ? (
               <ProfileHeatmapSection
                 points={providerFilteredPoints}
                 today={viewToday > (today ?? viewToday) ? (today ?? viewToday) : viewToday}
                 dailyProviderTokens={rollup.dailyProviderTokens}
+                dailyModelTokens={modelSplitForHeatmap}
                 pinnedDay={filters.day}
                 onPinDay={(day) => applyFilters({ ...filters, day })}
               />
@@ -724,7 +737,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Burn by hour — bounded event aggregates. */}
-          <div className="reveal" style={REVEAL.rhythm}>
+          <div className="reveal min-w-0" style={REVEAL.rhythm}>
             <ProfileHourGrid
               grid={grid}
               loading={rangeEvents.loading}
@@ -736,7 +749,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Burn rhythm — mean tokens by weekday, in view. */}
-          <div className="reveal" style={REVEAL.rhythm}>
+          <div className="reveal min-w-0" style={REVEAL.rhythm}>
             {today && stats ? (
               <ProfileRhythmSection
                 rhythm={stats.rhythm}
@@ -749,12 +762,12 @@ export default function ProfilePage() {
           </div>
 
           {/* Token trend */}
-          <div className="reveal" style={REVEAL.trend}>
+          <div className="reveal min-w-0" style={REVEAL.trend}>
             <ProfileTrendSection trend={stats?.trend ?? []} pending={pending} />
           </div>
 
           {/* Token mix — bounded event aggregates. */}
-          <div className="reveal" style={REVEAL.trend}>
+          <div className="reveal min-w-0" style={REVEAL.trend}>
             <ProfileMixPanel
               mix={mix}
               loading={rangeEvents.loading}
@@ -878,6 +891,9 @@ export default function ProfilePage() {
           onPinDay={(day) => applyFilters({ ...filters, day })}
           onToggleProvider={(id) => toggleFacet({ kind: "provider", id })}
           onToggleModel={(id) => toggleFacet({ kind: "model", id })}
+          onInspectEntity={(kind, id) =>
+            applyFilters({ ...filters, entity: { kind, id } })
+          }
           onJumpToRhythm={() => {
             document
               .getElementById("profile-burn-rhythm")
@@ -902,7 +918,9 @@ export default function ProfilePage() {
 
       {/* Inspector slide-over — the pinned day (own query) or an entity from
           the range pass. Prev/next clamps to the active range. Query failures
-          surface stable copy + retry, never a false zero. */}
+          surface stable copy + retry, never a false zero.
+          Closing clears the pin; every number, bar, day, and record row
+          reopens it, so the inspector is never stranded unreachable. */}
       <ProfileInspector
         selection={inspector}
         events={inspectorEvents}

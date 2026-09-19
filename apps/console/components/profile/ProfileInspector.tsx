@@ -346,7 +346,8 @@ function InspectorShell({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close inspector"
+          aria-label="Close inspector (reopen from any day, record, row, or ledger time)"
+          title="Close — reopen from any day, record, row, or ledger time"
           className="shrink-0 rounded-md border border-glass-line px-2 py-0.5 text-xs text-content-dim hover:text-content-bright"
         >
           Esc

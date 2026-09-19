@@ -4,9 +4,13 @@
  * GitHub-style contribution heatmap of daily token activity.
  *
  * Hand-rolled SVG in the same idiom as the dashboard Sparkline — no chart
- * library. Columns are Sunday-start weeks, rows are Sun→Sat. Colors come from
- * theme tokens only: empty cells are `--color-mercury-wash`, active cells are
- * `--accent` at four sqrt-scaled opacity steps (see intensityBucket).
+ * library. Columns are Sunday-start weeks, rows are Sun→Sat.
+ *
+ * COLOR: cells paint the DOMINANT provider/model brand hue at sqrt-scaled
+ * opacity (daily mode: that day's winner; weekly mode: a weighted-blend
+ * gradient kernel across the week's top shares). Empty cells stay
+ * `--color-mercury-wash`. Brand colors are identity (providerBrand 1:1 with
+ * native) — the grid reads as a usage fingerprint, not a monochrome chart.
  *
  * Modes (the Codex-style Daily / Weekly / Cumulative toggle):
  *   daily      — each cell is that day's tokens.
@@ -26,8 +30,12 @@ import {
   weekStart,
   weeklyTotals,
 } from "@/lib/profile/activityStats";
+import {
+  blendShareFill,
+  dominantShareFill,
+} from "@/lib/profile/profileAggregates";
 import { placeTooltip, type TooltipAnchor } from "@/lib/profile/tooltipPlacement";
-import { providerDisplayName } from "@/lib/providerBrand";
+import { modelDisplayName, providerBarFill, providerDisplayName } from "@/lib/providerBrand";
 import { formatCompact } from "@/components/dashboard/cards/primitives";
 import { BrandLogo } from "@/components/BrandLogo";
 
@@ -74,6 +82,7 @@ function DayCard({
   split,
   splitTotal,
   otherSplit,
+  modelSplit,
 }: {
   hover: Hover;
   value: number;
@@ -81,6 +90,9 @@ function DayCard({
   split: [string, number][];
   splitTotal: number;
   otherSplit: number;
+  /** Top model shares for the day (model → tokens), when the event path
+   *  has a per-model split and the provider split is absent. */
+  modelSplit?: [string, number][];
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [size, setSize] = React.useState({ width: 192, height: 140 });
@@ -113,7 +125,7 @@ function DayCard({
               : "tokens"}
         </span>
       </p>
-      {split.length > 0 && (
+      {split.length > 0 ? (
         <ul className="mt-1.5 space-y-1 border-t border-glass-line pt-1.5">
           {split.map(([provider, tokens]) => (
             <li
@@ -137,6 +149,24 @@ function DayCard({
             </li>
           )}
         </ul>
+      ) : (
+        modelSplit &&
+        modelSplit.length > 0 && (
+          <ul className="mt-1.5 space-y-1 border-t border-glass-line pt-1.5">
+            {modelSplit.map(([model, tokens]) => (
+              <li
+                key={model}
+                className="flex items-center gap-1.5 text-xs"
+                title={`${tokens.toLocaleString("en-US")} tokens`}
+              >
+                <span className="truncate text-content-base">{modelDisplayName(model)}</span>
+                <span className="ml-auto shrink-0 text-content-mute tabular-nums">
+                  {value > 0 ? Math.round((tokens / value) * 100) : 0}%
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
       )}
     </div>
   );
@@ -147,6 +177,7 @@ export function ContributionHeatmap({
   mode,
   today,
   dailyProviderTokens,
+  dailyModelTokens,
   onSelectDay,
 }: {
   points: readonly DailyPoint[];
@@ -155,8 +186,13 @@ export function ContributionHeatmap({
   today: string;
   /** Sparse per-day provider split (all_time rollup, counter schema v3+).
    *  When present, the day-hover card breaks the day's tokens down by
-   *  provider; absent → the card shows tokens only. Daily mode only. */
+   *  provider and cells paint the dominant provider hue; absent → the
+   *  model split (below) or the accent. Daily mode only. */
   dailyProviderTokens?: Record<string, Record<string, number>>;
+  /** Sparse per-day per-model split (event aggregates, client-built).
+   *  Powers per-model cell coloring + the hover mix wherever the provider
+   *  split is absent. Keys are raw model ids. */
+  dailyModelTokens?: Record<string, Record<string, number>>;
   /** Keyboard + click drill-in: called with the day key when an ACTIVE-day
    *  cell is activated. Active days only are focusable (quiet days pin empty
    *  inspectors, and 365 tab stops would be a trap). Absent → mouse-hover
@@ -277,17 +313,62 @@ export function ContributionHeatmap({
   const splitTotal = hoverSplit.reduce((n, [, v]) => n + v, 0);
   const shownSplit = hoverSplit.slice(0, 3);
   const otherSplit = splitTotal - shownSplit.reduce((n, [, v]) => n + v, 0);
+  // Model mix for the hover card when the provider split is absent.
+  const hoverModelSplit =
+    hover && mode === "daily" && hoverSplit.length === 0 && dailyModelTokens
+      ? Object.entries(dailyModelTokens[hover.day] ?? {})
+          .filter(([, n]) => n > 0)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 4)
+      : [];
+
+  // Weekly-mode blend inputs: per-week merged provider/model splits so each
+  // column paints its weighted conglomerate kernel.
+  const weeklyBlend = React.useMemo(() => {
+    if (mode !== "weekly") return new Map<string, Record<string, number>>();
+    const byWeek = new Map<string, Record<string, number>>();
+    const source = dailyProviderTokens ?? dailyModelTokens;
+    if (!source) return byWeek;
+    for (const [day, split] of Object.entries(source)) {
+      const ws = weekStart(day);
+      const acc = byWeek.get(ws) ?? {};
+      for (const [key, tokens] of Object.entries(split)) {
+        if (tokens > 0) acc[key] = (acc[key] ?? 0) + tokens;
+      }
+      byWeek.set(ws, acc);
+    }
+    return byWeek;
+  }, [mode, dailyProviderTokens, dailyModelTokens]);
+
+  // Dominant-share display name for a day's <title> ("Anthropic leads").
+  // Daily winner from the provider split, else the model split.
+  const dominantLabel = (day: string): string => {
+    const split = dailyProviderTokens?.[day] ?? dailyModelTokens?.[day];
+    if (!split) return "mix";
+    let best = "";
+    let bestTokens = 0;
+    for (const [key, tokens] of Object.entries(split)) {
+      if (tokens > bestTokens) {
+        bestTokens = tokens;
+        best = key;
+      }
+    }
+    if (!best) return "mix";
+    return dailyProviderTokens?.[day]?.[best] != null
+      ? providerDisplayName(best)
+      : modelDisplayName(best);
+  };
 
   return (
-    <div className="overflow-x-auto">
-      <div className="relative" style={{ width }}>
+    <div className="min-w-0 overflow-x-auto">
+      <div className="relative min-w-0" style={{ width }}>
         <svg
           viewBox={`0 0 ${width} ${height}`}
           width={width}
           height={height}
           role="img"
           aria-label="Daily token activity heatmap"
-          style={{ display: "block", maxWidth: "none" }}
+          style={{ display: "block", maxWidth: "100%" }}
           onMouseLeave={() => setHover(null)}
         >
           {monthLabels.map((m) => (
@@ -325,6 +406,37 @@ export function ContributionHeatmap({
             // Focusability follows the DAILY series in every mode: the
             // drill-in lands on a real active day, never an aggregate.
             const focusable = onSelectDay != null && (dailyTokens.get(day) ?? 0) > 0;
+            // Cell color: the dominant share's brand hue.
+            // - daily: that day's winning provider (rollup split), else the
+            //   winning model (event split), else the accent at bucket steps.
+            // - weekly: a weighted-blend gradient kernel across the week's
+            //   top shares (providers preferred, models as fallback).
+            // - cumulative: the accent ramp (running totals have no split).
+            let fill: string | undefined;
+            let fillOpacity: number | undefined;
+            if (bucket !== 0 && mode !== "cumulative") {
+              if (mode === "weekly") {
+                const blend = blendShareFill(
+                  weeklyBlend.get(weekStart(day)),
+                  (key) => providerBarFill(key),
+                );
+                if (blend) {
+                  fill = blend;
+                  fillOpacity = 1;
+                }
+              } else {
+                const winner = dominantShareFill(
+                  dailyProviderTokens?.[day] ?? dailyModelTokens?.[day],
+                  max,
+                  (key) => providerBarFill(key),
+                );
+                if (winner) {
+                  fill = winner.fill;
+                  fillOpacity = winner.fillOpacity;
+                }
+              }
+            }
+            const accentFallback = fill == null;
             return (
               <rect
                 key={day}
@@ -333,8 +445,14 @@ export function ContributionHeatmap({
                 width={CELL}
                 height={CELL}
                 rx={2.5}
-                fill={bucket === 0 ? "var(--color-mercury-wash)" : "var(--accent)"}
-                fillOpacity={bucket === 0 ? 1 : BUCKET_OPACITY[bucket]}
+                fill={
+                  bucket === 0
+                    ? "var(--color-mercury-wash)"
+                    : (fill ?? "var(--accent)")
+                }
+                fillOpacity={
+                  bucket === 0 ? 1 : (fillOpacity ?? BUCKET_OPACITY[bucket])
+                }
                 stroke={hovered ? "var(--accent-deep)" : "transparent"}
                 strokeWidth={hovered ? 1.5 : 0}
                 aria-label={label}
@@ -358,7 +476,11 @@ export function ContributionHeatmap({
                   });
                 }}
               >
-                <title>{label}</title>
+                <title>
+                  {accentFallback || bucket === 0
+                    ? label
+                    : `${label} — ${dominantLabel(day)} leads`}
+                </title>
               </rect>
             );
           })}
@@ -376,11 +498,13 @@ export function ContributionHeatmap({
               split={shownSplit}
               splitTotal={splitTotal}
               otherSplit={otherSplit}
+              modelSplit={hoverModelSplit}
             />,
             document.body,
           )}
       </div>
-      {/* Scale legend — same five swatches the grid uses. */}
+      {/* Scale legend — same five swatches the grid uses, plus the dominant
+          brand hues actually present in view. */}
       <div
         className="mt-token-2 flex items-center justify-end gap-1"
         role="img"
