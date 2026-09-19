@@ -30,8 +30,9 @@
 import { randomUUID } from "node:crypto";
 import { type Firestore } from "firebase-admin/firestore";
 import type { UsageEventDoc } from "./types.js";
-import { isRecord, recordOrUndefined } from "./guards.js";
+import { isRecord, parseRollupJobDoc, recordOrUndefined } from "./guards.js";
 import { logInfo } from "./logging.js";
+import { isFreshFullRebuildInFlight } from "./rollupRebuildInFlight.js";
 import { flushDomainCorePricingShadowEvidence } from "./pricing.js";
 import {
   COUNTER_SCHEMA_VERSION,
@@ -316,6 +317,15 @@ type DrainPendingCounterDeltasResult = {
   capped: boolean;
 };
 
+/** Thrown from a drain page transaction when a full rebuild claimed the counters. */
+export class PendingDeltaDrainInFlightError extends Error {
+  readonly reason = "in_flight" as const;
+  constructor() {
+    super("pending delta drain refused: a full rebuild is replacing counters");
+    this.name = "PendingDeltaDrainInFlightError";
+  }
+}
+
 /** Collects the distinct logical keys touched by a page of deltas, in order. */
 function pageLogicalKeys(deltas: readonly PendingCounterDelta[]): string[] {
   const logicalKeys: string[] = [];
@@ -430,6 +440,14 @@ export async function drainPendingCounterDeltas(
 
     const now = new Date().toISOString();
     await db.runTransaction(async (transaction) => {
+      // Re-read the job inside the same transaction that deletes queue docs
+      // so a force rebuild that claims the marker after the cheap path's
+      // snapshot cannot still drain mid-scan events onto doomed counters.
+      const jobSnap = await transaction.get(db.doc(`users/${uid}/rollup_jobs/current`));
+      const job = jobSnap.exists ? parseRollupJobDoc(jobSnap.data()) : undefined;
+      if (isFreshFullRebuildInFlight(job)) {
+        throw new PendingDeltaDrainInFlightError();
+      }
       const states = await readPageKeyStates(db, uid, logicalKeys, transaction);
       commitPagePlan(db, uid, transaction, deltas, states, page.docs, now);
     });

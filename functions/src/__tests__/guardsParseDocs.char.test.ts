@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parseProviderAccountDoc, parseUsageEventDoc } from "../guards.js";
+import { parseProviderAccountDoc } from "../guards.js";
+import { parseUsageEventDoc } from "../usageEventParse.js";
 
 /**
  * Characterization tests pinning the CURRENT observable behavior of
@@ -239,6 +240,7 @@ describe("parseUsageEventDoc (characterization)", () => {
 
     expect(parseUsageEventDoc(raw)).toEqual({
       provider: "claude-code",
+      providerID: "claude-code",
       recordedAt: new Date("2026-04-01T12:00:00.000Z").toISOString(),
       schemaVersion: 1,
       timestamp: "2026-04-01T12:00:00.000Z",
@@ -247,6 +249,138 @@ describe("parseUsageEventDoc (characterization)", () => {
 
   it("returns undefined when provider is invalid", () => {
     expect(parseUsageEventDoc({ provider: "not-a-provider", recordedAt: "2026-01-01T00:00:00.000Z" })).toBeUndefined();
+  });
+
+  it("resolves uploader display names onto canonical provider IDs", () => {
+    // Uploaders write `provider` = display name ("Claude Code") and
+    // `providerID` = canonical ID ("claude-code"). Either resolves.
+    expect(
+      parseUsageEventDoc({
+        provider: "Claude Code",
+        providerID: "claude-code",
+        recordedAt: "2026-09-01T00:00:00.000Z",
+      }),
+    ).toMatchObject({ provider: "claude-code", providerID: "claude-code" });
+    // 13% of one real account's history has no providerID at all — the
+    // display name alone must resolve, and the ID defaults to the provider.
+    expect(
+      parseUsageEventDoc({ provider: "Claude Code", recordedAt: "2026-09-01T00:00:00.000Z" }),
+    ).toMatchObject({ provider: "claude-code", providerID: "claude-code" });
+    expect(
+      parseUsageEventDoc({ provider: "Pi Agent", recordedAt: "2026-09-01T00:00:00.000Z" }),
+    ).toMatchObject({ provider: "piagent", providerID: "piagent" });
+    expect(
+      parseUsageEventDoc({ provider: "xAI", recordedAt: "2026-09-01T00:00:00.000Z" }),
+    ).toMatchObject({ provider: "xai", providerID: "xai" });
+  });
+
+  it("maps dashed-catalog display names (claude-code, cursor-agent, prime-agent)", () => {
+    expect(
+      parseUsageEventDoc({ provider: "Prime Agent", recordedAt: "2026-09-01T00:00:00.000Z" }),
+    ).toMatchObject({ provider: "prime-agent" });
+    expect(
+      parseUsageEventDoc({ provider: "Cursor Agent", recordedAt: "2026-09-01T00:00:00.000Z" }),
+    ).toMatchObject({ provider: "cursor-agent" });
+    expect(
+      parseUsageEventDoc({ providerID: "prime-agent", recordedAt: "2026-09-01T00:00:00.000Z" }),
+    ).toMatchObject({ provider: "prime-agent" });
+  });
+
+  it("resolves the full uploader catalog without dropping a provider", () => {
+    // Every (display name, providerID) pair the Swift AgentProvider catalog
+    // can emit, per AgentProvider.providerID. A gap here silently drops that
+    // provider's entire history from every rollup (2026-09-19: 24 of 37
+    // providers missing → a force rebuild wiped the account to zeros).
+    const catalog: Array<[display: string, id: string]> = [
+      ["Factory", "factory"],
+      ["Claude Code", "claude-code"],
+      ["Copilot", "copilot"],
+      ["Aider", "aider"],
+      ["Cursor", "cursor"],
+      ["OpenAI", "openai"],
+      ["OpenBurnBar", "openburnbar"],
+      ["DeepSeek", "deepseek"],
+      ["Codex", "codex"],
+      ["OpenCode", "opencode"],
+      ["Zai", "zai"],
+      ["MiniMax", "minimax"],
+      ["Kimi", "kimi"],
+      ["Cline", "cline"],
+      ["Kilo Code", "kilocode"],
+      ["Roo Code", "roocode"],
+      ["Forge", "forge"],
+      ["Augment", "augment"],
+      ["Hermes", "hermes"],
+      ["Pi Agent", "piagent"],
+      ["Gemini CLI", "geminicli"],
+      ["Antigravity", "antigravity"],
+      ["Goose", "goose"],
+      ["OpenClaw", "openclaw"],
+      ["OpenClaude", "openclaude"],
+      ["OMP", "omp"],
+      ["Ollama", "ollama"],
+      ["Windsurf", "windsurf"],
+      ["Devin", "devin"],
+      ["Warp", "warp"],
+      ["xAI", "xai"],
+      ["MiMo", "mimo"],
+      ["Cursor Agent", "cursor-agent"],
+      ["Junie", "junie"],
+      ["Prime Agent", "prime-agent"],
+      ["Muse", "muse"],
+      ["fx", "fx"],
+    ];
+    for (const [display, id] of catalog) {
+      expect(
+        parseUsageEventDoc({ provider: display, recordedAt: "2026-09-01T00:00:00.000Z" }),
+        `display name ${display}`,
+      ).toMatchObject({ provider: id });
+      expect(
+        parseUsageEventDoc({
+          provider: display,
+          providerID: id,
+          recordedAt: "2026-09-01T00:00:00.000Z",
+        }),
+        `display name ${display} + providerID`,
+      ).toMatchObject({ provider: id, providerID: id });
+    }
+  });
+
+  it("prefers a valid providerID and falls back to the display name", () => {
+    // Canonical ID wins over a mismatched display name.
+    expect(
+      parseUsageEventDoc({
+        provider: "Claude Code",
+        providerID: "openai",
+        recordedAt: "2026-09-01T00:00:00.000Z",
+      }),
+    ).toMatchObject({ provider: "openai", providerID: "openai" });
+    // Garbage providerID falls back to the display name instead of dropping.
+    expect(
+      parseUsageEventDoc({
+        provider: "Claude Code",
+        providerID: "not-a-provider",
+        recordedAt: "2026-09-01T00:00:00.000Z",
+      }),
+    ).toMatchObject({ provider: "claude-code", providerID: "claude-code" });
+    // Unknown in both fields still rejects.
+    expect(
+      parseUsageEventDoc({
+        provider: "not-a-provider",
+        providerID: "also-not-a-provider",
+        recordedAt: "2026-09-01T00:00:00.000Z",
+      }),
+    ).toBeUndefined();
+    // Catalog-only vendor IDs stay on providerID; the AgentProvider display
+    // name still owns `provider`. Rewriting anthropic → claude-code drifted
+    // daily/account splits.
+    expect(
+      parseUsageEventDoc({
+        provider: "Claude Code",
+        providerID: "anthropic",
+        recordedAt: "2026-09-01T00:00:00.000Z",
+      }),
+    ).toMatchObject({ provider: "claude-code", providerID: "anthropic" });
   });
 
   it("returns undefined when no recordedAt can be synthesized", () => {

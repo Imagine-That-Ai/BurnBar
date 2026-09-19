@@ -10,7 +10,7 @@ import { db } from "../adminRuntime.js";
 import { refreshUserRollups, RollupRebuildUnavailableError } from "../rollups.js";
 import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "../demoSeed.js";
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
-import { FUNCTIONS_REGION } from "../runtimeOptions.js";
+import { FUNCTIONS_REGION, FULL_USAGE_REBUILD_RUNTIME } from "../runtimeOptions.js";
 
 // ---------------------------------------------------------------------------
 // Callable: rebuildUsageRollups
@@ -21,6 +21,7 @@ export const rebuildUsageRollups = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 10,
+    ...FULL_USAGE_REBUILD_RUNTIME,
   },
   wrapCallableHandler("rebuildUsageRollups", async (request: CallableRequest<{ force?: boolean }>) => {
     const uid = request.auth?.uid;

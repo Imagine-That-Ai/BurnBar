@@ -15,6 +15,7 @@
  */
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 
 import type { DailyPoint } from "@/lib/usage";
 import {
@@ -25,6 +26,8 @@ import {
   weekStart,
   weeklyTotals,
 } from "@/lib/profile/activityStats";
+import { placeTooltip, type TooltipAnchor } from "@/lib/profile/tooltipPlacement";
+import { providerDisplayName } from "@/lib/providerBrand";
 import { formatCompact } from "@/components/dashboard/cards/primitives";
 import { BrandLogo } from "@/components/BrandLogo";
 
@@ -39,12 +42,10 @@ const TOP = 18;
 /** Accent opacity per intensity bucket (1–4). */
 const BUCKET_OPACITY = [0, 0.28, 0.48, 0.72, 1] as const;
 
-/** Hovered cell anchor, in SVG pixel space (scrolls with the grid). */
+/** Hovered cell anchor, in viewport coordinates captured at hover time. */
 interface Hover {
   day: string;
-  x: number; // cell center
-  y: number; // cell top
-  row: number;
+  anchor: TooltipAnchor;
 }
 
 /** Weekday + full date for the hover card ("Mon, Feb 2"). Client-interaction
@@ -58,6 +59,87 @@ function hoverDateLabel(day: string): string {
     day: "numeric",
     timeZone: "UTC",
   });
+}
+
+/**
+ * The day card, portaled to `document.body` with fixed positioning: the grid
+ * lives in a horizontal scroll container whose overflow would clip an
+ * in-flow card on every side. Measures itself after mount so placement uses
+ * the true card size (the provider split changes its height).
+ */
+function DayCard({
+  hover,
+  value,
+  mode,
+  split,
+  splitTotal,
+  otherSplit,
+}: {
+  hover: Hover;
+  value: number;
+  mode: HeatmapMode;
+  split: [string, number][];
+  splitTotal: number;
+  otherSplit: number;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [size, setSize] = React.useState({ width: 192, height: 140 });
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && (el.offsetWidth !== size.width || el.offsetHeight !== size.height)) {
+      setSize({ width: el.offsetWidth, height: el.offsetHeight });
+    }
+  });
+  const placement = placeTooltip(hover.anchor, size, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+  return (
+    <div
+      ref={ref}
+      aria-hidden
+      data-placement={placement.above ? "above" : "below"}
+      className="glass-pane glass-pane--elevated pointer-events-none fixed z-50 w-48 px-3 py-2"
+      style={{ left: placement.left, top: placement.top }}
+    >
+      <p className="eyebrow">{hoverDateLabel(hover.day)}</p>
+      <p className="mt-0.5 font-display text-base leading-tight text-content-bright tabular-nums">
+        {value.toLocaleString("en-US")}
+        <span className="ml-1 text-xs font-normal text-content-dim">
+          {mode === "cumulative"
+            ? "total tokens so far"
+            : mode === "weekly"
+              ? "tokens that week"
+              : "tokens"}
+        </span>
+      </p>
+      {split.length > 0 && (
+        <ul className="mt-1.5 space-y-1 border-t border-glass-line pt-1.5">
+          {split.map(([provider, tokens]) => (
+            <li
+              key={provider}
+              className="flex items-center gap-1.5 text-xs"
+              title={`${tokens.toLocaleString("en-US")} tokens`}
+            >
+              <BrandLogo id={provider} label={provider} size={14} />
+              <span className="truncate text-content-base">{providerDisplayName(provider)}</span>
+              <span className="ml-auto shrink-0 text-content-mute tabular-nums">
+                {splitTotal > 0 ? Math.round((tokens / splitTotal) * 100) : 0}%
+              </span>
+            </li>
+          ))}
+          {otherSplit > 0 && (
+            <li className="flex items-center gap-1.5 text-xs text-content-dim">
+              <span className="pl-[22px]">other</span>
+              <span className="ml-auto tabular-nums">
+                {splitTotal > 0 ? Math.round((otherSplit / splitTotal) * 100) : 0}%
+              </span>
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export function ContributionHeatmap({
@@ -76,6 +158,20 @@ export function ContributionHeatmap({
   dailyProviderTokens?: Record<string, Record<string, number>>;
 }) {
   const [hover, setHover] = React.useState<Hover | null>(null);
+
+  // The card is fixed-positioned from the anchor captured at hover time, so
+  // any scroll or resize would strand it — dismiss instead of chasing.
+  React.useEffect(() => {
+    if (!hover) return;
+    const clear = () => setHover(null);
+    window.addEventListener("scroll", clear, { capture: true, passive: true });
+    window.addEventListener("resize", clear);
+    return () => {
+      window.removeEventListener("scroll", clear, { capture: true });
+      window.removeEventListener("resize", clear);
+    };
+  }, [hover]);
+
   const { columns, monthLabels, valueOf, labelOf, max } = React.useMemo(() => {
     // Daily lookup first — every mode derives from it.
     const daily = new Map<string, number>();
@@ -233,9 +329,13 @@ export function ContributionHeatmap({
                 stroke={hovered ? "var(--accent-deep)" : "transparent"}
                 strokeWidth={hovered ? 1.5 : 0}
                 aria-label={label}
-                onMouseEnter={() =>
-                  setHover({ day, x: GUTTER + col * STRIDE + CELL / 2, y: TOP + row * STRIDE, row })
-                }
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setHover({
+                    day,
+                    anchor: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                  });
+                }}
               >
                 <title>{label}</title>
               </rect>
@@ -243,54 +343,21 @@ export function ContributionHeatmap({
           })}
         </svg>
 
-        {/* Day card — floats beside the hovered cell (above it, flipping below
-            on the top rows), with the per-provider split when the rollup
-            carries it. Pointer-events-none so it never eats the next hover. */}
-        {hover && (
-          <div
-            aria-hidden
-            className="glass-pane glass-pane--elevated pointer-events-none absolute z-10 w-44 px-3 py-2"
-            style={{
-              left: Math.min(Math.max(hover.x, 92), width - 92),
-              top: hover.row >= 2 ? hover.y - 8 : hover.y + CELL + 8,
-              transform:
-                hover.row >= 2 ? "translate(-50%, -100%)" : "translate(-50%, 0)",
-            }}
-          >
-            <p className="eyebrow">{hoverDateLabel(hover.day)}</p>
-            <p className="mt-0.5 font-display text-base leading-tight text-content-bright tabular-nums">
-              {hoverValue.toLocaleString("en-US")}
-              <span className="ml-1 text-xs font-normal text-content-dim">
-                {mode === "cumulative"
-                  ? "total tokens so far"
-                  : mode === "weekly"
-                    ? "tokens that week"
-                    : "tokens"}
-              </span>
-            </p>
-            {shownSplit.length > 0 && (
-              <ul className="mt-1.5 space-y-1 border-t border-glass-line pt-1.5">
-                {shownSplit.map(([provider, tokens]) => (
-                  <li key={provider} className="flex items-center gap-1.5 text-xs">
-                    <BrandLogo id={provider} label={provider} size={14} />
-                    <span className="truncate text-content-base">{provider}</span>
-                    <span className="ml-auto shrink-0 text-content-mute tabular-nums">
-                      {splitTotal > 0 ? Math.round((tokens / splitTotal) * 100) : 0}%
-                    </span>
-                  </li>
-                ))}
-                {otherSplit > 0 && (
-                  <li className="flex items-center gap-1.5 text-xs text-content-dim">
-                    <span className="pl-[22px]">other</span>
-                    <span className="ml-auto tabular-nums">
-                      {splitTotal > 0 ? Math.round((otherSplit / splitTotal) * 100) : 0}%
-                    </span>
-                  </li>
-                )}
-              </ul>
-            )}
-          </div>
-        )}
+        {/* Day card — portaled to the body so the scroll container can never
+            clip it, with the per-provider split when the rollup carries it.
+            Pointer-events-none so it never eats the next hover. */}
+        {hover &&
+          createPortal(
+            <DayCard
+              hover={hover}
+              value={hoverValue}
+              mode={mode}
+              split={shownSplit}
+              splitTotal={splitTotal}
+              otherSplit={otherSplit}
+            />,
+            document.body,
+          )}
       </div>
       {/* Scale legend — same five swatches the grid uses. */}
       <div

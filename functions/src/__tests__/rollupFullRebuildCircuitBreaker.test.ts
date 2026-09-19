@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- reason: one in-memory Firestore fake covers the full-rebuild gate, drain abort, pagination, and parse-collapse paths */
 /**
  * Full-rebuild circuit breaker lifecycle (P0-7).
  *
@@ -564,6 +565,40 @@ describe("rollupUserRebuild task processor", () => {
     expect(fake.recursiveDeletes).toEqual([]);
   });
 
+  it("does not drain pending deltas while a force rebuild is in flight", async () => {
+    const fake = new FakeFirestore();
+    fake.store.set(JOB_PATH, {
+      dirty: true,
+      dirtiedAt: T0,
+      fullRebuildAttemptInFlightAt: FRESH_MARKER,
+    });
+    seedQueue(fake, 2);
+
+    const result = await processRollupUserRebuild(fake.asFirestore(), UID, { taskDirtiedAt: T0 });
+
+    expect(result).toMatchObject({ status: "skipped", reason: "full_rebuild_in_flight" });
+    expect(queueSize(fake)).toBe(2);
+    expect(fake.recursiveDeletes).toEqual([]);
+    expect(typeof fake.store.get(JOB_PATH)?.requeueNonce).toBe("string");
+    await expect(refreshUserRollups(fake.asFirestore(), UID)).rejects.toMatchObject({ reason: "in_flight" });
+    expect(queueSize(fake)).toBe(2);
+  });
+
+  it("aborts a cheap drain transactionally when the in-flight marker appears after the snapshot", async () => {
+    const fake = new FakeFirestore();
+    fake.store.set(JOB_PATH, {
+      dirty: true,
+      dirtiedAt: T0,
+      fullRebuildAttemptInFlightAt: FRESH_MARKER,
+    });
+    seedQueue(fake, 2);
+
+    await expect(drainPendingCounterDeltas(fake.asFirestore(), UID)).rejects.toMatchObject({
+      reason: "in_flight",
+    });
+    expect(queueSize(fake)).toBe(2);
+  });
+
   it("uses the full-rebuild repair path and clears failure state when the job carries lastErrorCode", async () => {
     const fake = new FakeFirestore();
     fake.store.set(JOB_PATH, { dirty: true, dirtiedAt: T0, lastErrorCode: "delta drain failed" });
@@ -615,6 +650,116 @@ describe("full-history pagination (large account synthetic)", () => {
   });
 });
 
+describe("zero-parse wipe guard", () => {
+  function seedUnparseableUsage(fake: FakeFirestore, count: number): void {
+    for (let i = 0; i < count; i += 1) {
+      const id = String(i).padStart(6, "0");
+      fake.store.set(`users/${UID}/usage/${id}`, {
+        ...usageEvent(`unparseable-${id}`),
+        provider: "not-a-provider",
+        providerID: "not-a-provider",
+      });
+    }
+  }
+
+  it("refuses to wipe counters when raw history exists but nothing parses", async () => {
+    const fake = new FakeFirestore();
+    seedUnparseableUsage(fake, 3);
+    // Pre-existing counters from the healthy era: the guard must leave them
+    // exactly as they were (2026-09-19: a strict provider allowlist rejected
+    // 100% of a real account and the "successful" rebuild zeroed it).
+    fake.store.set(`users/${UID}/usage_counter_days/2026-06-09`, {
+      day: "2026-06-09",
+      requests: 7,
+      tokens: 70,
+      costUsd: 0.07,
+    });
+    fake.store.set(`users/${UID}/usage_counter_totals/all_time`, {
+      windowKey: "all_time",
+      requests: 7,
+      tokens: 70,
+      costUsd: 0.07,
+    });
+    seedQueue(fake, 2);
+
+    await expect(rebuildUserRollupCounters(fake.asFirestore(), UID, { pageSize: 500 })).rejects.toThrow(
+      /scanned 3 usage docs but parsed 0 countable contributions/,
+    );
+
+    // Only the pending-delta purge ran (it is load-bearing before the scan);
+    // the three counter collections were never deleted.
+    expect(fake.recursiveDeletes).toEqual([`users/${UID}/pending_counter_deltas`]);
+    expect(fake.store.get(`users/${UID}/usage_counter_days/2026-06-09`)?.tokens).toBe(70);
+    expect(fake.store.get(`users/${UID}/usage_counter_totals/all_time`)?.tokens).toBe(70);
+    expect(queueSize(fake)).toBe(0);
+    expect(logErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "rollup.rescan_zero_parsed", usage_docs_scanned: 3 }),
+    );
+  });
+
+  it("refuses to wipe counters when only a sliver of a large history parses", async () => {
+    const fake = new FakeFirestore();
+    seedUnparseableUsage(fake, 20);
+    fake.store.set(`users/${UID}/usage/parsed-one`, { ...usageEvent("parsed-one") });
+    fake.store.set(`users/${UID}/usage_counter_totals/all_time`, {
+      windowKey: "all_time",
+      requests: 90_000,
+      tokens: 900_000,
+      costUsd: 90,
+    });
+
+    await expect(rebuildUserRollupCounters(fake.asFirestore(), UID, { pageSize: 500 })).rejects.toThrow(
+      /only 1 countable contributions/,
+    );
+
+    expect(fake.recursiveDeletes).toEqual([`users/${UID}/pending_counter_deltas`]);
+    expect(fake.store.get(`users/${UID}/usage_counter_totals/all_time`)?.tokens).toBe(900_000);
+    expect(logErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "rollup.rescan_partial_parse", usage_docs_scanned: 21, countable_docs: 1 }),
+    );
+  });
+
+  it("rebuilds an empty account without tripping the guard", async () => {
+    const fake = new FakeFirestore();
+
+    const result = await rebuildUserRollupCounters(fake.asFirestore(), UID, { pageSize: 500 });
+
+    expect(result).toEqual({ usageDocsScanned: 0, pages: 0, winnersWritten: 0 });
+    expect(fake.recursiveDeletes).toHaveLength(4);
+  });
+
+  it("emits rescan stats on success for log-based observability", async () => {
+    const fake = new FakeFirestore();
+    seedUsage(fake, 3);
+
+    const result = await rebuildUserRollupCounters(fake.asFirestore(), UID, { pageSize: 500 });
+
+    expect(result).toEqual({ usageDocsScanned: 3, pages: 1, winnersWritten: 3 });
+    expect(logInfoMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "rollup.rescan_completed",
+        usage_docs_scanned: 3,
+        pages: 1,
+        winners_written: 3,
+      }),
+    );
+  });
+
+  it("fails the callable repair path (not a silent wipe) when nothing parses", async () => {
+    const fake = new FakeFirestore();
+    fake.store.set(JOB_PATH, { dirty: true, dirtiedAt: T0 });
+    seedUnparseableUsage(fake, 2);
+
+    await expect(refreshUserRollups(fake.asFirestore(), UID, { force: true })).rejects.toThrow(
+      /0 countable contributions/,
+    );
+
+    const job = fake.store.get(JOB_PATH);
+    expect(job?.lastErrorCode).toMatch(/0 countable contributions/);
+    expect(job?.fullRebuildAttemptInFlightAt).toBeUndefined();
+  });
+});
+
 describe("alertable structured log event keys", () => {
   // Another workstream wires GCP log-based alert policies to exactly these
   // jsonPayload.event strings. This pins the literals at the source level so
@@ -633,8 +778,12 @@ describe("alertable structured log event keys", () => {
       .join("\n");
 
     expect(scheduled).toContain("rollupUserRebuild");
+    expect(scheduled).toContain("FULL_USAGE_REBUILD_RUNTIME");
+    expect(misc).toContain("FULL_USAGE_REBUILD_RUNTIME");
     expect(rollups).toContain('event: "rollup.full_rebuild_circuit_open"');
     expect(rollups).toContain('event: "rollup.rebuild_failed"');
+    expect(rollups).toContain('event: "rollup.rescan_zero_parsed"');
+    expect(rollups).toContain('event: "rollup.rescan_completed"');
     expect(rollups).toContain('event: "rollup.delta_drain_capped"');
     expect(misc).toContain('event: "rollup.full_rebuild_circuit_open"');
   });

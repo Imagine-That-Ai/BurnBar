@@ -140,17 +140,18 @@ describe("ContributionHeatmap", () => {
 
   it("hovering a day opens the card with the exact token count, and leaving closes it", () => {
     const el = render(pts(["2026-08-14", 123_456]), "daily");
-    expect(el.textContent).not.toContain("123,456");
+    expect(document.body.textContent).not.toContain("123,456");
     const rect = hoverDay(el, "Aug 14");
-    expect(el.textContent).toContain("123,456");
-    expect(el.textContent).toContain("tokens");
+    // Portaled to the body so the scroll container can never clip it.
+    expect(document.body.textContent).toContain("123,456");
+    expect(document.body.textContent).toContain("tokens");
     // The hovered cell gets the accent-deep stroke ring.
     expect(rect.getAttribute("stroke")).toBe("var(--accent-deep)");
     const svg = el.querySelector("svg")!;
     act(() => {
       svg.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
     });
-    expect(el.textContent).not.toContain("123,456");
+    expect(document.body.textContent).not.toContain("123,456");
   });
 
   it("hover card breaks the day down by provider when the split is present", () => {
@@ -158,15 +159,15 @@ describe("ContributionHeatmap", () => {
       "2026-08-14": { anthropic: 500, openai: 300, moonshot: 150, google: 50 },
     });
     hoverDay(el, "Aug 14");
-    const card = el.querySelector(".glass-pane--elevated")!;
-    expect(card.textContent).toContain("anthropic");
+    const card = document.querySelector(".glass-pane--elevated")!;
+    expect(card.textContent).toContain("Anthropic");
     expect(card.textContent).toContain("50%");
-    expect(card.textContent).toContain("openai");
+    expect(card.textContent).toContain("OpenAI");
     expect(card.textContent).toContain("30%");
-    expect(card.textContent).toContain("moonshot");
+    expect(card.textContent).toContain("Moonshot");
     expect(card.textContent).toContain("15%");
     // Fourth provider folds into "other".
-    expect(card.textContent).not.toContain("google");
+    expect(card.textContent).not.toContain("Google");
     expect(card.textContent).toContain("other");
     expect(card.textContent).toContain("5%");
   });
@@ -174,7 +175,7 @@ describe("ContributionHeatmap", () => {
   it("hover card shows tokens only when the day has no provider split", () => {
     const el = render(pts(["2026-08-14", 700]), "daily", TODAY, {});
     hoverDay(el, "Aug 14");
-    const card = el.querySelector(".glass-pane--elevated")!;
+    const card = document.querySelector(".glass-pane--elevated")!;
     expect(card.textContent).toContain("700");
     expect(card.querySelector("ul")).toBeNull();
   });
@@ -184,20 +185,47 @@ describe("ContributionHeatmap", () => {
       "2026-08-14": { anthropic: 1000 },
     });
     hoverDay(el, "Week of Aug 9");
-    const card = el.querySelector(".glass-pane--elevated")!;
+    const card = document.querySelector(".glass-pane--elevated")!;
     expect(card.textContent).toContain("1,000");
     expect(card.textContent).toContain("tokens that week");
     expect(card.querySelector("ul")).toBeNull();
   });
 
   it("positions the card above mid-grid cells and flips it below the top rows", () => {
-    // 2026-08-16 is a Sunday → row 0; 2026-08-18 is a Tuesday → row 2.
     const el = render(pts(["2026-08-16", 100], ["2026-08-18", 200]), "daily", "2026-08-22");
-    hoverDay(el, "Aug 16");
-    let card = el.querySelector<HTMLElement>(".glass-pane--elevated")!;
-    expect(card.style.transform).toBe("translate(-50%, 0)"); // flipped below
-    hoverDay(el, "Aug 18");
-    card = el.querySelector<HTMLElement>(".glass-pane--elevated")!;
-    expect(card.style.transform).toBe("translate(-50%, -100%)"); // above
+    const mockRect = (node: Element, x: number, y: number) => {
+      node.getBoundingClientRect = () =>
+        ({ x, y, width: 11, height: 11, top: y, left: x } as DOMRect);
+    };
+    const sunday = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Aug 16"),
+    )!;
+    const tuesday = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Aug 18"),
+    )!;
+    // Top-docked cell: no room above → flipped below.
+    mockRect(sunday, 600, 10);
+    act(() => {
+      sunday.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    let card = document.querySelector<HTMLElement>(".glass-pane--elevated")!;
+    expect(card.dataset.placement).toBe("below");
+    // Mid-grid cell: floats above.
+    mockRect(tuesday, 600, 400);
+    act(() => {
+      tuesday.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    card = document.querySelector<HTMLElement>(".glass-pane--elevated")!;
+    expect(card.dataset.placement).toBe("above");
+  });
+
+  it("dismisses the card on scroll instead of stranding it", () => {
+    const el = render(pts(["2026-08-14", 123_456]), "daily");
+    hoverDay(el, "Aug 14");
+    expect(document.querySelector(".glass-pane--elevated")).toBeTruthy();
+    act(() => {
+      window.dispatchEvent(new Event("scroll"));
+    });
+    expect(document.querySelector(".glass-pane--elevated")).toBeNull();
   });
 });

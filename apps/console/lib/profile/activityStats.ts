@@ -138,6 +138,59 @@ export function weeklyTotals(points: readonly DailyPoint[]): WeekTotal[] {  cons
     .sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1));
 }
 
+/** Monday-first weekday labels for the rhythm strip. */
+export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+export interface WeekdayRhythm {
+  /** 0 = Sunday … 6 = Saturday (matches dayOfWeek). */
+  weekday: number;
+  label: (typeof WEEKDAY_LABELS)[number];
+  /** Total tokens ever burned on this weekday. */
+  tokens: number;
+  /** Calendar occurrences of this weekday in [firstDay, today]. */
+  days: number;
+  /** Mean tokens per occurrence — quiet weekdays dilute honestly. */
+  avg: number;
+}
+
+/**
+ * Burn rhythm: average tokens by weekday over [firstDay, today], Monday
+ * first. Denominators are calendar occurrences, not active days, so a
+ * weekday you always skip reads as the near-zero it is.
+ */
+export function weekdayRhythm(
+  points: readonly DailyPoint[],
+  firstDay: string,
+  today: string,
+): WeekdayRhythm[] {
+  const totals = new Map<number, number>();
+  for (const p of points) {
+    if (p.tokens <= 0) continue;
+    const w = dayOfWeek(p.day);
+    totals.set(w, (totals.get(w) ?? 0) + p.tokens);
+  }
+  const occurrences = new Map<number, number>();
+  for (let day = firstDay; day <= today; day = addDays(day, 1)) {
+    const w = dayOfWeek(day);
+    occurrences.set(w, (occurrences.get(w) ?? 0) + 1);
+  }
+  // Monday-first presentation order.
+  const order: ReadonlyArray<readonly [weekday: number, label: (typeof WEEKDAY_LABELS)[number]]> = [
+    [1, "Mon"],
+    [2, "Tue"],
+    [3, "Wed"],
+    [4, "Thu"],
+    [5, "Fri"],
+    [6, "Sat"],
+    [0, "Sun"],
+  ];
+  return order.map(([weekday, label]) => {
+    const tokens = totals.get(weekday) ?? 0;
+    const days = occurrences.get(weekday) ?? 0;
+    return { weekday, label, tokens, days, avg: days > 0 ? tokens / days : 0 };
+  });
+}
+
 /**
  * Heatmap intensity, 0 (empty) – 4 (hottest). Uses a square-root scale
  * against the series max — the same perceptual trick as the native
