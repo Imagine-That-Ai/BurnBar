@@ -147,6 +147,7 @@ export function ContributionHeatmap({
   mode,
   today,
   dailyProviderTokens,
+  onSelectDay,
 }: {
   points: readonly DailyPoint[];
   mode: HeatmapMode;
@@ -156,6 +157,11 @@ export function ContributionHeatmap({
    *  When present, the day-hover card breaks the day's tokens down by
    *  provider; absent → the card shows tokens only. Daily mode only. */
   dailyProviderTokens?: Record<string, Record<string, number>>;
+  /** Keyboard + click drill-in: called with the day key when an ACTIVE-day
+   *  cell is activated. Active days only are focusable (quiet days pin empty
+   *  inspectors, and 365 tab stops would be a trap). Absent → mouse-hover
+   *  only, exactly the legacy behavior the grid tests pin. */
+  onSelectDay?: (day: string) => void;
 }) {
   const [hover, setHover] = React.useState<Hover | null>(null);
 
@@ -172,7 +178,7 @@ export function ContributionHeatmap({
     };
   }, [hover]);
 
-  const { columns, monthLabels, valueOf, labelOf, max } = React.useMemo(() => {
+  const { columns, monthLabels, valueOf, labelOf, max, dailyTokens } = React.useMemo(() => {
     // Daily lookup first — every mode derives from it.
     const daily = new Map<string, number>();
     for (const p of points) daily.set(p.day, p.tokens);
@@ -250,7 +256,7 @@ export function ContributionHeatmap({
       }
     }
 
-    return { columns, monthLabels, valueOf, labelOf, max };
+    return { columns, monthLabels, valueOf, labelOf, max, dailyTokens: daily };
   }, [points, mode, today]);
 
   const width = GUTTER + (columns.length > 0 ? (columns[columns.length - 1].col + 1) * STRIDE : 0);
@@ -316,6 +322,9 @@ export function ContributionHeatmap({
                   `Week of ${formatDayLabel(weekStart(day))} — 0 tokens`)
                 : (labelOf.get(day) ?? `${formatDayLabel(day)} — 0 tokens`);
             const hovered = hover?.day === day;
+            // Focusability follows the DAILY series in every mode: the
+            // drill-in lands on a real active day, never an aggregate.
+            const focusable = onSelectDay != null && (dailyTokens.get(day) ?? 0) > 0;
             return (
               <rect
                 key={day}
@@ -329,6 +338,18 @@ export function ContributionHeatmap({
                 stroke={hovered ? "var(--accent-deep)" : "transparent"}
                 strokeWidth={hovered ? 1.5 : 0}
                 aria-label={label}
+                role={focusable ? "button" : undefined}
+                tabIndex={focusable ? 0 : undefined}
+                onKeyDown={
+                  focusable
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSelectDay?.(day);
+                        }
+                      }
+                    : undefined
+                }
                 onMouseEnter={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setHover({

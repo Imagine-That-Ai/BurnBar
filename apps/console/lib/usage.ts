@@ -53,6 +53,22 @@ export interface DeviceSummary {
   tokens: number;
 }
 
+/**
+ * Provider-account totals (who paid / which login burned it). Mirrors the
+ * server's ProviderAccountSummary (`functions/src/types/legacy/quota-usage.ts`):
+ * `id` is the raw `providerAccountID` when the event carried one, otherwise
+ * the synthetic `${providerID}:unattributed` key the counters use.
+ */
+export interface AccountSummary {
+  id: string;
+  providerID: string;
+  accountID?: string;
+  accountLabel: string;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost: number;
+}
+
 /** Agent-harness totals (Claude Code, Codex, Cursor, …) — the execution source. */
 export interface ExecutionSourceSummary {
   sourceId: string;
@@ -86,6 +102,8 @@ export interface UsageRollup {
   providerSummaries: ProviderSummary[];
   modelSummaries: ModelSummary[];
   deviceSummaries: DeviceSummary[];
+  /** Account totals. Empty on legacy docs that predate account counters. */
+  accountSummaries: AccountSummary[];
   /** Harness totals. Empty until the server ships execution-source counters. */
   executionSourceSummaries: ExecutionSourceSummary[];
   /** Harness × model pairings. Empty until the server ships combo counters. */
@@ -196,6 +214,7 @@ export function emptyRollup(window: UsageWindowKey): UsageRollup {
     providerSummaries: [],
     modelSummaries: [],
     deviceSummaries: [],
+    accountSummaries: [],
     executionSourceSummaries: [],
     comboSummaries: [],
     dailyPoints: [],
@@ -244,6 +263,33 @@ export function normalizeRollup(raw: unknown, window: UsageWindowKey): UsageRoll
       tokens: num(d.tokens),
     }))
     .sort((a, b) => b.tokens - a.tokens);
+
+  const accountSummaries: AccountSummary[] = arr(raw.accountSummaries)
+    .filter(isRecord)
+    .map((a) => {
+      const providerID =
+        typeof a.providerID === "string" && a.providerID.trim()
+          ? a.providerID
+          : typeof a.provider === "string" && a.provider.trim()
+            ? a.provider
+            : "unknown";
+      const id =
+        typeof a.id === "string" && a.id.trim()
+          ? a.id
+          : typeof a.accountID === "string" && a.accountID.trim()
+            ? a.accountID
+            : `${providerID}:unattributed`;
+      return {
+        id,
+        providerID,
+        accountID: typeof a.accountID === "string" ? a.accountID : undefined,
+        accountLabel: str(a.accountLabel, id),
+        totalRequests: num(a.totalRequests),
+        totalTokens: num(a.totalTokens),
+        totalCost: num(a.totalCost),
+      };
+    })
+    .sort((a, b) => b.totalTokens - a.totalTokens || b.totalRequests - a.totalRequests);
 
   const executionSourceSummaries: ExecutionSourceSummary[] = arr(raw.executionSourceSummaries)
     .filter(isRecord)
@@ -296,6 +342,7 @@ export function normalizeRollup(raw: unknown, window: UsageWindowKey): UsageRoll
     providerSummaries,
     modelSummaries,
     deviceSummaries,
+    accountSummaries,
     executionSourceSummaries,
     comboSummaries,
     dailyPoints,
