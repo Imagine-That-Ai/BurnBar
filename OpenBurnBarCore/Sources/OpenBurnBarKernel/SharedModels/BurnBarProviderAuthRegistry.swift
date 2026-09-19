@@ -653,11 +653,37 @@ public enum BurnBarProviderAuthRegistry {
         aliasProviderIDs: ["gemini"],
         methods: [
             BurnBarProviderAuthMethod(
+                id: "google-gemini-cli-local",
+                kind: .localRuntime,
+                displayName: "Gemini CLI sessions on this Mac",
+                summary: "Reads used tokens from local Gemini CLI logs.",
+                helperText: "BurnBar reads ~/.gemini/tmp session logs and shows tokens used in the last 24 hours and 7 days. Google does not publish remaining AI Studio or Gemini app quota to other apps.",
+                placeholder: "Local Gemini CLI profile",
+                dashboardURL: "https://aistudio.google.com",
+                dashboardLabel: "Open Google AI Studio",
+                storage: .appKeychain(account: "provider.google.geminiCLI"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "google-antigravity-login",
+                kind: .localRuntime,
+                displayName: "Antigravity on this Mac",
+                summary: "Uses the Antigravity quota adapter for estimated 5-hour coding windows.",
+                helperText: "Sign in to Antigravity with the same Google AI Pro / Ultra account. Remaining Gemini app / Verizon quota is still not published. Exact remaining Antigravity credits are estimated from local activity.",
+                placeholder: "Local Antigravity profile",
+                dashboardURL: "https://antigravity.google",
+                dashboardLabel: "Open Antigravity",
+                storage: .appKeychain(account: "provider.google.antigravity"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
                 id: "google-api-key",
                 kind: .apiKey,
                 displayName: "Google AI API Key",
-                summary: "Tracks Gemini usage.",
-                helperText: "Get a key from Google AI Studio. Proxy routing for Gemini uses the native protocol and isn't enabled yet.",
+                summary: "Saves an AI Studio key. Does not unlock remaining quota.",
+                helperText: "Paste a key from Google AI Studio. The key cannot read remaining RPD, RPM, or TPM. Remaining meters need a Google Cloud project connection, which is not in this release.",
                 placeholder: "AIza…",
                 prefixHint: "AIza",
                 dashboardURL: "https://aistudio.google.com/app/apikey",
@@ -665,11 +691,25 @@ public enum BurnBarProviderAuthRegistry {
                 storage: .daemonSlot,
                 unlocksProxyRouting: false,
                 unlocksQuotaRefresh: false
+            ),
+            BurnBarProviderAuthMethod(
+                id: "google-ai-pro-consumer",
+                kind: .browserLogin,
+                displayName: "Google AI Pro / Gemini app (including Verizon)",
+                summary: "Marks a consumer Gemini subscription. Remaining app quota is not available.",
+                helperText: "Verizon Google AI Pro and the Gemini app do not publish remaining quota to other apps. BurnBar will not invent a remaining percentage. Use Antigravity or Gemini CLI logs for used tokens on this Mac.",
+                placeholder: "Consumer Google AI Pro account",
+                dashboardURL: "https://gemini.google.com",
+                dashboardLabel: "Open Gemini",
+                storage: .appKeychain(account: "provider.google.consumer"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: false
             )
         ],
-        summary: "Google Gemini — tracking and accounting only.",
-        proxyHint: "Tracking only — Gemini uses a non-OpenAI protocol the proxy doesn't speak yet.",
-        quotaHint: nil
+        primaryMethodID: "google-gemini-cli-local",
+        summary: "Google Gemini — local used-token meters. Remaining AI Studio and Gemini app quota is not published.",
+        proxyHint: "Proxy routing for Gemini is not enabled yet. Connect to report local usage meters.",
+        quotaHint: "Used tokens come from Gemini CLI session logs. Remaining AI Studio rate limits, Vertex spend, and Verizon / Gemini app quota are unavailable without a Google Cloud identity (not in this release)."
     )
 
     private static let xaiDescriptor = BurnBarProviderAuthDescriptor(

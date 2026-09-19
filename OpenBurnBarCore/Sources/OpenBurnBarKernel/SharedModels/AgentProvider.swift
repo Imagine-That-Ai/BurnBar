@@ -89,7 +89,9 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
 
     /// Providers that expose a real quota/rate-limit signal either through an
     /// official API, a provider dashboard scrape, or a first-party local quota
-    /// bridge. Usage-only tools stay out of quota surfaces.
+    /// bridge. Gemini CLI reports used tokens from local session logs and keeps
+    /// remaining vendor quota unavailable. Usage-only tools without a meter
+    /// contract stay out of quota surfaces.
     public static let quotaSignalProviders: [AgentProvider] = [
         .codex,
         .openCode,
@@ -107,6 +109,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .ollama,
         .kimi,
         .antigravity,
+        .geminiCLI,
         .xAI,
         .mimo,
         .cursorAgent
