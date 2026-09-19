@@ -10,7 +10,11 @@ import { emptyRollup, normalizeRollup, type UsageRollup } from "@/lib/usage";
 import {
   profileRollupNeedsFullRebuild,
   rebuildUsageErrorMessage,
+  rebuildUsageKeepsWaiting,
 } from "@/lib/profile/rollupHealth";
+
+const IN_FLIGHT_POLL_MS = 4_000;
+const IN_FLIGHT_POLL_BUDGET_MS = 540_000;
 
 export type ProfileSource = "live" | "empty";
 
@@ -113,6 +117,20 @@ export function useProfileUsage(): ProfileUsageResult {
         await rebuildUsageRollups(true);
       } catch (err) {
         if (!cancelled) setError(rebuildUsageErrorMessage(err));
+        if (rebuildUsageKeepsWaiting(err)) {
+          const deadline = Date.now() + IN_FLIGHT_POLL_BUDGET_MS;
+          const previousComputedAt = result?.computedAt;
+          while (!cancelled && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, IN_FLIGHT_POLL_MS));
+            const latest = await readRollup();
+            if (cancelled) return;
+            apply(latest);
+            if (latest?.computedAt && latest.computedAt !== previousComputedAt) {
+              if (!cancelled) setError(null);
+              return;
+            }
+          }
+        }
       }
       result = await readRollup();
       if (cancelled) return;

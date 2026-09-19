@@ -4,6 +4,7 @@ import { emptyRollup, type UsageRollup } from "@/lib/usage";
 import {
   profileRollupNeedsFullRebuild,
   rebuildUsageErrorMessage,
+  rebuildUsageKeepsWaiting,
 } from "@/lib/profile/rollupHealth";
 
 function live(overrides: Partial<UsageRollup> = {}): UsageRollup {
@@ -77,6 +78,16 @@ describe("rebuildUsageErrorMessage", () => {
     expect(
       rebuildUsageErrorMessage({ code: "functions/aborted", details: { reason: "in_flight" } }),
     ).toBe("A usage rebuild is already running. This page fills in when it finishes.");
+  });
+
+  it("keeps waiting only for an in_flight refusal", () => {
+    expect(
+      rebuildUsageKeepsWaiting({ code: "functions/aborted", details: { reason: "in_flight" } }),
+    ).toBe(true);
+    expect(
+      rebuildUsageKeepsWaiting({ code: "functions/unavailable", details: { reason: "circuit_open" } }),
+    ).toBe(false);
+    expect(rebuildUsageKeepsWaiting({ code: "functions/aborted" })).toBe(false);
   });
 
   it("maps force_cooldown onto a retry-after sentence", () => {

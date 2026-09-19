@@ -50,6 +50,11 @@ function errorDetails(err: unknown): RebuildErrorDetails | undefined {
   };
 }
 
+/** True when the callable refused because another rebuild is still committing. */
+export function rebuildUsageKeepsWaiting(err: unknown): boolean {
+  return errorDetails(err)?.reason === "in_flight";
+}
+
 /**
  * Map a `rebuildUsageRollups` refusal/failure onto a sentence the profile
  * can show. Gate refusals (`circuit_open` / `in_flight` / `force_cooldown`)

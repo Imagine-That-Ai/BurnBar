@@ -12,7 +12,10 @@ import { getConfig } from "./config.js";
 import { logError } from "./logging.js";
 import { WINDOW_KEYS, stripUndefinedDocument, type WindowKey } from "./rollupCounters.js";
 import { computeUserRollups, computeUserRollupsFromCounters } from "./rollupCompute.js";
-import { drainPendingCounterDeltas } from "./rollupPendingDeltas.js";
+import { drainPendingCounterDeltas, PendingDeltaDrainInFlightError } from "./rollupPendingDeltas.js";
+import { FULL_REBUILD_ATTEMPT_STALE_MS, isFreshFullRebuildInFlight } from "./rollupRebuildInFlight.js";
+
+export { FULL_REBUILD_ATTEMPT_STALE_MS } from "./rollupRebuildInFlight.js";
 
 /**
  * Reads the rollup job's current `dirtiedAt` marker.
@@ -46,24 +49,6 @@ export async function readRollupJobDirtiedAt(db: Firestore, uid: string): Promis
 // still-fresh marker doubles as an in-flight dedupe: no second destructive
 // rebuild starts while one may still be running.
 // ---------------------------------------------------------------------------
-
-/**
- * An in-flight marker older than this is a killed attempt. Must exceed
- * rebuildRollups' timeoutSeconds (540 s, scheduled.ts) plus scheduler slack so
- * an attempt still inside its own invocation window is never miscounted.
- */
-export const FULL_REBUILD_ATTEMPT_STALE_MS = 12 * 60 * 1000;
-
-/** Fresh in-flight marker: a full rebuild may still be replacing counters. */
-function isFreshFullRebuildInFlight(
-  job: RollupJobDoc | undefined,
-  nowMillis = Date.now(),
-  staleAttemptMillis = FULL_REBUILD_ATTEMPT_STALE_MS,
-): boolean {
-  const attemptStartedAt = job?.fullRebuildAttemptInFlightAt;
-  const attemptStartedAtMillis = attemptStartedAt != null ? Date.parse(attemptStartedAt) : Number.NaN;
-  return Number.isFinite(attemptStartedAtMillis) && nowMillis - attemptStartedAtMillis < staleAttemptMillis;
-}
 
 /** lastErrorCode recorded when a stale marker is counted: the killed attempt
  * may have deleted the counters before dying mid-scan, so they must stay
@@ -408,11 +393,18 @@ export async function refreshUserRollups(
     // rollups include every event enqueued up to this point. A drain failure
     // propagates: the dirty flag survives and the scheduled worker (whose
     // catch records `lastErrorCode`) repairs via the full-rebuild path.
-    const drain = await drainPendingCounterDeltas(db, uid, {
-      maxPages: options.drainMaxPages ?? getConfig().rollupPendingDeltaDrainMaxPages,
-    });
-    rollups = await computeUserRollupsFromCounters(db, uid);
-    await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { keepDirty: drain.capped });
+    try {
+      const drain = await drainPendingCounterDeltas(db, uid, {
+        maxPages: options.drainMaxPages ?? getConfig().rollupPendingDeltaDrainMaxPages,
+      });
+      rollups = await computeUserRollupsFromCounters(db, uid);
+      await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { keepDirty: drain.capped });
+    } catch (err) {
+      if (err instanceof PendingDeltaDrainInFlightError) {
+        throw new RollupRebuildUnavailableError("in_flight", job?.fullRebuildAttemptInFlightAt);
+      }
+      throw err;
+    }
   }
   return { rollups, rebuiltCounters };
 }
@@ -465,6 +457,7 @@ export async function processRollupUserRebuild(
     // A force rebuild leaves lastErrorCode empty. Cheap drain would apply
     // mid-scan events onto counters the rescan is about to delete.
     if (!needsFullRebuild && isFreshFullRebuildInFlight(job)) {
+      await rotateRequeueNonce(db, uid);
       return {
         status: "skipped",
         uid,
@@ -493,6 +486,7 @@ export async function processRollupUserRebuild(
         };
       }
       if (gate.status !== "started") {
+        await rotateRequeueNonce(db, uid);
         return {
           status: "skipped",
           uid,
@@ -507,10 +501,24 @@ export async function processRollupUserRebuild(
       return { status: "processed", uid, rebuiltCounters: true };
     }
 
-    const drain = await drainPendingCounterDeltas(db, uid, { maxPages: rollupPendingDeltaDrainMaxPages });
-    const rollups = await computeUserRollupsFromCounters(db, uid);
-    await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { keepDirty: drain.capped });
-    return { status: "processed", uid, rebuiltCounters: false, keepDirty: drain.capped };
+    try {
+      const drain = await drainPendingCounterDeltas(db, uid, { maxPages: rollupPendingDeltaDrainMaxPages });
+      const rollups = await computeUserRollupsFromCounters(db, uid);
+      await writeUserRollups(db, uid, rollups, job?.dirtiedAt, { keepDirty: drain.capped });
+      return { status: "processed", uid, rebuiltCounters: false, keepDirty: drain.capped };
+    } catch (err) {
+      if (err instanceof PendingDeltaDrainInFlightError) {
+        await rotateRequeueNonce(db, uid);
+        return {
+          status: "skipped",
+          uid,
+          reason: "full_rebuild_in_flight",
+          taskDirtiedAt: options.taskDirtiedAt,
+          currentDirtiedAt: job?.dirtiedAt,
+        };
+      }
+      throw err;
+    }
   } catch (err) {
     logError({ event: "rollup.rebuild_failed", uid, error: errorMessage(err) });
     await recordRollupRebuildFailure(db, uid, errorMessage(err), {
@@ -520,6 +528,17 @@ export async function processRollupUserRebuild(
     });
     throw err;
   }
+}
+
+/** Rotate the Cloud Task name so a skip during an in-flight rebuild is not
+ * treated as a completed dirty-epoch task (`ALREADY_EXISTS`) on the next tick. */
+async function rotateRequeueNonce(db: Firestore, uid: string): Promise<void> {
+  const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(jobRef);
+    if (!snap.exists) return;
+    transaction.set(jobRef, { requeueNonce: randomUUID() }, { merge: true });
+  });
 }
 
 export async function writeUserRollups(

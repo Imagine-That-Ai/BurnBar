@@ -583,6 +583,7 @@ export async function rebuildUserRollupCounters(
   const usageRef = db.collection(`users/${uid}/usage`);
   const pageSize = Math.max(1, Math.floor(options.pageSize ?? Number(process.env.ROLLUP_REPAIR_PAGE_SIZE ?? 500)));
   let usageDocsScanned = 0;
+  let countableDocs = 0;
   let pages = 0;
   let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | undefined;
 
@@ -600,6 +601,7 @@ export async function rebuildUserRollupCounters(
         if (!event) continue;
         const contribution = usageContribution(event, stableCounterKey(doc.id));
         if (!contribution) continue;
+        countableDocs += 1;
         const candidates = candidatesByLogicalKey.get(contribution.logicalKey) ?? {};
         candidates[contribution.candidateKey] = contribution;
         candidatesByLogicalKey.set(contribution.logicalKey, candidates);
@@ -634,7 +636,7 @@ export async function rebuildUserRollupCounters(
   // records the failure against the circuit breaker like any repair failure,
   // and the surviving pending-delta purge is harmless: the queued events'
   // raw docs are still present for the next successful rescan to cover.
-  if (usageDocsScanned > 0 && winners.length === 0) {
+  if (usageDocsScanned > 0 && countableDocs === 0) {
     logError({
       event: "rollup.rescan_zero_parsed",
       uid,
@@ -644,6 +646,29 @@ export async function rebuildUserRollupCounters(
     });
     throw new Error(
       `Refusing to rebuild usage counters for this user: scanned ${usageDocsScanned} usage docs but parsed 0 countable contributions. Counters left intact.`,
+    );
+  }
+
+  // Partial-parse collapse: one accepted doc must not authorize deleting
+  // counters built from thousands of rejected ones. Winner count is the
+  // wrong signal (many events share a logical key); countable docs vs
+  // scanned docs is the parser-coverage check.
+  const RESCAN_MIN_DOCS_FOR_COVERAGE = 20;
+  const RESCAN_MIN_COUNTABLE_RATIO = 0.1;
+  if (
+    usageDocsScanned >= RESCAN_MIN_DOCS_FOR_COVERAGE &&
+    countableDocs < usageDocsScanned * RESCAN_MIN_COUNTABLE_RATIO
+  ) {
+    logError({
+      event: "rollup.rescan_partial_parse",
+      uid,
+      usage_docs_scanned: usageDocsScanned,
+      countable_docs: countableDocs,
+      pages,
+      error: `refusing to wipe counters: ${countableDocs} countable of ${usageDocsScanned} usage docs`,
+    });
+    throw new Error(
+      `Refusing to rebuild usage counters for this user: scanned ${usageDocsScanned} usage docs but only ${countableDocs} countable contributions. Counters left intact.`,
     );
   }
 
