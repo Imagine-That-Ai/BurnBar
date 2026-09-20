@@ -17,6 +17,7 @@ final class ProviderQuotaAdapterRegistryTests: XCTestCase {
 
         XCTAssertEqual(registry.entry(for: .codex)?.coverage, .live)
         XCTAssertEqual(registry.entry(for: .cursor)?.coverage, .live)
+        XCTAssertEqual(registry.entry(for: .geminiCLI)?.coverage, .live)
         XCTAssertEqual(registry.entry(for: .cursorAgent)?.coverage, .unavailable)
         XCTAssertEqual(registry.entry(for: .openBurnBar)?.coverage, .unavailable)
     }
