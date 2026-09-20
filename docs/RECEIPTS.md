@@ -93,13 +93,17 @@ Factory waits on `droid` / `factory-cli`; Claude waits on `claude` /
 Antigravity / Muse / OpenClaude / Prime / Junie / Ollama / Forge / OMP /
 Copilot / Cline / Kilo / Augment / fx wait on their own executables.
 Warp also waits on Warp.app (Stable, Nightly, and Preview). Two Codex terminals are treated
-conservatively when argv has no workspace. When the process line names
-a `/Users` or `/Volumes` working directory, only that project holds
-its own slip — a sibling Codex in another repo does not mute this one.
+conservatively when any argv has no workspace — a bare `codex exec`
+plus a sibling in another repo still holds this slip. When every
+process line names a `/Users` or `/Volumes` working directory, only
+that project holds its own slip. `ps` repeats the executable in
+`ARGS` (`droid /path/to/droid daemon`); the first real subcommand
+after that copy is what decides daemon vs session.
+
 Harnesses we cannot see on `/bin/ps` (Windsurf, Devin, IDE-only Composer)
 still **print** a slip on quiet, but they **announce** only when the
-indexed conversation has a provider-specific close — file mtime and
-session duration are not that signal.
+indexed conversation has a terminal `endTime` that is not the start
+placeholder and not the file-mtime stamp. Duration alone is not a close.
 
 Codex is usage-first (new session id every run). Factory, Claude Code,
 Grok, and the other indexed harnesses are conversation-first — the

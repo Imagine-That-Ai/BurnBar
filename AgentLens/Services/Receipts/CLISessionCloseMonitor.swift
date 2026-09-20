@@ -232,11 +232,16 @@ final class CLISessionCloseMonitor {
     }
 
     private var checkInFlight = false
+    private var pollRuntimeProbe: (any ReceiptCLIRuntimeProbe)?
 
     func checkClosedSessions(now: Date = Date()) async {
         guard !checkInFlight else { return }
         checkInFlight = true
-        defer { checkInFlight = false }
+        defer {
+            checkInFlight = false
+            pollRuntimeProbe = nil
+        }
+        pollRuntimeProbe = await runtimeProbe.snapshotForPoll()
         await ingestRecentSessionsFromDataStore(now: now)
 
         for (sid, session) in activeSessions {
@@ -308,6 +313,15 @@ final class CLISessionCloseMonitor {
         let alreadyPrinted = (try? await dataStore.fetchReceiptSessionIDs(among: receiptKeys)) ?? [] // try?-ok(treat unknown rows as unprinted)
         for printed in alreadyPrinted {
             mintedSessionIDs.insert(printed)
+        }
+        for conversation in recentConversations {
+            let sid = conversation.sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+            if mintedSessionIDs.contains(conversation.id), !sid.isEmpty {
+                mintedSessionIDs.insert(sid)
+            }
+            if !sid.isEmpty, mintedSessionIDs.contains(sid) {
+                mintedSessionIDs.insert(conversation.id)
+            }
         }
 
         for (sessionId, usages) in usagesBySession {
@@ -451,14 +465,19 @@ final class CLISessionCloseMonitor {
     /// Factory/Claude parsers often set `endTime = startTime` when the JSONL
     /// has no close event. That is a placeholder, not an explicit end.
     /// Unobservable harnesses (Windsurf, Devin) stamp file mtime as
-    /// `endTime`; duration there is not a close.
+    /// `endTime`; that stamp is not a close. A later terminal timestamp
+    /// that is distinct from both start and mtime is.
     nonisolated static func conversationHasRealEnd(_ conversation: ConversationRecord) -> Bool {
-        guard AgentCLIProcessClassifier.canObserveRuntime(for: conversation.provider) else {
+        guard let end = conversation.endTime else { return false }
+        if let start = conversation.startTime, abs(end.timeIntervalSince(start)) <= 2 {
             return false
         }
-        guard let end = conversation.endTime else { return false }
-        guard let start = conversation.startTime else { return true }
-        return end.timeIntervalSince(start) > 2
+        if !AgentCLIProcessClassifier.canObserveRuntime(for: conversation.provider),
+           let mtime = conversation.fileModifiedAt,
+           abs(end.timeIntervalSince(mtime)) <= 2 {
+            return false
+        }
+        return true
     }
 
     private static func ingestedPromptSummary(conversation: ConversationRecord?) -> String {
@@ -489,14 +508,14 @@ final class CLISessionCloseMonitor {
         let receipt: ReceiptRecord?
         if preexisting {
             receipt = try? await dataStore.fetchReceiptForSession(sessionId: session.id) // try?-ok(preexisting slip missing is not announce)
-        } else if let persisted = await persistReceipt(for: session, closedAt: closedAt) {
+        } else if let persisted = await persistReceipt(for: session, closedAt: closedAt, preserving: nil) {
             mintedSessionIDs.insert(session.id)
             receipt = persisted
         } else {
             receipt = nil
         }
 
-        let runtimeOpen = await runtimeProbe.isSessionRuntimeOpen(
+        let runtimeOpen = await (pollRuntimeProbe ?? runtimeProbe).isSessionRuntimeOpen(
             provider: session.provider,
             projectPath: session.projectPath
         )
@@ -520,17 +539,22 @@ final class CLISessionCloseMonitor {
         }
 
         if alreadyWaiting {
-            guard let receipt else { return }
+            let latest = await persistReceipt(for: session, closedAt: closedAt, preserving: receipt)
+                ?? receipt
+            guard let latest else { return }
             pendingAnnounceSessionIDs.remove(session.id)
-            await announce(receipt, session: session)
+            await announce(latest, session: session)
             return
         }
 
         let canObserve = AgentCLIProcessClassifier.canObserveRuntime(for: session.provider)
         if awaitingExplicitEndSessionIDs.contains(session.id) {
-            guard session.hasExplicitlyEnded, let receipt else { return }
+            guard session.hasExplicitlyEnded else { return }
+            let latest = await persistReceipt(for: session, closedAt: closedAt, preserving: receipt)
+                ?? receipt
+            guard let latest else { return }
             awaitingExplicitEndSessionIDs.remove(session.id)
-            await announce(receipt, session: session)
+            await announce(latest, session: session)
             return
         }
 
@@ -585,7 +609,11 @@ final class CLISessionCloseMonitor {
         return URL(fileURLWithPath: raw).standardizedFileURL.path.lowercased()
     }
 
-    private func persistReceipt(for session: ActiveCLISession, closedAt: Date) async -> ReceiptRecord? {
+    private func persistReceipt(
+        for session: ActiveCLISession,
+        closedAt: Date,
+        preserving existing: ReceiptRecord? = nil
+    ) async -> ReceiptRecord? {
         let duration = max(1.0, closedAt.timeIntervalSince(session.startTime))
         let totalTokens = session.inputTokens + session.outputTokens + session.cacheReadTokens + session.cacheWriteTokens
         let cacheHit = totalTokens > 0 ? (Double(session.cacheReadTokens) / Double(totalTokens)) * 100.0 : 0.0
@@ -638,7 +666,7 @@ final class CLISessionCloseMonitor {
             toolsUsed: Array(session.toolsUsed),
             gitBranch: session.gitBranch,
             gitCommit: session.gitCommit,
-            isStarred: false
+            isStarred: existing?.isStarred ?? false
         )
 
         // 3. Optional Quality Review if enabled in settings

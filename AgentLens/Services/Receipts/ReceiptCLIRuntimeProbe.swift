@@ -12,6 +12,11 @@ import OpenBurnBarKernel
 /// it requires the runtime to be gone.
 protocol ReceiptCLIRuntimeProbe: Sendable {
     func isSessionRuntimeOpen(provider: AgentProvider, projectPath: String?) async -> Bool
+    func snapshotForPoll() async -> any ReceiptCLIRuntimeProbe
+}
+
+extension ReceiptCLIRuntimeProbe {
+    func snapshotForPoll() async -> any ReceiptCLIRuntimeProbe { self }
 }
 
 /// Test / preview seam: the session is always open, or always closed.
@@ -43,6 +48,15 @@ struct ProcessReceiptCLIRuntimeProbe: ReceiptCLIRuntimeProbe, Sendable {
         if dedicatedAppIsRunning(provider) { return true }
         let lines = await Self.snapshotLines(processLines)
         return Self.familyIsOpen(family: family, projectPath: projectPath, lines: lines)
+    }
+
+    func snapshotForPoll() async -> any ReceiptCLIRuntimeProbe {
+        let lines = await Self.snapshotLines(processLines)
+        let bundles = runningBundleIDs()
+        return ProcessReceiptCLIRuntimeProbe(
+            processLines: { lines },
+            runningBundleIDs: { bundles }
+        )
     }
 
     /// Family-wide when argv has no workspace; session-true when a long

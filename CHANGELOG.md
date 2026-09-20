@@ -11,12 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Receipt close-only announce** — a later prompt word (`codex exec
   "fix server"`) no longer classifies a live CLI as a daemon; `/bin/ps`
   drains stdout while it runs so a full process list cannot look like
-  every agent closed; Windsurf file mtime is not an explicit end;
-  usage joined by session id is capped per session; only the newest
-  preexisting slip for a provider and project waits on a later close;
-  chat-summary hydration no longer overwrites a real prompt; slash-
-  containing subagent ids stay one deep-link identity; a missing
-  receipt or Session Logs id no longer keeps the previous target.
+  every agent closed; `ps` repeating the executable in ARGS does not
+  hide `droid daemon`; a bare family process plus a sibling in another
+  repo stays conservative; Windsurf file mtime is not an explicit end
+  (a distinct terminal `endTime` still is); pending slips refresh
+  totals before the close flyout; usage joined by session id is
+  capped per session; only the newest preexisting slip for a provider
+  and project waits on a later close; chat-summary hydration no
+  longer overwrites a real prompt; slash-containing subagent ids stay
+  one deep-link identity; a missing receipt or Session Logs id no
+  longer keeps the previous target.
 - **Console profile sync** — `rebuildUsageRollups` no longer inherits the
   gen2 60s / 256MiB defaults. Production at 2026-09-19 10:10 UTC killed
   Alberto's first-sync with "Memory limit of 256 MiB exceeded with 258 MiB

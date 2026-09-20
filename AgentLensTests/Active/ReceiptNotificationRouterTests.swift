@@ -197,6 +197,12 @@ final class ReceiptNotificationRouterTests: XCTestCase {
             AgentCLIProcessClassifier.provider(forProcessLine: "droid daemon"),
             "The first subcommand daemon is a service"
         )
+        XCTAssertNil(
+            AgentCLIProcessClassifier.provider(
+                forProcessLine: "droid /Users/alberto/.local/lib/factory/droid daemon --remote-access"
+            ),
+            "ps repeats the executable in ARGS; the subcommand is still daemon"
+        )
         XCTAssertEqual(
             AgentCLIProcessClassifier.provider(
                 forProcessLine: "node node /Users/alberto/.nvm/versions/node/bin/codex"
@@ -323,6 +329,16 @@ final class ReceiptNotificationRouterTests: XCTestCase {
                 familyLines: ["codex exec"]
             ),
             "Bare argv with no workspace stays conservative"
+        )
+        XCTAssertTrue(
+            AgentCLIProcessClassifier.projectPathKeepsSessionOpen(
+                projectPath: "/Users/a/burnbar",
+                familyLines: [
+                    "codex exec",
+                    "codex exec --cd /Users/a/other-app"
+                ]
+            ),
+            "A bare family process plus a sibling in another repo stays conservative"
         )
         XCTAssertFalse(
             AgentCLIProcessClassifier.projectPathKeepsSessionOpen(

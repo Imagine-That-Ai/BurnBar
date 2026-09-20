@@ -136,6 +136,11 @@ enum AgentCLIProcessClassifier: Sendable {
         if familyLines.contains(where: { lineContainsProjectPath($0, needle) }) {
             return true
         }
+        // A bare `codex exec` with no workspace may be this session. A
+        // sibling that names a different repo must not close it.
+        if familyLines.contains(where: { !mentionsWorkspaceRoot($0) }) {
+            return true
+        }
         let othersNameAWorkspace = familyLines.contains { line in
             mentionsWorkspaceRoot(line) && !lineContainsProjectPath(line, needle)
         }
@@ -214,7 +219,10 @@ enum AgentCLIProcessClassifier: Sendable {
             if wrappers.contains(token) { continue }
             if base == nil {
                 base = token
-            } else {
+            } else if token != base {
+                // `ps -axo comm,args` repeats the executable in ARGS
+                // (`droid /path/to/droid daemon`). That copy is not the
+                // subcommand.
                 argumentBases.append(token)
             }
         }

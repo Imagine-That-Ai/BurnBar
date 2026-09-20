@@ -430,6 +430,7 @@ struct ReceiptTranscriptLensView: View {
     }
 
     private func loadTranscript() async {
+        let requested = tapeLoadKey
         loadState = .loading
         guard let dataStore else {
             loadState = .missing
@@ -443,6 +444,7 @@ struct ReceiptTranscriptLensView: View {
                     break
                 }
             }
+            guard !Task.isCancelled, requested == tapeLoadKey else { return }
             if let record {
                 transcript = record
                 if reduceMotion {

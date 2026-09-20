@@ -471,6 +471,29 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
             CLISessionCloseMonitor.conversationHasRealEnd(windsurf),
             "Windsurf file mtime is not an explicit close"
         )
+
+        let windsurfClosed = ConversationRecord(
+            id: "conv-windsurf-closed",
+            provider: .windsurf,
+            sessionId: "windsurf-2",
+            projectName: "tmp",
+            startTime: start,
+            endTime: start.addingTimeInterval(3_600),
+            messageCount: 8,
+            userWordCount: 20,
+            assistantWordCount: 40,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Closed in the index",
+            lastAssistantMessage: "",
+            fullText: "",
+            fileModifiedAt: start.addingTimeInterval(90)
+        )
+        XCTAssertTrue(
+            CLISessionCloseMonitor.conversationHasRealEnd(windsurfClosed),
+            "A terminal endTime distinct from file mtime is a real close"
+        )
     }
 
     @MainActor
@@ -1114,6 +1137,36 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
         )
 
         await monitor.checkClosedSessions(now: now.addingTimeInterval(40))
+        XCTAssertNil(
+            printedReceipt,
+            "Windsurf file mtime stamped as endTime is not a close"
+        )
+        XCTAssertEqual(monitor.activeSessions.count, 1)
+
+        try await dataStore.upsertConversation(
+            ConversationRecord(
+                id: ConversationRecord.stableId(provider: .windsurf, sessionId: "windsurf-quiet-1"),
+                provider: .windsurf,
+                sessionId: "windsurf-quiet-1",
+                projectName: "OpenBurnBar",
+                startTime: start,
+                endTime: now.addingTimeInterval(45),
+                messageCount: 6,
+                userWordCount: 20,
+                assistantWordCount: 40,
+                keyFiles: ["ReceiptChatBridge.swift"],
+                keyCommands: [],
+                keyTools: ["Read"],
+                inferredTaskTitle: "Windsurf receipts path",
+                lastAssistantMessage: "",
+                fullText: "",
+                workingDirectory: "/private/tmp",
+                fileModifiedAt: now.addingTimeInterval(-30),
+                summary: "Windsurf finished a turn."
+            )
+        )
+
+        await monitor.checkClosedSessions(now: now.addingTimeInterval(50))
         XCTAssertEqual(printedReceipt?.sessionId, "windsurf-quiet-1")
         XCTAssertEqual(printedReceipt?.harness, "Windsurf CLI")
         XCTAssertTrue(monitor.activeSessions.isEmpty)
