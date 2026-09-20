@@ -47,6 +47,7 @@ struct ProcessReceiptCLIRuntimeProbe: ReceiptCLIRuntimeProbe, Sendable {
         let family = AgentCLIProcessClassifier.runtimeFamily(for: provider)
         if dedicatedAppIsRunning(provider) { return true }
         let lines = await Self.snapshotLines(processLines)
+        if AgentCLIProcessClassifier.isUnknownProcessSnapshot(lines) { return true }
         return Self.familyIsOpen(family: family, projectPath: projectPath, lines: lines)
     }
 
@@ -95,7 +96,9 @@ struct ProcessReceiptCLIRuntimeProbe: ReceiptCLIRuntimeProbe, Sendable {
             // Codex Desktop / CLI host — not ChatGPT.app, which people leave open.
             return ["com.openai.codex-desktop", "com.openai.codex.desktop"]
         case .claudeCode:
-            return ["com.anthropic.claude-code", "com.anthropic.claudefordesktop"]
+            // Claude Desktop is a chat app people leave open, like Cursor.app.
+            // Only the dedicated CLI host holds a Claude Code slip.
+            return ["com.anthropic.claude-code"]
         case .factory:
             return ["com.factory.app", "com.factory.desktop"]
         case .warp:

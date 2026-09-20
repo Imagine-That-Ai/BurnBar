@@ -161,7 +161,7 @@ enum AgentCLIProcessClassifier: Sendable {
         do {
             try process.run()
         } catch {
-            return []
+            return [unknownProcessSnapshotSentinel]
         }
 
         // Drain stdout while `ps` is still running. Waiting for exit first
@@ -176,18 +176,33 @@ enum AgentCLIProcessClassifier: Sendable {
         }
 
         let deadline = Date().addingTimeInterval(1.0)
+        var timedOut = false
         while process.isRunning, Date() < deadline {
             Thread.sleep(forTimeInterval: 0.02)
         }
         if process.isRunning {
+            timedOut = true
             process.terminate()
         }
         process.waitUntilExit()
         handle.readabilityHandler = nil
         var data = chunks.withLock { $0 }
         data.append(handle.readDataToEndOfFile())
-        guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return [] }
+        if timedOut, data.isEmpty {
+            return [unknownProcessSnapshotSentinel]
+        }
+        guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else {
+            return [unknownProcessSnapshotSentinel]
+        }
         return processLines(fromPSOutput: output)
+    }
+
+    /// `/bin/ps` timed out or failed. Receipts must treat this as
+    /// "still open," not "every CLI closed."
+    static let unknownProcessSnapshotSentinel = "__openburnbar_ps_unknown__"
+
+    static func isUnknownProcessSnapshot(_ lines: [String]) -> Bool {
+        lines.contains(unknownProcessSnapshotSentinel)
     }
 
     private static let wrappers: Set<String> = [
@@ -272,11 +287,33 @@ enum AgentCLIProcessClassifier: Sendable {
         return path
     }
 
+    /// Later argv only. The executable often lives under `/Users/.../bin`
+    /// and must not look like a different workspace.
     private static func mentionsWorkspaceRoot(_ line: String) -> Bool {
         let lower = line.lowercased()
-        return lower.contains("/users/")
-            || lower.contains("/volumes/")
-            || lower.contains("/home/")
+        guard let parsed = firstExecutable(in: lower) else {
+            return containsWorkspaceRoot(lower)
+        }
+        var seenExecutable = false
+        for raw in lower.split(whereSeparator: \.isWhitespace).map(String.init) {
+            if raw.hasPrefix("-") { continue }
+            if raw.contains("="), !raw.contains("/") { continue }
+            let token = raw.split(separator: "/").last.map(String.init) ?? raw
+            if wrappers.contains(token) { continue }
+            if !seenExecutable {
+                if token == parsed.base { seenExecutable = true }
+                continue
+            }
+            if token == parsed.base { continue }
+            if containsWorkspaceRoot(raw) { return true }
+        }
+        return false
+    }
+
+    private static func containsWorkspaceRoot(_ value: String) -> Bool {
+        value.contains("/users/")
+            || value.contains("/volumes/")
+            || value.contains("/home/")
     }
 
     /// `/Users/a/burnbar` must not match `/Users/a/burnbar-old`.

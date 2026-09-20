@@ -297,7 +297,7 @@ final class CLISessionCloseMonitor {
         } else {
             usageForConversations = (try? await dataStore.fetchUsage( // try?-ok(ingest skip if usage join fails)
                 sessionIDs: conversationKeys,
-                limit: 64
+                limit: 256
             )) ?? []
         }
 

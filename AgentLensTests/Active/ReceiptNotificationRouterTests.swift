@@ -247,7 +247,12 @@ final class ReceiptNotificationRouterTests: XCTestCase {
         )
         XCTAssertTrue(
             ProcessReceiptCLIRuntimeProbe.dedicatedBundleIDs(for: .claudeCode)
-                .contains("com.anthropic.claudefordesktop")
+                .contains("com.anthropic.claude-code")
+        )
+        XCTAssertFalse(
+            ProcessReceiptCLIRuntimeProbe.dedicatedBundleIDs(for: .claudeCode)
+                .contains("com.anthropic.claudefordesktop"),
+            "Claude Desktop must not hold a Claude Code CLI slip open"
         )
         XCTAssertTrue(ProcessReceiptCLIRuntimeProbe.dedicatedBundleIDs(for: .cursor).isEmpty)
         XCTAssertTrue(ProcessReceiptCLIRuntimeProbe.dedicatedBundleIDs(for: .cursorAgent).isEmpty)
@@ -339,6 +344,18 @@ final class ReceiptNotificationRouterTests: XCTestCase {
                 ]
             ),
             "A bare family process plus a sibling in another repo stays conservative"
+        )
+        XCTAssertTrue(
+            AgentCLIProcessClassifier.projectPathKeepsSessionOpen(
+                projectPath: "/Users/a/burnbar",
+                familyLines: ["codex /Users/x/.local/bin/codex exec"]
+            ),
+            "An executable under /Users is not a different workspace"
+        )
+        XCTAssertTrue(
+            AgentCLIProcessClassifier.isUnknownProcessSnapshot(
+                [AgentCLIProcessClassifier.unknownProcessSnapshotSentinel]
+            )
         )
         XCTAssertFalse(
             AgentCLIProcessClassifier.projectPathKeepsSessionOpen(

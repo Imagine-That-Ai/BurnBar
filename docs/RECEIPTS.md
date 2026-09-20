@@ -92,7 +92,8 @@ Factory waits on `droid` / `factory-cli`; Claude waits on `claude` /
 `claude-code`; Grok waits on `grok`; Gemini / Aider / Goose /
 Antigravity / Muse / OpenClaude / Prime / Junie / Ollama / Forge / OMP /
 Copilot / Cline / Kilo / Augment / fx wait on their own executables.
-Warp also waits on Warp.app (Stable, Nightly, and Preview). Two Codex terminals are treated
+Warp also waits on Warp.app (Stable, Nightly, and Preview). Claude Desktop
+does not hold a Claude Code slip — only `com.anthropic.claude-code` does. Two Codex terminals are treated
 conservatively when any argv has no workspace — a bare `codex exec`
 plus a sibling in another repo still holds this slip. When every
 process line names a `/Users` or `/Volumes` working directory, only
