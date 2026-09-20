@@ -464,6 +464,13 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         XCTAssertTrue(commands.isEmpty)
     }
 
+    func test_loginCommands_forGrok() {
+        let coordinator = SwitcherCLIAuthCoordinator()
+        let commands = coordinator.loginCommands(for: .grok, executablePath: "/usr/local/bin/grok")
+        XCTAssertFalse(commands.isEmpty)
+        XCTAssertTrue(commands.contains { $0.contains("grok") && $0.contains("login") })
+    }
+
     // MARK: - Config Environment Keys
 
     func test_configEnvironmentKeys_forCodex() {

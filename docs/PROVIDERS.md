@@ -25,7 +25,7 @@
 | **Kimi** | `KimiQuotaAdapter.swift` | `.exact` | `kimi.com BillingService` | Weekly request and token usage stats |
 | **Hermes** | `HermesQuotaAdapter.swift` | `.exact` | `~/.hermes/sessions/*.jsonl` | Local UI automation and computer-use metrics |
 | **Pi Agent** | `PiAgentQuotaAdapter` | `.exact` | `~/.pi/sessions/*.jsonl` | Local workspace logs and token history |
-| **xAI (Grok)** | `XAIQuotaAdapter.swift` | `.estimated` / `.exact` | `SuperGrok event logs` + `xAI Management API` | SuperGrok pacing estimate; GrokBuild prepaid balance via Management API |
+| **xAI (Grok)** | `XAIQuotaAdapter.swift` | `.estimated` / `.exact` | `SuperGrok event logs` + `xAI Management API` | SuperGrok estimated local pacing (no vendor remaining-quota login); GrokBuild prepaid balance via Management API |
 | **Grok Build CLI** | `GrokParser.swift` | `.exact` | `~/.grok/sessions/<encoded-cwd>/<uuid>/` (`summary.json`, `signals.json`, `chat_history.jsonl`) | Local session tokens; gateway wiring via `~/.grok/config.toml` `[model.openburnbar]` |
 | **Aider** | `AiderQuotaAdapter.swift` | `.exact` | `~/.aider/analytics.jsonl` | Local interaction token stats (no vendor quota) |
 | **Forge** | `ForgeQuotaAdapter.swift` | `.estimated` | `~/forge/.forge.db` local SQLite | Session counts via OpenBurnBar local gateway |
@@ -139,8 +139,8 @@ without durable source evidence stay `unknown`.
 | **Hermes** | None | N/A (local file) | N/A | Offline JSONL telemetry scraper |
 | **Pi Agent** | None | N/A (local file) | N/A | Offline workspace interaction logger |
 | **Vercel fx** | CLI auth | N/A (local session files + CLI auth) | N/A | Reads `~/.fx/sessions/` (`session.json`, `usage-v2.json`, `events.jsonl`) |
-| **xAI (Grok)** | API key / Management key | `xai-…` inference key; `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok pacing log + Management API; daemon gateway emits pacing events on routed xAI traffic |
-| **Grok Build CLI** | Local CLI + optional `XAI_API_KEY` | `grok` binary; sessions under `~/.grok/` | OpenBurnBar gateway block in `config.toml` | Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
+| **xAI (Grok)** | API key / Management key | `xai-…` inference key (routing only); `xai-mgmt-…` for GrokBuild balance | `Authorization: Bearer {key}` | SuperGrok remaining-quota is estimated local pacing (no vendor login); GrokBuild uses the Management API |
+| **Grok Build CLI** | Local CLI login (`~/.grok/auth.json`) or `XAI_API_KEY` | `grok login`; sessions under `~/.grok/sessions/` | OpenBurnBar gateway block in `config.toml` | Auth file is presence-only (not a remaining-quota meter). Switcher profile `Grok Build`; vendor identity stays `AgentProvider.xAI` |
 | **OMP** | Local CLI | `omp` binary | N/A | Uses installed Oh My Pi CLI; OpenBurnBar stores no provider credential |
 | **Prime Agent** | None | N/A (local file) | N/A | Reads `~/.prime/agent/sessions/*.jsonl`; sessions are Recursive Language Model + Continual Harness JSONL; `auth.json` / `models.json` hold API keys per routed backend but are not read by BurnBar |
 | **Muse** | None | N/A (local file) | N/A | Reads `~/.local/share/muse/sessions/**/*.jsonl` envelope JSONL; `~/.local/share/muse/model-catalog/*.json` holds pricing ($0.10/$0.20/$0.002 contributor, $1.25/$4.25/$0.15 standard) but is not required — catalog fallback pricing applies |

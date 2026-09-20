@@ -39,6 +39,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loyal model, biggest day, longest streak, first burn, burn rate).
 
 ### Added
+- **xAI / SuperGrok / Grok quota lanes are honest about what they can meter.**
+  GrokBuild still refreshes exact prepaid credits from an `xai-mgmt-…`
+  Management Key. SuperGrok no longer promises a vendor login — remaining
+  prompts stay estimated from OpenBurnBar-routed traffic because xAI has no
+  consumer remaining-quota API. Grok CLI login is detected from a real
+  `~/.grok/auth.json` (or `XAI_API_KEY`), not from an empty `~/.grok` folder.
+  The quota popover splits the three lanes; Connections → Grok Build stays
+  “route the CLI,” not “quota connected.” Account Switcher can run
+  `grok login`. Pinned by `GrokCLIAuthFileTests`, CLI discovery tests, and
+  updated xAI quota adapter / registry tests.
 - **app.burnbar.ai is now reachable from every surface.** The member Data &
   Privacy Control Center existed only as a bare URL — nothing linked to it.
   The website's header More menu, mobile nav, footer trust column, and the

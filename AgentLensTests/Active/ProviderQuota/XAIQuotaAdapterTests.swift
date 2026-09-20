@@ -36,7 +36,9 @@ final class XAIQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
         XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
-        XCTAssertEqual(snapshot.statusMessage?.contains("Pick a Grok plan"), true)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Management Key"), true)
+        XCTAssertEqual(snapshot.statusMessage?.contains("estimated"), true)
+        XCTAssertEqual(snapshot.statusMessage?.localizedCaseInsensitiveContains("SuperGrok login"), false)
     }
 
     // MARK: - Branch 1: GrokBuild credit balance
@@ -123,6 +125,8 @@ final class XAIQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(bucket.limitValue ?? -1, 100, accuracy: 0.0001)
         XCTAssertEqual(bucket.remainingValue ?? -1, 97, accuracy: 0.0001)
         XCTAssertTrue(bucket.isEstimated)
+        XCTAssertEqual(snapshot.statusMessage?.localizedCaseInsensitiveContains("login"), false)
+        XCTAssertEqual(snapshot.statusMessage?.contains("estimated"), true)
     }
 
     func testFetch_superGrokPlan_withEmptyLog_reportsZeroUsedAndFullHeadroom() async throws {
@@ -137,6 +141,8 @@ final class XAIQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(bucket.usedValue, 0)
         XCTAssertEqual(bucket.limitValue ?? -1, 400, accuracy: 0.0001)
         XCTAssertEqual(bucket.remainingValue ?? -1, 400, accuracy: 0.0001)
+        XCTAssertEqual(snapshot.statusMessage?.localizedCaseInsensitiveContains("login"), false)
+        XCTAssertEqual(snapshot.statusMessage?.contains("remaining-quota API"), true)
     }
 
     func testScanSuperGrokLog_tailsPastStalePrefixInsteadOfReadingTheWholeFile() throws {
@@ -283,6 +289,12 @@ final class XAIQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
         XCTAssertEqual(snapshot.provider, AgentProvider.xAI.rawValue)
         XCTAssertEqual(snapshot.confidence, ProviderQuotaConfidence.unavailable)
+        XCTAssertEqual(snapshot.buckets.isEmpty, true)
+        let message = try XCTUnwrap(snapshot.statusMessage)
+        XCTAssertTrue(message.contains("rejected"))
+        XCTAssertTrue(message.contains("xai-mgmt-"))
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("authenticated"))
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("SuperGrok login"))
     }
 
     // MARK: - Helpers
