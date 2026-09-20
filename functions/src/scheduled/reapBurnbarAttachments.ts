@@ -55,7 +55,7 @@ async function fetchBurnbarPage(
   }
   query = query.limit(budget.batchSize);
   const snapshot = await query.get();
-  return (snapshot.docs ?? []) as QueryDocumentSnapshot<DocumentData>[];
+  return snapshot.docs;
 }
 
 /** Reads one batch page of hermes_gateway_attachments. */
@@ -69,7 +69,7 @@ async function fetchGatewayPage(
   }
   query = query.limit(budget.batchSize);
   const snapshot = await query.get();
-  return (snapshot.docs ?? []) as QueryDocumentSnapshot<DocumentData>[];
+  return snapshot.docs;
 }
 
 /** Expires stale burnbar_attachments in bounded batches; leaves partial uploads revoked. */

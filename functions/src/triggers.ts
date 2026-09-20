@@ -7,14 +7,15 @@
  */
 
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { enqueueUsageCounterDelta } from "./rollups.js";
 import { errorMessage } from "./guards.js";
 import { parseUsageEventDoc } from "./usageEventParse.js";
 import { logError } from "./logging.js";
 import { runFirestoreTrigger } from "./scheduledOps.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
-import { markRollupJobDirty } from "./rollupJobDirty.js";
+import { markRollupJobDirty, type RollupDirtyStore } from "./rollupJobDirty.js";
+import type { PendingDeltaStore } from "./rollupPendingDeltas.js";
 import type { UsageEventDoc } from "./types.js";
 
 /**
@@ -31,7 +32,7 @@ import type { UsageEventDoc } from "./types.js";
  * logic without wrapping a Cloud Functions event object.
  */
 export async function applyUsageWrittenSideEffects(
-  db: Firestore,
+  db: RollupDirtyStore & PendingDeltaStore,
   uid: string,
   usageDoc: string,
   before: UsageEventDoc | undefined,

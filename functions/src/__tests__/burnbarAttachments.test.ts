@@ -44,9 +44,15 @@ const hoisted = vi.hoisted(() => {
         };
         return fn(tx);
       },
-      collectionGroup: (_name: string): { get: () => Promise<{ docs: Array<unknown> }> } => ({
-        get: async () => ({ docs: [] }),
-      }),
+      collectionGroup: (_name: string): MockCollectionGroupQuery => {
+        const empty: MockCollectionGroupQuery = {
+          where: () => empty,
+          limit: () => empty,
+          startAfter: () => empty,
+          get: async () => ({ docs: [] }),
+        };
+        return empty;
+      },
     };
     return db;
   }
@@ -269,7 +275,7 @@ describe("burnbarAttachments", () => {
             .filter(([path]) => path.includes(`/${name}/`) && !path.split(`/${name}/`)[1]?.includes("/"))
             .filter(([_, data]) => (filterFn ? filterFn(data) : true))
             .map(([path, data]) => ({
-              id: path.split("/").pop()!,
+              id: path.split("/").pop() ?? path,
               get: (f: string) => data[f],
               ref: {
                 set: async (next: Record<string, unknown>, options?: { merge?: boolean }) => {
@@ -293,7 +299,7 @@ describe("burnbarAttachments", () => {
         },
       };
     }
-    hoisted.db.collectionGroup = ((name: string) => makeQuery(name)) as unknown as typeof hoisted.db.collectionGroup;
+    hoisted.db.collectionGroup = (name: string) => makeQuery(name);
     const result = await reapExpiredBurnbarAttachments(Date.now());
     expect(result.reaped).toBe(1);
     expect(result.gatewayReaped).toBe(1);
@@ -336,7 +342,7 @@ describe("burnbarAttachments", () => {
             .filter(([path]) => path.includes(`/${name}/`) && !path.split(`/${name}/`)[1]?.includes("/"))
             .filter(([_, data]) => (filterFn ? filterFn(data) : true))
             .map(([path, data]) => ({
-              id: path.split("/").pop()!,
+              id: path.split("/").pop() ?? path,
               get: (f: string) => data[f],
               ref: {
                 set: async (next: Record<string, unknown>, options?: { merge?: boolean }) => {
@@ -360,7 +366,7 @@ describe("burnbarAttachments", () => {
         },
       };
     }
-    hoisted.db.collectionGroup = ((name: string) => makeQuery(name)) as unknown as typeof hoisted.db.collectionGroup;
+    hoisted.db.collectionGroup = (name: string) => makeQuery(name);
 
     // Test with small batchSize=2, maxBatches=2 -> should reap 4 and indicate hasMore
     const firstRun = await reapExpiredBurnbarAttachments({

@@ -24,6 +24,13 @@ import {
 
 type LiveActivityPushArgs = Parameters<NonNullable<Parameters<typeof fanoutLiveActivityUpdate>[0]["push"]>>[0];
 
+/** Reads the APNs content-state from a push payload, narrowing without a cast. */
+function contentStateOf(payload: Record<string, unknown>): unknown {
+  const aps = payload["aps"];
+  if (typeof aps !== "object" || aps === null) return undefined;
+  return "content-state" in aps ? aps["content-state"] : undefined;
+}
+
 const NOW = Date.parse("2026-08-21T18:00:00.000Z");
 const STARTED = Timestamp.fromMillis(NOW - 90_000);
 const TOKEN = "ab".repeat(32);
@@ -48,7 +55,7 @@ const FORBIDDEN_PAYLOAD_KEYS = [
 
 function flattenKeys(value: unknown, prefix = ""): string[] {
   if (!value || typeof value !== "object") return prefix ? [prefix] : [];
-  return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => {
+  return Object.entries(value).flatMap(([key, child]) => {
     const path = prefix ? `${prefix}.${key}` : key;
     if (child && typeof child === "object") return [path, ...flattenKeys(child, path)];
     return [path];
@@ -322,9 +329,7 @@ describe("fanoutLiveActivityUpdate", () => {
         aps: expect.objectContaining({ event: "update" }),
       }),
     });
-    const contentState = (push.mock.calls[0]?.[0].payload as { aps: { "content-state": Record<string, unknown> } }).aps[
-      "content-state"
-    ];
+    const contentState = contentStateOf(push.mock.calls[0]?.[0].payload);
     expect(contentState).not.toHaveProperty("pendingApprovalId");
     expect(updates).toEqual([
       {

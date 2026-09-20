@@ -58,11 +58,13 @@ function validPayload(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
+type BenchInvocation = Parameters<typeof executeBenchAssistant>[0];
+
 function benchRequest(
   data: Record<string, unknown>,
   ip?: string,
   uid: string | null = "bench-user",
-): unknown {
+): BenchInvocation {
   return {
     ...(uid === null ? {} : { auth: { uid } }),
     rawRequest: { headers: {}, ...(ip === undefined ? {} : { ip }) },
@@ -146,7 +148,7 @@ describe("checkBenchAssistantRateLimit", () => {
 describe("benchAssistant request validation", () => {
   it("rejects unauthenticated invocation before any provider HTTP", async () => {
     await expect(
-      executeBenchAssistant(benchRequest(validPayload(), TEST_IP, null) as never),
+      executeBenchAssistant(benchRequest(validPayload(), TEST_IP, null)),
     ).rejects.toMatchObject({
       code: "unauthenticated",
     });

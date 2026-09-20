@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FieldValue, type Firestore } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 
 import { applyUsageWrittenSideEffects } from "../triggers.js";
 import { ROLLUP_DIRTY_COALESCE_MS } from "../rollupJobDirty.js";
@@ -80,7 +80,7 @@ function eventDoc(index: number): UsageEventDoc {
     provider: "codex",
     providerID: "codex",
     schemaVersion: 1,
-    sessionId: "burst-session",
+    sessionId: `burst-session-${index}`,
     model: "gpt-5.5",
     inputTokens: 10,
     outputTokens: 1,
@@ -88,8 +88,7 @@ function eventDoc(index: number): UsageEventDoc {
     cost: 0.001,
     recordedAt: new Date(T0).toISOString(),
     startTime: new Date(T0).toISOString(),
-    sessionOrdinal: index,
-  } as UsageEventDoc;
+  };
 }
 
 describe("applyUsageWrittenSideEffects hot-doc coalescing", () => {
@@ -98,7 +97,7 @@ describe("applyUsageWrittenSideEffects hot-doc coalescing", () => {
     const results: Array<"written" | "coalesced"> = [];
     for (let i = 0; i < 400; i += 1) {
       const result = await applyUsageWrittenSideEffects(
-        db as unknown as Firestore,
+        db,
         UID,
         `usage-${i}`,
         undefined,
@@ -115,10 +114,10 @@ describe("applyUsageWrittenSideEffects hot-doc coalescing", () => {
 
   it("refreshes dirtiedAt after the coalesce window so in-flight rebuilds cannot clear late events", async () => {
     const db = new FakeFirestore();
-    await applyUsageWrittenSideEffects(db as unknown as Firestore, UID, "usage-0", undefined, eventDoc(0), T0);
+    await applyUsageWrittenSideEffects(db, UID, "usage-0", undefined, eventDoc(0), T0);
     const first = db.store.get(`users/${UID}/rollup_jobs/current`)?.dirtiedAt;
     await applyUsageWrittenSideEffects(
-      db as unknown as Firestore,
+      db,
       UID,
       "usage-late",
       undefined,
