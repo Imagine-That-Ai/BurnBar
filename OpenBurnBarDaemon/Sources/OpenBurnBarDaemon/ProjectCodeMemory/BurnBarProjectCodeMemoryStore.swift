@@ -248,6 +248,18 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     /// Daemon-owned code embedder (default: the OS NaturalLanguage sentence model).
     /// Injectable so tests can use a deterministic provider for version-floor / RRF checks.
     let embeddingProvider: BurnBarCodeEmbeddingProvider
+    /// Last semantic retriever used by `searchCode` (`hnsw`, `cosine-scan`, or `none`).
+    /// Tests assert PCM search actually walks the HNSW backend, not a silent scan.
+    var lastSemanticCodeSearchBackend: String = "none"
+    var codeHNSWSnapshot: CodeHNSWSnapshot?
+
+    struct CodeHNSWSnapshot {
+        let projectID: String
+        let embeddingVersion: String
+        let directoryURL: URL
+        let reader: any BurnBarPersistentVectorIndexReadableIndex
+        let keyToChunk: [UInt64: String]
+    }
 
     init(
         databasePath: String,
@@ -746,6 +758,10 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         var rejectedFiles: [BurnBarProjectCodeRejectedFile] = []
         var artifactsForReferences: [IndexedArtifact] = []
 
+        if let existing = codeHNSWSnapshot, existing.projectID == projectID {
+            try? FileManager.default.removeItem(at: existing.directoryURL)
+            codeHNSWSnapshot = nil
+        }
         return try databaseSync {
             try execute("BEGIN IMMEDIATE", [])
             do {
@@ -1659,32 +1675,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         }
     }
 
-    /// Semantic (cosine) chunk ids over the daemon-owned embeddings, restricted to the
-    /// ACTIVE embedding version (the §5.9 floor — vectors from a different generation are
-    /// ignored, never silently compared). Empty when embeddings are unavailable.
-    private func semanticCodeChunkIDs(query: String, projectID: String, limit: Int) throws -> [String] {
-        guard embeddingProvider.isAvailable, let queryVector = embeddingProvider.embed(query) else { return [] }
-        let dimension = queryVector.count
-        let rows = try queryRows(
-            """
-            SELECT chunk_id, vector
-            FROM code_chunk_embeddings
-            WHERE project_id = ? AND embedding_version = ? AND dimension = ?
-            """,
-            [.text(projectID), .text(embeddingProvider.versionID), .int(dimension)]
-        )
-        let scored: [(id: String, score: Double)] = rows.compactMap { row in
-            guard let data = Data(base64Encoded: row.string(1)),
-                  let vector = BurnBarCodeVectorCodec.decode(data, dimension: dimension) else { return nil }
-            return (row.string(0), BurnBarCodeVectorCodec.cosine(queryVector, vector))
-        }
-        return scored
-            .filter { $0.score >= Self.minimumSemanticCodeCosineScore }
-            .sorted { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }
-            .prefix(limit)
-            .map { $0.id }
-    }
-
     /// Resolve fused chunk ids to hits, preserving fused order, dropping rows whose file no
     /// longer matches the indexed blob (stale), up to `limit`.
     private func resolveCodeHits(chunkIDs: [String], root: URL, projectID: String, query: String, limit: Int) throws -> CodeSearchEvaluation {
@@ -1891,9 +1881,11 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     func projectCodeMemoryProductionReadinessReasons() -> [String] {
         var reasons = [
             "PROJECT_CODE_MEMORY_PRODUCTION_READY=false",
-            "real local embeddings are not configured; semanticAvailable=false",
             "hosted code sync remains disabled unless an explicit code asset-class flag is enabled"
         ]
+        if embeddingProvider.isAvailable == false {
+            reasons.append("real local embeddings are not configured; semanticAvailable=false")
+        }
         if Self.staticParserExecutablePath() == nil {
             reasons.append("static parser helper is unavailable")
         }

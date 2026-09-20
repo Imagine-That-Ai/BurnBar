@@ -172,6 +172,14 @@ daily cost lands well under the **$1.50 default cap**. The analyst's system
 prompt is byte-stable across ticks so DeepSeek's cache-hit pricing applies to the
 largest fixed part of the prompt.
 
+The pin is tried first. If that provider is missing credentials, is not in the
+catalog, is disabled, or the resolved URL violates the egress mode, the tick
+walks every other enabled provider that can actually route — stored API keys
+and local CLI providers such as Codex — and uses the first route that is
+allowed to leave this Mac. A dead pin is skipped before the router scores the
+catalog, so fallback is immediate. "Analyst could not run" means nothing
+configured could go — not that the default DeepSeek pin is stale.
+
 Every model call is recorded to the daemon usage ledger with
 `executionSourceID = "ai-inbox"`, a distinct idempotency key, and a
 `parentRequestID` equal to the tick id — so the N calls for one tick roll up to

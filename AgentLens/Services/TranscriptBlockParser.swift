@@ -3,8 +3,8 @@ import Foundation
 // MARK: - Transcript Block
 
 /// A parsed block from a raw session transcript for structured rendering.
-struct TranscriptBlock {
-    enum Kind {
+struct TranscriptBlock: Sendable {
+    enum Kind: Sendable {
         case userMessage
         case assistantMessage
         case toolUse
@@ -24,15 +24,17 @@ struct TranscriptBlock {
 /// structured blocks for the beautified transcript view.
 enum TranscriptBlockParser {
 
-    static func parse(_ text: String) -> [TranscriptBlock] {
-        let cleaned = stripSystemTags(text)
-        guard !cleaned.isEmpty else { return [] }
+    static func parse(_ text: String, isCancelled: () -> Bool = { false }) -> [TranscriptBlock] {
+        guard !isCancelled() else { return [] }
+        let cleaned = stripSystemTags(text, isCancelled: isCancelled)
+        guard !isCancelled(), !cleaned.isEmpty else { return [] }
 
         var blocks: [TranscriptBlock] = []
         let lines = cleaned.components(separatedBy: "\n")
         var i = 0
 
         while i < lines.count {
+            if isCancelled() { return [] }
             let line = lines[i]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
@@ -54,6 +56,7 @@ enum TranscriptBlockParser {
                 // Collect entire table
                 var tableLines: [String] = []
                 while i < lines.count {
+                    if isCancelled() { return [] }
                     let tl = lines[i].trimmingCharacters(in: .whitespaces)
                     guard tl.hasPrefix("|") && tl.hasSuffix("|") else { break }
                     // Skip separator rows like |---|---|
@@ -73,6 +76,7 @@ enum TranscriptBlockParser {
                 i += 1
                 var codeLines: [String] = []
                 while i < lines.count {
+                    if isCancelled() { return [] }
                     if lines[i].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
                         i += 1
                         break
@@ -101,6 +105,7 @@ enum TranscriptBlockParser {
                 // Collect user message content until next heading or separator
                 var msgLines: [String] = []
                 while i < lines.count {
+                    if isCancelled() { return [] }
                     let ml = lines[i].trimmingCharacters(in: .whitespaces)
                     if ml.hasPrefix("## ") || ml.hasPrefix("# ") { break }
                     if ml.allSatisfy({ $0 == "-" || $0 == "=" }) && ml.count >= 3 { break }
@@ -119,6 +124,7 @@ enum TranscriptBlockParser {
                 // Collect assistant message content, handling inline code blocks
                 var msgLines: [String] = []
                 while i < lines.count {
+                    if isCancelled() { return [] }
                     let ml = lines[i].trimmingCharacters(in: .whitespaces)
                     if ml.hasPrefix("## ") || ml.hasPrefix("# ") { break }
                     if (ml.allSatisfy({ $0 == "-" || $0 == "=" }) && ml.count >= 3) &&
@@ -136,6 +142,7 @@ enum TranscriptBlockParser {
                         i += 1
                         var codeLines: [String] = []
                         while i < lines.count {
+                            if isCancelled() { return [] }
                             if lines[i].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
                                 i += 1
                                 break
@@ -177,6 +184,7 @@ enum TranscriptBlockParser {
                 i += 1
                 // Skip summary content (already displayed)
                 while i < lines.count {
+                    if isCancelled() { return [] }
                     let sl = lines[i].trimmingCharacters(in: .whitespaces)
                     if sl.hasPrefix("## ") || sl.hasPrefix("# ") { break }
                     if sl.allSatisfy({ $0 == "-" || $0 == "=" }) && sl.count >= 3 { break }
@@ -198,6 +206,7 @@ enum TranscriptBlockParser {
                 var msgLines = [String(msgStart)]
                 i += 1
                 while i < lines.count {
+                    if isCancelled() { return [] }
                     let ml = lines[i].trimmingCharacters(in: .whitespaces)
                     if ml.hasPrefix("Assistant:") || ml.hasPrefix("A:") || ml.hasPrefix("Human:") || ml.hasPrefix("H:") { break }
                     if ml.hasPrefix("## ") || ml.hasPrefix("# ") { break }
@@ -216,6 +225,7 @@ enum TranscriptBlockParser {
                 var msgLines = [String(msgStart)]
                 i += 1
                 while i < lines.count {
+                    if isCancelled() { return [] }
                     let ml = lines[i].trimmingCharacters(in: .whitespaces)
                     if ml.hasPrefix("Assistant:") || ml.hasPrefix("A:") || ml.hasPrefix("Human:") || ml.hasPrefix("H:") { break }
                     if ml.hasPrefix("## ") || ml.hasPrefix("# ") { break }
@@ -233,6 +243,7 @@ enum TranscriptBlockParser {
             var plainLines: [String] = [line]
             i += 1
             while i < lines.count {
+                if isCancelled() { return [] }
                 let pl = lines[i].trimmingCharacters(in: .whitespaces)
                 if pl.hasPrefix("## ") || pl.hasPrefix("# ") { break }
                 if pl.hasPrefix("```") { break }
@@ -253,39 +264,47 @@ enum TranscriptBlockParser {
     }
 
     /// Strips XML-like system tags from transcript text.
-    static func stripSystemTags(_ text: String) -> String {
+    static func stripSystemTags(_ text: String, isCancelled: () -> Bool = { false }) -> String {
         var result = text
 
         // Remove entire <system-reminder>...</system-reminder> blocks
         let systemReminderPattern = #"<system-reminder>[\s\S]*?</system-reminder>"#
+        if isCancelled() { return "" }
         result = result.replacingOccurrences(of: systemReminderPattern, with: "", options: .regularExpression)
 
         // Remove <local-command-caveat>...</local-command-caveat> blocks
         let caveatPattern = #"<local-command-caveat>[\s\S]*?</local-command-caveat>"#
+        if isCancelled() { return "" }
         result = result.replacingOccurrences(of: caveatPattern, with: "", options: .regularExpression)
 
         // Remove <command-name>...</command-name> tags
         let cmdNamePattern = #"<command-name>[\s\S]*?</command-name>"#
+        if isCancelled() { return "" }
         result = result.replacingOccurrences(of: cmdNamePattern, with: "", options: .regularExpression)
 
         // Remove <command-message>...</command-message> tags
         let cmdMsgPattern = #"<command-message>[\s\S]*?</command-message>"#
+        if isCancelled() { return "" }
         result = result.replacingOccurrences(of: cmdMsgPattern, with: "", options: .regularExpression)
 
         // Remove <command-args>...</command-args> tags
         let cmdArgsPattern = #"<command-args>[\s\S]*?</command-args>"#
+        if isCancelled() { return "" }
         result = result.replacingOccurrences(of: cmdArgsPattern, with: "", options: .regularExpression)
 
         // Remove <local-command-stdout>...</local-command-stdout> tags
         let cmdStdoutPattern = #"<local-command-stdout>[\s\S]*?</local-command-stdout>"#
+        if isCancelled() { return "" }
         result = result.replacingOccurrences(of: cmdStdoutPattern, with: "", options: .regularExpression)
 
         // Remove standalone opening/closing tags
         let genericTagPattern = #"</?[a-zA-Z][a-zA-Z0-9_-]*>"#
+        if isCancelled() { return "" }
         result = result.replacingOccurrences(of: genericTagPattern, with: "", options: .regularExpression)
 
         // Clean up excessive blank lines (more than 2 consecutive)
         let excessiveNewlines = #"\n{4,}"#
+        if isCancelled() { return "" }
         result = result.replacingOccurrences(of: excessiveNewlines, with: "\n\n\n", options: .regularExpression)
 
         return result.trimmingCharacters(in: .whitespacesAndNewlines)

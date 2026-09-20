@@ -2774,7 +2774,10 @@
       "actor": "signed-in user",
       "sourceSurface": "Mac AI Inbox",
       "iosSurface": {
-        "ipad": [],
+        "ipad": [
+          "OpenBurnBarMobile/Views/RootNavigationView.swift",
+          "OpenBurnBarMobile/Views/iPad/IPadInboxDeskColumns.swift"
+        ],
         "services": [],
         "stores": [
           "OpenBurnBarMobile/Services/AIInboxStore.swift"
@@ -2783,7 +2786,9 @@
           "OpenBurnBarMobileTests/AIInboxStoreTests.swift"
         ],
         "views": [
-          "OpenBurnBarMobile/Views/Inbox/AIInboxView.swift"
+          "OpenBurnBarMobile/Views/Inbox/AIInboxView.swift",
+          "OpenBurnBarMobile/Views/iPad/IPadInboxDeskColumns.swift",
+          "OpenBurnBarMobile/Views/RootNavigationView.swift"
         ]
       },
       "androidSurface": {
@@ -2814,12 +2819,12 @@
         "validation": "mobile-parity"
       },
       "routing": {
-        "class": "secondary",
+        "class": "primary",
         "deepLinkable": true,
         "gated": false,
         "platformSpecific": false,
-        "primary": false,
-        "secondary": true
+        "primary": true,
+        "secondary": false
       },
       "widgets": [],
       "intents": [],
@@ -2833,7 +2838,7 @@
         "route.inbox.item",
         "route.shell.inbox"
       ],
-      "notes": "iOS hosts Inbox inside Streams; Android hosts it as a primary tab. See divergence.inbox-primary-android."
+      "notes": "iOS compact tray, iPad command desk, and Android all host Inbox as a primary destination. iPad launches Inbox. See divergence.inbox-primary-android."
     },
     {
       "capabilityId": "inbox.detail",
@@ -5262,7 +5267,7 @@
     },
     {
       "capabilityId": "divergence.inbox-primary-android",
-      "title": "Android Inbox is a primary tab; iOS Inbox is secondary in Streams",
+      "title": "Inbox is primary on iOS compact and iPad desk; Android already was",
       "family": "divergence",
       "kind": "accepted-divergence",
       "actor": "signed-in user",
@@ -5317,15 +5322,15 @@
       "routeIds": [
         "route.shell.inbox"
       ],
-      "notes": "Accepted route divergence. Do not treat iOS missing a primary Inbox tab as an unregistered gap."
+      "notes": "Accepted historical route divergence. iOS compact tray and iPad command desk now match Android Inbox-as-primary. Pulse/Insights/Streams stay reachable overflow."
     },
     {
       "capabilityId": "divergence.you-store-label",
-      "title": "You destination tray-labelled Store",
+      "title": "Android You tab is labelled Store; iOS tray label is You",
       "family": "divergence",
       "kind": "accepted-divergence",
       "actor": "signed-in user",
-      "sourceSurface": "AuroraNavDestination.you trayLabel Store",
+      "sourceSurface": "AuroraNavDestination.you trayLabel You; Android tab label Store",
       "iosSurface": {
         "ipad": [],
         "services": [],

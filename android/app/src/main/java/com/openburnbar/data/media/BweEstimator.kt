@@ -22,6 +22,7 @@ class BweEstimator(
     val rttDownAdaptThresholdMillis: Int = 200,
     val lossDownAdaptThreshold: Double = 0.04,
     val recoveryHysteresisSamples: Int = 3,
+    val constrainedCeilingBitsPerSecond: Int = SCREEN_SHARE_CONSTRAINED_CEILING,
 ) {
     init {
         require(steps.isNotEmpty()) { "BweEstimator requires at least one step" }
@@ -37,13 +38,21 @@ class BweEstimator(
         // 0.0 ... 1.0
         val packetLossRate: Double,
         val observedBitsPerSecond: Int,
+        val pathConstrained: Boolean = false,
     )
 
     fun apply(sample: Sample): Int {
+        if (sample.pathConstrained) {
+            clampToConstrainedCeiling()
+        }
+
         if (sample.roundTripMillis >= rttDownAdaptThresholdMillis ||
             sample.packetLossRate >= lossDownAdaptThreshold
         ) {
             stepDown()
+            if (sample.pathConstrained) {
+                clampToConstrainedCeiling()
+            }
             goodSamplesSinceDownAdapt = 0
             return currentBitsPerSecond
         }
@@ -51,6 +60,9 @@ class BweEstimator(
         goodSamplesSinceDownAdapt += 1
         if (goodSamplesSinceDownAdapt >= recoveryHysteresisSamples) {
             stepUp()
+            if (sample.pathConstrained) {
+                clampToConstrainedCeiling()
+            }
             goodSamplesSinceDownAdapt = 0
         }
         return currentBitsPerSecond
@@ -66,10 +78,26 @@ class BweEstimator(
         currentBitsPerSecond = if (idx < 0) sortedSteps.last() else sortedSteps[min(sortedSteps.size - 1, idx + 1)]
     }
 
+    private fun clampToConstrainedCeiling() {
+        val cap = min(constrainedCeilingBitsPerSecond, sortedSteps.last())
+        if (currentBitsPerSecond > cap) {
+            currentBitsPerSecond = sortedSteps.lastOrNull { it <= cap } ?: sortedSteps.first()
+        }
+    }
+
     fun gccDecayConstant(rttMillis: Int): Double = (1.0 - MILLIS).pow(rttMillis.toDouble() / 1000.0)
 
     companion object {
-        val SCREEN_SHARE_STEPS = listOf(1_000_000, 2_000_000, 4_000_000, 8_000_000)
+        const val SCREEN_SHARE_CELLULAR_FLOOR = 250_000
+        const val SCREEN_SHARE_CONSTRAINED_CEILING = 500_000
+        val SCREEN_SHARE_STEPS = listOf(
+            SCREEN_SHARE_CELLULAR_FLOOR,
+            SCREEN_SHARE_CONSTRAINED_CEILING,
+            1_000_000,
+            2_000_000,
+            4_000_000,
+            8_000_000,
+        )
         val VIDEO_CALL_STEPS = listOf(300_000, 600_000, 1_200_000)
     }
 }

@@ -225,7 +225,7 @@ final class DataStoreCoordinator {
     /// database is a legacy plaintext SQLite file, the verified SQLCipher export
     /// migration runs before the encrypted pool opens; migration failure aborts
     /// startup instead of silently violating the data-at-rest contract.
-    private static func makeDatabaseOpenResult(path: String) throws -> DatabaseOpenResult {
+    nonisolated private static func makeDatabaseOpenResult(path: String) throws -> DatabaseOpenResult {
         let defaults = UserDefaults.standard
         normalizeLegacyEncryptionPreferences(in: defaults)
 
@@ -327,7 +327,7 @@ final class DataStoreCoordinator {
         try makeDatabaseOpenResult(path: path).pool
     }
 
-    private static func openDatabasePool(path: String, configuration: Configuration) throws -> DatabasePool {
+    nonisolated private static func openDatabasePool(path: String, configuration: Configuration) throws -> DatabasePool {
         var lastSidecarError: Error?
         for attempt in 1...3 {
             do {
@@ -353,7 +353,7 @@ final class DataStoreCoordinator {
         return try openAndValidateDatabasePool(path: path, configuration: configuration)
     }
 
-    private static func openAndValidateDatabasePool(path: String, configuration: Configuration) throws -> DatabasePool {
+    nonisolated private static func openAndValidateDatabasePool(path: String, configuration: Configuration) throws -> DatabasePool {
         let pool = try DatabasePool(path: path, configuration: configuration)
         do {
             _ = try pool.read { @Sendable db in
@@ -376,9 +376,9 @@ final class DataStoreCoordinator {
     /// Legacy UserDefaults key retained so older settings/recovery UI can clear
     /// stale disclosed-plaintext state. New encryption-enabled startup rejects
     /// plaintext fallback when SQLCipher is unavailable.
-    static let plaintextFallbackAcknowledgedDefaultsKey = "databaseEncryptionPlaintextFallbackAcknowledged"
+    nonisolated static let plaintextFallbackAcknowledgedDefaultsKey = "databaseEncryptionPlaintextFallbackAcknowledged"
 
-    private static func normalizeLegacyEncryptionPreferences(in defaults: UserDefaults) {
+    nonisolated private static func normalizeLegacyEncryptionPreferences(in defaults: UserDefaults) {
         defaults.set(true, forKey: "databaseEncryptionEnabled")
         defaults.removeObject(forKey: plaintextFallbackAcknowledgedDefaultsKey)
         defaults.removeObject(forKey: "plaintextDatabaseAcknowledged")
@@ -407,7 +407,7 @@ final class DataStoreCoordinator {
     /// tune the checkpoint threshold and synchronous mode for our workload.
     /// This hook runs after SQLCipher keying and before DEBUG tracing so
     /// startup PRAGMAs do not require post-open synchronous queue writes.
-    private static func installStartupPragmas(on config: inout Configuration) {
+    nonisolated private static func installStartupPragmas(on config: inout Configuration) {
         config.prepareDatabase { @Sendable db in
             try db.execute(sql: "PRAGMA journal_mode = WAL")
             try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")
@@ -419,22 +419,39 @@ final class DataStoreCoordinator {
     /// `makeConfiguration`: GRDB chains `prepareDatabase` closures in install
     /// order, so the SQLCipher passphrase setup executes before the trace hook
     /// registers and the cipher key never reaches the trace log.
-    private static func installDebugQueryTracer(on config: inout Configuration) {
+    nonisolated private static func installDebugQueryTracer(on config: inout Configuration) {
         #if DEBUG
         OpenBurnBarQueryTracer.shared.configure(in: &config)
         #endif
     }
 
     convenience init() throws {
+        self.init(actor: try Self.openCanonicalStore())
+    }
+
+    /// Open/key/migrate on a worker, then install only the observable facade on
+    /// the main actor. The encryption and migration protection path is shared
+    /// with synchronous recovery/test callers, not bypassed.
+    static func openForStartup(
+        openStore: @escaping @Sendable () throws -> DataStoreActor = { try openCanonicalStore() }
+    ) async throws -> DataStoreCoordinator {
+        let actor = try await Task.detached(priority: .userInitiated, operation: openStore).value
+        return DataStoreCoordinator(actor: actor)
+    }
+
+    private init(actor: DataStoreActor) {
+        self.actor = actor
+    }
+
+    nonisolated private static func openCanonicalStore() throws -> DataStoreActor {
         let appDir = try OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory()
         let dbPath = appDir.appendingPathComponent(OpenBurnBarCore.OpenBurnBarIdentity.databaseFileName).path
         // DatabasePool enables concurrent reads (WAL mode) for read-heavy workloads
         // like dashboard aggregation and search queries. Writes remain serialized.
         let openResult = try Self.makeDatabaseOpenResult(path: dbPath)
         try OpenBurnBarDatabase.configureWALMode(openResult.pool)
-        try self.init(
+        return try DataStoreActor(
             databaseQueue: openResult.pool,
-            refreshOnInit: false,
             migrationBackupConfigurationBuilder: openResult.migrationBackupConfigurationBuilder
         )
     }

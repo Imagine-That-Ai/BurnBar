@@ -17,7 +17,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
-import { logInfo, logError } from "./logging.js";
+import { logInfo, logError, wrapRequestHandler } from "./logging.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import { sourceMetadata } from "./sourceMetadata.js";
 import { domainCoreDeploymentIdentity } from "./domainCoreBuildProfile.js";
@@ -116,7 +116,7 @@ async function probeFirestore(timeoutMs = 3000): Promise<number> {
 }
 
 /** Liveness probe — returns 200 if the function process is alive. */
-export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, async (req, res) => {
+export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, wrapRequestHandler("healthLive", async (req, res) => {
   setPublicJsonSecurityHeaders(res);
   try {
     await checkPublicHttpEndpointRateLimit("healthLive", clientIpFromHttpRequest(req));
@@ -135,7 +135,7 @@ export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, inv
     domainCore: domainCoreDeploymentIdentityForHealth(),
     ...sourceMetadata(),
   });
-});
+}));
 
 /**
  * Readiness probe — verifies Firestore responds within 3 seconds.
@@ -143,7 +143,7 @@ export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, inv
  */
 export const healthReady = onRequest(
   { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
-  async (req, res) => {
+  wrapRequestHandler("healthReady", async (req, res) => {
     setPublicJsonSecurityHeaders(res);
     try {
       await checkPublicHttpEndpointRateLimit("healthReady", clientIpFromHttpRequest(req));
@@ -186,7 +186,7 @@ export const healthReady = onRequest(
         ...sourceMetadata(),
       });
     }
-  },
+  }),
 );
 
 /**
@@ -195,7 +195,7 @@ export const healthReady = onRequest(
  */
 export const healthCheck = onRequest(
   { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
-  async (req, res) => {
+  wrapRequestHandler("healthCheck", async (req, res) => {
     setPublicJsonSecurityHeaders(res);
     try {
       await checkPublicHttpEndpointRateLimit("healthCheck", clientIpFromHttpRequest(req));
@@ -236,5 +236,5 @@ export const healthCheck = onRequest(
       ...(latencyMs > 0 && { latency_ms: latencyMs }),
       ...sourceMetadata(),
     });
-  },
+  }),
 );

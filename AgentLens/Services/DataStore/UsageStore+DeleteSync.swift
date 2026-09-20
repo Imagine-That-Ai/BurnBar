@@ -13,6 +13,35 @@ extension UsageStore {
         noteUsageWrite(changedRows: changedRows)
     }
 
+    /// Bounded retention for the primary usage table. Rows older than `cutoff`
+    /// by the indexed, non-null `startTime` are deleted in one statement.
+    /// The canonical schema has no `timestamp` column.
+    @discardableResult
+    func reapUsageOlderThan(_ cutoff: Date) async throws -> Int {
+        let deletedRows = try await dbQueue.write { db -> Int in
+            try db.execute(
+                sql: """
+                    DELETE FROM token_usage
+                    WHERE startTime < ?
+                    """,
+                arguments: [cutoff]
+            )
+            return db.changesCount
+        }
+        noteUsageWrite(changedRows: deletedRows)
+        return deletedRows
+    }
+
+    /// Guarded incremental vacuum after retention. `auto_vacuum=INCREMENTAL`
+    /// must already be on the database; this only asks SQLite to reclaim a
+    /// bounded number of freelist pages so a full VACUUM is never the refresh path.
+    func incrementalVacuum(pages: Int = 256) async throws {
+        let bounded = max(1, min(pages, 4096))
+        try await dbQueue.writeWithoutTransaction { db in
+            try db.execute(sql: "PRAGMA incremental_vacuum(\(bounded))")
+        }
+    }
+
     // VAL-PERSIST-013: Reconciliation cleanup is source-scoped.
     // Cleanup of prior API-reconciliation rows must be constrained by source semantics
     // (billing_api) in addition to identifier prefix policy, so non-reconciliation rows

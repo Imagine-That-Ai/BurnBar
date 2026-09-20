@@ -267,7 +267,27 @@ final class MercuryRouter: ObservableObject {
         self.phoneControlAuthorityValidatorProvider = phoneControlAuthorityValidatorProvider
         self.phoneControlAuthorityRegistrationProvider = phoneControlAuthorityRegistrationProvider
         self.phoneControlEnrollmentGrantIssuer = phoneControlEnrollmentGrantIssuer
+        installKeepAwakeToggleKeyLookup()
         installHostAuthGateListeners()
+    }
+
+    private func installKeepAwakeToggleKeyLookup() {
+        MacKeepAwakeController.shared.togglePublicKeyProvider = { [weak self] deviceId in
+            self?.phoneControlAuthorityValidatorProvider()?
+                .ed25519PublicKeyRepresentation(for: deviceId)
+        }
+        MacKeepAwakeController.shared.togglePublicKeyResolver = { [weak self] deviceId, uid, connectionId in
+            guard let provider = self?.phoneControlAuthorityRegistrationProvider else {
+                return nil
+            }
+            do {
+                let (key, _) = try await provider(uid, connectionId, deviceId)
+                guard key.kind == .ed25519 else { return nil }
+                return key.publicKeyRepresentation
+            } catch {
+                return nil
+            }
+        }
     }
 
     private static func defaultPhoneControlAuthorityRegistrationProvider() -> PhoneControlAuthorityRegistrationProvider? {

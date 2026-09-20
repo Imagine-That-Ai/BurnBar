@@ -110,6 +110,12 @@ const EXPECTED_GUARDS: Array<{
     guardFunction: "enforceHighRiskComputerUseCallableWithNonce",
   },
   {
+    exportedName: "createCliAgentMissionGroup",
+    file: "cliAgentMissions.ts",
+    actionKind: "cli_agent_mission_group_create",
+    guardFunction: "enforceHighRiskComputerUseCallableWithNonce",
+  },
+  {
     exportedName: "cancelCliAgentMission",
     file: "cliAgentMissions.ts",
     actionKind: "cli_agent_mission_cancel",

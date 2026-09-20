@@ -83,7 +83,13 @@ public struct AgentWatchView<Placeholder: View>: View {
                 onTrustMode: downgradeTrustMode,
                 onType: sendTextIntent,
                 onShortcut: sendShortcutIntent,
-                onPanic: panicHalt
+                onPanic: panicHalt,
+                onSendWorkspaceFile: { url in
+                    Task { await WatchUnifyFileSend.send(url: url) }
+                },
+                onFreezeFrame: {
+                    _ = AgentWatchOverlaySingleton.shared.freezeCurrentFrameForHermes()
+                }
             )
         }
         // RR-14: this surface mirrors the paired Mac's screen, so cover it for
@@ -106,11 +112,11 @@ public struct AgentWatchView<Placeholder: View>: View {
                             defer { dragPreview = nil }
                             let distance = hypot(value.translation.width, value.translation.height)
                             if distance < 10 {
-                                let point = normalized(value.location, in: proxy.size)
+                                let point = AgentPointerMapping.normalized(value.location, in: proxy.size)
                                 sendTapIntent(point.x, point.y)
                             } else {
-                                let start = normalized(value.startLocation, in: proxy.size)
-                                let end = normalized(value.location, in: proxy.size)
+                                let start = AgentPointerMapping.normalized(value.startLocation, in: proxy.size)
+                                let end = AgentPointerMapping.normalized(value.location, in: proxy.size)
                                 sendScrollIntent(start.x, start.y, end.x, end.y)
                             }
                         }
@@ -151,8 +157,7 @@ public struct AgentWatchView<Placeholder: View>: View {
                     .foregroundStyle(.white.opacity(0.9))
                     .shadow(color: .black.opacity(0.55), radius: 3, x: 0, y: 1)
                     .position(
-                        x: cursorPosition(cursor, in: proxy.size).x,
-                        y: cursorPosition(cursor, in: proxy.size).y
+                        IPadAwayDeskNavigation.hostCursorPoint(x: cursor.x, y: cursor.y, in: proxy.size)
                     )
             }
         }
@@ -251,20 +256,15 @@ public struct AgentWatchView<Placeholder: View>: View {
         let s = elapsed % 60
         return String(format: "%02d:%02d", m, s)
     }
+}
 
-    private func cursorPosition(_ cursor: MediaFrame.CursorMetadata, in size: CGSize) -> CGPoint {
-        // `MediaFrame` intentionally carries only codec payload + cursor
-        // metadata. Until the stream publishes source dimensions, normalize
-        // against the common Mercury screen-share canvas so the cursor remains
-        // visible and directionally correct instead of clipping off-screen.
-        let frameWidth: CGFloat = 1920
-        let frameHeight: CGFloat = 1080
-        let x = min(max(CGFloat(cursor.x) / frameWidth, 0), 1) * size.width
-        let y = min(max(CGFloat(cursor.y) / frameHeight, 0), 1) * size.height
-        return CGPoint(x: x, y: y)
-    }
-
-    private func normalized(_ point: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
+/// Phone-side pointer mapping. The forward half of the contract whose inverse
+/// is `IPadAwayDeskNavigation.hostCursorPoint` (host pixels → local canvas) and
+/// `MacInputCore.denormalize` (normalized → host pixels). Shared by the Watch
+/// view, the iPhone live stage, and the iPad inspector so one clamp rule
+/// governs every surface that sends a tap.
+enum AgentPointerMapping {
+    static func normalized(_ point: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
         guard size.width > 0, size.height > 0 else { return (0, 0) }
         let x = min(max(point.x / size.width, 0), 1)
         let y = min(max(point.y / size.height, 0), 1)
@@ -328,7 +328,7 @@ public struct AgentWatchDefaultPlaceholder: View {
     }
 }
 
-private struct ThreeFingerLongPressCapture: UIViewRepresentable {
+struct ThreeFingerLongPressCapture: UIViewRepresentable {
     let onRecognized: () -> Void
 
     func makeCoordinator() -> Coordinator {

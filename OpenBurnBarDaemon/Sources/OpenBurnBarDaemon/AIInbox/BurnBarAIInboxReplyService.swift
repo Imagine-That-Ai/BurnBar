@@ -201,25 +201,29 @@ struct BurnBarAIInboxReplyService: Sendable {
             return BurnBarInboxReplyResponse(message: nil, refusalReason: "Could not store the reply.")
         }
 
-        // Gate 2: route + egress.
+        // Gate 2: route + egress. Same fallback as the analyst tick: a dead
+        // pin must not refuse a reply when another configured provider can go.
         let route: BurnBarProviderRoute
         do {
-            route = try await router.route(
-                modelName: config.analystModel,
-                preferredProviderID: config.analystProviderID
+            route = try await BurnBarAIInboxRouteResolver.firstRoutable(
+                router: router,
+                config: config,
+                logger: logger,
+                role: "reply"
+            )
+        } catch let error as BurnBarAIInboxAnalystError {
+            if case .egressRefused(let reason) = error {
+                return BurnBarInboxReplyResponse(message: nil, refusalReason: reason)
+            }
+            return BurnBarInboxReplyResponse(
+                message: nil,
+                refusalReason: "No provider route for \(config.analystModel)."
             )
         } catch {
             return BurnBarInboxReplyResponse(
                 message: nil,
                 refusalReason: "No provider route for \(config.analystModel)."
             )
-        }
-        if case .refused(let reason) = BurnBarAIInboxEgressGuard.evaluate(
-            baseURL: route.baseURL,
-            mode: config.egressMode
-        ) {
-            logger.warning("ai_inbox_reply_egress_refused", metadata: ["reason": reason])
-            return BurnBarInboxReplyResponse(message: nil, refusalReason: reason)
         }
 
         // Gate 3: budget — daily ledger first, then the per-reply ceiling

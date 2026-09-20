@@ -3,23 +3,18 @@ import OpenBurnBarCore
 
 // MARK: - Aurora Backdrop
 //
-// Cinematic, parallax-driven backdrop that replaces `EmberSurfaceBackground`
-// for every primary surface in the iOS app.
-//
-// Layers (bottom to top):
-//   1. Base gradient (mode-aware)
-//   2. iOS 26 MeshGradient (12 anchor points, ember/amber/blaze/whimsy)
-//      → fallback to radial orbs on iOS 17/18
-//   3. Static "aurora ribbon" along the top edge
-//   4. Subtle ember particles (drift only when motion allowed)
-//   5. Optional vignette
-//
-// Honors Reduce Motion (no infinite anims) and Reduce Transparency (drops blur).
+// Shell canvas. Inbox / Agents / Quota / You / the iPad desk are grouped
+// paper — never the WebGL kernel, never the provider swarm. The kernel
+// still lives in Appearance previews, Living Themes, and wallpaper export.
+// iPhone can opt back into the ember mesh via Settings.
 
 struct AuroraBackdrop: View {
     var density: AuroraDensity = .full
+    /// Retained so the existing call sites keep compiling — the quiet canvas
+    /// never paints the provider swarm, so this is no longer read.
     var colorDriver: SwarmColorDriver?
     var visibility: MobileBackgroundVisibility?
+    /// Retained for the same reason as `colorDriver`.
     var allowsWebsiteBackground: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
@@ -36,8 +31,9 @@ struct AuroraBackdrop: View {
     @State private var driftStart = Date()
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
 
-    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
     @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
+    @AppStorage(CompactIPhoneCanvas.auroraMeshStorageKey) private var compactAuroraMeshEnabled: Bool = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     enum AuroraDensity {
         case full       // Pulse / Burn / Hermes / You hero
@@ -47,24 +43,11 @@ struct AuroraBackdrop: View {
 
     var body: some View {
         ZStack {
-            if appSkin == .editorial {
-                // Editorial / Paper skin: the light dot-crest — provider logos
-                // drifting from coloured dots on paper, like app.burnbar.ai.
-                // `WebsiteBackgroundView` renders the paper + transparent swarm
-                // itself when the editorial skin is active.
-                WebsiteBackgroundView(
-                    accent: MobileTheme.ember,
-                    colorDriver: colorDriver,
-                    visibility: effectiveVisibility
-                )
-            } else if uiMode == .cooking {
+            if uiMode == .cooking {
                 VisibilityAwareEmberSurfaceBackground()
-            } else if allowsWebsiteBackground && useWebsiteBackground {
-                WebsiteBackgroundView(
-                    accent: MobileTheme.ember,
-                    colorDriver: colorDriver,
-                    visibility: effectiveVisibility
-                )
+            } else if usesQuietCanvas {
+                Color(.systemGroupedBackground)
+                    .ignoresSafeArea()
             } else {
                 baseGradient
                     .ignoresSafeArea()
@@ -108,6 +91,17 @@ struct AuroraBackdrop: View {
 
     // MARK: - Base
 
+    /// Grouped paper everywhere except iPhone with the mesh opt-in on.
+    /// The WebGL kernel never paints this view, even if Website Background
+    /// is still enabled in Settings.
+    private var usesQuietCanvas: Bool {
+        CompactIPhoneCanvas.usesQuietCanvas(
+            compactAuroraMeshEnabled: compactAuroraMeshEnabled,
+            isCompact: horizontalSizeClass == .compact,
+            isEditorial: appSkin == .editorial
+        )
+    }
+
     private var effectiveVisibility: MobileBackgroundVisibility {
         let requested = visibility ?? defaultVisibilityForDensity
         return requested.constrained(by: inheritedVisibility)
@@ -133,7 +127,8 @@ struct AuroraBackdrop: View {
     }
 
     private var shouldRenderLocalAurora: Bool {
-        uiMode != .cooking && !(allowsWebsiteBackground && useWebsiteBackground)
+        !usesQuietCanvas
+            && uiMode != .cooking
     }
 
     private var shouldRenderDecorativeLayers: Bool {

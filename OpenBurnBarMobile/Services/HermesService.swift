@@ -406,6 +406,32 @@ final class HermesService {
         return selectedConnection.id != relay.id
     }
 
+    /// The connection Mercury should dial: the suggested relay, else the
+    /// selected one when it is already a relay link. Every desk surface asks
+    /// this the same way, so the answer lives here rather than in each view.
+    var mercuryRelayConnection: HermesConnectionRecord? {
+        if let relay = suggestedRelayConnection { return relay }
+        return selectedConnection.mode == .relayLink ? selectedConnection : nil
+    }
+
+    /// Brings the muxed `media.control` stream up for `connectionID`, selecting
+    /// the cached relay first. Returns `nil` on success, or the message to show
+    /// the user. Shared so every desk surface reports the same failure copy.
+    func ensureMercuryMediaControlStream(connectionID: String) async -> String? {
+        guard let relay = cachedMercuryRelay(for: connectionID) else {
+            return "No online Mac relay found. Open BurnBar on the Mac, enable Remote Relay, then retry."
+        }
+        if relay.id != selectedConnection.id {
+            _ = selectConnection(relay, refresh: false)
+        }
+        do {
+            try await HermesIrohRelayTransport.shared.ensureMediaControlStream(connectionID: relay.id)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     init(
         baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
         urlSession: URLSession = .shared,

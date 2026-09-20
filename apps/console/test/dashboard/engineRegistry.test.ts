@@ -9,7 +9,7 @@ import {
   getKernelDescriptor,
   isKernelId,
   resolveRenderableKernelId,
-} from "@/lib/gl/engine/registry";
+} from "@openburnbar/gl-engine/registry";
 
 const NO_FLOAT = { colorBufferFloat: false, floatBlend: false };
 const FLOAT = { colorBufferFloat: true, floatBlend: true };
@@ -88,7 +88,7 @@ describe("vendored kernel registry", () => {
 
   it("declares scroll controls for the storm kernel uScroll shader input", () => {
     const source = readFileSync(
-      new URL("../../lib/gl/engine/kernels/stormCellKernel.ts", import.meta.url),
+      new URL("../../../../packages/gl-engine/src/engine/kernels/stormCellKernel.ts", import.meta.url),
       "utf8",
     );
 

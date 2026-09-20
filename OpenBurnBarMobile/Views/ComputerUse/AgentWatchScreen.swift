@@ -36,7 +36,7 @@ struct AgentWatchScreen: View {
                 AgentWatchView(
                     state: singleton.state,
                     downgradeTrustMode: { mode in
-                        singleton.state.setTrustMode(mode)
+                        Task { try? await singleton.coordinator.receiver?.downgradeTrustMode(mode) }
                     },
                     approveAction: { request in
                         Task { try? await singleton.coordinator.receiver?.approve(request) }

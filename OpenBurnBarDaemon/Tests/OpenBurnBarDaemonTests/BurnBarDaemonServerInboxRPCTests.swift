@@ -16,10 +16,14 @@ final class BurnBarDaemonServerInboxRPCTests: XCTestCase {
 
         // The index database must exist BEFORE the daemon bootstraps the inbox,
         // exactly as production requires. Seed one item and one run so every
-        // read RPC has something real to return.
+        // read RPC has something real to return. `schemaBootstrap: true` is the
+        // test-side opt-in: the daemon itself never creates the canonical
+        // `openburnbar.sqlite` (the app's GRDB migrator owns it), but a fresh
+        // fixture must be built here.
         let store = try BurnBarAIInboxStore(
             databasePath: databasePath,
-            logger: BurnBarDaemonLogger(category: "test")
+            logger: BurnBarDaemonLogger(category: "test"),
+            schemaBootstrap: true
         )
         let now = Date()
         let seeded = try store.upsertItem(
@@ -168,7 +172,8 @@ final class BurnBarDaemonServerInboxRPCTests: XCTestCase {
         let databasePath = rootURL.appendingPathComponent("openburnbar.sqlite").path
         _ = try BurnBarAIInboxStore(
             databasePath: databasePath,
-            logger: BurnBarDaemonLogger(category: "test")
+            logger: BurnBarDaemonLogger(category: "test"),
+            schemaBootstrap: true
         )
 
         let socketPath = makeSocketPath(name: "inbox-lens")

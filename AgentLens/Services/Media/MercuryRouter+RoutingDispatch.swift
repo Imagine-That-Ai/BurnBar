@@ -86,6 +86,11 @@ extension MercuryRouter {
                     heartbeat,
                     connectionID: frame.connectionId
                 )
+                MacKeepAwakeController.shared.ingestInboundPresenceCapabilities(
+                    heartbeat.capabilities,
+                    uid: frame.uid,
+                    connectionId: frame.connectionId
+                )
 
                 // Reply with a lightweight presence heartbeat. The control
                 // stream uses this as a liveness probe before mirror setup;
@@ -153,9 +158,25 @@ extension MercuryRouter {
                 )
                 Self.log.info("router_ltr_ack_received token=\(ack.tokenValue, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)")
             }
+        case .mediaStreamFrame:
+            ingestBandwidthFeedbackIfPresent(frame)
         default:
             break
         }
+    }
+
+    func ingestBandwidthFeedbackIfPresent(_ frame: HermesRealtimeRelayFrame) {
+        guard frame.media?.streamClass == MediaStreamClass.control.rawValue,
+              let encoded = frame.media?.encodedFrameBase64,
+              let data = Data(base64Encoded: encoded),
+              let decoded = try? MediaPacketCodec().decode(data).frame, // try?-ok(bwe feedback decode is best-effort telemetry; a malformed frame is skipped, not an error)
+              let payload = MediaBweFeedbackPayload.decodeIfPresent(from: decoded) else {
+            return
+        }
+        sessionCoordinator.ingestBandwidthSample(payload.sample)
+        Self.log.info(
+            "router_bwe_feedback_applied rtt=\(payload.roundTripMillis, privacy: .public) loss=\(payload.packetLossRate, privacy: .public) constrained=\(payload.pathConstrained, privacy: .public) connectionID=\(frame.connectionId, privacy: .public)"
+        )
     }
 
     func macPresenceCapabilities() -> [String] {
@@ -173,6 +194,7 @@ extension MercuryRouter {
         if remoteUnlockReadiness.capabilities().enabled {
             capabilities.append(MercuryPeer.Feature.remoteUnlockHost.rawValue)
         }
+        capabilities.append(contentsOf: MacKeepAwakeController.shared.status.presenceCapabilities)
         return capabilities
     }
 

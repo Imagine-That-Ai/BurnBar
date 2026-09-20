@@ -89,6 +89,7 @@ class MediaControlStreamCoordinator(
     private val mediaSealSessionFactory: (
         suspend (uid: String, connectionID: String, viewerId: String, macCapabilities: Set<String>) -> MediaSealSessionEstablisher.Session?
     )? = null,
+    private val pathConstrainedProvider: () -> Boolean = { false },
 ) {
     fun interface StreamDialer {
         suspend fun dial(uid: String, connectionID: String): IrohRelayStream
@@ -575,6 +576,7 @@ class MediaControlStreamCoordinator(
     internal val inboundFrameChunkAssembler get() = frameChunkAssembler
     internal val inboundMediaPacketCodec get() = mediaPacketCodec
     internal val inboundMediaFrameV2Codec get() = mediaFrameV2Codec
+    internal val inboundPathConstrainedProvider get() = pathConstrainedProvider
 
     private companion object {
         private const val TAG = "BurnBar"

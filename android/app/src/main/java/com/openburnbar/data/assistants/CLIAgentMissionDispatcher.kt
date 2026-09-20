@@ -22,6 +22,7 @@ import com.openburnbar.data.cloud.SignalAtRestFallbackPolicy
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import com.openburnbar.data.computeruse.cancelCliAgentMission
 import com.openburnbar.data.computeruse.createCliAgentMission
+import com.openburnbar.data.computeruse.createCliAgentMissionGroup
 import com.openburnbar.data.computeruse.redeemMissionApprovalAnswer
 import com.openburnbar.data.computeruse.respondMissionApproval
 import java.time.Instant
@@ -133,6 +134,12 @@ private fun sealedMissionEventPayloadMap(
 private fun missionRequestAadContext(uid: String?, requestID: String): CloudVaultAADContext? = uid?.let {
     runCatching {
         CloudVaultAADContext(uid = it, collection = "cli_agent_mission_requests", docID = requestID, field = "sealedPayload")
+    }.getOrNull()
+}
+
+private fun missionGroupAadContext(uid: String?, groupID: String): CloudVaultAADContext? = uid?.let {
+    runCatching {
+        CloudVaultAADContext(uid = it, collection = "mission_groups", docID = groupID, field = "sealedPayload")
     }.getOrNull()
 }
 
@@ -285,10 +292,11 @@ class CLIAgentMissionDispatcher(
     private val securityClient: ComputerUseSecurityCallableClient = ComputerUseSecurityCallableClient(),
 ) {
     /**
-     * Hermes Square §6.4 — fan-out dispatch. Writes one mission group
-     * parent + N child cli_agent_mission_requests linked by `groupID`.
-     * Mirrors the iOS `dispatchFanOut`. Throws DispatchException on
-     * malformed input or auth failure.
+     * Hermes Square §6.4 — fan-out dispatch. Creates one mission group
+     * parent via createCliAgentMissionGroup + N child
+     * cli_agent_mission_requests linked by `groupID`. Mirrors the iOS
+     * `dispatchFanOut`. Throws DispatchException on malformed input or
+     * auth failure.
      */
     suspend fun dispatchFanOut(
         title: String,
@@ -317,10 +325,10 @@ class CLIAgentMissionDispatcher(
         val groupRef =
             firestore.collection("users").document(uid)
                 .collection("mission_groups").document(plan.groupID)
-        val batch = firestore.batch()
-        batch.set(
-            groupRef,
+        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
+        securityClient.createCliAgentMissionGroup(
             sealedFanOutGroupPayload(
+                uid = uid,
                 plan = plan,
                 missionKind = missionKind,
                 targetProject = targetProject,
@@ -328,12 +336,13 @@ class CLIAgentMissionDispatcher(
                 parallelismLimit = parallelismLimit,
                 mergeStrategy = mergeStrategy,
                 resolvedKey = resolvedKey,
-            ),
+            ) + mapOf("groupId" to plan.groupID, "deviceId" to deviceId),
+            deviceId,
         )
         val fanOutSignal = resolveFanOutSignalContext(uid = uid, groupID = plan.groupID, runtimeTokens = runtimeTokens)
         val leaves = buildFanOutChildLeaves(
             FanOutChildWriteRequest(
-                batch = batch,
+                batch = firestore.batch(),
                 firestore = firestore,
                 uid = uid,
                 plan = plan,
@@ -354,13 +363,12 @@ class CLIAgentMissionDispatcher(
                 signalRecipients = fanOutSignal?.otherRecipients ?: emptyList(),
             ),
         )
-        batch.commit().await()
-        val deviceId = AndroidCloudVaultDeviceKeypair.loadOrCreate().deviceId
         createMissionLeavesOrFailGroup(leaves, groupRef, deviceId)
         return FanOutDispatchResult(groupID = plan.groupID, childMissionIDs = plan.childMissionIDs)
     }
 
     private fun sealedFanOutGroupPayload(
+        uid: String,
         plan: FanOutDispatchPlan,
         missionKind: String,
         targetProject: String?,
@@ -381,6 +389,7 @@ class CLIAgentMissionDispatcher(
         prompt = plan.trimmedPrompt,
         targetProject = targetProject,
         key = resolvedKey,
+        uid = uid,
     )
 
     /** Resolves the group's at-rest Signal context and enforces the Signal fan-out size cap. */
@@ -937,6 +946,7 @@ object CLIAgentMissionRequestPayloadFactory {
         prompt: String,
         targetProject: String?,
         key: AndroidCloudVaultResolvedKey,
+        uid: String,
     ): Map<String, Any> = applySealedPrivatePayload(
         payload = payload,
         privatePayload =
@@ -946,6 +956,7 @@ object CLIAgentMissionRequestPayloadFactory {
             targetProject = targetProject?.trim()?.takeIf { it.isNotEmpty() },
         ),
         key = key,
+        aadContext = missionGroupAadContext(uid, payload["id"] as? String ?: ""),
     )
 
     fun build(input: PayloadInput): Map<String, Any> {

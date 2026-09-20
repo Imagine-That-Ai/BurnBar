@@ -28,7 +28,6 @@ struct AgentLiveStageDockTile: View {
     @State private var dragOffset: CGSize = .zero
     @State private var dragStart: CGSize?
     @State private var pinchScale: CGFloat = 1
-    @State private var pulseEmber: Bool = false
 
     private var tileSize: CGSize {
         switch horizontalSizeClass {
@@ -49,14 +48,6 @@ struct AgentLiveStageDockTile: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
             .onChange(of: presenter.dockCorner) { _, _ in
                 dragOffset = .zero
-            }
-        }
-        .onChange(of: presenter.collapseReason) { _, reason in
-            guard reason == .panic else { return }
-            pulseEmber = true
-            Task {
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                pulseEmber = false
             }
         }
     }
@@ -92,36 +83,12 @@ struct AgentLiveStageDockTile: View {
             }
             .padding(10)
 
-            // Mercury border + shimmer
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(MobileTheme.mercuryGradient, lineWidth: 1)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
-                )
-
-            if !reduceMotion {
-                MercuryShimmerOverlay()
-                    .allowsHitTesting(false)
-                    .mask(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(lineWidth: 3)
-                    )
-            }
-
-            // Ember pulse one-shot after panic halt or executing actions
-            if pulseEmber || isCurrentlyExecuting {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(MobileTheme.amber.opacity(0.65), lineWidth: 2)
-                    .blur(radius: 2)
-                    .opacity(pulseEmber ? 1 : 0.55)
-                    .animation(.easeInOut(duration: 0.55).repeatCount(2, autoreverses: true),
-                               value: pulseEmber)
-            }
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .compositingGroup()
-        .shadow(color: .black.opacity(0.45), radius: 18, y: 10)
+        .shadow(color: .black.opacity(0.18), radius: 6, y: 3)
         .scaleEffect(pinchScale)
         .gesture(tapGesture)
         .simultaneousGesture(dragGesture)
@@ -130,10 +97,6 @@ struct AgentLiveStageDockTile: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Tap to expand. Pinch out to maximize.")
         .accessibilityAddTraits(.isButton)
-    }
-
-    private var isCurrentlyExecuting: Bool {
-        state.actionTimeline.last?.status == .executing
     }
 
     private var accessibilityLabel: String {
@@ -171,16 +134,14 @@ struct AgentLiveStageDockTile: View {
                 onPanic()
             } label: {
                 Image(systemName: "exclamationmark.octagon.fill")
-                    .font(MobileScaledFont.system(size: 12, weight: .bold))
+                    .font(MobileScaledFont.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
-                    .padding(5)
-                    .background(
-                        Circle()
-                            .fill(MobileTheme.error)
-                    )
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(MobileTheme.error))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Panic halt the agent")
+            .accessibilityIdentifier("watch.halt")
         }
     }
 

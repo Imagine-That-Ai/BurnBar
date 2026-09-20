@@ -12,6 +12,8 @@ import { valueBucket } from "./shared.mjs";
  * See: https://blog.google/feed/new-antigravity-rate-limits-pro-ultra-subsribers/
  */
 const MODEL_TIERS = [
+  { name: "Gemini 3.8 Flash (High)", windowCap: 600 },
+  { name: "Gemini 3.8 Flash (Medium)", windowCap: 900 },
   { name: "Gemini 3.5 Flash (High)", windowCap: 600 },
   { name: "Gemini 3.5 Flash (Medium)", windowCap: 900 },
   { name: "Gemini 3.1 Pro (High)", windowCap: 150 },
@@ -21,7 +23,7 @@ const MODEL_TIERS = [
   { name: "GPT-OSS 120B (Medium)", windowCap: 240 },
 ];
 
-const DEFAULT_MODEL = "Claude Opus 4.6 (Thinking)";
+const DEFAULT_MODEL = "Gemini 3.8 Flash (High)";
 
 /** 5-hour quota window in milliseconds. */
 const QUOTA_WINDOW_MS = 5 * 60 * 60 * 1000;

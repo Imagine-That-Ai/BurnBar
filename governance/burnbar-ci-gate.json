@@ -16,6 +16,7 @@
     "AGPL compliance",
     "Analyze (javascript-typescript)",
     "Analyze (python)",
+    "App build + test (AgentLens)",
     "Android PR Gate",
     "Android ktlint",
     "Automated Code Review",

@@ -44,6 +44,9 @@ final class DirectDownloadReleaseMetadataTests: XCTestCase {
     func testEqualNumericBuildIsNotNewerEvenWhenFeedVersionLooksNewer() {
         XCTAssertFalse(makeRelease(version: "1.10.0", build: "200").isNewer(thanBuild: "200"))
         XCTAssertFalse(makeRelease(version: "1.9.0", build: "200").isNewer(thanBuild: "200"))
+        // Live 2026-08-30 feed: tag 1.0.40+repair.36 / build 82 vs installed
+        // Apple marketing 1.0.40 / build 82. Offering this pair downloads a
+        // ~470MB DMG and then refuses the swap.
         XCTAssertFalse(
             makeRelease(version: "1.0.40+repair.36", build: "82").isNewer(thanBuild: "82")
         )

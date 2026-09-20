@@ -93,26 +93,33 @@ public struct IrohPairingPublisher: Sendable {
         uid: String,
         connectionId: String,
         publicKey: Data,
-        now: Date = Date()
+        now: Date = Date(),
+        remoteSessionLive: Bool = false,
+        replayGuard: IrohPairingReplayGuard = IrohPairingReplayGuardShared.session
     ) async throws -> IrohDialTarget {
         guard let record = try await directory.fetch(uid: uid, connectionId: connectionId) else {
             throw IrohPairingDirectoryError.recordNotFound
         }
-        try IrohPairingSignature.verify(record, publicKey: publicKey, now: now)
-        do {
-            try await IrohPairingReplayGuardShared.session.consume(record: record, now: now)
-        } catch IrohPairingError.replayed {
-            // Re-dials legitimately re-read the SAME record: the Mac only
-            // republishes every ~60s while a reconnecting client retries every
-            // few seconds, so strict consume-once semantics meant at most one
-            // successful dial per republish window and an endless
-            // "Reconnecting" storm in between (observed live 2026-07-03).
-            // Signature and freshness were re-verified above on this exact
-            // fetch, and the pairing doc is server-write-only, so accepting a
-            // record WE already consumed within its freshness window does not
-            // weaken the anti-replay property the guard exists for (an
-            // attacker substituting a stale snapshot still fails `verify`).
-        }
+        // Live-session 30-minute bound is Mac-asserted in effect: it applies
+        // only after this process already completed an idle-bound (3 min)
+        // first dial of the same signature. The phone cannot widen freshness
+        // on a record it has never freshly verified. Same-process reconnects
+        // still survive a stalled Mac republish (the 2026-07-03 storm).
+        let alreadyAccepted = await replayGuard.hasConsumedInThisSession(record)
+        let maximumAge = IrohPairingFreshness.maximumAge(
+            remoteSessionLive: remoteSessionLive && alreadyAccepted
+        )
+        try IrohPairingSignature.verify(
+            record,
+            publicKey: publicKey,
+            now: now,
+            maximumAge: maximumAge
+        )
+        try await replayGuard.consume(
+            record: record,
+            now: now,
+            maximumAge: maximumAge
+        )
         return record.dialTarget
     }
 }

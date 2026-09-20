@@ -28,7 +28,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { type Firestore } from "firebase-admin/firestore";
+import { type DocumentData, type Firestore } from "firebase-admin/firestore";
 import type { UsageEventDoc } from "./types.js";
 import { isRecord, parseRollupJobDoc, recordOrUndefined } from "./guards.js";
 import { logInfo } from "./logging.js";
@@ -152,12 +152,24 @@ export function pendingCounterDeltaDocID(enqueuedAt: string, delta?: PendingCoun
   return `v1_${candidateKey}_${semanticMillis}_${transitionPhase}_${enqueuedAt}_${sequence}_${randomUUID()}`;
 }
 
+/** Doc handle the enqueue writes to. */
+interface PendingDeltaDocRef {
+  set(data: DocumentData, options?: { merge?: boolean }): Promise<unknown>;
+}
+
+/** Minimal Firestore surface enqueueUsageCounterDelta exercises: one set on
+ * a per-event doc. Real Firestore satisfies this structurally, so tests
+ * supply fakes typed against it without any assertion casts. */
+export interface PendingDeltaStore {
+  collection(path: string): { doc(id: string): PendingDeltaDocRef };
+}
+
 /**
  * Trigger-side enqueue: exactly one set on a per-event doc, zero shared
  * locks. Returns false when the write carried nothing countable.
  */
 export async function enqueueUsageCounterDelta(
-  db: Firestore,
+  db: PendingDeltaStore,
   uid: string,
   usageDoc: string,
   before: UsageEventDoc | undefined,

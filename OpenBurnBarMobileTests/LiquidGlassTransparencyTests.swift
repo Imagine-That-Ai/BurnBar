@@ -1,5 +1,6 @@
 import SwiftUI
 import XCTest
+import OpenBurnBarUI
 @testable import OpenBurnBarMobile
 
 /// Covers the `LiquidGlassTransparency` preference mapping that every glass
@@ -119,7 +120,11 @@ final class LiquidGlassTransparencyTests: XCTestCase {
             Glass.regular.tint(.red).interactive()
         )
         XCTAssertEqual(
-            LiquidGlassStyle.regular.tint(.red).interactive().resolvedGlass(at: 1),
+            LiquidGlassStyle.regular.tint(.red).interactive().resolvedGlass(at: 1, overMediaRichContent: false),
+            Glass.regular.tint(.red).interactive()
+        )
+        XCTAssertEqual(
+            LiquidGlassStyle.regular.tint(.red).interactive().resolvedGlass(at: 1, overMediaRichContent: true),
             Glass.clear.tint(.red).interactive()
         )
     }

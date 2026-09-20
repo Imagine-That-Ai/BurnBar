@@ -18,47 +18,51 @@ extension MercuryLiveSheet {
 
     @ViewBuilder
     var backgroundView: some View {
-        switch personalization.background {
-        case .wallpaper:
-            if let backgroundImage, personalization.mimicLoginBackground {
-                Image(uiImage: backgroundImage)
-                    .resizable()
-                    .scaledToFill()
-                    .blur(radius: 30, opaque: true)
-                    .overlay(Color.black.opacity(0.3))
-            } else {
+        if preferHonestBackground {
+            Color.black.opacity(0.92)
+        } else {
+            switch personalization.background {
+            case .wallpaper:
+                if let backgroundImage, personalization.mimicLoginBackground {
+                    Image(uiImage: backgroundImage)
+                        .resizable()
+                        .scaledToFill()
+                        .blur(radius: 30, opaque: true)
+                        .overlay(Color.black.opacity(0.3))
+                } else {
+                    auroraBackground
+                }
+            case .aurora:
                 auroraBackground
-            }
-        case .aurora:
-            auroraBackground
-        case .solid:
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.07, green: 0.07, blue: 0.09),
-                        Color(red: 0.03, green: 0.03, blue: 0.04)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
+            case .solid:
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.07, green: 0.07, blue: 0.09),
+                            Color(red: 0.03, green: 0.03, blue: 0.04)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    RadialGradient(
+                        colors: [accent.opacity(0.18), Color.clear],
+                        center: .top,
+                        startRadius: 0,
+                        endRadius: 500
+                    )
+                }
+            case .website:
+                WebsiteBackgroundView(
+                    accent: accent,
+                    colorDriver: dashboardStore.swarmColorDriver,
+                    visibility: backgroundVisibility
                 )
-                RadialGradient(
-                    colors: [accent.opacity(0.18), Color.clear],
-                    center: .top,
-                    startRadius: 0,
-                    endRadius: 500
+            case .constellation:
+                ConstellationBackgroundView(
+                    accent: accent,
+                    visibility: backgroundVisibility
                 )
             }
-        case .website:
-            WebsiteBackgroundView(
-                accent: accent,
-                colorDriver: dashboardStore.swarmColorDriver,
-                visibility: backgroundVisibility
-            )
-        case .constellation:
-            ConstellationBackgroundView(
-                accent: accent,
-                visibility: backgroundVisibility
-            )
         }
     }
 

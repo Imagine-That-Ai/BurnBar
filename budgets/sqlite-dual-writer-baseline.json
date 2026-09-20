@@ -1,0 +1,15 @@
+{
+  "dualWriterTables": [
+    "agent_memories",
+    "chat_messages",
+    "chat_threads",
+    "memory_audit",
+    "project_memory_snapshots",
+    "search_chunks",
+    "search_chunks_fts",
+    "search_documents",
+    "switcher_active_profile",
+    "vector_index_snapshots"
+  ],
+  "note": "Tables that both AgentLens/OpenBurnBarData and the daemon INSERT INTO. Shrink-only; new dual-writers are forbidden. Assign a writer in ADR-005 before adding INSERT."
+}

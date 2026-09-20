@@ -227,7 +227,7 @@ Full inventory (`grep -rn 'keyboardShortcut' AgentLens/ --include='*.swift'`, 60
 | ⌘1–⌘n, ⌘0 | `MacAgentInsightsWorkspace.swift:254,262` | Out of scope (different route), but note it in the QA doc. |
 | ⌘K | `DashboardView.swift:705` **and** `BurnBarTopRail.swift:491` | **Double-bound today.** PR 1 removes the `BurnBarTopRail` registration and leaves `DashboardView` as the single owner. **The roster does not take ⌘K.** |
 | ⌘L | `DashboardQuickSwitchView.swift:879` **and** `:907` | Also double-bound. Flagged, not fixed here. |
-| ⌘⇧M | `MissionFAB.swift:55` | **Taken.** The winning proposal wanted ⌘⇧M for models; it is unavailable. |
+| ⌘⇧M | none — `MissionFAB.swift` was removed | **Free.** |
 | ⌘⇧S | `DashboardQuickSwitchView.swift:825` | Taken. |
 | ⌘⇧D/T/[/]/←/→/↩/U, ⌘D, ⌘T, ⌘W | `PaneWorkspaceView.swift:50-71` | Unchanged. |
 | ⌘N | `DashboardChatWorkspaceView.swift:187`, `MissionsLaneView.swift:166`, `AccountSwitcherSettingsView+Rendering.swift:649` | Triple-bound. Flagged, not fixed here. |
@@ -563,7 +563,7 @@ Required for the transcript to survive the multi-agent threads PR 2 makes normal
 | Winner said | This spec says | Why |
 |---|---|---|
 | ⌘K opens the roster | **⌘⇧A** opens it; ⌘K keeps the Command Deck and its duplicate registration is deleted | ⌘K is already double-bound (`DashboardView.swift:705`, `BurnBarTopRail.swift:491`); adding a third scope-dependent owner would make the keycap printed on the Sigil teach a shortcut that does not fire deterministically |
-| ⌘⇧M opens models | Model scope is `⌘⇧A` then `/`, or a click | ⌘⇧M is taken by `MissionFAB.swift:55` |
+| ⌘⇧M opens models | Model scope is `⌘⇧A` then `/`, or a click | ⌘⇧M was freed when `MissionFAB.swift` was removed; the spec keeps the roster-scoped model picker anyway |
 | ⌃1–9 selects agents | **⌘⌥1–9** | ⌃-digit is Mission Control's "Switch to Desktop N"; ⌘⇧3/4/5/6 are system screenshots; ⌥-digit eats composer characters |
 | `sigilTint` drives the assistant bubble stroke | Containment law: identity surfaces only | Neon third-party hexes on the most-repeated object, and — before PR 3 — a rim that retroactively lies about who answered |
 | `chatAssistantModelKey` fix in PR 1, migration in PR 2 | Both in **PR 3**, together | Otherwise historical turns in a mixed thread render the *current* agent's model logo: honest silence becomes confident misattribution |

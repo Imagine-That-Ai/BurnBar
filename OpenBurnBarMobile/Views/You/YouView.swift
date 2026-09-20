@@ -3,8 +3,9 @@ import OpenBurnBarCore
 
 // MARK: - You View
 //
-// Account hub. Combines IdentityHero, sync diagnostics card, devices row,
-// providers shortcut, settings shortcut, and a destructive sign-out button.
+// Account hub. An inset-grouped Settings list: identity row, Mac keep-awake,
+// cloud + sync rows, devices, providers, settings, the destinations that left
+// the compact tray, and a destructive sign-out button.
 
 struct YouView: View {
     @Bindable var authStore: AuthStore
@@ -15,6 +16,7 @@ struct YouView: View {
     @State private var showCloudStore = false
     @State private var showSignIn = false
     @State private var unlockFeature: GatedFeaturePresentation?
+    @ObservedObject private var hostReachability = HostReachabilityClient.shared
 
     @Environment(\.cloudSubscriptionStore) private var cloudStore
 
@@ -22,68 +24,66 @@ struct YouView: View {
     private var tier: CloudTier { cloudStore?.cloudTier ?? .none }
 
     var body: some View {
-        ZStack {
-            AuroraBackdrop()
-            ScrollView {
-                VStack(spacing: MobileTheme.Spacing.lg) {
-                    IdentityHero(
-                        displayName: authStore.currentIdentity?.displayName ?? authStore.currentIdentity?.email ?? account.user?.displayName ?? account.user?.email ?? "Guest",
-                        email: authStore.currentIdentity?.email ?? account.user?.email,
-                        photoURL: authStore.currentIdentity?.photoURL ?? account.user?.photoURL,
-                        syncHealth: syncStore.health,
-                        syncStatusLabel: syncStore.statusLabel(),
-                        connectionsCount: connectedProviderCount
-                    )
-                    .staggeredEntrance(delay: 0.0)
-
-                    cloudMembershipRow
-                        .staggeredEntrance(delay: 0.03)
-
-                    storeAndTopUpsRow
-                        .staggeredEntrance(delay: 0.04)
-
-                    syncDiagnosticsCard
-                        .staggeredEntrance(delay: 0.06)
-
-                    NavigationLink(value: YouRoute.devices) {
-                        ConnectedDevicesRow(devices: devicesStore.devices)
+        List {
+            Section {
+                HStack(spacing: 12) {
+                    youQuietAvatar
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(authStore.currentIdentity?.displayName ?? authStore.currentIdentity?.email ?? account.user?.displayName ?? account.user?.email ?? "Guest")
+                            .font(.headline)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        if let email = authStore.currentIdentity?.email ?? account.user?.email {
+                            Text(email)
+                                .font(.footnote)
+                                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .staggeredEntrance(delay: 0.10)
-
-                    providerConnectionsRow
-                        .staggeredEntrance(delay: 0.15)
-
-                    computerUseRow
-                        .staggeredEntrance(delay: 0.18)
-
-                    dataVaultRow
-                        .staggeredEntrance(delay: 0.20)
-
-                    settingsRow
-                        .staggeredEntrance(delay: 0.22)
-
-                    accountActionButton
-                        .padding(.top, MobileTheme.Spacing.md)
-                        .staggeredEntrance(delay: 0.27)
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                .padding(.vertical, MobileTheme.Spacing.md)
-                .padding(.bottom, MobileTheme.Spacing.xxxl)
+                .accessibilityIdentifier("you.identity")
             }
-            .refreshable {
-                HapticBus.refreshStarted()
-                async let s: Void = syncStore.refresh()
-                async let a: Void = account.fetchConnections()
-                async let d: Void = devicesStore.load()
-                _ = await (s, a, d)
-                playCloudSyncRefreshCompletionHaptic(for: syncStore.health)
+
+            Section("Mac") {
+                KeepAwakeHostCard(client: hostReachability)
+                askToMirrorRow
             }
+
+            Section("Cloud") {
+                cloudMembershipRow
+                storeAndTopUpsRow
+                syncDiagnosticsCard
+            }
+
+            Section {
+                NavigationLink(value: YouRoute.devices) {
+                    ConnectedDevicesRow(devices: devicesStore.devices)
+                }
+                providerConnectionsRow
+                computerUseRow
+                dataVaultRow
+                settingsRow
+            }
+
+            Section("More") {
+                overflowDestinations
+            }
+
+            Section {
+                accountActionButton
+            }
+        }
+        .listStyle(.insetGrouped)
+        .refreshable {
+            HapticBus.refreshStarted()
+            async let s: Void = syncStore.refresh()
+            async let a: Void = account.fetchConnections()
+            async let d: Void = devicesStore.load()
+            _ = await (s, a, d)
+            playCloudSyncRefreshCompletionHaptic(for: syncStore.health)
         }
         .navigationTitle("You")
         .accessibilityIdentifier("screen.you")
         .navigationBarTitleDisplayMode(.large)
-        .toolbarBackground(.hidden, for: .navigationBar)
         .task {
             await syncStore.refresh()
             await account.fetchConnections()
@@ -127,23 +127,34 @@ struct YouView: View {
 
     @ViewBuilder
     private var cloudMembershipRow: some View {
-        if let cloudStore, cloudStore.isActive {
-            CloudMemberCrestRow(
-                tier: tier,
-                purchaseDate: cloudStore.purchaseDate,
-                expirationDate: cloudStore.expirationDate,
-                onTap: { showCloudStore = true }
+        Button {
+            showCloudStore = true
+        } label: {
+            YouSettingsLabel(
+                imageName: "SettingsIconCloud",
+                title: cloudStore?.isActive == true ? "Cloud Member" : "OpenBurnBar Cloud",
+                subtitle: cloudStore?.isActive == true
+                    ? "Manage membership"
+                    : "Hosted refresh, backup, Hermes anywhere"
             )
-        } else {
-            MembershipBand(
-                title: "OpenBurnBar Cloud",
-                detail: "Your agents, unbound — hosted refresh, backup, Hermes anywhere.",
-                variant: .upsell,
-                icon: "sparkle",
-                ctaLabel: "BECOME A MEMBER"
-            ) {
-                showCloudStore = true
+        }
+    }
+
+    @ViewBuilder
+    private var youQuietAvatar: some View {
+        let url = authStore.currentIdentity?.photoURL ?? account.user?.photoURL
+        if let url {
+            AsyncImage(url: url) { image in
+                image.resizable().scaledToFill()
+            } placeholder: {
+                Circle().fill(Color(.tertiarySystemFill))
             }
+            .frame(width: 44, height: 44)
+            .clipShape(Circle())
+        } else {
+            Image(systemName: "person.crop.circle.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(MobileTheme.Colors.textMuted)
         }
     }
 
@@ -152,40 +163,12 @@ struct YouView: View {
             HapticBus.primaryAction()
             showCloudStore = true
         } label: {
-            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
-                HStack(spacing: 12) {
-                    YouRowIcon(imageName: "SettingsIconStore")
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Store & Top-ups")
-                            .font(MobileTheme.Typography.headline)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text(cloudStore?.isActive == true ? "Manage Cloud, Cloud Pro, and add-ons" : "Buy Cloud, Cloud Pro, and add-ons")
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                            .lineLimit(2)
-                    }
-
-                    Spacer()
-
-                    Text("Open")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(LinearGradient(
-                                    colors: [MobileTheme.blaze, MobileTheme.ember],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ))
-                        )
-                }
-                .contentShape(Rectangle())
-            }
+            YouSettingsLabel(
+                imageName: "SettingsIconStore",
+                title: "Store & Top-ups",
+                subtitle: cloudStore?.isActive == true ? "Manage Cloud, Cloud Pro, and add-ons" : "Buy Cloud, Cloud Pro, and add-ons"
+            )
         }
-        .buttonStyle(.plain)
         .accessibilityIdentifier("you.storeAndTopUps")
         .accessibilityLabel("Store and Top-ups")
         .accessibilityHint("Opens OpenBurnBar Cloud purchases and top-ups")
@@ -194,48 +177,31 @@ struct YouView: View {
     // MARK: - Sync Card
 
     private var syncDiagnosticsCard: some View {
-        AuroraGlassCard(variant: syncStore.health.cardVariant) {
-            HStack(spacing: 12) {
-                NavigationLink(value: YouRoute.sync) {
-                    HStack(spacing: 12) {
-                        YouRowIcon(imageName: "SettingsIconCloud")
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Cloud sync")
-                                .font(MobileTheme.Typography.headline)
-                                .foregroundStyle(MobileTheme.Colors.textPrimary)
-                            Text(syncStore.statusLabel())
-                                .font(MobileTheme.Typography.tiny)
-                                .foregroundStyle(MobileTheme.Colors.textSecondary)
-                            if let lastSync = syncStore.lastPublishedAt, syncStore.health != .macNotSyncing {
-                                Text("Last write \(lastSync, style: .relative) ago")
-                                    .font(MobileTheme.Typography.tiny)
-                                    .foregroundStyle(MobileTheme.Colors.textMuted)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityHint("Opens cloud sync details")
-
-                Button {
-                    Task {
-                        HapticBus.refreshStarted()
-                        await syncStore.refresh()
-                        playCloudSyncRefreshCompletionHaptic(for: syncStore.health)
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundStyle(MobileTheme.ember)
-                        .symbolEffect(.bounce, value: syncStore.lastReadAt ?? Date())
-                }
-                .buttonStyle(.plain)
-                .disabled(syncStore.isLoading)
-                .accessibilityLabel("Refresh cloud sync")
+        HStack(spacing: 12) {
+            NavigationLink(value: YouRoute.sync) {
+                YouSettingsLabel(
+                    imageName: "SettingsIconCloud",
+                    title: "Cloud sync",
+                    subtitle: syncStore.statusLabel()
+                )
             }
+            .accessibilityHint("Opens cloud sync details")
+
+            Button {
+                Task {
+                    HapticBus.refreshStarted()
+                    await syncStore.refresh()
+                    playCloudSyncRefreshCompletionHaptic(for: syncStore.health)
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .symbolEffect(.bounce, value: syncStore.lastReadAt ?? Date())
+            }
+            .buttonStyle(.borderless)
+            .disabled(syncStore.isLoading)
+            .accessibilityLabel("Refresh cloud sync")
         }
     }
 
@@ -243,27 +209,15 @@ struct YouView: View {
 
     private var providerConnectionsRow: some View {
         NavigationLink(value: YouRoute.providers) {
-            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
-                HStack(spacing: 12) {
-                    YouRowIcon(imageName: "SettingsIconAgent")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Provider connections")
-                            .font(MobileTheme.Typography.headline)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text("\(connectedProviderCount) connected")
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                    }
-                    Spacer()
-                    overlappingProviders
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-                .contentShape(Rectangle())
+            HStack(spacing: 12) {
+                YouSettingsLabel(
+                    imageName: "SettingsIconAgent",
+                    title: "Provider connections",
+                    subtitle: "\(connectedProviderCount) connected"
+                )
+                overlappingProviders
             }
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Agent Control (pro-gated)
@@ -272,18 +226,34 @@ struct YouView: View {
     // user isn't on Cloud Pro the row wears a `TierLockBadge` and its tap opens
     // the unlock sheet instead of navigating into the live agent screen.
 
+    private var askToMirrorRow: some View {
+        Button {
+            HermesSquareAgentsColumnRouting.AskToMirrorPending.stash()
+            NotificationCenter.default.post(name: IPadAwayDeskNotifications.askToMirror, object: nil)
+            NotificationCenter.default.post(name: .init("ShowAssistantsTab"), object: nil)
+        } label: {
+            YouSettingsLabel(
+                systemImage: "rectangle.dashed.badge.record",
+                systemTint: MobileTheme.Colors.textSecondary,
+                title: "Ask to Mirror",
+                subtitle: "See your Mac screen from this phone"
+            )
+        }
+        .accessibilityIdentifier("you.askToMirror")
+        .accessibilityHint("Opens Agents and asks the Mac to share its screen")
+    }
+
     @ViewBuilder
     private var computerUseRow: some View {
         let chrome = gatedRowChrome(
             icon: "cursorarrow.rays",
             iconTint: .orange,
             title: "Agent Control",
-            subtitle: "Watch, approve, take over, or halt your Mac agent",
+            subtitle: "Watch, approve, halt — or Ask to Mirror from Agents",
             imageName: "SettingsIconSettingsB"
         )
         if tier.satisfies(.pro) {
             NavigationLink(value: YouRoute.computerUse) { chrome }
-                .buttonStyle(.plain)
         } else {
             Button {
                 Haptics.light()
@@ -291,7 +261,6 @@ struct YouView: View {
             } label: {
                 chrome.tierLockBadge(.agentControl, tier: tier)
             }
-            .buttonStyle(.plain)
             .accessibilityHint("Available on Cloud Pro")
         }
     }
@@ -305,35 +274,13 @@ struct YouView: View {
         subtitle: String,
         imageName: String? = nil
     ) -> some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: 16) {
-            HStack(spacing: 12) {
-                if let imageName {
-                    YouRowIcon(imageName: imageName)
-                } else {
-                    Image(systemName: icon)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(iconTint)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(iconTint.opacity(0.16))
-                        )
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(MobileTheme.Typography.headline)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text(subtitle)
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
-            }
-            .contentShape(Rectangle())
-        }
+        YouSettingsLabel(
+            imageName: imageName,
+            systemImage: icon,
+            systemTint: iconTint,
+            title: title,
+            subtitle: subtitle
+        )
     }
 
     /// Distinct providers that have at least one active account or legacy
@@ -381,27 +328,70 @@ struct YouView: View {
 
     private var settingsRow: some View {
         NavigationLink(value: YouRoute.settings) {
-            AuroraGlassCard(variant: .standard, cornerRadius: 16) {
-                HStack(spacing: 12) {
-                    YouRowIcon(imageName: "SettingsIconSettingsA")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Settings")
-                            .font(MobileTheme.Typography.headline)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text("Theme · Budget · Notifications · About")
-                            .font(MobileTheme.Typography.tiny)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-                .contentShape(Rectangle())
+            YouSettingsLabel(
+                imageName: "SettingsIconSettingsA",
+                title: "Settings",
+                subtitle: "Theme · Budget · Notifications · About"
+            )
+        }
+        .accessibilityIdentifier("you.settingsRow")
+    }
+
+    /// Destinations that left the compact tray. Insights deep links land here
+    /// as a reachable route; Pulse, Streams, and Recap stay one tap away.
+    private var overflowDestinations: some View {
+        Group {
+            overflowRow(
+                title: "Insights",
+                subtitle: "Agent patterns, budgets, monthly recap",
+                icon: "sparkles.tv.fill",
+                identifier: "you.insightsRow"
+            ) {
+                InsightsDeepLink.open()
+            }
+            overflowRow(
+                title: "Pulse",
+                subtitle: "Live spend and forecast",
+                icon: "waveform.path.ecg",
+                identifier: "you.pulseRow"
+            ) {
+                NotificationCenter.default.post(name: .init("NavigateToDashboard"), object: nil)
+            }
+            overflowRow(
+                title: "Streams",
+                subtitle: "Sessions, projects, activity",
+                icon: "list.bullet.rectangle.portrait.fill",
+                identifier: "you.streamsRow"
+            ) {
+                NotificationCenter.default.post(name: .init("ShowStreamsTab"), object: nil)
+            }
+            overflowRow(
+                title: "Recap",
+                subtitle: "Your last completed month",
+                icon: "calendar.badge.clock",
+                identifier: "you.recapRow"
+            ) {
+                NotificationCenter.default.post(name: .init("ShowRecap"), object: nil)
             }
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("you.settingsRow")
+    }
+
+    private func overflowRow(
+        title: String,
+        subtitle: String,
+        icon: String,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            YouSettingsLabel(
+                systemImage: icon,
+                systemTint: MobileTheme.Colors.textSecondary,
+                title: title,
+                subtitle: subtitle
+            )
+        }
+        .accessibilityIdentifier(identifier)
     }
 
     // MARK: - Data Vault (pro-gated)
@@ -421,7 +411,6 @@ struct YouView: View {
         )
         if tier.satisfies(.pro) {
             NavigationLink(value: YouRoute.dataVault) { chrome }
-                .buttonStyle(.plain)
         } else {
             Button {
                 Haptics.light()
@@ -429,7 +418,6 @@ struct YouView: View {
             } label: {
                 chrome.tierLockBadge(.dataVault, tier: tier)
             }
-            .buttonStyle(.plain)
             .accessibilityHint("Available on Cloud Pro")
         }
     }
@@ -439,17 +427,15 @@ struct YouView: View {
     private var accountActionButton: some View {
         Group {
             if authStore.state.isSignedIn {
-                Button("Sign out") {
+                Button("Sign out", role: .destructive) {
                     showSignOutConfirm = true
                 }
-                .buttonStyle(.aurora(.destructive, fullWidth: true))
             } else {
                 Button {
                     showSignIn = true
                 } label: {
                     Label("Sign in for Cloud", systemImage: "person.crop.circle.badge.checkmark")
                 }
-                .buttonStyle(.aurora(.primary, fullWidth: true))
                 .accessibilityIdentifier("you.signIn")
             }
         }
@@ -469,8 +455,40 @@ struct YouRowIcon: View {
         Image(imageName)
             .resizable()
             .scaledToFit()
-            .frame(width: 44, height: 44)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .frame(width: 29, height: 29)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+}
+
+/// Settings-row label: SF/asset icon + title + subtitle. List supplies the
+/// disclosure chevron. No card chrome.
+private struct YouSettingsLabel: View {
+    var imageName: String?
+    var systemImage: String?
+    var systemTint: Color = MobileTheme.Colors.textSecondary
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if let imageName {
+                YouRowIcon(imageName: imageName)
+            } else if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(systemTint)
+                    .frame(width: 29, height: 29)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(MobileTheme.Typography.body)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                Text(subtitle)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .lineLimit(2)
+            }
+        }
     }
 }
 
@@ -486,224 +504,40 @@ enum YouRoute: Hashable, CaseIterable {
     case memory
 }
 
-// MARK: - Cloud Member Crest Row
-//
-// Pro vocabulary — member certificate row. Replaces the upsell band once a
-// user has an active OpenBurnBar Cloud entitlement. MercuryCrest medallion +
-// "Cloud Member · Since {date}" with foil edge.
-
-private struct CloudMemberCrestRow: View {
-    let tier: CloudTier
-    let purchaseDate: Date?
-    let expirationDate: Date?
-    let onTap: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var ribbonPhase: CGFloat = 0
-    @State private var isPressed = false
-
-    var body: some View {
-        Button {
-            Haptics.light()
-            onTap()
-        } label: {
-            HStack(spacing: MobileTheme.Spacing.lg) {
-                CloudBadge(size: .medium)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(tierPillLabel)
-                            .font(.system(size: 12, weight: .heavy, design: .rounded))
-                            .tracking(1.6)
-                            .foregroundStyle(Color.white)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(
-                                    LinearGradient(
-                                        colors: [MobileTheme.ember, MobileTheme.amber],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                            )
-                        Text(memberStatusLabel)
-                            .font(MobileTheme.Typography.tiny)
-                            .fontWeight(.heavy)
-                            .tracking(1.8)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                    }
-                    Text(headlineLine)
-                        .font(MobileTheme.Typography.display)
-                        .foregroundStyle(MobileTheme.primaryGradient)
-                    Text(metaLine)
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundStyle(MobileTheme.amber)
-            }
-            .padding(.horizontal, MobileTheme.Spacing.lg)
-            .padding(.vertical, MobileTheme.Spacing.lg)
-            .background(membershipBackdrop)
-            .overlay(membershipBorder)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .shadow(color: MobileTheme.ember.opacity(0.40), radius: 22, y: 10)
-            .shadow(color: MobileTheme.amber.opacity(0.20), radius: 30, y: 0)
-            .scaleEffect(isPressed ? 0.985 : 1.0)
-            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in if !isPressed { isPressed = true } }
-                .onEnded { _ in
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) { isPressed = false }
-                }
+/// The destination each `YouRoute` opens. Shared by the iPhone root's
+/// `navigationDestination` and the iPad You canvas so adding a route is one
+/// edit, not two. `onComputerUseAppear` is the iPad's inspector pin.
+@ViewBuilder
+func youRouteView(
+    _ route: YouRoute,
+    authStore: AuthStore,
+    syncStore: CloudSyncHealthStore,
+    devicesStore: DevicesStore,
+    hermesService: HermesService,
+    settingsRouter: SettingsRouter,
+    onComputerUseAppear: @escaping () -> Void = {}
+) -> some View {
+    switch route {
+    case .sync:
+        CloudSyncDetailsView(syncStore: syncStore)
+    case .settings:
+        SettingsHubView(authStore: authStore)
+            .environment(settingsRouter)
+    case .devices:
+        iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
+    case .providers:
+        ProviderConnectionsView(showsDoneButton: false)
+    case .computerUse:
+        ContentUnavailableView(
+            "Watch is open",
+            systemImage: "macbook.and.ipad",
+            description: Text("Approvals and Ask to Mirror stay in the Watch inspector or Watch window.")
         )
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.linear(duration: 18).repeatForever(autoreverses: true)) {
-                ribbonPhase = 1
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("OpenBurnBar Cloud member. \(metaLine).")
-        .accessibilityHint("Opens your Cloud membership")
-    }
-
-    // MARK: - Backdrop
-    //
-    // Multi-stop aurora burst: ember → amber → blaze → a kiss of whimsy
-    // for color contrast. Topped with an animated aurora ribbon along the
-    // upper edge so the card visibly *moves*. Wrapped in ultraThinMaterial
-    // so it lifts off the dark You-tab background without going flat.
-
-    @ViewBuilder
-    private var membershipBackdrop: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(.ultraThinMaterial)
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            MobileTheme.ember.opacity(0.42),
-                            MobileTheme.amber.opacity(0.34),
-                            MobileTheme.blaze.opacity(0.30),
-                            MobileTheme.whimsy.opacity(0.20)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            // Aurora ribbon highlight along the top — drifts horizontally.
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            MobileTheme.amber.opacity(0.0),
-                            MobileTheme.amber.opacity(0.45),
-                            UnifiedDesignSystem.Colors.hermesAureate.opacity(0.35),
-                            MobileTheme.ember.opacity(0.40),
-                            MobileTheme.amber.opacity(0.0)
-                        ],
-                        startPoint: UnitPoint(x: ribbonPhase, y: 0),
-                        endPoint: UnitPoint(x: ribbonPhase + 0.6, y: 0.3)
-                    )
-                )
-                .frame(height: 50)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-            // Soft radial halo around the helmet to anchor the eye.
-            RadialGradient(
-                colors: [
-                    MobileTheme.amber.opacity(0.45),
-                    Color.clear
-                ],
-                center: UnitPoint(x: 0.14, y: 0.5),
-                startRadius: 0,
-                endRadius: 140
-            )
-            .blendMode(.plusLighter)
-        }
-    }
-
-    private var membershipBorder: some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .stroke(
-                LinearGradient(
-                    colors: [
-                        UnifiedDesignSystem.Colors.hermesAureate.opacity(0.95),
-                        MobileTheme.amber.opacity(0.7),
-                        MobileTheme.ember.opacity(0.6),
-                        UnifiedDesignSystem.Colors.hermesAureate.opacity(0.95)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 1.2
-            )
-    }
-
-    // MARK: - Copy
-
-    private var headlineLine: String {
-        switch tier {
-        case .ultra: return "Cloud Ultra"
-        case .pro: return "Cloud Pro"
-        case .cloud: return "Cloud Member"
-        case .none: return "Cloud Member"
-        }
-    }
-
-    private var tierPillLabel: String {
-        switch tier {
-        case .ultra: return "ULTRA"
-        case .pro: return "PRO"
-        case .cloud: return "CLOUD"
-        case .none: return "CLOUD"
-        }
-    }
-
-    private var memberStatusLabel: String {
-        switch tier {
-        case .ultra: return "CLOUD ULTRA"
-        case .pro: return "CLOUD PRO"
-        case .cloud: return "CLOUD MEMBER"
-        case .none: return "CLOUD MEMBER"
-        }
-    }
-
-    /// Human-readable status. Sentinel/far-future expirations show monthly
-    /// recurrence + absolute date; near-term renewals show relative time.
-    private var metaLine: String {
-        if let expiration = expirationDate {
-            let interval = expiration.timeIntervalSinceNow
-            if interval > 0, interval < 90 * 24 * 60 * 60 {
-                let rel = expiration.formatted(.relative(presentation: .named))
-                if let purchaseDate {
-                    let p = purchaseDate.formatted(.dateTime.month(.abbreviated).year())
-                    return "Member since \(p) · renews \(rel)"
-                }
-                return "Active · renews \(rel)"
-            }
-            if let purchaseDate {
-                let p = purchaseDate.formatted(.dateTime.month(.abbreviated).year())
-                return "Member since \(p) · renews monthly"
-            }
-            return "Active · renews monthly"
-        }
-        if let purchaseDate {
-            let p = purchaseDate.formatted(.dateTime.month(.abbreviated).year())
-            return "Member since \(p)"
-        }
-        return "Active"
+        .onAppear(perform: onComputerUseAppear)
+    case .dataVault:
+        DataVaultAdaptiveControlView()
+    case .memory:
+        PensieveMemorySearchView()
     }
 }
 
@@ -713,19 +547,17 @@ struct CloudSyncDetailsView: View {
     @Bindable var syncStore: CloudSyncHealthStore
 
     var body: some View {
-        ZStack {
-            AuroraBackdrop(density: .subtle)
-            ScrollView {
-                VStack(spacing: MobileTheme.Spacing.lg) {
-                    statusCard
-                    timestampsCard
-                    publisherCard
-                }
-                .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                .padding(.vertical, MobileTheme.Spacing.lg)
+        ScrollView {
+            VStack(spacing: MobileTheme.Spacing.lg) {
+                statusCard
+                timestampsCard
+                publisherCard
             }
-            .refreshable { await refresh() }
+            .padding(.horizontal, 20)
+            .padding(.vertical, MobileTheme.Spacing.lg)
         }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .refreshable { await refresh() }
         .navigationTitle("Cloud Sync")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -747,69 +579,63 @@ struct CloudSyncDetailsView: View {
     }
 
     private var statusCard: some View {
-        AuroraGlassCard(variant: syncStore.health.cardVariant) {
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                HStack(spacing: 12) {
-                    Image(systemName: syncStore.health.systemImageName)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(syncStore.health.tint)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(syncStore.health.tint.opacity(0.16)))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(syncStore.statusLabel())
-                            .font(MobileTheme.Typography.headline)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text(syncStore.health.detailText)
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    }
-                    Spacer()
-                    if syncStore.isLoading {
-                        MiningPickLoader(.inline)
-                    }
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            HStack(spacing: 12) {
+                Image(systemName: syncStore.health.systemImageName)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(syncStore.health.tint)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(syncStore.health.tint.opacity(0.16)))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(syncStore.statusLabel())
+                        .font(MobileTheme.Typography.headline)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text(syncStore.health.detailText)
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
                 }
-
-                Button {
-                    Task { await refresh() }
-                } label: {
-                    Label("Refresh now", systemImage: "arrow.clockwise")
-                        .frame(maxWidth: .infinity)
+                Spacer()
+                if syncStore.isLoading {
+                    MiningPickLoader(.inline)
                 }
-                .buttonStyle(.aurora(.secondary, fullWidth: true))
-                .disabled(syncStore.isLoading)
             }
+
+            Button {
+                Task { await refresh() }
+            } label: {
+                Label("Refresh now", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(syncStore.isLoading)
         }
     }
 
     private var timestampsCard: some View {
-        AuroraGlassCard(variant: .standard) {
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                Text("Activity")
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                detailRow("Last Mac write", value: formatted(syncStore.lastPublishedAt))
-                detailRow("Last mobile read", value: formatted(syncStore.lastReadAt))
-            }
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            Text("Activity")
+                .font(MobileTheme.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+            detailRow("Last Mac write", value: formatted(syncStore.lastPublishedAt))
+            detailRow("Last mobile read", value: formatted(syncStore.lastReadAt))
         }
     }
 
     private var publisherCard: some View {
-        AuroraGlassCard(variant: .standard) {
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                Text("Publishing device")
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                if let publisher = syncStore.publisher {
-                    detailRow("Name", value: publisher.displayName)
-                    detailRow("Platform", value: publisher.platform)
-                    detailRow("Last seen", value: formatted(publisher.lastSeen))
-                } else {
-                    Text("No publishing device has written sync data yet.")
-                        .font(MobileTheme.Typography.body)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            Text("Publishing device")
+                .font(MobileTheme.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+            if let publisher = syncStore.publisher {
+                detailRow("Name", value: publisher.displayName)
+                detailRow("Platform", value: publisher.platform)
+                detailRow("Last seen", value: formatted(publisher.lastSeen))
+            } else {
+                Text("No publishing device has written sync data yet.")
+                    .font(MobileTheme.Typography.body)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
             }
         }
     }
@@ -843,10 +669,6 @@ struct CloudSyncDetailsView: View {
 // MARK: - Cloud Sync Presentation
 
 extension CloudSyncHealth {
-    var cardVariant: AuroraGlassVariant {
-        isHealthy ? .success : (isDegraded ? .urgent : .standard)
-    }
-
     var systemImageName: String {
         switch self {
         case .healthy: return "checkmark.icloud.fill"

@@ -84,6 +84,41 @@ final class IrohRelayPairingSignatureTests: XCTestCase {
         }
     }
 
+    func testIdleBoundStaysThreeMinutesWhileLiveSessionExtends() throws {
+        let keypair = IrohPairingKeypair()
+        let signedAt = Date(timeIntervalSince1970: 1_714_000_000)
+        let record = try IrohPairingSignature.sign(
+            uid: "u-1",
+            connectionId: "relay-mac",
+            nodeId: "abc123",
+            publishedAtMillis: Int64(signedAt.timeIntervalSince1970 * 1000),
+            with: keypair.signingKey
+        )
+        let justPastIdle = signedAt.addingTimeInterval(IrohPairingFreshness.maximumAgeSeconds + 1)
+        XCTAssertThrowsError(
+            try IrohPairingSignature.verify(record, publicKey: keypair.publicKeyRaw, now: justPastIdle)
+        ) { error in
+            XCTAssertEqual(error as? IrohPairingError, .expired)
+        }
+        try IrohPairingSignature.verify(
+            record,
+            publicKey: keypair.publicKeyRaw,
+            now: justPastIdle,
+            maximumAge: IrohPairingFreshness.maximumAge(remoteSessionLive: true)
+        )
+        let pastLive = signedAt.addingTimeInterval(IrohPairingFreshness.liveSessionMaximumAgeSeconds + 1)
+        XCTAssertThrowsError(
+            try IrohPairingSignature.verify(
+                record,
+                publicKey: keypair.publicKeyRaw,
+                now: pastLive,
+                maximumAge: IrohPairingFreshness.maximumAge(remoteSessionLive: true)
+            )
+        ) { error in
+            XCTAssertEqual(error as? IrohPairingError, .expired)
+        }
+    }
+
     func testWrongPublicKeyRejected() throws {
         let keypair = IrohPairingKeypair()
         let attacker = IrohPairingKeypair()

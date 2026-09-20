@@ -1,5 +1,5 @@
 import { errorMessage, isRecord } from "../guards.js";
-import { logError, logInfo } from "../logging.js";
+import { logError, logInfo, wrapRequestHandler } from "../logging.js";
 /**
  * @fileoverview Apple App Store Server Notifications V2 webhook.
  *
@@ -211,7 +211,7 @@ export const appStoreServerNotificationsV2 = onRequest(
     secrets: APP_STORE_SECRETS,
     ...HOT_PATH_OPTIONS,
   },
-  async (req, res) => {
+  wrapRequestHandler("appStoreServerNotificationsV2", async (req, res) => {
     const rawSignedPayload = extractSignedPayload(req, res);
     if (rawSignedPayload === undefined) {
       return;
@@ -271,5 +271,5 @@ export const appStoreServerNotificationsV2 = onRequest(
         String(notification.payload.subtype ?? ""),
       );
     }
-  },
+  }),
 );

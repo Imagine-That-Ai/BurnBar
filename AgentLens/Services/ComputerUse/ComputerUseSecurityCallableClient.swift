@@ -1178,6 +1178,24 @@ enum ComputerUseSecurityCallableClient {
         return id
     }
 
+    static func createCliAgentMissionGroup(payload: [String: any Sendable], deviceId: String) async throws -> String {
+        let groupId = payload["groupId"] as? String ?? payload["id"] as? String ?? ""
+        let result = try await callHighRiskOwnerAction(
+            "createCliAgentMissionGroup",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_group_create",
+            subjectId: groupId,
+            payload: sendableJSONPayload(payload.merging(["deviceId": deviceId, "groupId": groupId]) { _, new in new })
+        )
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true,
+              let id = dict["groupId"] as? String
+        else {
+            throw ClientError.invalidResponse("Mission group create failed.")
+        }
+        return id
+    }
+
     static func claimCliAgentMission(
         requestId: String,
         deviceId: String,

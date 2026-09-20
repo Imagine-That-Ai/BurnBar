@@ -19,40 +19,74 @@ struct AnalyticsConsentPrompt: View {
     @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 44, weight: .semibold))
-                .foregroundStyle(.tint)
-                .padding(.top, 8)
-                .accessibilityHidden(true)
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 20) {
+                Text(
+                    """
+                    Share privacy-preserving product-usage events to help us improve OpenBurnBar. \
+                    It’s off until you choose, and you can change it anytime in Settings.
 
-            Text("Help improve OpenBurnBar")
-                .font(.title2.bold())
-                .multilineTextAlignment(.center)
+                    We never collect your conversations, prompts, message text, keystrokes, \
+                    API keys, secrets, file paths, or precise location — only which features are \
+                    used, their outcomes, and coarse timing.
+                    """
+                )
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-            Text(
-                """
-                Share privacy-preserving product-usage events to help us improve OpenBurnBar. \
-                It’s off until you choose, and you can change it anytime in Settings.
+                Spacer(minLength: 12)
 
-                We never collect your conversations, prompts, message text, keystrokes, \
-                API keys, secrets, file paths, or precise location — only which features are \
-                used, their outcomes, and coarse timing.
-                """
-            )
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
+                consentActions
+            }
+            .padding(24)
+            .navigationTitle("Help improve OpenBurnBar")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(true) // a decision must be recorded, not swiped away
+    }
 
+    @ViewBuilder
+    private var consentActions: some View {
+        if #available(iOS 26, *) {
+            GlassEffectContainer(spacing: 12) {
+                VStack(spacing: 12) {
+                    Button {
+                        decide(granted: true)
+                    } label: {
+                        Text("Allow analytics")
+                            .font(.body.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(MobileTheme.ember)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("analytics.consent.allow")
+
+                    Button {
+                        decide(granted: false)
+                    } label: {
+                        Text("Not now")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("analytics.consent.decline")
+                }
+            }
+        } else {
             VStack(spacing: 12) {
                 Button {
                     decide(granted: true)
                 } label: {
                     Text("Allow analytics")
+                        .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(MobileTheme.ember)
                 .controlSize(.large)
                 .accessibilityIdentifier("analytics.consent.allow")
 
@@ -66,12 +100,7 @@ struct AnalyticsConsentPrompt: View {
                 .controlSize(.large)
                 .accessibilityIdentifier("analytics.consent.decline")
             }
-            .padding(.top, 4)
         }
-        .padding(24)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
-        .interactiveDismissDisabled(true) // a decision must be recorded, not swiped away
     }
 
     private func decide(granted: Bool) {
@@ -100,7 +129,7 @@ private struct AnalyticsConsentPromptModifier: ViewModifier {
         content
             .onAppear {
                 // Present only when undecided. `hasDecided` is false only for `.unset`.
-                if !consent.hasDecided { isPresented = true }
+                if !consent.hasDecided && !AppStoreScreenshotMode.isEnabled { isPresented = true }
             }
             .sheet(isPresented: $isPresented) {
                 AnalyticsConsentPrompt(isPresented: $isPresented)

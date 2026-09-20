@@ -12,18 +12,17 @@ private let hermesSquareLogger = Logger(subsystem: "com.openburnbar.mobile", cat
 // `HermesSquareFeatureFlags.phaseA` is on. Reads from the unified inbox,
 // pinned grid, federated search, and active mission strip.
 //
-// Layout (compact width):
-//   1. Federated search bar
-//   2. Pinned agent grid (12 slots, Alipay-style)
-//   3. Active missions strip (horizontal scroll of top mission tiles)
-//   4. Thread inbox (sorted by attention + recency)
-//   5. Subscriptions folder (collapsed by default)
-//   6. Discover drawer (swipe up — Phase A: button-trigger)
+// Compact iPhone column (away-from-desk):
+//   1. Runtime rail — every visible agent provider
+//   2. Ask to Mirror + pinned grid (My Mac)
+//   3. Subtitle — current agent + on-device / Mac-relay status
+//   4. Thread list — same ThreadInboxStore identity as Mac
 //
-// The Square reuses the existing per-runtime chat surfaces; tapping a
-// thread routes back into `HermesConversationListView` /
-// `PiConversationListView` / `CLIAgentTranscriptView` so we don't
-// rebuild conversation rendering in Phase A.
+// Overflow (toolbar ···): switch agent, Wand, missions, resume/handoff,
+// grants, rollback, plus search / pinned / wiki / subscriptions / discover /
+// voice. Grokd / Local D box is not listed. Tapping a thread opens the
+// existing Hermes / Pi / CLI chat surfaces — conversation rendering is not
+// rebuilt.
 
 struct HermesSquareRoot: View {
 
@@ -59,11 +58,26 @@ struct HermesSquareRoot: View {
     @AppStorage(ChatTilePreferencesStorage.userDefaultsKey) private var tilePreferencesJSON: String = ""
 
     @State private var navTarget: NavTarget?
+    @AppStorage("assistants.activeRuntime") private var activeRuntimeRaw: String = AssistantRuntimeID.hermes.rawValue
     @State private var isShowingDiscover: Bool = false
     @State private var isShowingSubscriptions: Bool = false
     @State private var isShowingFanOut: Bool = false
     @State private var isShowingVoice: Bool = false
     @State private var isShowingDemoMiniProgram: Bool = false
+    @State private var isShowingSwitcher: Bool = false
+    @State private var isShowingOverflow: Bool = false
+    @State private var isShowingConnections: Bool = false
+    @State private var isShowingPinned: Bool = false
+    @State private var isShowingProjectMemory: Bool = false
+    @State private var isShowingRollback: Bool = false
+    @State private var isSearchExpanded: Bool = false
+    @State private var showElderWandConfigurator: Bool = false
+    @State private var showElderWandPaywall: Bool = false
+    @State private var showCapabilityGrants: Bool = false
+    @State private var resumeSheetSession: CLIAgentSessionRecord?
+    @State private var cliReader = CLIAgentChatReader.shared
+    @ObservedObject private var hostReachability = HostReachabilityClient.shared
+    @Environment(\.cloudSubscriptionStore) private var cloudStore
     @State private var activeGroupObserver = MissionGroupObserver()
     @State private var approvalPolicyStore = ApprovalPolicyStore.shared
     @State private var rollbackService = RollbackService.shared
@@ -99,6 +113,26 @@ struct HermesSquareRoot: View {
         return ordered.isEmpty ? [.hermes] : ordered
     }
 
+    private var selectedRuntime: AssistantRuntimeID {
+        get { AssistantRuntimeID(rawValue: activeRuntimeRaw) ?? .hermes }
+        nonmutating set { activeRuntimeRaw = newValue.rawValue }
+    }
+
+    private var columnThreads: [ThreadInboxItem] {
+        inboxSplit.service.filter { item in
+            guard item.source != .missionGroup else { return false }
+            return HermesSquareThreadRouting.runtime(for: item) == selectedRuntime
+        }
+    }
+
+    private var statusResolver: AssistantStatusResolver {
+        AssistantStatusResolver(hermesService: hermesService, piService: piService)
+    }
+
+    private var modelLens: AssistantModelLens {
+        AssistantModelLens(hermesService: hermesService, piService: piService)
+    }
+
     init(hermesService: HermesService, missionHost: MobileMissionConsoleHost) {
         self.hermesService = hermesService
         self.missionHost = missionHost
@@ -119,36 +153,25 @@ struct HermesSquareRoot: View {
 
     @ViewBuilder
     private var squareBackground: some View {
-        Group {
-            WebsiteBackgroundView(accent: .purple, visibility: squareBackgroundVisibility).ignoresSafeArea()
-        }
-    }
-
-    private var squareBackgroundVisibility: MobileBackgroundVisibility {
-        if isShowingDiscover
-            || isShowingSubscriptions
-            || isShowingFanOut
-            || isShowingVoice
-            || selectedMissionID != nil {
-            return .obscured
-        }
-        return .prominent
+        Color(uiColor: .systemGroupedBackground)
     }
 
     // MARK: Content
 
     private var squareContent: some View {
         ScrollView {
-            VStack(spacing: 18) {
-                federatedSearchBar
+            VStack(spacing: 16) {
+                identityLine
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
 
-                if !query.isEmpty {
+                if isSearchExpanded || !query.isEmpty {
+                    federatedSearchBar
+                        .padding(.horizontal, 16)
                     searchResults
                         .padding(.horizontal, 16)
                 } else {
-                    mainDashboardContent
+                    agentsColumnContent
                 }
             }
             .padding(.bottom, 80)
@@ -156,10 +179,8 @@ struct HermesSquareRoot: View {
     }
 
     @ViewBuilder
-    private var mainDashboardContent: some View {
+    private var agentsColumnContent: some View {
         Group {
-            // Approval inbox — always visible. Pending
-            // approvals stick at the top until handled.
             if !missionHost.snapshot.approvalAsks.isEmpty {
                 ApprovalInboxStrip(
                     asks: missionHost.snapshot.approvalAsks,
@@ -176,8 +197,6 @@ struct HermesSquareRoot: View {
                 .padding(.horizontal, 16)
             }
 
-            // Fan-out group card — when an observer is active,
-            // render the side-by-side child tiles.
             if let group = activeGroupObserver.displayGroup {
                 let tiles = activeGroupObserver.childTiles(
                     fallbackActiveTiles: missionHost.snapshot.activeTiles
@@ -188,35 +207,152 @@ struct HermesSquareRoot: View {
                     onMerge: { action in
                         Task { await activeGroupObserver.applyMerge(action) }
                     },
-                    onOpenChild: { _ in /* drilldown deferred */ }
+                    onOpenChild: { _ in }
                 )
                 .padding(.horizontal, 16)
             }
 
+            compactRuntimeRail
+                .padding(.horizontal, 16)
+
+            askToMirrorRow
+                .padding(.horizontal, 16)
+
             pinnedGridSection
-                .padding(.horizontal, 16)
-
-            projectMemorySection
-                .padding(.horizontal, 16)
-
-            activeMissionsStrip
-                .padding(.leading, 16)
-
-            // Rollback card surfaces for any active session
-            // that has snapshots — gives the user one tap to
-            // revert what an agent just did.
-            rollbackSections
                 .padding(.horizontal, 16)
 
             threadInboxSection
                 .padding(.horizontal, 16)
-
-            subscriptionsSection
-                .padding(.horizontal, 16)
-
-            discoverButton
-                .padding(.horizontal, 16)
         }
+    }
+
+    private var compactRuntimeRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(visibleTiles, id: \.self) { runtime in
+                    let selected = runtime == selectedRuntime
+                    Button {
+                        selectedRuntime = runtime
+                        HapticBus.chipChange()
+                    } label: {
+                        VStack(spacing: 6) {
+                            HarnessModelBadge(
+                                harness: runtime.agentProvider,
+                                model: modelLens.snapshot(for: runtime).provider,
+                                size: 36,
+                                availability: statusResolver.status(for: runtime)
+                            )
+                            Text(runtime.displayName)
+                                .font(.caption2.weight(selected ? .semibold : .regular))
+                                .foregroundStyle(
+                                    selected
+                                        ? MobileTheme.Colors.textPrimary
+                                        : MobileTheme.Colors.textSecondary
+                                )
+                                .lineLimit(1)
+                        }
+                        .frame(width: 68)
+                        .opacity(selected ? 1 : 0.55)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .accessibilityLabel(runtime.displayName)
+                    .accessibilityIdentifier("agents.runtime.\(runtime.rawValue)")
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .accessibilityIdentifier("agents.runtimeRail")
+    }
+
+    private var askToMirrorRow: some View {
+        Button {
+            openAskToMirror()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "rectangle.dashed.badge.record")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Ask to Mirror")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    Text("See your Mac screen from this phone")
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("agents.askToMirror")
+        .accessibilityHint("Opens the Mac screen share")
+    }
+
+    private var identityLine: some View {
+        let runtime = selectedRuntime
+        let status = statusResolver.status(for: runtime)
+        return HStack(alignment: .center, spacing: 8) {
+            Button {
+                isShowingSwitcher = true
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(runtime.displayName)
+                        .font(.subheadline)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    Text(hostLine(for: runtime, status: status))
+                        .font(.caption)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .accessibilityIdentifier("agents.identity.host")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(runtime.displayName). \(hostLine(for: runtime, status: status))")
+            .accessibilityHint("Switch agent")
+
+            ConnectionStatusButton(
+                status: status,
+                endpointLabel: statusResolver.endpointLabel(for: runtime),
+                onTap: { isShowingConnections = true }
+            )
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("agents.identity")
+    }
+
+    private func hostLine(for runtime: AssistantRuntimeID, status: RuntimeStatus) -> String {
+        switch runtime {
+        case .hermes, .pi:
+            switch status {
+            case .online:
+                return "On this iPhone"
+            case .bridged:
+                return "Via Mac relay · \(macReachabilityLabel)"
+            default:
+                return status.label
+            }
+        case .codex, .claude, .openClaw, .droid, .forge, .antigravity, .grok,
+                .cursorAgent, .openClaude, .omp, .junie, .fx:
+            return "Mac relay · \(macReachabilityLabel)"
+        }
+    }
+
+    private var macReachabilityLabel: String {
+        if hostReachability.status.isAwake {
+            return "Mac awake"
+        }
+        return "Mac asleep · last seen \(MissionConsoleFormatting.relativeTime(hostReachability.status.lastSeenAt))"
     }
 
     // MARK: Body
@@ -235,8 +371,8 @@ struct HermesSquareRoot: View {
         }
         .navigationTitle("Agents")
         .accessibilityIdentifier("screen.agents")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar { agentsColumnToolbar }
         .task {
             activeGroupObserver.startLatest()
         }
@@ -244,6 +380,7 @@ struct HermesSquareRoot: View {
             inbox.bind(historyStore: historyStore, missionHost: missionHost)
             await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
             await inbox.refresh()
+            await cliReader.refresh()
             await projectsStore.load()
             await reindexSearch()
             subscriptionTopicStore.bootstrap()
@@ -287,8 +424,8 @@ struct HermesSquareRoot: View {
                 await hermesService.refreshConnections(refreshSelectedConnection: false)
             }
         }
-        .task(id: AssistantPendingThread.shared.hermes) {
-            consumePendingHermesThread()
+        .task(id: AssistantPendingThread.shared.routingToken) {
+            consumePendingThread()
         }
         .onChange(of: inbox.items) { _, _ in
             scheduleSearchReindex()
@@ -307,6 +444,12 @@ struct HermesSquareRoot: View {
             searchReindexTask = nil
             mercuryPeerSource.stop()
         }
+        .onAppear {
+            consumeAskToMirrorIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: IPadAwayDeskNotifications.askToMirror)) { _ in
+            consumeAskToMirrorIfNeeded()
+        }
     }
 
     private var presentedContent: some View {
@@ -320,6 +463,47 @@ struct HermesSquareRoot: View {
         .sheet(isPresented: $isShowingVoice) {
             voiceSheetContent
         }
+        .sheet(isPresented: $isShowingSubscriptions) {
+            HermesSquareSubscriptionsFolder()
+        }
+        .sheet(isPresented: $isShowingSwitcher) {
+            AgentSwitcherSheet(
+                visibleRuntimes: visibleTiles,
+                runtime: selectedRuntimeBinding,
+                hermesService: hermesService,
+                piService: piService,
+                onManageConnections: {
+                    isShowingSwitcher = false
+                    Task { @MainActor in
+                        isShowingConnections = true
+                    }
+                }
+            )
+        }
+        .sheet(isPresented: $isShowingConnections) {
+            AssistantConnectionSheet(
+                hermesService: hermesService,
+                piService: piService,
+                focusedRuntime: selectedRuntime
+            )
+        }
+        .sheet(isPresented: $isShowingOverflow) {
+            overflowSheet
+        }
+        .deskSheet("Pinned agents", isPresented: $isShowingPinned) { pinnedGridSection }
+        .deskSheet("Project memory", isPresented: $isShowingProjectMemory) { projectMemorySection }
+        .deskSheet("Rollback", isPresented: $isShowingRollback) { rollbackSections }
+        .sheet(item: $resumeSheetSession) { session in
+            CLIAgentResumeSheet(session: session)
+        }
+        .sheet(isPresented: $showCapabilityGrants) {
+            AgentPermissionGrantSheet(
+                runtimeID: selectedRuntime,
+                threadID: latestColumnThreadID ?? selectedRuntime.rawValue
+            )
+        }
+        .elderWandConfiguratorSheet(isPresented: $showElderWandConfigurator, service: hermesService)
+        .elderWandPaywallSheet(isPresented: $showElderWandPaywall)
         .sheet(isPresented: Binding(
             get: { selectedMissionID != nil },
             set: { if !$0 { selectedMissionID = nil } }
@@ -563,7 +747,7 @@ struct HermesSquareRoot: View {
                         Text("Add")
                     }
                     .font(.caption.bold())
-                    .foregroundStyle(DesignSystemColors.ember)
+                    .foregroundStyle(Color.primary)
                 }
                 .buttonStyle(.plain)
             }
@@ -611,7 +795,7 @@ struct HermesSquareRoot: View {
                         Text("Ask /wiki")
                     }
                     .font(.caption.bold())
-                    .foregroundStyle(DesignSystemColors.ember)
+                    .foregroundStyle(Color.primary)
                 }
                 .buttonStyle(.plain)
             }
@@ -656,12 +840,12 @@ struct HermesSquareRoot: View {
                             } label: {
                                 Text("/wiki")
                                     .font(.caption.bold())
-                                    .foregroundStyle(DesignSystemColors.ember)
+                                    .foregroundStyle(Color.primary)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
                                     .background(
                                         Capsule()
-                                            .fill(DesignSystemColors.ember.opacity(0.15))
+                                            .fill(Color.primary.opacity(0.08))
                                     )
                             }
                             .buttonStyle(.plain)
@@ -697,7 +881,7 @@ struct HermesSquareRoot: View {
                         Text("Compose")
                     }
                     .font(.caption.bold())
-                    .foregroundStyle(DesignSystemColors.ember)
+                    .foregroundStyle(Color.primary)
                 }
                 .buttonStyle(.plain)
             }
@@ -711,7 +895,7 @@ struct HermesSquareRoot: View {
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "bolt.fill")
-                                    .foregroundStyle(DesignSystemColors.ember)
+                                    .foregroundStyle(Color.primary)
                                 Text("No live missions. Tap to compose one.")
                                     .foregroundStyle(DesignSystemColors.textMuted)
                             }
@@ -768,16 +952,27 @@ struct HermesSquareRoot: View {
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
             }
-            let (service, _) = inboxSplit
-            if service.isEmpty {
-                Text("No conversations yet. Pick an agent to begin.")
-                    .font(.caption)
-                    .foregroundStyle(DesignSystemColors.textMuted)
-                    .padding(.vertical, 18)
-                    .frame(maxWidth: .infinity)
+            let threads = columnThreads
+            if threads.isEmpty {
+                VStack(spacing: 10) {
+                    Text("No \(selectedRuntime.displayName) conversations yet.")
+                        .font(.caption)
+                        .foregroundStyle(DesignSystemColors.textMuted)
+                    Button {
+                        setNavTarget(.runtimeThread(selectedRuntime))
+                    } label: {
+                        Text("Start one")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.primary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("agents.thread.start")
+                }
+                .padding(.vertical, 18)
+                .frame(maxWidth: .infinity)
             } else {
                 LazyVStack(spacing: 6) {
-                    ForEach(service) { item in
+                    ForEach(threads) { item in
                         Button {
                             handleThreadTap(item)
                         } label: {
@@ -1012,12 +1207,15 @@ struct HermesSquareRoot: View {
     }
 
     private func handleThreadTap(_ item: ThreadInboxItem) {
-        if let runtime = AgentIdentity.builtInRuntime(from: item.agentURI),
-           visibleTiles.contains(runtime) {
-            setNavTarget(.runtimeNative(runtime))
-        } else {
-            setNavTarget(.brandZone(item.agentURI))
+        if item.source == .missionGroup, let missionID = item.liveMissionID {
+            selectedMissionID = missionID
+            HapticBus.tabChange()
+            return
         }
+        if let runtime = HermesSquareThreadRouting.runtime(for: item) {
+            selectedRuntime = runtime
+        }
+        setNavTarget(.thread(item.id))
         HapticBus.tabChange()
     }
 
@@ -1027,14 +1225,12 @@ struct HermesSquareRoot: View {
             setNavTarget(.brandZone(hit.ref.id))
         case .projects:
             setNavTarget(.projectMemory(hit.ref.id))
-        case .threads, .missions, .cards:
-            // For Phase A: open the brand zone of the owning agent if we
-            // can resolve one from the search index doc. The thread/
-            // mission detail surfaces still live in the per-runtime
-            // native views; we'll cross-link in Phase B.
-            if let dot = hit.ref.id.firstIndex(of: ":"),
-               let identity = registry.identities.first(where: { _ in true }) {
-                _ = dot
+        case .threads:
+            setNavTarget(.thread(hit.ref.id))
+        case .missions:
+            selectedMissionID = hit.ref.id
+        case .cards:
+            if let identity = registry.identities.first {
                 setNavTarget(.brandZone(identity.id))
             }
         case .cloudSessions:
@@ -1328,9 +1524,134 @@ struct HermesSquareRoot: View {
     }
 
     @MainActor
-    private func consumePendingHermesThread() {
-        guard let inboxID = HermesSquarePendingThreadRoute.consumeHermesInboxID() else { return }
-        setNavTarget(.thread(inboxID))
+    private func consumePendingThread() {
+        guard let route = HermesSquarePendingThreadRoute.consumePendingRoute() else { return }
+        selectedRuntime = route.runtime
+        setNavTarget(.thread(route.inboxID))
+    }
+
+    private var selectedRuntimeBinding: Binding<AssistantRuntimeID> {
+        Binding(
+            get: { selectedRuntime },
+            set: { selectedRuntime = $0 }
+        )
+    }
+
+    @ToolbarContentBuilder
+    private var agentsColumnToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                setNavTarget(.runtimeThread(selectedRuntime))
+            } label: {
+                Image(systemName: "plus")
+            }
+            .accessibilityLabel("New \(selectedRuntime.displayName) thread")
+            .accessibilityIdentifier("agents.newThread")
+
+            Button {
+                isSearchExpanded.toggle()
+                if !isSearchExpanded {
+                    query = ""
+                    searchHits = []
+                }
+            } label: {
+                Image(systemName: isSearchExpanded || !query.isEmpty ? "xmark" : "magnifyingglass")
+            }
+            .accessibilityLabel(isSearchExpanded ? "Close search" : "Search")
+            .accessibilityIdentifier("agents.search")
+
+            Button {
+                isShowingOverflow = true
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .accessibilityLabel("Agents overflow")
+            .accessibilityIdentifier("agents.overflow")
+        }
+    }
+
+    private var overflowSheet: some View {
+        HermesSquareAgentsOverflowSheet(
+            missionTiles: missionHost.snapshot.activeTiles,
+            rollbackSessions: cachedRollbackSessions,
+            resumeSessions: cliReader.sessions,
+            onSelect: handleOverflow,
+            onOpenMission: { id in selectedMissionID = id },
+            onResume: { session in resumeSheetSession = session },
+            onRollback: { sessionID, scope in
+                Task {
+                    try? await rollbackService.submit(
+                        sessionID: sessionID,
+                        scope: scope,
+                        requestedBy: UIDevice.current.name
+                    )
+                }
+            }
+        )
+    }
+
+    private func handleOverflow(_ destination: HermesSquareAgentsColumnRouting.OverflowDestination) {
+        switch destination {
+        case .wand:
+            openWand()
+        case .missions:
+            isShowingFanOut = true
+        case .resumeHandoff:
+            if let session = cliReader.sessions.max(by: { $0.updatedAt > $1.updatedAt }) {
+                resumeSheetSession = session
+            } else {
+                let fallback: AssistantRuntimeID = CLIAgentRuntime(assistant: selectedRuntime) == nil
+                    ? .codex
+                    : selectedRuntime
+                setNavTarget(.runtimeNative(fallback))
+            }
+        case .capabilityGrants:
+            showCapabilityGrants = true
+        case .rollback:
+            isShowingRollback = true
+        case .search:
+            isSearchExpanded = true
+        case .pinned:
+            isShowingPinned = true
+        case .projectMemory:
+            isShowingProjectMemory = true
+        case .subscriptions:
+            isShowingSubscriptions = true
+        case .discover:
+            isShowingDiscover = true
+        case .voice:
+            isShowingVoice = true
+        case .switcher:
+            isShowingSwitcher = true
+        }
+    }
+
+    private func openWand() {
+        if (cloudStore?.cloudTier ?? .none).satisfies(.pro) {
+            showElderWandConfigurator = true
+        } else {
+            showElderWandPaywall = true
+        }
+    }
+
+    private var latestColumnThreadID: String? {
+        columnThreads.first.map { HermesSquareThreadRouting.rawThreadID(from: $0.id) }
+    }
+
+    private func consumeAskToMirrorIfNeeded() {
+        guard HermesSquareAgentsColumnRouting.AskToMirrorPending.consume() else { return }
+        openAskToMirror()
+    }
+
+    private func openAskToMirror() {
+        let connectionID = hermesService.suggestedRelayConnection?.id
+            ?? (hermesService.selectedConnection.mode == .relayLink
+                ? hermesService.selectedConnection.id
+                : nil)
+        let resolved = resolvedMercuryConnectionID(for: connectionID ?? "paired-mac:pending")
+        Task { await ensureMercuryLive(connectionID: resolved) }
+        setNavTarget(.mercuryLive(resolved))
+        HapticBus.tabChange()
     }
 
     private func ensureMercuryLive(connectionID: String) async {
@@ -1372,18 +1693,27 @@ struct HermesSquareRoot: View {
 
     @ViewBuilder
     private func threadDetailView(id: String) -> some View {
-        let rawID = rawThreadID(from: id)
+        let rawID = HermesSquareThreadRouting.rawThreadID(from: id)
         if id.hasPrefix("hermes:") {
             HermesChatView(service: hermesService, dashboardSnapshot: nil, route: .existing(sessionID: rawID))
         } else if id.hasPrefix("pi:") {
             PiChatThreadView(service: piService, route: .existing(threadID: rawID))
+        } else if id.hasPrefix("cli_mirror:"),
+                  let thread = historyStore.thread(id: rawID),
+                  let runtime = AssistantRuntimeID(rawValue: thread.runtime),
+                  let cliRuntime = CLIAgentRuntime(assistant: runtime) {
+            CLIAgentChatThreadView(runtime: cliRuntime, route: .mobile(thread))
+        } else if id.hasPrefix("cli:"),
+                  let session = cliReader.session(id: rawID) {
+            CLIAgentChatThreadView(
+                runtime: session.agent,
+                route: session.sourceKind == .archivedLog ? .archived(session) : .existing(session)
+            )
+        } else if let runtime = HermesSquareAgentsColumnRouting.runtime(fromInboxID: id) {
+            runtimeNativeView(for: runtime)
         } else {
-            runtimeNativeView(for: .hermes)
+            runtimeNativeView(for: selectedRuntime)
         }
-    }
-
-    private func rawThreadID(from inboxID: String) -> String {
-        inboxID.split(separator: ":", maxSplits: 1).last.map(String.init) ?? inboxID
     }
 
     @ViewBuilder
@@ -1466,15 +1796,24 @@ struct HermesSquareRoot: View {
 
 enum HermesSquarePendingThreadRoute {
     static func hermesInboxID(for threadID: String?) -> String? {
-        guard let trimmed = threadID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !trimmed.isEmpty
-        else { return nil }
-        return "hermes:\(trimmed)"
+        HermesSquareAgentsColumnRouting.inboxID(runtime: .hermes, threadID: threadID)
     }
 
     @MainActor
     static func consumeHermesInboxID() -> String? {
         hermesInboxID(for: AssistantPendingThread.shared.consume(.hermes))
+    }
+
+    @MainActor
+    static func consumePendingRoute() -> (runtime: AssistantRuntimeID, inboxID: String)? {
+        for runtime in AssistantRuntimeID.allCases {
+            guard let inboxID = HermesSquareAgentsColumnRouting.inboxID(
+                runtime: runtime,
+                threadID: AssistantPendingThread.shared.consume(runtime)
+            ) else { continue }
+            return (runtime, inboxID)
+        }
+        return nil
     }
 }
 
@@ -1521,7 +1860,7 @@ private struct HermesSquareCloudSessionDetailView: View {
                 } else if let errorText {
                     Text(errorText)
                         .font(.callout)
-                        .foregroundStyle(DesignSystemColors.ember)
+                        .foregroundStyle(MobileTheme.error)
                 } else {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
@@ -1533,7 +1872,7 @@ private struct HermesSquareCloudSessionDetailView: View {
             }
             .padding(18)
         }
-        .background(AuroraBackdrop().ignoresSafeArea())
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Cloud Session")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -1542,6 +1881,34 @@ private struct HermesSquareCloudSessionDetailView: View {
             } catch {
                 errorText = error.localizedDescription
             }
+        }
+    }
+}
+
+extension View {
+    /// Medium/large sheet with a scrolling body and a Done button — the shape
+    /// every Agents desk overflow sheet uses. Collapses three identical
+    /// `NavigationStack` bodies into one place to keep the chrome in step.
+    func deskSheet(
+        _ title: String,
+        isPresented: Binding<Bool>,
+        @ViewBuilder content: @escaping () -> some View
+    ) -> some View {
+        sheet(isPresented: isPresented) {
+            NavigationStack {
+                ScrollView {
+                    content()
+                        .padding(16)
+                }
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { isPresented.wrappedValue = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
         }
     }
 }

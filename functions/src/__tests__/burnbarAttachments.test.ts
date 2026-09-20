@@ -44,9 +44,15 @@ const hoisted = vi.hoisted(() => {
         };
         return fn(tx);
       },
-      collectionGroup: (_name: string): { get: () => Promise<{ docs: Array<unknown> }> } => ({
-        get: async () => ({ docs: [] }),
-      }),
+      collectionGroup: (_name: string): MockCollectionGroupQuery => {
+        const empty: MockCollectionGroupQuery = {
+          where: () => empty,
+          limit: () => empty,
+          startAfter: () => empty,
+          get: async () => ({ docs: [] }),
+        };
+        return empty;
+      },
     };
     return db;
   }
@@ -106,6 +112,22 @@ function authed(data: Record<string, unknown>) {
     data: { nonce: "n", deviceId: "iphone-1", actionProof: {}, ...data },
   };
 }
+
+type MockCollectionGroupQuery = {
+  where: (field: string, op: string, val: unknown) => MockCollectionGroupQuery;
+  limit: (n: number) => MockCollectionGroupQuery;
+  startAfter: (doc: { id: string }) => MockCollectionGroupQuery;
+  get: () => Promise<{
+    docs: Array<{
+      id: string;
+      get: (field: string) => unknown;
+      ref: {
+        set: (next: Record<string, unknown>, options?: { merge?: boolean }) => Promise<void>;
+        delete: () => Promise<void>;
+      };
+    }>;
+  }>;
+};
 
 describe("burnbarAttachments", () => {
   beforeEach(() => {
@@ -230,28 +252,142 @@ describe("burnbarAttachments", () => {
       storagePath: "users/alice-bola-uid/hermes_gateway_attachments/gw1/obj",
     });
     const original = hoisted.db.collectionGroup;
-    hoisted.db.collectionGroup = (name: string) => ({
-      get: async () => {
-        const docs = [...hoisted.store.entries()]
-          .filter(([path]) => path.includes(`/${name}/`) && !path.split(`/${name}/`)[1]?.includes("/"))
-          .map(([path, data]) => ({
-            get: (f: string) => data[f],
-            ref: {
-              set: async (next: Record<string, unknown>, options?: { merge?: boolean }) => {
-                hoisted.store.set(path, options?.merge ? { ...data, ...next } : next);
+    function makeQuery(name: string, filterFn?: (data: Record<string, unknown>) => boolean, skipAfterId?: string, limitCount?: number): MockCollectionGroupQuery {
+      return {
+        where(field: string, op: string, val: unknown) {
+          const nextFilter = (data: Record<string, unknown>) => {
+            if (filterFn && !filterFn(data)) return false;
+            const actual = data[field];
+            if (op === "==") return actual === val;
+            if (op === "in" && Array.isArray(val)) return val.includes(actual);
+            return true;
+          };
+          return makeQuery(name, nextFilter, skipAfterId, limitCount);
+        },
+        limit(n: number) {
+          return makeQuery(name, filterFn, skipAfterId, n);
+        },
+        startAfter(doc: { id: string }) {
+          return makeQuery(name, filterFn, doc.id, limitCount);
+        },
+        get: async () => {
+          let docs = [...hoisted.store.entries()]
+            .filter(([path]) => path.includes(`/${name}/`) && !path.split(`/${name}/`)[1]?.includes("/"))
+            .filter(([_, data]) => (filterFn ? filterFn(data) : true))
+            .map(([path, data]) => ({
+              id: path.split("/").pop() ?? path,
+              get: (f: string) => data[f],
+              ref: {
+                set: async (next: Record<string, unknown>, options?: { merge?: boolean }) => {
+                  hoisted.store.set(path, options?.merge ? { ...data, ...next } : next);
+                },
+                delete: async () => {
+                  hoisted.store.delete(path);
+                },
               },
-              delete: async () => {
-                hoisted.store.delete(path);
-              },
-            },
-          }));
-        return { docs };
-      },
-    });
+            }));
+          if (skipAfterId) {
+            const idx = docs.findIndex((d) => d.id === skipAfterId);
+            if (idx >= 0) {
+              docs = docs.slice(idx + 1);
+            }
+          }
+          if (typeof limitCount === "number") {
+            docs = docs.slice(0, limitCount);
+          }
+          return { docs };
+        },
+      };
+    }
+    hoisted.db.collectionGroup = (name: string) => makeQuery(name);
     const result = await reapExpiredBurnbarAttachments(Date.now());
     expect(result.reaped).toBe(1);
     expect(result.gatewayReaped).toBe(1);
     expect(hoisted.store.get("users/alice-bola-uid/burnbar_attachments/old")?.state).toBe("expired");
+    hoisted.db.collectionGroup = original;
+  });
+
+  it("reaper bounds batch size, cursor paginates, and handles timeout/continuation", async () => {
+    setReaperStoragePort(memoryStoragePort);
+    for (let i = 0; i < 5; i++) {
+      const path = `users/alice-bola-uid/burnbar_attachments/old_${i}/final`;
+      hoisted.store.set(`users/alice-bola-uid/burnbar_attachments/old_${i}`, {
+        state: "pending_upload",
+        storagePath: path,
+        updatedAt: { toMillis: () => Date.now() - 48 * 60 * 60 * 1000 },
+      });
+    }
+
+    const original = hoisted.db.collectionGroup;
+    function makeQuery(name: string, filterFn?: (data: Record<string, unknown>) => boolean, skipAfterId?: string, limitCount?: number): MockCollectionGroupQuery {
+      return {
+        where(field: string, op: string, val: unknown) {
+          const nextFilter = (data: Record<string, unknown>) => {
+            if (filterFn && !filterFn(data)) return false;
+            const actual = data[field];
+            if (op === "==") return actual === val;
+            if (op === "in" && Array.isArray(val)) return val.includes(actual);
+            return true;
+          };
+          return makeQuery(name, nextFilter, skipAfterId, limitCount);
+        },
+        limit(n: number) {
+          return makeQuery(name, filterFn, skipAfterId, n);
+        },
+        startAfter(doc: { id: string }) {
+          return makeQuery(name, filterFn, doc.id, limitCount);
+        },
+        get: async () => {
+          let docs = [...hoisted.store.entries()]
+            .filter(([path]) => path.includes(`/${name}/`) && !path.split(`/${name}/`)[1]?.includes("/"))
+            .filter(([_, data]) => (filterFn ? filterFn(data) : true))
+            .map(([path, data]) => ({
+              id: path.split("/").pop() ?? path,
+              get: (f: string) => data[f],
+              ref: {
+                set: async (next: Record<string, unknown>, options?: { merge?: boolean }) => {
+                  hoisted.store.set(path, options?.merge ? { ...data, ...next } : next);
+                },
+                delete: async () => {
+                  hoisted.store.delete(path);
+                },
+              },
+            }));
+          if (skipAfterId) {
+            const idx = docs.findIndex((d) => d.id === skipAfterId);
+            if (idx >= 0) {
+              docs = docs.slice(idx + 1);
+            }
+          }
+          if (typeof limitCount === "number") {
+            docs = docs.slice(0, limitCount);
+          }
+          return { docs };
+        },
+      };
+    }
+    hoisted.db.collectionGroup = (name: string) => makeQuery(name);
+
+    // Test with small batchSize=2, maxBatches=2 -> should reap 4 and indicate hasMore
+    const firstRun = await reapExpiredBurnbarAttachments({
+      nowMs: Date.now(),
+      batchSize: 2,
+      maxBatches: 2,
+      timeoutMs: 10_000,
+    });
+    expect(firstRun.reaped).toBe(4);
+    expect(firstRun.hasMore).toBe(true);
+
+    // Second run reaps remaining 1 and finishes cleanly
+    const secondRun = await reapExpiredBurnbarAttachments({
+      nowMs: Date.now(),
+      batchSize: 2,
+      maxBatches: 2,
+      timeoutMs: 10_000,
+    });
+    expect(secondRun.reaped).toBe(1);
+    expect(secondRun.hasMore).toBe(false);
+
     hoisted.db.collectionGroup = original;
   });
 

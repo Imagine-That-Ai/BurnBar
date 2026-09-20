@@ -49,8 +49,8 @@ final class JunieParserTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         XCTAssertTrue(result.usages.isEmpty)
@@ -60,7 +60,7 @@ final class JunieParserTests: XCTestCase {
     func testParseMissingDirectoryReturnsEmpty() async throws {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-junie-missing-\(UUID().uuidString)", isDirectory: true)
-        let parser = JunieParser(sessionsDirectoryOverride: missing)
+        let parser = JunieParser(sessionsOverride: missing)
         let result = try await parser.parse()
         XCTAssertTrue(result.usages.isEmpty)
         XCTAssertTrue(result.conversations.isEmpty)
@@ -97,8 +97,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -134,8 +134,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -163,8 +163,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -190,8 +190,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -213,8 +213,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -242,8 +242,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -265,8 +265,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         XCTAssertTrue(result.usages.isEmpty)
@@ -311,8 +311,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         let usage = try XCTUnwrap(result.usages.first)
@@ -342,8 +342,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -369,8 +369,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -400,8 +400,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -422,8 +422,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -450,8 +450,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -476,8 +476,8 @@ final class JunieParserTests: XCTestCase {
         )
 
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let result = try await parser.parse()
         let usage = try XCTUnwrap(result.usages.first)
@@ -510,8 +510,8 @@ final class JunieParserTests: XCTestCase {
         )
         let tracker = ParserFileDiscoveryTracker(knownFiles: [])
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
 
         let result = try await parser.parse(options: LogParseOptions(
@@ -548,8 +548,8 @@ final class JunieParserTests: XCTestCase {
 
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         let parser = JunieParser(
-            appPaths: appPaths,
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: appPaths
         )
         let first = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         let conversation = try XCTUnwrap(first.conversations.first)
@@ -588,8 +588,8 @@ final class JunieParserTests: XCTestCase {
         let state = sessionDirectory.appendingPathComponent("state.json")
         let expectedPaths = [index, events, state].map { $0.standardizedFileURL.path }.sorted()
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let initialTracker = ParserFileDiscoveryTracker(knownFiles: [])
 
@@ -636,8 +636,8 @@ final class JunieParserTests: XCTestCase {
         let state = sessionDirectory.appendingPathComponent("state.json")
         let expectedPaths = [events, state].map { $0.standardizedFileURL.path }.sorted()
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let initialTracker = ParserFileDiscoveryTracker(knownFiles: [])
 
@@ -698,8 +698,8 @@ final class JunieParserTests: XCTestCase {
         let state = sessionDirectory.appendingPathComponent("state.json")
         let expectedPaths = [index, events, state].map { $0.standardizedFileURL.path }.sorted()
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let initialTracker = ParserFileDiscoveryTracker()
         let initial = try await parser.parse(options: LogParseOptions(
@@ -750,7 +750,7 @@ final class JunieParserTests: XCTestCase {
             .appendingPathComponent(sessionId, isDirectory: true)
             .appendingPathComponent("events.jsonl")
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
-        let parser = JunieParser(appPaths: appPaths, sessionsDirectoryOverride: sessionsRoot)
+        let parser = JunieParser(sessionsOverride: sessionsRoot, appPaths: appPaths)
         let tracker = ParserFileDiscoveryTracker()
         let governor = ParserResourceGovernor(limits: ParserResourceLimits(
             fileByteBudget: Int64(Data(eventsText.utf8).count)
@@ -778,7 +778,7 @@ final class JunieParserTests: XCTestCase {
             [events.standardizedFileURL.path, index.standardizedFileURL.path].sorted()
         )
         XCTAssertTrue(tracker.hasAdmittedFiles)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: appPaths.macJunieParserCacheURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sessionsRoot.appendingPathComponent(".obb-junie-parser-cache.plist").path))
     }
 
     func testEventsOpenFailureAfterAdmissionDefersWholeSessionAndDoesNotCache() async throws {
@@ -795,15 +795,11 @@ final class JunieParserTests: XCTestCase {
         let sessionDirectory = sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
         let events = sessionDirectory.appendingPathComponent("events.jsonl")
         let state = sessionDirectory.appendingPathComponent("state.json")
-        let eventsPath = events.standardizedFileURL.path
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: events.path)
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         let parser = JunieParser(
-            appPaths: appPaths,
-            sessionsDirectoryOverride: sessionsRoot,
-            fileHandleForReading: { url in
-                guard url.standardizedFileURL.path != eventsPath else { throw ExpectedOpenFailure() }
-                return try FileHandle(forReadingFrom: url)
-            }
+            sessionsOverride: sessionsRoot,
+            appPaths: appPaths
         )
         let tracker = ParserFileDiscoveryTracker()
         let governor = ParserResourceGovernor(limits: .unlimited)
@@ -826,7 +822,7 @@ final class JunieParserTests: XCTestCase {
         )
         XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty)
         XCTAssertFalse(tracker.hasAdmittedFiles)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: appPaths.macJunieParserCacheURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sessionsRoot.appendingPathComponent(".obb-junie-parser-cache.plist").path))
     }
 
     func testStateOpenFailureAfterAdmissionDefersWholeSessionAndDoesNotCache() async throws {
@@ -843,15 +839,11 @@ final class JunieParserTests: XCTestCase {
         let sessionDirectory = sessionsRoot.appendingPathComponent(sessionId, isDirectory: true)
         let events = sessionDirectory.appendingPathComponent("events.jsonl")
         let state = sessionDirectory.appendingPathComponent("state.json")
-        let statePath = state.standardizedFileURL.path
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: state.path)
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         let parser = JunieParser(
-            appPaths: appPaths,
-            sessionsDirectoryOverride: sessionsRoot,
-            fileHandleForReading: { url in
-                guard url.standardizedFileURL.path != statePath else { throw ExpectedOpenFailure() }
-                return try FileHandle(forReadingFrom: url)
-            }
+            sessionsOverride: sessionsRoot,
+            appPaths: appPaths
         )
         let tracker = ParserFileDiscoveryTracker()
         let governor = ParserResourceGovernor(limits: .unlimited)
@@ -874,7 +866,7 @@ final class JunieParserTests: XCTestCase {
         )
         XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty)
         XCTAssertFalse(tracker.hasAdmittedFiles)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: appPaths.macJunieParserCacheURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sessionsRoot.appendingPathComponent(".obb-junie-parser-cache.plist").path))
     }
 
     func testUnchangedIndexMapsNewlyRestoredHistoricalSessionWithoutState() async throws {
@@ -893,8 +885,8 @@ final class JunieParserTests: XCTestCase {
             ofItemAtPath: index.path
         )
         let parser = JunieParser(
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot),
-            sessionsDirectoryOverride: sessionsRoot
+            sessionsOverride: sessionsRoot,
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportRoot)
         )
         let checkpointTracker = ParserFileDiscoveryTracker(knownFiles: [])
 

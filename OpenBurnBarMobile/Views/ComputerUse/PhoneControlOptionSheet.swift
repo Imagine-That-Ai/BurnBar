@@ -1,5 +1,7 @@
 #if canImport(SwiftUI) && canImport(UIKit)
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 import OpenBurnBarComputerUseCore
 
 struct PhoneControlOptionSheet: View {
@@ -8,9 +10,13 @@ struct PhoneControlOptionSheet: View {
     let onType: (String) -> Void
     let onShortcut: (String, [String]) -> Void
     let onPanic: () -> Void
+    var onSendWorkspaceFile: ((URL) -> Void)?
+    var onFreezeFrame: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var textToType = ""
+    @State private var photoPickerItem: PhotosPickerItem?
+    @State private var isShowingFileImporter = false
 
     var body: some View {
         NavigationStack {
@@ -49,6 +55,27 @@ struct PhoneControlOptionSheet: View {
                         dismiss()
                     } label: {
                         Label("Command-L", systemImage: "link")
+                    }
+                }
+
+                Section("Mac workspace") {
+                    if onSendWorkspaceFile != nil {
+                        PhotosPicker(selection: $photoPickerItem, matching: .images) {
+                            Label("Send photo or camera roll", systemImage: "photo.on.rectangle")
+                        }
+                        Button {
+                            isShowingFileImporter = true
+                        } label: {
+                            Label("Send file", systemImage: "doc")
+                        }
+                    }
+                    if let onFreezeFrame {
+                        Button {
+                            onFreezeFrame()
+                            dismiss()
+                        } label: {
+                            Label("Freeze frame for Hermes", systemImage: "camera.viewfinder")
+                        }
                     }
                 }
 
@@ -95,6 +122,29 @@ struct PhoneControlOptionSheet: View {
             }
             .navigationTitle("Phone control")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: photoPickerItem) { _, item in
+                guard let item, let onSendWorkspaceFile else { return }
+                Task {
+                    guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                    let url = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("watch-\(UUID().uuidString).jpg")
+                    try? data.write(to: url)
+                    onSendWorkspaceFile(url)
+                    photoPickerItem = nil
+                    dismiss()
+                }
+            }
+            .fileImporter(
+                isPresented: $isShowingFileImporter,
+                allowedContentTypes: [.item],
+                allowsMultipleSelection: false
+            ) { result in
+                guard let onSendWorkspaceFile,
+                      case .success(let urls) = result,
+                      let url = urls.first else { return }
+                onSendWorkspaceFile(url)
+                dismiss()
+            }
         }
     }
 }

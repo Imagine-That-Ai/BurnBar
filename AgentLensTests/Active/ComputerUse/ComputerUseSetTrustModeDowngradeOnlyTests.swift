@@ -53,6 +53,25 @@ final class ComputerUseSetTrustModeDowngradeOnlyTests: XCTestCase {
         )
     }
 
+    func testCoordinatorOwnsDistinctCollaboratorPipelines() {
+        let coordinator = makeCoordinator()
+        XCTAssertNotNil(coordinator.inputPipeline)
+        XCTAssertNotNil(coordinator.approvalPipeline)
+        XCTAssertNotNil(coordinator.auditPipeline)
+        XCTAssertNotEqual(
+            ObjectIdentifier(coordinator.inputPipeline),
+            ObjectIdentifier(coordinator.approvalPipeline)
+        )
+        XCTAssertNotEqual(
+            ObjectIdentifier(coordinator.approvalPipeline),
+            ObjectIdentifier(coordinator.auditPipeline)
+        )
+        XCTAssertNotEqual(
+            ObjectIdentifier(coordinator.inputPipeline),
+            ObjectIdentifier(coordinator.auditPipeline)
+        )
+    }
+
     func testSetTrustModeRejectsElevation() async throws {
         let coordinator = makeCoordinator()
         try await startSession(coordinator, trustMode: .manual)
@@ -114,6 +133,64 @@ final class ComputerUseSetTrustModeDowngradeOnlyTests: XCTestCase {
             coordinator.state?.liveTrustMode, .trusted,
             "with no active session, trust selection for the next session may elevate"
         )
+    }
+
+    func testStartSessionStartsNonNilWatchHUD() async throws {
+        let coordinator = makeCoordinator()
+        let hud = FakeWatchHUDSession()
+        coordinator.watchHUDFactory = { hud }
+        try await startSession(coordinator, trustMode: .manual)
+        XCTAssertEqual(hud.startCount, 1)
+        XCTAssertIdentical(coordinator.watchHUDSession, hud)
+    }
+
+    func testPanicHaltStopsNonNilWatchHUD() async throws {
+        let coordinator = makeCoordinator()
+        let hud = FakeWatchHUDSession()
+        coordinator.watchHUDFactory = { hud }
+        try await startSession(coordinator, trustMode: .manual)
+        XCTAssertEqual(hud.startCount, 1)
+        await coordinator.panicHalt(source: .phoneGesture)
+        XCTAssertNil(coordinator.watchHUDSession)
+        XCTAssertNil(coordinator.activeSessionId)
+        XCTAssertEqual(hud.stopCount, 1, "panic teardown must stop the live HUD session")
+    }
+
+    func testPhoneSetTrustModeIntentRefusesElevation() async throws {
+        let coordinator = makeCoordinator()
+        try await startSession(coordinator, trustMode: .manual)
+        XCTAssertEqual(coordinator.state?.liveTrustMode, .manual)
+        coordinator.applyPhoneTrustModeIntent(
+            PhoneControlIntent(kind: .setTrustMode, text: ComputerUseTrustMode.trusted.rawValue)
+        )
+        XCTAssertEqual(
+            coordinator.state?.liveTrustMode,
+            .manual,
+            "phone setTrustMode must go through the coordinator clamp"
+        )
+    }
+
+    func testPhoneSetTrustModeIntentAcceptsDowngrade() async throws {
+        let coordinator = makeCoordinator()
+        try await startSession(coordinator, trustMode: .trusted)
+        coordinator.applyPhoneTrustModeIntent(
+            PhoneControlIntent(kind: .setTrustMode, text: ComputerUseTrustMode.manual.rawValue)
+        )
+        XCTAssertEqual(coordinator.state?.liveTrustMode, .manual)
+    }
+}
+
+@MainActor
+private final class FakeWatchHUDSession: AgentWatchHUDControlling {
+    var startCount = 0
+    var stopCount = 0
+
+    func start() async throws {
+        startCount += 1
+    }
+
+    func stop() async {
+        stopCount += 1
     }
 }
 #endif

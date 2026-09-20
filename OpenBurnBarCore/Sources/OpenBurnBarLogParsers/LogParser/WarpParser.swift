@@ -53,8 +53,8 @@ public final class WarpParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
     var lastSessionAppendResumeCount: Int { sessionAppendResumeCount.read() }
 
     private static func cacheURL(

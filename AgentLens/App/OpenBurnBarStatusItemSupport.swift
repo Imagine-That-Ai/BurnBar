@@ -1,4 +1,5 @@
 import AppKit
+import OpenBurnBarUI
 
 // Extracted verbatim from AppDelegate.swift (audit wave 4, item 14).
 // Pure status-item/popover support types: click action + dedupe-key model,

@@ -28,6 +28,7 @@ import FirebaseAuth
 struct HermesSquareSplitLayout: View {
     let hermesService: HermesService
     let missionHost: MobileMissionConsoleHost
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var selectedDetail: DetailRoute? = .runtimeNative(.codex)
     @State private var sidebarMode: SidebarMode = .square
@@ -49,16 +50,27 @@ struct HermesSquareSplitLayout: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            if geometry.size.width >= 720 {
-                twoColumnLayout(width: geometry.size.width)
-            } else {
-                HermesSquareRoot(
-                    hermesService: hermesService,
-                    missionHost: missionHost
-                )
+        // Compact iPhone must not sit inside a GeometryReader — that
+        // breaks NavigationStack pushes, so plus / thread / chat never
+        // actually open. iPad still measures width for the split.
+        if horizontalSizeClass == .compact {
+            compactRoot
+        } else {
+            GeometryReader { geometry in
+                if geometry.size.width >= 720 {
+                    twoColumnLayout(width: geometry.size.width)
+                } else {
+                    compactRoot
+                }
             }
         }
+    }
+
+    private var compactRoot: some View {
+        HermesSquareRoot(
+            hermesService: hermesService,
+            missionHost: missionHost
+        )
     }
 
     private func twoColumnLayout(width: CGFloat) -> some View {
@@ -129,7 +141,7 @@ struct HermesSquareSplitLayout: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            WebsiteBackgroundView(accent: .purple, visibility: .prominent).ignoresSafeArea()
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
         }
         .task {
             // Refresh the relay catalog before Mercury starts polling it.

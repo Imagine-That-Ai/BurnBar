@@ -34,6 +34,8 @@ allowed_reason_ids=(
   "nslock-blocking-outcome"
   "nslock-protected-storage"
   "serial-queue-confined-watcher"
+  "videotoolbox-encoder-lock"
+  "encoder-consume-handler-box"
 )
 
 live_report="$(mktemp "${TMPDIR:-/tmp}/unchecked-sendable-live.XXXXXX")"

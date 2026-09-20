@@ -321,6 +321,11 @@ envelope, or with the wrong session/request hash/counter, are ignored with
 iOS/iPadOS Live Activity approval and rejection intents require local device
 authentication before they can resolve a pending action; the Live Activity halt
 intent remains always available as an immediate safety stop.
+When the phone has stored `liveActivityPushToken` / `liveActivitySessionId` on
+its device doc, Computer Use session and action header writes fan out an
+ActivityKit `liveactivity` APNs update through the existing token-auth APNs
+sender. The push is lock-screen status copy only — no pixels, secrets, or iroh
+`approvalId`. See [`docs/runbooks/live-activity-apns.md`](runbooks/live-activity-apns.md).
 
 Agent capability grants reuse the same authority envelope and signing payload,
 but the authority-free hash is computed over `AgentCapabilityGrantRequest`.

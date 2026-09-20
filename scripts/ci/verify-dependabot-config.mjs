@@ -29,7 +29,7 @@ import { join, relative, sep } from "node:path";
 const CONFIG = ".github/dependabot.yml";
 const IGNORED_DIRS = new Set([
   "node_modules", ".git", "Vendor", "build", "dist", "out", ".build",
-  "DerivedData", ".derived-data", ".spm-cache", "artifacts", "output",
+  "DerivedData", ".derived-data", ".spm-cache", ".spm-cache-new", "artifacts", "output",
 ]);
 
 const problems = [];

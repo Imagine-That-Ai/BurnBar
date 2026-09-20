@@ -110,10 +110,20 @@ enum AIInboxDeepLink {
     nonisolated private static let maxItemIDLength = 160
 
     private static var pendingItemID: String?
+    /// XCTest injects into the live app process. While isolation is active,
+    /// `open` parks here so `RootTabView` / `RootNavigationView` can still
+    /// hear the post and call production `consumePendingItemID()` without
+    /// draining the value under test.
+    private static var isolatedPendingItemID: String?
+    private static var isolationDepth = 0
 
     static func open(itemID: String?) {
         let sanitized = itemID.flatMap(sanitizedItemID)
-        pendingItemID = sanitized
+        if isolationDepth > 0 {
+            isolatedPendingItemID = sanitized
+        } else {
+            pendingItemID = sanitized
+        }
         var userInfo: [AnyHashable: Any] = [:]
         if let sanitized { userInfo[itemIDUserInfoKey] = sanitized }
         NotificationCenter.default.post(name: notificationName, object: nil, userInfo: userInfo)
@@ -157,5 +167,25 @@ enum AIInboxDeepLink {
     /// Test seam: the type-level stash must not leak between test cases.
     static func resetPendingItemID() {
         pendingItemID = nil
+        isolatedPendingItemID = nil
+    }
+
+    /// Parks `open` writes on a side stash so the live hardware host can
+    /// `consumePendingItemID()` without racing the case under test.
+    static func withIsolatedPendingStashForTests<T>(_ body: () throws -> T) rethrows -> T {
+        isolationDepth += 1
+        defer {
+            isolationDepth -= 1
+            isolatedPendingItemID = nil
+        }
+        return try body()
+    }
+
+    /// Drains the isolated stash. Production `consumePendingItemID()` is
+    /// unchanged and still only reads `pendingItemID`.
+    static func consumeIsolatedPendingItemIDForTests() -> String? {
+        let itemID = isolatedPendingItemID
+        isolatedPendingItemID = nil
+        return itemID
     }
 }

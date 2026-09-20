@@ -55,6 +55,15 @@ enum CLIAgentMissionCloudSealer {
         )
     }
 
+    static func groupAADContext(uid: String, groupID: String, field: String = "sealedPayload") throws -> CloudVaultAADContext {
+        try CloudVaultAADContext(
+            uid: uid,
+            collection: "mission_groups",
+            docID: groupID,
+            field: field
+        )
+    }
+
     static func missionEventAADContext(uid: String, requestID: String, eventID: String) throws -> CloudVaultAADContext {
         try CloudVaultAADContext(
             uid: uid,

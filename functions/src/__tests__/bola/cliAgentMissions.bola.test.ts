@@ -3,7 +3,8 @@
  */
 
 import { describe, it, vi } from "vitest";
-import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callableBolaHarness.js";
+import { cloudVaultAADContext } from "../../callables/shared/validators.js";
+import { ALICE_UID, callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -35,8 +36,40 @@ vi.mock("../../callables/publicRateLimit.js", () => ({
   assertCallableApprovalNotLocked: vi.fn(async () => undefined),
 }));
 
+const VAULT = `v1_${"ab".repeat(16)}`;
+
+function createGroupProbe(): Record<string, unknown> {
+  const sealedPayload = {
+    schemaVersion: 2,
+    algorithm: "AES-256-GCM",
+    keyVersion: 1,
+    vaultKeyID: VAULT,
+    sealedBoxBase64: Buffer.from("sealed-box").toString("base64"),
+    aad: cloudVaultAADContext(ALICE_UID, "mission_groups", "bob-group", "sealedPayload"),
+  };
+  return {
+    groupId: "bob-group",
+    deviceId: "bob-device",
+    nonce: "bola-test-nonce",
+    actionProof: { nonce: "bola-action-proof", signature: "YQ==" },
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: VAULT,
+    sealedPayload,
+    childMissionIDs: ["child-1"],
+    runtimeTokens: ["codex"],
+    parallelismLimit: 1,
+    missionKind: "diligence",
+    mergeStrategy: "pick_one",
+    phase: "queued",
+    schemaVersion: 1,
+    source: "ios-hermes-square",
+  };
+}
+
 export const BOLA_MANIFEST = {
   createCliAgentMission: ["createCliAgentMission rejects cross-user object access"],
+  createCliAgentMissionGroup: ["createCliAgentMissionGroup rejects cross-user object access"],
   cancelCliAgentMission: ["cancelCliAgentMission rejects cross-user object access"],
   claimCliAgentMission: ["claimCliAgentMission rejects cross-user object access"],
   appendCliAgentMissionEvent: ["appendCliAgentMissionEvent rejects cross-user object access"],
@@ -52,6 +85,17 @@ describe("BOLA — cliAgentMissions", () => {
       run,
       expectedCode: "invalid-argument",
       expectedOutcome: "throws",
+    });
+  });
+
+  it("createCliAgentMissionGroup rejects cross-user object access", async () => {
+    const mod = await import("../../callables/cliAgentMissions.js");
+    const run = callableRunner(mod.createCliAgentMissionGroup);
+    await tier2CallableProof(bolaStore, {
+      exportedName: "createCliAgentMissionGroup",
+      run,
+      payload: createGroupProbe(),
+      expectedOutcome: "no-side-effect",
     });
   });
 

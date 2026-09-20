@@ -148,6 +148,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
     // MARK: - Shared Model Compatibility
 
     func testIPadSidebarUsesCompactAuroraTabAccessibilityContract() {
+        XCTAssertEqual(AppDestination.inbox.auroraAccessibilityIdentifier, "auroraTab.inbox")
         XCTAssertEqual(AppDestination.pulse.auroraAccessibilityIdentifier, "auroraTab.pulse")
         XCTAssertEqual(AppDestination.burn.auroraAccessibilityIdentifier, "auroraTab.burn")
         XCTAssertEqual(AppDestination.streams.auroraAccessibilityIdentifier, "auroraTab.streams")
@@ -3810,6 +3811,77 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(pointerClickIntent.mouseButton, 1)
         XCTAssertEqual(pointerClickIntent.authority.counter, typeIntent.authority.counter + 1)
         XCTAssertFalse(pointerClickIntent.authority.signatureEd25519.isEmpty)
+    }
+
+    func testAgentWatchReceiverWritesTrustDowngradeAndDropsElevation() async throws {
+        let uid = "user-agent-watch-trust"
+        let connectionID = "relay-connection-trust"
+        let stream = AgentWatchFakeStream()
+        let coordinator = AgentWatchOverlayCoordinator(
+            dialer: { _, _, _ in stream },
+            signingKeyStore: AgentWatchFakeSigningKeyStore(),
+            authorityPublisher: AgentWatchFakeAuthorityPublisher(),
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        defer {
+            Task { await coordinator.stop() }
+        }
+
+        coordinator.start(
+            uid: uid,
+            connectionID: connectionID,
+            relayPublicKey: Data(repeating: 9, count: 32)
+        )
+        _ = try await waitForFrame(from: stream) { $0.type == .controlClassify }
+        let receiver = try XCTUnwrap(coordinator.receiver)
+        receiver.state.setTrustMode(.trusted)
+
+        let wrote = try await receiver.downgradeTrustMode(.step)
+        XCTAssertTrue(wrote)
+        let downgrade = try await waitForFrame(from: stream) {
+            $0.type == .controlInputIntent &&
+            $0.control?.inputIntent?.kind == .setTrustMode
+        }
+        XCTAssertEqual(downgrade.control?.inputIntent?.text, ComputerUseTrustMode.step.rawValue)
+        XCTAssertEqual(receiver.state.liveTrustMode, .step)
+
+        let beforeCount = await stream.sentFrames().count
+        let elevated = try await receiver.downgradeTrustMode(.trusted)
+        XCTAssertFalse(elevated)
+        XCTAssertEqual(receiver.state.liveTrustMode, .step)
+        let afterCount = await stream.sentFrames().count
+        XCTAssertEqual(afterCount, beforeCount)
+    }
+
+    func testWatchUnifyPanicWritesPanicIntent() async throws {
+        let uid = "user-agent-watch-panic"
+        let connectionID = "relay-connection-panic"
+        let stream = AgentWatchFakeStream()
+        let coordinator = AgentWatchOverlayCoordinator(
+            dialer: { _, _, _ in stream },
+            signingKeyStore: AgentWatchFakeSigningKeyStore(),
+            authorityPublisher: AgentWatchFakeAuthorityPublisher(),
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        defer {
+            Task { await coordinator.stop() }
+        }
+
+        coordinator.start(
+            uid: uid,
+            connectionID: connectionID,
+            relayPublicKey: Data(repeating: 9, count: 32)
+        )
+        _ = try await waitForFrame(from: stream) { $0.type == .controlClassify }
+
+        try await WatchUnifyPanic.halt(watchReceiver: coordinator.receiver)
+        let panic = try await waitForFrame(from: stream) {
+            $0.type == .controlInputIntent &&
+            $0.control?.inputIntent?.kind == .panic
+        }
+        XCTAssertEqual(panic.control?.inputIntent?.kind, .panic)
     }
 
     func testPhoneControlSenderSerializesConcurrentInputIntentsBeforeWritingFrames() async throws {

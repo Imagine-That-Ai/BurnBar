@@ -43,7 +43,7 @@
                      New-MsixPackage.ps1 stamps the separate Partner Center Name,
                      Publisher, and PublisherDisplayName for Microsoft Store output.
       • Version    : Major.Minor.Build.Revision. Seeded at the Windows-port pre-release
-                     0.1.0.0 (macOS MARKETING_VERSION is 1.0.28); the release pipeline
+                     1.0.38.0 (last Windows tag line; not a macOS parity claim); the release pipeline
                      stamps the shipping version. Revision is reserved 0 for Store.
       • ProcessorArchitecture: the WAP project rebuilds this manifest per platform
                      (x86 / x64 / arm64); x64 is the template default and is overridden
@@ -52,7 +52,7 @@
   <Identity
       Name="ImagineThat.OpenBurnBar"
       Publisher="CN=Imagine That AI LLC, O=Imagine That AI LLC, L=Little Rock, S=Arkansas, C=US"
-      Version="0.1.0.0"
+      Version="1.0.38.0"
       ProcessorArchitecture="x64" />
 
   <Properties>

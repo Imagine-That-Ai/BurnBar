@@ -8,7 +8,7 @@ the unsafe AV1-first strategy with capability-probed rollout gates.
 Do not change live media behavior until the evidence gates below are green.
 The existing v1 media wire remains the compatibility floor.
 
-Last implementation update: 2026-05-21.
+Last implementation update: 2026-08-20.
 
 Current live posture:
 
@@ -32,6 +32,15 @@ Current live posture:
   whose `CodecCapabilities.FEATURE_LowLatency` probe is present.
 - Video datagrams and RPS recovery are not promoted into the live sender path
   yet.
+- Screen-share `BitrateController` rungs are 250/500 kbps plus 1/2/4/8 Mbps.
+  Constrained phone paths (NWPath cellular/expensive/constrained, or Android
+  ConnectivityManager equivalents) fast-drop to 500 kbps. RTT ≥ 200 ms or
+  loss ≥ 4% still walks the ladder to 250 kbps. Live video stays HEVC with
+  H.264 fallback on the muxed `media.control` stream.
+- Receivers abort stale GOPs once a newer GOP keyframe arrives. GOP-end flags
+  are stamped on the last frame of the previous group. Video does not leave
+  `media.control`; remaining HOL is documented in
+  `docs/HERMES_MEDIA_TRANSPORT.md`.
 - Benchmark or competitor-parity claims remain blocked until Gate 6 has real
   device data.
 

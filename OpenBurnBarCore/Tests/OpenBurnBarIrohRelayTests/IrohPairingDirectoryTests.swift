@@ -2,6 +2,15 @@ import XCTest
 @testable import OpenBurnBarIrohRelay
 
 final class IrohPairingDirectoryTests: XCTestCase {
+    private func makeGuard() -> IrohPairingReplayGuard {
+        IrohPairingReplayGuard(
+            persistence: IrohPairingReplayFileStore(
+                url: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("iroh-dir-\(UUID().uuidString).json")
+            )
+        )
+    }
+
     func testPublishAndFetchAndVerifyRoundTrip() async throws {
         let directory = InMemoryIrohPairingDirectory()
         let publisher = IrohPairingPublisher(directory: directory)
@@ -26,7 +35,8 @@ final class IrohPairingDirectoryTests: XCTestCase {
             uid: "u-1",
             connectionId: "c-1",
             publicKey: macKeypair.publicKeyRaw,
-            now: now.addingTimeInterval(60)
+            now: now.addingTimeInterval(60),
+            replayGuard: makeGuard()
         )
         XCTAssertEqual(verified, IrohDialTarget(
             nodeId: "node-abc",
@@ -53,7 +63,8 @@ final class IrohPairingDirectoryTests: XCTestCase {
                 uid: "u-2",
                 connectionId: "c-2",
                 publicKey: macKeypair.publicKeyRaw,
-                now: later
+                now: later,
+                replayGuard: makeGuard()
             )
         }, expected: IrohPairingError.expired)
     }
@@ -66,23 +77,22 @@ final class IrohPairingDirectoryTests: XCTestCase {
                 uid: "u-x",
                 connectionId: "c-x",
                 publicKey: Data(repeating: 0xAA, count: 32),
-                now: Date()
+                now: Date(),
+                replayGuard: makeGuard()
             )
         }, expected: IrohPairingDirectoryError.recordNotFound)
     }
 
-    func testFetchAndVerifyToleratesInWindowReplay() async throws {
+    func testFetchAndVerifyAllowsSameSessionReconnect() async throws {
         // Re-dials legitimately re-read the SAME record: the Mac only
         // republishes every ~60s while a reconnecting client retries every
-        // few seconds. The implementation intentionally swallows
-        // IrohPairingError.replayed within the freshness window so retries
-        // succeed (observed live 2026-07-03). This test verifies that
-        // behaviour: a second fetch within the signature freshness window
-        // returns the dial target instead of throwing.
+        // few seconds. Same-process consume of a key this guard already
+        // accepted is allowed; a new guard on the same store is not.
         let directory = InMemoryIrohPairingDirectory()
         let publisher = IrohPairingPublisher(directory: directory)
         let macKeypair = IrohPairingKeypair()
         let now = Date(timeIntervalSince1970: 1_715_000_000)
+        let replayGuard = makeGuard()
         _ = try await publisher.publish(
             uid: "u-4",
             connectionId: "c-4",
@@ -94,16 +104,106 @@ final class IrohPairingDirectoryTests: XCTestCase {
             uid: "u-4",
             connectionId: "c-4",
             publicKey: macKeypair.publicKeyRaw,
-            now: now.addingTimeInterval(30)
+            now: now.addingTimeInterval(30),
+            replayGuard: replayGuard
         )
-        // Second fetch within the freshness window should succeed (not throw).
         let replayTarget = try await publisher.fetchAndVerify(
             uid: "u-4",
             connectionId: "c-4",
             publicKey: macKeypair.publicKeyRaw,
-            now: now.addingTimeInterval(60)
+            now: now.addingTimeInterval(60),
+            replayGuard: replayGuard
         )
         XCTAssertEqual(replayTarget.nodeId, "node-replay")
+    }
+
+    func testFetchAndVerifyPhoneCannotWidenFirstDialPastIdleBound() async throws {
+        let directory = InMemoryIrohPairingDirectory()
+        let publisher = IrohPairingPublisher(directory: directory)
+        let macKeypair = IrohPairingKeypair()
+        let signedAt = Date(timeIntervalSince1970: 1_715_000_000)
+        _ = try await publisher.publish(
+            uid: "u-live",
+            connectionId: "c-live",
+            nodeId: "node-live",
+            publishedAt: signedAt,
+            with: macKeypair
+        )
+        let justPastIdle = signedAt.addingTimeInterval(IrohPairingFreshness.maximumAgeSeconds + 1)
+        await XCTAssertThrowsErrorAsync({
+            _ = try await publisher.fetchAndVerify(
+                uid: "u-live",
+                connectionId: "c-live",
+                publicKey: macKeypair.publicKeyRaw,
+                now: justPastIdle,
+                remoteSessionLive: true,
+                replayGuard: makeGuard()
+            )
+        }, expected: IrohPairingError.expired)
+    }
+
+    func testFetchAndVerifyLiveWindowAppliesOnlyAfterThisSessionFirstDial() async throws {
+        let directory = InMemoryIrohPairingDirectory()
+        let publisher = IrohPairingPublisher(directory: directory)
+        let macKeypair = IrohPairingKeypair()
+        let signedAt = Date(timeIntervalSince1970: 1_715_000_000)
+        let replayGuard = makeGuard()
+        _ = try await publisher.publish(
+            uid: "u-live2",
+            connectionId: "c-live2",
+            nodeId: "node-live2",
+            publishedAt: signedAt,
+            with: macKeypair
+        )
+        _ = try await publisher.fetchAndVerify(
+            uid: "u-live2",
+            connectionId: "c-live2",
+            publicKey: macKeypair.publicKeyRaw,
+            now: signedAt.addingTimeInterval(30),
+            replayGuard: replayGuard
+        )
+        let justPastIdle = signedAt.addingTimeInterval(IrohPairingFreshness.maximumAgeSeconds + 1)
+        let liveTarget = try await publisher.fetchAndVerify(
+            uid: "u-live2",
+            connectionId: "c-live2",
+            publicKey: macKeypair.publicKeyRaw,
+            now: justPastIdle,
+            remoteSessionLive: true,
+            replayGuard: replayGuard
+        )
+        XCTAssertEqual(liveTarget.nodeId, "node-live2")
+    }
+
+    func testFetchAndVerifyRelaunchRejectsCapturedRecord() async throws {
+        let directory = InMemoryIrohPairingDirectory()
+        let publisher = IrohPairingPublisher(directory: directory)
+        let macKeypair = IrohPairingKeypair()
+        let now = Date(timeIntervalSince1970: 1_715_000_000)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("iroh-relaunch-\(UUID().uuidString).json")
+        _ = try await publisher.publish(
+            uid: "u-relaunch",
+            connectionId: "c-relaunch",
+            nodeId: "node-relaunch",
+            publishedAt: now,
+            with: macKeypair
+        )
+        _ = try await publisher.fetchAndVerify(
+            uid: "u-relaunch",
+            connectionId: "c-relaunch",
+            publicKey: macKeypair.publicKeyRaw,
+            now: now.addingTimeInterval(30),
+            replayGuard: IrohPairingReplayGuard(persistence: IrohPairingReplayFileStore(url: url))
+        )
+        await XCTAssertThrowsErrorAsync({
+            _ = try await publisher.fetchAndVerify(
+                uid: "u-relaunch",
+                connectionId: "c-relaunch",
+                publicKey: macKeypair.publicKeyRaw,
+                now: now.addingTimeInterval(60),
+                replayGuard: IrohPairingReplayGuard(persistence: IrohPairingReplayFileStore(url: url))
+            )
+        }, expected: IrohPairingError.replayed)
     }
 
     func testRevokeRemovesRecord() async throws {
@@ -124,7 +224,8 @@ final class IrohPairingDirectoryTests: XCTestCase {
                 uid: "u-3",
                 connectionId: "c-3",
                 publicKey: macKeypair.publicKeyRaw,
-                now: now
+                now: now,
+                replayGuard: makeGuard()
             )
         }, expected: IrohPairingDirectoryError.recordNotFound)
     }

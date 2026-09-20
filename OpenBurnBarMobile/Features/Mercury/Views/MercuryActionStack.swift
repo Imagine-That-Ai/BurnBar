@@ -46,7 +46,9 @@ struct MercuryActionStack: View {
             }
             .buttonStyle(LiquidGlassButtonStyle(isEnabled: canRequestMirror, accent: accent, usePremiumSOTAUX: usePremiumSOTAUX))
             .disabled(!canRequestMirror)
+            .hoverEffect(.highlight)
             .accessibilityLabel(action.accessibilityLabel)
+            .accessibilityIdentifier("mercury.action.mirror")
 
         case .call:
             Button(action: onPlaceCall) {

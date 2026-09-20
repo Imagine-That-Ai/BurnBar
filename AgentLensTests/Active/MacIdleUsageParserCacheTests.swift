@@ -49,7 +49,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
             """,
             to: session.appendingPathComponent("events.jsonl")
         )
-        let parser = OpenBurnBar.CopilotParser(sessionStateURL: sessions, logsURL: logs)
+        let parser = CopilotParser(sessionStateURL: sessions, logsURL: logs)
         let usageOnly = LogParseOptions(includeConversationBodies: false)
 
         let first = try await parser.parse(options: usageOnly)
@@ -77,7 +77,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
             """,
             to: root.appendingPathComponent("analytics.jsonl")
         )
-        let parser = OpenBurnBar.AiderParser(rootOverride: root)
+        let parser = AiderParser(rootOverride: root)
         let usageOnly = LogParseOptions(includeConversationBodies: false)
         let first = try await parser.parse(options: usageOnly)
         XCTAssertEqual(parser.lastSessionScanCount, 1)
@@ -106,7 +106,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
                 arguments: ["conversation-1", "gpt-4o", 1_750_000_000.0]
             )
         }
-        let parser = CursorParser(databasePathOverride: path)
+        let parser = CursorParser(databaseOverride: URL(fileURLWithPath: path))
         let usageOnly = LogParseOptions(includeConversationBodies: false)
         let first = try await parser.parse(options: usageOnly)
         XCTAssertEqual(parser.lastSessionScanCount, 1)
@@ -141,7 +141,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
                 ]
             )
         }
-        let parser = OpenCodeParser(databasePathOverride: path)
+        let parser = OpenCodeParser(databaseOverride: URL(fileURLWithPath: path))
         let usageOnly = LogParseOptions(includeConversationBodies: false)
         let first = try await parser.parse(options: usageOnly)
         XCTAssertEqual(parser.lastSessionScanCount, 1)
@@ -169,7 +169,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
                 )
             ]
         )
-        let parser = OpenCodeParser(databasePathOverride: path)
+        let parser = OpenCodeParser(databaseOverride: URL(fileURLWithPath: path))
         let first = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertEqual(parser.lastSessionScanCount, 1)
         XCTAssertEqual(parser.lastPartReadCount, 0)
@@ -210,7 +210,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
                 )
             ]
         )
-        let parser = OpenCodeParser(databasePathOverride: path)
+        let parser = OpenCodeParser(databaseOverride: URL(fileURLWithPath: path))
         let first = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertEqual(parser.lastPartReadCount, 2)
         let bySession = Dictionary(uniqueKeysWithValues: first.usages.map { ($0.sessionId, $0) })
@@ -226,7 +226,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
 
     func test_macOpenCode_usageOnlyJSONOnlyPartBoundsByJsonExtract() async throws {
         let path = try makeMacOpenCodeJSONOnlyPartDatabase(decoyPartCount: 20)
-        let parser = OpenCodeParser(databasePathOverride: path)
+        let parser = OpenCodeParser(databaseOverride: URL(fileURLWithPath: path))
         let first = try await parser.parse(options: LogParseOptions.usageAccounting())
         XCTAssertEqual(
             parser.lastPartReadCount,
@@ -253,7 +253,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
             """,
             to: root.appendingPathComponent("pi-session.jsonl")
         )
-        let parser = PiAgentParser(sessionsDirectoryOverride: root)
+        let parser = PiAgentParser(sessionsOverride: root)
         let usageOnly = LogParseOptions(includeConversationBodies: false)
         let first = try await parser.parse(options: usageOnly)
         XCTAssertEqual(parser.lastSessionScanCount, 1)
@@ -290,7 +290,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
         )
         try data.write(to: file, options: .atomic)
 
-        let parser = PiAgentParser(sessionsDirectoryOverride: root)
+        let parser = PiAgentParser(sessionsOverride: root)
         let result = try await parser.parse(
             options: LogParseOptions(includeConversationBodies: false)
         )
@@ -314,7 +314,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
             """,
             to: root.appendingPathComponent("claw-session.json")
         )
-        let parser = OpenClawParser(fileManager: fileManager, sessionsDirectory: root)
+        let parser = OpenClawParser(sessionsOverride: root, fileManager: fileManager)
         let usageOnly = LogParseOptions(includeConversationBodies: false)
         let first = try await parser.parse(options: usageOnly)
         XCTAssertEqual(parser.lastSessionScanCount, 1)

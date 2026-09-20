@@ -5,7 +5,7 @@ import {
   cinematicPresentFps,
   newCinematicClockState,
   shutterAlpha,
-} from "../../lib/gl/engine/cinematicClock";
+} from "@openburnbar/gl-engine/cinematicClock";
 
 describe("cinematicPresentFps", () => {
   it("picks a divisor of refresh and never 30 on 144", () => {

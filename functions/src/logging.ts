@@ -10,7 +10,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { onCall, type CallableOptions, type CallableRequest } from "firebase-functions/v2/https";
+import {
+  onCall,
+  type CallableOptions,
+  type CallableRequest,
+  type Request,
+} from "firebase-functions/v2/https";
+import type { Response } from "express";
 
 // Patterns for PII and sensitive data scrubbing
 const SCRUB_PATTERNS: Array<[RegExp, string]> = [
@@ -290,4 +296,50 @@ export function onCallProduction<Data, R>(
   handler: (request: CallableRequest<Data>) => Promise<R>,
 ) {
   return onCall(options, wrapCallableHandler(name, handler));
+}
+
+function traceIdFromHttpRequest(req: Request): string {
+  const raw = req.header?.("x-cloud-trace-context") ?? req.headers?.["x-cloud-trace-context"];
+  const header = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof header === "string" && header.length > 0) {
+    return header.split("/")[0] ?? randomUUID();
+  }
+  return randomUUID();
+}
+
+async function withRequestLogging(
+  name: string,
+  req: Request,
+  handler: (traceId: string) => Promise<void>,
+): Promise<void> {
+  const traceId = traceIdFromHttpRequest(req);
+  logCallableStart(name, traceId, undefined);
+  try {
+    await handler(traceId);
+    logCallableSuccess(name, traceId, undefined);
+  } catch (error) {
+    const { captureException } = await import("./sentry.js");
+    captureException(error, {
+      callable: name,
+      trace_id: traceId,
+    });
+    logCallableFailure(name, traceId, error);
+    throw error;
+  }
+}
+
+/**
+ * Wraps a v2 `onRequest` handler with the same start/success/error + Sentry
+ * capture as `wrapCallableHandler`. Use as the second argument to
+ * `onRequest(options, wrapRequestHandler("name", handler))`.
+ */
+export function wrapRequestHandler(
+  name: string,
+  handler: (req: Request, res: Response) => void | Promise<void>,
+): (req: Request, res: Response) => Promise<void> {
+  return async (req, res) => {
+    await withRequestLogging(name, req, async () => {
+      await handler(req, res);
+    });
+  };
 }

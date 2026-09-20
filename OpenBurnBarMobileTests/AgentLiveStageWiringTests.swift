@@ -142,9 +142,10 @@ final class AgentLiveStageWiringTests: XCTestCase {
         XCTAssertFalse(pipController.didRequestAutomaticInlinePiP)
 
         singleton.configurePictureInPicture(onDidStart: {}, onDidStop: {})
-        singleton.state.ingestSurfaceFrame(
+        singleton.ingestDecodedDesktopFrame(
             MediaFrame(kind: .videoNAL, flags: [.keyframe], payload: Data([0x00, 0x00, 0x01]))
         )
+        XCTAssertNotNil(singleton.state.currentFrame)
         try await Task.sleep(nanoseconds: 20_000_000)
 
         XCTAssertTrue(pipController.didRequestAutomaticInlinePiP)

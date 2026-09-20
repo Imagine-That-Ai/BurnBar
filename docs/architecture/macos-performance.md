@@ -3,8 +3,9 @@
 This document is the source of truth for the May 2026 macOS performance
 sweep (sections 1–6), the June 2026 invisible-wins sweep (sections
 7–13, applied 2026-06-09), and the deferred round-2 fixes (sections
-14–16, applied 2026-06-10). Every optimization here was applied without
-altering visual behaviour. If you're touching one of these surfaces,
+14–16, applied 2026-06-10), with subsequent work recorded below.
+The original sweeps preserved visual behaviour; §41 explicitly changes
+motion and refraction during scrolling. If you're touching these surfaces,
 please read the relevant section first so the work doesn't regress.
 
 ## 1. Wallpaper canvas (`SwarmCanvasView`)
@@ -2255,3 +2256,116 @@ The SQL selection, keyset, and transaction behavior was checked against
 Context7 library ID `/groue/grdb.swift/v7.5.0`. This section records source and
 focused-test evidence only; the installed-candidate gates below must be rerun
 after building and installing the exact tree that contains this repair.
+
+## 41. Startup, scrolling, and idle-work scheduling
+
+This change removes synchronous and redundant work from interactive paths.
+These are implementation contracts, not measured startup/FPS/CPU gains.
+
+### UI and rendering
+
+- One dashboard window probe supplies visibility, display refresh rate,
+  display-sleep state, and live-scroll ownership to the native backdrop and
+  glass plates. Standalone backdrops retain their own probe. Hidden windows
+  and off-viewport plates do not advance their field animation.
+- Live scrolling pauses the field and bypasses the glass lens pass. The
+  authored fill and content stay available; optics resume afterward.
+  Reduce Motion and Reduce Transparency retain their existing policies.
+- Project rows, chart rows, session sections, and transcript blocks use lazy
+  layout. Project entrance-animation delay is bounded rather than increasing
+  with the number of rows.
+- Chat follows the tail only while the reader owns the bottom 64 points.
+  User scrolling and citation jumps suspend following. The accessible
+  **Latest** button restores it. Streaming scroll requests coalesce over
+  50 ms, and pending work is canceled on disappearance.
+- Transcript parsing and Markdown export preparation run on a cancellable
+  worker, outside `body` and off the main actor. Export-only updates reuse
+  parsed blocks. A changed transcript replaces the cache; cancellation
+  cannot publish partial output. Loading and failure are explicit states.
+
+### Startup and local truth
+
+The app installs a loading shell before opening the database. Encryption,
+key lookup, migrations, and open failures still use the canonical database
+opener, now on a worker. The observable facade is installed on the main actor
+without synchronous usage hydration. Failure opens recovery, never a silent
+empty replacement database. Retry and archive/reset are asynchronous.
+
+Navigation requested while loading is retained until the live command router
+is installed with the usage aggregator, cloud-sync service, and mirror ready.
+Optional service attachment follows dashboard mounting and
+yields between groups. After a successful usage transaction, local usage is
+published before billing, quota, and cloud reconciliation; the final reload
+still includes their results.
+
+### Background work
+
+Retention runs once when deferred maintenance starts and then hourly through
+`BackgroundCadenceCoordinator`, independently of refresh. An in-flight guard
+prevents overlap, and failures do not advance the completion watermark.
+Retention cutoffs and deletion policy are unchanged.
+The usage predicate now uses indexed, non-null `startTime` directly; the
+previous `COALESCE` referenced a nonexistent `timestamp` column and failed
+against the migrated schema. Boundary rows remain intact, and only actual
+deletions advance the usage write marker. The existing local usage window is
+180 days; fixing the query makes that policy effective. Confirm this window
+before deploying to a history-bearing installation.
+
+Artifact discovery shares a single in-flight scan, watches registered roots,
+and skips clean background passes. Root/pattern changes, relevant file events,
+wake, explicit scans, and a 30-minute reconciliation invalidate that gate.
+Failed watcher startup falls back to scanning rather than claiming freshness.
+Sleep cancels discovery and stops watchers; wake reconciles changes made
+while asleep. Disabled discovery publishes health once and then stays idle.
+
+Enumeration streams candidates instead of materializing the full tree.
+Generated descendants (`node_modules`, `.git`, `.build`, `.derived-data`,
+`.spm-cache-new`, `__pycache__`) are pruned. Hidden agent configuration remains
+eligible, and explicitly registered roots are honored even when their name
+would otherwise be pruned. Incomplete directory enumeration cannot drive
+deletions for that root. Present files with invalid text or read failures
+retain their last indexed revision and report degraded health instead of
+queuing a purge. Existing signature, hash, projection, root-boundary,
+and deletion contracts remain in force.
+
+### Validation and measurement boundaries
+
+Focused regression suites:
+
+Use the driver's Debug configuration: existing test suites call DEBUG-only
+helpers. Release packaging also rejects App Check debug credentials in local
+Firebase resources. Keep that guard intact and use production-safe resources
+for Release profiling, rather than treating a test-enabled build as production.
+
+```sh
+./scripts/test-openburnbar-app.sh \
+  -only-testing:OpenBurnBarTests/ResponsivenessTests \
+  -only-testing:OpenBurnBarTests/ArtifactDiscoveryServiceTests \
+  -only-testing:OpenBurnBarTests/UsageRefreshPipelineTests \
+  -only-testing:OpenBurnBarTests/BurnBarKernelFieldTests \
+  -only-testing:OpenBurnBarTests/OpenBurnBarStartupRecoveryTests
+```
+
+The implementation pass ran these suites plus
+`ChatStreamingMessageMutationTests` through a temporary app-only Debug scheme:
+**86 tests passed, zero failures**. Syntax and strict SwiftLint checks passed
+for all 26 changed Swift files. Separate native probes checked scroll/window
+ownership, watcher teardown, cancellation inside eight large parser sections,
+and 13 parser fixtures against the preserved pre-change implementation.
+These checks do not replace native UI or performance profiling.
+
+Before claiming a performance improvement, profile matched Release builds
+with the native field and normal background services enabled. The existing
+performance-gate launch forces WebGL and suppresses services, so its results
+cannot establish native scrolling or normal idle CPU.
+
+Measure baseline and candidate on the same Mac, display, database copy,
+provider configuration, and Xcode version. Separate first-launch migration
+from warm launch. Interleave at least five runs, report median and range for
+startup and idle CPU, and p95 frame time plus hitch count for scrolling.
+Exercise Projects, Charts, Session Logs (including a large transcript), and
+streaming Chat; include manual upward scrolling, citations, **Latest**,
+Reduce Motion, Reduce Transparency, hidden windows, and sleep/wake.
+Keep input fixtures fixed and do not claim differences within run-to-run
+noise. XCTest and parser differential checks establish correctness, not a
+production speedup or visual/accessibility sign-off.

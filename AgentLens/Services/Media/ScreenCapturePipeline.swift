@@ -10,6 +10,14 @@ import CoreGraphics
 import OSLog
 import OpenBurnBarCore
 import OpenBurnBarMedia
+import CoreMedia
+
+// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
+// `CMSampleBuffer` across one isolation hand-off; never shared concurrently.
+// sendable-allowlist: apple-media-buffer
+private struct CapturedSampleBuffer: @unchecked Sendable {
+    let sampleBuffer: CMSampleBuffer
+}
 
 /// Mac screen-capture pipeline driven by ScreenCaptureKit. Phase 3
 /// (Mac → iOS one-way screen share) entry point. Captures the focused
@@ -67,6 +75,8 @@ final class ScreenCapturePipeline: NSObject {
 
     private let configuration: Configuration
     private let frameHandler: FrameHandler
+    // AUDIT(nonisolated unsafe): filled once in init; capture callbacks only call submit.
+    nonisolated(unsafe) private let captureMailbox: LatestFrameMailbox<CapturedSampleBuffer>
     #if canImport(ScreenCaptureKit)
     private var stream: SCStream?
     #endif
@@ -74,6 +84,11 @@ final class ScreenCapturePipeline: NSObject {
     init(configuration: Configuration = Configuration(), frameHandler: @escaping FrameHandler) {
         self.configuration = configuration
         self.frameHandler = frameHandler
+        self.captureMailbox = LatestFrameMailbox { frame in
+            await Task { @MainActor in
+                await frameHandler(frame.sampleBuffer)
+            }.value
+        }
     }
 
     static func availableDisplays() -> [HermesRealtimeRelayDisplayDescriptor] {
@@ -314,23 +329,10 @@ final class ScreenCapturePipeline: NSObject {
 }
 
 #if canImport(ScreenCaptureKit)
-// AUDIT(@unchecked Sendable): single-ownership box ferrying a non-Sendable
-// `CMSampleBuffer` (an Apple framework type) across one isolation hand-off; never
-// shared concurrently. sendable-allowlist: apple-media-buffer
-private struct CapturedSampleBuffer: @unchecked Sendable {
-    // ScreenCaptureKit delivers each sample buffer to this delegate callback
-    // for one-way handoff into the main-actor encoder. Keep the unchecked
-    // boundary local instead of declaring CMSampleBuffer globally Sendable.
-    let sampleBuffer: CMSampleBuffer
-}
-
 extension ScreenCapturePipeline: SCStreamOutput {
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, sampleBuffer.isValid else { return }
-        let frame = CapturedSampleBuffer(sampleBuffer: sampleBuffer)
-        Task(priority: .userInitiated) { @MainActor [weak self, frame] in
-            await self?.frameHandler(frame.sampleBuffer)
-        }
+        captureMailbox.submit(CapturedSampleBuffer(sampleBuffer: sampleBuffer))
     }
 }
 

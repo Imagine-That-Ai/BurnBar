@@ -93,7 +93,7 @@ struct DashboardBackdrop: View {
     /// field can be re-synthesised behind a plate and refracted. Turning it off restores
     /// the 32 named WebGL kernels — and, necessarily, the flat glass that comes with a
     /// backdrop nothing can sample.
-    @AppStorage(BurnBarGlassFieldPreferences.nativeFieldKey) private var useNativeGlassField: Bool = false
+    @AppStorage(BurnBarGlassFieldPreferences.nativeFieldKey) private var useNativeGlassField: Bool = true
     @Environment(\.burnBarFleetDriver) private var fleetDriver
 
     /// Clear-side adjustment (0…1). Toward 1 the window's own plates fade so
@@ -163,7 +163,11 @@ struct DashboardBackdrop: View {
             // background. Editorial used to short-circuit above this, which meant
             // picking a kernel theme on the paper skin rendered nothing at all —
             // the theme was chosen, stored, and then never consulted.
-            if shouldUseKernelBackdrop, useNativeGlassField {
+            if shouldUseKernelBackdrop,
+               !PerformanceGateBackdropSurface.usesWebGLKernel(
+                    isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch,
+                    nativeFieldEnabled: useNativeGlassField
+               ) {
                 // The living backdrop, drawn by Metal as ordinary SwiftUI content.
                 //
                 // The WebGL2 path below still works and still owns the 32 named kernels,

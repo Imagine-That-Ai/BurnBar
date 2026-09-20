@@ -2,20 +2,22 @@ import Foundation
 import OpenBurnBarKernel
 import OpenBurnBarSQLiteReader
 
+typealias LocalUsageJSONObject = [String: Any]
+
 // Cross-platform lifts for provider stores that historically lived only in the
 // macOS UsageAggregator. These parsers deliberately read local artifacts only;
 // they never call provider APIs or infer a credential from the filesystem.
 
-private struct LocalUsageJSONLineSequence: Sequence {
+struct LocalUsageJSONLineSequence: Sequence {
     let fileURL: URL
 
-    func makeIterator() -> AnyIterator<[String: Any]> {
+    func makeIterator() -> AnyIterator<LocalUsageJSONObject> {
         let state = LocalUsageJSONLineIterator(fileURL: fileURL)
         return AnyIterator { state.next() }
     }
 }
 
-private final class LocalUsageJSONLineIterator {
+final class LocalUsageJSONLineIterator {
     private let handle: FileHandle?
     private let reader: BufferedLineReader?
     private var isFinished = false
@@ -30,11 +32,11 @@ private final class LocalUsageJSONLineIterator {
         try? handle?.close()
     }
 
-    func next() -> [String: Any]? {
+    func next() -> LocalUsageJSONObject? {
         guard !isFinished, let reader else { return nil }
         while let line = reader.nextLine() {
-            if let object = parserAutoReleasePool({ () -> [String: Any]? in
-                try? JSONSerialization.jsonObject(with: Data(line.text.utf8)) as? [String: Any]
+            if let object = parserAutoReleasePool({ () -> LocalUsageJSONObject? in
+                try? JSONSerialization.jsonObject(with: Data(line.text.utf8)) as? LocalUsageJSONObject
             }) {
                 return object
             }
@@ -45,7 +47,7 @@ private final class LocalUsageJSONLineIterator {
     }
 }
 
-private enum LocalUsageParserSupport {
+enum LocalUsageParserSupport {
     struct Turn: Sendable {
         let role: String
         let text: String
@@ -85,16 +87,16 @@ private enum LocalUsageParserSupport {
         }.sorted { $0.path < $1.path }
     }
 
-    static func jsonObjects(at file: URL) -> [[String: Any]] {
+    static func jsonObjects(at file: URL) -> [LocalUsageJSONObject] {
         guard let data = try? Data(contentsOf: file) else { return [] }
         if let object = try? JSONSerialization.jsonObject(with: data) {
-            if let array = object as? [[String: Any]] { return array }
-            if let dictionary = object as? [String: Any] { return [dictionary] }
+            if let array = object as? [LocalUsageJSONObject] { return array }
+            if let dictionary = object as? LocalUsageJSONObject { return [dictionary] }
         }
         guard let text = String(data: data, encoding: .utf8) else { return [] }
         return text.split(whereSeparator: \.isNewline).compactMap { line in
             guard let lineData = String(line).data(using: .utf8) else { return nil }
-            return try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+            return try? JSONSerialization.jsonObject(with: lineData) as? LocalUsageJSONObject
         }
     }
 
@@ -130,9 +132,9 @@ private enum LocalUsageParserSupport {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    static func dictionary(_ value: Any?) -> [String: Any]? { value as? [String: Any] }
+    static func dictionary(_ value: Any?) -> LocalUsageJSONObject? { value as? LocalUsageJSONObject }
 
-    static func firstString(_ object: [String: Any], keys: [String]) -> String? {
+    static func firstString(_ object: LocalUsageJSONObject, keys: [String]) -> String? {
         keys.lazy.compactMap { string(object[$0]) }.first
     }
 
@@ -236,7 +238,7 @@ private enum LocalUsageParserSupport {
         switch value {
         case let string as String: return string.trimmingCharacters(in: .whitespacesAndNewlines)
         case let array as [Any]: return array.map(contentText).filter { !$0.isEmpty }.joined(separator: "\n")
-        case let object as [String: Any]:
+        case let object as LocalUsageJSONObject:
             for key in ["text", "content", "value", "output"] where object[key] != nil {
                 let text = contentText(object[key])
                 if !text.isEmpty { return text }
@@ -246,7 +248,7 @@ private enum LocalUsageParserSupport {
         }
     }
 
-    static func usageDict(_ object: [String: Any]) -> [String: Any]? {
+    static func usageDict(_ object: LocalUsageJSONObject) -> LocalUsageJSONObject? {
         if let usage = dictionary(object["usage"]) { return usage }
         if let usage = dictionary(object["tokenUsage"]) { return usage }
         if let message = dictionary(object["message"]) {
@@ -255,12 +257,12 @@ private enum LocalUsageParserSupport {
         return nil
     }
 
-    static func extracted(_ object: [String: Any]) -> ExtractedTokenUsage {
+    static func extracted(_ object: LocalUsageJSONObject) -> ExtractedTokenUsage {
         guard let usage = usageDict(object) else { return ExtractedTokenUsage(input: 0, output: 0, cacheCreation: 0, cacheRead: 0, reasoningTokens: 0) }
         return TokenExtractionUtility.extractUsageTokens(usage)
     }
 
-    static func model(in object: [String: Any]) -> String? {
+    static func model(in object: LocalUsageJSONObject) -> String? {
         if let model = firstString(object, keys: ["model", "modelName", "model_name", "modelId", "model_id"]) {
             return TokenExtractionUtility.normalizeModelName(model)
         }
@@ -269,6 +271,52 @@ private enum LocalUsageParserSupport {
             return TokenExtractionUtility.normalizeModelName(model)
         }
         return nil
+    }
+
+    static func unwrapEnvelope(_ raw: LocalUsageJSONObject) -> LocalUsageJSONObject {
+        dictionary(raw["event"])
+            ?? dictionary(raw["payload"])
+            ?? dictionary(raw["data"])
+            ?? raw
+    }
+
+    static func isPlaceholderModel(_ model: String) -> Bool {
+        let normalized = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty || normalized == "unknown" || normalized == "default" || normalized == "none"
+    }
+
+    enum ContentReadError: Error {
+        case unreadable(URL)
+    }
+
+    static func jsonLinesOrThrow(at file: URL) throws -> [LocalUsageJSONObject] {
+        let handle: FileHandle
+        do {
+            handle = try FileHandle(forReadingFrom: file)
+        } catch {
+            throw ContentReadError.unreadable(file)
+        }
+        defer { try? handle.close() }
+        let reader = BufferedLineReader(fileHandle: handle)
+        var objects: [LocalUsageJSONObject] = []
+        while let line = reader.nextLine() {
+            if let object = parserAutoReleasePool({ () -> LocalUsageJSONObject? in
+                try? JSONSerialization.jsonObject(with: Data(line.text.utf8)) as? LocalUsageJSONObject
+            }) {
+                objects.append(object)
+            }
+        }
+        return objects
+    }
+
+    static func jsonObjectOrThrow(at file: URL) throws -> LocalUsageJSONObject? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: file)
+        } catch {
+            throw ContentReadError.unreadable(file)
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? LocalUsageJSONObject
     }
 }
 
@@ -311,8 +359,8 @@ public final class AiderParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
 
@@ -420,8 +468,8 @@ public final class CursorParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
@@ -502,9 +550,9 @@ public final class OpenCodeParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
-    var lastPartReadCount: Int { partReadCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastPartReadCount: Int { partReadCount.read() }
 
     public static func resolvedDatabasePath(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         if let explicit = environment["OPENCODE_DB_PATH"], !explicit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return LocalUsageParserSupport.expanded(explicit) }
@@ -765,9 +813,9 @@ public final class OpenCodeParser: LogParser, Sendable {
         return collected
     }
 
-    private static func decode(_ value: String) -> [String: Any]? { try? JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String: Any] }
+    private static func decode(_ value: String) -> LocalUsageJSONObject? { try? JSONSerialization.jsonObject(with: Data(value.utf8)) as? LocalUsageJSONObject }
 
-    private static func data(from row: SQLiteRow) -> [String: Any]? {
+    private static func data(from row: SQLiteRow) -> LocalUsageJSONObject? {
         for column in ["data", "json", "value", "content", "payload"] {
             if let value = row.string(column), let object = decode(value) { return object }
         }
@@ -807,9 +855,9 @@ public final class PiAgentParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
-    var lastContentExtractionLineCount: Int { contentExtractionLineCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastContentExtractionLineCount: Int { contentExtractionLineCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
@@ -998,7 +1046,7 @@ public final class PiAgentParser: LogParser, Sendable {
     private static func scanJSONLines(
         file: URL,
         resourceGovernor: ParserResourceGovernor?,
-        body: ([String: Any]) throws -> Void
+        body: (LocalUsageJSONObject) throws -> Void
     ) throws {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return }
         defer { try? handle.close() }
@@ -1011,8 +1059,8 @@ public final class PiAgentParser: LogParser, Sendable {
                 try Task.checkCancellation()
                 try resourceGovernor?.checkpoint()
             }
-            guard let object = parserAutoReleasePool({ () -> [String: Any]? in
-                try? JSONSerialization.jsonObject(with: Data(line.text.utf8)) as? [String: Any]
+            guard let object = parserAutoReleasePool({ () -> LocalUsageJSONObject? in
+                try? JSONSerialization.jsonObject(with: Data(line.text.utf8)) as? LocalUsageJSONObject
             }) else {
                 continue
             }
@@ -1055,8 +1103,8 @@ public final class OMPParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
     var lastContentExtractionLineCount: Int { contentExtractionLineCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
@@ -1156,8 +1204,8 @@ public final class OpenClawParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
@@ -1310,8 +1358,8 @@ public final class OllamaParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
@@ -1368,395 +1416,5 @@ public final class OllamaParser: LogParser, Sendable {
             cacheMutated = true
         }
         return ParseResult(usages: usages, conversations: [])
-    }
-}
-
-// MARK: Junie
-
-public final class JunieParser: LogParser, Sendable {
-    public let provider: AgentProvider = .junie
-    private let sessionsOverride: URL?
-    private let fileManager: FileManager
-    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
-
-    public init(
-        sessionsOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
-        self.sessionsOverride = sessionsOverride
-        self.fileManager = fileManager
-        self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: sessionsOverride,
-                live: appPaths.junieParserCacheURL,
-                fileName: ".obb-junie-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "JunieParser"
-        )
-    }
-
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
-
-    public func parse() async throws -> ParseResult { try await parse(options: .default) }
-    public func parse(options: LogParseOptions) async throws -> ParseResult {
-        sessionScanCount.write(0)
-        sessionCacheHitCount.write(0)
-        let root = sessionsOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
-        guard fileManager.fileExists(atPath: root.path) else { return ParseResult(usages: [], conversations: []) }
-        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
-        var parseCache = cacheStore.load()
-        var activePaths = Set<String>()
-        var cacheMutated = false
-        defer { if cacheMutated { cacheStore.persist(parseCache) } }
-        var projects: [String: String] = [:]
-        let index = root.appendingPathComponent("index.jsonl")
-        for object in LocalUsageParserSupport.jsonLines(at: index) {
-            if let id = LocalUsageParserSupport.firstString(object, keys: ["sessionId", "session_id", "id"]),
-               let project = LocalUsageParserSupport.firstString(
-                   object,
-                   keys: ["projectPath", "project_path", "cwd", "workingDirectory"]
-               ) {
-                projects[id] = project
-            }
-        }
-        let dirs = (try? fileManager.contentsOfDirectory(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey]
-        ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
-        var usages: [TokenUsage] = []
-        var conversations: [ConversationRecord] = []
-        for dir in dirs {
-            let id = dir.lastPathComponent
-            let events = dir.appendingPathComponent("events.jsonl")
-            guard fileManager.fileExists(atPath: events.path) else { continue }
-            let cacheKey = events.standardizedFileURL.path
-            activePaths.insert(cacheKey)
-            var signatureURLs = [events]
-            if fileManager.fileExists(atPath: index.path) { signatureURLs.append(index) }
-            let signature = FileSetSignature(urls: signatureURLs, using: fileManager)
-            guard try gate.shouldRead(signatureURLs) else { continue }
-            if !options.includeConversationBodies,
-               let signature,
-               let cached = parseCache.fileEntries[cacheKey],
-               cached.signature == signature {
-                sessionCacheHitCount.withLock { $0 += 1 }
-                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .junie) })
-                continue
-            }
-            sessionScanCount.withLock { $0 += 1 }
-            let objects = LocalUsageParserSupport.jsonLines(at: events)
-            var input = 0, output = 0, cacheCreation = 0, cacheRead = 0, reasoning = 0
-            var userChars = 0, assistantChars = 0
-            var model = "unknown"
-            var start: Date?, end: Date?
-            var turns: [LocalUsageParserSupport.Turn] = []
-            for raw in objects {
-                let payload = LocalUsageParserSupport.dictionary(raw["event"])
-                    ?? LocalUsageParserSupport.dictionary(raw["payload"])
-                    ?? raw
-                let message = LocalUsageParserSupport.dictionary(payload["message"]) ?? payload
-                let timestamp = LocalUsageParserSupport.date(
-                    raw["timestamp"] ?? payload["timestamp"]
-                )
-                start = start ?? timestamp
-                end = timestamp ?? end
-                model = LocalUsageParserSupport.model(in: payload) ?? model
-                let tokens = LocalUsageParserSupport.extracted(payload)
-                input += tokens.input
-                output += tokens.output
-                cacheCreation += tokens.cacheCreation
-                cacheRead += tokens.cacheRead
-                reasoning += tokens.reasoningTokens
-                let role = (
-                    LocalUsageParserSupport.string(message["role"])
-                        ?? LocalUsageParserSupport.string(message["author"])
-                        ?? LocalUsageParserSupport.string(message["sender"])
-                        ?? ""
-                ).lowercased()
-                let text = LocalUsageParserSupport.contentText(
-                    message["content"] ?? message["text"] ?? message["parts"]
-                )
-                if !text.isEmpty, ["user", "assistant", "agent", "model"].contains(role) {
-                    let canonical = role == "user" ? "user" : "assistant"
-                    turns.append(.init(role: canonical, text: text, timestamp: timestamp))
-                    if canonical == "user" {
-                        userChars += text.count
-                    } else {
-                        assistantChars += text.count
-                    }
-                }
-            }
-            var method: UsageProvenanceMethod = .providerLog
-            var confidence: UsageProvenanceConfidence = .exact
-            if input == 0 && output == 0 && cacheCreation == 0 && cacheRead == 0 && reasoning == 0 {
-                guard userChars + assistantChars > 0 else { continue }
-                let estimate = TokenExtractionUtility.estimateFallbackTokens(
-                    userVisibleChars: userChars,
-                    assistantVisibleChars: assistantChars,
-                    assistantReasoningChars: 0,
-                    userMessageCount: 1,
-                    assistantMessageCount: 1
-                )
-                input = estimate.input
-                output = estimate.output
-                method = .heuristicEstimate
-                confidence = .lowConfidenceEstimate
-            }
-            let mtime = LocalUsageParserSupport.modificationDate(events) ?? Date()
-            let startTime = start ?? mtime
-            let endTime = end ?? startTime
-            let project = projects[id] ?? "Junie"
-            let cost = (try? ModelPricing.lookup(model: model, providerID: "junie").cost(
-                inputTokens: input,
-                outputTokens: output,
-                cacheCreationTokens: cacheCreation,
-                cacheReadTokens: cacheRead
-            )) ?? 0
-            let estimatorVersion = method == .heuristicEstimate
-                ? TokenExtractionUtility.currentEstimatorVersion
-                : ""
-            if let usage = LocalUsageParserSupport.usage(
-                provider: .junie,
-                sessionID: id,
-                project: project,
-                model: model,
-                input: input,
-                output: output,
-                cacheCreation: cacheCreation,
-                cacheRead: cacheRead,
-                reasoning: reasoning,
-                cost: cost,
-                start: startTime,
-                end: endTime,
-                method: method,
-                confidence: confidence,
-                estimatorVersion: estimatorVersion
-            ) {
-                usages.append(usage)
-                if let signature {
-                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(signature: signature, usages: [usage])
-                    cacheMutated = true
-                }
-            }
-            if options.includeConversationBodies, !turns.isEmpty {
-                conversations.append(LocalUsageParserSupport.transcript(
-                    provider: .junie,
-                    sessionID: id,
-                    project: project,
-                    turns: turns,
-                    start: startTime,
-                    end: endTime,
-                    fileModifiedAt: mtime,
-                    workingDirectory: projects[id]
-                ))
-            }
-        }
-        let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
-        if !stale.isEmpty {
-            for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
-            cacheMutated = true
-        }
-        return ParseResult(usages: usages, conversations: conversations)
-    }
-}
-
-// MARK: Factory model-filtered providers (Z.ai / MiniMax)
-
-public final class ModelFilterParser: LogParser, Sendable {
-    public let provider: AgentProvider
-    private let modelPattern: String
-    private let sessionsOverride: URL?
-    private let fileManager: FileManager
-    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<CompositeFileSignature<FileSignature>>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
-
-    public init(
-        modelPattern: String,
-        provider: AgentProvider,
-        sessionsOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
-        self.modelPattern = modelPattern.lowercased()
-        self.provider = provider
-        self.sessionsOverride = sessionsOverride
-        self.fileManager = fileManager
-        self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: sessionsOverride,
-                live: appPaths.modelFilterParserCacheURL(for: provider),
-                fileName: ".obb-\(provider.persistedToken)-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "ModelFilterParser"
-        )
-    }
-
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
-
-    public func parse() async throws -> ParseResult { try await parse(options: .default) }
-    public func parse(options: LogParseOptions) async throws -> ParseResult {
-        sessionScanCount.write(0)
-        sessionCacheHitCount.write(0)
-        let root = sessionsOverride ?? LocalUsageParserSupport.expanded("~/.factory/sessions")
-        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
-        var usages: [TokenUsage] = []; var conversations: [ConversationRecord] = []
-        var parseCache = cacheStore.load()
-        var activePaths = Set<String>()
-        var cacheMutated = false
-        defer { if cacheMutated { cacheStore.persist(parseCache) } }
-        for file in LocalUsageParserSupport.files(in: root, extensions: ["jsonl"]) {
-            let cacheKey = file.standardizedFileURL.path
-            activePaths.insert(cacheKey)
-            let stem = file.deletingPathExtension()
-            let settingsURL = stem.appendingPathExtension("settings.json")
-            let metadataURL = stem.appendingPathExtension("metadata.json")
-            var gateFiles = [file]
-            if fileManager.fileExists(atPath: settingsURL.path) { gateFiles.append(settingsURL) }
-            if fileManager.fileExists(atPath: metadataURL.path) { gateFiles.append(metadataURL) }
-            guard try gate.shouldRead(gateFiles) else { continue }
-            let signature = FileSignature(for: file, using: fileManager).map { primary in
-                CompositeFileSignature(
-                    primary: primary,
-                    settings: FileSignature(for: settingsURL, using: fileManager),
-                    metadata: FileSignature(for: metadataURL, using: fileManager)
-                )
-            }
-            if !options.includeConversationBodies,
-               let signature,
-               let cached = parseCache.fileEntries[cacheKey],
-               cached.signature == signature {
-                sessionCacheHitCount.withLock { $0 += 1 }
-                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: provider) })
-                continue
-            }
-            sessionScanCount.withLock { $0 += 1 }
-            let objects = LocalUsageParserSupport.jsonLines(at: file); var input = 0, output = 0, cacheCreation = 0, cacheRead = 0, userChars = 0, assistantChars = 0; var model: String?; var start: Date?, end: Date?; var turns: [LocalUsageParserSupport.Turn] = []
-            for sidecar in [stem.appendingPathExtension("settings.json"), stem.appendingPathExtension("metadata.json")] {
-                guard let sidecarData = try? Data(contentsOf: sidecar),
-                      let sidecarObject = try? JSONSerialization.jsonObject(with: sidecarData) as? [String: Any]
-                else { continue }
-                model = model ?? LocalUsageParserSupport.model(in: sidecarObject)
-                if let usage = LocalUsageParserSupport.dictionary(sidecarObject["tokenUsage"] ?? sidecarObject["usage"]) {
-                    let tokens = TokenExtractionUtility.extractUsageTokens(usage)
-                    input += tokens.input; output += tokens.output; cacheCreation += tokens.cacheCreation; cacheRead += tokens.cacheRead
-                }
-            }
-            for object in objects {
-                let timestamp = LocalUsageParserSupport.date(object["timestamp"])
-                start = start ?? timestamp
-                end = timestamp ?? end
-                model = model ?? LocalUsageParserSupport.model(in: object)
-                let tokens = LocalUsageParserSupport.extracted(object)
-                input += tokens.input
-                output += tokens.output
-                cacheCreation += tokens.cacheCreation
-                cacheRead += tokens.cacheRead
-                let message = LocalUsageParserSupport.dictionary(object["message"])
-                let role = (LocalUsageParserSupport.string(message?["role"]) ?? "").lowercased()
-                let text = LocalUsageParserSupport.contentText(message?["content"])
-                if !text.isEmpty, ["user", "assistant"].contains(role) {
-                    turns.append(.init(role: role, text: text, timestamp: timestamp))
-                    if role == "user" {
-                        userChars += text.count
-                    } else {
-                        assistantChars += text.count
-                    }
-                }
-            }
-            func persist(_ fileUsages: [TokenUsage]) {
-                if let signature {
-                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
-                        signature: signature,
-                        usages: fileUsages
-                    )
-                    cacheMutated = true
-                }
-            }
-            guard let resolvedModel = model, resolvedModel.lowercased().contains(modelPattern) else {
-                persist([])
-                continue
-            }
-            var method: UsageProvenanceMethod = .providerLog
-            var confidence: UsageProvenanceConfidence = .exact
-            if input == 0 && output == 0 {
-                guard userChars + assistantChars > 0 else {
-                    persist([])
-                    continue
-                }
-                let estimate = TokenExtractionUtility.estimateFallbackTokens(
-                    userVisibleChars: userChars,
-                    assistantVisibleChars: assistantChars,
-                    assistantReasoningChars: 0,
-                    userMessageCount: 1,
-                    assistantMessageCount: 1
-                )
-                input = estimate.input
-                output = estimate.output
-                method = .heuristicEstimate
-                confidence = .lowConfidenceEstimate
-            }
-            let mtime = LocalUsageParserSupport.modificationDate(file) ?? Date()
-            let startTime = start ?? mtime
-            let endTime = end ?? startTime
-            let project = file.deletingLastPathComponent().lastPathComponent
-            let cost = (try? ModelPricing.lookup(model: resolvedModel).cost(
-                inputTokens: input,
-                outputTokens: output,
-                cacheCreationTokens: cacheCreation,
-                cacheReadTokens: cacheRead
-            )) ?? 0
-            let id = file.deletingPathExtension().lastPathComponent
-            let estimatorVersion = method == .heuristicEstimate
-                ? TokenExtractionUtility.currentEstimatorVersion
-                : ""
-            if let usage = LocalUsageParserSupport.usage(
-                provider: provider,
-                sessionID: id,
-                project: project,
-                model: resolvedModel,
-                input: input,
-                output: output,
-                cacheCreation: cacheCreation,
-                cacheRead: cacheRead,
-                cost: cost,
-                start: startTime,
-                end: endTime,
-                method: method,
-                confidence: confidence,
-                estimatorVersion: estimatorVersion
-            ) {
-                usages.append(usage)
-                persist([usage])
-            } else {
-                persist([])
-            }
-            if options.includeConversationBodies, !turns.isEmpty {
-                conversations.append(LocalUsageParserSupport.transcript(
-                    provider: provider,
-                    sessionID: id,
-                    project: project,
-                    turns: turns,
-                    start: startTime,
-                    end: endTime,
-                    fileModifiedAt: mtime
-                ))
-            }
-        }
-        let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
-        if !stale.isEmpty {
-            for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
-            cacheMutated = true
-        }
-        return ParseResult(usages: usages, conversations: conversations)
     }
 }

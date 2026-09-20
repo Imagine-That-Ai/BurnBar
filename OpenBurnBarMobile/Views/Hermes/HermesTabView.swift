@@ -198,27 +198,6 @@ struct HermesChatView: View {
         }
     }
 
-    private var chatBackgroundVisibility: MobileBackgroundVisibility {
-        if showConnectionSheet
-            || showRuntimeSheet
-            || showModelPicker
-            || permissionGrantThreadID != nil
-            || showSetupWizard
-            || showGatewayPrivacySheet
-            || showPretextPlayground
-            || showFileImporter
-            || showCameraSheet
-            || atomRouter.pending != nil {
-            return .obscured
-        }
-        // `.subtle`, not `.prominent`: the chat reads like ChatGPT — calm
-        // canvas, content first. It also resolves to the `subtleLive` swarm
-        // plan (15 fps cap, ~45% particles), so the murmuration's shape
-        // formation stops competing with message rendering for the main
-        // thread's frame budget.
-        return .subtle
-    }
-
     // remediation(hermes-typecheck): extracted from the main `body` VStack so the
     // Swift type-checker stays under its per-expression time budget. The inline
     // ChatAttachmentTray closure + chained modifiers + transition pushed `body`
@@ -243,7 +222,7 @@ struct HermesChatView: View {
 
     var body: some View {
         ZStack {
-            AuroraBackdrop(visibility: chatBackgroundVisibility)
+            Color(uiColor: .systemBackground)
             VStack(spacing: 0) {
                 relaySuggestionBanner
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
@@ -867,7 +846,7 @@ struct HermesChatView: View {
                 .foregroundStyle(MobileTheme.hermesAureate)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .auroraGlass(.compact, cornerRadius: 14)
+                .auroraGlass(.compact, cornerRadius: 14, interactive: true)
             }
             .buttonStyle(.plain)
             .accessibilityHint("Selects the available Mac Hermes Remote Relay for this chat.")

@@ -52,6 +52,7 @@ final class VideoReceivePipeline {
     private var session: VTDecompressionSession?
     private var formatDescription: CMFormatDescription?
     private var activeCodec: Codec
+    private var gopWindow = MediaGOPReceiveWindow()
     private var currentGopID: UInt32 = .max
     // remediation(1080p-hardcode): the raw-payload fallback previously baked
     // literal 1920x1080 into the format description. It is now an overridable,
@@ -111,6 +112,17 @@ final class VideoReceivePipeline {
     ) async throws {
         let decoderPayload = try VideoDecoderConfigurationPayload.decodeIfPresent(frame.payload)
         let samplePayload = decoderPayload?.samplePayload ?? frame.payload
+        let admission = gopWindow.admit(
+            gopID: frame.gopID,
+            isKeyframe: frame.flags.contains(.keyframe),
+            isEndOfGroup: frame.flags.contains(.endOfGroup)
+        )
+        switch admission {
+        case .dropStale, .dropUnanchored:
+            return
+        case .decode:
+            break
+        }
         if frame.flags.contains(.keyframe) || frame.gopID != currentGopID {
             currentGopID = frame.gopID
             if let decoderPayload {
@@ -204,6 +216,8 @@ final class VideoReceivePipeline {
         }
         session = nil
         formatDescription = nil
+        gopWindow.reset()
+        currentGopID = .max
     }
 
     private func buildFormatDescription(from payload: Data) throws {

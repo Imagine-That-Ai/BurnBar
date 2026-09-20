@@ -127,31 +127,6 @@ final class MissionConsoleKindTests: XCTestCase {
     }
 }
 
-final class MissionFABGaugeConfigurationTests: XCTestCase {
-    func test_burnSweepClamps() {
-        let underflow = MissionFABGauge.Configuration(
-            size: .standard, activeMissionCount: 0, approvalPendingCount: 0,
-            blockedCount: 0, hasCompletedSinceLastOpen: false,
-            burnSweep: -1.0, burnPerHourUSD: 0, macOnline: true
-        )
-        let overflow = MissionFABGauge.Configuration(
-            size: .standard, activeMissionCount: 0, approvalPendingCount: 0,
-            blockedCount: 0, hasCompletedSinceLastOpen: false,
-            burnSweep: 2.5, burnPerHourUSD: 0, macOnline: true
-        )
-        XCTAssertEqual(underflow.burnSweep, 0)
-        XCTAssertEqual(overflow.burnSweep, 1)
-    }
-
-    func test_idleConfigurationDefaults() {
-        XCTAssertEqual(MissionFABGauge.Configuration.idle.activeMissionCount, 0)
-        XCTAssertEqual(MissionFABGauge.Configuration.idle.approvalPendingCount, 0)
-        XCTAssertEqual(MissionFABGauge.Configuration.idle.blockedCount, 0)
-        XCTAssertTrue(MissionFABGauge.Configuration.idle.macOnline)
-        XCTAssertEqual(MissionFABGauge.Configuration.idle.burnSweep, 0)
-    }
-}
-
 final class MissionConsoleFormattingTests: XCTestCase {
     func test_costFormatsSubDollar() {
         XCTAssertEqual(MissionConsoleFormatting.cost(0.0473), "$0.0473")

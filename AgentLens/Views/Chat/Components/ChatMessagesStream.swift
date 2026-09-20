@@ -20,6 +20,9 @@ struct ChatMessagesStream: View {
     var horizontalPadding: CGFloat = DesignSystem.Spacing.md
     var verticalPadding: CGFloat = DesignSystem.Spacing.md
     var onJumpToConversation: (ConversationJumpTarget) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scrollFollow = ChatScrollFollowState()
+    @State private var tailScrollTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -68,21 +71,59 @@ struct ChatMessagesStream: View {
                 }
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
+                .background {
+                    ChatScrollViewportProbe { distance, isScrolling in
+                        var next = scrollFollow
+                        next.userScrolled(distanceToBottom: distance, isScrolling: isScrolling)
+                        guard next != scrollFollow else { return }
+                        scrollFollow = next
+                        if !scrollFollow.shouldFollow { tailScrollTask?.cancel(); tailScrollTask = nil }
+                    }
+                    .frame(width: 0, height: 0)
+                }
             }
             .onAppear {
+                scrollFollow.switchThread(to: controller.activeThreadID)
+                scrollFollow.resume()
+                if performPendingMemoryJump(using: proxy) { return }
+                scrollToLatestMessage(using: proxy, animated: false)
+            }
+            .onDisappear {
+                tailScrollTask?.cancel()
+                tailScrollTask = nil
+            }
+            .onChange(of: controller.activeThreadID) { _, _ in
+                tailScrollTask?.cancel()
+                tailScrollTask = nil
+                scrollFollow.switchThread(to: controller.activeThreadID)
+                if performPendingMemoryJump(using: proxy) { return }
+                scrollToLatestMessage(using: proxy, animated: false)
+            }
+            .onChange(of: controller.messages.last?.id) { _, _ in
+                // Equal-sized threads still replace row identities after loading.
+                scrollFollow.switchThread(to: controller.activeThreadID)
+                if performPendingMemoryJump(using: proxy) { return }
                 scrollToLatestMessage(using: proxy, animated: false)
             }
             .onChange(of: controller.messages.count) { _, _ in
                 // A citation jump may open a different thread; its rows land here,
                 // so retry the pending scroll once they exist before tailing.
                 if performPendingMemoryJump(using: proxy) { return }
+                if controller.messages.last?.role == .user { scrollFollow.resume() }
                 scrollToLatestMessage(using: proxy)
             }
             // `utf8.count` is O(1); `.count` walked every grapheme of the
             // accumulated reply per body evaluation. Both grow monotonically
             // on append, so the tail-scroll trigger fires identically.
             .onChange(of: ChatTranscriptLayout.tailScrollTriggerKey(for: controller.messages.last?.content)) { _, _ in
-                scrollToLatestMessage(using: proxy)
+                scrollToLatestMessage(using: proxy, animated: false)
+            }
+            .onChange(of: controller.streamingTick) { _, _ in
+                // Tool/reasoning pieces can grow without changing joined text.
+                scrollToLatestMessage(using: proxy, animated: false)
+            }
+            .onChange(of: scrollFollow.isUserScrolling) { _, isScrolling in
+                if !isScrolling { scrollToLatestMessage(using: proxy, animated: false) }
             }
             // E1: a citation tap bumps `memoryJumpRequestToken` (even when the id
             // is unchanged), so observing the token re-fires scroll + flash on a
@@ -90,14 +131,35 @@ struct ChatMessagesStream: View {
             .onChange(of: controller.memoryJumpRequestToken) { _, _ in
                 _ = performPendingMemoryJump(using: proxy)
             }
+            .overlay(alignment: .bottomTrailing) {
+                if !scrollFollow.followsLatest {
+                    Button {
+                        scrollFollow.resume()
+                        scrollToLatestMessage(using: proxy)
+                    } label: {
+                        Label("Latest", systemImage: "arrow.down")
+                            .font(DesignSystem.Typography.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .background(.regularMaterial, in: Capsule())
+                    .accessibilityLabel("Jump to latest message")
+                    .padding(DesignSystem.Spacing.md)
+                }
+            }
         }
     }
 
     private func scrollToLatestMessage(using proxy: ScrollViewProxy, animated: Bool = true) {
-        guard let last = controller.messages.last else { return }
-        Task { @MainActor in
-            await Task.yield()
-            if animated {
+        guard scrollFollow.shouldFollow, tailScrollTask == nil else { return }
+        tailScrollTask = Task { @MainActor in
+            do {
+                // One pending commit, rather than an animation for every token.
+                try await Task.sleep(for: .milliseconds(50))
+            } catch { return } // Sleep throws only on cancellation.
+            tailScrollTask = nil
+            guard !Task.isCancelled, scrollFollow.shouldFollow,
+                  let last = controller.messages.last else { return }
+            if animated && !controller.isStreaming && !reduceMotion {
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo(last.id, anchor: .bottom)
                 }
@@ -119,10 +181,14 @@ struct ChatMessagesStream: View {
         guard let target = controller.pendingMemoryJumpMessageID else { return false }
         guard controller.messages.contains(where: { $0.id == target }) else { return false }
 
+        tailScrollTask?.cancel()
+        tailScrollTask = nil
+        scrollFollow.switchThread(to: controller.activeThreadID)
+        scrollFollow.pause()
         controller.pendingMemoryJumpMessageID = nil
         let token = controller.memoryJumpRequestToken
         Task { @MainActor in
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
                 proxy.scrollTo(target, anchor: .center)
                 controller.memoryJumpHighlightMessageID = target
             }
@@ -186,7 +252,10 @@ struct ChatMessagesStream: View {
                     message: msg,
                     isStreaming: controller.isStreaming && msg.id == controller.activeStreamMessageId && msg.role == .assistant,
                     showViaBadge: msg.cliUsed != nil,
-                    isHermes: msg.cliUsed == "hermes" || msg.cliUsed == "openclaw",
+                    isHermes: controller.chatBackend == .hermes
+                        || controller.chatBackend == .openclaw
+                        || msg.cliUsed == "hermes"
+                        || msg.cliUsed == "openclaw",
                     assistantModelKey: chatAssistantModelKey(for: msg),
                     viewMode: controller.chatViewMode,
                     // F-3: surface recalled-memory citations on the latest
@@ -206,6 +275,16 @@ struct ChatMessagesStream: View {
                 .equatable()
                 .id(msg.id)
                 .modifier(MemoryJumpHighlight(isActive: controller.memoryJumpHighlightMessageID == msg.id))
+            }
+            if ChatTranscriptLayout.showsPreparingIndicator(
+                sendInFlight: controller.sendInFlight,
+                isStreaming: controller.isStreaming,
+                lastRole: controller.messages.last?.role
+            ) {
+                ChatPreparingReplyView(
+                    isHermes: controller.chatBackend == .hermes || controller.chatBackend == .openclaw
+                )
+                .id("preparing-reply")
             }
             if !controller.isStreaming, !controller.conversationJumpTargets.isEmpty {
                 ChatConversationJumpSection(
@@ -277,5 +356,16 @@ enum ChatTranscriptLayout {
     /// notification fires on exactly the same appends.
     static func tailScrollTriggerKey(for content: String?) -> Int {
         content?.utf8.count ?? 0
+    }
+
+    /// True while a send has been accepted but the assistant placeholder has
+    /// not been appended yet. That window used to render as a lone user bubble
+    /// on an empty canvas — chat looked broken.
+    static func showsPreparingIndicator(
+        sendInFlight: Bool,
+        isStreaming: Bool,
+        lastRole: ChatMessageRole?
+    ) -> Bool {
+        sendInFlight && !isStreaming && lastRole == .user
     }
 }

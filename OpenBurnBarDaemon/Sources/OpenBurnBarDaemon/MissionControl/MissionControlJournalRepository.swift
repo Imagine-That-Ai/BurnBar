@@ -135,6 +135,7 @@ struct MissionControlJournalRepository {
 
     func appendEventToDisk(_ event: BurnBarControllerEvent, encoder: JSONEncoder) throws {
         try Self.ensureParentDirectory(for: eventsFileURL)
+        _ = try JSONLRotator.rotateIfNeeded(url: eventsFileURL)
         let data = try encoder.encode(event) + Data([0x0A])
         if FileManager.default.fileExists(atPath: eventsFileURL.path) {
             let handle = try FileHandle(forWritingTo: eventsFileURL)

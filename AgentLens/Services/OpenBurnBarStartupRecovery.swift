@@ -179,6 +179,7 @@ enum OpenBurnBarStartupRecovery {
 }
 
 enum OpenBurnBarStartupState {
+    case loading
     case ready(OpenBurnBarRuntimeContext)
     case failed(DataStoreStartupFailure)
 
@@ -792,6 +793,12 @@ final class OpenBurnBarRuntimeContext {
                     self?.mercuryRouter?.handleRemoteUnlockCredentialResult(result)
                 }
                 self.computerUseRuntimeController?.attachFocusFollow(mediaSessionCoordinator: session)
+                self.computerUseRuntimeController?.attachWatchHUD(
+                    mediaSessionCoordinator: session,
+                    registryProvider: { [weak self] in
+                        self?.hermesRelayHostService?.mercuryControlStreamRegistry
+                    }
+                )
                 _ = try await self.computerUseRuntimeController?.ensureSystemSession(trustMode: .manual)
             },
             applyFocusFollowMode: { [weak self] mode in

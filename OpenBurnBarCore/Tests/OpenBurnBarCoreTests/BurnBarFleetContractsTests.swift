@@ -385,14 +385,17 @@ final class BurnBarFleetContractsTests: XCTestCase {
         )
         let responseData = try JSONEncoder().encode(response)
         let responseJSON = try XCTUnwrap(String(data: responseData, encoding: .utf8))
-        XCTAssertTrue(responseJSON.contains("\"protocolVersion\":1"), "protocolVersion must be 1: \(responseJSON)")
+        XCTAssertTrue(
+            responseJSON.contains("\"protocolVersion\":2"),
+            "protocolVersion must track BurnBarProtocolVersion.current (2): \(responseJSON)"
+        )
         XCTAssertTrue(responseJSON.contains("\"result\""), "missing result: \(responseJSON)")
         let decodedResponse = try JSONDecoder().decode(
             BurnBarRPCResponseEnvelope<BurnBarFleetSnapshotResponse>.self,
             from: responseData
         )
         XCTAssertEqual(decodedResponse.id, "fleet-1")
-        XCTAssertEqual(decodedResponse.protocolVersion, 1)
+        XCTAssertEqual(decodedResponse.protocolVersion, BurnBarProtocolVersion.current)
         XCTAssertNil(decodedResponse.error)
         XCTAssertEqual(decodedResponse.result?.snapshot, makeSnapshot())
     }
@@ -447,8 +450,8 @@ final class BurnBarFleetContractsTests: XCTestCase {
         XCTAssertEqual(decodedRecord.params.directive, directive)
     }
 
-    func test_protocolVersion_currentRemainsOne() {
-        XCTAssertEqual(BurnBarProtocolVersion.current, 1)
-        XCTAssertEqual(BurnBarProtocolVersion.supported, [1])
+    func test_protocolVersion_currentIsTwoWithNMinusOne() {
+        XCTAssertEqual(BurnBarProtocolVersion.current, 2)
+        XCTAssertEqual(BurnBarProtocolVersion.supported, [1, 2])
     }
 }

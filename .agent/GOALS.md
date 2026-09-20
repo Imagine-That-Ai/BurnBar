@@ -39,3 +39,4 @@ permissions in its own voice before macOS ever asks.
 - Incomplete: A2 (data-protection keychain migration — needs app+daemon sequencing).
 - Todo: C3 trust-overview card, C4–C6, MAS configuration build.
 - Parent goal: none. Source plan: `~/.claude/plans/but-when-users-first-modular-hanrahan.md`.
+| `burnbar-dmg-live-2026-08-25` | active | none | `.agent/runs/burnbar-dmg-live-2026-08-25/` | 2026-08-25T16:26:58Z |

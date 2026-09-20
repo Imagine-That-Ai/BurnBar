@@ -545,24 +545,25 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
         return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
     }
 
-    private static func responsesBody(modelID: String, output: String, stream: Bool) throws -> Data {
+    static func responsesBody(modelID: String, output: String, stream: Bool) throws -> Data {
         let id = "resp_openburnbar_factory_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
         if stream {
-            let delta: [String: Any] = [
-                "type": "response.output_text.delta",
-                "response_id": id,
-                "delta": output
-            ]
-            let completed: [String: Any] = [
-                "type": "response.completed",
-                "response": [
-                    "id": id,
-                    "object": "response",
-                    "model": modelID,
-                    "status": "completed"
-                ]
-            ]
-            return try sseBody(events: [delta, completed])
+            // Same Responses item-lifecycle contract as the Codex executor:
+            // Codex drops output_text.delta unless output_item.added came first.
+            let chatStream = try chatCompletionResponseBody(
+                modelID: modelID,
+                output: output,
+                stream: true
+            )
+            return try BurnBarOpenAICompatibleProviderExecutor.responsesStreamFromChatCompletionStream(
+                BurnBarProviderProxyResponse(
+                    statusCode: 200,
+                    contentType: "text/event-stream",
+                    body: chatStream,
+                    usage: nil
+                ),
+                modelID: modelID
+            ).body
         }
         let body: [String: Any] = [
             "id": id,

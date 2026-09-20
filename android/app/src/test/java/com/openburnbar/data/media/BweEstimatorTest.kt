@@ -75,4 +75,63 @@ class BweEstimatorTest {
         // With only one step, down + up should both clamp to that step.
         assertEquals(500_000, bwe.currentBitsPerSecond)
     }
+
+    @Test
+    fun screen_share_impairment_walks_below_one_megabit() {
+        val bwe = BweEstimator(BweEstimator.SCREEN_SHARE_STEPS)
+        val expected = listOf(4_000_000, 2_000_000, 1_000_000, 500_000, 250_000)
+        for (rung in expected) {
+            assertEquals(
+                rung,
+                bwe.apply(
+                    BweEstimator.Sample(
+                        roundTripMillis = 200,
+                        packetLossRate = 0.04,
+                        observedBitsPerSecond = bwe.currentBitsPerSecond,
+                    ),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun constrained_path_fast_drops_to_five_hundred_kbps() {
+        val bwe = BweEstimator(BweEstimator.SCREEN_SHARE_STEPS)
+        val next =
+            bwe.apply(
+                BweEstimator.Sample(
+                    roundTripMillis = 40,
+                    packetLossRate = 0.0,
+                    observedBitsPerSecond = 8_000_000,
+                    pathConstrained = true,
+                ),
+            )
+        assertEquals(500_000, next)
+    }
+
+    @Test
+    fun constrained_path_recovery_does_not_exceed_cellular_ceiling() {
+        val bwe = BweEstimator(BweEstimator.SCREEN_SHARE_STEPS)
+        bwe.apply(
+            BweEstimator.Sample(
+                roundTripMillis = 40,
+                packetLossRate = 0.10,
+                observedBitsPerSecond = 0,
+                pathConstrained = true,
+            ),
+        )
+        assertEquals(250_000, bwe.currentBitsPerSecond)
+
+        repeat(9) {
+            bwe.apply(
+                BweEstimator.Sample(
+                    roundTripMillis = 20,
+                    packetLossRate = 0.0,
+                    observedBitsPerSecond = 2_000_000,
+                    pathConstrained = true,
+                ),
+            )
+        }
+        assertEquals(500_000, bwe.currentBitsPerSecond)
+    }
 }

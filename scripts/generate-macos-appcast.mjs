@@ -92,6 +92,12 @@ function resolveOutputFile(releaseRoot, fileName, optionName) {
 
 try {
   const args = readArgs(process.argv);
+  // `version` is the immutable git tag (may include SemVer build metadata such
+  // as `1.0.40+repair.36`). Apple's CFBundleShortVersionString cannot contain
+  // `+`, so the installed app reports the marketing prefix (`1.0.40`). The
+  // in-app installer and `openburnbar app update` therefore compare
+  // CFBundleVersion / `build` only; they must not treat a +repair tag as newer
+  // than the same numeric build.
   const version = required(args, "version");
   const build = required(args, "build");
   const bundleId = required(args, "bundle-id");

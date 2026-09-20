@@ -232,8 +232,8 @@
       "access": "read-write",
       "kind": "legacy-boundary",
       "legacyId": "legacy.devices",
-      "typeName": "device presence/FCM token",
-      "sourceFile": "functions/src/types/legacy/config.ts",
+      "typeName": "device presence/FCM token + liveActivityPushToken/liveActivitySessionId",
+      "sourceFile": "functions/src/callables/devicePushRegistration.ts",
       "owner": "mobile-apps",
       "removalCondition": "Add a TypeSpec devices domain covering FCM token + presence fields mobile writes."
     },

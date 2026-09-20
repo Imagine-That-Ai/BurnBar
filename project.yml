@@ -214,9 +214,8 @@ targets:
       - path: AgentLens/PetCompanion/Resources/Pets
         type: folder
         buildPhase: resources
-      - path: AgentLens/PetCompanion/Resources/Models
-        type: folder
-        buildPhase: resources
+      # GLB pet models stay in-tree for Living Themes / wallpaper export but
+      # are NOT copied into the default Mac app bundle (diligence: 307 MB).
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
     preBuildScripts:

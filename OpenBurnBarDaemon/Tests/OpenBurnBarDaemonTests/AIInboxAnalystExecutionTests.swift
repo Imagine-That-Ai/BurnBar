@@ -13,14 +13,17 @@ private enum AnalystExecutionSupport {
 
     /// Enables the Z.ai provider with a credential so `glm-5-turbo` routes,
     /// mirroring the known-good setup in `BurnBarProviderRouterTests`.
-    static func makeHarness(name: String) async throws -> Harness {
+    static func makeHarness(
+        name: String,
+        catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog
+    ) async throws -> Harness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("ai-inbox-analyst-\(name)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
 
         let configStore = BurnBarConfigStore(
             fileURL: rootURL.appendingPathComponent("provider-config.json", isDirectory: false),
-            catalog: BurnBarCatalogLoader.bundledCatalog,
+            catalog: catalog,
             secretStore: BurnBarInMemorySecretStore(),
             logger: BurnBarDaemonLogger(category: "ai-inbox-analyst-tests")
         )
@@ -42,6 +45,33 @@ private enum AnalystExecutionSupport {
             )
         )
     }
+
+    /// Isolated catalog so a dead pin cannot world-search Codex / the
+    /// bundled default local providers.
+    static let zaiOnlyCatalog = BurnBarCatalog(
+        schemaVersion: 1,
+        providers: [
+            BurnBarCatalogProvider(
+                id: "zai",
+                displayName: "Z.ai",
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                visibility: .public,
+                capabilities: [.routing],
+                models: [
+                    BurnBarCatalogModel(
+                        id: "glm-5-turbo",
+                        displayName: "GLM 5 Turbo",
+                        visibility: .public,
+                        pricing: BurnBarModelPricing(
+                            inputPerMToken: 1,
+                            outputPerMToken: 2,
+                            cacheReadPerMToken: 0.1
+                        )
+                    )
+                ]
+            )
+        ]
+    )
 
     static func config(egressMode: BurnBarInboxEgressMode) -> BurnBarInboxConfig {
         BurnBarInboxConfig(
@@ -201,7 +231,10 @@ final class AIInboxAnalystExecutionTests: XCTestCase {
     /// The privacy promise: `.local` must refuse a cloud route after routing
     /// resolves and before any byte is sent.
     func test_localEgressModeRefusesACloudRouteBeforeSendingAnything() async throws {
-        let harness = try await AnalystExecutionSupport.makeHarness(name: "egress")
+        let harness = try await AnalystExecutionSupport.makeHarness(
+            name: "egress",
+            catalog: AnalystExecutionSupport.zaiOnlyCatalog
+        )
         let executor = FakeInboxProviderExecutor(responses: [AnalystExecutionSupport.validResponse])
         let analyst = BurnBarAIInboxAnalyst(
             executor: executor,
@@ -227,5 +260,38 @@ final class AIInboxAnalystExecutionTests: XCTestCase {
 
         let calls = await executor.promptCount()
         XCTAssertEqual(calls, 0, "Not a single byte may reach the executor after a refusal")
+    }
+
+    func test_aDeadAnalystPinFallsBackToAnotherEnabledProvider() async throws {
+        let harness = try await AnalystExecutionSupport.makeHarness(
+            name: "fallback",
+            catalog: AnalystExecutionSupport.zaiOnlyCatalog
+        )
+        let executor = FakeInboxProviderExecutor(responses: [AnalystExecutionSupport.validResponse])
+        let analyst = BurnBarAIInboxAnalyst(
+            executor: executor,
+            router: harness.router,
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+        let config = BurnBarInboxConfig(
+            enabled: true,
+            egressMode: .cloud,
+            analystProviderID: "deepseek",
+            analystModel: "deepseek-chat"
+        )
+
+        let result = try await analyst.analyze(
+            pack: AIInboxFixtures.packWithConversation(),
+            detectorFindings: [],
+            config: config,
+            now: Date()
+        )
+
+        XCTAssertEqual(result.findings.count, 1)
+        let call = try XCTUnwrap(result.calls.first)
+        XCTAssertEqual(call.providerID, "zai")
+        XCTAssertEqual(call.modelID, "glm-5-turbo")
+        let promptCount = await executor.promptCount()
+        XCTAssertEqual(promptCount, 1)
     }
 }

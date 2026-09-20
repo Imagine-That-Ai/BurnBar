@@ -19,6 +19,28 @@ import XCTest
 @MainActor
 final class MacOSIdleOcclusionGateTests: XCTestCase {
 
+    func testPerformanceGateLaunchForcesWebGLKernelOverNativeMetalField() {
+        XCTAssertTrue(
+            PerformanceGateBackdropSurface.usesWebGLKernel(
+                isPerformanceGateLaunch: true,
+                nativeFieldEnabled: true
+            ),
+            "P-PERF-3 helper acks WKWebView JS; Metal glass cannot satisfy that contract."
+        )
+        XCTAssertTrue(
+            PerformanceGateBackdropSurface.usesWebGLKernel(
+                isPerformanceGateLaunch: false,
+                nativeFieldEnabled: false
+            )
+        )
+        XCTAssertFalse(
+            PerformanceGateBackdropSurface.usesWebGLKernel(
+                isPerformanceGateLaunch: false,
+                nativeFieldEnabled: true
+            )
+        )
+    }
+
     func testPerformanceGateLoadURLPinsFullMotionWithoutChangingNormalLoads() throws {
         let indexURL = try XCTUnwrap(URL(string: "file:///tmp/KernelBackdrop/index.html"))
         let production = KernelBackdropView.Coordinator.loadURL(

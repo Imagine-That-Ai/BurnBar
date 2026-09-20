@@ -160,16 +160,6 @@ struct StreamsTVScanlineShape: Shape {
     }
 }
 
-/// Combined silhouette of TV (cabinet + antennae + feet) — used for halo glow.
-struct StreamsGlyphShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = StreamsTVCabinetShape().path(in: rect)
-        path.addPath(StreamsTVAntennaTipsShape(lift: 0).path(in: rect))
-        path.addPath(StreamsTVFeetShape().path(in: rect))
-        return path
-    }
-}
-
 /// Shared cabinet/screen metrics — defined once so all sub-shapes line up
 /// pixel-perfectly even when the size changes (28pt sidebar vs 22pt tray).
 enum StreamsTVMetrics {

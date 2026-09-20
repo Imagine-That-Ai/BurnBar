@@ -2966,9 +2966,10 @@ service cloud.firestore {
         && validTrustedAgentImportUpdate(userId);
     }
 
-    // Hermes Square Phase B — mission groups (fan-out parent). Owner writes
-    // the parent document at dispatch, the Mac listener stamps phase
-    // transitions, the phone observes both.
+    // Hermes Square Phase B — mission groups (fan-out parent). Create is
+    // Admin-SDK-only via createCliAgentMissionGroup. Owner get/list stay on
+    // the user-collection read allowlist; owner clients may stamp phase
+    // transitions after dispatch.
     match /users/{userId}/mission_groups/{groupId} {
       function validMissionGroupMetadataToken(value, maxSize) {
         return value is string
@@ -3053,7 +3054,7 @@ service cloud.firestore {
           && d.vaultKeyID == resource.data.vaultKeyID
           && d.sealedPayload == resource.data.sealedPayload;
       }
-      allow create: if ownerWritableNonSecret(userId) && validMissionGroup();
+      allow get, list: if ownsUserNamespace(userId);
       allow update: if ownerWritableNonSecret(userId)
         && validMissionGroup()
         && immutableMissionGroupDispatchFields();

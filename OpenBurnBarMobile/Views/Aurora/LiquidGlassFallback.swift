@@ -2,9 +2,9 @@ import SwiftUI
 
 // MARK: - Aurora Glass Variant
 
-/// Visual flavor for an Aurora glass surface. Each variant tunes tint, edge, and
-/// sheen so the same component can render hero, standard, urgent, success, or
-/// Hermes contexts without bespoke views per case.
+/// Visual flavor for an Aurora glass surface. Each variant tunes tint so the
+/// same component can render hero, standard, urgent, success, or Hermes
+/// contexts without bespoke views per case.
 enum AuroraGlassVariant {
     /// Headline cards (Pulse Hero, Burn ring constellation).
     case hero
@@ -12,203 +12,63 @@ enum AuroraGlassVariant {
     case standard
     /// Compact chip / pill / inline glass.
     case compact
-    /// Quota or threshold breach — warm warning border.
+    /// Quota or threshold breach — warm warning tint.
     case urgent
-    /// Positive milestone — green accent border.
+    /// Positive milestone — green tint.
     case success
-    /// Hermes mode — mercury foil border.
+    /// Hermes mode.
     case hermes
 }
 
 // MARK: - LiquidGlassFallback
 //
-// One modifier that adopts iOS 26 `.glassEffect` when available and degrades
-// to a hand-tuned `.ultraThinMaterial` + sheen + edge gradient on iOS 17/18.
-// All Aurora surfaces should call `.auroraGlass(...)` instead of inlining
-// branch logic — this keeps the glass system one knob to twist later.
+// iOS 26: system `glassEffect` only. No sheen fill, no white stroke, no
+// material plate under glass — those collapse refraction into glassmorphism.
+// iOS 17/18: ultraThinMaterial, still no decorative gradients.
 
 struct LiquidGlassFallback: ViewModifier {
     let variant: AuroraGlassVariant
     let cornerRadius: CGFloat
+    let isInteractive: Bool
 
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
-    @AppStorage(LiquidGlassTransparency.storageKey) private var rawGlassTransparency: Double = 0
 
     func body(content: Content) -> some View {
-        content
-            .background(backgroundLayer)
-            .overlay(edgeLayer)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var backgroundLayer: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         if reduceTransparency {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(opaqueFill)
+            content.background(opaqueFill, in: shape)
         } else if #available(iOS 26.0, *) {
-            // Native Liquid Glass samples the content BEHIND it — a material
-            // fill underneath would block the refraction and read as frosted
-            // plastic. The variant's personality survives as the faint sheen
-            // wash riding on top of pure glass.
-            let t = LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency)
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(sheenGradient)
-                .opacity((useWebsiteBackground ? 0.72 : 1.0) * LiquidGlassTransparency.fallbackPlateOpacity(t))
-                .liquidGlassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            content.liquidGlassEffect(resolvedStyle, in: shape)
         } else {
-            // Pre-26 plate honors the glass transparency preference the same
-            // way the shared adapters do: the material fades toward the raw
-            // backdrop for "clearer", a thick frost scrim rises for "frostier".
-            let t = LiquidGlassTransparency.effective(rawGlassTransparency, reduceTransparency: reduceTransparency)
-            ZStack {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .opacity(LiquidGlassTransparency.fallbackPlateOpacity(t))
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.thickMaterial)
-                    .opacity(LiquidGlassTransparency.frostScrimOpacity(t))
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(sheenGradient)
-            }
-            .opacity(useWebsiteBackground ? 0.72 : 1.0)
+            content.background(.ultraThinMaterial, in: shape)
         }
     }
 
-    private var edgeLayer: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .stroke(edgeGradient, lineWidth: edgeWidth)
-            .blendMode(.plusLighter)
-    }
-
-    // MARK: - Per-Variant Styling
-
-    private var sheenGradient: LinearGradient {
+    @available(iOS 26.0, *)
+    private var resolvedStyle: LiquidGlassStyle {
+        var style = LiquidGlassStyle.regular
         switch variant {
-        case .hero:
-            return LinearGradient(
-                colors: [
-                    MobileTheme.ember.opacity(colorScheme == .dark ? 0.16 : 0.10),
-                    Color.clear,
-                    MobileTheme.amber.opacity(colorScheme == .dark ? 0.06 : 0.04)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .standard, .compact:
-            return LinearGradient(
-                colors: [
-                    Color.white.opacity(colorScheme == .dark ? 0.06 : 0.45),
-                    Color.clear,
-                    MobileTheme.ember.opacity(colorScheme == .dark ? 0.03 : 0.02)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
         case .urgent:
-            return LinearGradient(
-                colors: [
-                    MobileTheme.warning.opacity(0.18),
-                    Color.clear,
-                    MobileTheme.error.opacity(0.08)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            style = style.tint(MobileTheme.warning.opacity(0.28))
         case .success:
-            return LinearGradient(
-                colors: [
-                    MobileTheme.success.opacity(0.16),
-                    Color.clear,
-                    MobileTheme.success.opacity(0.04)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .hermes:
-            return LinearGradient(
-                colors: [
-                    MobileTheme.hermesMercury.opacity(0.12),
-                    MobileTheme.hermesAureate.opacity(0.10),
-                    MobileTheme.hermesMercury.opacity(0.12)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-
-    private var edgeGradient: LinearGradient {
-        switch variant {
+            style = style.tint(MobileTheme.success.opacity(0.24))
         case .hero:
-            return LinearGradient(
-                colors: [
-                    MobileTheme.ember.opacity(0.55),
-                    MobileTheme.amber.opacity(0.35),
-                    MobileTheme.blaze.opacity(0.25)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .standard:
-            return LinearGradient(
-                colors: [
-                    Color.white.opacity(colorScheme == .dark ? 0.18 : 0.55),
-                    MobileTheme.Colors.border.opacity(0.45),
-                    MobileTheme.ember.opacity(0.18)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .compact:
-            return LinearGradient(
-                colors: [
-                    MobileTheme.Colors.border.opacity(0.45),
-                    MobileTheme.Colors.borderSubtle.opacity(0.35)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .urgent:
-            return LinearGradient(
-                colors: [
-                    MobileTheme.warning.opacity(0.85),
-                    MobileTheme.error.opacity(0.65)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .success:
-            return LinearGradient(
-                colors: [
-                    MobileTheme.success.opacity(0.7),
-                    MobileTheme.success.opacity(0.35)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .hermes:
-            return AuroraDesign.Gradients.mercuryFoil
+            style = style.tint(MobileTheme.ember.opacity(0.10))
+        case .standard, .compact, .hermes:
+            break
         }
-    }
-
-    private var edgeWidth: CGFloat {
-        switch variant {
-        case .hero:    return 1.0
-        case .urgent, .success, .hermes: return 1.0
-        case .standard, .compact: return 0.5
+        if isInteractive {
+            style = style.interactive()
         }
+        return style
     }
 
     private var opaqueFill: Color {
         switch variant {
-        case .hero, .standard: return MobileTheme.Colors.surface
-        case .compact:         return MobileTheme.Colors.surfaceElevated
-        case .urgent:          return MobileTheme.warning.opacity(0.12)
-        case .success:         return MobileTheme.success.opacity(0.12)
-        case .hermes:          return MobileTheme.Colors.surface
+        case .hero, .standard, .hermes: return MobileTheme.Colors.surface
+        case .compact: return MobileTheme.Colors.surfaceElevated
+        case .urgent: return MobileTheme.warning.opacity(0.12)
+        case .success: return MobileTheme.success.opacity(0.12)
         }
     }
 }
@@ -219,8 +79,15 @@ extension View {
     /// Apply Aurora glass to any view. Default = `.standard, cornerRadius: 16`.
     func auroraGlass(
         _ variant: AuroraGlassVariant = .standard,
-        cornerRadius: CGFloat = AuroraDesign.Shape.standardCorner
+        cornerRadius: CGFloat = AuroraDesign.Shape.standardCorner,
+        interactive: Bool = false
     ) -> some View {
-        modifier(LiquidGlassFallback(variant: variant, cornerRadius: cornerRadius))
+        modifier(
+            LiquidGlassFallback(
+                variant: variant,
+                cornerRadius: cornerRadius,
+                isInteractive: interactive
+            )
+        )
     }
 }

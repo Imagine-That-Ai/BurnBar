@@ -8,6 +8,10 @@ final class BurnBarProtocolVersionTests: XCTestCase {
 
     func test_protocolNegotiation_returnsNewestSharedVersion() {
         XCTAssertEqual(BurnBarProtocolVersion.negotiate(with: [0, 1]), 1)
+        XCTAssertEqual(BurnBarProtocolVersion.negotiate(with: [1, 2]), 2)
+        XCTAssertEqual(BurnBarProtocolVersion.current, 2)
+        XCTAssertTrue(BurnBarProtocolVersion.supported.contains(1))
+        XCTAssertTrue(BurnBarProtocolVersion.supported.contains(2))
     }
 
     func test_protocolNegotiation_returnsNilWithoutOverlap() {

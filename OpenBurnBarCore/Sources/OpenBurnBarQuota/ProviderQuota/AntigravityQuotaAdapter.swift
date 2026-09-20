@@ -19,9 +19,8 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
     }
 
     static let availableModels: [ModelTier] = [
-        ModelTier(name: "Gemini 3.7 Flash (High)", windowCap: 600),
-        ModelTier(name: "Gemini 3.7 Flash (Medium)", windowCap: 900),
-        ModelTier(name: "Gemini 3.7 Flash (Low)", windowCap: 1200),
+        ModelTier(name: "Gemini 3.8 Flash (High)", windowCap: 600),
+        ModelTier(name: "Gemini 3.8 Flash (Medium)", windowCap: 900),
         ModelTier(name: "Gemini 3.5 Flash (High)", windowCap: 600),
         ModelTier(name: "Gemini 3.5 Flash (Medium)", windowCap: 900),
         ModelTier(name: "Gemini 3.5 Flash (Low)", windowCap: 1200),
@@ -32,7 +31,7 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
         ModelTier(name: "GPT-OSS 120B (Medium)", windowCap: 240)
     ]
 
-    static let defaultModelName = "Claude Opus 4.6 (Thinking)"
+    static let defaultModelName = "Gemini 3.8 Flash (High)"
 
     // MARK: - Codable Types
 

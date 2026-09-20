@@ -22,7 +22,7 @@ import { db } from "../adminRuntime.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { getConfig } from "../config.js";
 import { stripUndefinedObject } from "../guards.js";
-import { wrapCallableHandler } from "../logging.js";
+import { wrapCallableHandler, wrapRequestHandler } from "../logging.js";
 import { runScheduledJob } from "../scheduledOps.js";
 import { providerFetch } from "../providers/httpClient.js";
 import {
@@ -297,7 +297,7 @@ export const onKnowledgeRepoPush = onRequest(
     secrets: [KNOWLEDGE_GITHUB_WEBHOOK_SECRET, KNOWLEDGE_REPO_MATCH_KEY],
     invoker: "public",
   },
-  async (req, res): Promise<void> => {
+  wrapRequestHandler("onKnowledgeRepoPush", async (req, res): Promise<void> => {
     const secret = KNOWLEDGE_GITHUB_WEBHOOK_SECRET.value();
     if (!secret || !KNOWLEDGE_REPO_MATCH_KEY.value()) {
       res.status(503).send("Knowledge webhook is not configured.");
@@ -369,7 +369,7 @@ export const onKnowledgeRepoPush = onRequest(
       flagged += 1;
     }
     res.status(200).json({ ok: true, flagged });
-  },
+  }),
 );
 
 /** Register a repo as a Pensieve source for the dirty signal. */

@@ -16,7 +16,12 @@ import OpenBurnBarCore
 /// For production use, `SettingsManager.shared` conforms to this protocol.
 /// For testing, inject a mock implementation.
 @MainActor
-protocol SettingsManagerProtocol: AnyObject, Sendable {
+protocol SettingsManagerProtocol: AnyObject, Sendable,
+    AppearanceSettingsManaging,
+    BehaviorSettingsManaging,
+    IndexSettingsManaging,
+    CloudSyncSettingsManaging,
+    ChatBackendSettingsManaging {
 
     // MARK: - Appearance
 

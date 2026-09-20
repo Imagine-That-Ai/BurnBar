@@ -464,6 +464,7 @@ jobs:
         id: domain-core-gate
         if: steps.proof_gate.outputs.proof_required == 'true'
         env:
+          BREAK_GLASS: ${{ steps.tag.outputs.break_glass }}
           CANDIDATE_COMMIT: ${{ steps.domain-core-profile.outputs.candidate_commit }}
           CORE_VERSION: ${{ steps.domain-core-profile.outputs.core_version }}
           ABI_VERSION: ${{ steps.domain-core-profile.outputs.abi_version }}
@@ -474,6 +475,14 @@ jobs:
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
+          if [[ "${BREAK_GLASS:-false}" == "true" ]]; then
+            echo "::warning::break_glass=true: skipping domain-core promotion attestation. deploy-functions still requires the production environment (manual approval)."
+            echo "signer_run_id=0" >> "$GITHUB_OUTPUT"
+            echo "signer_run_attempt=1" >> "$GITHUB_OUTPUT"
+            mkdir -p "$RUNNER_TEMP/domain-core-release-materials"
+            printf '%s\n' '{"breakGlass":true}' > "$RUNNER_TEMP/domain-core-release-materials/domain-core-release-gate.json"
+            exit 0
+          fi
           materials="$RUNNER_TEMP/domain-core-release-materials"
           candidate="$materials/candidate/domain-core-candidate-bundle.json"
           rollback="$materials/rollback/domain-core-public-production-rollback.json"

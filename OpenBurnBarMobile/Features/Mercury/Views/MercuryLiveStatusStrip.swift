@@ -199,6 +199,7 @@ struct MercuryLiveStatusStrip: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .hoverEffect(.highlight)
         .accessibilityLabel("\(label)\(enabled ? "" : " unavailable")")
     }
 

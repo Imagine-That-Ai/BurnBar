@@ -1,5 +1,6 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import AVKit
+import CoreImage
 import SwiftUI
 import OpenBurnBarMedia
 
@@ -16,6 +17,7 @@ final class AgentWatchVideoCoordinator: ObservableObject {
     let displayLayer: AVSampleBufferDisplayLayer
     @Published var displayAspectRatio: CGFloat?
     private var pipeline: VideoReceivePipeline?
+    private var lastPixelBuffer: CVPixelBuffer?
 
     init() {
         let layer = AVSampleBufferDisplayLayer()
@@ -36,7 +38,18 @@ final class AgentWatchVideoCoordinator: ObservableObject {
         }
     }
 
+    func freezeFrameImage() -> UIImage? {
+        guard let pixelBuffer = lastPixelBuffer else { return nil }
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let context = CIContext(options: [.useSoftwareRenderer: false])
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+
     private func enqueue(sampleBuffer: CMSampleBuffer) {
+        if let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            lastPixelBuffer = pixelBuffer
+        }
         if let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) {
             let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
             let width = CGFloat(dimensions.width)

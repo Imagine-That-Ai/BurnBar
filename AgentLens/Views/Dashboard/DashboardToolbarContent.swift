@@ -319,12 +319,8 @@ extension DashboardView {
         // half-adaptive: every label below reads `\.backdropInk` and gets the
         // family the sampler sized for whatever the kernel is painting.
         .resolvingBackdropInk(
-            liveBackdropActive: false,
-            profile: BackdropReadabilityProfile.nativeFallback(
-                colorScheme: dashboardKernelColorScheme,
-                appearanceSkin: settingsManager.appearanceSkin,
-                liveBackdropActive: false
-            )
+            liveBackdropActive: dashboardLiveBackdropActive,
+            profile: dashboardActiveReadabilityProfile
         )
     }
 
@@ -352,19 +348,28 @@ extension DashboardView {
 
     /// The ink the chrome draws with.
     ///
-    /// Sized for the frosted cockpit chrome plate (`.burnBarGlass(.cockpit, role: .chrome)`),
-    /// guaranteeing crisp, high-contrast text and icons (>= 4.5:1 WCAG) across both light
-    /// and dark appearance modes rather than inheriting transparent canvas sampling.
+    /// Resolved here rather than read from `\.backdropInk` because the deck rows
+    /// are computed properties of `DashboardView` itself, and a view cannot read
+    /// an environment value it injects into its own output. The injection in
+    /// `dashboardCommandDeck` is still what serves the real child views —
+    /// `DashboardLayoutSwitcher`, `DashboardQuickAccessRail`,
+    /// `BurnRailAppearanceQuickMenu` — so both paths resolve the same family.
     var dashboardChromeInk: BackdropInk {
-        BackdropInk.resolveForPlate(
-            skin: settingsManager.appearanceSkin,
-            colorScheme: dashboardKernelColorScheme
+        BackdropInk.resolve(
+            liveBackdropActive: dashboardLiveBackdropActive,
+            profile: dashboardActiveReadabilityProfile
         )
     }
 
-    /// The tone of the chrome plate, matching the current kernel appearance scheme.
+    /// The tone of the chrome plate, for the few places that need a
+    /// `ColorScheme` rather than a colour — brand glyph contrast discs, mostly.
+    ///
+    /// Under a live backdrop the sampled profile knows better than the app's
+    /// appearance does, which is the whole reason it is sampled.
     var dashboardChromeColorScheme: ColorScheme {
-        dashboardKernelColorScheme
+        dashboardLiveBackdropActive
+            ? dashboardActiveReadabilityProfile.interfaceColorScheme
+            : dashboardKernelColorScheme
     }
 
     private var dashboardDeckLeading: some View {
@@ -414,20 +419,11 @@ extension DashboardView {
             .padding(2.5)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(
-                        dashboardChromeColorScheme == .dark
-                            ? DesignSystem.Colors.surface.opacity(0.34)
-                            : Color.black.opacity(0.05)
-                    )
+                    .fill(DesignSystem.Colors.surface.opacity(0.34))
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(
-                        dashboardChromeColorScheme == .dark
-                            ? dashboardChromeInk.hairline.opacity(0.5)
-                            : Color.black.opacity(0.08),
-                        lineWidth: 0.5
-                    )
+                    .stroke(dashboardChromeInk.hairline.opacity(0.5), lineWidth: 0.5)
             }
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -453,11 +449,7 @@ extension DashboardView {
                 .background {
                     if selected {
                         RoundedRectangle(cornerRadius: 9.5, style: .continuous)
-                            .fill(
-                                dashboardChromeColorScheme == .dark
-                                    ? DesignSystem.Colors.ember.opacity(0.24)
-                                    : DesignSystem.Colors.ember.opacity(0.18)
-                            )
+                            .fill(DesignSystem.Colors.ember.opacity(0.2))
                     }
                 }
                 .contentShape(RoundedRectangle(cornerRadius: 9.5, style: .continuous))
@@ -469,8 +461,11 @@ extension DashboardView {
     }
 
     private var dashboardDeckChart: some View {
-        let insetShape = Capsule(style: .continuous)
-        return HStack(spacing: 10 * dashboardDeckScale) {
+        let insetShape = RoundedRectangle(
+            cornerRadius: min(20, dashboardDeckHeight / 3.2),
+            style: .continuous
+        )
+        return HStack(spacing: 12 * dashboardDeckScale) {
             Button {
                 withAnimation(DesignSystem.Animation.standard) {
                     navigate(to: .charts)
@@ -493,7 +488,7 @@ extension DashboardView {
                                 cost: totalCostForTimeRange,
                                 tokens: totalTokensForTimeRange
                             ))
-                            .font(.system(size: 20 * dashboardDeckScale, weight: .bold, design: .rounded))
+                            .font(.system(size: 22 * dashboardDeckScale, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(dashboardChromeInk.primary)
                             .contentTransition(.numericText())
@@ -505,7 +500,7 @@ extension DashboardView {
                             }
                         }
                     }
-                    .frame(minWidth: 108 * dashboardDeckScale, alignment: .leading)
+                    .frame(minWidth: 112 * dashboardDeckScale, alignment: .leading)
 
                     DashboardIslandSparkline(
                         samples: burnRailSparkline,
@@ -513,7 +508,9 @@ extension DashboardView {
                         timeRange: selectedTimeRange
                     )
                         .frame(minWidth: 200, maxWidth: .infinity)
-                        .frame(height: max(28, dashboardDeckHeight - 34))
+                        // The sparkline is the one element that has real room to
+                        // give back: at 74pt it set the deck's floor by itself.
+                        .frame(height: max(30, dashboardDeckHeight - 32))
                 }
             }
             .buttonStyle(.plain)
@@ -537,11 +534,11 @@ extension DashboardView {
                 .padding(.vertical, 5)
                 .background(
                     Capsule(style: .continuous)
-                        .fill(DesignSystem.Colors.surface.opacity(0.35))
+                        .fill(DesignSystem.Colors.surface.opacity(0.4))
                 )
                 .overlay(
                     Capsule(style: .continuous)
-                        .stroke(dashboardChromeInk.hairline.opacity(0.45), lineWidth: 0.5)
+                        .stroke(dashboardChromeInk.hairline.opacity(0.6), lineWidth: 0.5)
                 )
                 .contentShape(Capsule(style: .continuous))
             }
@@ -554,49 +551,35 @@ extension DashboardView {
             }
         }
         .padding(.horizontal, 14 * dashboardDeckScale)
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
         .frame(minWidth: 420, maxWidth: .infinity)
-        .background(
-            insetShape.fill(
-                dashboardChromeColorScheme == .dark
-                    ? Color.black.opacity(0.18)
-                    : Color.black.opacity(0.04)
-            )
-        )
+        .background(insetShape.fill(DesignSystem.Colors.surface.opacity(0.3)))
         .overlay {
-            insetShape.stroke(
-                dashboardChromeColorScheme == .dark
-                    ? dashboardChromeInk.hairline.opacity(0.38)
-                    : Color.black.opacity(0.08),
-                lineWidth: 0.5
-            )
+            insetShape.stroke(DesignSystem.Colors.ember.opacity(0.2), lineWidth: 0.75)
         }
         .clipShape(insetShape, style: FillStyle(antialiased: true))
         .contentShape(insetShape)
     }
 
     private var dashboardDeckActions: some View {
-        BurnBarProfileAvatarButton(
-            size: .toolbar,
-            onOpenSettings: { presentSettings() },
-                onOpenSettingsTab: { tab in
-                    UserDefaults.standard.set(tab.rawValue, forKey: SettingsDeepLinkRouting.pendingTabKey)
-                    presentSettings()
-                },
-                onOpenSettingsItem: { item in
-                    presentSettings(itemID: item)
-                },
-                isScanning: isScanning,
-                onImport: { runScan() },
-                onRecount: { runRecount() },
-                canRunRecount: canRunRecount,
-                mtdSpendFormatted: settingsManager.formatUsageMetric(
-                    cost: totalCostForTimeRange,
-                    tokens: totalTokensForTimeRange
-                )
-            )
-            .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
-            .fixedSize(horizontal: true, vertical: false)
+        HStack(spacing: 6) {
+            Button(action: runScan) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 12 * dashboardDeckScale, weight: .semibold))
+                    .foregroundStyle(isScanning ? DesignSystem.Colors.ember : dashboardChromeInk.icon)
+                    .rotationEffect(.degrees(isScanning ? 360 : 0))
+                    .animation(isScanning ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: isScanning)
+                    .frame(width: 28 * dashboardDeckScale, height: 28 * dashboardDeckScale)
+            }
+            .buttonStyle(.plain)
+            .disabled(isScanning || aggregator == nil)
+            .help(isScanning ? "Mining session logs…" : "Refresh token spend")
+
+            BurnRailSettingsButton { presentSettings() }
+
+            commandDeckOverflow
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var dashboardDeckStatusRail: some View {
@@ -965,8 +948,8 @@ private struct DashboardIslandSparkline: View {
                 if let date = value.as(Date.self) {
                     AxisValueLabel(anchor: labelAnchor(for: date)) {
                         Text(label(for: date))
-                            .font(.system(size: 8.0, weight: .medium, design: .rounded))
-                            .foregroundStyle(ink.subtle.opacity(0.85))
+                            .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(ink.subtle)
                             .monospacedDigit()
                     }
                 }

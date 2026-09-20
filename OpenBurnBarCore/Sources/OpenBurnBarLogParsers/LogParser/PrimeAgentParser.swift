@@ -73,8 +73,8 @@ public final class PrimeAgentParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult {
         try parseSynchronously(options: .default)

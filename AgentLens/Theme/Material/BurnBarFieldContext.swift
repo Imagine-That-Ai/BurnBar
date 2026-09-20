@@ -65,6 +65,7 @@ struct BurnBarFieldContext: Equatable, Sendable {
     /// False when no field is mounted (static skin, Editorial paper, a WebGL kernel).
     /// Plates fall back to their authored interior, which is the pre-field behaviour.
     var isAvailable: Bool
+    var isScrolling = false
 
     static let unavailable = BurnBarFieldContext(
         driver: SwarmColorDriver(),
@@ -101,6 +102,8 @@ private struct BurnBarFieldContextKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
+    @Entry var burnBarWindowState: BurnBarKernelWindowState?
+
     var burnBarField: BurnBarFieldContext {
         get { self[BurnBarFieldContextKey.self] }
         set { self[BurnBarFieldContextKey.self] = newValue }
@@ -124,7 +127,7 @@ extension View {
 /// able to ask this question without importing the views that own the backdrop.
 enum BurnBarGlassFieldPreferences {
     static let nativeFieldKey = "useNativeGlassField"
-    static let nativeFieldDefault = false
+    static let nativeFieldDefault = true
 
     /// Whether plates may re-synthesise the field.
     ///
@@ -181,6 +184,7 @@ struct BurnBarFieldInterior: View {
     @Environment(\.burnBarField) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var intersectsViewport = true
 
     /// The pose the field holds when motion is off — reference-date zero puts every
     /// phase at exactly 0, so a frozen plate shows the *authored* resting pose rather
@@ -188,7 +192,7 @@ struct BurnBarFieldInterior: View {
     /// `BurnBarKernelField` keeps.
     private static let restingDate = Date(timeIntervalSinceReferenceDate: 0)
 
-    private var isAnimating: Bool { context.isAnimating && !reduceMotion }
+    private var isAnimating: Bool { context.isAnimating && intersectsViewport && !reduceMotion }
 
     var body: some View {
         let uniforms = BurnBarKernelMath.uniforms(
@@ -204,7 +208,7 @@ struct BurnBarFieldInterior: View {
         TimelineView(
             .animation(minimumInterval: 1 / max(1, context.frameRate), paused: !isAnimating)
         ) { timeline in
-            let date = isAnimating ? timeline.date : Self.restingDate
+            let date = reduceMotion ? Self.restingDate : timeline.date
             Rectangle()
                 .fill(context.ground)
                 .visualEffect { effect, proxy in
@@ -237,6 +241,11 @@ struct BurnBarFieldInterior: View {
         // attached to, and without an explicit compositing group the field, scrim and
         // attenuation are not guaranteed to be flattened into one before it reads them.
         .compositingGroup()
+        .onGeometryChange(for: Bool.self) { proxy in
+            guard context.size.width > 0, context.size.height > 0 else { return false }
+            return proxy.frame(in: .named(BurnBarField.space))
+                .intersects(CGRect(origin: .zero, size: context.size))
+        } action: { intersectsViewport = $0 }
         .allowsHitTesting(false)
     }
 

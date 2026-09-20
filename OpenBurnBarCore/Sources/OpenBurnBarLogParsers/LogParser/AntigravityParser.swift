@@ -5,9 +5,12 @@ import OpenBurnBarKernel
 
 /// Parses Antigravity CLI sessions from ~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript.jsonl
 ///
-/// Token estimation counts ALL content categories for accurate results:
-///   - **Input tokens**: user content + system messages + tool output (results fed back as context)
+/// Token estimation counts unique content once (not per growing turn):
+///   - **Input tokens**: user content + system messages + tool output
 ///   - **Output tokens**: assistant visible text + thinking/reasoning + tool call arguments
+///   - CONVERSATION_HISTORY is the largest snapshot once; CHECKPOINT and
+///     self-transcript views are skipped so a long Flash session cannot
+///     invent tens of billions of tokens.
 ///
 /// Prefers `transcript_full.jsonl` (untruncated) over `transcript.jsonl` when available.
 /// Extracts per-session model name from `USER_SETTINGS_CHANGE` metadata and workspace
@@ -49,13 +52,22 @@ public final class AntigravityParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: Self.parserCacheSchemaVersion,
             logLabel: "AntigravityParser"
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    /// Bump when token/model identity changes so idle-cache rows cannot keep
+    /// a ghost Opus total next to a later Gemini row for the same session.
+    static let parserCacheSchemaVersion = 2
+
+    /// Live Antigravity CLI default when `settings.json` has no `model` key.
+    /// Alberto's machines pin Gemini 3.8 Flash (High); the previous Opus
+    /// hardcoded default is what made Charts invent a second model.
+    public static let defaultFallbackModel = "Gemini 3.8 Flash (High)"
+
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public let provider: AgentProvider = .antigravity
 
@@ -125,6 +137,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var sessionIDsToReplace = Set<String>()
         var parseCache = cacheStore.load()
         var activePaths = Set<String>()
         var seenSessionIds = Set<String>()
@@ -168,6 +181,11 @@ public final class AntigravityParser: LogParser, Sendable {
                    let cached = parseCache.fileEntries[cacheKey],
                    cached.signature == signature {
                     sessionCacheHitCount.withLock { $0 += 1 }
+                    // Drop any prior (provider, sessionId, old-model) row before
+                    // insert. Upsert identity includes `model`, so a
+                    // fallback→extracted flip otherwise leaves both Opus and
+                    // Gemini billed for the same session.
+                    sessionIDsToReplace.insert(sessionId)
                     usages.append(cached.totals.makeUsage(provider: .antigravity, sessionId: sessionId))
                     continue
                 }
@@ -181,6 +199,7 @@ public final class AntigravityParser: LogParser, Sendable {
                         includeConversationBodies: options.includeConversationBodies
                     ) {
                         if let usage = pair.usage {
+                            sessionIDsToReplace.insert(sessionId)
                             usages.append(usage)
                             if let signature {
                                 parseCache.fileEntries[cacheKey] = CachedUsageEntry(signature: signature, usage: usage)
@@ -209,7 +228,11 @@ public final class AntigravityParser: LogParser, Sendable {
             cacheMutated = true
         }
 
-        return ParseResult(usages: usages, conversations: conversations)
+        return ParseResult(
+            usages: usages,
+            conversations: conversations,
+            usageSessionIDsToDelete: sessionIDsToReplace.sorted()
+        )
     }
 
     private func configuredFallbackModel(
@@ -218,7 +241,7 @@ public final class AntigravityParser: LogParser, Sendable {
         fileManager: FileManager,
         readGate: ParserFileReadGate
     ) throws -> String {
-        let defaultModel = "Claude Opus 4.6 (Thinking)"
+        let defaultModel = Self.defaultFallbackModel
         guard let settingsURL, fileManager.fileExists(atPath: settingsURL.path) else {
             settingsCache.withLock { $0 = nil }
             return defaultModel
@@ -315,23 +338,6 @@ public final class AntigravityParser: LogParser, Sendable {
 
         var acc = AntigravitySessionAccumulator()
 
-        // Active accumulators for step-wise turn-by-turn context calculation
-        var currentSystemChars = 0
-        var currentUserChars = 0
-        var currentToolOutputChars = 0
-        var currentAssistantVisibleChars = 0
-        var currentToolCallArgChars = 0
-        var currentUserMsgCount = 0
-        var currentAssistantMsgCount = 0
-
-        var lastProcessedInputChars = 0
-        var lastProcessedAssistantChars = 0
-
-        var calculatedInputTokens = 0
-        var calculatedCacheReadTokens = 0
-        var calculatedCacheCreationTokens = 0
-        var calculatedOutputTokens = 0
-
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip malformed)
@@ -352,12 +358,10 @@ public final class AntigravityParser: LogParser, Sendable {
                 acc.endTime = date
             }
 
-            // Categorize content into proper token buckets
+            // Unique content once. Replaying history on every PLANNER_RESPONSE
+            // (and folding those cache buckets back into inputTokens) is what
+            // turned a day's Gemini Flash work into tens of billions of tokens.
             if source == "USER_EXPLICIT" || type == "USER_INPUT" {
-                // User content
-                currentUserChars += content.count
-                currentUserMsgCount += 1
-
                 acc.userVisibleChars += content.count
                 acc.userMessageCount += 1
 
@@ -365,7 +369,6 @@ public final class AntigravityParser: LogParser, Sendable {
                     if includeConversationBodies {
                         acc.userWords += wordCount(content)
                         if acc.firstUserText == nil {
-                            // Strip metadata tags to get the actual user prompt for the title
                             let cleanedPrompt = stripMetadataTags(content)
                             if !cleanedPrompt.isEmpty {
                                 acc.firstUserText = String(cleanedPrompt.prefix(120))
@@ -375,30 +378,29 @@ public final class AntigravityParser: LogParser, Sendable {
                     }
                 }
 
-                // Extract per-session model from USER_SETTINGS_CHANGE metadata
-                if acc.sessionModel == nil {
-                    acc.sessionModel = extractModelFromSettingsChange(content)
+                if let changed = extractModelFromSettingsChange(content) {
+                    acc.sessionModel = changed
                 }
-
-                // Extract workspace/project name from user_information
+                // Last explicit signal wins — a later `agy --model` must
+                // override an earlier leftover Opus settings change.
+                if let cliModel = extractCLIModel(from: content) {
+                    acc.sessionModel = cliModel
+                }
                 if acc.extractedProjectName == nil {
                     acc.extractedProjectName = extractProjectName(from: content)
                 }
 
-            } else if source == "SYSTEM" || type == "CONVERSATION_HISTORY" || type == "SYSTEM_MESSAGE" {
-                // System messages
-                currentSystemChars += content.count
+            } else if type == "CHECKPOINT" {
+                continue
+            } else if type == "CONVERSATION_HISTORY" {
+                // One snapshot, not a running sum — re-emitted history is
+                // the same window growing, not new unique input.
+                acc.historySnapshotChars = max(acc.historySnapshotChars, content.count)
+            } else if source == "SYSTEM" || type == "SYSTEM_MESSAGE" {
                 acc.systemChars += content.count
 
             } else if source == "MODEL" && type == "PLANNER_RESPONSE" {
-                // Model response step — represents a separate API turn call
-
-                // 1. Preceding context acts as the input context for this turn
-                let turnInputChars = currentSystemChars + currentUserChars + currentToolOutputChars + currentAssistantVisibleChars + currentToolCallArgChars
-
-                // 2. Output components generated during this turn
                 let turnAssistantVisibleChars = content.count
-                let turnThinkingChars = thinking.count
                 var turnToolCallArgChars = 0
                 for toolCall in toolCalls {
                     if let args = toolCall["args"] as? [String: Any] {
@@ -406,47 +408,12 @@ public final class AntigravityParser: LogParser, Sendable {
                             turnToolCallArgChars += Self.stringLength(of: value)
                         }
                     }
-                    // Extract tool names for keyTools
                     if includeConversationBodies,
                        let toolName = toolCall["name"] as? String, !toolName.isEmpty {
                         acc.toolNames.insert(toolName)
                     }
                 }
 
-                // 3. Estimate tokens for this turn (turn context window + new assistant response)
-                let estimated = TokenExtractionUtility.estimateFallbackTokens(
-                    userVisibleChars: turnInputChars,
-                    assistantVisibleChars: turnAssistantVisibleChars + turnToolCallArgChars,
-                    assistantReasoningChars: turnThinkingChars,
-                    userMessageCount: currentUserMsgCount,
-                    assistantMessageCount: currentAssistantMsgCount
-                )
-
-                if lastProcessedInputChars == 0 {
-                    // Turn 1: Entire input context is brand-new / cache creation
-                    calculatedCacheCreationTokens += estimated.input
-                } else {
-                    // Subsequent turns: The preceding turn's total context is cached.
-                    let cachedChars = lastProcessedInputChars + lastProcessedAssistantChars
-                    let cachedTokens = TokenExtractionUtility.estimatedTokenCount(for: cachedChars, charsPerToken: 3.35)
-
-                    let cacheRead = min(cachedTokens, estimated.input)
-                    let cacheCreation = max(estimated.input - cacheRead, 0)
-
-                    calculatedCacheReadTokens += cacheRead
-                    calculatedCacheCreationTokens += cacheCreation
-                }
-
-                calculatedOutputTokens += estimated.output
-                lastProcessedInputChars = turnInputChars
-                lastProcessedAssistantChars = turnAssistantVisibleChars + turnToolCallArgChars
-
-                // 4. Update the active context state for subsequent turns
-                currentAssistantVisibleChars += turnAssistantVisibleChars
-                currentToolCallArgChars += turnToolCallArgChars
-                currentAssistantMsgCount += 1
-
-                // 5. Update overall session metadata
                 if !content.isEmpty {
                     if includeConversationBodies {
                         acc.lastAssistantText = content
@@ -463,11 +430,9 @@ public final class AntigravityParser: LogParser, Sendable {
                 acc.messageCount += 1
 
             } else if source == "MODEL" {
-                // Tool outputs
-                currentToolOutputChars += content.count
-                acc.toolOutputChars += content.count
-
-                // Extract file paths from VIEW_FILE results for keyFiles
+                if !Self.isSelfTranscriptToolOutput(content) {
+                    acc.toolOutputChars += content.count
+                }
                 if includeConversationBodies, type == "VIEW_FILE" {
                     if let filePath = extractFilePath(from: content) {
                         acc.filePaths.insert(filePath)
@@ -476,46 +441,27 @@ public final class AntigravityParser: LogParser, Sendable {
             }
         }
 
-        // Fallback to single-turn estimation if no PLANNER_RESPONSE was processed
-        var inputTokens: Int
-        var cacheCreationTokens: Int = 0
-        var cacheReadTokens: Int = 0
-        let outputTokens: Int
-        if calculatedCacheCreationTokens > 0 || calculatedCacheReadTokens > 0 || calculatedOutputTokens > 0 {
-            // Accumulate trailing characters that occurred after the final response
-            let finalInputChars = currentSystemChars + currentUserChars + currentToolOutputChars + currentAssistantVisibleChars + currentToolCallArgChars
-            if finalInputChars > lastProcessedInputChars {
-                let newChars = finalInputChars - lastProcessedInputChars
-                let trailingTokens = TokenExtractionUtility.estimatedTokenCount(for: newChars, charsPerToken: 3.35)
-                calculatedInputTokens += trailingTokens
-            }
-            inputTokens = calculatedCacheCreationTokens + calculatedCacheReadTokens + calculatedInputTokens
-            cacheCreationTokens = calculatedCacheCreationTokens
-            cacheReadTokens = calculatedCacheReadTokens
-            outputTokens = calculatedOutputTokens
-        } else {
-            let totalInputChars = currentSystemChars + currentUserChars + currentToolOutputChars
-            let totalOutputVisibleChars = currentAssistantVisibleChars + currentToolCallArgChars
-            let totalReasoningChars = acc.thinkingChars
+        let totalInputChars = acc.systemChars + acc.userVisibleChars + acc.toolOutputChars + acc.historySnapshotChars
+        let totalOutputVisibleChars = acc.assistantVisibleChars + acc.toolCallArgChars
+        let totalReasoningChars = acc.thinkingChars
 
-            guard totalInputChars > 0 || totalOutputVisibleChars > 0 || totalReasoningChars > 0 else {
-                return nil
-            }
-
-            let estimated = TokenExtractionUtility.estimateFallbackTokens(
-                userVisibleChars: totalInputChars,
-                assistantVisibleChars: totalOutputVisibleChars,
-                assistantReasoningChars: totalReasoningChars,
-                userMessageCount: currentUserMsgCount,
-                assistantMessageCount: currentAssistantMsgCount
-            )
-            inputTokens = estimated.input
-            cacheCreationTokens = 0
-            cacheReadTokens = 0
-            outputTokens = estimated.output
+        guard totalInputChars > 0 || totalOutputVisibleChars > 0 || totalReasoningChars > 0 else {
+            return nil
         }
 
-        let model = acc.sessionModel ?? fallbackModel
+        let estimated = TokenExtractionUtility.estimateFallbackTokens(
+            userVisibleChars: totalInputChars,
+            assistantVisibleChars: totalOutputVisibleChars,
+            assistantReasoningChars: totalReasoningChars,
+            userMessageCount: acc.userMessageCount,
+            assistantMessageCount: acc.assistantMessageCount
+        )
+        let inputTokens = estimated.input
+        let outputTokens = estimated.output
+        let cacheCreationTokens = 0
+        let cacheReadTokens = 0
+
+        let model = Self.canonicalizeModelName(acc.sessionModel ?? fallbackModel)
         let pricing = ModelPricing.lookup(model: model)
         let cost = try pricing.cost(
             inputTokens: inputTokens,
@@ -576,37 +522,95 @@ public final class AntigravityParser: LogParser, Sendable {
 
     // MARK: - Metadata Extraction
 
-    /// Extracts the model name from `<USER_SETTINGS_CHANGE>` XML embedded in USER_INPUT content.
-    /// Example: "The user changed setting `Model Selection` from None to Claude Opus 4.6 (Thinking)."
+    /// Last `Model Selection` change in the block. First-wins pinned sessions
+    /// that later switched to Gemini Flash to the leftover Opus label.
     private func extractModelFromSettingsChange(_ content: String) -> String? {
-        guard content.contains("Model Selection") else { return nil }
+        guard content.localizedCaseInsensitiveContains("Model Selection") else { return nil }
 
-        // Pattern: "from <old> to <new>. No need to comment"
-        // or: "from <old> to <new>."
-        guard let range = content.range(of: "Model Selection` from ", options: .caseInsensitive) else {
-            return nil
-        }
+        var searchStart = content.startIndex
+        var lastModel: String?
+        while let range = content.range(
+            of: "Model Selection` from ",
+            options: .caseInsensitive,
+            range: searchStart..<content.endIndex
+        ) {
+            let afterPrefix = content[range.upperBound...]
+            guard let toRange = afterPrefix.range(of: " to ", options: .caseInsensitive) else {
+                searchStart = range.upperBound
+                continue
+            }
 
-        let afterPrefix = content[range.upperBound...]
-        guard let toRange = afterPrefix.range(of: " to ", options: .caseInsensitive) else {
-            return nil
-        }
+            let afterTo = afterPrefix[toRange.upperBound...]
+            let modelEnd: String.Index
+            if let dotSpaceRange = afterTo.range(of: ". ") {
+                modelEnd = dotSpaceRange.lowerBound
+            } else if let dotNewline = afterTo.range(of: ".\n") {
+                modelEnd = dotNewline.lowerBound
+            } else if afterTo.hasSuffix(".") {
+                modelEnd = afterTo.index(before: afterTo.endIndex)
+            } else {
+                modelEnd = afterTo.endIndex
+            }
 
-        let afterTo = afterPrefix[toRange.upperBound...]
-        var candidate = String(afterTo)
-        if let tagEndRange = candidate.range(of: "</") {
-            candidate = String(candidate[..<tagEndRange.lowerBound])
+            let model = String(afterTo[..<modelEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !model.isEmpty {
+                lastModel = model
+            }
+            searchStart = range.upperBound
         }
-        if let dotSpaceRange = candidate.range(of: ". ") {
-            candidate = String(candidate[..<dotSpaceRange.lowerBound])
-        } else if let dotNewline = candidate.range(of: ".\n") {
-            candidate = String(candidate[..<dotNewline.lowerBound])
-        } else if candidate.hasSuffix(".") {
-            candidate = String(candidate.dropLast())
-        }
+        return lastModel
+    }
 
-        let model = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-        return model.isEmpty ? nil : model
+    /// `agy --model gemini-3.8-flash-high` in the user prompt (CLI override).
+    /// Ignores other tools' `--model` flags (muse-spark, `--model pin`, …)
+    /// that show up in pasted docs.
+    private func extractCLIModel(from content: String) -> String? {
+        guard let regex = Self.cliModelRegex else { return nil }
+        let ns = content as NSString
+        let matches = regex.matches(in: content, range: NSRange(location: 0, length: ns.length))
+        guard let match = matches.last, match.numberOfRanges >= 2 else { return nil }
+        let raw = ns.substring(with: match.range(at: 1))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? nil : Self.canonicalizeModelName(raw)
+    }
+
+    private static let cliModelRegex = try? NSRegularExpression(
+        pattern: #"(?:^|[^\w-])agy\b[^\n]*?--model(?:\s+|=)((?:gemini|claude|gpt-oss)[A-Za-z0-9._:-]*)"#
+    )
+
+    /// Map CLI ids (`gemini-3.8-flash-high`) onto the Antigravity display names
+    /// Charts already shows. Unknown strings pass through trimmed.
+    public static func canonicalizeModelName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        let key = trimmed.lowercased().replacingOccurrences(of: "_", with: "-")
+        switch key {
+        case "gemini-3.8-flash-high", "gemini-3.8-flash":
+            return "Gemini 3.8 Flash (High)"
+        case "gemini-3.8-flash-medium":
+            return "Gemini 3.8 Flash (Medium)"
+        case "gemini-3.7-flash-high":
+            return "Gemini 3.7 Flash (High)"
+        case "gemini-3.7-flash-medium":
+            return "Gemini 3.7 Flash (Medium)"
+        case "gemini-3.5-flash-high":
+            return "Gemini 3.5 Flash (High)"
+        case "gemini-3.5-flash-medium":
+            return "Gemini 3.5 Flash (Medium)"
+        case "claude-opus-4.6", "claude-opus-4-6", "claude-opus-4.6-thinking":
+            return "Claude Opus 4.6 (Thinking)"
+        case "claude-sonnet-4.6", "claude-sonnet-4-6", "claude-sonnet-4.6-thinking":
+            return "Claude Sonnet 4.6 (Thinking)"
+        default:
+            return trimmed
+        }
+    }
+
+    /// VIEW_FILE of this session's own transcript.jsonl — counting it as tool
+    /// output re-ingests the growing log on every later turn.
+    public static func isSelfTranscriptToolOutput(_ content: String) -> Bool {
+        content.contains("/.system_generated/logs/transcript")
+            && (content.contains("transcript.jsonl") || content.contains("transcript_full.jsonl"))
     }
 
     /// Extracts the workspace project name from `<user_information>` or workspace URI in content.
@@ -741,6 +745,7 @@ private struct AntigravitySessionAccumulator {
     // Input token sources
     var userVisibleChars = 0
     var systemChars = 0
+    var historySnapshotChars = 0
     var toolOutputChars = 0
 
     // Output token sources

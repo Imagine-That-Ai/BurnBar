@@ -183,6 +183,23 @@ describe("registerDevicePushEndpoint — F-RR10-007 device binding", () => {
     expect(state.storedDocs).toHaveLength(0);
   });
 
+  it("registers a Live Activity push token under the client field names", async () => {
+    await runRegisterDevicePushEndpoint(
+      authedRequest({
+        deviceId: "iphone-1",
+        liveActivityPushToken: "ab".repeat(32),
+        liveActivitySessionId: "cu-session-1",
+      }),
+    );
+
+    expect(state.storedDocs).toHaveLength(1);
+    expect(state.storedDocs[0].data).toMatchObject({
+      liveActivityPushToken: "ab".repeat(32),
+      liveActivitySessionId: "cu-session-1",
+      platform: "iOS",
+    });
+  });
+
   it("infers the platform from the escrow device when not supplied", async () => {
     await runRegisterDevicePushEndpoint(
       authedRequest({

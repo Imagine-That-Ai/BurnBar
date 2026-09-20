@@ -67,7 +67,7 @@ struct AIInboxDetailScreen: View {
                 .padding(.horizontal, AuroraDesign.Layout.cardInset)
             }
         }
-        .background(AuroraBackdrop(density: .subtle).ignoresSafeArea())
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Inbox item")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)

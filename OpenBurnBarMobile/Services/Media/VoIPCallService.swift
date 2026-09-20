@@ -1,6 +1,3 @@
-import FirebaseAuth
-import FirebaseCore
-@preconcurrency import FirebaseFirestore
 import Foundation
 import os.log
 #if canImport(PushKit)
@@ -133,24 +130,9 @@ extension VoIPCallService: @preconcurrency PKPushRegistryDelegate {
     }
 
     private func persistVoipDeviceToken(_ tokenHex: String) async {
-        guard FirebaseApp.app() != nil,
-              let uid = Auth.auth().currentUser?.uid,
-              !tokenHex.isEmpty else { return }
-        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        guard !tokenHex.isEmpty else { return }
         do {
-            try await Firestore.firestore()
-                .collection("users").document(uid)
-                .collection("devices").document(deviceId)
-                .setData(
-                    [
-                        "deviceId": deviceId,
-                        "platform": "ios",
-                        "voipDeviceToken": tokenHex,
-                        "updated_at_millis": nowMillis
-                    ],
-                    merge: true
-                )
+            try await MobileDeviceIdentity.mergeDevicePushFields(["voipDeviceToken": tokenHex])
         } catch {
             #if DEBUG
             Self.log.error("VoIPCallService voip token persist failed: \(error.localizedDescription, privacy: .public)")

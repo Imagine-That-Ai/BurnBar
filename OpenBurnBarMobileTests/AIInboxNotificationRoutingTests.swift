@@ -94,6 +94,19 @@ final class AIInboxNotificationRoutingTests: XCTestCase {
 
     // MARK: - Deep link
 
+    func testInboxDeepLinkSelectsTheInboxTabHost() {
+        XCTAssertEqual(AIInboxDeepLink.host, "inbox")
+        XCTAssertEqual(
+            AuroraNavDestination.trayDestinations(compact: true).first,
+            .inbox,
+            "burnbar://inbox must land on the compact launch tab, not Streams."
+        )
+        XCTAssertFalse(
+            AuroraNavDestination.trayDestinations(compact: true).contains(.streams),
+            "Inbox is no longer nested under a Streams tray tab."
+        )
+    }
+
     func testParsesInboxURLs() throws {
         let url = try XCTUnwrap(URL(string: "burnbar://inbox/inb_abc"))
         XCTAssertEqual(AIInboxDeepLink.itemID(from: url), "inb_abc")
@@ -118,9 +131,18 @@ final class AIInboxNotificationRoutingTests: XCTestCase {
     func testPendingItemIsConsumedExactlyOnce() {
         // A re-render claims the stash again; the second read must be empty or
         // the app re-navigates away from wherever the user has since gone.
-        AIInboxDeepLink.open(itemID: "inb_abc")
-        XCTAssertEqual(AIInboxDeepLink.consumePendingItemID(), "inb_abc")
-        XCTAssertNil(AIInboxDeepLink.consumePendingItemID())
+        // Physical-device XCTest shares RootTabView / RootNavigationView, which
+        // consume() the process stash on the live notification. Isolate so this
+        // asserts the stash contract instead of racing the host.
+        withIsolatedPendingRoutes {
+            AIInboxDeepLink.open(itemID: "inb_abc")
+            XCTAssertEqual(AIInboxDeepLink.consumeIsolatedPendingItemIDForTests(), "inb_abc")
+            XCTAssertNil(AIInboxDeepLink.consumeIsolatedPendingItemIDForTests())
+            XCTAssertNil(
+                AIInboxDeepLink.consumePendingItemID(),
+                "Isolation must not park a value the live host can replay."
+            )
+        }
     }
 
     /// Cold launch: the tap that STARTS the app posts its deep link during
@@ -130,14 +152,22 @@ final class AIInboxNotificationRoutingTests: XCTestCase {
     /// it from a `.task`. Without that claim the push opens the app to the
     /// default tab and the item is silently lost.
     func testStashSurvivesAPostThatNoObserverHeard() {
-        // No observer registered: this models launch-time ordering.
-        AIInboxDeepLink.open(itemID: "inb_cold")
+        // Launch-time ordering: the post is heard by nobody. On a hardware
+        // XCTest host the roots *are* subscribed, so isolation parks the stash
+        // where production `consumePendingItemID()` cannot drain it.
+        withIsolatedPendingRoutes {
+            AIInboxDeepLink.open(itemID: "inb_cold")
 
-        XCTAssertEqual(
-            AIInboxDeepLink.consumePendingItemID(),
-            "inb_cold",
-            "A launch-time push must remain claimable after its post went unheard."
-        )
+            XCTAssertNil(
+                AIInboxDeepLink.consumePendingItemID(),
+                "The live host must not be able to drain the isolated launch stash."
+            )
+            XCTAssertEqual(
+                AIInboxDeepLink.consumeIsolatedPendingItemIDForTests(),
+                "inb_cold",
+                "A launch-time push must remain claimable after its post went unheard."
+            )
+        }
     }
 
     /// The stash must not outlive a link that WAS delivered live. `open` parks
@@ -145,14 +175,86 @@ final class AIInboxNotificationRoutingTests: XCTestCase {
     /// drains it — otherwise a later `.task` would replay the navigation and
     /// yank the user back to an item they had already moved on from.
     func testAServedLinkCanBeDrainedSoItIsNotReplayed() {
-        AIInboxDeepLink.open(itemID: "inb_live")
-        // Stands in for the `onReceive` path draining the stash after routing.
-        _ = AIInboxDeepLink.consumePendingItemID()
+        withIsolatedPendingRoutes {
+            AIInboxDeepLink.open(itemID: "inb_live")
+            // Stands in for the `onReceive` path draining the stash after routing.
+            _ = AIInboxDeepLink.consumeIsolatedPendingItemIDForTests()
 
-        XCTAssertNil(
-            AIInboxDeepLink.consumePendingItemID(),
-            "A link already served live must not be replayed by the cold-launch claim."
-        )
+            XCTAssertNil(
+                AIInboxDeepLink.consumeIsolatedPendingItemIDForTests(),
+                "A link already served live must not be replayed by the cold-launch claim."
+            )
+        }
+    }
+
+    // MARK: - Mission / Mercury-call cold launch
+
+    /// A mission push that launches the app posts `ShowMissionConsole` during
+    /// `didFinishLaunching`, before either root has subscribed, so the post is
+    /// heard by nobody. Without the stash the tapped mission is simply lost.
+    func testAColdLaunchMissionPushSurvivesHavingNoSubscriber() {
+        withIsolatedPendingRoutes {
+            MobileOsDeepLinkApplier.apply(
+                MobileOsRouteDecision(destination: .mission, missionId: "msn_cold")
+            )
+
+            XCTAssertNil(
+                MobilePendingOsRouteStore.shared.consume(),
+                "The live host must not drain the isolated launch stash."
+            )
+            XCTAssertEqual(
+                MobilePendingOsRouteStore.shared.consumeIsolatedPendingRouteForTests(),
+                .mission(missionId: "msn_cold"),
+                "A launch-time mission push must remain claimable after its post went unheard."
+            )
+        }
+    }
+
+    func testAColdLaunchMercuryCallPushSurvivesHavingNoSubscriber() {
+        withIsolatedPendingRoutes {
+            MobileOsDeepLinkApplier.apply(
+                MobileOsRouteDecision(destination: .mercuryCall, connectionId: "conn_cold")
+            )
+
+            XCTAssertNil(
+                MobilePendingOsRouteStore.shared.consume(),
+                "The live host must not drain the isolated launch stash."
+            )
+            XCTAssertEqual(
+                MobilePendingOsRouteStore.shared.consumeIsolatedPendingRouteForTests(),
+                .mercuryCall(connectionId: "conn_cold"),
+                "A launch-time Mercury-call push must remain claimable after its post went unheard."
+            )
+        }
+    }
+
+    /// One tap opens one surface once. The roots drain the stash on the live
+    /// `onReceive` path too, so the cold-launch claim that runs afterwards must
+    /// find nothing left to replay.
+    func testAServedOsRouteIsDrainedSoItIsNotReplayed() {
+        withIsolatedPendingRoutes {
+            MobileOsDeepLinkApplier.apply(
+                MobileOsRouteDecision(destination: .mercuryCall, connectionId: "conn_live")
+            )
+            // Stands in for the `onReceive` path draining the stash after routing.
+            _ = MobilePendingOsRouteStore.shared.consumeIsolatedPendingRouteForTests()
+
+            XCTAssertNil(
+                MobilePendingOsRouteStore.shared.consumeIsolatedPendingRouteForTests(),
+                "A route already served live must not be replayed by the cold-launch claim."
+            )
+        }
+    }
+
+    func testAgentsFamilyDeepLinksStayOnTheAgentsTab() throws {
+        for raw in ["burnbar://hermes", "burnbar://chat", "burnbar://assistants", "burnbar://pi", "burnbar://mission/msn_agents"] {
+            let routed = MobileOsIntegrationPolicy.route(url: try XCTUnwrap(URL(string: raw)))
+            XCTAssertEqual(
+                HermesSquareAgentsColumnRouting.compactDestination(for: routed.destination),
+                .hermes,
+                "\(raw) must land on Agents"
+            )
+        }
     }
 
     // MARK: - Mission / Mercury-call cold launch
@@ -206,5 +308,15 @@ final class AIInboxNotificationRoutingTests: XCTestCase {
         }
         AIInboxDeepLink.open(itemID: "  inb_abc  ")
         wait(for: [expectation], timeout: 1)
+    }
+
+    /// Physical-device XCTest hosts mount the real roots, which consume the
+    /// process-wide stash on `NotificationCenter` delivery. Isolation parks
+    /// `open` / `apply` writes on a side stash so these cases stay valid
+    /// without changing production `consume()`.
+    private func withIsolatedPendingRoutes(_ body: () -> Void) {
+        AIInboxDeepLink.withIsolatedPendingStashForTests {
+            MobilePendingOsRouteStore.shared.withIsolatedPendingRouteForTests(body)
+        }
     }
 }

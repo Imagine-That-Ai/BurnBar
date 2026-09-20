@@ -169,7 +169,7 @@ struct AgentLiveStage: View {
             .padding(.bottom, 16)
 
             RoundedRectangle(cornerRadius: isMaximized ? 0 : 18, style: .continuous)
-                .stroke(MobileTheme.mercuryGradient, lineWidth: isMaximized ? 0 : 1)
+                .stroke(Color.white.opacity(0.16), lineWidth: isMaximized ? 0 : 1)
                 .allowsHitTesting(false)
 
             VStack {
@@ -184,11 +184,10 @@ struct AgentLiveStage: View {
                     } label: {
                         Image(systemName: "rectangle.bottomthird.inset.filled")
                             .font(MobileScaledFont.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(8)
-                            .background(Circle().fill(Color.black.opacity(0.55)))
+                            .foregroundStyle(.primary)
                     }
                     .buttonStyle(.plain)
+                    .liquidGlassCircleButton(diameter: 32)
                     .accessibilityLabel("Collapse to dock")
                 }
                 Spacer(minLength: 0)
@@ -229,56 +228,55 @@ struct AgentLiveStage: View {
 
     @ViewBuilder
     private var bottomChrome: some View {
-        VStack(spacing: 10) {
-            if let pending = stateRef.pendingApproval {
-                AgentLiveStageApprovalStripe(
-                    request: pending,
-                    style: .expanded,
-                    onApprove: { approveCurrent() },
-                    onReject: { rejectCurrent(halt: false) },
-                    onRejectHalt: { rejectCurrent(halt: true) }
-                )
-            }
+        LiquidGlassGroup(spacing: 8) {
+            VStack(spacing: 10) {
+                if let pending = stateRef.pendingApproval {
+                    AgentLiveStageApprovalStripe(
+                        request: pending,
+                        style: .expanded,
+                        onApprove: { approveCurrent() },
+                        onReject: { rejectCurrent(halt: false) },
+                        onRejectHalt: { rejectCurrent(halt: true) }
+                    )
+                }
 
-            HStack(spacing: 8) {
-                AgentLiveStageActionTicker(entry: stateRef.actionTimeline.last)
-                Button {
-                    interruptSession()
-                } label: {
-                    Text("Interrupt")
-                        .font(.caption.weight(.semibold))
+                HStack(spacing: 8) {
+                    AgentLiveStageActionTicker(entry: stateRef.actionTimeline.last)
+                    Button {
+                        interruptSession()
+                    } label: {
+                        Text("Interrupt")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Color.white.opacity(0.18)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("agentControlInterrupt")
+                    Button {
+                        panicHalt()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.octagon.fill")
+                            Text("HALT")
+                                .font(MobileScaledFont.system(size: 12, weight: .bold, design: .monospaced))
+                                .tracking(0.5)
+                        }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.white.opacity(0.18)))
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("agentControlInterrupt")
-                Button {
-                    panicHalt()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.octagon.fill")
-                        Text("HALT")
-                            .font(MobileScaledFont.system(size: 12, weight: .bold, design: .monospaced))
-                            .tracking(0.5)
+                        .background(
+                            Capsule().fill(MobileTheme.error)
+                        )
                     }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule().fill(MobileTheme.error)
-                    )
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Panic halt the agent")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Panic halt the agent")
+                .padding(.horizontal, 4)
+                .padding(.vertical, 6)
+                .liquidGlassSurface(in: RoundedRectangle(cornerRadius: 12, style: .continuous), fallback: .ultraThinMaterial)
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.black.opacity(0.55))
-            )
         }
     }
 
@@ -291,10 +289,7 @@ struct AgentLiveStage: View {
                 .frame(width: 26, height: 26)
                 .foregroundStyle(.white.opacity(0.92))
                 .shadow(color: .black.opacity(0.55), radius: 3, x: 0, y: 1)
-                .position(
-                    x: cursorPosition(cursor, in: size).x,
-                    y: cursorPosition(cursor, in: size).y
-                )
+                .position(IPadAwayDeskNavigation.hostCursorPoint(x: cursor.x, y: cursor.y, in: size))
                 .allowsHitTesting(false)
                 .transition(.opacity)
         }
@@ -342,11 +337,11 @@ struct AgentLiveStage: View {
                 defer { dragPreview = nil }
                 let distance = hypot(value.translation.width, value.translation.height)
                 if distance < 10 {
-                    let point = normalized(value.location, in: size)
+                    let point = AgentPointerMapping.normalized(value.location, in: size)
                     sendTap(x: point.x, y: point.y)
                 } else {
-                    let start = normalized(value.startLocation, in: size)
-                    let end = normalized(value.location, in: size)
+                    let start = AgentPointerMapping.normalized(value.startLocation, in: size)
+                    let end = AgentPointerMapping.normalized(value.location, in: size)
                     sendScrollDrag(x1: start.x, y1: start.y, x2: end.x, y2: end.y)
                 }
                 lastInputAt = .now
@@ -409,23 +404,6 @@ struct AgentLiveStage: View {
             }
         }
         HapticBus.destructive()
-    }
-
-    // MARK: - Geometry helpers
-
-    private func normalized(_ point: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
-        guard size.width > 0, size.height > 0 else { return (0, 0) }
-        let x = min(max(point.x / size.width, 0), 1)
-        let y = min(max(point.y / size.height, 0), 1)
-        return (Double(x), Double(y))
-    }
-
-    private func cursorPosition(_ cursor: MediaFrame.CursorMetadata, in size: CGSize) -> CGPoint {
-        let frameWidth: CGFloat = 1920
-        let frameHeight: CGFloat = 1080
-        let x = min(max(CGFloat(cursor.x) / frameWidth, 0), 1) * size.width
-        let y = min(max(CGFloat(cursor.y) / frameHeight, 0), 1) * size.height
-        return CGPoint(x: x, y: y)
     }
 }
 #endif

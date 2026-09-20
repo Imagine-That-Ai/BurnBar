@@ -2584,8 +2584,7 @@ private final class RouterNoopScreenCaptureSession: ScreenCaptureSession {
     func stop() async {}
 }
 
-@MainActor
-private final class RouterNoopVideoEncoder: VideoEncoding {
+private final class RouterNoopVideoEncoder: VideoEncoding, @unchecked Sendable {
     func start() throws {}
     func encode(sampleBuffer: CMSampleBuffer) async throws {}
     func setTargetBitsPerSecond(_ bps: Int) throws {}

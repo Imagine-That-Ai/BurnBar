@@ -25,7 +25,7 @@ final class MediaSessionCoordinator: ObservableObject {
         ScreenCapturePipeline.Configuration,
         @escaping ScreenCapturePipeline.FrameHandler
     ) -> any ScreenCaptureSession
-    typealias VideoEncoderFactory = @MainActor @Sendable (
+    typealias VideoEncoderFactory = @Sendable (
         VideoEncoder.Configuration,
         @escaping VideoEncoder.EncodedHandler
     ) -> any VideoEncoding
@@ -185,7 +185,8 @@ final class MediaSessionCoordinator: ObservableObject {
             activeScreenCaptureConfiguration = ScreenCapturePipeline.Configuration(displayId: displayId)
             let pipeline = screenCaptureFactory(activeScreenCaptureConfiguration) { [weak self] sample in
                 guard let self else { return }
-                try? await self.videoEncoder?.encode(sampleBuffer: sample) // try?-ok(drop live frame)
+                nonisolated(unsafe) let buffer = sample
+                try? await self.videoEncoder?.encode(sampleBuffer: buffer) // try?-ok(drop live frame)
             }
             do {
                 try await pipeline.start()
@@ -235,7 +236,8 @@ final class MediaSessionCoordinator: ObservableObject {
         nextConfiguration.windowID = windowID
         let pipeline = screenCaptureFactory(nextConfiguration) { [weak self] sample in
             guard let self else { return }
-            try? await self.videoEncoder?.encode(sampleBuffer: sample) // try?-ok(drop live frame)
+            nonisolated(unsafe) let buffer = sample
+            try? await self.videoEncoder?.encode(sampleBuffer: buffer) // try?-ok(drop live frame)
         }
         try await pipeline.start()
         let previousCapture = screenCapture
@@ -316,6 +318,15 @@ final class MediaSessionCoordinator: ObservableObject {
 
     var activeScreenShareViewerCount: Int {
         streamSinks.count
+    }
+
+    var isScreenShareActive: Bool {
+        if case .active(feature: .screenShare) = phase { return true }
+        return false
+    }
+
+    var currentStreamClass: MediaStreamClass {
+        activeStreamClass
     }
 
     func recheckActiveAdmissionForTesting() async {
@@ -492,10 +503,10 @@ private extension MediaSessionCoordinator.Phase {
     }
 }
 
-/// Abstraction over "where encoded frames land": for Phase 3 it's the
-/// per-GOP iroh stream the Mac opens against the paired iPhone via the
-/// `media.screen.video` ALPN. For tests it's a recorder that asserts on
-/// what was written.
+/// Abstraction over "where encoded frames land": live screen-share writes
+/// GOP-tagged frames onto the existing `media.control` stream. The class
+/// name `media.screen.video` is the logical receiver, not a dedicated QUIC
+/// stream. For tests it's a recorder that asserts on what was written.
 protocol MediaStreamSink: Sendable {
     func write(frame: MediaFrame) async
     func write(frameV2: MediaFrameV2) async

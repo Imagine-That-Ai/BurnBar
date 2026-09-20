@@ -134,13 +134,13 @@ enum MobileTheme {
 
     enum Typography {
         static let displayLarge = MobileScaledFont.system(size: 36, weight: .bold, design: .rounded, relativeTo: .largeTitle)
-        static let display    = MobileScaledFont.system(size: 28, weight: .bold, design: .rounded, relativeTo: .title)
-        static let title      = MobileScaledFont.system(size: 20, weight: .semibold, design: .rounded, relativeTo: .title3)
-        static let headline   = MobileScaledFont.system(size: 18, weight: .semibold, design: .rounded, relativeTo: .headline)
-        static let body       = MobileScaledFont.system(size: 17, weight: .regular, design: .rounded, relativeTo: .body)
-        static let footnote   = MobileScaledFont.system(size: 15, weight: .medium, design: .rounded, relativeTo: .callout)
-        static let caption    = MobileScaledFont.system(size: 15, weight: .medium, design: .rounded, relativeTo: .callout)
-        static let tiny       = MobileScaledFont.system(size: 14, weight: .medium, design: .rounded, relativeTo: .caption)
+        static let display    = MobileScaledFont.system(size: 28, weight: .semibold, design: .default, relativeTo: .title)
+        static let title      = MobileScaledFont.system(size: 20, weight: .semibold, design: .default, relativeTo: .title3)
+        static let headline   = MobileScaledFont.system(size: 17, weight: .semibold, design: .default, relativeTo: .headline)
+        static let body       = MobileScaledFont.system(size: 17, weight: .regular, design: .default, relativeTo: .body)
+        static let footnote   = MobileScaledFont.system(size: 15, weight: .regular, design: .default, relativeTo: .callout)
+        static let caption    = MobileScaledFont.system(size: 15, weight: .regular, design: .default, relativeTo: .callout)
+        static let tiny       = MobileScaledFont.system(size: 13, weight: .regular, design: .default, relativeTo: .caption)
 
         static let monoLarge = MobileScaledFont.system(size: 28, weight: .bold, design: .monospaced, relativeTo: .title)
         static let mono       = MobileScaledFont.system(size: 16, weight: .medium, design: .monospaced, relativeTo: .callout)

@@ -6,6 +6,7 @@ struct ThemeSettingsView: View {
     @AppStorage("usePremiumSOTAUX") private var usePremiumSOTAUX: Bool = false
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
     @AppStorage(AppSkin.storageKey) private var appSkin: AppSkin = .aurora
+    @AppStorage(CompactIPhoneCanvas.auroraMeshStorageKey) private var compactAuroraMeshEnabled: Bool = false
     @AppStorage(MobileBackdropKernel.storageKey) private var mobileBackdropKernel: String = MobileBackdropKernel.defaultKernel.rawValue
     @AppStorage(SwarmSubstratePreferences.enabledKey) private var substrateEnabled: Bool = false
     @AppStorage(SwarmSubstratePreferences.substrateKey) private var substrateID: String = OpenBurnBarUI.SubstrateCatalog.plainID
@@ -57,6 +58,17 @@ struct ThemeSettingsView: View {
                 } else {
                     Text("Aurora is the signature ember look. Switch to Editorial for a quiet, paper-bright reading skin.")
                 }
+            }
+
+            Section {
+                Toggle(isOn: $compactAuroraMeshEnabled) {
+                    SettingsLabel(icon: "sparkles.rectangle.stack", color: MobileTheme.ember, title: "Aurora mesh on iPhone")
+                }
+                .tint(MobileTheme.ember)
+                .disabled(appSkin == .editorial)
+                .opacity(appSkin == .editorial ? 0.4 : 1)
+            } footer: {
+                Text("iPhone stays a quiet grouped canvas by default. Turn this on for the ember mesh, ribbon, and particles.")
             }
 
             Section {
@@ -114,7 +126,7 @@ struct ThemeSettingsView: View {
             } header: {
                 Text("Backdrop style")
             } footer: {
-                Text("Choose from the same app.burnbar.ai backdrop kernels on iPhone and iPad. Constellation still follows provider glyph filters.")
+                Text("Kernels and the provider swarm stay in Living Themes and wallpaper export. They do not paint Inbox, Agents, Quota, or You.")
             }
 
             substrateSection

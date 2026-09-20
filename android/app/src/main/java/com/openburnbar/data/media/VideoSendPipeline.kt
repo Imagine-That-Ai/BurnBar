@@ -69,6 +69,7 @@ class VideoSendPipeline(
     private var drainJob: Job? = null
     private var currentGopID: UInt = 0u
     private var currentFrameIndex: UInt = 0u
+    private val gopEndStamper = MediaGOPEndStamper()
 
     private val _phase = MutableStateFlow<Phase>(Phase.Idle)
     val phase: StateFlow<Phase> = _phase.asStateFlow()
@@ -147,6 +148,7 @@ class VideoSendPipeline(
         }
         encoder = null
         inputSurface = null
+        gopEndStamper.flush()
         _phase.value = Phase.Stopped
     }
 
@@ -203,7 +205,7 @@ class VideoSendPipeline(
                                 presentationTimestampMillis = (info.presentationTimeUs / 1000).toULong(),
                                 payload = payload,
                             )
-                        onEncoded(frame)
+                        gopEndStamper.push(frame)?.let { released -> onEncoded(released) }
                         codec.releaseOutputBuffer(outIndex, false)
                     }
                     outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { /* format change OK */ }

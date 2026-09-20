@@ -64,17 +64,19 @@ as such (each has a trigger that would revisit it):
   former Cloud Run WebSocket relay and its Memorystore Redis backend were
   retired 2026-05-28 — realtime transport is now iroh peer-to-peer with a
   Firestore last-resort fallback — so neither is an accepted risk anymore.)
-- **Single production Firebase project** (no staging environment). Tag-gated
-  functions deploys, emulator-tested rules with a CI deploy + drift gate, and
-  sub-minute revision rollback are the compensating controls; a staging
-  project is the planned next step once a second operator exists.
+- **Staging exists as `burnbar-staging`** (see [docs/ops/STAGING.md](docs/ops/STAGING.md)).
+  Production remains the `burnbar` Firebase/GCP project. Do not target
+  `openburnbar` in rollback or deploy commands.
 - **Fake-SSE polling fallback** on some hosted surfaces instead of true
   server-sent streams. Bounded staleness traded for serverless simplicity.
-- **Avatar images readable cross-tenant** (public-read avatars collection).
-  Avatars are explicitly non-sensitive by policy; nothing else shares that
-  rule shape.
-- **Solo-operator process**: merge/control compensations are codified in
-  [docs/SOLO_OPERATOR_POLICY.md](docs/SOLO_OPERATOR_POLICY.md).
+- **Avatar images are owner-only.** Direct Storage reads of
+  `avatars/{uid}/profile.jpg` require `request.auth.uid == userId`
+  ([storage.rules](storage.rules)). The retired public-read posture is
+  [AR-002](docs/governance/RISK_REGISTER.md).
+- **Solo-operator process / bus factor 1**: merge/control compensations are
+  codified in [docs/SOLO_OPERATOR_POLICY.md](docs/SOLO_OPERATOR_POLICY.md)
+  and accepted as [AR-008](docs/governance/RISK_REGISTER.md). Code cannot
+  hire a second owner.
 
 ## Known Limitations
 

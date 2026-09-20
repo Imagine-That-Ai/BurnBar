@@ -5,9 +5,10 @@ import OpenBurnBarEngine
 ///
 /// This is the SINGLE source of truth. It is executed verbatim in two places:
 ///
-///   1. `BurnBarAIInboxStore.bootstrapSchema()` — the daemon opens the shared
-///      database with `SQLITE_OPEN_CREATE` and self-heals its own tables, so the
-///      inbox works on a profile whose app has not yet run migration v58.
+///   1. `BurnBarAIInboxStore.bootstrapSchema()` — daemon **fixtures and tests**
+///      may create tables. The canonical `openburnbar.sqlite` file is owned by
+///      the app GRDB migrator; the daemon opens it read-write and does **not**
+///      CREATE/self-heal that schema.
 ///   2. The app's GRDB migration `v58_ai_inbox` — mirrored character-for-character
 ///      in both migration trees so the app never sees a table shape the daemon
 ///      did not write.

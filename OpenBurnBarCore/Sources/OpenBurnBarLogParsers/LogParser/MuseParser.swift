@@ -21,10 +21,20 @@ import OpenBurnBarParserSupport
 //       record_type:"event", durability:"durable",
 //       payload_type:"runtime.session.metadata" | "runtime.session" | "tool_batch.effect.started" | ...,
 //       payload_schema_version, payload:{kind, ...} }
+//   2026-09-20: Alberto's host has ~4k session.jsonl / ~11GB under this tree.
+//   Refresh is a 256MB new-content budget. Oldest-first discovery plus charging
+//   that budget *before* the idle cache meant today's Muse never landed in
+//   Charts. Discovery now walks newest YYYY/MM/DD first, skips tool-outputs,
+//   and serves cache hits without consuming the budget.
+//
+//   Some lines are framed `{retained_frame, children[].record_json}` wrappers;
+//   the parser unwraps those so permission batches cannot hide a later usage
+//   event.
+//
 //   The durable payloads that carry usage are:
 //     payload_type == "runtime.session" && payload.kind == "run" && event.kind == "model_completed"
 //       → usage:{input_tokens, output_tokens, cached_tokens, cache_write_tokens,
-//                cache_read_tokens, reasoning_tokens} + model:"muse-spark-1.2-contributor"
+//                cache_read_tokens, reasoning_tokens} + model:"muse-spark-1.3-contributor"
 //     payload_type == "runtime.session" && event.kind == "goal_usage_attribution"
 //       → record.quantity:{input_tokens, output_tokens, cached_tokens, reasoning_tokens} (duplicates
 //         model_completed; the parser prefers model_completed to avoid double-counting).
@@ -36,10 +46,11 @@ import OpenBurnBarParserSupport
 //     payload_type == "tool_batch.effect.started" → record.tool_name, parallel_profile.subject
 //
 // Model identifiers:
-//   provider_id:"meta" , model_id:"muse-spark-1.2" / "muse-spark-1.2-contributor"
-//   Pricing (from model-catalog on this host):
-//     muse-spark-1.2:              input $1.25 /M, output $4.25 /M, cached $0.15 /M
-//     muse-spark-1.2-contributor:  input $0.10 /M, output $0.20 /M, cached $0.002 /M
+//   provider_id:"meta" , model_id:"muse-spark-1.3" / "muse-spark-1.3-contributor"
+//   (1.2 family still appears on older sessions)
+//   Pricing (from Resources/catalog.json; host model-catalog leaves cost null):
+//     muse-spark-1.2 / 1.3:              input $1.25 /M, output $4.25 /M, cached $0.15 /M
+//     muse-spark-1.2 / 1.3-contributor:  input $0.10 /M, output $0.20 /M, cached $0.002 /M
 //   The parser uses ModelPricing.lookup(model:providerID:) — catalog entries are under
 //   the "meta" provider (see Resources/catalog.json, muse-spark-1-2-family). Fallback
 //   pricing applies when the catalog is absent (e.g., offline tests).
@@ -79,10 +90,25 @@ public final class MuseParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: Self.parserCacheSchemaVersion,
             logLabel: "MuseParser"
         )
     }
+
+    /// Bump when discovery order / framed unwrap / default model changes so
+    /// idle-cache rows from the oldest-first 256MB window cannot hide today.
+    static let parserCacheSchemaVersion = 2
+
+    /// Live Muse CLI default when a session never recorded a model id.
+    public static let defaultFallbackModel = "muse-spark-1.3-contributor"
+
+    /// Directories that are not session transcripts. Walking them on Alberto's
+    /// host is 50k+ files of tool output and would hide today's `session.jsonl`.
+    static let skippedDiscoveryDirectoryNames: Set<String> = [
+        "tool-outputs",
+        "approval-review",
+        "persisted-content"
+    ]
 
     public var lastSessionScanCount: Int { sessionScanCount.read() }
     public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
@@ -126,8 +152,10 @@ public final class MuseParser: LogParser, Sendable {
         for file in candidates {
             let cacheKey = file.standardizedFileURL.path
             activePaths.insert(cacheKey)
-            guard try gate.shouldRead(file) else { continue }
             let signature = FileSignature(for: file, using: fileManager)
+            // Cache hits must not consume the shared 256MB refresh budget.
+            // Charging `shouldRead` first is why 11GB of August/September
+            // Muse logs never let this morning's sessions into Charts.
             if !options.includeConversationBodies,
                let signature,
                let cached = parseCache.fileEntries[cacheKey],
@@ -136,6 +164,7 @@ public final class MuseParser: LogParser, Sendable {
                 usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .muse) })
                 continue
             }
+            guard try gate.shouldRead(file) else { continue }
 
             sessionScanCount.withLock { $0 += 1 }
             if let pair = tryParseFile(file: file, options: options) {
@@ -176,6 +205,10 @@ public final class MuseParser: LogParser, Sendable {
             return out
         }
         for case let url as URL in enumerator {
+            if Self.skippedDiscoveryDirectoryNames.contains(url.lastPathComponent) {
+                enumerator.skipDescendants()
+                continue
+            }
             if url.pathExtension == "jsonl" && url.lastPathComponent == "session.jsonl" {
                 out.append(url)
             } else if url.pathExtension == "jsonl" {
@@ -193,16 +226,9 @@ public final class MuseParser: LogParser, Sendable {
         ) {
             out.append(contentsOf: contents.filter { $0.pathExtension == "jsonl" })
         }
-        // Newest transcripts first. Path order hits 100MB+ August files before
-        // today's sessions, so a usage tick never finishes and Muse burn stays 0.
-        return out.sorted { lhs, rhs in
-            let left = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?
-                .contentModificationDate ?? .distantPast
-            let right = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?
-                .contentModificationDate ?? .distantPast
-            if left != right { return left > right }
-            return lhs.path < rhs.path
-        }
+        // Newest YYYY/MM/DD shards first so a 256MB refresh budget reads this
+        // morning before a 378MB August subagent log.
+        return out.sorted { $0.path > $1.path }
     }
 
     // MARK: - Per-file
@@ -238,14 +264,7 @@ public final class MuseParser: LogParser, Sendable {
         var goalAttributionOnlyInput = 0
         var goalAttributionOnlyOutput = 0
 
-        for line in handle.readAllUTF8Lines() {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { continue }
-            guard let data = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                continue // truncated/partial line — skip
-            }
-
+        func ingestEnvelope(_ json: [String: Any]) {
             // session id from stream (authoritative)
             if sessionId == nil, let stream = json["stream"] as? [String: Any], let sid = stream["id"] as? String, !sid.isEmpty {
                 sessionId = sid
@@ -263,8 +282,8 @@ public final class MuseParser: LogParser, Sendable {
                 lastTime = d
             }
 
-            guard let payloadType = json["payload_type"] as? String else { continue }
-            guard let payload = json["payload"] as? [String: Any] else { continue }
+            guard let payloadType = json["payload_type"] as? String else { return }
+            guard let payload = json["payload"] as? [String: Any] else { return }
 
             // Metadata: workspace_root / model
             if payloadType == "runtime.session.metadata" {
@@ -274,7 +293,7 @@ public final class MuseParser: LogParser, Sendable {
                     providerId = (record["provider_id"] as? String) ?? providerId
                     if let m = record["model_id"] as? String { lastModel = m }
                 }
-                continue
+                return
             }
 
             // Tool calls
@@ -283,7 +302,7 @@ public final class MuseParser: LogParser, Sendable {
                    let record = payload["record"] as? [String: Any], let name = record["tool_name"] as? String, !name.isEmpty {
                     toolNames.insert(name)
                 }
-                continue
+                return
             }
 
             // Run events
@@ -291,9 +310,9 @@ public final class MuseParser: LogParser, Sendable {
                 guard let kind = payload["kind"] as? String, kind == "run" else {
                     // Also handle started prompts at run level? The prompt event is inside run event.kind == "started"
                     // But our guard already filters to kind==run, so extract started inside.
-                    continue
+                    return
                 }
-                guard let event = payload["event"] as? [String: Any], let eventKind = event["kind"] as? String else { continue }
+                guard let event = payload["event"] as? [String: Any], let eventKind = event["kind"] as? String else { return }
 
                 switch eventKind {
                 case "started":
@@ -359,6 +378,19 @@ public final class MuseParser: LogParser, Sendable {
             }
         }
 
+        for line in handle.readAllUTF8Lines() {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            guard let data = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue // truncated/partial line — skip
+            }
+
+            for envelope in Self.expandEnvelopes(json) {
+                ingestEnvelope(envelope)
+            }
+        }
+
         // If no model_completed but we have attribution fallback, use it
         if modelCompletedCount == 0 && (goalAttributionOnlyInput > 0 || goalAttributionOnlyOutput > 0) {
             totalInput = max(totalInput, goalAttributionOnlyInput)
@@ -390,7 +422,7 @@ public final class MuseParser: LogParser, Sendable {
         }
 
         // No usage row but we have conversation content and caller wants it → still need to produce conversation
-        let resolvedModel = lastModel ?? modelId ?? "muse-spark-1.2-contributor"
+        let resolvedModel = lastModel ?? modelId ?? Self.defaultFallbackModel
         let resolvedWorkspace = workspaceRoot ?? file.deletingLastPathComponent().path
         let projectName: String = {
             if let ws = workspaceRoot, !ws.isEmpty {
@@ -505,6 +537,23 @@ public final class MuseParser: LogParser, Sendable {
     }
 
     // MARK: - Helpers
+
+    /// Unwrap `{retained_frame, children[].record_json}` batches. Muse 1.3
+    /// writes permission transactions this way; usage events stay top-level
+    /// today but a later wrap must not go uncounted.
+    static func expandEnvelopes(_ json: [String: Any]) -> [[String: Any]] {
+        var out: [[String: Any]] = [json]
+        guard let children = json["children"] as? [[String: Any]] else { return out }
+        for child in children {
+            guard let raw = child["record_json"] as? String,
+                  let data = raw.data(using: .utf8),
+                  let inner = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+            out.append(contentsOf: expandEnvelopes(inner))
+        }
+        return out
+    }
 
     private func dateFromMicroseconds(_ us: Int64) -> Date {
         // Muse writes microseconds since epoch (see sample: 1785970740961126 ~ 2026-08-05)

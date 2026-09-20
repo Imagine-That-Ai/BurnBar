@@ -1,0 +1,7 @@
+{
+  "checksums": {
+    "Vendor/OpenBurnBarIroh.xcframework": "e002d909b1b23f3ef43c02201e5cf5b4ee5177a64c903992d95fcebcae0db8a7",
+    "Vendor/OpenBurnBarSignalFfiMac.xcframework": "bafdda3c9ef670be172147062176f0d378989dba2e7685455b7132ccb034a9b1"
+  },
+  "note": "SHA-256 over xcframework file bytes. Missing binaries are null until present."
+}

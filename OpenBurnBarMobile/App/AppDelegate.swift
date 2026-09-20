@@ -37,14 +37,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    /// On first launch, opt new users into the live provider-glyph swarm
-    /// backdrop so the app greets them with the same beautiful dot swarm the
-    /// website shows. Only seeds when the key is absent, so anyone who toggles
-    /// it off keeps their choice across launches.
+    /// On first launch — and once for anyone still opted into the WebGL
+    /// kernel behind Inbox / Agents / You — the shell is grouped paper.
+    /// Appearance still has kernel previews for wallpaper and Living Themes.
     private func seedDefaultAppearanceIfNeeded() {
         let defaults = UserDefaults.standard
-        if defaults.object(forKey: "useWebsiteBackground") == nil {
-            defaults.set(true, forKey: "useWebsiteBackground")
+        let migrationKey = "obb.shell.kernelBackdropOff.20260821"
+        if defaults.object(forKey: migrationKey) == nil {
+            defaults.set(false, forKey: "useWebsiteBackground")
+            defaults.set(true, forKey: migrationKey)
         }
     }
 
@@ -146,7 +147,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             settingsProvider: { @MainActor in
                 // Mirrors the Mac `ChatBackendSettings.mediaBlobTransferEnabled`
                 // key so Remote Config + per-device sync stays consistent.
-                UserDefaults.standard.bool(forKey: "mediaBlobTransferEnabled")
+                // Missing key means on; an explicit false stays off.
+                if UserDefaults.standard.object(forKey: "mediaBlobTransferEnabled") == nil {
+                    return true
+                }
+                return UserDefaults.standard.bool(forKey: "mediaBlobTransferEnabled")
             }
         )
         self.iOSFileTransfer = receiver

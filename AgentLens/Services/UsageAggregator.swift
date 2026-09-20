@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GRDB
 import OpenBurnBarCore
@@ -44,6 +45,8 @@ final class UsageAggregator {
     /// Usage records fetched from provider billing APIs (separate from log-parsed data).
     private(set) var apiUsages: [ProviderUsageRecord] = []
     private var projectionWorkerTask: Task<Void, Never>?
+    @ObservationIgnored private var artifactDiscoveryTask: Task<Void, Never>?
+    @ObservationIgnored private var maintenanceObservers: [NSObjectProtocol] = []
     private var projectionWorkerWakeTask: Task<Void, Never>?
     private var projectionWorkerWakeAt: Date?
     private var conversationIndexingTask: Task<Void, Never>?
@@ -171,9 +174,6 @@ final class UsageAggregator {
 
         let refreshStartedAt = Date()
 
-        // Data retention: purge expired rows once per launch.
-        await orchestrator.runRetentionPurgeIfNeeded()
-
         // ── Heavy work runs entirely off the main thread ─────────────
         // `RefreshBackgroundWork` is a `nonisolated` namespace, so awaiting it
         // from this `@MainActor` method runs it off the main actor (SE-0338).
@@ -183,7 +183,10 @@ final class UsageAggregator {
                 parsers: parsers,
                 dataStore: dataStore,
                 orchestrator: orchestrator,
-                settings: settings
+                settings: settings,
+                onUsagePublished: {
+                    await dataStore.reloadUsagesIfChanged()
+                }
             )
         } catch is CancellationError {
             return
@@ -270,6 +273,14 @@ final class UsageAggregator {
 
     /// Cancel projection / indexing workers before the SQLCipher pool closes.
     func stopBackgroundWork() {
+        BackgroundCadenceCoordinator.shared.unregister(id: "usage-retention-maintenance")
+        artifactDiscoveryTask?.cancel()
+        artifactDiscoveryTask = nil
+        for observer in maintenanceObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        maintenanceObservers.removeAll()
+        Task { await artifactDiscoveryService.setWatchingSuspended(true) }
         projectionSweepRequested = false
         projectionWorkerTask?.cancel()
         projectionWorkerTask = nil
@@ -277,6 +288,40 @@ final class UsageAggregator {
         projectionWorkerWakeTask = nil
         conversationIndexingTask?.cancel()
         conversationIndexingTask = nil
+    }
+
+    func startBackgroundMaintenance() {
+        guard maintenanceObservers.isEmpty else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.screensDidSleepNotification, NSWorkspace.screensDidWakeNotification] {
+            maintenanceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, !self.maintenanceObservers.isEmpty else { return }
+                    let suspended = name == NSWorkspace.screensDidSleepNotification
+                    await self.artifactDiscoveryService.setWatchingSuspended(suspended)
+                    if !suspended {
+                        // Let the canceled sleep-time pass release the single-flight
+                        // slot before launching the mandatory wake reconciliation.
+                        await self.artifactDiscoveryTask?.value
+                        guard !self.maintenanceObservers.isEmpty else { return }
+                        self.launchArtifactDiscoverySweep()
+                    }
+                }
+            })
+        }
+        BackgroundCadenceCoordinator.shared.register(
+            .init(
+                id: "usage-retention-maintenance",
+                activeInterval: 60 * 60,
+                backgroundInterval: 60 * 60,
+                fireImmediately: true,
+                work: { [weak self] in
+                    guard let self else { return }
+                    await self.refreshOrchestrator.runRetentionPurgeIfNeeded()
+                    await self.dataStore.reloadUsagesIfChanged()
+                }
+            )
+        )
     }
 
     /// Called by the watchdog once the footprint falls back under the re-arm
@@ -591,10 +636,11 @@ private extension UsageAggregator {
     }
 
     func launchArtifactDiscoverySweep() {
-        guard settingsManager.artifactDiscoveryEnabled else { return }
-
-        Task(priority: .utility) { [weak self] in
-            await self?.runArtifactDiscoverySweep()
+        guard artifactDiscoveryTask == nil else { return }
+        artifactDiscoveryTask = Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            defer { self.artifactDiscoveryTask = nil }
+            await self.runArtifactDiscoverySweep(force: false)
         }
     }
 
@@ -611,9 +657,12 @@ private extension UsageAggregator {
             )
     }
 
-    func runArtifactDiscoverySweep() async {
+    func runArtifactDiscoverySweep(force: Bool = true) async {
         do {
-            _ = try await artifactDiscoveryService.discoverAndIngest()
+            let report = try await artifactDiscoveryService.discoverAndIngest(force: force)
+            if report.queuedJobs > 0 { requestProjectionSweep() }
+        } catch is CancellationError {
+            return
         } catch {
             let now = Date()
             do {
@@ -636,7 +685,6 @@ private extension UsageAggregator {
                 ) // cov:ignore -- nonfatal-log
             }
         }
-        requestProjectionSweep()
     }
 
     @discardableResult

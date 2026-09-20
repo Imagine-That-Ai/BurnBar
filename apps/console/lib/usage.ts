@@ -71,6 +71,22 @@ export interface AccountSummary {
   totalCost: number;
 }
 
+/**
+ * Provider-account totals (who paid / which login burned it). Mirrors the
+ * server's ProviderAccountSummary (`functions/src/types/legacy/quota-usage.ts`):
+ * `id` is the raw `providerAccountID` when the event carried one, otherwise
+ * the synthetic `${providerID}:unattributed` key the counters use.
+ */
+export interface AccountSummary {
+  id: string;
+  providerID: string;
+  accountID?: string;
+  accountLabel: string;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost: number;
+}
+
 /** Agent-harness totals (Claude Code, Codex, Cursor, …) — the execution source. */
 export interface ExecutionSourceSummary {
   sourceId: string;

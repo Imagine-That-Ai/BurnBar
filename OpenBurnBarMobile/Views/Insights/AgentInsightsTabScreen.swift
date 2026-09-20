@@ -62,20 +62,13 @@ struct AgentInsightsTabScreen: View {
             .presentationDragIndicator(.visible)
         }
         .task { await prepare() }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowInsightsTab"))) { note in
-            if let section = note.userInfo?["section"] as? String, section == "budgets" {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    selectedSection = .budgets
-                }
-            } else {
-                let slug = (note.userInfo?["slug"] as? String) ?? ""
-                if let scope = AgentInsightsScope.from(routeSlug: slug) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectedSection = .insights
-                    }
-                    select(scope)
-                }
-            }
+        .task { applyPendingInsightsRoute() }
+        .onReceive(NotificationCenter.default.publisher(for: InsightsDeepLink.notificationName)) { note in
+            applyInsightsRoute(
+                slug: note.userInfo?[InsightsDeepLink.slugKey] as? String,
+                section: note.userInfo?[InsightsDeepLink.sectionKey] as? String
+            )
+            _ = InsightsDeepLink.consume()
         }
     }
 
@@ -119,7 +112,7 @@ struct AgentInsightsTabScreen: View {
                 }
             }
             .navigationTitle(sectionTitle)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .accessibilityIdentifier("screen.insights")
             .toolbar {
                 if selectedSection == .insights && (cloudStore?.isActive ?? true) {
                     toolbarContent
@@ -294,6 +287,25 @@ struct AgentInsightsTabScreen: View {
         case .budgets: return "Budget Center"
         case .fusion: return "Fusion Impact"
         }
+    }
+
+    private func applyPendingInsightsRoute() {
+        guard let pending = InsightsDeepLink.consume() else { return }
+        applyInsightsRoute(slug: pending.slug, section: pending.section)
+    }
+
+    private func applyInsightsRoute(slug: String?, section: String?) {
+        if section == "budgets" {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                selectedSection = .budgets
+            }
+            return
+        }
+        guard let scope = AgentInsightsScope.from(routeSlug: slug ?? "") else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            selectedSection = .insights
+        }
+        select(scope)
     }
 
     private func select(_ scope: AgentInsightsScope) {

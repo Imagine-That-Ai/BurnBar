@@ -3,7 +3,7 @@ import XCTest
 /// Flow 2 — Drive the Aurora floating tab tray through every destination and
 /// assert each destination screen appears.
 ///
-/// Visits Pulse → Burn → Insights → Streams → Agents → You → back to Pulse. Each hop
+/// Visits Agents → Quota → You → back to Inbox. Each hop
 /// confirms both that the tapped tab became selected and that the destination
 /// screen's marker (`screen.<name>`) rendered.
 @MainActor
@@ -14,18 +14,17 @@ final class TabNavigationSmokeUITests: SmokeUITestCase {
 
         // Launch destination.
         XCTAssertTrue(
-            screenMarker("pulse", in: app).waitForExistence(timeout: 30),
-            "Did not start on the Pulse screen.\n\(app.debugDescription)"
+            screenMarker("inbox", in: app).waitForExistence(timeout: 30),
+            "Did not start on the Inbox screen.\n\(app.debugDescription)"
         )
+        writeQuietTabScreenshot(named: "inbox")
 
         // Each entry: (tray tab id, destination screen marker name).
         let journey: [(tab: String, screen: String)] = [
-            ("burn", "burn"),
-            ("insights", "insights"),
-            ("streams", "streams"),
             ("hermes", "agents"),
+            ("burn", "burn"),
             ("you", "you"),
-            ("pulse", "pulse")
+            ("inbox", "inbox")
         ]
 
         for step in journey {
@@ -34,6 +33,16 @@ final class TabNavigationSmokeUITests: SmokeUITestCase {
                 screenMarker(step.screen, in: app).waitForExistence(timeout: 15),
                 "Selecting the '\(step.tab)' tab did not reveal the '\(step.screen)' screen.\n\(app.debugDescription)"
             )
+            writeQuietTabScreenshot(named: step.screen)
         }
+    }
+
+    /// Attaches the quiet-chrome shot for each tab to the test result, so the
+    /// run itself carries the visual evidence rather than a machine-local path.
+    private func writeQuietTabScreenshot(named name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "tab-\(name)"
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }

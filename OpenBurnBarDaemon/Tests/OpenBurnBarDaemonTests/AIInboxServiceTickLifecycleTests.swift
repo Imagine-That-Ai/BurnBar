@@ -21,7 +21,10 @@ final class AIInboxServiceTickLifecycleTests: XCTestCase {
         rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("ai-inbox-service-\(unique)", isDirectory: true)
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
-        databaseURL = rootURL.appendingPathComponent("openburnbar.sqlite")
+        // Not `openburnbar.sqlite` — that basename is the canonical shared
+        // store and refuses to CREATE, which makes every lifecycle test fail
+        // with "unable to open database file" on a fresh temp path.
+        databaseURL = rootURL.appendingPathComponent("inbox-test.sqlite")
         ledgerURL = rootURL.appendingPathComponent("usage-events.jsonl")
         assertionStore = try BurnBarAIInboxStore(
             databasePath: databaseURL.path,
@@ -338,6 +341,43 @@ final class AIInboxServiceTickLifecycleTests: XCTestCase {
                 .isEmpty,
             "A recovered analyst must resolve its own outage notice"
         )
+    }
+
+    func test_aBrokenAnalystPinFallsBackInsteadOfFilingCouldNotRun() async throws {
+        try seedConversation(
+            id: "conv-analyst-fallback",
+            messageCount: 5,
+            endedAt: Date().addingTimeInterval(-300)
+        )
+
+        let executor = FakeInboxProviderExecutor(
+            responses: [Self.analystResponseJSON, Self.verifierConfirmJSON]
+        )
+        let service = try makeService(
+            executor: executor,
+            configStore: try await makeConfiguredProviderConfigStore()
+        )
+        _ = await service.updateConfiguration(
+            BurnBarInboxConfig(
+                enabled: true,
+                egressMode: .cloud,
+                analystProviderID: "not-a-provider",
+                analystModel: "not-a-model",
+                githubEnabled: false
+            )
+        )
+
+        _ = await service.runNow(force: true)
+
+        XCTAssertTrue(
+            try assertionStore.openItems()
+                .filter { $0.kind == .system && $0.title == "Analyst could not run" }
+                .isEmpty,
+            "A dead pin must fall back to another configured provider, not file the outage notice"
+        )
+        let run = try XCTUnwrap(try assertionStore.recentRuns(limit: 10).first { $0.gateResult == .forced })
+        XCTAssertGreaterThan(run.llmCalls, 0)
+        XCTAssertNil(run.error)
     }
 
     func test_analystFailureReasonPrefersTheHumanSentenceOverTheEnumCase() {

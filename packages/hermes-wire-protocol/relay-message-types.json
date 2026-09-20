@@ -702,6 +702,10 @@
               },
               {
                 "id": "panic"
+              },
+              {
+                "id": "setTrustMode",
+                "wire": "set_trust_mode"
               }
             ]
           }

@@ -296,6 +296,44 @@ const CATALOG_OVERRIDES = {
     ],
     highRiskComputerUse: false,
   },
+  onComputerUseActionLiveActivity: {
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_actions/{actionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and pushes only to devices in that user namespace whose liveActivitySessionId matches the action session",
+    handlerModule: "liveActivityPush.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["onComputerUseActionLiveActivity"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  onComputerUseSessionLiveActivity: {
+    trigger: "firestore-trigger",
+    authMethod: "Firebase Functions event trigger (not client-callable)",
+    appCheck: "not-applicable",
+    tenantSource: "users/{uid}/computer_use_sessions/{sessionId} trigger path",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "trigger derives uid from the Firestore event path and pushes only to devices in that user namespace whose liveActivitySessionId matches the session",
+    handlerModule: "liveActivityPush.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["onComputerUseSessionLiveActivity"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   reconcileAccountErasures: {
     trigger: "scheduled",
     authMethod: "Cloud Scheduler / Firebase Functions platform trigger",
@@ -1261,19 +1299,19 @@ for (const exportedName of SIGNAL_MIGRATION_TRIGGER_NAMES) {
 
 CATALOG_OVERRIDES.benchAssistant = {
   trigger: "callable",
-  authMethod:
-    "none — public website callable bounded by product-layer IP rate limits (bench_assistant_burst + bench_assistant_daily) enforced before any OpenRouter call",
-  appCheck: "not-applicable",
-  tenantSource: "none — answers only from the caller-supplied public BurnBench digest; no tenant objects are read",
+  authMethod: "Firebase Auth required; App Check follows project enforceAppCheck",
+  appCheck: "required",
+  tenantSource: "request.auth.uid — no tenant objects are read",
   objectIdsFromClient: [],
   ownershipCheck:
-    "handler reads no Firestore tenant data; it validates the payload, enforces the IP rate limits, and proxies the digest to OpenRouter",
+    "handler rejects missing auth before any OpenRouter HTTP, validates the payload, enforces IP rate limits, and proxies the caller-supplied public BurnBench digest",
   handlerModule: "benchAssistant.ts",
   bolaCoverage: [
     {
       file: "functions/src/__tests__/benchAssistant.test.ts",
-      test: "public benchmark assistant answers only from the supplied digest and exposes no tenant objects",
-      kind: "not-applicable-public",
+      test: "rejects unauthenticated invocation before any provider HTTP",
+      kind: "auth-only",
+      expectedCode: "unauthenticated",
       covers: ["benchAssistant"],
     },
   ],
@@ -1450,6 +1488,31 @@ for (const [name, ids] of [
   );
 }
 
+// The mission group creator takes a client-supplied groupId, but it is a
+// caller-namespaced CREATE: `writeGroupInTransaction` writes only under
+// request.auth.uid, so a cross-user probe resolves creating under the caller
+// and never rejects — the runtime proof therefore claims no victim-side
+// effect instead of a measured denial code.
+CATALOG_OVERRIDES.createCliAgentMissionGroup = {
+  authMethod: "Firebase Auth with callable-level ownership checks",
+  appCheck: "required",
+  tenantSource: "request.auth.uid",
+  ownershipCheck:
+    "handler derives uid from request.auth.uid and writes only caller-namespaced mission_groups/{groupId} documents; a client-supplied groupId can never address another user's group",
+  bolaCoverage: [
+    {
+      file: "functions/src/__tests__/bola/cliAgentMissions.bola.test.ts",
+      test: "createCliAgentMissionGroup rejects cross-user object access",
+      kind: "runtime-cross-user",
+      covers: ["createCliAgentMissionGroup"],
+      expectedOutcome: "no-side-effect",
+    },
+  ],
+  highRiskComputerUse: true,
+  objectIdsFromClient: ["groupId"],
+  handlerModule: "callables/cliAgentMissions.ts",
+};
+
 CATALOG_OVERRIDES.publishMissionApprovalCeiling = runtimeOwned(
   "publishMissionApprovalCeiling",
   "functions/src/__tests__/bola/missionApprovalAnswers.bola.test.ts",
@@ -1620,10 +1683,13 @@ const objectExpectedCodes = Object.fromEntries(
 // take a teamId / member uid from the client (D16 / P21) — the sixth,
 // `abandonTeamKeyGeneration`, landed with PR 2's rotation escape hatch — plus
 // the rotation completion marker (D16 / P22, PR 4) and the founding
-// slug-key fingerprint recorder (D16, this PR).
-if (Object.keys(objectExpectedCodes).length !== 103) {
+// slug-key fingerprint recorder (D16, this PR), plus the mission group
+// creator `createCliAgentMissionGroup` (its groupId is a caller-namespaced
+// CREATE: a cross-user probe resolves writing only under the caller, so its
+// runtime-cross-user ref proves no victim-side effect).
+if (Object.keys(objectExpectedCodes).length !== 104) {
   throw new Error(
-    `Expected exactly 103 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
+    `Expected exactly 104 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
   );
 }
 

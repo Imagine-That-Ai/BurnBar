@@ -44,12 +44,9 @@
  * back at clients.
  *
  * Auth contract:
- *   - Public: no Firebase Auth and no App Check. Abuse resistance comes from
- *     two IP-keyed product-layer rate limits (`bench_assistant_burst` +
- *     `bench_assistant_daily` in callables/publicRateLimit.ts) enforced
- *     BEFORE any OpenRouter call, plus payload size caps and a maxInstances
- *     ceiling chosen lower than the authenticated callables because this
- *     surface is reachable by the open internet.
+ *   - Firebase Auth required. Unauthenticated callers are rejected before any
+ *     OpenRouter HTTP. App Check follows the project `enforceAppCheck` flag
+ *     (fail-closed in production). IP rate limits remain as a second bound.
  *
  * Secrets:
  *   - `OPENROUTER_API_KEY` (defineSecret — same project secret the hosted
@@ -69,6 +66,7 @@ import { defineSecret } from "firebase-functions/params";
 import { HttpsError } from "firebase-functions/v2/https";
 
 import { checkBenchAssistantRateLimit } from "./callables/publicRateLimit.js";
+import { getConfig } from "./config.js";
 import { errorMessage, isRecord } from "./guards.js";
 import { logWarn, onCallProduction } from "./logging.js";
 import {
@@ -498,11 +496,27 @@ export const benchAssistant = onCallProduction<BenchAssistantRequest, Record<str
   "benchAssistant",
   {
     region: FUNCTIONS_REGION,
+    enforceAppCheck: (() => {
+      try {
+        return getConfig().enforceAppCheck;
+      } catch {
+        return true;
+      }
+    })(),
     maxInstances: 25,
     timeoutSeconds: 60,
     secrets: [OPENROUTER_API_KEY],
   },
-  async (request) => {
+  executeBenchAssistant,
+);
+
+export async function executeBenchAssistant(
+  request: { auth?: { uid?: string }; data: unknown; rawRequest?: { headers?: Record<string, unknown>; ip?: string } },
+): Promise<Record<string, unknown>> {
+    const uid = request.auth?.uid;
+    if (typeof uid !== "string" || uid.length === 0) {
+      throw new HttpsError("unauthenticated", "Sign in before using BurnBench assistant.");
+    }
     const input = parseBenchAssistantInput(request.data);
 
     const apiKey = OPENROUTER_API_KEY.value().trim();
@@ -515,7 +529,7 @@ export const benchAssistant = onCallProduction<BenchAssistantRequest, Record<str
 
     // Bound owner OpenRouter spend per client IP after the request has passed
     // validation and secret preflight but before any token is billed.
-    await checkBenchAssistantRateLimit(request.rawRequest);
+    await checkBenchAssistantRateLimit(request.rawRequest ?? {});
 
     const modelSlug = (process.env.BENCH_ASSISTANT_MODEL ?? "").trim() || DEFAULT_MODEL_SLUG;
     const baseURL = (process.env.BENCH_ASSISTANT_BASE_URL ?? "").trim() || DEFAULT_BASE_URL;
@@ -599,5 +613,4 @@ export const benchAssistant = onCallProduction<BenchAssistantRequest, Record<str
     } finally {
       clearTimeout(timer);
     }
-  },
-);
+}

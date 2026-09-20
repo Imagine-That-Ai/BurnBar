@@ -40,16 +40,3 @@ struct VitalisLineShape: Shape {
         return path
     }
 }
-
-/// Closed area-under-curve down to the baseline.
-struct VitalisAreaShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        let w = rect.width
-        let baseline = rect.height * 0.74
-        var path = VitalisLineShape().path(in: rect)
-        path.addLine(to: CGPoint(x: w * 0.96, y: baseline))
-        path.addLine(to: CGPoint(x: w * 0.06, y: baseline))
-        path.closeSubpath()
-        return path
-    }
-}

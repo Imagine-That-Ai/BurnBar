@@ -233,6 +233,7 @@ struct MercuryMirrorViewerFullScreen: View {
     let onForceReconnect: () -> Void
     let onRetryRequest: () -> Void
     let onClose: () -> Void
+    let onPanicHalt: () -> Void
     init(
         coordinator: ScreenShareViewerCoordinator,
         resetToken: String?,
@@ -268,7 +269,8 @@ struct MercuryMirrorViewerFullScreen: View {
         onTrustControlDevice: @escaping () -> Void,
         onForceReconnect: @escaping () -> Void,
         onRetryRequest: @escaping () -> Void,
-        onClose: @escaping () -> Void
+        onClose: @escaping () -> Void,
+        onPanicHalt: @escaping () -> Void = {}
     ) {
         self.coordinator = coordinator
         self.resetToken = resetToken
@@ -305,6 +307,7 @@ struct MercuryMirrorViewerFullScreen: View {
         self.onForceReconnect = onForceReconnect
         self.onRetryRequest = onRetryRequest
         self.onClose = onClose
+        self.onPanicHalt = onPanicHalt
     }
 
     var body: some View {
@@ -343,7 +346,8 @@ struct MercuryMirrorViewerFullScreen: View {
             requestRemoteUnlockSetup: requestRemoteUnlockSetup,
             onSelectDisplay: onSelectDisplay,
             onTrustControlDevice: onTrustControlDevice,
-            onClose: onClose
+            onClose: onClose,
+            onPanicHalt: onPanicHalt
         )
         .background(Color.black.ignoresSafeArea())
     }

@@ -628,9 +628,9 @@ COVERAGE_ALLOWLIST = {
         "constellation canvases, composer chrome, and situation-room layout "
         "require a live window server to line-hit. The decision logic is "
         "line-gated in the package lane: forecast cost/runtime math, mission "
-        "kind metadata, FAB gauge configuration, and cost/token formatting are "
+        "kind metadata, and cost/token formatting are "
         "covered by MissionConsoleTests (MissionConsoleForecastTests, "
-        "MissionConsoleKindTests, MissionFABGaugeConfigurationTests, "
+        "MissionConsoleKindTests, "
         "MissionConsoleFormattingTests), and the mission-control RPC surface "
         "by OpenBurnBarMissionControlContractsTests."
     ),

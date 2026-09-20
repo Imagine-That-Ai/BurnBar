@@ -19,6 +19,10 @@ struct HermesSquareLeftColumn: View {
     let mercuryPeer: MercuryPeer?
     let onSelect: (HermesSquareSplitLayout.DetailRoute) -> Void
     let onOpenThread: (ThreadInboxItem) -> Void
+    /// Desk-wide `.searchable` query. Empty means use the inline field.
+    var externalSearchQuery: String = ""
+    /// Hide the nested search field when the root split owns `.searchable`.
+    var hidesInlineSearchField: Bool = false
 
     @State private var renameTargetItem: ThreadInboxItem?
     @State private var newTitleText: String = ""
@@ -86,13 +90,17 @@ struct HermesSquareLeftColumn: View {
         missionHost: MobileMissionConsoleHost,
         mercuryPeer: MercuryPeer?,
         onSelect: @escaping (HermesSquareSplitLayout.DetailRoute) -> Void,
-        onOpenThread: @escaping (ThreadInboxItem) -> Void
+        onOpenThread: @escaping (ThreadInboxItem) -> Void,
+        externalSearchQuery: String = "",
+        hidesInlineSearchField: Bool = false
     ) {
         self.hermesService = hermesService
         self.missionHost = missionHost
         self.mercuryPeer = mercuryPeer
         self.onSelect = onSelect
         self.onOpenThread = onOpenThread
+        self.externalSearchQuery = externalSearchQuery
+        self.hidesInlineSearchField = hidesInlineSearchField
         _inbox = State(initialValue: ThreadInboxStore(
             historyStore: MobileChatHistoryStore.shared,
             cliReader: .shared,
@@ -102,12 +110,14 @@ struct HermesSquareLeftColumn: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 14) {
-                    federatedSearchBar
-                        .padding(.horizontal, 12)
-                        .padding(.top, 8)
+                    if !hidesInlineSearchField {
+                        federatedSearchBar
+                            .padding(.horizontal, 12)
+                            .padding(.top, 8)
+                    }
 
                     if !query.isEmpty {
                         searchResults
@@ -287,6 +297,11 @@ struct HermesSquareLeftColumn: View {
         .sheet(isPresented: $isShowingSubscriptions) {
             HermesSquareSubscriptionsFolder()
         }
+        .onChange(of: externalSearchQuery) { _, q in
+            guard query != q else { return }
+            query = q
+            Task { await runSearch() }
+        }
     }
 
     private var missionManagementIsPresented: Binding<Bool> {
@@ -383,7 +398,7 @@ struct HermesSquareLeftColumn: View {
                         Text("Add")
                     }
                     .font(.caption.bold())
-                    .foregroundStyle(DesignSystemColors.ember)
+                    .foregroundStyle(Color.primary)
                 }
                 .buttonStyle(.plain)
             }
@@ -431,7 +446,7 @@ struct HermesSquareLeftColumn: View {
                         Text("Ask /wiki")
                     }
                     .font(.caption.bold())
-                    .foregroundStyle(DesignSystemColors.ember)
+                    .foregroundStyle(Color.primary)
                 }
                 .buttonStyle(.plain)
             }
@@ -476,12 +491,12 @@ struct HermesSquareLeftColumn: View {
                             } label: {
                                 Text("/wiki")
                                     .font(.caption.bold())
-                                    .foregroundStyle(DesignSystemColors.ember)
+                                    .foregroundStyle(Color.primary)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
                                     .background(
                                         Capsule()
-                                            .fill(DesignSystemColors.ember.opacity(0.15))
+                                            .fill(Color.primary.opacity(0.08))
                                     )
                             }
                             .buttonStyle(.plain)
@@ -517,7 +532,7 @@ struct HermesSquareLeftColumn: View {
                         Text("Compose")
                     }
                     .font(.caption.bold())
-                    .foregroundStyle(DesignSystemColors.ember)
+                    .foregroundStyle(Color.primary)
                 }
                 .buttonStyle(.plain)
             }
@@ -531,7 +546,7 @@ struct HermesSquareLeftColumn: View {
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "bolt.fill")
-                                    .foregroundStyle(DesignSystemColors.ember)
+                                    .foregroundStyle(Color.primary)
                                 Text("No live missions. Tap to compose one.")
                                     .foregroundStyle(DesignSystemColors.textMuted)
                             }

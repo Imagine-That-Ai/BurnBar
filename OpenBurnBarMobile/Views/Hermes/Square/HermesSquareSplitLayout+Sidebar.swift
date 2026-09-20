@@ -88,7 +88,7 @@ struct HermesSquareRuntimeHistorySidebar: View {
 
     var body: some View {
         ZStack {
-            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
             VStack(spacing: 0) {
                 header
                 ScrollView {

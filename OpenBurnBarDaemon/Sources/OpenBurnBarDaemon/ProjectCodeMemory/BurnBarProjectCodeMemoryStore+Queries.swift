@@ -22,7 +22,7 @@ extension BurnBarProjectCodeMemoryStore {
             projectID: projectID,
             hits: evaluated.hits,
             status: evaluated.degradation == nil ? "ok" : "degraded",
-            semanticAvailable: false,
+            semanticAvailable: lastSemanticCodeSearchBackend != "none",
             degradation: evaluated.degradation,
             trustSignal: BurnBarProjectCodeTrustSignal(
                 untrustedContentWrapped: true,
@@ -74,7 +74,7 @@ extension BurnBarProjectCodeMemoryStore {
             hits: hits,
             truncated: truncated,
             status: evaluated.degradation == nil ? "ok" : "degraded",
-            semanticAvailable: false,
+            semanticAvailable: lastSemanticCodeSearchBackend != "none",
             degradation: evaluated.degradation,
             trustSignal: BurnBarProjectCodeTrustSignal(
                 untrustedContentWrapped: true,

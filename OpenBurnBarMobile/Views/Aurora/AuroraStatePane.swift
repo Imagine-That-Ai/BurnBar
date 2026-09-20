@@ -37,8 +37,6 @@ struct AuroraStatePane: View {
         self.onCTA = onCTA
     }
 
-    @State private var pulse = false
-
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
             illustration
@@ -54,72 +52,34 @@ struct AuroraStatePane: View {
             }
             if let ctaLabel, let onCTA {
                 Button(ctaLabel, action: onCTA)
-                    .buttonStyle(.aurora(.primary))
+                    .buttonStyle(.bordered)
             }
         }
         .padding(MobileTheme.Spacing.xl)
         .frame(maxWidth: 360)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
-        .onAppear { pulse = true }
     }
 
     // MARK: - Illustration
 
     private var illustration: some View {
-        ZStack {
-            // Halo
-            Circle()
-                .fill(haloColor.opacity(0.18))
-                .frame(width: 160, height: 160)
-                .blur(radius: 28)
-                .scaleEffect(pulse ? 1.06 : 0.98)
-                .animation(
-                    .easeInOut(duration: 2.4).repeatForever(autoreverses: true),
-                    value: pulse
-                )
-
-            // Ring
-            Circle()
-                .stroke(haloColor.opacity(0.32), lineWidth: 1)
-                .frame(width: 132, height: 132)
-
-            Image(systemName: icon)
-                .font(.system(size: 44, weight: .semibold))
-                .foregroundStyle(iconStyle)
-                .symbolEffect(.bounce, options: .nonRepeating, value: pulse)
-        }
-        .frame(height: 160)
-    }
-
-    private var haloColor: Color {
-        switch kind {
-        case .empty: return MobileTheme.ember
-        case .error: return MobileTheme.warning
-        case .loading: return MobileTheme.hermesAureate
-        }
-    }
-
-    private var iconStyle: AnyShapeStyle {
-        switch kind {
-        case .empty:
-            return AnyShapeStyle(MobileTheme.primaryGradient)
-        case .error:
-            return AnyShapeStyle(MobileTheme.warning)
-        case .loading:
-            return AnyShapeStyle(AuroraDesign.Gradients.mercuryFoil)
-        }
+        Image(systemName: icon)
+            .font(.system(size: 36, weight: .regular))
+            .foregroundStyle(kind == .error ? MobileTheme.error : Color.secondary)
+            .symbolRenderingMode(.monochrome)
+            .frame(height: 48)
     }
 }
 
 #Preview {
     ZStack {
-        AuroraBackdrop()
+        Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
         AuroraStatePane(
             kind: .empty,
-            icon: "chart.bar.fill",
-            title: "No usage yet",
-            message: "Open OpenBurnBar on your Mac to start streaming usage data.",
+            icon: "tray",
+            title: "Nothing here yet",
+            message: "The AI Inbox runs on your Mac and syncs here.",
             ctaLabel: "Open Mac App",
             onCTA: {}
         )

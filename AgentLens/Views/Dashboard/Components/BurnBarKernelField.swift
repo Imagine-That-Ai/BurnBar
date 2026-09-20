@@ -294,6 +294,8 @@ struct BurnBarKernelField: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var window = BurnBarKernelWindowState.unknown
+    @Environment(\.burnBarWindowState) private var sharedWindowState
+    private var windowState: BurnBarKernelWindowState { sharedWindowState ?? window }
 
     /// The pose the field holds when motion is off.
     ///
@@ -308,7 +310,9 @@ struct BurnBarKernelField: View {
 
     /// Reduce Motion freezes the field — it does not stop drawing it. A paused
     /// `TimelineView` still renders; it just stops asking for new frames.
-    private var isAnimating: Bool { isRunning && window.isVisible && !reduceMotion }
+    private var isAnimating: Bool {
+        isRunning && windowState.isVisible && !windowState.isScrolling && !reduceMotion
+    }
 
     /// The frame budget, from the policy the WebGL field already runs to.
     ///
@@ -319,7 +323,7 @@ struct BurnBarKernelField: View {
     private var frameRate: Double {
         KernelBackdropFramePolicy.maxFrameRate(
             isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch,
-            refreshHz: window.refreshHz
+            refreshHz: windowState.refreshHz
         )
     }
 
@@ -335,7 +339,7 @@ struct BurnBarKernelField: View {
                 // 5K window burn a render core for motion nobody can see.
                 TimelineView(.animation(minimumInterval: 1 / frameRate, paused: !isAnimating)) { context in
                     Rectangle()
-                        .fill(shader(uniforms, at: isAnimating ? context.date : Self.restingDate))
+                        .fill(shader(uniforms, at: reduceMotion ? Self.restingDate : context.date))
                 }
             } else {
                 Rectangle().fill(
@@ -347,10 +351,12 @@ struct BurnBarKernelField: View {
                 )
             }
         }
-        .background(
-            BurnBarKernelVisibilityProbe { window = $0 }
-                .frame(width: 0, height: 0)
-        )
+        .background {
+            if sharedWindowState == nil {
+                BurnBarKernelVisibilityProbe { window = $0 }
+                    .frame(width: 0, height: 0)
+            }
+        }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -415,6 +421,7 @@ struct BurnBarKernelWindowState: Equatable, Sendable {
     var isVisible: Bool
     /// The refresh rate of the display the window is on, in Hz.
     var refreshHz: Double
+    var isScrolling = false
 
     /// Before the probe has a window: assume visible, assume 60 Hz. Assuming hidden
     /// would leave previews and detached hosts drawing a permanently frozen field.
@@ -429,7 +436,7 @@ struct BurnBarKernelWindowState: Equatable, Sendable {
 /// on top of us" — `scenePhase` and `isVisible` both stay happy through it. The policy
 /// itself is `OcclusionVisibilityPolicy`, shared verbatim with the WebGL backdrop so
 /// the swap cannot change when the field sleeps.
-private struct BurnBarKernelVisibilityProbe: NSViewRepresentable {
+struct BurnBarKernelVisibilityProbe: NSViewRepresentable {
     let onChange: (BurnBarKernelWindowState) -> Void
 
     func makeNSView(context: Context) -> ProbeView {
@@ -451,6 +458,8 @@ private struct BurnBarKernelVisibilityProbe: NSViewRepresentable {
         var onChange: ((BurnBarKernelWindowState) -> Void)?
         private var observers: [NSObjectProtocol] = []
         private var lastPublished: BurnBarKernelWindowState?
+        private let scrollingViews = NSHashTable<NSScrollView>.weakObjects()
+        private var displayIsAwake = true
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
@@ -476,23 +485,53 @@ private struct BurnBarKernelVisibilityProbe: NSViewRepresentable {
                     MainActor.assumeIsolated { self?.publishCurrentState() }
                 }
             }
+            for name in [NSScrollView.willStartLiveScrollNotification, NSScrollView.didEndLiveScrollNotification] {
+                observers.append(NotificationCenter.default.addObserver(
+                    forName: name, object: nil, queue: .main
+                ) { [weak self] notification in
+                    guard let scrollView = notification.object as? NSScrollView else { return }
+                    MainActor.assumeIsolated {
+                        guard let self,
+                              scrollView.window === self.window else { return }
+                        if name == NSScrollView.willStartLiveScrollNotification {
+                            self.scrollingViews.add(scrollView)
+                        } else {
+                            self.scrollingViews.remove(scrollView)
+                        }
+                        self.publishCurrentState()
+                    }
+                })
+            }
+            for name in [NSWorkspace.screensDidSleepNotification, NSWorkspace.screensDidWakeNotification] {
+                observers.append(NSWorkspace.shared.notificationCenter.addObserver(
+                    forName: name, object: nil, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.displayIsAwake = name == NSWorkspace.screensDidWakeNotification
+                        self?.publishCurrentState()
+                    }
+                })
+            }
             publishCurrentState()
         }
 
         func detach() {
             for observer in observers {
                 NotificationCenter.default.removeObserver(observer)
+                NSWorkspace.shared.notificationCenter.removeObserver(observer)
             }
             observers.removeAll()
+            scrollingViews.removeAllObjects()
         }
 
         private func publishCurrentState() {
             let refresh = window?.screen?.maximumFramesPerSecond ?? 0
             publish(
                 BurnBarKernelWindowState(
-                    isVisible: OcclusionVisibilityPolicy.shouldBackdropBeActive(window: window),
+                    isVisible: displayIsAwake && OcclusionVisibilityPolicy.shouldBackdropBeActive(window: window),
                     // A detached or off-screen window reports 0; 60 is the safe floor.
-                    refreshHz: refresh > 0 ? Double(refresh) : 60
+                    refreshHz: refresh > 0 ? Double(refresh) : 60,
+                    isScrolling: scrollingViews.allObjects.contains { $0.window === window }
                 )
             )
         }

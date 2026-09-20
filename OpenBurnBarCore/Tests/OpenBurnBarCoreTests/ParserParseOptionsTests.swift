@@ -144,7 +144,7 @@ final class ParserParseOptionsTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(result.usages.first?.model, "Claude Opus 4.6 (Thinking)")
+        XCTAssertEqual(result.usages.first?.model, AntigravityParser.defaultFallbackModel)
         XCTAssertEqual(governor.deferredFileCount, 1)
         XCTAssertEqual(metrics.snapshot().byteBudgetDeferredCount, 1)
         XCTAssertEqual(metrics.snapshot().contentReadCount, 1, "oversized metadata must not be content-read")

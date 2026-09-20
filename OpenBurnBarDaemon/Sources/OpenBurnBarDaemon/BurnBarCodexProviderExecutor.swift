@@ -620,24 +620,26 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
         return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
     }
 
-    private static func responsesBody(modelID: String, output: String, stream: Bool) throws -> Data {
+    static func responsesBody(modelID: String, output: String, stream: Bool) throws -> Data {
         let id = "resp_openburnbar_codex_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
         if stream {
-            let delta: [String: Any] = [
-                "type": "response.output_text.delta",
-                "response_id": id,
-                "delta": output
-            ]
-            let completed: [String: Any] = [
-                "type": "response.completed",
-                "response": [
-                    "id": id,
-                    "object": "response",
-                    "model": modelID,
-                    "status": "completed"
-                ]
-            ]
-            return try sseBody(events: [delta, completed])
+            // Codex's Responses client requires the item lifecycle before any
+            // output_text.delta; a naked delta is dropped as
+            // "OutputTextDelta without active item" and the TUI stays on Working.
+            let chatStream = try chatCompletionResponseBody(
+                modelID: modelID,
+                output: output,
+                stream: true
+            )
+            return try BurnBarOpenAICompatibleProviderExecutor.responsesStreamFromChatCompletionStream(
+                BurnBarProviderProxyResponse(
+                    statusCode: 200,
+                    contentType: "text/event-stream",
+                    body: chatStream,
+                    usage: nil
+                ),
+                modelID: modelID
+            ).body
         }
         let body: [String: Any] = [
             "id": id,

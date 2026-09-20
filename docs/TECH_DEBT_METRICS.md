@@ -14,29 +14,31 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Legacy reference suites (ADR, not quarantined) | 2 | stable | — |
 | `@MainActor` on I/O facades (listed set) | 3 | 4 | 0 |
 | Empty `catch {}` blocks (app + daemon) | 0 | 0 | 0 |
-| `Task.detached` in `AgentLens/Services/` | 6 | ≤ 10 | 0 |
-| `try?` in `AgentLens/Services/` | 0 | ≤ 120 | ≤ 50 |
-| Unsafe cast assert-zero gate | 0 | 0 | 0 |
+| `Task.detached` in `AgentLens/Services/` | 17 | ≤ 10 | 0 |
+| `try?` in `AgentLens/Services/` (untagged debt / tagged `try?-ok` best-effort) | 2 untagged (518 tagged) | ≤ 120 | ≤ 50 |
+| Unsafe cast assert-zero gate | 4 | 0 | 0 |
+| Untyped GRDB row cast assert-zero gate | 0 | 0 | 0 |
+| Untyped `[String: Any]` dictionaries (App: 732, Mobile: 438, Core: 703, Daemon: 466) | 2339 total | shrinking | ≤ 500 |
 | Knip dead-code budget (`budgets/knip-baseline.json`, functions) | 0 | 0 | 0 |
 | Schema `knownDrift` tokens (`tools/schema-sync/manifest.json`) | 0 | 0 | 0 |
-| `@unchecked Sendable` ratchet (assert-zero gate; 78 documented allowlist exceptions) | 0 | 0 | 0 |
-| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 4023 | ≤ 5000 | ≤ 3500 |
+| `@unchecked Sendable` ratchet (assert-zero gate; 84 documented allowlist exceptions) | 1 (84 allowlisted) | 0 | 0 |
+| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 4269 | ≤ 5000 | ≤ 3500 |
 | `functions/src/types.ts` LOC (barrel) | 8 | stable (re-export) | — |
 | `functions/src/types/legacy.ts` LOC | 19 | shrinking (TypeSpec migration) | — |
-| `functions/src/index.ts` LOC | 230 | modularize | — |
+| `functions/src/index.ts` LOC | 272 | modularize | — |
 | `import SwiftUI` in Services/ | 0 | 0 | 0 |
 | Phase 1 security register open items (`docs/governance/PHASE1_SECURITY_REGISTER.md`) | 0 | ≤ 3 | 0 |
 | Rust `unwrap()`/`expect()` in `crates/{burnbar-remote,openburnbar-iroh}` | 0 | 0 | 0 |
-| Force-unwrap sites (`budgets/force-unwrap-baseline.json`, shrink-only ratchet) | 213 | shrinking | 0 |
+| Force-unwrap sites (`budgets/force-unwrap-baseline.json`, shrink-only ratchet) | 203 | shrinking | 0 |
 
 ## Top service files (lines)
 
 | File | LOC |
 |------|-----|
-| `AgentLens/Services/CloudSyncService.swift` | 241 |
-| `AgentLens/Services/Search/` (SearchService + extensions) | 1452 |
-| `AgentLens/Services/UsageAggregator.swift` | 719 |
-| `AgentLens/Services/ProjectionPipeline/` | 1611 |
+| `AgentLens/Services/CloudSyncService.swift` | 255 |
+| `AgentLens/Services/Search/` (SearchService + extensions) | 1540 |
+| `AgentLens/Services/UsageAggregator.swift` | 778 |
+| `AgentLens/Services/ProjectionPipeline/` | 1696 |
 
 ## Remediation links
 

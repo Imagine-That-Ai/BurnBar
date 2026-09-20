@@ -252,7 +252,38 @@ extension ChatSessionController {
 
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
 
-        let retrievalText = Self.retrievalQueryText(for: trimmed, messages: messages)
+        // Fail closed on a selected-model routing error before paying retrieval
+        // and before painting a thinking placeholder. The old order ran the
+        // local index first, so a dead gateway looked like a hung send.
+        if let routingError = pendingModelRoutingError {
+            let err = ChatMessageRecord(
+                role: .assistant,
+                content: routingError,
+                cliUsed: nil
+            )
+            messages.append(err)
+            do {
+                try await dataStore.saveChatMessage(err, threadID: activeThreadID)
+            } catch {
+                AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
+            }
+            refreshHistory()
+            selectedContext = nil
+            return
+        }
+
+        // Capture the transcript the model should see *before* the empty
+        // assistant placeholder is appended. Hermes/OpenClaw/Pi send the
+        // in-memory history; an empty assistant turn would look like a reply.
+        let promptHistory = messages
+
+        // Paint thinking immediately. Retrieval and prompt assembly used to
+        // run first, and on a multi-gigabyte encrypted corpus that wait is
+        // long enough that a sent user bubble looks like a dead chat.
+        let assistantId = beginAssistantStreamPlaceholder()
+        let streamStartedAt = Date()
+
+        let retrievalText = Self.retrievalQueryText(for: trimmed, messages: promptHistory)
         let retrievalPlan = BurnBarSearchPlan.plan(userText: retrievalText)
         let requestedJumpTargetCount = desiredJumpTargetCount(for: retrievalPlan)
         let retrievalResultLimit = min(
@@ -338,45 +369,18 @@ extension ChatSessionController {
             conversationJumpTargets = oracleResult.jumpTargets
         }
 
+        guard isStreaming, activeStreamMessageId == assistantId else { return }
+
         if indexedResponseStrategy == .localOracle, let oracleResult {
             let response = oracleResult.message.trimmingCharacters(in: .whitespacesAndNewlines)
             let finalResponse = response.isEmpty
                 ? "I found indexed material for that request, but failed to format the local answer. Use the matched-session buttons below."
                 : response
-            let assistant = ChatMessageRecord(role: .assistant, content: finalResponse)
-            messages.append(assistant)
-            do {
-                try await dataStore.saveChatMessage(
-                    assistant,
-                    threadID: activeThreadID,
-                    isTerminalAssistantCommit: true,
-                    memoryService: memoryServiceForExtraction,
-                    extractionContext: makeMemoryExtractionContext()
-                )
-                // PR-D3: the commit above (atomically) enqueued the extraction job; kick the
-                // drain so it is picked up this session. No-op when extraction is off.
-                scheduleMemoryDrainAfterCommit()
-            } catch {
-                AppLogger.chat.silentFailure("saveChatMessage (oracle response)", error: error)
-            }
-            refreshHistory()
-            selectedContext = nil
-            return
-        }
-
-        if let routingError = pendingModelRoutingError {
-            let err = ChatMessageRecord(
-                role: .assistant,
-                content: routingError,
-                cliUsed: nil
+            await settleAssistantPlaceholder(
+                id: assistantId,
+                content: finalResponse,
+                isTerminalAssistantCommit: true
             )
-            messages.append(err)
-            do {
-                try await dataStore.saveChatMessage(err, threadID: activeThreadID)
-            } catch {
-                AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
-            }
-            refreshHistory()
             selectedContext = nil
             return
         }
@@ -426,7 +430,7 @@ extension ChatSessionController {
         let activeDesktopGrant = activeDesktopControlGrant
         let activeToolBroker = activeAgentToolBroker()
         let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw || chatBackend == .piAgent)
-            ? messages
+            ? promptHistory
             : []
 
         // G9: assemble augmentedSystem under one token-aware arbiter so a future
@@ -495,20 +499,7 @@ extension ChatSessionController {
         }
         let augmentedSystem = assembledPrompt.systemPrompt
 
-        isStreaming = true
-        let assistantId = UUID().uuidString
-        activeStreamMessageId = assistantId
-        let backendLabel: String = chatBackend.rawValue
-
-        let placeholder = ChatMessageRecord(
-            id: assistantId,
-            role: .assistant,
-            content: "",
-            cliUsed: firstAssistantBadgeShown ? nil : backendLabel
-        )
-        firstAssistantBadgeShown = true
-        messages.append(placeholder)
-        let streamStartedAt = Date()
+        guard isStreaming, activeStreamMessageId == assistantId else { return }
 
         // `requestModel` is resolved above (G9 prompt token arbiter) and reused here.
         // Load bytes for any attachments referenced by history. We load lazily
@@ -833,6 +824,50 @@ extension ChatSessionController {
                     self.onStreamSettled?(.failed(cancelled: error is CancellationError))
                 }.value
             }
+        }
+    }
+
+    /// Empty assistant row shown the moment a send is accepted, so retrieval
+    /// and prompt assembly cannot hide the fact that the agent is working.
+    @discardableResult
+    private func beginAssistantStreamPlaceholder() -> String {
+        isStreaming = true
+        let assistantId = UUID().uuidString
+        activeStreamMessageId = assistantId
+        let placeholder = ChatMessageRecord(
+            id: assistantId,
+            role: .assistant,
+            content: "",
+            cliUsed: firstAssistantBadgeShown ? nil : chatBackend.rawValue
+        )
+        firstAssistantBadgeShown = true
+        messages.append(placeholder)
+        return assistantId
+    }
+
+    private func settleAssistantPlaceholder(
+        id: String,
+        content: String,
+        isTerminalAssistantCommit: Bool
+    ) async {
+        isStreaming = false
+        activeStreamMessageId = nil
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].content = content
+        do {
+            try await dataStore.saveChatMessage(
+                messages[idx],
+                threadID: activeThreadID,
+                isTerminalAssistantCommit: isTerminalAssistantCommit,
+                memoryService: isTerminalAssistantCommit ? memoryServiceForExtraction : nil,
+                extractionContext: isTerminalAssistantCommit ? makeMemoryExtractionContext() : nil
+            )
+            if isTerminalAssistantCommit {
+                scheduleMemoryDrainAfterCommit()
+            }
+            refreshHistory()
+        } catch {
+            AppLogger.chat.silentFailure("saveChatMessage (placeholder settle)", error: error)
         }
     }
 

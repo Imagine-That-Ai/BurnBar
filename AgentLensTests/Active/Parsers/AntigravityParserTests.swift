@@ -280,6 +280,223 @@ final class AntigravityParserTests: XCTestCase {
             "Should extract model from USER_SETTINGS_CHANGE, not use fallback")
     }
 
+    func testLastModelSelectionWinsOverEarlierOpusChange() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let first = """
+        Start
+        <USER_SETTINGS_CHANGE>
+        The user changed setting `Model Selection` from None to Claude Opus 4.6 (Thinking). No need to comment.
+        </USER_SETTINGS_CHANGE>
+        """
+        let second = """
+        Switch
+        <USER_SETTINGS_CHANGE>
+        The user changed setting `Model Selection` from Claude Opus 4.6 (Thinking) to Gemini 3.8 Flash (High). No need to comment on this change if the user doesn't ask about it.
+        </USER_SETTINGS_CHANGE>
+        """
+        let lines = [
+            try jsonLine(stepIndex: 0, source: "USER_EXPLICIT", type: "USER_INPUT", content: first),
+            try jsonLine(stepIndex: 1, source: "MODEL", type: "PLANNER_RESPONSE", content: "Working."),
+            try jsonLine(stepIndex: 2, source: "USER_EXPLICIT", type: "USER_INPUT", content: second),
+            try jsonLine(stepIndex: 3, source: "MODEL", type: "PLANNER_RESPONSE", content: "Switched.")
+        ]
+        let (_, transcript) = try createConversation(in: root, lines: lines)
+        let usage = try XCTUnwrap(AntigravityParser().parseSession(
+            transcriptFile: transcript,
+            sessionId: "last-model-wins",
+            fallbackModel: "Claude Opus 4.6 (Thinking)"
+        )?.usage)
+        XCTAssertEqual(usage.model, "Gemini 3.8 Flash (High)")
+    }
+
+    func testCLIModelOverrideMappedFromUserPrompt() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let lines = [
+            try jsonLine(
+                stepIndex: 0,
+                source: "USER_EXPLICIT",
+                type: "USER_INPUT",
+                content: "agy --model gemini-3.8-flash-high --effort high do the thing"
+            ),
+            try jsonLine(stepIndex: 1, source: "MODEL", type: "PLANNER_RESPONSE", content: "On it.")
+        ]
+        let (_, transcript) = try createConversation(in: root, lines: lines)
+        let usage = try XCTUnwrap(AntigravityParser().parseSession(
+            transcriptFile: transcript,
+            sessionId: "cli-model",
+            fallbackModel: "Claude Opus 4.6 (Thinking)"
+        )?.usage)
+        XCTAssertEqual(usage.model, "Gemini 3.8 Flash (High)")
+    }
+
+    func testCLIModelOverrideWinsOverEarlierOpusSettingsChange() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let first = """
+        Start
+        <USER_SETTINGS_CHANGE>
+        The user changed setting `Model Selection` from None to Claude Opus 4.6 (Thinking). No need to comment.
+        </USER_SETTINGS_CHANGE>
+        """
+        let lines = [
+            try jsonLine(stepIndex: 0, source: "USER_EXPLICIT", type: "USER_INPUT", content: first),
+            try jsonLine(stepIndex: 1, source: "MODEL", type: "PLANNER_RESPONSE", content: "Working."),
+            try jsonLine(
+                stepIndex: 2,
+                source: "USER_EXPLICIT",
+                type: "USER_INPUT",
+                content: "agy --model gemini-3.8-flash-high continue"
+            ),
+            try jsonLine(stepIndex: 3, source: "MODEL", type: "PLANNER_RESPONSE", content: "Switched.")
+        ]
+        let (_, transcript) = try createConversation(in: root, lines: lines)
+        let usage = try XCTUnwrap(AntigravityParser().parseSession(
+            transcriptFile: transcript,
+            sessionId: "cli-after-opus",
+            fallbackModel: "Claude Opus 4.6 (Thinking)"
+        )?.usage)
+        XCTAssertEqual(usage.model, "Gemini 3.8 Flash (High)")
+    }
+
+    func testForeignCLIModelFlagsDoNotOverrideSettingsChange() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let first = """
+        Start
+        <USER_SETTINGS_CHANGE>
+        The user changed setting `Model Selection` from None to Gemini 3.8 Flash (High). No need to comment.
+        </USER_SETTINGS_CHANGE>
+        """
+        let docs = """
+        muse exec --model muse-spark-1.3 --json
+        the explicit --model pin overrides the settings default
+        agy --model gemini-3.8-flash-high --sandbox
+        """
+        let lines = [
+            try jsonLine(stepIndex: 0, source: "USER_EXPLICIT", type: "USER_INPUT", content: first),
+            try jsonLine(stepIndex: 1, source: "USER_EXPLICIT", type: "USER_INPUT", content: docs),
+            try jsonLine(stepIndex: 2, source: "MODEL", type: "PLANNER_RESPONSE", content: "Noted.")
+        ]
+        let (_, transcript) = try createConversation(in: root, lines: lines)
+        let usage = try XCTUnwrap(AntigravityParser().parseSession(
+            transcriptFile: transcript,
+            sessionId: "foreign-cli",
+            fallbackModel: "Claude Opus 4.6 (Thinking)"
+        )?.usage)
+        XCTAssertEqual(usage.model, "Gemini 3.8 Flash (High)")
+    }
+
+    func testDefaultFallbackIsGemini38FlashHigh() async throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let lines = [
+            try jsonLine(stepIndex: 0, source: "USER_EXPLICIT", type: "USER_INPUT", content: "Hello"),
+            try jsonLine(stepIndex: 1, source: "MODEL", type: "PLANNER_RESPONSE", content: "Hi!")
+        ]
+        let brain = root.appendingPathComponent("brain")
+        try FileManager.default.createDirectory(at: brain, withIntermediateDirectories: true)
+        _ = try createConversation(in: brain, sessionId: "default-model", lines: lines)
+        let result = try await AntigravityParser(logDirectoryOverride: root.path).parse()
+        XCTAssertEqual(result.usages.first?.model, "Gemini 3.8 Flash (High)")
+        XCTAssertEqual(result.usageSessionIDsToDelete, ["default-model"])
+    }
+
+    func testConversationHistoryReplayDoesNotInflateInput() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let user = "Count this once."
+        let replay = String(repeating: "replayed history ", count: 400)
+        let once = [
+            try jsonLine(stepIndex: 0, source: "USER_EXPLICIT", type: "USER_INPUT", content: user),
+            try jsonLine(stepIndex: 1, source: "SYSTEM", type: "CONVERSATION_HISTORY", content: replay),
+            try jsonLine(stepIndex: 2, source: "MODEL", type: "PLANNER_RESPONSE", content: "One.")
+        ]
+        let many = once + [
+            try jsonLine(stepIndex: 3, source: "SYSTEM", type: "CONVERSATION_HISTORY", content: replay),
+            try jsonLine(stepIndex: 4, source: "SYSTEM", type: "CONVERSATION_HISTORY", content: replay),
+            try jsonLine(stepIndex: 5, source: "MODEL", type: "PLANNER_RESPONSE", content: "Two.")
+        ]
+
+        let (_, shortFile) = try createConversation(in: root, sessionId: "short", lines: once)
+        let (_, longFile) = try createConversation(in: root, sessionId: "long", lines: many)
+        let parser = AntigravityParser()
+        let short = try XCTUnwrap(parser.parseSession(
+            transcriptFile: shortFile, sessionId: "short", fallbackModel: "test-model"
+        )?.usage)
+        let long = try XCTUnwrap(parser.parseSession(
+            transcriptFile: longFile, sessionId: "long", fallbackModel: "test-model"
+        )?.usage)
+        XCTAssertEqual(short.inputTokens, long.inputTokens)
+        XCTAssertEqual(short.cacheReadTokens, 0)
+        XCTAssertEqual(long.cacheReadTokens, 0)
+        XCTAssertEqual(long.totalTokens, long.inputTokens + long.outputTokens)
+    }
+
+    func testManyPlannerTurnsDoNotMultiplyUniqueInput() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let user = String(repeating: "unique user context ", count: 50)
+        func lines(plannerTurns: Int) throws -> [String] {
+            var out = [try jsonLine(stepIndex: 0, source: "USER_EXPLICIT", type: "USER_INPUT", content: user)]
+            for index in 1...plannerTurns {
+                out.append(try jsonLine(
+                    stepIndex: index,
+                    source: "MODEL",
+                    type: "PLANNER_RESPONSE",
+                    content: "Turn \(index)."
+                ))
+            }
+            return out
+        }
+        let (_, twoFile) = try createConversation(in: root, sessionId: "two", lines: try lines(plannerTurns: 2))
+        let (_, tenFile) = try createConversation(in: root, sessionId: "ten", lines: try lines(plannerTurns: 10))
+        let parser = AntigravityParser()
+        let two = try XCTUnwrap(parser.parseSession(
+            transcriptFile: twoFile, sessionId: "two", fallbackModel: "test-model"
+        )?.usage)
+        let ten = try XCTUnwrap(parser.parseSession(
+            transcriptFile: tenFile, sessionId: "ten", fallbackModel: "test-model"
+        )?.usage)
+        XCTAssertEqual(two.inputTokens, ten.inputTokens)
+        XCTAssertLessThan(ten.inputTokens, 2_000)
+        XCTAssertEqual(ten.cacheCreationTokens, 0)
+        XCTAssertEqual(ten.totalTokens, ten.inputTokens + ten.outputTokens)
+    }
+
+    func testSelfTranscriptViewIsNotCountedAsToolInput() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let user = "Read your own log."
+        let transcriptDump = String(repeating: "old transcript line\n", count: 800)
+        let selfView = """
+        File Path: `file:///Users/me/.gemini/antigravity-cli/brain/abc/.system_generated/logs/transcript_full.jsonl`
+        Total Lines: 800
+        \(transcriptDump)
+        """
+        let lines = [
+            try jsonLine(stepIndex: 0, source: "USER_EXPLICIT", type: "USER_INPUT", content: user),
+            try jsonLine(stepIndex: 1, source: "MODEL", type: "PLANNER_RESPONSE", content: "Looking."),
+            try jsonLine(stepIndex: 2, source: "MODEL", type: "GENERIC", content: selfView)
+        ]
+        let (_, transcript) = try createConversation(in: root, lines: lines)
+        let usage = try XCTUnwrap(AntigravityParser().parseSession(
+            transcriptFile: transcript,
+            sessionId: "self-transcript",
+            fallbackModel: "test-model"
+        )?.usage)
+        let userOnly = TokenExtractionUtility.estimatedTokenCount(for: user.count, charsPerToken: 3.35) + 9
+        XCTAssertLessThan(usage.inputTokens, userOnly + 40)
+    }
+
     func testFallbackModelUsedWhenNoSettingsChange() throws {
         let root = tempDir()
         defer { try? FileManager.default.removeItem(at: root) }

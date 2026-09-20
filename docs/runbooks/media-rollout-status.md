@@ -2,6 +2,21 @@
 
 Operator log mirroring `docs/runbooks/iroh-rollout-status.md`. Each entry records gate status, what landed, what is blocked or pending, and the next action. New entries are appended at the bottom in reverse chronology so the latest state is always immediately visible from the table of contents at the top of the file.
 
+## 2026-08-20 — Cellular rungs + stale-GOP abort (video stays on `media.control`)
+
+**Gate status:** source-complete. No AV1-first, datagrams, FEC, temporal layers, or ROI. Device soak still owed (Gate 6).
+
+Completed:
+- Screen-share `BitrateController` / Android `BweEstimator` rungs are 250 kbps / 500 kbps / 1 / 2 / 4 / 8 Mbps. Constrained phone paths (NWPath cellular/expensive/constrained; Android ConnectivityManager cellular/metered/congested) fast-drop to 500 kbps. RTT ≥ 200 ms or loss ≥ 4% walks to the 250 kbps floor. Recovery while constrained cannot exceed 500 kbps.
+- Receivers (`VideoReceivePipeline` on iOS and Android) abort stale GOPs via `MediaGOPReceiveWindow` once a newer GOP keyframe arrives. Senders stamp `endOfGroup` with a one-frame `MediaGOPEndStamper`.
+- Phone → Mac BWE rides `MediaFrame.Kind.bweFeedback` inside `media.stream.frame` on `media.control` (no Hermes schema bump).
+- Live video did **not** leave `media.control`. Per-GOP QUIC would need Mac-initiated accept loops on both phones plus a dual-path for v1 peers. Remaining HOL: abort skips decode only; in-flight GOP bytes still occupy the ordered stream.
+
+Next action:
+- Physical cellular soak against Gate 6. Do not promote datagrams/AV1/FEC from this work.
+
+---
+
 ## 2026-05-16 — Android Mercury Media source-complete (full iOS parity)
 
 **Gate status:** green for Android Phase 1-5 source. Device-matrix soak still owed before flag flips.
@@ -176,7 +191,7 @@ Real-world activation gates still pending (per master plan governance):
 - App Store Connect SKU registration (Phase 2: `com.openburnbar.hostedMediaSync.monthly`).
 - App Store re-submission for new permissions (Phase 3 Screen Recording, Phase 5 Camera/Microphone/PushKit) with reviewer walkthrough video.
 - Cloud Functions prod deploy: `triggerVoIPCall`, `evaluateMediaBudget`, `recomputeMediaQuotaUsage`, `grantMediaGrandfather`, `validateMediaPurchase`, `rollupMediaSessionDaily`, `sendVoIPOutbound`.
-- Configure APNs secrets in Cloud Functions runtime: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, optional `APNS_VOIP_TOPIC` / `APNS_HOST` overrides.
+- Configure APNs secrets in Cloud Functions runtime: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, optional `APNS_VOIP_TOPIC` / `APNS_HOST` overrides. Agent Watch Live Activity updates reuse those secrets plus `APNS_LIVEACTIVITY_TOPIC` — see [`live-activity-apns.md`](live-activity-apns.md).
 - Device-matrix soak per `docs/runbooks/media-device-matrix/`.
 - 14-day WSS retirement gate per `docs/runbooks/wss-retirement-checklist.md`.
 

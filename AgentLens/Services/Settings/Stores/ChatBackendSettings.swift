@@ -65,10 +65,10 @@ final class ChatBackendSettings {
     }
 
     /// Mercury Phase 1 — gates the inbound `media.blob.advertise` dispatch
-    /// path on the Mac iroh accept loop. Off by default until the rollout
-    /// punch list in `docs/runbooks/media-rollout-status.md` is cleared.
+    /// path on the Mac iroh accept loop. On by default so phone camera/files
+    /// can land on the Mac workspace via iroh-blobs. Honor an explicit off.
     /// Mirrored to iOS via Remote Config (`media_blob_transfer_enabled`).
-    var mediaBlobTransferEnabled: Bool = false {
+    var mediaBlobTransferEnabled: Bool = true {
         didSet { persistence.set(mediaBlobTransferEnabled, forKey: "mediaBlobTransferEnabled") }
     }
 
@@ -295,7 +295,7 @@ final class ChatBackendSettings {
             defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
         )
         self.hermesIrohTransportEnabled = persistence.bool(forKey: "hermesIrohTransportEnabled")
-        self.mediaBlobTransferEnabled = persistence.bool(forKey: "mediaBlobTransferEnabled")
+        self.mediaBlobTransferEnabled = persistence.bool(forKey: "mediaBlobTransferEnabled", defaultValue: true)
         self.computerUseWatchEnabled = persistence.bool(forKey: "computerUseWatchEnabled")
         self.computerUseBrowserEnabled = persistence.bool(forKey: "computerUseBrowserEnabled")
         self.computerUseSystemEnabled = persistence.bool(forKey: "computerUseSystemEnabled")

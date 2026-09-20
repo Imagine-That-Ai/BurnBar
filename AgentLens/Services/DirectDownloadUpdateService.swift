@@ -442,6 +442,8 @@ final class DirectDownloadUpdateChecker {
         )
         if case let DirectDownloadUpdateInstallError.downgradeBlocked(current, offered) = error,
            offered <= current {
+            // Same-build feed/tag mismatch (e.g. 1.0.40+repair.N over Apple
+            // marketing 1.0.40). Disk was not touched; treat as up to date.
             phase = .upToDate
             presentAlreadyInstalledAlert(release: release, currentBuild: current)
             return

@@ -249,13 +249,16 @@ public final class AgentWatchReceiver: ObservableObject {
         )
     }
 
-    public func downgradeTrustMode(_ mode: ComputerUseTrustMode) {
+    @discardableResult
+    public func downgradeTrustMode(_ mode: ComputerUseTrustMode) async throws -> Bool {
         // Enforce downgrade-only: the phone may lower trust (Trusted -> Step ->
         // Manual) but never elevate. Elevation requires the Mac. Closes FINDING-003.
         guard mode <= state.liveTrustMode else {
-            return
+            return false
         }
+        try await sendInputIntent(kind: .setTrustMode, text: mode.rawValue)
         state.setTrustMode(mode)
+        return true
     }
 
     public func tap(normalizedX: Double, normalizedY: Double, displayId: String? = nil, mouseButton: Int = 0) async throws {
@@ -392,6 +395,41 @@ public final class AgentWatchReceiver: ObservableObject {
         case .staleTimestamp: return .staleTimestamp
         case .agentUnavailable, .unknown, .none: return .scopeNotMatched
         }
+    }
+}
+
+enum WatchUnifyFileSend {
+    @MainActor
+    static func send(url: URL) async {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing { url.stopAccessingSecurityScopedResource() }
+        }
+        guard let service = iOSFileTransferService.current,
+              service.canSendFiles,
+              let uid = AgentWatchOverlaySingleton.shared.coordinator.liveUID,
+              let connectionID = AgentWatchOverlaySingleton.shared.coordinator.liveConnectionID
+        else { return }
+        _ = try? await service.sendFile(
+            at: url,
+            uid: uid,
+            connectionID: connectionID,
+            peerDeviceID: connectionID
+        )
+    }
+}
+
+enum WatchUnifyPanic {
+    @MainActor
+    static func halt(
+        watchReceiver: AgentWatchReceiver?,
+        mercuryPanic: (() async throws -> Void)? = nil
+    ) async throws {
+        if let watchReceiver {
+            try await watchReceiver.panicHalt()
+            return
+        }
+        try await mercuryPanic?()
     }
 }
 #endif

@@ -68,10 +68,12 @@ function icon(name: string): SVGSVGElement {
     send: 'M4 12h15M13 6l6 6-6 6',
     expand: 'M8 3H3v5h2V5h3V3Zm8 0v2h3v3h2V3h-5ZM5 16H3v5h5v-2H5v-3Zm16 0h-2v3h-3v2h5v-5Z',
     more: 'M5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z',
+    close: 'M18 6 6 18M6 6l12 12',
     brain:
       'M9.2 3.1A4 4 0 0 0 5 7v.2A4.5 4.5 0 0 0 4 16v.2A3.8 3.8 0 0 0 10 19v-5H8v-2h2V7.5A4.4 4.4 0 0 0 9.2 3.1ZM14.8 3.1A4 4 0 0 1 19 7v.2a4.5 4.5 0 0 1 1 8.8v.2A3.8 3.8 0 0 1 14 19v-5h2v-2h-2V7.5a4.4 4.4 0 0 1 .8-4.4Z',
     check: 'm5 12 4 4L19 6'
   };
+
   path.setAttribute('d', paths[name] ?? paths.spark ?? '');
   svg.append(path);
   return svg;
@@ -1016,7 +1018,12 @@ function renderPermissionSheet(viewModel: PopupViewModel): HTMLElement | undefin
 
   const glow = element('div', 'permission-sheet-glow');
   glow.setAttribute('aria-hidden', 'true');
+  const header = element('div', 'permission-sheet-header');
   const eyebrow = element('span', 'permission-sheet-eyebrow', 'Private by default');
+  const dismiss = button('Dismiss', 'dismiss-permission-sheet', 'glass-icon-button permission-sheet-dismiss');
+  dismiss.setAttribute('aria-label', 'Dismiss website permission setup');
+  dismiss.replaceChildren(icon('close'));
+  header.append(eyebrow, dismiss);
   const title = element('h2', 'permission-sheet-title', 'Use OpenBurnBar on websites');
   title.id = 'permission-sheet-title';
   const description = element(
@@ -1062,10 +1069,11 @@ function renderPermissionSheet(viewModel: PopupViewModel): HTMLElement | undefin
       element('strong', undefined, 'Permission was not completed'),
       element('span', undefined, permissionFailureDetail(error))
     );
-    sheet.append(glow, eyebrow, title, description, checklist, scope, notice);
+    sheet.append(glow, header, title, description, checklist, scope, notice);
   } else {
-    sheet.append(glow, eyebrow, title, description, checklist, scope);
+    sheet.append(glow, header, title, description, checklist, scope);
   }
+
   const primary = button(
     error ? 'Try again' : 'Allow & continue',
     'complete-permission-setup',

@@ -77,13 +77,12 @@ struct AuroraChipRail<Item: Hashable & Identifiable>: View {
             }
             .padding(.horizontal, MobileTheme.Spacing.md)
             .padding(.vertical, 8)
-            .foregroundStyle(isSelected ? .white : MobileTheme.Colors.textSecondary)
+            .foregroundStyle(isSelected ? MobileTheme.Colors.textPrimary : MobileTheme.Colors.textSecondary)
             .background {
                 if isSelected {
                     Capsule(style: .continuous)
-                        .fill(MobileTheme.primaryGradient)
+                        .fill(Color.primary.opacity(0.08))
                         .matchedGeometryEffect(id: "selection-pill", in: pillNamespace)
-                        .shadow(color: MobileTheme.ember.opacity(0.40), radius: 8, y: 4)
                 }
             }
         }

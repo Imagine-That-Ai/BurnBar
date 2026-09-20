@@ -12,7 +12,7 @@ The production path is:
 2. The trigger writes signed deltas into `users/{uid}/usage_counter_days/{yyyy-mm-dd}` and the all-time aggregate at `users/{uid}/usage_counter_totals/all_time`, including provider, account, model, and device sub-counters under each bucket.
 3. `rebuildRollups` reads only compact counter documents for the target windows and writes `usage_rollups/{today,7d,30d,90d,all_time}`. The `all_time` summary reads the all-time aggregate bucket instead of rescanning every historical day.
 
-`rebuildUsageRollups` is the explicit repair/backfill path. It may scan raw usage for one signed-in user because it is operator/user initiated, not the five-minute scheduled path.
+`rebuildUsageRollups` is the explicit repair/backfill path. It may scan raw usage for one signed-in user because it is operator/user initiated, not the five-minute scheduled path. That scan must not inherit the gen2 60s / 256MiB defaults — production OOM'd a 170-day account at 258MiB. The callable and `rollupUserRebuild` share `FULL_USAGE_REBUILD_RUNTIME` (540s / 1GiB).
 
 ## Large Bodies
 

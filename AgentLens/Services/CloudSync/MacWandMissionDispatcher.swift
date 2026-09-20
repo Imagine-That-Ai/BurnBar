@@ -89,28 +89,6 @@ struct MacWandMissionDispatcher {
             firestore: firestore
         )
 
-        let userRef = firestore.collection("users").document(uid)
-        let batch = firestore.batch()
-        let groupRef = userRef.collection("mission_groups").document(groupID)
-        batch.setData(
-            try groupPayload(
-                uid: uid,
-                groupID: groupID,
-                title: trimmedTitle,
-                prompt: trimmedPrompt,
-                missionKind: missionKind,
-                targetProject: targetProject,
-                childMissionIDs: childMissionIDs,
-                runtimeTokens: runtimeTokens,
-                parallelismLimit: workerCount,
-                mergeStrategy: mergeStrategy,
-                now: now,
-                key: key
-            ),
-            forDocument: groupRef,
-            merge: false
-        )
-
         // STARTED BY attribution (War Room Command Board). The Wand is the
         // default originator; the Flame passes its decision-linked originator
         // through `originator` when it dispatches.
@@ -120,7 +98,26 @@ struct MacWandMissionDispatcher {
             confidence: .exact
         )
 
-        try await batch.commit()
+        var groupRequest = try groupPayload(
+            uid: uid,
+            groupID: groupID,
+            title: trimmedTitle,
+            prompt: trimmedPrompt,
+            missionKind: missionKind,
+            targetProject: targetProject,
+            childMissionIDs: childMissionIDs,
+            runtimeTokens: runtimeTokens,
+            parallelismLimit: workerCount,
+            mergeStrategy: mergeStrategy,
+            now: now,
+            key: key
+        )
+        groupRequest["groupId"] = groupID
+        groupRequest["deviceId"] = accountManager.deviceId
+        _ = try await ComputerUseSecurityCallableClient.createCliAgentMissionGroup(
+            payload: ComputerUseSecurityCallableClient.sendableJSONPayload(groupRequest),
+            deviceId: accountManager.deviceId
+        )
 
         var leaves: [[String: any Sendable]] = []
         for index in childMissionIDs.indices {
@@ -250,7 +247,8 @@ struct MacWandMissionDispatcher {
                 targetProject: targetProject?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ),
             vaultKey: key.keyData,
-            vaultKeyID: key.vaultKeyID
+            vaultKeyID: key.vaultKeyID,
+            aadContext: CLIAgentMissionCloudSealer.groupAADContext(uid: uid, groupID: groupID)
         )
         return payload
     }

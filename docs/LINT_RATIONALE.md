@@ -92,6 +92,14 @@ budgets/usage-refresh-tick-baseline.json
 # macOS idle/occluded CPU regression tripwire (P-PERF-3): structural assertion
 # gate for the backdrop WebGL rAF pause on occlusion — no existing baseline raised.
 budgets/macos-idle-cpu.perf.json
+# --- New debt-budget ratchets shipped with the living-glass integration sweep ---
+# Each pairs with its check script (scripts/debt/check-*.sh, scripts/ci/verify-*.sh)
+# and freezes the current surface; CI fails on any increase past these baselines.
+budgets/privacy-public-baseline.json
+budgets/rpc-methods-baseline.json
+budgets/sqlite-dual-writer-baseline.json
+budgets/vendor-xcframework-checksums.json
+budgets/xctskip-baseline.json
 # migrator-parity: annotated schema divergences between the canonical Swift GRDB
 # migrator and the Windows/Linux mirrors (scripts/check-migrator-parity.mjs).
 # Exact-set matched both ways: new divergences AND stale entries fail CI.

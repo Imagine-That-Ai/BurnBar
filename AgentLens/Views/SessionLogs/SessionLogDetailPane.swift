@@ -59,6 +59,9 @@ struct SessionLogDetailPane: View {
     var preferredChatModelKey: String?
 
     @State private var markdownBody = ""
+    @State private var preparedTranscript: SessionTranscriptPreparation?
+    @State private var preparedRecordID: String?
+    @State private var preparationFailed = false
     @State private var copyConfirmed = false
     @State private var transcriptFilter: TranscriptRoleFilter = .all
     @State private var expandedChunkIndex: Int?
@@ -139,8 +142,19 @@ struct SessionLogDetailPane: View {
             }
             Divider().background(DesignSystem.Colors.border.opacity(0.5))
 
-            structuredTranscriptView(blocks: TranscriptBlockParser.parse(record.fullText))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            if preparedRecordID == record.id {
+                structuredTranscriptView(blocks: preparedTranscript?.blocks ?? [])
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            } else if preparationFailed {
+                ContentUnavailableView(
+                    "Transcript unavailable",
+                    systemImage: "doc.text",
+                    description: Text("Select this session again to retry.")
+                )
+            } else {
+                ProgressView("Preparing transcript…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
 
             Divider().background(DesignSystem.Colors.border.opacity(0.5))
 
@@ -148,13 +162,28 @@ struct SessionLogDetailPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.clear)
-        .task { buildMarkdown() }
+        .task(id: SessionTranscriptInput(record: record, overrideBody: overrideBody)) {
+            markdownBody = ""
+            preparationFailed = false
+            do {
+                let prepared = try await SessionTranscriptPreparation.prepare(
+                    SessionTranscriptInput(record: record, overrideBody: overrideBody),
+                    reusing: preparedTranscript
+                )
+                try Task.checkCancellation()
+                preparedTranscript = prepared
+                markdownBody = prepared.markdown
+                preparedRecordID = record.id
+            } catch is CancellationError {
+                // A newer revision or another session owns the presentation now.
+            } catch {
+                preparationFailed = true
+                AppLogger.dataStore.silentFailure("transcript_preparation_failed", error: error)
+            }
+        }
         .onChange(of: record.id) { _, _ in
             transcriptFilter = .all
             expandedChunkIndex = nil
-        }
-        .onChange(of: overrideBody) { _, newBody in
-            if let newBody, !newBody.isEmpty { markdownBody = newBody }
         }
     }
 
@@ -461,7 +490,7 @@ struct SessionLogDetailPane: View {
             Divider().background(DesignSystem.Colors.border.opacity(0.3))
 
             ScrollView {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                LazyVStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     if record.sourceType == .providerLog {
                         transcriptMetadataCard
                     }
@@ -1151,14 +1180,6 @@ struct SessionLogDetailPane: View {
         }
         .padding(.horizontal, DesignSystem.Spacing.xl)
         .padding(.vertical, DesignSystem.Spacing.md)
-    }
-
-    private func buildMarkdown() {
-        if let body = overrideBody, !body.isEmpty {
-            markdownBody = body
-        } else {
-            markdownBody = SessionLogMarkdownFormatter.markdown(for: record)
-        }
     }
 
     private func exportMarkdown() {

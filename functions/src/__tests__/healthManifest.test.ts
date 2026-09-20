@@ -52,6 +52,11 @@ vi.mock("../logging.js", () => ({
   logInfo: vi.fn(),
   logError: vi.fn(),
   logWarn: vi.fn(),
+  // health.ts routes every onRequest endpoint through the shared request
+  // logger. Tests exercise the inner handlers directly, so the wrapper is a
+  // pass-through here.
+  wrapRequestHandler:
+    (_name: string, handler: (req: unknown, res: unknown) => unknown) => handler,
 }));
 
 vi.mock("../callables/publicRateLimit.js", () => ({

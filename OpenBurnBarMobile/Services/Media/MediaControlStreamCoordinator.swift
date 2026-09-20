@@ -1,5 +1,8 @@
 import CryptoKit
 import Foundation
+#if canImport(Network)
+import Network
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -120,6 +123,10 @@ final class MediaControlStreamCoordinator: ObservableObject {
     private var heartbeatTask: Task<Void, Never>?
     private var pendingHeartbeatSentAt: Date?
     private var backgroundTrafficSuppressedUntil: Date?
+    #if canImport(Network)
+    private var pathMonitor: NWPathMonitor?
+    #endif
+    private var pathConstrained = false
     private var streamReadyContinuations: [UUID: CheckedContinuation<any IrohRelayStream, Error>] = [:]
     private var activeUID: String?
     private var activeConnectionID: String?
@@ -143,6 +150,10 @@ final class MediaControlStreamCoordinator: ObservableObject {
     /// v2 lets the receiver ACK LTR tokens after both sides promote the data
     /// path.
     var mirrorFrameV2Handler: ((MediaFrameV2) async -> Void)?
+
+    /// Watch overlay fan-in. Mercury and Agent Watch HUD share this decode
+    /// path so the overlay is never a second starved surface.
+    var watchSurfaceFrameHandler: ((MediaFrame) async -> Void)?
 
     /// Mercury Smart Zoom — focus-context updates arrive on
     /// `.mediaStreamFrame` envelopes carrying no encoded video bytes,
@@ -198,6 +209,11 @@ final class MediaControlStreamCoordinator: ObservableObject {
         self.heartbeatInterval = heartbeatInterval
     }
 
+    func flushPresenceHeartbeat() async {
+        guard let uid = activeUID, let connectionID = activeConnectionID else { return }
+        _ = await sendHeartbeat(uid: uid, connectionID: connectionID)
+    }
+
     func start(uid: String, connectionID: String) {
         if supervisorTask != nil {
             let phaseRequiresRestart: Bool
@@ -224,6 +240,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
     }
 
     private func beginStart(uid: String, connectionID: String) {
+        startPathMonitorIfNeeded()
         let generation = nextSupervisorGeneration()
         activeUID = uid
         activeConnectionID = connectionID
@@ -261,6 +278,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
         lastRoundTripMillis = nil
         pendingHeartbeatSentAt = nil
         backgroundTrafficSuppressedUntil = nil
+        stopPathMonitor()
+        pathConstrained = false
     }
 
     private func nextSupervisorGeneration() -> UInt64 {
@@ -629,7 +648,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
                        let handler = focusContextHandler {
                         await handler(focus)
                     }
-                    guard frame.media?.streamClass == MediaStreamClass.screenVideo.rawValue,
+                    guard let streamClass = frame.media?.streamClass,
+                          MediaStreamClass.admitsDesktopVideoFrames(streamClass),
                           let encoded = frame.media?.encodedFrameBase64,
                           let chunkData = Data(base64Encoded: encoded),
                           var data = frameChunkAssembler.accept(
@@ -649,7 +669,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
                               let opened = try? MediaFrameAEAD().open(
                                 envelope: data,
                                 key: sealKey,
-                                streamClass: MediaStreamClass.screenVideo.rawValue,
+                                streamClass: streamClass,
                                 kind: position.kind,
                                 gopID: position.gopId,
                                 frameIndex: position.frameIndex
@@ -661,13 +681,16 @@ final class MediaControlStreamCoordinator: ObservableObject {
                         continue
                     }
                     do {
-                        if MediaFrameV2Codec.isEncodedEnvelope(data),
-                           let handler = mirrorFrameV2Handler {
+                        if MediaFrameV2Codec.isEncodedEnvelope(data) {
                             let decoded = try mediaFrameV2Codec.decode(data).frame
-                            await handler(decoded)
-                        } else if let handler = mirrorFrameHandler {
+                            await mirrorFrameV2Handler?(decoded)
+                            if let watchSurfaceFrameHandler {
+                                await watchSurfaceFrameHandler(Self.mediaFrame(from: decoded))
+                            }
+                        } else {
                             let decoded = try mediaPacketCodec.decode(data).frame
-                            await handler(decoded)
+                            await mirrorFrameHandler?(decoded)
+                            await watchSurfaceFrameHandler?(decoded)
                         }
                     } catch {
                         // Undecodable frame — drop it and keep the stream alive.
@@ -692,6 +715,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     if let pendingHeartbeatSentAt {
                         lastRoundTripMillis = max(0, Int(Date().timeIntervalSince(pendingHeartbeatSentAt) * 1_000))
                         self.pendingHeartbeatSentAt = nil
+                        await sendBandwidthFeedback(uid: uid, connectionID: connectionID)
                     }
                     if let heartbeat = frame.media?.presence {
                         // F7/F10: the Mac's heartbeat reply advertises its
@@ -699,6 +723,7 @@ final class MediaControlStreamCoordinator: ObservableObject {
                         // control_seal_v1); control-setup call sites read
                         // them to negotiate the app-layer seals.
                         latestMacPresenceCapabilities = heartbeat.capabilities
+                        HostReachabilityClient.shared.applyMacPresence(heartbeat)
                         if let handler = presenceHeartbeatHandler {
                             await handler(heartbeat)
                         }
@@ -777,12 +802,12 @@ final class MediaControlStreamCoordinator: ObservableObject {
         let beat = HermesRealtimeRelayPresenceHeartbeat(
             sentAt: Date(),
             deviceDisplayName: heartbeatDeviceNameProvider(),
-            capabilities: [
+            capabilities: HostReachabilityClient.shared.outboundHeartbeatCapabilities(base: [
                 MercuryPeer.Feature.mirrorViewer.rawValue,
                 MercuryPeer.Feature.fileSend.rawValue,
                 MercuryPeer.Feature.fileReceive.rawValue,
                 MercuryPeer.Feature.callReceive.rawValue
-            ],
+            ]),
             streamingCapabilities: MercuryVideoToolboxCapabilityProbe.snapshot(
                 mediaFrameVersions: .v1AndV2
             ).wireValue
@@ -846,6 +871,17 @@ final class MediaControlStreamCoordinator: ObservableObject {
         }
     }
 
+    static func mediaFrame(from frameV2: MediaFrameV2) -> MediaFrame {
+        MediaFrame(
+            kind: frameV2.kind == .audioOpus ? .audioOpus : .videoNAL,
+            flags: MediaFrame.Flags(rawValue: UInt8(truncatingIfNeeded: frameV2.flags)),
+            gopID: frameV2.gopID,
+            frameIndex: frameV2.frameIndex,
+            presentationTimestampMillis: frameV2.presentationTimestampMillis,
+            payload: frameV2.payload
+        )
+    }
+
     private static func withTimeout<T: Sendable>(
         seconds: TimeInterval,
         operation: @escaping @Sendable () async throws -> T
@@ -864,6 +900,65 @@ final class MediaControlStreamCoordinator: ObservableObject {
             }
             group.cancelAll()
             return result
+        }
+    }
+
+    private func startPathMonitorIfNeeded() {
+        #if canImport(Network)
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let constrained = MediaBweFeedbackPayload.isConstrainedPath(
+                usesCellular: path.usesInterfaceType(.cellular),
+                isExpensive: path.isExpensive,
+                isConstrained: path.isConstrained
+            )
+            Task { @MainActor in
+                guard let self else { return }
+                let changed = self.pathConstrained != constrained
+                self.pathConstrained = constrained
+                if changed, self.phase == .live,
+                   let uid = self.activeUID,
+                   let connectionID = self.activeConnectionID {
+                    await self.sendBandwidthFeedback(uid: uid, connectionID: connectionID)
+                }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "com.openburnbar.mercury.path"))
+        pathMonitor = monitor
+        #endif
+    }
+
+    private func stopPathMonitor() {
+        #if canImport(Network)
+        pathMonitor?.cancel()
+        pathMonitor = nil
+        #endif
+    }
+
+    private func sendBandwidthFeedback(uid: String, connectionID: String) async {
+        let payload = MediaBweFeedbackPayload(
+            roundTripMillis: lastRoundTripMillis ?? 0,
+            packetLossRate: 0,
+            observedBitsPerSecond: 0,
+            pathConstrained: pathConstrained
+        )
+        do {
+            let encoded = try mediaPacketCodec.encode(
+                MediaFrame(kind: .bweFeedback, payload: try payload.encoded())
+            )
+            let frame = HermesRealtimeRelayFrame(
+                type: .mediaStreamFrame,
+                uid: uid,
+                connectionId: connectionID,
+                media: HermesRealtimeRelayMediaPayload(
+                    streamClass: MediaStreamClass.control.rawValue,
+                    encodedFrameBase64: encoded.base64EncodedString()
+                )
+            )
+            try await send(frame: frame)
+        } catch {
+            Self.debugTrace("bwe_feedback_send_failed error=\(error.localizedDescription)")
         }
     }
 }

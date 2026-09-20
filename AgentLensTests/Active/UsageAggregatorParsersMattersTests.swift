@@ -368,9 +368,9 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         let parser = ModelFilterParser(
             modelPattern: "zai",
             provider: .zai,
+            sessionsOverride: sessionsURL,
             fileManager: .default,
-            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportURL),
-            sessionsDirectoryOverride: sessionsURL
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportURL)
         )
         let result = try await parser.parse(options: LogParseOptions(
             includeConversationBodies: false,
@@ -405,9 +405,9 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         let parser = ModelFilterParser(
             modelPattern: "zai",
             provider: .zai,
+            sessionsOverride: sessionsURL,
             fileManager: .default,
-            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportURL),
-            sessionsDirectoryOverride: sessionsURL
+            appPaths: OpenBurnBar.OpenBurnBarAppPaths(applicationSupportRoot: supportURL)
         )
 
         let result = try await parser.parse(options: LogParseOptions(
@@ -450,9 +450,9 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         let parser = ModelFilterParser(
             modelPattern: "zai",
             provider: .zai,
+            sessionsOverride: sessionsURL,
             fileManager: .default,
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportURL),
-            sessionsDirectoryOverride: sessionsURL
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportURL)
         )
         let initialTracker = ParserFileDiscoveryTracker(knownFiles: [])
 
@@ -500,9 +500,9 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
         let parser = ModelFilterParser(
             modelPattern: "zai",
             provider: .zai,
+            sessionsOverride: sessionsURL,
             fileManager: .default,
-            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportURL),
-            sessionsDirectoryOverride: sessionsURL
+            appPaths: OpenBurnBarAppPaths(applicationSupportRoot: supportURL)
         )
         let initialTracker = ParserFileDiscoveryTracker(knownFiles: [])
 
@@ -551,18 +551,14 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
             #"{"model":"zai/glm-4.5","tokenUsage":{"input_tokens":109,"output_tokens":21}}"#.utf8
         ).write(to: settings)
         try Data(#"{"workspace":"open-failure"}"#.utf8).write(to: metadata)
-        let sessionPath = session.standardizedFileURL.path
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: session.path)
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportURL)
         let parser = ModelFilterParser(
             modelPattern: "zai",
             provider: .zai,
+            sessionsOverride: sessionsURL,
             fileManager: .default,
-            appPaths: appPaths,
-            sessionsDirectoryOverride: sessionsURL,
-            fileHandleForReading: { url in
-                guard url.standardizedFileURL.path != sessionPath else { throw ExpectedOpenFailure() }
-                return try FileHandle(forReadingFrom: url)
-            }
+            appPaths: appPaths
         )
         let tracker = ParserFileDiscoveryTracker()
         let governor = ParserResourceGovernor(limits: .unlimited)
@@ -607,18 +603,14 @@ final class UsageAggregatorParsersMattersTests: XCTestCase {
             #"{"model":"zai/glm-4.5","tokenUsage":{"input_tokens":109,"output_tokens":21}}"#.utf8
         ).write(to: settings)
         try Data(#"{"workspace":"sidecar-failure"}"#.utf8).write(to: metadata)
-        let settingsPath = settings.standardizedFileURL.path
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: settings.path)
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: supportURL)
         let parser = ModelFilterParser(
             modelPattern: "zai",
             provider: .zai,
+            sessionsOverride: sessionsURL,
             fileManager: .default,
-            appPaths: appPaths,
-            sessionsDirectoryOverride: sessionsURL,
-            fileHandleForReading: { url in
-                guard url.standardizedFileURL.path != settingsPath else { throw ExpectedOpenFailure() }
-                return try FileHandle(forReadingFrom: url)
-            }
+            appPaths: appPaths
         )
         let tracker = ParserFileDiscoveryTracker()
         let governor = ParserResourceGovernor(limits: .unlimited)

@@ -2,6 +2,30 @@ import SwiftUI
 
 // MARK: - Hermes Thinking View
 
+/// Thinking indicator for an in-flight assistant turn that has no tokens yet.
+/// Hermes keeps the mercury droplets; every other agent gets a live "Thinking"
+/// label so a send cannot look dead while retrieval or the CLI starts.
+struct ChatPreparingReplyView: View {
+    var isHermes: Bool
+
+    var body: some View {
+        if isHermes {
+            HermesThinkingView()
+        } else {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Thinking")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.lg)
+            .padding(.vertical, DesignSystem.Spacing.md)
+            .accessibilityLabel("Thinking")
+        }
+    }
+}
+
 /// Three mercury droplets that pool and separate like liquid metal.
 /// Shown when Hermes is streaming but no text has arrived yet.
 struct HermesThinkingView: View {

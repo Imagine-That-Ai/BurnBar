@@ -304,7 +304,7 @@ struct ProjectsView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, DesignSystem.Spacing.xxxl)
                 } else {
-                    VStack(spacing: DesignSystem.Spacing.md) {
+                    LazyVStack(spacing: DesignSystem.Spacing.md) {
                         ForEach(Array(mergedProjects.enumerated()), id: \.element.id) { index, project in
                             ProjectListRow(project: project) {
                                 openProject = project
@@ -312,7 +312,7 @@ struct ProjectsView: View {
                             .opacity(listAppeared ? 1 : 0)
                             .offset(y: listAppeared ? 0 : 8)
                             .animation(
-                                DesignSystem.Animation.standard.delay(Double(index) * 0.04),
+                                DesignSystem.Animation.standard.delay(Double(min(index, 8)) * 0.04),
                                 value: listAppeared
                             )
                         }

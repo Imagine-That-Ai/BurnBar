@@ -51,7 +51,7 @@ struct AgentWatchEmptyStateView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .scrollIndicators(.hidden)
-        .background(MobileTheme.background.ignoresSafeArea())
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
     }
 
     // MARK: - Hero
@@ -61,11 +61,11 @@ struct AgentWatchEmptyStateView: View {
             HStack(spacing: 8) {
                 Image(systemName: "macbook.and.iphone")
                     .font(MobileScaledFont.system(size: 16, weight: .semibold))
-                    .foregroundStyle(MobileTheme.mercuryGradient)
+                    .foregroundStyle(Color.primary)
                 Text("COMPUTER USE")
                     .font(MobileScaledFont.system(size: 10, weight: .semibold, design: .rounded))
                     .tracking(1.6)
-                    .foregroundStyle(MobileTheme.hermesMercury)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
                 Spacer()
                 phaseBadge
             }
@@ -81,21 +81,15 @@ struct AgentWatchEmptyStateView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Rectangle()
-                .fill(MobileTheme.mercuryGradient)
+                .fill(Color.primary.opacity(0.12))
                 .frame(height: 1)
-                .opacity(0.55)
                 .padding(.top, MobileTheme.Spacing.xs)
         }
         .padding(20)
         .background(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .fill(MobileTheme.surfaceElevated.opacity(0.92))
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .strokeBorder(MobileTheme.mercuryGradient, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.35), radius: 24, x: 0, y: 12)
     }
 
     private var phaseBadge: some View {
@@ -327,7 +321,7 @@ struct AgentWatchEmptyStateView: View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
                 .font(MobileScaledFont.system(size: 18, weight: .regular))
-                .foregroundStyle(MobileTheme.mercuryGradient)
+                .foregroundStyle(Color.secondary)
             Text(title)
                 .font(MobileScaledFont.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(MobileTheme.textPrimary)
@@ -340,11 +334,7 @@ struct AgentWatchEmptyStateView: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
-                .fill(MobileTheme.surfaceElevated.opacity(0.85))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
-                .strokeBorder(MobileTheme.hermesMercury.opacity(0.32), lineWidth: 0.5)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
         )
     }
 
@@ -354,7 +344,7 @@ struct AgentWatchEmptyStateView: View {
         HStack(spacing: 10) {
             Image(systemName: "lock.shield")
                 .font(MobileScaledFont.system(size: 13, weight: .medium))
-                .foregroundStyle(MobileTheme.hermesMercury)
+                .foregroundStyle(Color.secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mac permissions live on the Mac")
                     .font(MobileScaledFont.system(size: 12, weight: .semibold, design: .rounded))

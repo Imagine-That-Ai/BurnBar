@@ -83,7 +83,9 @@ task_detached_services="$(python3 "${repo_root}/tools/concurrency-debt/count-tas
 
 swiftui_services="$(count_swift_files_containing 'import SwiftUI' "${repo_root}/AgentLens/Services")"
 
-try_optional_services="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).tryOptional.total))")"
+try_optional_json="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric try-optional --format json)"
+try_optional_services="$(node -e "console.log(JSON.parse(process.argv[1]).tryOptional.total)" "${try_optional_json}")"
+try_optional_tagged="$(node -e "console.log(JSON.parse(process.argv[1]).tryOptional.tagged ?? 0)" "${try_optional_json}")"
 
 empty_catch_blocks="$(python3 "${repo_root}/tools/error-debt/count-error-debt.py" --repo-root "${repo_root}" --metric empty-catch --format json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).emptyCatch.total))")"
 
@@ -205,6 +207,56 @@ if [[ -x "${repo_root}/scripts/debt/check-force-unwrap-budget.sh" ]]; then
   force_unwrap_total="$(node -e "console.log(JSON.parse(process.argv[1]).total)" "${force_unwrap_live_json}")"
 fi
 
+string_any_counts="$(python3 - "${repo_root}" <<'PY'
+import json, re, sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+scopes = {
+    "agentLens": repo_root / "AgentLens",
+    "mobile": repo_root / "OpenBurnBarMobile",
+    "core": repo_root / "OpenBurnBarCore" / "Sources",
+    "daemon": repo_root / "OpenBurnBarDaemon" / "Sources",
+}
+patterns = (
+    re.compile(r"\[\s*String\s*:\s*Any\s*\]"),
+    re.compile(r"\bDictionary\s*<\s*String\s*,\s*Any\s*>"),
+)
+excluded_parts = {".build", ".derived-data", ".swiftpm", "Preview Content", "build"}
+
+def is_code_line(line: str) -> bool:
+    stripped = line.strip()
+    return (
+        bool(stripped)
+        and not stripped.startswith("//")
+        and not stripped.startswith("/*")
+        and not stripped.startswith("*")
+    )
+
+def count(root: Path):
+    total = 0
+    if not root.exists():
+        return 0
+    for path in sorted(root.rglob("*.swift")):
+        if any(part in excluded_parts for part in path.parts):
+            continue
+        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            if not is_code_line(line):
+                continue
+            total += sum(len(pattern.findall(line)) for pattern in patterns)
+    return total
+
+res = {k: count(v) for k, v in scopes.items()}
+res["total"] = sum(res.values())
+print(json.dumps(res))
+PY
+)"
+string_any_agent_lens="$(node -e "console.log(JSON.parse(process.argv[1]).agentLens)" "${string_any_counts}")"
+string_any_mobile="$(node -e "console.log(JSON.parse(process.argv[1]).mobile)" "${string_any_counts}")"
+string_any_core="$(node -e "console.log(JSON.parse(process.argv[1]).core)" "${string_any_counts}")"
+string_any_daemon="$(node -e "console.log(JSON.parse(process.argv[1]).daemon)" "${string_any_counts}")"
+string_any_total="$(node -e "console.log(JSON.parse(process.argv[1]).total)" "${string_any_counts}")"
+
 
 cat > "${metrics_doc}" <<EOF
 # Tech debt metrics snapshot
@@ -224,12 +276,13 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | \`@MainActor\` on I/O facades (listed set) | ${main_actor_io_services} | 4 | 0 |
 | Empty \`catch {}\` blocks (app + daemon) | ${empty_catch_blocks} | 0 | 0 |
 | \`Task.detached\` in \`AgentLens/Services/\` | ${task_detached_services} | ≤ 10 | 0 |
-| \`try?\` in \`AgentLens/Services/\` | ${try_optional_services} | ≤ 120 | ≤ 50 |
+| \`try?\` in \`AgentLens/Services/\` (untagged debt / tagged \`try?-ok\` best-effort) | ${try_optional_services} untagged (${try_optional_tagged} tagged) | ≤ 120 | ≤ 50 |
 | Unsafe cast assert-zero gate | ${unsafe_cast_total} | 0 | 0 |
 | Untyped GRDB row cast assert-zero gate | ${grdb_row_casts} | 0 | 0 |
+| Untyped \`[String: Any]\` dictionaries (App: ${string_any_agent_lens}, Mobile: ${string_any_mobile}, Core: ${string_any_core}, Daemon: ${string_any_daemon}) | ${string_any_total} total | shrinking | ≤ 500 |
 | Knip dead-code budget (\`budgets/knip-baseline.json\`, functions) | ${knip_functions_total} | 0 | 0 |
 | Schema \`knownDrift\` tokens (\`tools/schema-sync/manifest.json\`) | ${schema_known_drift_total} | 0 | 0 |
-| \`@unchecked Sendable\` ratchet (assert-zero gate; ${unchecked_sendable_allowlist} documented allowlist exceptions) | ${unchecked_sendable_total} | 0 | 0 |
+| \`@unchecked Sendable\` ratchet (assert-zero gate; ${unchecked_sendable_allowlist} documented allowlist exceptions) | ${unchecked_sendable_total} (${unchecked_sendable_allowlist} allowlisted) | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | ${top_four_total} | ≤ 5000 | ≤ 3500 |
 | \`functions/src/types.ts\` LOC (barrel) | ${types_ts_lines} | stable (re-export) | — |
 | \`functions/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |

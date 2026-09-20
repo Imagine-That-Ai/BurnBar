@@ -1,32 +1,32 @@
 import XCTest
 
-/// Flow 1 — Launch → the Pulse dashboard renders with its core chrome.
+/// Flow 1 — Launch → Inbox renders with the compact tray.
 ///
-/// Proves the seeded, no-network launch reaches the signed-in dashboard: the
-/// Pulse screen marker is present, the Pulse tab reports selected, and the
-/// floating Aurora nav tray shows every core destination.
+/// Proves the seeded, no-network launch reaches the signed-in shell: the
+/// Inbox screen marker is present, the Inbox tab reports selected, and the
+/// floating Aurora nav tray shows Inbox · Agents · Quota · You.
 @MainActor
 final class DashboardRenderSmokeUITests: SmokeUITestCase {
 
-    func testLaunchRendersPulseDashboardWithNavTray() {
+    func testLaunchRendersInboxWithNavTray() {
         let app = launchSeededApp()
 
-        // The Pulse dashboard is the launch destination.
+        // Inbox is the compact launch destination.
         XCTAssertTrue(
-            screenMarker("pulse", in: app).waitForExistence(timeout: 30),
-            "Pulse dashboard did not render after a seeded launch.\n\(app.debugDescription)"
+            screenMarker("inbox", in: app).waitForExistence(timeout: 30),
+            "Inbox did not render after a seeded launch.\n\(app.debugDescription)"
         )
 
         // Its tab reports selected.
-        let pulseTab = app.buttons["auroraTab.pulse"].firstMatch
-        XCTAssertTrue(pulseTab.waitForExistence(timeout: 10))
+        let inboxTab = app.buttons["auroraTab.inbox"].firstMatch
+        XCTAssertTrue(inboxTab.waitForExistence(timeout: 10))
         XCTAssertTrue(
-            pulseTab.isSelected,
-            "Pulse tab should be selected on launch.\n\(app.debugDescription)"
+            inboxTab.isSelected,
+            "Inbox tab should be selected on launch.\n\(app.debugDescription)"
         )
 
-        // The floating Aurora nav tray renders every core destination.
-        for id in ["pulse", "burn", "insights", "streams", "hermes", "you"] {
+        // The floating Aurora nav tray renders every compact destination.
+        for id in ["inbox", "hermes", "burn", "you"] {
             let tab = app.buttons["auroraTab.\(id)"]
             XCTAssertTrue(
                 tab.waitForExistence(timeout: 10),

@@ -351,6 +351,29 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         currentMediaControlCoordinator?.phase ?? .idle
     }
 
+    /// Set by `AgentWatchOverlayCoordinator` while Computer Use is live or
+    /// reconnecting. Media-control coordinators are tracked locally.
+    private var computerUseSessionLive = false
+
+    func setComputerUseSessionLive(_ live: Bool) {
+        computerUseSessionLive = live
+    }
+
+    /// Idle first-pair stays on the 3-minute pairing bound. Reconnects and
+    /// live control streams use the live-session window so sleep cannot
+    /// expire pairing mid-session.
+    var shouldExtendPairingFreshness: Bool {
+        if computerUseSessionLive { return true }
+        return mediaControlCoordinators.values.contains { coordinator in
+            switch coordinator.phase {
+            case .live, .reconnecting:
+                return true
+            default:
+                return false
+            }
+        }
+    }
+
     /// Boot-time entry point used by the coordinator dialer + tests.
     /// Open a fresh bi-stream against the paired Mac, classify it as the
     /// long-lived media control stream, and return the open stream so
@@ -370,7 +393,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             uid: uid,
             connectionId: connectionID,
             publicKey: relayPublicKey,
-            now: now()
+            now: now(),
+            remoteSessionLive: shouldExtendPairingFreshness
         )
         #if DEBUG
         NSLog(
@@ -411,7 +435,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             uid: uid,
             connectionId: connectionID,
             publicKey: relayPublicKey,
-            now: now()
+            now: now(),
+            remoteSessionLive: shouldExtendPairingFreshness
         )
         let transport = try await transport(relayURL: verifiedTarget.relayURL)
         try await registerControllerRouteBeforeConnect(uid: uid, connectionID: connectionID)
@@ -466,7 +491,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 uid: uid,
                 connectionId: payload.connectionID,
                 publicKey: publicKey,
-                now: now()
+                now: now(),
+                remoteSessionLive: shouldExtendPairingFreshness
             )
             await auditLogger.record(
                 event: .pairingVerified,
@@ -972,6 +998,12 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             receiver: receiver
         )
         coordinator.presenceHeartbeatHandler = mediaPresenceHeartbeatHandler
+        coordinator.watchSurfaceFrameHandler = { frame in
+            await AgentWatchOverlaySingleton.shared.ingestDecodedDesktopFrame(frame)
+        }
+        HostReachabilityClient.shared.presenceFlush = { [weak coordinator] in
+            await coordinator?.flushPresenceHeartbeat()
+        }
         coordinator.start(uid: uid, connectionID: connectionID)
         receiver.attachControlStream(coordinator, connectionID: connectionID)
         mediaControlCoordinators[connectionID] = coordinator

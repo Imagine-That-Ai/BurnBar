@@ -167,6 +167,7 @@ public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
         case pointerMove = "pointer_move"
         case pointerClick = "pointer_click"
         case panic
+        case setTrustMode = "set_trust_mode"
     }
     public init(
         kind: Kind,

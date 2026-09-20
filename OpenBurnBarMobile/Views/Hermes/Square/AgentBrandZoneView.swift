@@ -54,7 +54,7 @@ struct AgentBrandZoneView: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 14)
         }
-        .background(AuroraBackdrop().ignoresSafeArea())
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationTitle(identity.displayName)
         .navigationBarTitleDisplayMode(.inline)
         // Acquire / release the motion stream while this brand zone is

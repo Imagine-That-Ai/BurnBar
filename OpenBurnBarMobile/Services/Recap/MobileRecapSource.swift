@@ -15,8 +15,9 @@ import OpenBurnBarRecap
 struct MobileRecapSource: RecapSource {
 
     /// Loads one month, reporting whether it managed to read all of it.
-    /// Custom loaders may throw; the Firestore loader converts page failures
-    /// into a partial batch so an unread month can never masquerade as quiet.
+    /// Throws when the month could not be read at all. That distinction is the
+    /// point: a failed first page must never reach the fold, because an empty
+    /// batch is indistinguishable from a genuinely quiet month.
     typealias MonthLoader = @Sendable (
         _ interval: DateInterval,
         _ pageSize: Int,
@@ -95,7 +96,7 @@ struct MobileRecapSource: RecapSource {
         pageSize: Int,
         pageBudget: Int
     ) async throws -> (rows: [TokenUsage], isPartial: Bool) {
-        await paginate(pageSize: pageSize, pageBudget: pageBudget) { cursor in
+        try await paginate(interval: interval, pageSize: pageSize, pageBudget: pageBudget) { cursor in
             try await FirestoreRepository.shared.fetchUsagePage(
                 pageSize: pageSize,
                 after: cursor,
@@ -116,13 +117,15 @@ struct MobileRecapSource: RecapSource {
     /// `fetchPage` is injected and the cursor generic so the paging contract
     /// can be tested without Firestore. In production `Cursor` is
     /// `DocumentSnapshot`, a Firestore reference type, so the walk stays on the
-    /// main actor and never crosses an isolation boundary.
+    /// main actor and never crosses an isolation boundary. `interval` is bound
+    /// into `fetchPage` by the caller.
     @MainActor
     static func paginate<Cursor>(
+        interval _: DateInterval,
         pageSize: Int,
         pageBudget: Int,
         fetchPage: @MainActor @Sendable (Cursor?) async throws -> ([TokenUsage], Cursor?)
-    ) async -> (rows: [TokenUsage], isPartial: Bool) {
+    ) async throws -> (rows: [TokenUsage], isPartial: Bool) {
         var collected: [TokenUsage] = []
         var cursor: Cursor?
 
@@ -135,9 +138,13 @@ struct MobileRecapSource: RecapSource {
                 }
                 cursor = next
             } catch {
-                // Any failed read leaves the rest of the month unread. This is
-                // true even on page one: empty + partial means "unread", never
-                // "a complete zero-usage month".
+                // Nothing read at all — an auth failure, no network, a bad
+                // token. Returning an empty batch here would be folded into a
+                // recap that says the month was quiet, so it propagates as an
+                // error and the surface reports a failure instead.
+                if collected.isEmpty { throw error }
+                // Some pages did land: an incomplete read, which is exactly what
+                // `isPartial` exists to declare.
                 return (collected, true)
             }
         }

@@ -11,6 +11,7 @@ export interface PopupLocalState {
   diagnosticsClearArmed: boolean;
   draft: string;
   initialized: boolean;
+  permissionSheetDismissed: boolean;
   submitting: boolean;
 }
 
@@ -27,6 +28,8 @@ export type PopupLocalAction =
     }
   | { type: 'diagnosticsClearArmed'; value: boolean }
   | { type: 'draft'; value: string }
+  | { type: 'dismissPermissionSheet' }
+  | { type: 'resetPermissionSheetDismissed' }
   | { type: 'submitting'; value: boolean }
   | { type: 'initialized' };
 
@@ -37,18 +40,24 @@ export function createInitialPopupState(): PopupLocalState {
     diagnosticsClearArmed: false,
     draft: '',
     initialized: false,
+    permissionSheetDismissed: false,
     submitting: false
   };
 }
 
 export function reducePopupState(state: PopupLocalState, action: PopupLocalAction): PopupLocalState {
   switch (action.type) {
-    case 'snapshot':
+    case 'snapshot': {
+      const pageChanged =
+        state.snapshot?.page?.tabId !== action.snapshot.page?.tabId ||
+        state.snapshot?.page?.url !== action.snapshot.page?.url;
       return {
         ...state,
         snapshot: action.snapshot,
-        initialized: true
+        initialized: true,
+        permissionSheetDismissed: pageChanged ? false : state.permissionSheetDismissed
       };
+    }
     case 'agentFilter':
       return { ...state, agentFilter: action.value };
     case 'correctionDraft':
@@ -66,6 +75,10 @@ export function reducePopupState(state: PopupLocalState, action: PopupLocalActio
       return { ...state, diagnosticsClearArmed: action.value };
     case 'draft':
       return { ...state, draft: action.value };
+    case 'dismissPermissionSheet':
+      return { ...state, permissionSheetDismissed: true };
+    case 'resetPermissionSheetDismissed':
+      return { ...state, permissionSheetDismissed: false };
     case 'submitting':
       return { ...state, submitting: action.value };
     case 'initialized':

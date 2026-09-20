@@ -69,6 +69,7 @@ struct DashboardView: View {
     @State private var sessionLogJumpRequestID = UUID()
     @State private var sessionLogJumpTask: Task<Void, Never>?
     @State var dashboardCanvasSize: CGSize = .zero
+    @State private var fieldWindowState = BurnBarKernelWindowState.unknown
     @State private var overviewViewportHeight: CGFloat = 0
     @State var burnRailDelta: Double?
     @State var burnRailDeltaRequestID: String?
@@ -94,7 +95,6 @@ struct DashboardView: View {
     @State private var backdropReadabilityProfile: BackdropReadabilityProfile?
     var chatController: ChatSessionController
     @State var quotaService = ProviderQuotaService.shared
-    @State var missionConsoleController: MissionConsoleWindowController?
     /// Internal, not private: the Control Deck's Wand tile presents this same
     /// composer from `DashboardView+ControlDeck.swift`, so the app has one
     /// cast surface with one set of approval switches rather than two.
@@ -505,6 +505,8 @@ struct DashboardView: View {
                     )
             }
             DashboardSidebarToolbarItemRemover()
+            BurnBarKernelVisibilityProbe { fieldWindowState = $0 }
+                .frame(width: 0, height: 0)
             GeometryReader { geo in
                 Color.clear
                     .onAppear {
@@ -530,9 +532,6 @@ struct DashboardView: View {
         .onAppear {
             dashboardSplitVisibility = resolvedSidebarVisibility
             autoExpandTimeRangeIfNeeded()
-            if missionConsoleController == nil {
-                missionConsoleController = MissionConsoleWindowController.bind(to: operatingLayer)
-            }
             Task { await refreshPendingMemoryReviewCount() }
             Task { await refreshAIInboxUnreadCount() }
             consumeCoordinatorDashboardRoute()
@@ -604,13 +603,6 @@ struct DashboardView: View {
                         ))
                     }
                     if !chatPanelOpen {
-                        if let controller = missionConsoleController {
-                            MissionFAB(host: controller.host) {
-                                controller.makeOrShow()
-                            } onCastWand: {
-                                showMacWandComposer = true
-                            }
-                        }
                         ChatFAB(hasNewInsights: hasNewInsightPulse) {
                             if !settingsManager.cliAssistantConsentShown {
                                 showCLIConsentSheet = true
@@ -729,7 +721,7 @@ struct DashboardView: View {
         }
         .sheet(isPresented: $showMacWandComposer) {
             MacWandComposerSheet(accountManager: accountManager) { _ in
-                Task { await missionConsoleController?.host.refresh() }
+                Task { await MissionConsoleWindowController.bind(to: operatingLayer).host.refresh() }
             }
             .presentationBackground(Material.ultraThinMaterial)
         }
@@ -802,6 +794,7 @@ struct DashboardView: View {
             )
         )
         .environment(settingsManager)
+        .environment(\.burnBarWindowState, fieldWindowState)
     }
 
     // MARK: - Hidden keyboard shortcuts
@@ -1690,11 +1683,15 @@ struct DashboardView: View {
             scrim: BackdropAdaptiveColors(profile: dashboardActiveReadabilityProfile).scrim,
             scrimOpacity: dashboardAdaptiveScrimOpacity,
             size: dashboardCanvasSize,
-            isAnimating: !reduceMotion,
-            frameRate: 30,
+            isAnimating: fieldWindowState.isVisible && !fieldWindowState.isScrolling && !reduceMotion,
+            frameRate: KernelBackdropFramePolicy.maxFrameRate(
+                isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch,
+                refreshHz: fieldWindowState.refreshHz
+            ),
             attenuation: 1,
             attenuationGround: DesignSystem.Colors.background,
-            isAvailable: true
+            isAvailable: true,
+            isScrolling: fieldWindowState.isScrolling
         )
     }
 

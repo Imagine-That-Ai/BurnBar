@@ -384,6 +384,27 @@ final class AdditionalLocalUsageParsersTests: XCTestCase {
         XCTAssertEqual(result.usages.first?.projectName, "/tmp/demo")
     }
 
+    func testJunieStateJSONUsageTotalsWinAndDataEnvelopeUnwraps() async throws {
+        let root = try makeDirectory("junie-state")
+        defer { remove(root) }
+        let session = root.appendingPathComponent("session-state", isDirectory: true)
+        try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        try write(
+            #"{"type":"agentEvent","data":{"message":{"role":"assistant","content":"wrapped","usage":{"input_tokens":70,"output_tokens":20}},"model":"gpt-5.5"}}"#,
+            to: session.appendingPathComponent("events.jsonl")
+        )
+        try write(
+            #"{"model":"gpt-5.5","projectPath":"/tmp/from-state","usage":{"inputTokens":500,"outputTokens":250}}"#,
+            to: session.appendingPathComponent("state.json")
+        )
+        let result = try await JunieParser(sessionsOverride: root).parse()
+        XCTAssertEqual(result.usages.first?.inputTokens, 500)
+        XCTAssertEqual(result.usages.first?.outputTokens, 250)
+        XCTAssertEqual(result.usages.first?.model, "gpt-5.5")
+        XCTAssertEqual(result.usages.first?.projectName, "/tmp/from-state")
+        XCTAssertEqual(result.usages.first?.provenanceConfidence, .exact)
+    }
+
     func testModelFilterKeepsProviderSpecificFactorySessions() async throws {
         let root = try makeDirectory("factory")
         defer { remove(root) }

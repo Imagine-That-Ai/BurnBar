@@ -1,6 +1,6 @@
 import XCTest
 import OpenBurnBarCore
-import OpenBurnBarLogParsers
+@testable import OpenBurnBarLogParsers
 
 // MARK: - MuseParserTests
 //
@@ -478,5 +478,114 @@ final class MuseParserTests: XCTestCase {
         let ids = Set(result.usages.map(\.sessionId))
         XCTAssertTrue(ids.contains("root-123"))
         XCTAssertTrue(ids.contains("sub-uuid-1"))
+    }
+
+    // MARK: - Refresh budget / discovery
+
+    private func writeDatedSession(
+        dir: URL,
+        datePath: String,
+        sessionId: String,
+        input: Int
+    ) throws {
+        let sessionDir = dir
+            .appendingPathComponent(datePath, isDirectory: true)
+            .appendingPathComponent(sessionId, isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        let content = [
+            metadataEnvelope(sessionId: sessionId, model: "muse-spark-1.3-contributor"),
+            modelCompletedEnvelope(sessionId: sessionId, input: input, output: 10, model: "muse-spark-1.3-contributor")
+        ].joined(separator: "\n")
+        try content.write(to: sessionDir.appendingPathComponent("session.jsonl"), atomically: true, encoding: .utf8)
+    }
+
+    func testNewestDateShardWinsWhenRefreshBudgetFitsOneFile() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try writeDatedSession(dir: dir, datePath: "2026/08/01", sessionId: "old-sess", input: 9_000)
+        try writeDatedSession(dir: dir, datePath: "2026/09/20", sessionId: "today-sess", input: 111)
+        let governor = ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: 1))
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse(
+            options: .usageAccounting(resourceGovernor: governor)
+        )
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(result.usages.first?.sessionId, "today-sess")
+        XCTAssertEqual(result.usages.first?.inputTokens, 111)
+        XCTAssertEqual(result.usages.first?.model, "muse-spark-1.3-contributor")
+    }
+
+    func testCacheHitsDoNotConsumeRefreshBudget() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try writeDatedSession(dir: dir, datePath: "2026/08/01", sessionId: "old-sess", input: 9_000)
+        try writeDatedSession(dir: dir, datePath: "2026/09/20", sessionId: "today-sess", input: 111)
+        let parser = MuseParser(logDirectoryOverride: dir.path)
+        _ = try await parser.parse(options: .usageAccounting())
+        try writeDatedSession(dir: dir, datePath: "2026/09/20", sessionId: "later-sess", input: 222)
+        let governor = ParserResourceGovernor(limits: ParserResourceLimits(fileByteBudget: 1))
+        let result = try await parser.parse(options: .usageAccounting(resourceGovernor: governor))
+        let byId = Dictionary(uniqueKeysWithValues: result.usages.map { ($0.sessionId, $0.inputTokens) })
+        XCTAssertEqual(byId["old-sess"], 9_000)
+        XCTAssertEqual(byId["today-sess"], 111)
+        XCTAssertEqual(byId["later-sess"], 222)
+    }
+
+    func testToolOutputsSessionJsonlIsNotCounted() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try writeDatedSession(dir: dir, datePath: "2026/09/20", sessionId: "real-sess", input: 100)
+        let fakeDir = dir
+            .appendingPathComponent("2026/09/20/real-sess/tool-outputs/fake", isDirectory: true)
+        try FileManager.default.createDirectory(at: fakeDir, withIntermediateDirectories: true)
+        let fake = [
+            metadataEnvelope(sessionId: "fake-tool", model: "muse-spark-1.3-contributor"),
+            modelCompletedEnvelope(sessionId: "fake-tool", input: 99_999, output: 1, model: "muse-spark-1.3-contributor")
+        ].joined(separator: "\n")
+        try fake.write(to: fakeDir.appendingPathComponent("session.jsonl"), atomically: true, encoding: .utf8)
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse()
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(result.usages.first?.sessionId, "real-sess")
+        XCTAssertEqual(result.usages.first?.inputTokens, 100)
+    }
+
+    func testFramedRecordJSONChildrenAreCounted() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let inner = modelCompletedEnvelope(
+            sessionId: "framed",
+            input: 777,
+            output: 5,
+            model: "muse-spark-1.3-contributor"
+        )
+        let frame: [String: Any] = [
+            "retained_frame": "session_permission_transaction",
+            "frame_schema_version": 1,
+            "children": [
+                ["child_index": 0, "record_json": inner]
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: frame)
+        guard let line = String(data: data, encoding: .utf8) else {
+            XCTFail("framed envelope")
+            return
+        }
+        _ = try writeSession(dir: dir, sessionId: "framed", content: line)
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse()
+        XCTAssertEqual(result.usages.first?.inputTokens, 777)
+        XCTAssertEqual(result.usages.first?.model, "muse-spark-1.3-contributor")
+    }
+
+    func testSpark13ContributorUsesContributorPricing() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let content = [
+            metadataEnvelope(model: "muse-spark-1.3-contributor"),
+            modelCompletedEnvelope(input: 10_000, output: 10_000, model: "muse-spark-1.3-contributor")
+        ].joined(separator: "\n")
+        _ = try writeSession(dir: dir, content: content)
+        let result = try await MuseParser(logDirectoryOverride: dir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        // Contributor 0.10/0.20 → 0.001 + 0.002 = 0.003
+        XCTAssertEqual(usage.costUSD, 0.003, accuracy: 0.0001)
     }
 }

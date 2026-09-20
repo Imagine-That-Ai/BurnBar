@@ -30,11 +30,15 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
         case failed(reason: String)
     }
 
-    @Published private(set) var phase: Phase = .idle
+    @Published private(set) var phase: Phase = .idle {
+        didSet { syncComputerUsePairingFreshness() }
+    }
     @Published private(set) var state: AgentWatchState
 
     private(set) var receiver: AgentWatchReceiver?
     private(set) var phoneControlSender: PhoneControlSender?
+    var liveUID: String? { activeUID }
+    var liveConnectionID: String? { activeConnectionID }
 
     private let dialer: StreamDialer
     private let signingKeyStore: any PhoneControlSigningKeyProviding
@@ -110,6 +114,15 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
     func send(_ frame: HermesRealtimeRelayFrame) async throws {
         guard let stream else { throw CancellationError() }
         try await stream.send(frame)
+    }
+
+    private func syncComputerUsePairingFreshness() {
+        switch phase {
+        case .live, .reconnecting:
+            HermesIrohRelayTransport.shared.setComputerUseSessionLive(true)
+        default:
+            HermesIrohRelayTransport.shared.setComputerUseSessionLive(false)
+        }
     }
 
     func makeFrameSink() -> PhoneControlSender.FrameSink {

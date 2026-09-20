@@ -865,6 +865,47 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testReadLoopAdmitsControlSurfaceFrameAndFansToWatch() async throws {
+        let stream = MediaControlFakeStream()
+        let receiver = makeReceiver()
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: { _, _ in stream },
+            receiver: receiver,
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        let expected = MediaFrame(
+            kind: .videoNAL,
+            flags: [.keyframe],
+            gopID: 43,
+            frameIndex: 1,
+            presentationTimestampMillis: 1_779,
+            payload: Data([0x07, 0x08, 0x09])
+        )
+        let encoded = try MediaPacketCodec().encode(expected)
+
+        let watchReceived = expectation(description: "control.surface.frame reaches Watch")
+        coordinator.watchSurfaceFrameHandler = { frame in
+            XCTAssertEqual(frame, expected)
+            watchReceived.fulfill()
+        }
+        coordinator.mirrorFrameHandler = { frame in
+            XCTAssertEqual(frame, expected)
+        }
+
+        coordinator.start(uid: "user-1", connectionID: "conn-1")
+        try await waitUntilLive(coordinator)
+        await stream.pushInbound(desktopVideoFrame(
+            uid: "user-1",
+            connectionID: "conn-1",
+            encoded: encoded,
+            streamClass: MediaStreamClass.controlSurfaceFrame.rawValue
+        ))
+
+        await fulfillment(of: [watchReceived], timeout: 1.0)
+        await coordinator.stop()
+    }
+
     func testReadLoopKeepsLegacyPlaintextUntilFrameSealAckConfirms() async throws {
         let stream = MediaControlFakeStream()
         let receiver = makeReceiver()
@@ -1334,12 +1375,30 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil,
         sealedFramePosition: HermesRealtimeRelaySealedMediaFramePosition? = nil
     ) -> HermesRealtimeRelayFrame {
+        desktopVideoFrame(
+            uid: uid,
+            connectionID: connectionID,
+            encoded: encoded,
+            streamClass: MediaStreamClass.screenVideo.rawValue,
+            frameChunk: frameChunk,
+            sealedFramePosition: sealedFramePosition
+        )
+    }
+
+    private func desktopVideoFrame(
+        uid: String,
+        connectionID: String,
+        encoded: Data,
+        streamClass: String,
+        frameChunk: HermesRealtimeRelayMediaFrameChunk? = nil,
+        sealedFramePosition: HermesRealtimeRelaySealedMediaFramePosition? = nil
+    ) -> HermesRealtimeRelayFrame {
         HermesRealtimeRelayFrame(
             type: .mediaStreamFrame,
             uid: uid,
             connectionId: connectionID,
             media: HermesRealtimeRelayMediaPayload(
-                streamClass: MediaStreamClass.screenVideo.rawValue,
+                streamClass: streamClass,
                 encodedFrameBase64: encoded.base64EncodedString(),
                 frameChunk: frameChunk,
                 sealedFramePosition: sealedFramePosition

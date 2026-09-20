@@ -211,12 +211,7 @@ struct SettingsHubView: View {
 
                 Section {
                     Button {
-                        // Navigate to Insights tab → Budgets section
-                        NotificationCenter.default.post(
-                            name: .init("ShowInsightsTab"),
-                            object: nil,
-                            userInfo: ["section": "budgets"]
-                        )
+                        InsightsDeepLink.open(section: "budgets")
                     } label: {
                         HStack {
                             SettingsLabel(icon: "dollarsign.circle.fill", color: MobileTheme.amber, title: "Budget Center")

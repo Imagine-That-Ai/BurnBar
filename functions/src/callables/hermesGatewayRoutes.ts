@@ -35,7 +35,7 @@ import {
   serializeHermesGatewayTypingDoc,
   type HermesGatewayRelayEnvelopeCapabilities,
 } from "../hermesGateway.js";
-import { logError, logInfo, wrapCallableHandler } from "../logging.js";
+import { logError, logInfo, wrapCallableHandler, wrapRequestHandler } from "../logging.js";
 import type {
   HermesGatewayClientDoc,
 } from "../types/generated/hermes-gateway.js";
@@ -655,9 +655,9 @@ export const burnBarHermesGateway = onRequest(
     maxInstances: 100,
     ...HOT_PATH_OPTIONS,
   },
-  async (req, res): Promise<void> => {
+  wrapRequestHandler("burnBarHermesGateway", async (req, res): Promise<void> => {
     await dispatchHermesGatewayRequest(toHermesHttpRequest(req), toHermesHttpResponse(res));
-  },
+  }),
 );
 
 export const getHermesGatewayAttachmentDownloadUrl = onCall(

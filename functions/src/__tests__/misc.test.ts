@@ -53,6 +53,7 @@ import { HttpsError } from "firebase-functions/v2/https";
 
 import { rebuildUsageRollups, seedAndroidDemoAccount } from "../callables/misc.js";
 import { RollupRebuildUnavailableError } from "../rollups.js";
+import { FULL_USAGE_REBUILD_RUNTIME } from "../runtimeOptions.js";
 
 const UID = "user-rollups-1";
 const COMPUTED_AT = "2026-06-10T12:00:00.000Z";
@@ -218,6 +219,20 @@ describe("rebuildUsageRollups gate-refusal mapping (P0-7)", () => {
 
     expect(err.code).toBe("resource-exhausted");
     expect(err.details).toEqual({ reason: "force_cooldown", retryAt });
+  });
+});
+
+describe("rebuildUsageRollups runtime envelope", () => {
+  it("does not inherit the gen2 60s / 256MiB defaults", () => {
+    expect(FULL_USAGE_REBUILD_RUNTIME).toEqual({ timeoutSeconds: 540, memory: "1GiB" });
+    const endpoint = Reflect.get(rebuildUsageRollups, "__endpoint") as
+      | Record<string, unknown>
+      | undefined;
+    expect(endpoint).toBeTruthy();
+    const timeout = endpoint?.timeoutSeconds ?? endpoint?.timeout;
+    const memory = endpoint?.availableMemory ?? endpoint?.memory ?? endpoint?.availableMemoryMb;
+    expect(timeout).toBe(540);
+    expect(String(memory)).toMatch(/1GiB|1024/i);
   });
 });
 

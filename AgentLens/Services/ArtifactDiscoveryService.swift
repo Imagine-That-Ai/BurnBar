@@ -66,6 +66,14 @@ struct ArtifactDiscoveryRules: Sendable {
             .filter { !$0.isEmpty }
     }
 
+    /// A registered root is always honored. Only descendants are pruned.
+    static func skipsDirectory(named name: String) -> Bool {
+        if ["node_modules", ".git", ".build", ".derived-data", ".spm-cache-new", "__pycache__"].contains(name) {
+            return true
+        }
+        return name.hasPrefix(".") && ![".factory", ".agents", ".claude", ".cursor"].contains(name)
+    }
+
     func match(relativePath: String) -> ArtifactDiscoveryMatch? {
         let normalized = relativePath
             .replacingOccurrences(of: "\\", with: "/")
@@ -179,6 +187,22 @@ actor ArtifactDiscoveryService {
     private let settingsProvider: any ArtifactDiscoverySettingsProviding
     private let fileManager: FileManager
     private let nowProvider: @Sendable () -> Date
+    private var scanTask: Task<ArtifactDiscoveryRunReport, Error>?
+    private var streams: [String: FileTreeEventStream] = [:]
+    private let eventQueue = DispatchQueue(label: "ai.burnbar.artifacts.watch", qos: .utility)
+    private var watchedRoots: [String] = []
+    private var watchedPatterns: [String] = []
+    private var dirtyRevision: UInt64 = 0
+    private var scannedRevision: UInt64?
+    private var lastSuccessfulScan: Date?
+    private var watchingSuspended = false
+    private var hasPublishedDisabledHealth = false
+    static let reconciliationInterval: TimeInterval = 30 * 60
+
+    deinit {
+        for stream in streams.values { stream.stop() }
+        scanTask?.cancel()
+    }
 
     init(
         dataStore: DataStore,
@@ -205,7 +229,98 @@ actor ArtifactDiscoveryService {
     }
 
     @discardableResult
-    func discoverAndIngest() async throws -> ArtifactDiscoveryRunReport {
+    func discoverAndIngest(force: Bool = true) async throws -> ArtifactDiscoveryRunReport {
+        try Task.checkCancellation()
+        if let scanTask { return try await scanTask.value }
+        let enabled = settingsProvider.artifactDiscoveryEnabled
+        if !enabled, hasPublishedDisabledHealth { return .disabled }
+        let roots = enabled ? normalizedRegisteredRoots(settingsProvider.artifactDiscoveryRegisteredRoots) : []
+        let patterns = enabled ? settingsProvider.artifactDiscoveryAdditionalKnownPatterns : []
+        configureWatchers(roots: roots, patterns: patterns, allowStart: !force)
+        if enabled { hasPublishedDisabledHealth = false }
+        if !force, watchingSuspended {
+            var report = ArtifactDiscoveryRunReport.disabled
+            report.enabled = enabled
+            return report
+        }
+        let reconciliationDue = lastSuccessfulScan.map {
+            nowProvider().timeIntervalSince($0) >= Self.reconciliationInterval
+        } ?? true
+        if !force, enabled, !reconciliationDue, scannedRevision == dirtyRevision,
+           streams.count == roots.count, !roots.isEmpty {
+            var report = ArtifactDiscoveryRunReport.disabled
+            report.enabled = true
+            return report
+        }
+        let revision = dirtyRevision
+        // An interrupted or failed pass must remain due, even when it was a
+        // forced rescan with no event revision change.
+        scannedRevision = nil
+        let task = Task { try await self.performDiscovery() }
+        scanTask = task
+        defer { scanTask = nil }
+        let report = try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        if report.enabled && report.issues.isEmpty {
+            scannedRevision = revision
+            lastSuccessfulScan = nowProvider()
+        } else {
+            scannedRevision = nil
+            hasPublishedDisabledHealth = !report.enabled
+        }
+        return report
+    }
+
+    func setWatchingSuspended(_ suspended: Bool) {
+        watchingSuspended = suspended
+        if suspended {
+            stopWatching()
+            scanTask?.cancel()
+        } else {
+            // Since-now streams cannot account for changes during sleep.
+            dirtyRevision &+= 1
+        }
+    }
+
+    func stopWatching() {
+        for stream in streams.values { stream.stop() }
+        streams.removeAll()
+    }
+
+    private func configureWatchers(roots: [String], patterns: [String], allowStart: Bool) {
+        if roots != watchedRoots || patterns != watchedPatterns {
+            stopWatching()
+            watchedRoots = roots
+            watchedPatterns = patterns
+            dirtyRevision &+= 1
+        }
+        guard allowStart, !watchingSuspended else { return }
+        for root in roots where streams[root] == nil {
+            let stream = FileTreeEventStream(root: URL(fileURLWithPath: root), queue: eventQueue) { [weak self] paths in
+                Task { await self?.recordFileEvents(paths, root: root) }
+            }
+            if stream.start() {
+                streams[root] = stream
+                dirtyRevision &+= 1
+            }
+        }
+    }
+
+    func recordFileEvents(_ paths: [String], root: String) {
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        if paths.contains(where: { path in
+            guard path.hasPrefix(prefix) else { return true } // root replacement or lost-event rescan
+            let components = path.dropFirst(prefix.count).split(separator: "/").map(String.init)
+            return !components.dropLast().contains(where: ArtifactDiscoveryRules.skipsDirectory)
+        }) {
+            dirtyRevision &+= 1
+        }
+    }
+
+    private func performDiscovery() async throws -> ArtifactDiscoveryRunReport {
         guard settingsProvider.artifactDiscoveryEnabled else {
             let report = ArtifactDiscoveryRunReport.disabled
             try await upsertHealth(from: report)
@@ -253,6 +368,7 @@ actor ArtifactDiscoveryService {
         let existingByID = Dictionary(uniqueKeysWithValues: existingArtifacts.map { ($0.id, $0) })
 
         for rootPath in registeredRoots {
+            try Task.checkCancellation()
             let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
             var isDirectory = ObjCBool(false)
             guard fileManager.fileExists(atPath: rootPath, isDirectory: &isDirectory) else {
@@ -275,10 +391,20 @@ actor ArtifactDiscoveryService {
                 )
                 continue
             }
+            var enumerationFailed = false
             guard let enumerator = fileManager.enumerator(
                 at: rootURL,
-                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
+                options: [.skipsPackageDescendants],
+                errorHandler: { url, _ in
+                    enumerationFailed = true
+                    report.issues.append(ArtifactDiscoveryIssue(
+                        code: .rootUnreadable,
+                        message: "Part of this folder could not be read. Existing indexed files were preserved.",
+                        path: url.path
+                    ))
+                    return true
+                }
             ) else {
                 report.issues.append(
                     ArtifactDiscoveryIssue(
@@ -291,10 +417,28 @@ actor ArtifactDiscoveryService {
             }
 
             report.scannedRoots += 1
-            successfullyScannedRoots.insert(rootPath)
-
-            let candidateURLs = enumerator.allObjects.compactMap { $0 as? URL }
-            for candidateURL in candidateURLs {
+            while let candidateURL = enumerator.nextObject() as? URL {
+                try Task.checkCancellation()
+                let resourceValues: URLResourceValues
+                do {
+                    resourceValues = try candidateURL.resourceValues(
+                        forKeys: [.isDirectoryKey, .isRegularFileKey, .contentModificationDateKey, .fileSizeKey]
+                    )
+                } catch {
+                    enumerationFailed = true
+                    report.issues.append(ArtifactDiscoveryIssue(
+                        code: .rootUnreadable,
+                        message: "Part of this folder could not be read. Existing indexed files were preserved.",
+                        path: candidateURL.path
+                    ))
+                    continue
+                }
+                if resourceValues.isDirectory == true {
+                    if ArtifactDiscoveryRules.skipsDirectory(named: candidateURL.lastPathComponent) {
+                        enumerator.skipDescendants()
+                    }
+                    continue
+                }
                 let canonicalCandidatePath = canonicalPath(for: candidateURL)
                 guard isWithinRoot(candidatePath: canonicalCandidatePath, rootPath: rootPath) else {
                     report.issues.append(
@@ -307,8 +451,7 @@ actor ArtifactDiscoveryService {
                     continue
                 }
 
-                let resourceValues = try? candidateURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]) // try?-ok(metadata read, guard skips)
-                guard resourceValues?.isRegularFile == true else { continue }
+                guard resourceValues.isRegularFile == true else { continue }
 
                 let relativePath = relativePath(from: canonicalCandidatePath, rootPath: rootPath)
                 guard let match = rules.match(relativePath: relativePath) else { continue }
@@ -316,13 +459,14 @@ actor ArtifactDiscoveryService {
                 // Signature gate: identical (mtime, size) means identical
                 // content for our purposes — skip the read + SHA-256 entirely.
                 let candidateID = stableSourceID(for: canonicalCandidatePath)
+                // A present but unreadable/invalid file is not a deletion.
+                discoveredSourceIDs.insert(candidateID)
                 if let existing = existingByID[candidateID],
                    let storedModifiedAt = existing.fileModifiedAt,
-                   let candidateModifiedAt = resourceValues?.contentModificationDate,
-                   let candidateSize = resourceValues?.fileSize,
+                   let candidateModifiedAt = resourceValues.contentModificationDate,
+                   let candidateSize = resourceValues.fileSize,
                    existing.fileSizeBytes == candidateSize,
                    abs(storedModifiedAt.timeIntervalSince(candidateModifiedAt)) < 0.001 {
-                    discoveredSourceIDs.insert(candidateID)
                     report.discoveredArtifacts += 1
                     report.unchangedArtifacts += 1
                     continue
@@ -364,8 +508,8 @@ actor ArtifactDiscoveryService {
                     title: inferredTitle(from: body, fallbackPath: canonicalCandidatePath),
                     body: body,
                     contentHash: sha256Hex(fileData),
-                    fileSizeBytes: resourceValues?.fileSize ?? fileData.count,
-                    fileModifiedAt: resourceValues?.contentModificationDate,
+                    fileSizeBytes: resourceValues.fileSize ?? fileData.count,
+                    fileModifiedAt: resourceValues.contentModificationDate,
                     status: .active,
                     discoveredAt: now,
                     deletedAt: nil,
@@ -374,7 +518,6 @@ actor ArtifactDiscoveryService {
                 )
 
                 let disposition = try await store.upsertSourceArtifact(artifact)
-                discoveredSourceIDs.insert(artifact.id)
                 report.discoveredArtifacts += 1
 
                 switch disposition {
@@ -394,10 +537,13 @@ actor ArtifactDiscoveryService {
                     report.unchangedArtifacts += 1
                 }
             }
+            if !enumerationFailed { successfullyScannedRoots.insert(rootPath) }
         }
 
+        try Task.checkCancellation()
         let registeredRootSet = Set(registeredRoots)
         for existing in existingArtifacts {
+            try Task.checkCancellation()
             if registeredRootSet.contains(existing.rootPath) == false {
                 let now = nowProvider()
                 if try await store.markSourceArtifactDeleted(id: existing.id, deletedAt: now) {

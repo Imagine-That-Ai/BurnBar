@@ -62,9 +62,9 @@ jobs:
           [[ "$(git rev-parse HEAD)" == "$BURNBAR_BASE_SHA" ]]
           [[ "$BURNBAR_CI_SHA" =~ ^[0-9a-f]{40}$ ]]
           # Fast-gate split: PR eligibility polls the fast set (no Swift/mobile/
-          # Windows walls, ~10 min); merge_group candidates still fail-closed on
-          # the full set minus App/Headless (those builds are post-merge/nightly).
-          # Both configs are read from the trusted base-SHA tree.
+          # Windows walls, ~10 min); merge_group candidates fail-closed on the
+          # full set including App build + test (AgentLens). Both configs are
+          # read from the trusted base-SHA tree.
           CONFIG=governance/burnbar-ci-gate.json
           if [[ "$GITHUB_EVENT_NAME" == pull_request* ]]; then
             CONFIG=governance/burnbar-ci-gate.fast.json

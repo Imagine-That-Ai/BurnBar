@@ -131,6 +131,12 @@ public final class PhoneControlReceiver: Sendable {
             let action: ComputerUseAction = .phoneIntent(PhoneControlIntent(kind: .panic))
             await dispatchHandler(action, sessionId, intent.authority.counter)
             return
+        case .setTrustMode:
+            let action: ComputerUseAction = .phoneIntent(
+                PhoneControlIntent(kind: .setTrustMode, text: intent.text)
+            )
+            await dispatchHandler(action, sessionId, intent.authority.counter)
+            return
         case .pointerMove:
             let deltaX = Int((intent.normalizedX2 ?? 0).rounded())
             let deltaY = Int((intent.normalizedY2 ?? 0).rounded())
@@ -223,7 +229,7 @@ public final class PhoneControlReceiver: Sendable {
         case .scroll: return .scroll
         case .pointerMove: return .pointerMove
         case .pointerClick: return .pointerClick
-        case .panic: return .click  // unreachable; panic short-circuits above
+        case .panic, .setTrustMode: return .click  // unreachable; short-circuits above
         }
     }
 
@@ -231,7 +237,7 @@ public final class PhoneControlReceiver: Sendable {
         switch kind {
         case .scroll, .dragStart, .dragMove, .dragEnd:
             return true
-        case .tap, .type, .shortcut, .pointerMove, .pointerClick, .panic:
+        case .tap, .type, .shortcut, .pointerMove, .pointerClick, .panic, .setTrustMode:
             return false
         }
     }

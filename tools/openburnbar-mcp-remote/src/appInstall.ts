@@ -285,6 +285,16 @@ export function compareNumericVersion(left: string, right: string): number {
   return 0;
 }
 
+export function appleMarketingVersion(version: string): string {
+  const plus = version.indexOf("+");
+  return plus === -1 ? version : version.slice(0, plus);
+}
+
+/** Feed tags keep SemVer build metadata (`1.0.40+repair.36`); Apple forbids `+` in CFBundleShortVersionString. */
+export function feedVersionMatchesMountedApp(feedVersion: string, mountedVersion: string): boolean {
+  return feedVersion === mountedVersion || appleMarketingVersion(feedVersion) === mountedVersion;
+}
+
 export function isNewerRelease(
   remote: Pick<MacOSReleaseFeed, "build" | "version">,
   local: Pick<InstalledBundle, "build" | "version">

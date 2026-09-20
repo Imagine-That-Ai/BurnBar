@@ -2001,7 +2001,13 @@
                 "flash"
               ],
               "any": [],
-              "none": []
+              "none": [
+                "3.1",
+                "3.5",
+                "3.7",
+                "3.8",
+                "lite"
+              ]
             }
           ],
           "pricing": {
@@ -2701,6 +2707,9 @@
               "any": [],
               "none": [
                 "3.1",
+                "3.5",
+                "3.7",
+                "3.8",
                 "lite"
               ]
             }
@@ -2710,6 +2719,193 @@
             "outputPerMToken": 3,
             "cacheReadPerMToken": 0.05
           }
+        },
+        {
+          "id": "gemini-3.5-flash-high",
+          "displayName": "Gemini 3.5 Flash (High)",
+          "visibility": "hidden",
+          "aliases": [
+            "gemini-3.5-flash-high",
+            "Gemini 3.5 Flash (High)"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gemini",
+                "3.5",
+                "flash"
+              ],
+              "any": [],
+              "none": [
+                "medium",
+                "lite",
+                "3.7",
+                "3.8"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.05
+          },
+          "capabilityClassID": "google:gemini-3-flash",
+          "capabilityClassRank": 34
+        },
+        {
+          "id": "gemini-3.5-flash-medium",
+          "displayName": "Gemini 3.5 Flash (Medium)",
+          "visibility": "hidden",
+          "aliases": [
+            "gemini-3.5-flash-medium",
+            "Gemini 3.5 Flash (Medium)"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gemini",
+                "3.5",
+                "flash",
+                "medium"
+              ],
+              "any": [],
+              "none": [
+                "high",
+                "lite",
+                "3.7",
+                "3.8"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.05
+          },
+          "capabilityClassID": "google:gemini-3-flash",
+          "capabilityClassRank": 32
+        },
+        {
+          "id": "gemini-3.7-flash-high",
+          "displayName": "Gemini 3.7 Flash (High)",
+          "visibility": "hidden",
+          "aliases": [
+            "gemini-3.7-flash-high",
+            "Gemini 3.7 Flash (High)"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gemini",
+                "3.7",
+                "flash"
+              ],
+              "any": [],
+              "none": [
+                "medium",
+                "lite"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.05
+          },
+          "capabilityClassID": "google:gemini-3-flash",
+          "capabilityClassRank": 38
+        },
+        {
+          "id": "gemini-3.7-flash-medium",
+          "displayName": "Gemini 3.7 Flash (Medium)",
+          "visibility": "hidden",
+          "aliases": [
+            "gemini-3.7-flash-medium",
+            "Gemini 3.7 Flash (Medium)"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gemini",
+                "3.7",
+                "flash",
+                "medium"
+              ],
+              "any": [],
+              "none": [
+                "high",
+                "lite"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.05
+          },
+          "capabilityClassID": "google:gemini-3-flash",
+          "capabilityClassRank": 36
+        },
+        {
+          "id": "gemini-3.8-flash-high",
+          "displayName": "Gemini 3.8 Flash (High)",
+          "visibility": "hidden",
+          "aliases": [
+            "gemini-3.8-flash-high",
+            "Gemini 3.8 Flash (High)"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gemini",
+                "3.8",
+                "flash"
+              ],
+              "any": [],
+              "none": [
+                "medium",
+                "lite"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.05
+          },
+          "capabilityClassID": "google:gemini-3-flash",
+          "capabilityClassRank": 40
+        },
+        {
+          "id": "gemini-3.8-flash-medium",
+          "displayName": "Gemini 3.8 Flash (Medium)",
+          "visibility": "hidden",
+          "aliases": [
+            "gemini-3.8-flash-medium",
+            "Gemini 3.8 Flash (Medium)"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "gemini",
+                "3.8",
+                "flash",
+                "medium"
+              ],
+              "any": [],
+              "none": [
+                "high",
+                "lite"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.5,
+            "outputPerMToken": 3,
+            "cacheReadPerMToken": 0.05
+          },
+          "capabilityClassID": "google:gemini-3-flash",
+          "capabilityClassRank": 35
         },
         {
           "id": "gemini-3.1-flash-lite-preview",
@@ -3881,6 +4077,54 @@
             "cacheReadPerMToken": 0.002
           },
           "canonicalModelID": "muse-spark-1.2-contributor"
+        },
+        {
+          "id": "muse-spark-1-3-standard",
+          "displayName": "Muse Spark 1.3",
+          "visibility": "public",
+          "aliases": [
+            "muse-spark-1.3"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "muse-spark-1.3"
+              ],
+              "any": [],
+              "none": [
+                "contributor"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.25,
+            "outputPerMToken": 4.25,
+            "cacheReadPerMToken": 0.15
+          },
+          "canonicalModelID": "muse-spark-1.3"
+        },
+        {
+          "id": "muse-spark-1-3-contributor",
+          "displayName": "Muse Spark 1.3 (Contributor)",
+          "visibility": "hidden",
+          "aliases": [
+            "muse-spark-1.3-contributor"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "muse-spark-1.3-contributor"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.2,
+            "cacheReadPerMToken": 0.002
+          },
+          "canonicalModelID": "muse-spark-1.3-contributor"
         }
       ],
       "visualSurfaces": [

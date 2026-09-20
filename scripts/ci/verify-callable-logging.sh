@@ -36,4 +36,30 @@ if missing:
         print(f"  {m}")
     raise SystemExit(1)
 print("PASS: all callables structured-logged")
+
+request_exports: list[tuple[str, str]] = []
+for path in sorted(src.rglob("*.ts")):
+    if "/__tests__/" in str(path) or path.name.endswith(".test.ts"):
+        continue
+    text = path.read_text()
+    for m in re.finditer(r"export const (\w+) = onRequest\(", text):
+        request_exports.append((m.group(1), str(path)))
+
+request_missing = []
+for name, path in request_exports:
+    text = Path(path).read_text()
+    if re.search(rf'wrapRequestHandler\s*\(\s*"{re.escape(name)}"', text):
+        continue
+    request_missing.append(f"{path}:{name}")
+
+print(f"onRequest exports: {len(request_exports)}")
+print(f"request-log wrapped: {len(request_exports) - len(request_missing)}/{len(request_exports)}")
+if len(request_exports) < 10:
+    raise SystemExit(f"FAIL: expected >= 10 onRequest handlers, got {len(request_exports)}")
+if request_missing:
+    print("FAIL: missing wrapRequestHandler for:")
+    for m in request_missing:
+        print(f"  {m}")
+    raise SystemExit(1)
+print("PASS: all onRequest handlers structured-logged")
 PY

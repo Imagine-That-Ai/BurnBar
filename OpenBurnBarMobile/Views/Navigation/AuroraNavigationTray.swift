@@ -39,24 +39,21 @@ struct AuroraNavigationTray: View {
     // MARK: - Scrub state
 
     /// The selection captured at scrub start. Restored if the gesture cancels.
-    @State private var restingSelection: AuroraNavDestination = .pulse
+    @State private var restingSelection: AuroraNavDestination = .inbox
     /// Destination currently under the finger during a scrub.
     @State private var previewDestination: AuroraNavDestination?
     /// Finger x-position in the pill's local coordinate space.
     @State private var fingerX: CGFloat = 0
-    /// Smoothed viewfinder x — springs toward the finger / tab center.
-    @State private var viewfinderX: CGFloat = 0
     /// Whether a scrub gesture is in progress.
     @State private var isScrubbing = false
     /// Last preview destination we fired a boundary haptic for, so we
     /// only haptic when crossing into a NEW tab.
     @State private var lastHapticDestination: AuroraNavDestination?
 
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // Floating-pill geometry. Labels stay visible so core routes such as
-    // Store are discoverable without relying on icon interpretation.
+    // Floating-pill geometry. Labels stay visible so You matches the
+    // screen title without relying on icon interpretation.
     private let pillHeight: CGFloat = MobileTrayMetrics.pillHeight
     private let iconSize: CGFloat = 24
     private let pillSidePadding: CGFloat = MobileTrayMetrics.pillSidePadding
@@ -93,50 +90,25 @@ struct AuroraNavigationTray: View {
         .frame(height: MobileTrayMetrics.occupiedHeight)
     }
 
-    /// The floating pill. On iOS 26 the body is true Liquid Glass: the warm
-    /// tint capsule rides directly on `.glassEffect` (no ultraThinMaterial
-    /// underneath — glass cannot sample through material) and the shadow
-    /// attaches to the glass capsule itself, because a `compositingGroup`
-    /// would flatten the glass specular. Older systems keep the original
-    /// material + tint stack.
+    /// The floating pill. One `LiquidGlassGroup` capsule so the four tabs
+    /// share a sampling volume — glass cannot sample other glass. No ember
+    /// glow, specular stroke, or drop shadow. `.interactive()` lets specular
+    /// respond to the scrub. Older systems use material.
     @ViewBuilder
-    private func pill(tabWidth: CGFloat) -> some View {
-        if #available(iOS 26.0, *) {
-            tabRow(tabWidth: tabWidth)
-                .clipShape(Capsule(style: .continuous))
-                .background(
-                    warmTintCapsule
-                        .liquidGlassEffect(.regular.interactive(), in: Capsule(style: .continuous))
-                        .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
-                )
-                .overlay(alignment: .leading) {
-                    // Liquid Glass viewfinder capsule — tracks the finger,
-                    // tints with the previewed destination's accent.
-                    viewfinderOverlay(tabWidth: tabWidth)
-                        .allowsHitTesting(false)
-                }
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(strokeGradient, lineWidth: 0.6)
-                )
-                .contentShape(Capsule(style: .continuous))
-                .gesture(scrubGesture(tabWidth: tabWidth))
-        } else {
-            tabRow(tabWidth: tabWidth)
-                .overlay(alignment: .leading) {
-                    viewfinderOverlay(tabWidth: tabWidth)
-                        .allowsHitTesting(false)
-                }
-                .background(pillBackground)
-                .clipShape(Capsule(style: .continuous))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(strokeGradient, lineWidth: 0.6)
-                )
-                .compositingGroup()
-                .shadow(color: Color.black.opacity(0.18), radius: 10, y: 4)
-                .contentShape(Capsule(style: .continuous))
-                .gesture(scrubGesture(tabWidth: tabWidth))
+    private var pill: some View {
+        LiquidGlassGroup {
+            if #available(iOS 26.0, *) {
+                tabRow
+                    .liquidGlassEffect(.regular.interactive(), in: Capsule(style: .continuous))
+                    .contentShape(Capsule(style: .continuous))
+                    .gesture(scrubGesture)
+            } else {
+                tabRow
+                    .background(pillBackground)
+                    .clipShape(Capsule(style: .continuous))
+                    .contentShape(Capsule(style: .continuous))
+                    .gesture(scrubGesture)
+            }
         }
     }
 
@@ -161,31 +133,6 @@ struct AuroraNavigationTray: View {
         .frame(height: pillHeight)
     }
 
-    // MARK: - Liquid Glass viewfinder overlay
-
-    /// A tracking capsule that follows the finger during scrub, tinted with
-    /// the previewed destination's accent. On iOS 26+ it rides on
-    /// `liquidGlassEffect`; on older systems it's a material + tint capsule.
-    @ViewBuilder
-    private func viewfinderOverlay(tabWidth: CGFloat) -> some View {
-        if isScrubbing, let preview = previewDestination {
-            let capsuleWidth = tabWidth + 4
-            let x = viewfinderX - capsuleWidth / 2
-            Capsule(style: .continuous)
-                .fill(preview.accent.opacity(colorScheme == .dark ? 0.12 : 0.08))
-                .frame(width: capsuleWidth, height: pillHeight - 4)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(preview.accent.opacity(0.45), lineWidth: 1)
-                )
-                .offset(x: x)
-                .transition(.opacity)
-                .animation(AuroraNavGestureModel.viewfinderAnimation(reduceMotion: reduceMotion),
-                           value: viewfinderX)
-                .animation(.easeInOut(duration: 0.15), value: previewDestination)
-        }
-    }
-
     // MARK: - Scrub gesture
 
     private func scrubGesture(tabWidth: CGFloat) -> some Gesture {
@@ -196,13 +143,6 @@ struct AuroraNavigationTray: View {
                     restingSelection = selection
                     isScrubbing = true
                     lastHapticDestination = nil
-                    // Seed the viewfinder at the current tab center.
-                    let currentIdx = destinations.firstIndex(of: selection) ?? 0
-                    viewfinderX = AuroraNavGestureModel.viewfinderCenterX(
-                        index: currentIdx,
-                        count: destinations.count,
-                        trayWidth: CGFloat(destinations.count) * tabWidth
-                    ) + pillSidePadding
                 }
                 fingerX = value.location.x
                 // Resolve preview destination from finger position.
@@ -214,13 +154,6 @@ struct AuroraNavigationTray: View {
                 ) else { return }
                 if previewDestination != preview {
                     previewDestination = preview
-                    // Move viewfinder toward the previewed tab center.
-                    let idx = destinations.firstIndex(of: preview) ?? 0
-                    viewfinderX = AuroraNavGestureModel.viewfinderCenterX(
-                        index: idx,
-                        count: destinations.count,
-                        trayWidth: CGFloat(destinations.count) * tabWidth
-                    ) + pillSidePadding
                     onScrubPreview?(preview)
                     // Boundary haptic — only when crossing into a new tab.
                     if lastHapticDestination != preview {
@@ -259,39 +192,7 @@ struct AuroraNavigationTray: View {
     /// content shows through faintly — sells the "floating" effect.
     @ViewBuilder
     private var pillBackground: some View {
-        ZStack {
-            Capsule(style: .continuous).fill(.ultraThinMaterial)
-            warmTintCapsule
-        }
-    }
-
-    /// Subtle warm tint — the capsule body shared by both the Liquid Glass
-    /// branch and the material fallback.
-    private var warmTintCapsule: some View {
-        Capsule(style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        MobileTheme.ember.opacity(colorScheme == .dark ? 0.07 : 0.04),
-                        Color.clear,
-                        MobileTheme.amber.opacity(colorScheme == .dark ? 0.05 : 0.03)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-    }
-
-    private var strokeGradient: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color.white.opacity(colorScheme == .dark ? 0.18 : 0.45),
-                MobileTheme.Colors.border.opacity(colorScheme == .dark ? 0.30 : 0.40),
-                Color.white.opacity(colorScheme == .dark ? 0.10 : 0.30)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        Capsule(style: .continuous).fill(.ultraThinMaterial)
     }
 }
 
@@ -318,14 +219,7 @@ struct AuroraTabItem: View {
     var body: some View {
         VStack(spacing: 3) {
             ZStack(alignment: .topTrailing) {
-                AuroraNavIcon(
-                    destination: destination,
-                    size: iconSize,
-                    isSelected: showsActive,
-                    isPressed: isPressed,
-                    userPhotoURL: userPhotoURL,
-                    userDisplayName: userDisplayName
-                )
+                trayGlyph
 
                 // Pro vocabulary — the whisper. Free users see a small
                 // breathing dot; members see their selected CloudBadge. Same
@@ -337,17 +231,11 @@ struct AuroraTabItem: View {
             }
 
             Text(destination.trayLabel)
-                .font(.system(size: 9, weight: showsActive ? .bold : .semibold, design: .rounded))
+                .font(.system(size: 11, weight: showsActive ? .semibold : .regular))
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
-                .foregroundStyle(showsActive ? destination.accent : MobileTheme.Colors.textSecondary)
+                .foregroundStyle(showsActive ? Color.primary : MobileTheme.Colors.textSecondary)
                 .frame(width: 48)
-
-            Capsule(style: .continuous)
-                .fill(destination.accent)
-                .frame(width: showsActive ? 16 : 4, height: 3)
-                .opacity(showsActive ? 1 : 0.35)
-                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: showsActive)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
@@ -357,6 +245,29 @@ struct AuroraTabItem: View {
         // an accessibility identifier changes no behavior, only exposes each
         // tab to XCUITest so the scrub-gesture destination can be tapped.
         .accessibilityIdentifier("auroraTab.\(destination.id)")
+    }
+
+    /// ChatGPT-quiet tray glyphs: monochrome SF Symbols. You keeps a photo
+    /// when signed in; otherwise it is the same person glyph as the rest.
+    @ViewBuilder
+    private var trayGlyph: some View {
+        if destination == .you, userPhotoURL != nil || !(userDisplayName ?? "").isEmpty {
+            AuroraNavIcon(
+                destination: destination,
+                size: iconSize,
+                isSelected: showsActive,
+                isPressed: isPressed,
+                userPhotoURL: userPhotoURL,
+                userDisplayName: userDisplayName
+            )
+        } else {
+            Image(systemName: destination.traySystemImage)
+                .font(.system(size: iconSize * 0.72, weight: showsActive ? .semibold : .regular))
+                .foregroundStyle(showsActive ? Color.primary : Color.secondary)
+                .symbolRenderingMode(.monochrome)
+                .frame(width: iconSize, height: iconSize)
+                .scaleEffect(isPressed ? 0.88 : 1)
+        }
     }
 
     @ViewBuilder
@@ -387,11 +298,11 @@ struct AuroraTabItem: View {
 
 #Preview("Aurora Navigation Tray") {
     struct PreviewWrapper: View {
-        @State private var selection: AuroraNavDestination = .pulse
+        @State private var selection: AuroraNavDestination = .inbox
 
         var body: some View {
             ZStack {
-                AuroraBackdrop()
+                Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
                 VStack {
                     Spacer()
                     AuroraNavigationTray(

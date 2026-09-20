@@ -8,6 +8,34 @@ import {
 } from "./callableBolaHarness.js";
 
 describe("callableBolaHarness sanity", () => {
+  it("does not treat invalid-argument as a cross-user BOLA pass", async () => {
+    const handler = {
+      run: async () => {
+        const error = new Error("malformed id");
+        Reflect.set(error, "code", "invalid-argument");
+        throw error;
+      },
+    };
+    await expect(
+      expectCallableDenial(callableRunner(handler), callableRequest("u", {}), "permission-denied"),
+    ).rejects.toThrow(/malformed id|invalid-argument/);
+  });
+
+  it("does not treat already-exists or aborted as a BOLA pass", async () => {
+    for (const code of ["already-exists", "aborted"]) {
+      const handler = {
+        run: async () => {
+          const error = new Error(code);
+          Reflect.set(error, "code", code);
+          throw error;
+        },
+      };
+      await expect(
+        expectCallableDenial(callableRunner(handler), callableRequest("u", {}), "permission-denied"),
+      ).rejects.toThrow();
+    }
+  });
+
   it("expectCallableDenial fails when handler succeeds", async () => {
     const succeeding = { run: async () => ({ ok: true }) };
     let failed = false;

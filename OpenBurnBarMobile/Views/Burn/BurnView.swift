@@ -30,6 +30,9 @@ struct BurnView: View {
     @AppStorage("burnLayoutStyle") private var layoutRaw: String = BurnLayoutStyle.cards.rawValue
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isCompactQuiet: Bool { horizontalSizeClass == .compact }
 
     private var layoutStyle: BurnLayoutStyle { BurnLayoutStyle.resolve(layoutRaw) }
     private var layoutStyleBinding: Binding<BurnLayoutStyle> {
@@ -37,36 +40,35 @@ struct BurnView: View {
     }
 
     var body: some View {
-        ZStack {
-            AuroraBackdrop(
-                colorDriver: dashboard.swarmColorDriver,
-                visibility: burnBackgroundVisibility
-            )
-            ScrollView {
-                VStack(spacing: MobileTheme.Spacing.lg) {
-                    if quotaStore.snapshots.isEmpty && quotaStore.isLoading {
-                        skeleton
-                    } else {
-                        fleetHeroCard
-                        if !quotaStore.urgentProviders.isEmpty {
-                            urgentBanner
-                        }
-                        periodSelector
-                        BurnLayoutSwitcher(selection: layoutStyleBinding)
-                        styledBody
+        ScrollView {
+            VStack(spacing: MobileTheme.Spacing.lg) {
+                if quotaStore.snapshots.isEmpty && quotaStore.isLoading {
+                    skeleton
+                } else if isCompactQuiet {
+                    compactFleetHero
+                    compactPeriodSelector
+                    styledBody
+                } else {
+                    fleetHeroCard
+                    if !quotaStore.urgentProviders.isEmpty {
+                        urgentBanner
                     }
+                    periodSelector
+                    BurnLayoutSwitcher(selection: layoutStyleBinding)
+                    styledBody
                 }
-                .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                .padding(.top, MobileTheme.Spacing.sm)
             }
-            .trackEasterEggScroll(tag: "burn")
-            .refreshable {
-                HapticBus.refreshStarted()
-                await refresh()
-                HapticBus.refreshFinished()
-            }
+            .padding(.horizontal, AuroraDesign.Layout.cardInset)
+            .padding(.bottom, trayInset) // clears the tray, or nothing on iPad
+            .padding(.top, MobileTheme.Spacing.sm)
         }
-        .navigationTitle("Burn")
+        .trackEasterEggScroll(tag: "burn")
+        .refreshable {
+            HapticBus.refreshStarted()
+            await refresh()
+            HapticBus.refreshFinished()
+        }
+        .navigationTitle("Quota")
         .accessibilityIdentifier("screen.burn")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -78,10 +80,9 @@ struct BurnView: View {
                     HapticBus.toggle()
                 }
                 .font(MobileTheme.Typography.headline)
-                .foregroundStyle(MobileTheme.primaryGradient)
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
             }
         }
-        .toolbarBackground(.hidden, for: .navigationBar)
         .task {
             if let initialFocus { expandedProvider = initialFocus }
             await initialLoad()
@@ -130,11 +131,79 @@ struct BurnView: View {
         }
     }
 
-    private var burnBackgroundVisibility: MobileBackgroundVisibility {
-        sheetProvider == nil ? MobileBackgroundVisibility.prominent : MobileBackgroundVisibility.obscured
+    // MARK: - Hero
+
+    private var compactFleetHero: some View {
+        let tightest = tightestQuotaItem
+        let pct = Int(((tightest?.pressureRemaining ?? fleetHealthRatio) * 100).rounded())
+        let pressureCount = quotaStore.urgentProviders.count
+        let sentence: String = {
+            if quotaItems.isEmpty {
+                return quotaEmptyMessage
+            }
+            if let tightest {
+                if pressureCount == 0 {
+                    return "\(tightest.label) has the least remaining."
+                }
+                return "Tightest: \(tightest.label)."
+            }
+            return "Tightest headroom is healthy across providers."
+        }()
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 16) {
+                if !quotaItems.isEmpty {
+                    FleetHealthRing(progress: fleetHealthRatio, accent: fleetAccent)
+                        .frame(width: 72, height: 72)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    if quotaItems.isEmpty {
+                        Text(burnLoadPresentation == .failed ? "Quota unavailable" : "No quota yet")
+                            .font(MobileTheme.Typography.headline)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    } else {
+                        Text("\(pct)%")
+                            .font(MobileTheme.Typography.displayLarge)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .contentTransition(.numericText())
+                            .accessibilityIdentifier("quota.hero.figure")
+                    }
+                    Text(sentence)
+                        .font(MobileTheme.Typography.body)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            if !quotaItems.isEmpty {
+                providerRingStrip
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 4)
+        .accessibilityIdentifier("quota.hero")
     }
 
-    // MARK: - Hero
+    private var compactPeriodSelector: some View {
+        HStack(spacing: 12) {
+            Picker("Period", selection: $selectedWindow) {
+                ForEach(RollupWindowKey.allCases, id: \.self) { key in
+                    Text(compactPeriodLabel(key)).tag(key)
+                }
+            }
+            .pickerStyle(.segmented)
+            modeToggle
+        }
+    }
+
+    private func compactPeriodLabel(_ key: RollupWindowKey) -> String {
+        switch key {
+        case .today: return "Today"
+        case .sevenDays: return "7d"
+        case .thirtyDays: return "30d"
+        case .ninetyDays: return "90d"
+        case .allTime: return "All"
+        }
+    }
 
     /// New Burn hero: a single readable card with the fleet score on the
     /// left, top-3 provider rings on the right, and a clear "tap a chip
@@ -340,31 +409,41 @@ struct BurnView: View {
 
     @ViewBuilder
     private var styledBody: some View {
-        switch layoutStyle {
-        case .cards:
+        if isCompactQuiet {
+            if !quotaStore.urgentProviders.isEmpty {
+                urgentBanner
+            }
             providerStack
             if !dashboard.dailyPoints.isEmpty {
                 chartCard
             }
-        case .constellation:
-            BurnConstellationBody(items: quotaItems, onSelect: openProviderSheet)
-        case .grid:
-            BurnGaugeGridBody(items: quotaItems, onSelect: openProviderSheet)
-        case .leaderboard:
-            BurnLeaderboardBody(
-                providers: dashboard.topProviders,
-                quotaItems: quotaItems,
-                displayMode: displayMode,
-                windowLabel: selectedWindow.displayLabel,
-                onSelect: openProviderSheet
-            )
-        case .timeline:
-            BurnTimelineBody(
-                digest: trendDigest,
-                quotaItems: quotaItems,
-                displayMode: displayMode,
-                onSelect: openProviderSheet
-            )
+        } else {
+            switch layoutStyle {
+            case .cards:
+                providerStack
+                if !dashboard.dailyPoints.isEmpty {
+                    chartCard
+                }
+            case .constellation:
+                BurnConstellationBody(items: quotaItems, onSelect: openProviderSheet)
+            case .grid:
+                BurnGaugeGridBody(items: quotaItems, onSelect: openProviderSheet)
+            case .leaderboard:
+                BurnLeaderboardBody(
+                    providers: dashboard.topProviders,
+                    quotaItems: quotaItems,
+                    displayMode: displayMode,
+                    windowLabel: selectedWindow.displayLabel,
+                    onSelect: openProviderSheet
+                )
+            case .timeline:
+                BurnTimelineBody(
+                    digest: trendDigest,
+                    quotaItems: quotaItems,
+                    displayMode: displayMode,
+                    onSelect: openProviderSheet
+                )
+            }
         }
     }
 
@@ -401,6 +480,10 @@ struct BurnView: View {
         return quotaItems.map(\.pressureRemaining).reduce(0, +) / Double(quotaItems.count)
     }
 
+    private var tightestQuotaItem: QuotaRingsConstellation.Item? {
+        quotaItems.min(by: { $0.pressureRemaining < $1.pressureRemaining })
+    }
+
     private var fleetAccent: Color {
         let avg = fleetHealthRatio
         if avg >= 0.6 { return MobileTheme.success }
@@ -417,11 +500,13 @@ struct BurnView: View {
 
     private var providerStack: some View {
         VStack(spacing: MobileTheme.Spacing.sm) {
-            AuroraSection(
-                "Per-provider",
-                subtitle: "Tap a card to drill into accounts and routing",
-                accent: MobileTheme.ember
-            )
+            if !isCompactQuiet {
+                AuroraSection(
+                    "Per-provider",
+                    subtitle: "Tap a card to drill into accounts and routing",
+                    accent: MobileTheme.ember
+                )
+            }
             ForEach(allProviderKeys, id: \.self) { providerKey in
                 let index = allProviderKeys.firstIndex(of: providerKey) ?? 0
                 BurnProviderRow(

@@ -14,6 +14,7 @@ describe("registerDevicePushEndpoint validators", () => {
 
   it("requires APNs/VoIP tokens to be bounded hex", () => {
     expect(__testing__.optionalHexPushToken("a".repeat(64), "voipDeviceToken")).toBe("a".repeat(64));
+    expect(__testing__.optionalHexPushToken("ab".repeat(32), "liveActivityPushToken")).toBe("ab".repeat(32));
     expect(() => __testing__.optionalHexPushToken("not-hex", "voipDeviceToken")).toThrow(/hex APNs token/u);
     expect(() => __testing__.optionalHexPushToken("a".repeat(1024), "voipDeviceToken")).toThrow(/hex APNs token/u);
   });

@@ -6,13 +6,13 @@ import OpenBurnBarCore
 /// Hermes chat that appears in `.maximize` mode so the user never loses
 /// touch with the agent while the mirror fills the screen.
 ///
-/// Collapsed: 56×56 caduceus puck with slow mercury shimmer and (when
-/// Hermes is streaming) three pooling droplets that ride the lower edge.
+/// Collapsed: 56×56 glass chat puck. Tap expands the floating panel.
 /// Tap → expands into a 320×420 floating panel showing the last few
 /// messages + a composer. Tap again (or the chevron) → collapses.
 struct AgentLiveStageChatPuck: View {
     @ObservedObject var presenter: AgentLiveStagePresenter
     @Bindable var hermesService: HermesService
+    @ObservedObject private var overlay = AgentWatchOverlaySingleton.shared
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dragOffset: CGSize = .zero
@@ -67,31 +67,10 @@ struct AgentLiveStageChatPuck: View {
     @ViewBuilder
     private var collapsedPuck: some View {
         ZStack {
-            Circle()
-                .fill(MobileTheme.mercuryGradient)
-                .frame(width: 56, height: 56)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.5), lineWidth: 1)
-                )
-                .overlay(
-                    Circle()
-                        .stroke(Color.black.opacity(0.25), lineWidth: 0.5)
-                        .blur(radius: 0.5)
-                        .blendMode(.multiply)
-                )
-
-            if !reduceMotion {
-                MercuryShimmerOverlay()
-                    .mask(Circle().inset(by: 1))
-                    .frame(width: 56, height: 56)
-            }
-
             VStack(spacing: 0) {
                 Text("\u{263F}") // ☿ caduceus
                     .font(MobileScaledFont.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
                 if hermesService.isStreaming {
                     HermesThinkingSpinner()
                         .frame(height: 8)
@@ -113,8 +92,8 @@ struct AgentLiveStageChatPuck: View {
                     .offset(x: 20, y: -22)
             }
         }
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.4), radius: 12, y: 6)
+        .frame(width: 56, height: 56)
+        .liquidGlassInteractive(in: Circle())
         .accessibilityLabel("Hermes chat puck. \(unreadDelta) new characters.")
         .accessibilityHint("Tap to expand chat.")
         .accessibilityAddTraits(.isButton)
@@ -152,7 +131,7 @@ struct AgentLiveStageChatPuck: View {
         HStack(spacing: 8) {
             Text("\u{263F}")
                 .font(MobileScaledFont.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(MobileTheme.mercuryGradient)
+                .foregroundStyle(.white)
             Text("Hermes")
                 .font(MobileScaledFont.system(size: 12.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
@@ -234,12 +213,7 @@ struct AgentLiveStageChatPuck: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(
-                                message.role == .assistant
-                                    ? AnyShapeStyle(MobileTheme.mercuryGradient)
-                                    : AnyShapeStyle(Color.white.opacity(0.18)),
-                                lineWidth: 0.75
-                            )
+                            .stroke(Color.white.opacity(0.18), lineWidth: 0.75)
                     )
             }
             if message.role != .user { Spacer(minLength: 28) }
@@ -271,7 +245,7 @@ struct AgentLiveStageChatPuck: View {
                     .padding(8)
                     .background(
                         Circle()
-                            .fill(canSend ? AnyShapeStyle(MobileTheme.mercuryGradient)
+                            .fill(canSend ? AnyShapeStyle(MobileTheme.ember)
                                           : AnyShapeStyle(Color.white.opacity(0.15)))
                     )
             }
@@ -288,8 +262,9 @@ struct AgentLiveStageChatPuck: View {
     }
 
     private var canSend: Bool {
-        !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !hermesService.isStreaming
+        let hasText = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasFrozenFrame = !overlay.pendingHermesAttachments.isEmpty
+        return (hasText || hasFrozenFrame) && !hermesService.isStreaming
     }
 
     private var unreadDelta: Int {
@@ -303,10 +278,11 @@ struct AgentLiveStageChatPuck: View {
 
     private func send() {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        let attachments = AgentWatchOverlaySingleton.shared.takePendingHermesAttachments()
+        guard !trimmed.isEmpty || !attachments.isEmpty else { return }
         inputText = ""
         HapticBus.send()
-        hermesService.sendMessage(trimmed)
+        hermesService.sendMessage(trimmed, attachments: attachments)
     }
 
     // MARK: - Drag
@@ -357,44 +333,20 @@ private extension View {
     /// re-shadow every primitive (header text, bubbles, dividers, the 1pt
     /// stroke) because `clipShape` does not composite, so the ambient depth
     /// is rendered once on a dedicated silhouette layer behind the glass.
-    /// The silhouette background is appended *after* the clip so the shadow
-    /// spill is not clipped away; backgrounds render backmost, behind glass.
+    /// System Liquid Glass only. A stroke, fill, clip, or compositing group
+    /// would flatten the volume into a blur panel.
     @ViewBuilder
     func chatPanelChrome() -> some View {
         if #available(iOS 26.0, *) {
-            self
-                .background(.clear)
-                .liquidGlassEffect(
-                    .regular.tint(Color.black.opacity(0.55)).interactive(),
-                    in: .rect(cornerRadius: 18)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(MobileTheme.mercuryGradient, lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color.black.opacity(0.001))
-                        .shadow(color: .black.opacity(0.45), radius: 22, y: 14)
-                )
+            self.liquidGlassEffect(
+                .regular.interactive(),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
         } else {
-            self
-                .background(
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color.black.opacity(0.55))
-                    }
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(MobileTheme.mercuryGradient, lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .compositingGroup()
-                .shadow(color: .black.opacity(0.45), radius: 22, y: 14)
+            self.background(
+                .ultraThinMaterial,
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
         }
     }
 }

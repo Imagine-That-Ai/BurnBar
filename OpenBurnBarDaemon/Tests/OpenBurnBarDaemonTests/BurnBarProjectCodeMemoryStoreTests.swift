@@ -125,7 +125,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let search = try store.searchCode(BurnBarProjectCodeSearchRequest(query: "helper", projectPath: fixture.project.path))
         XCTAssertTrue(search.hits.contains { $0.filePath == "Sources/App.swift" })
         XCTAssertEqual(search.status, "ok")
-        XCTAssertFalse(search.semanticAvailable)
+        XCTAssertEqual(search.semanticAvailable, store.lastSemanticCodeSearchBackend != "none")
         XCTAssertTrue(search.trustSignal.untrustedContentWrapped)
         XCTAssertTrue(search.hits.allSatisfy { $0.snippet.contains("OPENBURNBAR_UNTRUSTED_CODE_V1") })
         XCTAssertTrue(search.hits.contains { $0.rankFeatures?.isEmpty == false })
@@ -2719,6 +2719,27 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         // C is rank 1 in both lists -> highest fused score.
         XCTAssertEqual(fused.first, "C")
         XCTAssertEqual(Set(fused), Set(["A", "B", "C"]))
+    }
+
+    func testSemanticSearchUsesHNSWBackend() throws {
+        let fixture = try makeFixture()
+        try write(
+            "func durableRouteGate() {}\n// strong semantic fixture\n",
+            to: fixture.project.appendingPathComponent("Sources").appendingPathComponent("Strong.swift")
+        )
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "hnsw-search"),
+            embeddingProvider: ControlledSemanticFloorEmbeddingProvider()
+        )
+        _ = try store.indexProject(BurnBarProjectCodeIndexProjectRequest(projectPath: fixture.project.path, maxFiles: 20))
+        // Natural-language query so identifier-intent does not skip the semantic retriever.
+        let response = try store.searchCode(
+            BurnBarProjectCodeSearchRequest(query: "floor probe query", projectPath: fixture.project.path, limit: 10)
+        )
+        XCTAssertEqual(store.lastSemanticCodeSearchBackend, "hnsw")
+        XCTAssertTrue(response.semanticAvailable)
+        XCTAssertEqual(response.hits.map(\.filePath), ["Sources/Strong.swift"])
     }
 
     func testVectorCodecRoundTripsAndCosineIsMeaningful() throws {

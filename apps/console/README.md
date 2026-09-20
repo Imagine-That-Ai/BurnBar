@@ -27,7 +27,11 @@ React 19) app — independent of the repo's other subprojects, like `website/`.
   The rail's "Break down by" toggle re-bases every section on tokens, runs, or
   spend. An empty first read auto-triggers `rebuildUsageRollups` once per
   session (with a syncing banner) and the empty state offers a manual re-sync,
-  so the page self-heals instead of sitting on zeros. On wide screens the
+  so the page self-heals instead of sitting on zeros. The first Firestore
+  read is shown immediately; a full rebuild no longer blanks lifetime stats
+  for the whole wait. Failures (circuit open, in-flight, cooldown, timeout)
+  render as an error instead of a silent hang. The callable runs in a 540s /
+  1GiB envelope — the previous 60s / 256MiB defaults OOM'd a real account. On wide screens the
   insights sit in a right rail that also carries "Agent harnesses" and
   harness × model "Combos" (brand logos via `lib/brandLogos.ts`); both stay
   hidden until the rollups carry execution-source data. Pure math lives in

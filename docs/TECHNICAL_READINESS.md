@@ -2,7 +2,7 @@
 
 Current diligence-facing snapshot for investors, operators, and senior engineers.
 
-**Evidence snapshot (UTC):** 2026-07-08 source-readiness pass. This page is not
+**Evidence snapshot (UTC):** 2026-09-14 source-readiness pass. This page is not
 commercial launch proof. A launch claim requires fresh live evidence under
 `launch-evidence/` plus a passing `scripts/commercial-launch-gate.mjs` run.
 
@@ -10,10 +10,11 @@ commercial launch proof. A launch claim requires fresh live evidence under
 
 OpenBurnBar has a strong engineering foundation: typed schema surfaces,
 domain-specific sync services, resilience wrappers, security ratchets, rules
-tests, operator runbooks, and release gates. The July diligence review found
-that the source maturity is materially stronger than the launch proof posture:
-the codebase can support production, but stale evidence and environment-coupled
-ops checks must never be presented as current readiness.
+tests, operator runbooks, and release gates. **Commercial GO is not present:**
+`launch-evidence/final-launch-evidence.json` is missing, and live Cloud Functions
+`healthReady` must report a `source.commit` from a successful `deploy-production.yml`
+functions deploy (not the 2026-06-18 freeze) before any launch claim. Staging
+exists as `burnbar-staging`. Signal at-rest remains readiness-gated, not live.
 
 ## Evidence Boundaries
 

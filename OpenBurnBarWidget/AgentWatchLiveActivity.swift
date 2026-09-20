@@ -9,7 +9,7 @@ struct AgentWatchLiveActivity: Widget {
             AgentWatchLockScreenView(context: context)
                 .widgetURL(URL(string: "burnbar://agent-watch"))
                 .activityBackgroundTint(.black)
-                .activitySystemActionForegroundColor(.cyan)
+                .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -31,11 +31,14 @@ struct AgentWatchLiveActivity: Widget {
                         .font(.system(.caption, design: .monospaced).weight(.semibold))
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    AgentWatchActionButtons(approvalPending: context.state.approvalPending)
+                    AgentWatchActionButtons(
+                        approvalPending: context.state.approvalPending,
+                        approvalId: context.state.pendingApprovalId
+                    )
                 }
             } compactLeading: {
                 Image(systemName: "sparkle.magnifyingglass")
-                    .foregroundStyle(.cyan)
+                    .foregroundStyle(.white)
             } compactTrailing: {
                 Text(context.state.appName.prefix(3).uppercased())
                     .font(.caption2.weight(.semibold))
@@ -70,7 +73,16 @@ private struct AgentWatchLockScreenView: View {
                     .foregroundStyle(.white.opacity(0.7))
             }
 
-            AgentWatchActionButtons(approvalPending: context.state.approvalPending)
+            AgentWatchActionButtons(
+                approvalPending: context.state.approvalPending,
+                approvalId: context.state.pendingApprovalId
+            )
+
+            if context.state.showsLocalOnlyRefreshCopy {
+                Text(AgentWatchLiveActivityCopy.localOnlyRefresh)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.62))
+            }
         }
         .padding(16)
     }
@@ -88,7 +100,7 @@ private struct AgentWatchPulseDot: View {
 
     var body: some View {
         Circle()
-            .fill(approvalPending ? Color.orange : Color.cyan)
+            .fill(approvalPending ? Color.white : Color.white.opacity(0.55))
             .frame(width: 12, height: 12)
             .overlay(
                 Circle()
@@ -99,22 +111,33 @@ private struct AgentWatchPulseDot: View {
 
 private struct AgentWatchActionButtons: View {
     let approvalPending: Bool
+    let approvalId: String?
+
+    private var canDecide: Bool {
+        approvalPending && !(approvalId ?? "").isEmpty
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             if #available(iOSApplicationExtension 17.0, *) {
-                Button(intent: AgentApproveIntent()) {
+                Button(intent: AgentApproveIntent(approvalId: approvalId ?? "")) {
                     Label("Approve", systemImage: "checkmark.circle")
                 }
-                .disabled(!approvalPending)
-                Button(intent: AgentRejectIntent()) {
-                    Label("Reject", systemImage: "xmark.circle")
+                .disabled(!canDecide)
+                .accessibilityLabel("Approve")
+                .accessibilityHint("Approves the pending Agent Watch action after device unlock.")
+                Button(intent: AgentDenyIntent(approvalId: approvalId ?? "")) {
+                    Label("Deny", systemImage: "xmark.circle")
                 }
-                .disabled(!approvalPending)
+                .disabled(!canDecide)
+                .accessibilityLabel("Deny")
+                .accessibilityHint("Denies the pending Agent Watch action after device unlock.")
                 Button(intent: AgentHaltIntent()) {
                     Label("Halt", systemImage: "stop.circle")
                 }
                 .tint(.red)
+                .accessibilityLabel("Halt")
+                .accessibilityHint("Stops the live Agent Watch session immediately.")
             } else {
                 Text(approvalPending ? "Approval pending" : "Watching")
                     .font(.caption2)

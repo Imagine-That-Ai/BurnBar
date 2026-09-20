@@ -33,7 +33,45 @@ Multiple planes can hold overlapping data: local SQLite, daemon JSONL usage ledg
 
 - Daemon owns provider execution, gateway, MissionControl, and heartbeat.
 - App owns SQLite, UI, and Firestore client credentials.
-- IPC boundary: typed RPC contracts in `OpenBurnBarCore` (`BurnBarRPCContracts.swift`); version negotiated on connect.
+- IPC boundary: typed RPC contracts in `OpenBurnBarCore` (`BurnBarRPCContracts.swift`); version negotiated on connect. Current protocol is **v2**; v1 remains in `supported`.
+
+### SQLite table → process owner (Phase 1 contract)
+
+The live file is `~/Library/Application Support/OpenBurnBar/openburnbar.sqlite`. Dual-writer is debt; this table is the strangler contract. **Writer** is the only process allowed to `INSERT`/`UPDATE`/`DELETE`. The other process may open the file read-only or go through RPC.
+
+| Table | Writer | Reader | Notes |
+|------|--------|--------|-------|
+| token_usage | app (`UsageStore`) | daemon RPC | Canonical usage |
+| conversations | app | daemon read | FTS rebuilt by app migrator |
+| conversations_fts | app | app | Virtual table |
+| chat_threads | daemon (target) | app via RPC | Today both write — strangler start |
+| chat_messages | daemon (target) | app via RPC | Today both write — strangler start |
+| search_documents | daemon (target) | app | Projection/search |
+| search_chunks | daemon (target) | app | |
+| search_chunks_fts | daemon (target) | app | |
+| chunk_embeddings | daemon (target) | app | |
+| embedding_models | app | daemon | |
+| embedding_versions | app | daemon | |
+| agent_memories | daemon (target) | app | |
+| memory_audit | daemon (target) | app | |
+| memory_* | daemon (target) | app | Remaining memory_* tables |
+| pcm_* / code_* | daemon | app RPC | Project code memory |
+| ai_inbox_* | daemon | app | Self-heal DDL until migrator-first |
+| switcher_profiles | app | daemon | |
+| switcher_active_profile | app | daemon | Daemon may add `providerID` column guard |
+| parser_checkpoints | app | app | |
+| parser_checkpoint_files | app | app | |
+| source_artifacts | app | app | |
+| provider_accounts | app | app | |
+| provider_quota_snapshots | app | mobile replica | |
+| sync_cursors | app | app | |
+| app_state | app | app | |
+| vector_index_snapshots | daemon (target) | app | HNSW snapshots |
+| project_memory_snapshots | daemon (target) | app | |
+| grdb_migrations | migrator | both | One migrator only (Core) |
+| remaining tables in `docs/SCHEMA_SQLITE.sql` | app | app | Until listed above |
+
+New tables require a row here before the first `CREATE TABLE`.
 
 ### Conflict resolution
 

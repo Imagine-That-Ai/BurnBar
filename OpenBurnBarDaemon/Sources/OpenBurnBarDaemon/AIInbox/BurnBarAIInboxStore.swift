@@ -93,14 +93,19 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
     /// rows. See `BurnBarAIInboxTimestamp.grdbString(from:)`.
     static func grdbString(from date: Date) -> String { BurnBarAIInboxTimestamp.grdbString(from: date) }
 
-    init(databasePath: String, logger: BurnBarDaemonLogger) throws {
+    init(databasePath: String, logger: BurnBarDaemonLogger, schemaBootstrap: Bool? = nil) throws {
         self.databasePath = databasePath
         self.logger = logger
+        let isCanonicalSharedStore = URL(fileURLWithPath: databasePath).lastPathComponent == "openburnbar.sqlite"
+        let allowBootstrap = schemaBootstrap ?? !isCanonicalSharedStore
         var handle: OpaquePointer?
+        let openFlags = allowBootstrap
+            ? SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+            : SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
         let result = sqlite3_open_v2(
             databasePath,
             &handle,
-            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
+            openFlags,
             nil
         )
         guard result == SQLITE_OK, let handle else {
@@ -119,7 +124,11 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
         sqlite3_busy_timeout(handle, 5000)
         db = handle
         dbQueue.setSpecific(key: aiInboxQueueKey, value: dbQueueID)
-        try databaseSync { try bootstrapSchema() }
+        if allowBootstrap {
+            try databaseSync { try bootstrapSchema() }
+        } else {
+            try databaseSync { try assertAppOwnedInboxTablesExist() }
+        }
         // Inbox rows contain synthesized prose about the user's work. Match the
         // code-memory store and keep the shared database owner-only.
         try? FileManager.default.setAttributes(
@@ -141,6 +150,26 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
         }
         for statement in BurnBarAIInboxSchema.founderLensStatements {
             try execute(statement, [])
+        }
+    }
+
+    /// Canonical `openburnbar.sqlite` schema is owned by the app GRDB migrator.
+    /// The daemon may write rows; it must not CREATE/self-heal that file.
+    func assertAppOwnedInboxTablesExist() throws {
+        let required = ["ai_inbox_items", "ai_inbox_runs", "ai_inbox_state", "ai_inbox_item_state"]
+        for table in required {
+            let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+                throw BurnBarAIInboxStoreError.sqlite("Failed to inspect AI Inbox schema for \(table)")
+            }
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, table, -1, aiInboxSQLiteTransient)
+            guard sqlite3_step(statement) == SQLITE_ROW else {
+                throw BurnBarAIInboxStoreError.sqlite(
+                    "AI Inbox table \(table) is missing; wait for the app migrator to create openburnbar.sqlite"
+                )
+            }
         }
     }
 

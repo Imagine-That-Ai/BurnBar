@@ -31,6 +31,10 @@ export { reconcileAccountErasures } from "./accountDeletionReconciler.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
 export { sendVoIPOutbound, retryStuckVoIPPushes } from "./apnsSender.js";
+export {
+  onComputerUseActionLiveActivity,
+  onComputerUseSessionLiveActivity,
+} from "./liveActivityPush.js";
 export { retryStuckFcmPushes, sendFcmOutbound } from "./fcmAndroidSender.js";
 export {
   onCliSessionAgentReplyNotification,
@@ -78,6 +82,7 @@ export {
 export { writeSignalAtRestDocument } from "./callables/writeSignalAtRestDocument.js";
 export {
   createCliAgentMission,
+  createCliAgentMissionGroup,
   claimCliAgentMission,
   updateCliAgentMissionStatus,
   cancelCliAgentMission,

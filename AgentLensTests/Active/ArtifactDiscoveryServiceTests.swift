@@ -4,6 +4,122 @@ import OpenBurnBarCore
 @testable import OpenBurnBar
 @MainActor
 final class ArtifactDiscoveryServiceTests: XCTestCase {
+    func test_disabledDiscoveryDoesNotReadOrWriteTheDatabaseAgain() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let settings = StubArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: false, artifactDiscoveryRegisteredRoots: []
+        )
+        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings)
+        let first = try await service.discoverAndIngest(force: false)
+        XCTAssertEqual(first, .disabled)
+        // Make any subsequent health write fail, including the fallback after a
+        // failed health read. Disabled idle ticks must not touch this table.
+        try await store.actor.dbQueue.write { db in
+            try db.execute(sql: "DROP TABLE retrieval_health")
+        }
+        let idle = try await service.discoverAndIngest(force: false)
+        XCTAssertEqual(idle, .disabled)
+    }
+
+    func test_registeredRootAndPatternChangesInvalidateTheScan() async throws {
+        let fm = FileManager.default
+        let sandbox = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: sandbox) }
+        let firstRoot = sandbox.appendingPathComponent("first")
+        let nextRoot = sandbox.appendingPathComponent("next")
+        try writeDiscoveryFixture("# First", to: firstRoot.appendingPathComponent("AGENTS.md"))
+        try writeDiscoveryFixture("# Notes", to: nextRoot.appendingPathComponent("NOTES.md"))
+        let store = try makeDiscoveryInMemoryStore()
+        let settings = StubArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: true, artifactDiscoveryRegisteredRoots: [firstRoot.path]
+        )
+        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings)
+        _ = try await service.discoverAndIngest(force: false)
+        settings.artifactDiscoveryRegisteredRoots = [nextRoot.path]
+        settings.artifactDiscoveryAdditionalKnownPatterns = ["NOTES.md"]
+        let changed = try await service.discoverAndIngest(force: false)
+        XCTAssertEqual(changed.insertedArtifacts, 1)
+        XCTAssertEqual(changed.deletedArtifacts, 1)
+        let active = try await store.fetchSourceArtifacts(
+            includeDeleted: false, rootPaths: nil, sourceKinds: [.agentDoc, .skillDoc]
+        )
+        XCTAssertEqual(active.map(\.relativePath), ["NOTES.md"])
+        await service.stopWatching()
+    }
+
+    func test_discoveryPrunesGeneratedTreesButKeepsAgentConfiguration() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: root) }
+        try writeDiscoveryFixture("# Included", to: root.appendingPathComponent(".factory/droids/reviewer.md"))
+        try writeDiscoveryFixture("# Included", to: root.appendingPathComponent("docs/AGENTS.md"))
+        try writeDiscoveryFixture("# Excluded", to: root.appendingPathComponent("node_modules/dependency/AGENTS.md"))
+        try writeDiscoveryFixture("# Excluded", to: root.appendingPathComponent(".git/AGENTS.md"))
+        let store = try makeDiscoveryInMemoryStore()
+        let settings = StubArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: true, artifactDiscoveryRegisteredRoots: [root.path]
+        )
+        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings)
+        let report = try await service.discoverAndIngest()
+        XCTAssertEqual(report.insertedArtifacts, 2)
+        let artifacts = try await store.fetchSourceArtifacts(
+            includeDeleted: false, rootPaths: nil, sourceKinds: [.agentDoc, .skillDoc]
+        )
+        XCTAssertEqual(Set(artifacts.map(\.relativePath)), [".factory/droids/reviewer.md", "docs/AGENTS.md"])
+    }
+
+    func test_invalidTextDoesNotDeleteTheLastReadableArtifact() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: root) }
+        let file = root.appendingPathComponent("AGENTS.md")
+        try writeDiscoveryFixture("# Last readable version", to: file)
+        let store = try makeDiscoveryInMemoryStore()
+        let settings = StubArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: true, artifactDiscoveryRegisteredRoots: [root.path]
+        )
+        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings)
+        _ = try await service.discoverAndIngest()
+        try Data([0xFF, 0xFE]).write(to: file)
+        let invalid = try await service.discoverAndIngest()
+        XCTAssertEqual(invalid.issues.map(\.code), [.invalidTextEncoding])
+        XCTAssertEqual(invalid.deletedArtifacts, 0)
+        XCTAssertEqual(invalid.queuedJobs, 0)
+        let active = try await store.fetchSourceArtifacts(
+            includeDeleted: false, rootPaths: nil, sourceKinds: [.agentDoc, .skillDoc]
+        )
+        XCTAssertEqual(active.first?.body, "# Last readable version")
+    }
+
+    func test_backgroundDiscoverySkipsUnchangedRootsAndRescansAfterEvent() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: root) }
+        let file = root.appendingPathComponent("AGENTS.md")
+        try writeDiscoveryFixture("# First", to: file)
+        let store = try makeDiscoveryInMemoryStore()
+        let settings = StubArtifactDiscoverySettings(
+            artifactDiscoveryEnabled: true, artifactDiscoveryRegisteredRoots: [root.path]
+        )
+        let service = ArtifactDiscoveryService(dataStore: store, settingsProvider: settings)
+        let first = try await service.discoverAndIngest(force: false)
+        XCTAssertEqual(first.insertedArtifacts, 1)
+        let idle = try await service.discoverAndIngest(force: false)
+        XCTAssertEqual(idle.scannedRoots, 0)
+        try writeDiscoveryFixture("# Second, with changed bytes", to: file)
+        await service.recordFileEvents([file.path], root: root.path)
+        let changed = try await service.discoverAndIngest(force: false)
+        XCTAssertEqual(changed.updatedArtifacts, 1)
+        await service.setWatchingSuspended(true)
+        try fm.removeItem(at: file)
+        let asleep = try await service.discoverAndIngest(force: false)
+        XCTAssertEqual(asleep.scannedRoots, 0)
+        await service.setWatchingSuspended(false)
+        let awake = try await service.discoverAndIngest(force: false)
+        XCTAssertEqual(awake.deletedArtifacts, 1, "Changes during sleep must be reconciled.")
+        await service.stopWatching()
+    }
+
     func test_discovery_staysWithinRegisteredRootsAndKnownPatterns() async throws {
         let fileManager = FileManager.default
         let sandbox = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
