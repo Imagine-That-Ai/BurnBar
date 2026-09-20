@@ -55,6 +55,7 @@ import {
   dailyModelTokenSplit,
   hourWeekdayGrid,
   rankShares,
+  summarizeEvents,
   tokenMix,
 } from "@/lib/profile/profileAggregates";
 import { profileEventErrorCopy } from "@/lib/profile/profileEvents";
@@ -644,19 +645,60 @@ export default function ProfilePage() {
   const focusLedgerEvent = React.useCallback(
     (e: ProfileUsageEvent) => {
       if (e.startedAt) {
-        applyFilters({ ...filters, day: e.startedAt.slice(0, 10) });
+        applyFilters({ ...filters, day: e.startedAt.slice(0, 10), entity: null });
       } else if (e.sessionId) {
-        applyFilters({ ...filters, entity: { kind: "session", id: e.sessionId } });
+        applyFilters({ ...filters, day: null, entity: { kind: "session", id: e.sessionId } });
       }
     },
     [applyFilters, filters],
   );
 
-  const mvOf = (m: (typeof totalsRollup.modelSummaries)[number]) =>
+  const focusLedgerSession = React.useCallback(
+    (s: { sessionId: string | null; startedAt: string | null; events: ProfileUsageEvent[] }) => {
+      if (s.sessionId) {
+        applyFilters({ ...filters, day: null, entity: { kind: "session", id: s.sessionId } });
+      } else if (s.events[0]) {
+        // Unkeyed session = one standalone event: focus the EVENT itself
+        // (the inspector matches e.id), never the whole day.
+        applyFilters({ ...filters, day: null, entity: { kind: "session", id: s.events[0].id } });
+      } else if (s.startedAt) {
+        applyFilters({ ...filters, day: s.startedAt.slice(0, 10), entity: null });
+      }
+    },
+    [applyFilters, filters],
+  );
+
+  const mvOf = (m: { tokens: number; requests: number; cost: number }) =>
     metric === "tokens" ? m.tokens : metric === "runs" ? m.requests : m.cost;
+  // Custom ranges have no window doc: the bounded event pass IS the summary
+  // source (models/harnesses/accounts/devices + most-used model + spend),
+  // so every number on the rail adds up to the same events. Providers keep
+  // the rollup list (its canonical providerID grouping matches the event
+  // query matcher). Presets keep their windowed rollup docs; the event pass
+  // only overrides when model/harness/account/device facets are active
+  // (scopedStats).
+  const isCustomRange = windowKey === null;
+  const eventSummaries = React.useMemo(
+    () =>
+      isCustomRange && rangeEnabled && !rangeEvents.error
+        ? summarizeEvents(rangeEvents.events)
+        : null,
+    [isCustomRange, rangeEnabled, rangeEvents.error, rangeEvents.events],
+  );
+  // A FAILED custom-range read must never render lifetime rows under custom
+  // dates: the rail shows the error instead of plausible-but-wrong numbers.
+  const customRangeError =
+    isCustomRange && rangeEnabled && rangeEvents.error
+      ? profileEventErrorCopy(rangeEvents.error)
+      : null;
+  const mixProviders = eventSummaries?.providers ?? totalsRollup.providerSummaries;
+  const mixModels = eventSummaries?.models ?? totalsRollup.modelSummaries;
+  const mixHarnesses = eventSummaries?.harnesses ?? totalsRollup.executionSourceSummaries;
+  const mixAccounts = eventSummaries?.accounts ?? totalsRollup.accountSummaries;
+  const mixDevices = eventSummaries?.devices ?? totalsRollup.deviceSummaries;
   // Window-scoped model winner for the insight rail (the records band
   // keeps its own lifetime values below).
-  const topModelByMetric = [...totalsRollup.modelSummaries].sort((a, b) => mvOf(b) - mvOf(a))[0];
+  const topModelByMetric = [...mixModels].sort((a, b) => mvOf(b) - mvOf(a))[0];
   // Lifetime-scoped winners for the records band — the hall of fame never
   // shrinks with the window, and shares divide lifetime totals.
   const recordProvider = [...rollup.providerSummaries].sort((a, b) => {
@@ -844,45 +886,70 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Insights rail — full ranked lists, every row a filter control. */}
+        {/* Insights rail — full ranked lists, every row a filter control.
+            On custom ranges every list derives from the bounded event pass
+            (or shows the range-read error) so rail numbers reconcile with
+            the hero and ledger instead of mixing lifetime rows in. */}
         <aside
           aria-label="Activity insights"
           className="reveal grid min-w-0 content-start gap-token-8 xl:col-span-5"
           style={REVEAL.insights}
         >
-          <ProfileProviderMix
-            providers={totalsRollup.providerSummaries}
-            metric={metric}
-            pending={pending}
-            activeProviders={filters.facets.providers}
-            onToggleProvider={(id) => selectFacet({ kind: "provider", id })}
-          />
+          {customRangeError ? (
+            <div>
+              <h2 className="eyebrow mb-token-3">Provider mix</h2>
+              <p className="rounded-lg border border-glass-line px-token-3 py-token-4 text-sm text-content-dim">
+                {customRangeError}{" "}
+                <button
+                  type="button"
+                  onClick={rangeEvents.loadMore}
+                  className="underline-offset-2 hover:text-content-bright hover:underline"
+                >
+                  Retry
+                </button>
+              </p>
+            </div>
+          ) : (
+            <>
+              <ProfileProviderMix
+                providers={mixProviders}
+                metric={metric}
+                pending={pending}
+                activeProviders={filters.facets.providers}
+                onToggleProvider={(id) => selectFacet({ kind: "provider", id })}
+                onInspectProvider={(id) => selectFacet({ kind: "provider", id })}
+                eventSourced={eventSummaries != null}
+              />
 
-          <ProfileInsightsPanel
-            pending={pending}
-            activeDays={stats?.activeDays ?? 0}
-            avgPerActiveDay={stats?.avgPerActiveDay ?? 0}
-            topModel={topModelByMetric ?? null}
-            spendInView={totalsRollup.providerSummaries.reduce((n, p) => n + p.totalCost, 0)}
-            freshness={rollup.computedAt ? rollup.computedAt.slice(0, 10) : pending ? "—" : "unknown"}
-            onToggleModel={(id) => selectFacet({ kind: "model", id })}
-          />
+              <ProfileInsightsPanel
+                pending={pending}
+                activeDays={stats?.activeDays ?? 0}
+                avgPerActiveDay={stats?.avgPerActiveDay ?? 0}
+                topModel={topModelByMetric ?? null}
+                spendInView={mixProviders.reduce((n, p) => n + p.totalCost, 0)}
+                freshness={rollup.computedAt ? rollup.computedAt.slice(0, 10) : pending ? "—" : "unknown"}
+                onToggleModel={(id) => selectFacet({ kind: "model", id })}
+                onInspectModel={(id) => selectFacet({ kind: "model", id })}
+                eventSourced={eventSummaries != null}
+              />
 
-          {!pending && (
-            <ProfileBreakdowns
-              data={{
-                providers: [],
-                models: totalsRollup.modelSummaries,
-                harnesses: totalsRollup.executionSourceSummaries,
-                combos: totalsRollup.comboSummaries,
-                devices: totalsRollup.deviceSummaries,
-                accounts: totalsRollup.accountSummaries,
-              }}
-              metric={metric}
-              activeFacets={filters.facets}
-              onToggle={toggleFacet}
-              onInspect={selectFacet}
-            />
+              {!pending && (
+                <ProfileBreakdowns
+                  data={{
+                    providers: [],
+                    models: mixModels,
+                    harnesses: mixHarnesses,
+                    combos: eventSummaries ? [] : totalsRollup.comboSummaries,
+                    devices: mixDevices,
+                    accounts: mixAccounts,
+                  }}
+                  metric={metric}
+                  activeFacets={filters.facets}
+                  onToggle={toggleFacet}
+                  onInspect={selectFacet}
+                />
+              )}
+            </>
           )}
           {!pending &&
             rankShares(rangeEvents.events, "provider").length > 0 &&
@@ -969,7 +1036,7 @@ export default function ProfilePage() {
         />
       </div>
 
-      {/* Session ledger — bounded event pages (auto-paged to the cap). */}
+      {/* Session ledger — session-grouped, expandable, bounded event pass. */}
       <div className="reveal mt-token-12" style={REVEAL.ledger}>
         <ProfileSessionLedger
           events={rangeEvents.events}
@@ -980,6 +1047,7 @@ export default function ProfilePage() {
           enabledHint={ledgerHint}
           onLoadMore={rangeEvents.loadMore}
           onFocusEvent={focusLedgerEvent}
+          onFocusSession={focusLedgerSession}
         />
       </div>
 

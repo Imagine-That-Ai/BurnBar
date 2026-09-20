@@ -34,8 +34,8 @@ describe("normalizeRollup execution-source fields", () => {
       "all_time",
     );
     expect(rollup.executionSourceSummaries).toEqual([
-      { sourceId: "claude-code", sourceName: "Claude Code", totalRequests: 9, totalTokens: 900, totalCost: 1.2 },
-      { sourceId: "codex", sourceName: "codex", totalRequests: 4, totalTokens: 200, totalCost: 0.5 },
+      { sourceId: "claude-code", sourceName: "Claude Code", label: "Claude Code", totalRequests: 9, totalTokens: 900, totalCost: 1.2 },
+      { sourceId: "codex", sourceName: "codex", label: "codex", totalRequests: 4, totalTokens: 200, totalCost: 0.5 },
     ]);
   });
 
