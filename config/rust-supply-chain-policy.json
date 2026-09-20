@@ -19,6 +19,14 @@
       "reason": "crates.io yanked arrayref 0.3.5-0.3.9 and deleted 0.3.10 on 2026-08-20 after 0.3.10 was published declaring a dependency on 'proc-macro1', an unregistered name one edit from proc-macro2. blake3 1.8.5 requires arrayref ^0.3.5, so 0.3.4 does not satisfy it and there is currently NO unyanked version in range. Our Cargo.lock pins 0.3.9 by sha256 (76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb), so we compile fixed, known bytes whose manifest declares only a quickcheck dev-dependency; the yank changes what cargo would newly resolve, not what we build. Staying pinned is strictly safer than moving. Revisit when arrayref publishes a clean >=0.3.5 or blake3 relaxes the requirement.",
       "url": "https://crates.io/crates/arrayref/versions",
       "expires": "2026-11-20"
+    },
+    {
+      "kind": "yanked",
+      "crate": "der",
+      "version": "0.8.0",
+      "reason": "crates.io yanked der 0.8.0 on 2026-09-05 (RustCrypto/formats; pulled by pkcs8 0.11 -> spki 0.8 via ed25519-dalek 3.0.0-pre.7). der 0.8.2 is unyanked and semver-compatible, so an upgrade path EXISTS - but Cargo.lock feeds the source_sha256 of the committed Android AARs (Vendor/burnbar-remote.aar, Vendor/openburnbar-iroh.aar) and the xcframework bindings parity checks, so the bump must ride a native-artifact rebuild (Android NDK) rather than a lockfile-only PR. Both lockfiles pin 0.8.0 by checksum (71fd89660b2dc699704064e59e9dba0147b903e85319429e131620d022be411b), so until then we compile fixed, known bytes; the yank changes what cargo would newly resolve, not what we build. Short box on purpose: bump to 0.8.2 in the next native-artifact rebuild (scripts/build-burnbar-remote-android-aar.sh, scripts/build-iroh-android-aar.sh) and delete this entry.",
+      "url": "https://crates.io/crates/der/versions",
+      "expires": "2026-10-03"
     }
   ]
 }

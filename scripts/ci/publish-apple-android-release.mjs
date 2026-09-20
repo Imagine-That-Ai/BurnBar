@@ -252,12 +252,38 @@ function parseRelease(raw, publication) {
 function lookupRelease(client, publication, { allowAbsent = false } = {}) {
   resolveTag(client, publication);
   const result = client.run(
-    ["api", `repos/${publication.repository}/releases/tags/${publication.tag}`],
+    [
+      "api",
+      `repos/${publication.repository}/releases/tags/${encodeURIComponent(publication.tag)}`,
+    ],
     { allowFailure: true },
   );
   if (result.status !== 0) {
     const detail = `${result.stderr || ""}\n${result.stdout || ""}`;
-    if (allowAbsent && /\bHTTP 404\b/u.test(detail)) return null;
+    if (/\bHTTP 404\b/u.test(detail)) {
+      const listed = client.run(
+        ["api", `repos/${publication.repository}/releases?per_page=100`],
+        { allowFailure: true },
+      );
+      if (listed.status !== 0) {
+        const listDetail = `${listed.stderr || ""}\n${listed.stdout || ""}`;
+        throw new Error(`GitHub release list lookup failed: ${listDetail.trim()}`);
+      }
+      const releases = parseJson(listed.stdout, "release list lookup");
+      if (!Array.isArray(releases)) {
+        throw new Error("release list lookup returned a non-array response");
+      }
+      const matches = releases.filter(
+        (release) => release?.tag_name === publication.tag,
+      );
+      if (matches.length > 1) {
+        throw new Error(`multiple GitHub releases resolve to ${publication.tag}`);
+      }
+      if (matches.length === 1) {
+        return parseRelease(matches[0], publication);
+      }
+      if (allowAbsent) return null;
+    }
     throw new Error(`GitHub release lookup failed: ${detail.trim()}`);
   }
   return parseRelease(parseJson(result.stdout, "release lookup"), publication);

@@ -164,6 +164,7 @@ final class SettingsRouter {
              .alertsRoot,
              .notificationsRoot,
              .devicesAndSyncRoot,
+             .receiptsRoot,
              .textExpansionRoot,
              .mediaRoot,
              .dataControlCenterRoot,

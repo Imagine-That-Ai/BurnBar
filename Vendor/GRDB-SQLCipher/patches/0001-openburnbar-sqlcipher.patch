@@ -1,0 +1,156 @@
+diff -ruN -w --exclude=patches --exclude=UPSTREAM.md upstream/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseQueue.swift vendored/GRDB/Core/DatabaseQueue.swift
+--- upstream/Vendor/GRDB-SQLCipher/GRDB/Core/DatabaseQueue.swift	2026-06-16 11:33:45
++++ vendored/GRDB/Core/DatabaseQueue.swift	2026-09-01 22:01:34
+@@ -235,17 +235,25 @@
+ 
+     public func asyncRead(_ value: @escaping (Result<Database, Error>) -> Void) {
+         writer.async { db in
++            var enteredReadOnly = false
+             defer {
+-                // Ignore error because we can not notify it.
+-                try? db.commit()
++                if enteredReadOnly {
++                    do {
++                        try db.commit()
++                    } catch {
++                        try? db.rollback()
++                    }
++                    assert(!db.isInsideTransaction)
+                     try? db.endReadOnly()
+                 }
++            }
+ 
+             do {
+                 // Enter read-only mode before starting a transaction, so that the
+                 // transaction commit does not trigger database observation.
+                 // See <https://github.com/groue/GRDB.swift/pull/1213>.
+                 try db.beginReadOnly()
++                enteredReadOnly = true
+                 try db.beginTransaction(.deferred)
+                 value(.success(db))
+             } catch {
+@@ -285,17 +293,25 @@
+             // ... and that no transaction is opened.
+             GRDBPrecondition(!db.isInsideTransaction, "must not be called from inside a transaction.")
+ 
++            var enteredReadOnly = false
+             defer {
+-                // Ignore error because we can not notify it.
+-                try? db.commit()
++                if enteredReadOnly {
++                    do {
++                        try db.commit()
++                    } catch {
++                        try? db.rollback()
++                    }
++                    assert(!db.isInsideTransaction)
+                     try? db.endReadOnly()
+                 }
++            }
+ 
+             do {
+                 // Enter read-only mode before starting a transaction, so that the
+                 // transaction commit does not trigger database observation.
+                 // See <https://github.com/groue/GRDB.swift/pull/1213>.
+                 try db.beginReadOnly()
++                enteredReadOnly = true
+                 try db.beginTransaction(.deferred)
+                 value(.success(db))
+             } catch {
+diff -ruN -w --exclude=patches --exclude=UPSTREAM.md upstream/Vendor/GRDB-SQLCipher/GRDB/Export.swift vendored/GRDB/Export.swift
+--- upstream/Vendor/GRDB-SQLCipher/GRDB/Export.swift	2026-06-16 11:33:45
++++ vendored/GRDB/Export.swift	2026-09-01 22:01:34
+@@ -1,7 +1,9 @@
+ // Export the underlying SQLite library
+ #if GRDBCIPHER
+-@_exported import SQLCipher
+ @_exported import CSQLite
++#if canImport(SQLCipher)
++@_exported import SQLCipher
++#endif
+ #elseif SWIFT_PACKAGE
+ @_exported import CSQLite
+ #elseif !GRDBCUSTOMSQLITE && !GRDBCIPHER
+diff -ruN -w --exclude=patches --exclude=UPSTREAM.md upstream/Vendor/GRDB-SQLCipher/Package.swift vendored/Package.swift
+--- upstream/Vendor/GRDB-SQLCipher/Package.swift	2026-06-16 11:33:45
++++ vendored/Package.swift	2026-09-01 22:01:34
+@@ -10,7 +10,28 @@
+     .define("GRDBCIPHER"),
+ ]
+ var cSettings: [CSetting] = []
+-var dependencies: [PackageDescription.Package.Dependency] = [
++let configuredSQLCipherDirectory = ProcessInfo.processInfo.environment["OPENBURNBAR_SQLCIPHER_LIB_DIR"]?
++    .trimmingCharacters(in: .whitespacesAndNewlines)
++let explicitSQLCipherLibrary: String? = configuredSQLCipherDirectory.flatMap { directory in
++    guard directory.isEmpty == false else { return nil }
++    let path = URL(fileURLWithPath: directory)
++        .appendingPathComponent("libsqlcipher.so.0")
++        .standardizedFileURL
++        .path
++    return FileManager.default.fileExists(atPath: path) ? path : nil
++}
++let useSystemSQLCipher = ProcessInfo.processInfo.environment["OPENBURNBAR_USE_SYSTEM_SQLCIPHER"] == "1"
++    || ProcessInfo.processInfo.environment["OPENBURNBAR_SQLCIPHER_PREFIX"] != nil
++    || explicitSQLCipherLibrary != nil
++let sqlcipherLinkerSettings: [LinkerSetting] = explicitSQLCipherLibrary.map { library in
++    [
++        .unsafeFlags([library]),
++        .unsafeFlags([
++            "-Xlinker", "-rpath", "-Xlinker", configuredSQLCipherDirectory ?? ""
++        ])
++    ]
++}.flatMap { $0 } ?? []
++var dependencies: [PackageDescription.Package.Dependency] = useSystemSQLCipher ? [] : [
+     .package(url: "https://github.com/sqlcipher/SQLCipher.swift.git", exact: "4.16.0"),
+ ]
+ 
+@@ -49,17 +70,34 @@
+     ],
+     dependencies: dependencies,
+     targets: [
+-        .systemLibrary(name: "CSQLite"),
++        .systemLibrary(
++            name: "CSQLite",
++            // The SQLCipher.swift binary target supplies the Apple-platform
++            // framework and link directive. Asking pkg-config for SQLCipher at
++            // the same time silently adds a second, machine-local Homebrew
++            // libsqlcipher.dylib to every SwiftPM executable; hardened runtime
++            // then rejects that foreign-team library. Only system-runtime
++            // builds (Linux or an explicit local override) may consult
++            // pkg-config. An explicitly staged Linux .so is linked below.
++            pkgConfig: useSystemSQLCipher && explicitSQLCipherLibrary == nil ? "sqlcipher" : nil,
++            providers: [
++                .apt(["libsqlcipher-dev"]),
++                .brew(["sqlcipher"])
++            ]
++        ),
+         .target(
+             name: "GRDB",
+-            dependencies: [
++            dependencies: useSystemSQLCipher ? [
+                 "CSQLite",
++            ] : [
++                "CSQLite",
+                 .product(name: "SQLCipher", package: "SQLCipher.swift"),
+             ],
+             path: "GRDB",
+             resources: [.copy("PrivacyInfo.xcprivacy")],
+             cSettings: cSettings,
+-            swiftSettings: swiftSettings)
++            swiftSettings: swiftSettings,
++            linkerSettings: sqlcipherLinkerSettings)
+     ],
+     swiftLanguageVersions: [.v5]
+ )
+diff -ruN -w --exclude=patches --exclude=UPSTREAM.md upstream/Vendor/GRDB-SQLCipher/Sources/CSQLite/shim.h vendored/Sources/CSQLite/shim.h
+--- upstream/Vendor/GRDB-SQLCipher/Sources/CSQLite/shim.h	2026-06-16 11:33:45
++++ vendored/Sources/CSQLite/shim.h	2026-09-01 22:01:34
+@@ -1,4 +1,8 @@
++#if defined(__has_include) && __has_include(<SQLCipher/SQLCipher.h>)
+ #include <SQLCipher/SQLCipher.h>
++#else
++#include <sqlite3.h>
++#endif
+ 
+ typedef void(*_errorLogCallback)(void *pArg, int iErrCode, const char *zMsg);
+ 

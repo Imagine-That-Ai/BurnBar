@@ -7,6 +7,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
+# Deterministic swift resolution (see scripts/lib/swift-toolchain.sh). The
+# static half of this script runs on Linux CI where no swift exists at all, so
+# the toolchain is resolved lazily inside the macOS-only branch below rather
+# than at load time.
+# shellcheck source=../lib/swift-toolchain.sh
+source "$(pwd)/scripts/lib/swift-toolchain.sh"
+
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -172,6 +179,8 @@ if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
     fail "OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC=1 requires a macOS runner"
   fi
 
+  obb_swift_init || fail "no usable swift toolchain for the SQLCipher runtime codec probe"
+
   derived_data="${TMPDIR:-/tmp}/openburnbar-sqlcipher-codec-${RANDOM}-${RANDOM}"
   mkdir -p "$derived_data"
   sqlcipher_package=".spm-cache-new/checkouts/SQLCipher.swift"
@@ -252,7 +261,7 @@ if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
   fi
 
   sqlcipher_scratch="${derived_data}/sqlcipher-package-build"
-  swift build \
+  "${OBB_SWIFT}" build \
     --package-path "$sqlcipher_package" \
     --configuration release \
     --scratch-path "$sqlcipher_scratch" \
@@ -264,7 +273,7 @@ if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
   fi
   mkdir -p "${sqlcipher_test_bundle}/Contents/Frameworks"
   cp -R "${sqlcipher_framework_dir}/SQLCipher.framework" "${sqlcipher_test_bundle}/Contents/Frameworks/"
-  swift test \
+  "${OBB_SWIFT}" test \
     --package-path "$sqlcipher_package" \
     --configuration release \
     --scratch-path "$sqlcipher_scratch" \

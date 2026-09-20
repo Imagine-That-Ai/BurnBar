@@ -1044,11 +1044,12 @@ function recommit(
   return git(root, "rev-parse", "HEAD");
 }
 
-function resolve(root, activation) {
+function resolve(root, activation, options = {}) {
   return resolveActiveDomainCoreActivation({
     repoRoot: root,
     activationCommit: activation,
     verifyArtifactIdentity: false,
+    ...options,
   });
 }
 
@@ -1794,4 +1795,16 @@ test("rejects attestation whose unsignedBundle.path is a symlink substituting fo
     () => resolve(fx.root, activation),
     /attestation unsigned bundle digest mismatch/u,
   );
+});
+
+test("resolveActiveDomainCoreActivation supports requireClean: false on dirty worktree", () => {
+  const fx = activationAuthorityFixture();
+  const activation = recommit(fx.root);
+  writeFileSync(join(fx.root, "untracked-dirty.tmp"), "dirty");
+  assert.throws(
+    () => resolve(fx.root, activation, { requireClean: true }),
+    /signed domain-core activation checkout must be clean/u,
+  );
+  const result = resolve(fx.root, activation, { requireClean: false });
+  assert.equal(result.active, true);
 });

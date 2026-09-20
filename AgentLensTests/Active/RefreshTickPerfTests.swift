@@ -501,7 +501,16 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         )
     }
 
-    func test_backgroundTickDoesNotHydrateBeforePresentationDemand() async throws {
+    /// The status item is a presentation consumer that is always on screen,
+    /// so the FIRST background tick after ingestion hydrates exactly once
+    /// (quick newest-N publish + full multi-window snapshot). Later idle
+    /// ticks and an explicit presentation load stay cheap after that.
+    ///
+    /// Two-phase hydration is the version contract: the quick in-memory
+    /// publish and the full SQL snapshot apply each bump `usagesVersion`,
+    /// because the full apply refines approximate in-memory aggregates into
+    /// exact SQL ones — aggregate consumers must be notified of both.
+    func test_backgroundTickHydratesOnceForStatusItem_thenStaysIdle() async throws {
         let store = try makeStore()
         store.nowProvider = { [noon] in noon }
         try await store.insert([sampleUsage(seed: 1), sampleUsage(seed: 2)])
@@ -510,17 +519,23 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         let v0 = store.usagesVersion
         await store.reloadUsagesIfChanged()
 
-        XCTAssertTrue(store.usages.isEmpty)
-        XCTAssertEqual(store.usagesVersion, v0)
-        XCTAssertNil(store.lastRefresh)
-        XCTAssertFalse(store.debugHasLoadedUsagePresentationForTesting)
+        XCTAssertEqual(store.usages.count, 2, "The first tick must hydrate for the always-on status item")
+        XCTAssertEqual(store.usagesVersion, v0 &+ 2, "Quick publish + full snapshot apply are two content versions")
+        XCTAssertNotNil(store.lastRefresh)
+        XCTAssertTrue(store.debugHasLoadedUsagePresentationForTesting)
         XCTAssertNotNil(store.debugLastReloadedUsageWriteMarkerForTesting)
 
+        // Idle tick: no writes since hydration, still before midnight.
+        store.nowProvider = { [noon] in noon.addingTimeInterval(60) }
+        await store.reloadUsagesIfChanged()
+
+        XCTAssertEqual(store.usagesVersion, v0 &+ 2, "An idle tick must not touch the aggregate caches")
+        XCTAssertEqual(store.usages.count, 2)
+
+        // Explicit dashboard demand after hydration is idempotent.
         await store.loadUsagePresentationIfNeeded()
 
-        XCTAssertEqual(store.usages.count, 2)
-        XCTAssertEqual(store.usagesVersion, v0 &+ 1)
-        XCTAssertTrue(store.debugHasLoadedUsagePresentationForTesting)
+        XCTAssertEqual(store.usagesVersion, v0 &+ 2)
     }
 
     func test_repeatedPresentationLoadIsIdempotent() async throws {
@@ -553,7 +568,11 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         }
 
         XCTAssertEqual(store.usages.count, 1)
-        XCTAssertEqual(store.usagesVersion, 1)
+        XCTAssertEqual(
+            store.usagesVersion,
+            2,
+            "Two-phase hydration: the quick in-memory publish and the full SQL snapshot apply each bump the version once"
+        )
         XCTAssertEqual(
             store.debugRefreshGenerationForTesting,
             1,

@@ -75,6 +75,7 @@ describe("per-uid rate limit call-site coverage", () => {
   const CALLABLES_REQUIRING_UID_RATE_LIMIT: Array<{ exportedName: string; checker: string; module: string }> = [
     { exportedName: "triggerVoIPCall", checker: "checkVoIPCallRateLimit", module: "callables/voipPush.ts" },
     { exportedName: "searchKnowledge", checker: "checkKnowledgeSearchRateLimit", module: "callables/knowledgeSearch.ts" },
+    { exportedName: "listKnowledgeChunks", checker: "checkKnowledgeSearchRateLimit", module: "callables/knowledgeSearch.ts" },
     { exportedName: "submitAgentNotificationReply", checker: "checkAgentNotificationReplyRateLimit", module: "callables/agentNotifications.ts" },
     { exportedName: "insightsHostedAnswer", checker: "checkHostedInsightsAnswerRateLimit", module: "insightsHostedAnswer.ts" },
     { exportedName: "benchAssistant", checker: "checkBenchAssistantRateLimit", module: "benchAssistant.ts" },

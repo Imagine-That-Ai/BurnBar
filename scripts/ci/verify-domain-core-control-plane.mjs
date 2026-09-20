@@ -30,6 +30,7 @@ const SEED_PATHS = Object.freeze([
   "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/openburnbar_domain_ffi.swift",
   "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift",
   "android/build.gradle.kts",
+  "android/gradle.properties",
   "android/gradle/ktlint-android-sources.gradle.kts",
   "android/gradle/wrapper/gradle-wrapper.jar",
   "android/gradle/wrapper/gradle-wrapper.properties",
@@ -75,6 +76,7 @@ const SEED_PATHS = Object.freeze([
   // the workflow's push.paths text. Keep them explicit now that exact-main
   // proof runs on every main commit without a path filter.
   "scripts/ci/evaluate-domain-core-promotion.mjs",
+  "scripts/ci/domain_core_source_fingerprint.py",
   "scripts/ci/verify-domain-core-control-plane.mjs",
   "scripts/ci/verify-domain-core-legacy-absence.py",
   "scripts/ci/verify-domain-core-protected-attestation.mjs",

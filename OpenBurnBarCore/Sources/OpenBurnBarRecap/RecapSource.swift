@@ -77,6 +77,16 @@ public protocol RecapSource: Sendable {
     /// bucketed by month — a per-month loop over an unindexed table is N full
     /// scans, and history backfill asks for twelve of them at once.
     func rows(for windows: [RecapWindow]) async throws -> [RecapWindow: RecapRowBatch]
+
+    /// Every row the source can see from the beginning of its history through
+    /// `window`, bucketed by calendar month.
+    ///
+    /// Return `nil` when a platform cannot afford or guarantee a complete
+    /// read. That lets mobile keep its bounded Firestore walk without turning
+    /// the latest twelve months into a false "all time" baseline. A local
+    /// database source can override this with one full scan and thereby unlock
+    /// record, lifetime, and first-ever claims.
+    func completeRows(through window: RecapWindow) async throws -> [RecapWindow: RecapRowBatch]?
 }
 
 public extension RecapSource {
@@ -87,5 +97,9 @@ public extension RecapSource {
             result[window] = try await rows(for: window)
         }
         return result
+    }
+
+    func completeRows(through window: RecapWindow) async throws -> [RecapWindow: RecapRowBatch]? {
+        nil
     }
 }

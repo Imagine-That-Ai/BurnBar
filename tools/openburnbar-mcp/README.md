@@ -2,6 +2,15 @@
 
 Default read-only access to your **OpenBurnBar SQLite** database (`conversations`, `token_usage`, `chat_messages`) so MCP-capable clients can search transcript indexes and usage without the in-app assistant’s trimmed system prompt.
 
+> **New here?** Two shorter reads before this one.
+> [`docs/HOW_TO_MEMORY_MCP.md`](../../docs/HOW_TO_MEMORY_MCP.md) answers the six
+> questions people actually ask — what is on by default, what you must install
+> into each coding agent, what collects automatically, whether anything prunes
+> itself (it does not), how to test the whole loop in ten minutes, and what
+> leaves the machine. [burnbar.ai/memory](https://burnbar.ai/memory) is the same
+> story with the measurements and the tool atlas. This README is the reference
+> they both point back to.
+
 The local server now fails closed for higher-risk capabilities. By default it blocks cloud decrypt, cloud sync, local writes, full plaintext reads, and process spawn. Enable a capability only for the shell session that needs it:
 
 ```bash
@@ -16,6 +25,22 @@ export OPENBURNBAR_LOCAL_MCP_ENABLE_SPAWN=true           # detached native/cross
 
 ## Setup
 
+The repo-scoped `openburnbar` entry in [`.mcp.json`](../../.mcp.json) uses the
+memory-only launcher and needs no Rust toolchain:
+
+```bash
+./tools/openburnbar-mcp/bootstrap-memory.sh
+```
+
+On its first run, `launch-memory.sh` calls `bootstrap-memory.sh`, creates
+`.venv`, and installs only `requirements.txt`. It prefers Python 3.12, then
+3.11, then 3.13, before accepting any `python3` that is 3.11 or newer. It does
+not invoke Cargo, build the domain-core binding, or build the static parser.
+MCP clients bootstrap it automatically; the command above is only needed when
+you want to prepare a fresh checkout before the first MCP connection.
+
+For the full Project Code Memory static tier, use the existing setup path:
+
 ```bash
 cd tools/openburnbar-mcp
 ./setup.sh
@@ -29,6 +54,14 @@ static tier, and symlinks the `burnbar-operator` Hermes skill into
 continue without the static parser helper.
 
 Optional: `export BURNBAR_DB_PATH="/path/to/openburnbar.sqlite"` if the DB is not under `~/Library/Application Support/OpenBurnBar/`.
+
+The client examples below point at `.venv/bin/python` + `server.py`, which
+exposes every toolset; that venv must exist first (either bootstrap above or
+`setup.sh`). For a memory-only client that bootstraps itself, point the
+command at `tools/openburnbar-mcp/launch-memory.sh` with
+`BURNBAR_MCP_TOOLSET=memory` in its env, exactly as `.mcp.json` does. The
+bootstrap copes with a venv that was created without `pip` (for example by
+`uv venv`) and with two clients starting at the same moment.
 
 ## Cursor
 
@@ -125,9 +158,187 @@ mcp_servers:
 
 Restart Hermes. The skill activates on questions about spend, sessions, or workflow. If you used the OpenBurnBar setup wizard, this is configured automatically.
 
+## Draining synced memories at session start (opt-in)
+
+The mirror image of the `SessionEnd` memorize hook, for the *pull* half of
+Memory Blind Sync. The app verifies and parks your other devices' sealed
+`memory_facts` documents in its local inbox on its own cadence, but the engine
+merges them only when something calls `burnbar_memory_sync_pull`. Without a
+caller, a member who turns "Sync memories to my other devices" on can wait
+indefinitely and see nothing new in `burnbar_recall`.
+
+[`hooks/claude-code-session-start.sh`](hooks/claude-code-session-start.sh) runs
+[`sync_remote_memories.py`](sync_remote_memories.py), which calls that same tool
+through the same daemon socket / signed CLI courier — no second implementation,
+no extra privilege, and the daemon's consent-marker scope check applies to it
+exactly as it does to an agent's own call.
+
+**It is opt-in, and stays off until you say otherwise.** It merges content this
+device did not write, so `OPENBURNBAR_MEMORY_SYNC_HOOK` must be set to `on`
+(`1`, `true`, `yes`, `enabled`) for it to do anything at all; unset, it exits 0
+having done nothing. That is a second switch on top of the app's own consent
+gate, not a replacement for it — with "Sync memories to my other devices" off,
+the daemon hands the engine nothing whatever this hook is set to. The same
+default-off gate applies to `sync_remote_memories.py` run by hand or imported;
+`--force` (or `drain(force=True)`) is the explicit way to drain once without
+setting the variable, because a member typing the command IS the opt-in.
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/Projects/BurnBar/tools/openburnbar-mcp/hooks/claude-code-session-start.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+with `OPENBURNBAR_MEMORY_SYNC_HOOK=on` in the environment Claude Code runs in.
+Inside this repository, `$CLAUDE_PROJECT_DIR` works in `.claude/settings.local.json`
+the same way it does for the `SessionEnd` hook above.
+
+**It never blocks session start.** A 20-second deadline (`--budget-seconds`),
+one JSON status line, and exit 0 in every case except a usage error. Statuses:
+`drained` (at least one memory landed or folded in), `nothing_pending` (the
+common case — nothing was waiting), `skipped_disabled`, `unavailable` (no
+daemon, or the courier was rejected), `denied`, `timeout`, `error`. The printed
+line is a receipt: counts, flags and status codes, never a memory body.
+
+**Other agents, and by hand.** An agent that is not running this hook should
+call `burnbar_memory_sync_pull` itself once at the start of a session in a
+project whose memories you sync — it is idempotent, cheap when the inbox is
+empty, and the only way a memory learned on another Mac becomes visible to
+`burnbar_recall` here. By hand:
+`./tools/openburnbar-mcp/.venv/bin/python tools/openburnbar-mcp/sync_remote_memories.py --project .`
+
 ## Claude Desktop
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add the same `mcpServers.openburnbar-local` block under `mcpServers`, then restart Claude Desktop.
+
+## Automatic collection from Claude Code sessions
+
+Memories are normally written only when an agent decides to call
+`burnbar_memorize`. The `SessionEnd` hook closes that gap: when a Claude Code
+session ends, [`hooks/claude-code-session-end.sh`](hooks/claude-code-session-end.sh)
+feeds the session transcript to [`memorize_transcript.py`](memorize_transcript.py),
+which calls the same `burnbar_memorize` wrapper the MCP tool uses. Durable facts
+from every session are collected without anyone remembering to ask.
+
+Opt in by adding this to your own **user-level** `~/.claude/settings.json`.
+`$CLAUDE_PROJECT_DIR` does not work here: it expands to whatever project the
+session ran in, not to this checkout, so the hook would look for the script
+inside every unrelated repository. Give the absolute path to the checkout
+instead — substitute yours for `$HOME/Projects/BurnBar`:
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/Projects/BurnBar/tools/openburnbar-mcp/hooks/claude-code-session-end.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Inside this repository — in `.claude/settings.local.json`, since the shared
+`.claude/settings.json` is deliberately not modified — `$CLAUDE_PROJECT_DIR` is
+the checkout, so the repo-relative form is correct there:
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/tools/openburnbar-mcp/hooks/claude-code-session-end.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The hook reads Claude Code's JSON payload (`session_id`, `transcript_path`,
+`cwd`, `reason`) on stdin, keeps only `user` and `assistant` prose (tool calls,
+tool results, thinking blocks, summaries, `isMeta` lines, and wrapper tags such
+as `<system-reminder>` are dropped), keeps the tail within 400 messages and
+200,000 characters, and memorizes it against the session's `cwd` with
+`source_kind="session"` and `source_ref="claude-code:<session_id>"`. Each stored
+row keeps both halves of its provenance — the extractor's message marker behind
+the caller's reference, `sourceRef = "claude-code:<session_id>#m3"` — so a
+memory can be traced back to the session and the turn it came from. The
+transcript format is documented as internal, so parsing is lenient by design:
+malformed lines are skipped, never raised on.
+
+**It never blocks session end.** The CLI enforces its own 20-second deadline
+(`--budget-seconds`), prints one JSON status line, and exits 0 in every case
+except a usage error. Statuses: `memorized` (at least one memory was written or
+reinforced), `already_ingested`, `skipped_no_facts` (nothing worth keeping was
+extracted), `rejected` (facts were considered and every one of them was
+refused), `skipped_disabled`, `skipped_missing_transcript`, `skipped_empty`,
+`timeout`, `error`. The deadline covers reading the transcript as well as
+memorizing it. The hook script itself always exits 0, and bootstraps the venv
+quietly if it is missing.
+
+**The first session end on a machine without the venv usually memorizes
+nothing.** Bootstrapping the interpreter and dependencies takes most of the
+30-second hook budget on its own, so that run typically reports `timeout` (or is
+cut off by Claude Code) and writes no memories. The venv it built persists, so
+the next session end — and every one after it — completes normally. Run
+`./tools/openburnbar-mcp/bootstrap-memory.sh` once by hand to skip that first
+lost run.
+
+**Idempotent.** `burnbar_memorize` keys an ingest receipt on the content hash of
+the transcript, so re-running the same session (a `--resume`, a replayed
+transcript, two hooks firing) reports `already_ingested` and writes no duplicate
+memories.
+
+**Privacy.** Everything stays on this machine: the transcript is read locally
+and written to the local memory store, never uploaded. Facts go through the same
+secret/PII gate as the tool path — secrets are redacted before storage
+(`sensitivity: redacted`, the raw token never reaches the body, tags, entities,
+metadata, or source ref), prompt-injection candidates are quarantined, and every
+row is AES-256-GCM encrypted at rest. Each run appends a label-only audit event
+(`memory.memorize`) to the hash chain. Set
+`OPENBURNBAR_MEMORY_SESSION_HOOK=off` to disable collection entirely (nothing is
+read and no store is created), and
+`OPENBURNBAR_MEMORY_SESSION_HOOK_LOG=<file>` to keep the status lines instead of
+discarding them. The printed line is a receipt — status, counts, decision
+events, memory ids, the source hash — and carries no memory text, no decision
+body and no transcript content; the hook still sets `umask 077` and creates the
+file `0600`, because the ids and counts are themselves telling. An existing file
+keeps whatever mode it already has.
+`OPENBURNBAR_MEMORY_PYTHON` overrides the interpreter.
+
+Run it by hand against any transcript:
+
+```bash
+./tools/openburnbar-mcp/.venv/bin/python tools/openburnbar-mcp/memorize_transcript.py \
+  --transcript ~/.claude/projects/<project>/<session>.jsonl --project "$PWD" --session-id manual
+```
 
 ## Tools
 
@@ -139,11 +350,23 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_semantic_search_conversations` | Local deterministic semantic search over indexed conversation chunks; returns structured `unavailable` when semantic tables or compatible embeddings are absent |
 | `burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search over the user's cloud session-log index; derives opaque query hashes locally and decrypts snippets locally |
 | `burnbar_cloud_get_conversation_body` | Download and decrypt a full hosted session body returned by cloud semantic search |
-| `burnbar_remember` | **Write** a durable project-scoped local agent memory after secret/PII scanning |
-| `burnbar_recall` | Recall project-scoped local agent memories; cross-project recall is explicit opt-in |
-| `burnbar_forget` | **Write** a hard delete for one local memory and append a label-only audit event |
-| `burnbar_audit_trail` | Read the local label-only memory/code audit hash chain |
-| `burnbar_memory_analytics` | Aggregate local memory counts by kind and scope |
+| `burnbar_remember` | **Write** one durable memory (kind, scope, tags, entities, metadata, `supersedes`, `expires_at`, `immutable`); secrets redacted, PII kept by default; mirrored to the daemon ledger when reachable |
+| `burnbar_memorize` | **Write** durable memories from a conversation, text, or pre-extracted `facts` (the mem0 `add()` equivalent): extraction → gate → injection screen → ADD / UPDATE / NONE / DELETE reconciliation; idempotent per input |
+| `burnbar_recall` | Hybrid BM25 + vector recall with reciprocal-rank fusion and salience rerank, plus an optional Memory Pro model rerank of the top hits (`rerank`, reported in `trustSignal.rerank`); kind/tag/entity/metadata/date filters; personal-scope memories follow the user across projects; bodies and free-form auxiliary fields wrapped as untrusted content |
+| `burnbar_recall_pack` | Token-budgeted, prompt-ready block of the most relevant memories, wrapped as untrusted retrieved data |
+| `burnbar_memory_ask` | Memory Pro: an answer built only from cited memories, or an explicit refusal; needs `memory_llm_read` |
+| `burnbar_memory_get` / `burnbar_memory_list` | Read one memory (optionally with history) / page through memories with filters and ordering; quarantined rows are hidden by default and explicit review reads are wrapped |
+| `burnbar_memory_update` | **Write** patch a memory in place (stable id, history row, re-embed) |
+| `burnbar_memory_history` | Per-memory change history with wrapped before/after bodies and metadata |
+| `burnbar_memory_review` | **Write** approve / quarantine / reject (injection suspects start quarantined); the row is locked for the decision, and `expected_updated_at` refuses it if the memory changed since it was read |
+| `burnbar_forget` | **Write** hard-delete one memory (body, vectors, history, relations, vault) with a label-only audit event; mirrored to the daemon when reachable |
+| `burnbar_forget_all` | **Write** two-step bulk delete for a project (optionally scope / kinds); the preview returns `selectionToken`, the confirmation needs `confirm="DELETE"` plus that `selection_token`, and is refused if the matching rows changed |
+| `burnbar_memory_entities` / `burnbar_memory_relations` | Entities mentioned by memories, and heuristic (subject, predicate, object) relations |
+| `burnbar_memory_export` / `burnbar_memory_import` | JSON export (requires `sensitive_read`; retained secrets excluded unless asked) and machine-round-trippable project export/import; `all_projects` exports are diagnostic archives and cannot be flattened into one project; trust wrappers are provenance-checked, decoded, then every value passes the normal import gate again |
+| `burnbar_memory_reindex` | **Write** embed memories missing a vector for the active model version; purge stale-version vectors |
+| `burnbar_memory_sync_pull` | **Write** merge this member's memories from their other devices (Memory Blind Sync §5): drains the daemon's inbox of already-verified, already-opened `memory_facts` documents, folds them in under last-writer-wins on `updatedAt` converging on `(project_id, scope, body_hash)`, and acknowledges only what it finished with. Every row passes the same gate `burnbar_remember` passes, a memory this device forgot is never revived, and a supersede whose target has not arrived is parked for the next pull rather than dropped |
+| `burnbar_audit_trail` | Read the label-only memory audit hash chain, with chain verification |
+| `burnbar_memory_analytics` | Counts by kind / scope / sensitivity / review status, embedding coverage, vault entries, policy |
 | `burnbar_index_project` | **Write** a local-only, project-partitioned code index into the existing search substrate; accepts `storage_budget_bytes` |
 | `burnbar_watch_project` | **Write** start daemon-owned automatic reindexing for source/git-ref changes |
 | `burnbar_search_code` | Lexical/path search over local-only indexed project code; returns `semanticAvailable=false` until a real local embedding provider is configured |
@@ -155,6 +378,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_index_status` | Read project-scoped code-memory index status |
 | `burnbar_explore` | **Write** auto-index if needed, then search and return a context pack |
 | `burnbar_memory_doctor` | Check local memory/code schema, write mode, and index health |
+| `burnbar_team_link_project` | **Write** the checked-in `.openburnbar/project.json` entry saying which shared `teamProjectId` this repository publishes to a team — team document ids derive from it and never from the repository's git identity. Every write needs `confirm=true`, and the entry counts only once it is COMMITTED: both readers take the link from git `HEAD` |
 | `burnbar_list_project_memory` | List project memory snapshots with source counts and freshness |
 | `burnbar_get_project_memory` | Read one project memory snapshot by slug |
 | `burnbar_cloud_sync_project_memory` | Sync a local project memory snapshot through the encrypted cloud path |
@@ -195,6 +419,165 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `castle_status_snapshot` | Read Castle status records for dashboard/debug surfaces |
 | `castle_seed_worktree_isolation` | Seed `.git/info/exclude` with known agent scratch paths before launching a worker |
 
+## Local memory engine
+
+The memory tools above are served by the `memory_engine/` package, an MCP-owned store at
+`~/Library/Application Support/OpenBurnBar/openburnbar-memory.sqlite`
+(override with `OPENBURNBAR_MEMORY_DB_PATH`). Design and the gap analysis
+against mem0 / Mixedbread: [`docs/superpowers/2026-09-02-memory-mcp-v2-design.md`](../../docs/superpowers/2026-09-02-memory-mcp-v2-design.md).
+
+- **Works without the daemon.** Production daemons reject this process as an
+  unsigned peer and the app database is SQLCipher-encrypted, so the engine is
+  the authority for the local MCP. Committed non-secret memories are mirrored
+  to the daemon ledger through the signed `openburnbar-cli memory-remember` /
+  `memory-forget` couriers when installed; unsigned development builds fall
+  back to the daemon socket. Every write reports `mirror.status`
+  (`mirrored | partial | peer_rejected | unreachable | rejected | disabled |
+  skipped`). `partial` is used only for a multi-row lifecycle operation whose
+  failed deletes remain retryable.
+  A mirrored row records the daemon's own content-derived id, and
+  `burnbar_forget` uses that id for the daemon-side forget (a row that was
+  never mirrored reports `mirror.status: skipped` instead of sending the
+  engine's local id). If the daemon is unavailable, a metadata-only tombstone
+  retains its id and original project path for a later `burnbar_forget` retry,
+  and clears only after the daemon reports `localDeleted: true`. Mirror
+  provenance uses only the engine-gated `sourceRef`, never the caller's raw
+  source string. Only permanent approved rows are mirrored; expiring,
+  quarantined, rejected, and secret rows stay local. Personal-memory updates
+  reconcile the previous daemon copy before remirroring in the row's owning
+  project.
+- **Legacy daemon memories migrate themselves.** Memories written by the
+  pre-engine `burnbar_remember` or by the app into the daemon-owned
+  `agent_memories` store are imported into the engine store once, on the
+  first `burnbar_recall` / `burnbar_recall_pack` / `burnbar_memory_list` for
+  a project (gated and reconciled like any other write, `sourceKind:
+  legacy_daemon`, `metadata.legacyMemoryID`). The outcome is reported as
+  `legacyMigration` on those responses and in `burnbar_memory_doctor`; when
+  the app database is unreadable (signed install) it is a status, never an
+  error. Migration paginates the complete active daemon ledger rather than
+  stopping at 2,000 rows. Transient unavailable or capability-disabled
+  outcomes and recoverable gate rejections are not receipted or cached and
+  retry on the next read. Successful imports preserve the daemon memory id and
+  original project path so a later forget deletes the legacy daemon row too.
+- **Encrypted at rest.** Bodies and history bodies are AES-256-GCM sealed with
+  a key the engine owns (`openburnbar-memory.key`, mode 0600, published
+  atomically so two first-run processes cannot truncate each other's key, or
+  `OPENBURNBAR_MEMORY_KEY_BASE64`). The database and its WAL / SHM sidecars are
+  mode 0600. A missing or invalid key for a populated store fails closed rather
+  than replacing the only key reference. Vectors and metadata are plaintext, the same posture as the app's
+  on-disk `VectorIndexes/`. No FTS table is written; BM25 runs in-process over
+  one project's decrypted bodies. Reinforcement history and the ingest replay
+  table hold hashes and labels, never bodies.
+- **Embeddings.** `OPENBURNBAR_MEMORY_EMBEDDING_PROVIDER=auto|ollama|none`
+  (default `auto`), model `OPENBURNBAR_MEMORY_EMBEDDING_MODEL`
+  (default `nomic-embed-text`; `mxbai-embed-large` works too), Ollama at
+  `OPENBURNBAR_OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`). Run
+  `ollama pull nomic-embed-text` once. Without a provider recall is lexical
+  only and `burnbar_memory_doctor` says so. Vectors carry the model version and
+  are never compared across versions; `burnbar_memory_reindex` re-embeds.
+- **Extraction.** `burnbar_memorize` prefers `facts` the calling agent already
+  extracted (free, highest quality). Otherwise `OPENBURNBAR_MEMORY_EXTRACTOR` =
+  `heuristic` (default, deterministic, offline) | `claude` (`claude -p`, the
+  user's own plan) | `ollama` (`OPENBURNBAR_MEMORY_EXTRACTOR_MODEL`) | `none`
+  (store the raw text as one `note`). Selecting `claude` or `ollama` through
+  the tool's `extractor` argument (rather than the env) needs the
+  `memory_llm_extract` capability (`OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_EXTRACT=true`
+  or the operator profile), and `claude` additionally needs `spawn_process`.
+  External extractors only ever receive a gated transcript: secrets are
+  redacted first, and nothing is sent when the scanner cannot run.
+- **Secrets and PII.** `OPENBURNBAR_MEMORY_SECRET_POLICY` = `redact` (default:
+  keep the fact, replace the secret with `[REDACTED:<label>]`) | `reject` |
+  `retain`. `OPENBURNBAR_MEMORY_PII_POLICY` = `keep` (default; your own email
+  in your own local memory is useful context) | `redact` | `reject`. SSNs and
+  card numbers are always redacted. The gate covers tags, entities, metadata,
+  and `source_path` as well as the body, and base64 / hex encoded secrets are
+  decoded and redacted at their surface span. A secret that only appears once
+  line continuations or adjacent string literals are joined cannot be redacted
+  in place, so `redact` refuses that write (`SECRET_DETECTED`) rather than
+  storing a reconstructable form. In `retain` mode, re-remembering the same
+  sentence with a rotated secret keeps one memory and replaces the vault
+  entry (`secretRotated: true`). Prompt-injection screening covers tags,
+  entities, metadata, and `source_path` as well as the body; a hit in any of
+  them quarantines the memory.
+- **Untrusted recall boundary.** Prompt-injection sentinels in the body, tags,
+  entities, metadata keys/values, or `source_path` quarantine the row. Default
+  recall/get/list/entity/relation surfaces exclude quarantined rows, including
+  legacy rows detected by the read-time backstop. Explicit review reads keep
+  their JSON shape but wrap free-form values, injection-bearing metadata keys,
+  and history metadata as untrusted data.
+  `burnbar_memory_export` applies the same shape-preserving wrappers, including
+  to quarantined rows and retained secret text.
+- **Experimental: retain secrets.** `retain` stores the verbatim text in an
+  encrypted vault table, keeps a redacted, searchable body in the main store,
+  and hides the memory from default recall. It needs
+  `OPENBURNBAR_LOCAL_MCP_ENABLE_SECRET_RETAIN=true` (never granted by the
+  operator profile) to write, and `sensitive_read` plus `include_secrets=true`
+  to read back. Retained memories are never mirrored or exported by default.
+- **Write capability.** `memory_write` is on by default when
+  `BURNBAR_MCP_TOOLSET=memory`, and also granted by `local_write` or the
+  operator profile. Set `OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_WRITE=false` to
+  force it off. Writes are rate-limited under the `memory` family.
+- **Structured refusals.** Malformed JSON in `filters`, `metadata`, `facts`,
+  or `memories` returns `INVALID_JSON_ARGUMENT` (never a silently widened
+  query); filter `AND` / `OR` clauses must be non-empty arrays of objects.
+  Invalid `expires_at` values are rejected instead of becoming immortal rows.
+  Editing a memory's text to match another active memory returns
+  `DUPLICATE_BODY`; re-remembering text whose memory was rejected in review
+  returns `NONE` with `PREVIOUSLY_REJECTED` (re-approve it with
+  `burnbar_memory_review`), while an expired duplicate is reactivated
+  (`UPDATE`, `reactivated: true`), and a fact that reverts to an earlier
+  statement (A, then B, then A again) brings the retired row back under its
+  original id. `tags=[]` / `entities=[]` on `burnbar_memory_update` clear the
+  field; omit the argument to keep it. `burnbar_recall_pack` budgets the whole
+  serialized pack (floor 192 tokens: the envelope plus one truncated line),
+  keeps each memory on one line, neutralizes pack sentinels inside bodies, and
+  reinforces only memories that actually fit. Import skips retired rows from
+  historical exports so obsolete facts cannot become active again.
+- **Cross-store lifecycle.** Supersession, negation/`DELETE`, quarantine, and
+  confirmed bulk deletion forget
+  the corresponding daemon mirrors. Failed daemon deletes retain only the
+  local-to-daemon id tombstone and can be retried after the local row is gone.
+  Update, review, and import writes also reconcile the mirror; body changes
+  retire the old content-derived daemon id before publishing the replacement,
+  and the recorded body hash makes an interrupted transition safely retryable.
+  A project-scoped reindex leaves other projects' old-version vectors intact,
+  and a transient Ollama startup miss is retried without restarting the MCP.
+  Concurrent duplicate inserts serialize lookup plus insertion, and embedding
+  HTTP calls complete before SQLite write locks are taken.
+- **Quality.** `eval_memory.py` scores lexical vs hybrid recall on a 40-memory
+  / 30-paraphrase gold set against your local Ollama model (hybrid R@5 0.90,
+  MRR 0.678 on `nomic-embed-text`).
+- **Extraction quality.** `eval_memory.py --extraction --provider none` replays
+  `eval/extraction_gold.json` — 36 realistic developer conversations, 7 of them
+  with nothing durable to remember — through the heuristic extractor. Measured
+  2026-09-02: **recall 0.667** (20 of 30 expected facts), precision 1.0, one
+  fact invented across the seven empty conversations, zero forbidden-string
+  leaks. `tests/test_eval_extraction.py` pins `RECALL_FLOOR = 0.65` (the
+  measurement rounded down to a multiple of 0.05), `leaks == 0`, and
+  `emptyCaseFacts <= 2`, so the number can only ratchet up. Precision saturates
+  because the extractor is conservative — it fires on roughly one sentence per
+  conversation or none at all — so recall and the empty-case count are the
+  informative halves. The ten misses are architecture and constraint statements
+  phrased without a cue word ("routes through a unix socket", "must finish
+  inside the 30 second timeout"); they are logged verbatim by `--verbose`.
+- **Gate coverage.** `eval_memory.py --gate` prints the detection matrix for
+  the 25 secret shapes the shared corpus flags standalone, per encoding.
+  Detection is complete for raw tokens; the encoded gaps as of 2026-09-02 are
+  an AWS access key id base64- or hex-encoded, a `postgres://user:pass@host`
+  URI or a `password=…` assignment URL-encoded, and a 64-char hex signing key
+  hex-encoded again. `tests/test_gate_adversarial.py` plants every one of those
+  shapes in eight caller-controlled places (prose (middle and end), a key/value
+  line, a fenced code block, a tag, an entity, a metadata value, a source ref)
+  and proves that
+  under `redact` the verbatim token reaches no result, `get`, `list`, `recall`,
+  `pack`, `export`, `history` or audit-trail surface and is absent from the
+  store's raw bytes (WAL included); under `reject` the write is refused; and
+  under `retain` a body secret is returned only by the encrypted vault while an
+  auxiliary field, which has no vault, carries it on no surface at all.
+  Auxiliary fields are gated on their raw, pre-normalization form, so a
+  credential written as a tag is refused or dropped exactly like one written in
+  the body even though the stored tag is lowercased.
+
 Project Code Memory is local-only by default. Indexing uses a shared
 Swift/Python secret-scanner corpus, Git exclude-standard ignore semantics when
 the project is a Git worktree, manifest-backed delta indexing for
@@ -208,12 +591,24 @@ like `{"python":["pyright-langserver","--stdio"],"swift":["sourcekit-lsp"]}` to
 enable opt-in `exact_lsp` symbol/reference tiers; the helper falls back when the
 language server is unavailable, slow, or stale.
 
-Write-capable tools are explicit, daemon-scoped, and disabled until
+Code-index write tools are explicit, daemon-scoped, and disabled until
 `OPENBURNBAR_LOCAL_MCP_ENABLE_LOCAL_WRITE=true` or
-`OPENBURNBAR_LOCAL_MCP_PROFILE=operator` is set. Memory/code writes are
-fail-closed: `burnbar_remember`, `burnbar_forget`, `burnbar_index_project`,
-`burnbar_watch_project`, and `burnbar_explore` require the daemon socket and do
-not fall back to direct SQLite writes. `burnbar_record_hermes_usage` never touches the SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is
+`OPENBURNBAR_LOCAL_MCP_PROFILE=operator` is set. Code writes are
+fail-closed: `burnbar_index_project`, `burnbar_watch_project`, and
+`burnbar_explore` require the daemon socket and do not fall back to direct
+SQLite writes. On a signed install the daemon admits only first-party signed
+peers, so those three travel the signed courier as
+`openburnbar-cli code-index-project | code-watch-project | code-explore` — the
+same route `search-sql` and `memory-remember` take. Code index *reads* were
+always covered, because they are plain SELECTs served by `search-sql`; these
+three are not, and before those subcommands existed they fell through to a
+direct socket connection the daemon refuses with
+`code=-32001 … peer failed first-party code-signature verification`.
+`tests/test_signed_courier_command_parity.py` holds the two command tables
+together. Memory writes (`burnbar_remember`, `burnbar_memorize`,
+`burnbar_forget`, …) go to the MCP-owned memory engine store described above
+and never touch the app database; the daemon mirror is best-effort.
+`burnbar_record_hermes_usage` never touches the SQLite DB. The writer is daemon-first: when a local OpenBurnBar daemon is
 reachable on its UNIX socket
 (`~/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock`) it sends
 the row through the `daemon.usage.record` RPC so the daemon's in-memory
@@ -244,6 +639,156 @@ tombstone receipt; local Project Memory stays authoritative and unchanged.
 native command hint, a rendered cross-harness briefing, or a structured error.
 `burnbar_spawn_resume` is intentionally separate so agents must make an explicit
 second tool call before launching a process.
+
+### Sync across devices (opt-in)
+
+Memory Blind Sync's pull half: the engine on one device can also read back the
+member's own approved memories that a *different* signed-in device already
+backed up, so a fact learned on the desktop shows up in `burnbar_recall` on the
+laptop too. The contract:
+
+- **What travels.** Only what the server ever stores for an approved memory —
+  a sealed blob, an opaque id, keyed source HMACs, a `kind`, a review status,
+  and three timestamps (see `docs/PRIVACY.md`'s "Optional Memory Backup and
+  Device Sync" section for the full field-by-field list). What never travels:
+  the memory text or body, its citations, any vector or embedding, secrets,
+  memories still awaiting review, memories flagged as prompt injection, or
+  repository knowledge.
+- **What this MCP process never holds.** This engine never has a vault key and
+  never opens a Firestore session itself. It receives already-opened,
+  already-decrypted `memory_facts` rows over the local daemon socket / signed
+  courier (`burnbar_memory_sync_pull`, gated by `memory_write` like every
+  other memory write tool) — the same daemon-first, courier-preferred
+  transport `burnbar_record_hermes_usage` and the code-index writers use. If
+  the daemon is unreachable or the capability is disabled, the tool returns a
+  structured `MCP_CAPABILITY_DISABLED` refusal and touches nothing.
+- **Convergence.** Rows merge under last-writer-wins on the sealed
+  `updatedAt`, tied broken by id, converging on `(project_id, scope,
+  body_hash)` — the same key `burnbar_remember` already dedupes on locally.
+  A memory this device forgot is never revived by an incoming row, and a
+  supersede whose target has not arrived yet is parked for the next pull
+  instead of dropped.
+- **Git projects only, and this is a hard boundary.** The convergence key
+  starts with the engine's `project_id`, which is derived from the repository's
+  git origin and root commit — the same value on every device that has the
+  repo. A project that is **not a git repository** has no such identity, so its
+  id is derived from the local filesystem path instead (a `path:` fingerprint)
+  and is therefore *different on every device*. Memories learned in a non-git
+  project never converge: they are uploaded, they are pulled down, and they
+  land as separate rows under a project id the other device does not recognise.
+  Nothing is lost and nothing is wrong; it simply does not merge. Put the
+  project under git if you want its memories to follow you.
+- **Bounds on the transit buffer.** A pulled document is parked as opened
+  plaintext in `agent_memory_inbox` until the engine merges it. Merged rows are
+  swept 30 days after the merge; rows still waiting for an engine that never
+  ran are swept after 90 days (nothing is destroyed — the sealed document is
+  still in the vault, and clearing the pull watermark re-pulls it). A document
+  carrying no engine project id (a chat memory, or a v1 payload) is refused at
+  verification and never parked at all.
+- **Forget.** Deleting a memory removes the cloud copy too (a forget receipt
+  carrying only opaque hashes and a coarse reason, per `docs/PRIVACY.md`) —
+  the pull half never re-downloads something this device deliberately
+  deleted.
+- **Scope, enforced rather than assumed.** The inbox is one member's. The
+  daemon holds no Firebase identity and this engine has no uid, so the app
+  publishes the signed-in member and their live consent as a marker row
+  (`BurnBarMemoryDeviceSyncMarker`) and the daemon's drain filters on it:
+  another account's parked rows are invisible, and with no marker — consent
+  off, signed out, or a store the app has never opened — the drain returns
+  nothing at all. The app also purges what may no longer drain on every state
+  transition it observes, so the two halves agree.
+- **Consent.** A dedicated sub-toggle, "Sync memories to my other devices" in
+  **Settings → Privacy**, defaults off even when "Back up approved memories"
+  is already on — backing memory up is not the same consent as syncing it
+  across devices. Both sit under the same Data Vault entitlement (Pro Max or
+  Ultra): `firestore.rules` requires it on every `memory_facts` **write**, and
+  the app requires it in the effective pull gate before it will issue a single
+  `memory_facts` **read** — the rules grant reads through the per-user
+  namespace rule, so the client gate is the one that stops a lapsed
+  entitlement. Turning backup off stops the pull too.
+
+**Measured, from the tests that actually run on this branch** — every number
+below is what a real assertion checks today, not a target:
+
+| Spec §8 metric | What actually runs |
+|---|---|
+| Plaintext fields in an uploaded document, asserted field-by-field | The authoritative, exhaustive allowlist is `firestore.rules`' `validMemoryFactKeys()` on `users/{uid}/memory_facts`, verified by the repo's Firestore rules CI job — untouched and not part of this branch's diff. This branch's own client-side coverage is partial, not exhaustive: `MemoryCloudSyncDomainTests.test_sync_replicatesApprovedMemory_whenBothLeversAllow` asserts `sealedMemory` is present and `text` / `body` / `vector` are absent from the uploaded document, and `MemoryCloudPullServiceTests.test_aDocumentCarryingAPlaintextTextFieldIsRejected` asserts a remote row carrying a plaintext `text` field is refused on the way in. |
+| Convergence on a three-replica simulation (add, update, supersede, retire, conflicting edits) | `test_memory_blind_sync.py::test_three_replicas_converge_on_an_identical_active_set` — three independent engine stores, each fed a different arrival order of the same edits, end on an identical active set |
+| Re-applying an inbox batch is byte-identical | `test_memory_blind_sync.py::test_replaying_a_batch_changes_nothing` (the `memories` rows), `test_replaying_a_batch_leaves_the_sync_state_row_untouched` (the `sync_state` reporting row — the watermark advances only on `ADD` / `UPDATE` / `REINFORCE`, so `applied_count` counts applications rather than offers), and `MemoryCloudPullServiceTests.test_applyingTheSameBatchTwiceChangesNothing` (the app's inbox upsert) |
+| Sync with the daemon absent, Firebase absent, consent off, or entitlement absent — zero network calls, zero local behaviour change | `MemoryCloudSyncDomainTests.test_sync_isNoOp_whenCloudBackupOptInIsOff_evenWithApprovedMemory`, `test_sync_isNoOp_whenFleetCeilingIsOff_despiteOptIn`, `test_sync_isNoOp_whenNotSignedIn`, and `test_sync_doesNotPull_whenTheDeviceSyncSubToggleIsOff` cover consent, fleet ceiling, account, and sub-toggle off; `test_memory_blind_sync.py::test_the_pull_tool_is_gated_by_memory_write` covers the MCP tool with no capability granted (no daemon reachable in practice). The Data Vault **entitlement** lever is a client-side gate by necessity: `firestore.rules` applies `hasActiveDataVaultEntitlement()` to `memory_facts` **create/update** only, while **reads** are granted by the per-user namespace rule (`match /users/{userId}/{collectionId}/{documentId}`, whose read allowlist includes `memory_facts`) with no entitlement check. So the client gate is what keeps a lapsed entitlement from issuing a live Firestore read at all. It is folded into the effective pull gate (`MemoryDeviceSyncGate`, read by `MemoryCloudSyncDomain`) and covered by `MemoryCloudSyncDomainTests.test_sync_doesNotPull_whenTheDataVaultEntitlementIsAbsent` — entitlement absent with both toggles on ⇒ zero `memory_facts` reads on the fake gateway and an empty inbox — plus the fail-closed matrix in `MemoryDeviceSyncSettingsTests`. The DRAIN half is gated independently and enforced rather than documented: `BurnBarProjectCodeMemoryStoreTests.testDrainingAsAnotherMemberReturnsNoneOfTheFormerAccountsRows` (member A's parked rows present, drain as member B ⇒ zero entries and zero acknowledgements), `testWithdrawingConsentStopsTheNextDrainEvenWithRowsStillParked` (sub-toggle off ⇒ the next drain returns nothing even with rows still unmerged), `testADrainWithNoConsentMarkerTableAtAllReturnsNothing` (fail-closed on a store the app has never opened), and `MemoryCloudSyncDomainTests.test_sync_purgesTheMembersOwnPendingRowsAndWithdrawsConsent_whenTheSubToggleIsOff` / `test_sync_purgesTheFormerMembersPendingRows_evenWithTheGateClosed` (the app-side eager purges, which run BEFORE the gate can return) |
+| Secrets, quarantined rows, injection-labelled bodies leaving the device — 0, asserted adversarially | `test_memory_blind_sync.py::test_a_remote_row_carrying_a_secret_is_refused_and_acknowledged` and `test_an_injection_labelled_remote_row_lands_quarantined` |
+| Vault-key rotation with memories present — every memory document rewrapped, none stranded | `CloudVaultRotationRewrapWorkerTests.testRotatingTheVaultKeyResealsEveryMemoryFactAndStrandsNone` — real `memory_facts` documents built by the production encoder, each run through the exact `CloudVaultCrypto.rewrapCloudVaultDocument` call `CloudVaultRotationRewrapWorker.rewrapCollection` makes: every one changes, the OLD key can no longer open any of them, the NEW key opens each under the AAD `(uid, "memory_facts", docID, "sealedMemory")` the pull requires, and `vaultGeneration` / `rewrapJobId` are stamped. `testTheDocumentRewrapPassCoversMemoryFacts` pins the wiring the worker is data-driven by (`CloudVaultRotationRewrapWorker.documentRewrapCollectionIDs`, from the `pensieve` domain), so a registry edit that dropped the collection fails rather than silently stranding every synced memory. The end-to-end Firestore rotation loop itself is still unfaked — the worker holds a concrete `Firestore` handle — so what is proven is the per-document rewrap plus the collection set, not a live paged scan. |
+
+### Pro models (opt-in)
+
+With BurnBar Pro and "Cloud models for memory" turned on in the app, the engine can use a frontier model for extraction, reconciliation, embeddings, reranking, and answers. The engine never holds a key: it asks the signed courier (`openburnbar-cli memory-model-policy`) what it may use and receives a 15-minute bearer scoped to `memory-*` purposes on the daemon's loopback gateway, which enforces Pro, per-provider consent, no-retention, and the daily cap before routing with keys from its own Keychain store. Subscription quota is used only through the official CLIs (`claude -p`, `codex exec`) behind the existing CLI consent. Every cloud path degrades to the local behavior and says why in the tool's `trustSignal`. `OPENBURNBAR_MEMORY_MODEL_POLICY_JSON` is a test-only seam, honored under pytest.
+
+**Extraction v2.** `burnbar_memorize(extractor="pro")` (or `"pro:<provider/model>"`)
+sends the *gated* transcript — secrets already redacted, injection lines already
+labelled — to the first model the policy lists for `memory-extract`, with the
+transcript framed as untrusted data. Rows carry `extractor = "llm:<provider>/<model>"`
+plus `metadata.extractPromptVersion` (`openburnbar-memory-extract-v2`),
+`metadata.transcriptGateHash` and `metadata.modelLatencyMs`; the result's
+`extraction` block says whether the model was applied and, if not, the gateway's
+denial code. A refusal (`PRO_REQUIRED`, `PROVIDER_NOT_CONSENTED`,
+`BUDGET_EXCEEDED`, …) falls back to the heuristic extractor in the same call.
+
+**Reconciliation judge.** When the policy lists a `memory-judge` model, the
+ambiguous band of `_commit_fact` — a conflict cue, or a best candidate above
+`CONFLICT_MIN_SIM` that is not a duplicate — asks the model for one of
+`ADD | UPDATE | NONE | DELETE` over at most six listed candidates. The judge can
+only name candidates it was shown, never immutable or injection-labelled rows,
+and any out-of-contract answer hands the decision back to the rules. Every
+decision records `decidedBy` (`rules` or `judge:<provider>/<model>`), a short
+`rationale`, and the `judge` outcome; the same fields land in the row's history.
+
+Measure it: `eval_memory.py --judge` replays `eval/judge_gold.json` (64 labelled
+cases, 16 scenarios × UPDATE/DELETE/NONE/ADD) through the rules and prints the
+agreement and confusion table; `--judge --with-model` consults the judge (needs
+the daemon and consent). `--extraction --extractor pro [--extractor-model
+provider/model]` scores a cloud extractor on the extraction gold set.
+
+| Reconciliation on `judge_gold.json` (64 cases) | Agreement |
+|---|---|
+| Rules only (lexical similarity, 2026-09-03) | 0.42 — the rules are deliberately conservative: without a strong cue they `ADD` (15/16 DELETE and 12/16 UPDATE cases land as ADD) |
+| Judge (`--with-model`) | run per provider on a Pro machine and record here; target ≥ 0.90 |
+
+**Cloud embeddings and rerank.** `OPENBURNBAR_MEMORY_EMBEDDING_PROVIDER=pro`
+selects `GatewayEmbeddingProvider`: vectors come through the gateway under the
+`memory-embed` purpose with the policy's embedding model, and the version id
+(`gateway:<provider>/<model>:<dimension>`) is part of the vector key, so
+switching providers never mixes spaces. `burnbar_memory_doctor` reports
+`embeddingPending` (active rows without a vector for the current version) and
+`burnbar_memory_reindex` clears it. When the daemon or consent is missing the
+provider degrades to lexical-only with the gateway's code in `embedding.reason`,
+and the miss is not cached, so recovery needs no restart.
+
+`burnbar_recall(rerank=…)` re-orders the top `rerank_top_k` (default 20, max 40)
+fusion hits by a chat model's relevance under the `memory-rerank` purpose.
+Passages are clipped to 1024 characters and framed as untrusted data; rows with
+injection labels are never sent and keep their fusion position
+(`why.reranker = "excluded:injection"`). `rerank=None` follows the policy,
+`rerank=False` never calls a model, and `trustSignal.rerank` reports `applied`,
+`off`, or `skipped:<code>` (a refusal or an out-of-contract answer leaves the
+fusion order). `why.rerankScore` and `why.reranker` name the model's verdict.
+Measure it with `eval_memory.py --provider pro --rerank` (or `--provider fake
+--rerank` for the plumbing): every mode is reported twice, `<mode>` and
+`<mode>+rerank`; a rerank stage that lowers `recall@5` is a regression, not a
+tuning choice.
+
+**Ask my memory.** `burnbar_memory_ask(question)` recalls up to 12 approved
+memories (never injection-labelled ones), lists them to the policy's
+`memory-answer` model as numbered untrusted data, and returns `answer`,
+`citations` (`memoryID`, `kind`, `snippet`) and `groundedness`: `grounded`
+(every citation is a listed memory), `partial` (unknown citations were
+dropped), or `refused` (no valid citation, or the fixed refusal). An answer
+carrying wrapper sentinels or a tool call is rejected (`code:
+ANSWER_REJECTED`) and replaced by the refusal; an empty pack refuses without a
+call. The tool needs `OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ=true` (or the
+operator profile) and wraps the answer and snippets as untrusted content.
+Measure it with `eval_memory.py --ask` over `eval/ask_gold.json` (38 questions,
+6 without evidence): it reports how often answers cite only listed memories,
+cite an expected memory, and refuse when nothing applies.
 
 ## Castle multi-runtime fan-out
 

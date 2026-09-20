@@ -29,12 +29,23 @@ export function ProfileHeatmapSection({
   points,
   today,
   dailyProviderTokens,
+  dailyModelTokens,
+  dailyModelProviders,
+  activeProviders,
   pinnedDay,
   onPinDay,
 }: {
   points: readonly DailyPoint[];
   today: string;
   dailyProviderTokens?: Record<string, Record<string, number>>;
+  /** Sparse per-day per-model token split ("day" → model → tokens), derived
+   *  client-side from bounded event aggregates when the rollup's provider
+   *  split is absent. Drives per-model cell coloring + the hover mix. */
+  dailyModelTokens?: Record<string, Record<string, number>>;
+  /** Per-day per-model provider attribution for brand-correct model hues. */
+  dailyModelProviders?: Record<string, Record<string, string>>;
+  /** Active provider-facet selection: cell colors recompute from this subset. */
+  activeProviders?: readonly string[];
   pinnedDay: string | null;
   onPinDay: (day: string | null) => void;
 }) {
@@ -43,6 +54,14 @@ export function ProfileHeatmapSection({
   // Click delegation: the SVG rects carry aria-labels starting with the
   // deterministic day label ("Aug 14, 2026 — …" / "Week of Aug 9, 2026 — …").
   // A click pins the matching day in the inspector; clicking it again unpins.
+  // Keyboard users get the same drill-in via focusable active-day cells
+  // (ContributionHeatmap `onSelectDay`) — Enter/Space pins the exact day.
+  const pinDay = React.useCallback(
+    (day: string) => {
+      onPinDay(pinnedDay === day ? null : day);
+    },
+    [onPinDay, pinnedDay],
+  );
   const onClick = React.useCallback(
     (e: React.MouseEvent<HTMLElement>) => {
       const target = e.target as Element | null;
@@ -51,9 +70,9 @@ export function ProfileHeatmapSection({
       const label = rect.getAttribute("aria-label") ?? "";
       const day = dayKeyFromLabel(label, points, today);
       if (!day) return;
-      onPinDay(pinnedDay === day ? null : day);
+      pinDay(day);
     },
-    [onPinDay, pinnedDay, points, today],
+    [pinDay, points, today],
   );
 
   return (
@@ -85,20 +104,23 @@ export function ProfileHeatmapSection({
         </div>
       </div>
       {/* Click delegation over the SVG grid: rects carry deterministic
-          day aria-labels (see dayKeyFromLabel). Matches the heatmap's
-          existing mouse-first idiom — keyboard users pin days via the
-          records tiles and ledger rows, which are native buttons. */}
+          day aria-labels (see dayKeyFromLabel). Active-day cells are also
+          keyboard-focusable via ContributionHeatmap's onSelectDay. */}
       <div onClick={onClick} title="Click a day to inspect it">
         <ContributionHeatmap
           points={points}
           mode={mode}
           today={today}
           dailyProviderTokens={dailyProviderTokens}
+          dailyModelTokens={dailyModelTokens}
+          dailyModelProviders={dailyModelProviders}
+          visibleProviders={activeProviders}
+          onSelectDay={pinDay}
         />
       </div>
       {pinnedDay && (
         <p className="mt-token-2 text-xs text-content-mute">
-          Inspecting {formatDayLabel(pinnedDay)}.{" "}
+          Inspecting {formatDayLabel(pinnedDay)} in the inspector.{" "}
           <button
             type="button"
             onClick={() => onPinDay(null)}
@@ -106,6 +128,12 @@ export function ProfileHeatmapSection({
           >
             Unpin
           </button>
+        </p>
+      )}
+      {!pinnedDay && (
+        <p className="mt-token-2 text-xs text-content-dim">
+          Tip: click any active day, record tile, breakdown row, or ledger time
+          to open the inspector.
         </p>
       )}
     </section>

@@ -13,13 +13,14 @@ import {
   DEFAULT_MACOS_FEED_URL,
   HOMEBREW_CASK_RECEIPT_DIRS,
   SU_PUBLIC_ED_KEY_BASE64,
-  appleMarketingVersion,
+  appleVisibleVersion,
   compareNumericVersion,
   feedVersionMatchesMountedApp,
   isAllowedDownloadUrl,
   isAllowedFeedUrl,
   isAllowedFeedResponseUrl,
   isNewerRelease,
+  offeredMatchesAdvertisedRelease,
   parseAppCliOptions,
   parseMacOSReleaseFeed,
   parseMountPoint,
@@ -261,14 +262,14 @@ test("default feed URL is the desktop updater URL and is not a pinned old versio
   assert.match(source, /downloads\.burnbar\.ai\/latest-macos\.json/);
 });
 
-test("package version is current and npm install never downloads the Mac app", () => {
+test("package is 0.2.4 and never downloads the Mac app during npm install", () => {
   const pkg = JSON.parse(readFileSync(join(PKG_ROOT, "package.json"), "utf8")) as {
     name: string;
     version: string;
     scripts?: Record<string, string>;
   };
   assert.equal(pkg.name, "openburnbar");
-  assert.equal(pkg.version, "0.1.3");
+  assert.equal(pkg.version, "0.2.4");
   assert.equal(pkg.scripts?.postinstall, undefined);
   assert.equal(pkg.scripts?.install, undefined);
   assert.equal(pkg.scripts?.prepare, undefined);
@@ -302,6 +303,22 @@ test("feed and download URL allowlists match the public Mac door", () => {
   assert.equal(
     isAllowedDownloadUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.35/OpenBurnBar-1.0.35-macOS.dmg"),
     true
+  );
+  assert.equal(
+    isAllowedFeedUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1%2F../latest-macos.json"),
+    false
+  );
+  assert.equal(
+    isAllowedFeedUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1%5Cassets/latest-macos.json"),
+    false
+  );
+  assert.equal(
+    isAllowedDownloadUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1%2F../OpenBurnBar-1.0.35-macOS.dmg"),
+    false
+  );
+  assert.equal(
+    isAllowedDownloadUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1%5Cassets/OpenBurnBar-1.0.35-macOS.dmg"),
+    false
   );
   assert.equal(isAllowedDownloadUrl("https://github.com/evil/repo/releases/latest/download/OpenBurnBar.dmg"), false);
   assert.equal(isAllowedDownloadUrl("https://evil.example/OpenBurnBar.dmg"), false);
@@ -354,20 +371,69 @@ test("parseMacOSReleaseFeed accepts generator JSON and refuses a missing signatu
 test("version comparison matches the desktop updater", () => {
   assert.equal(compareNumericVersion("1.10.0", "1.9.0"), 1);
   assert.equal(compareNumericVersion("1.0.35", "1.0.20"), 1);
-  assert.equal(appleMarketingVersion("1.0.40+repair.36"), "1.0.40");
-  assert.equal(appleMarketingVersion("1.0.40"), "1.0.40");
+  assert.equal(appleVisibleVersion("1.0.40+repair.36"), "1.0.40");
+  assert.equal(appleVisibleVersion("1.0.40"), "1.0.40");
   assert.equal(feedVersionMatchesMountedApp("1.0.40+repair.36", "1.0.40"), true);
   assert.equal(feedVersionMatchesMountedApp("1.0.40", "1.0.40"), true);
   assert.equal(feedVersionMatchesMountedApp("1.0.41", "1.0.40"), false);
   assert.equal(isNewerRelease({ version: "1.0.0", build: "201" }, { version: "1.0.0", build: "200" }), true);
   assert.equal(isNewerRelease({ version: "1.0.0", build: "200" }, { version: "1.0.0", build: "201" }), false);
   assert.equal(isNewerRelease({ version: "1.10.0", build: "200" }, { version: "1.9.0", build: "200" }), false);
+  assert.equal(isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "82" }), false);
+  assert.equal(isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "81" }), true);
+});
+
+test("Apple-visible version strips SemVer +build metadata used on the public feed", () => {
+  assert.equal(appleVisibleVersion("1.0.40+repair.34"), "1.0.40");
+  assert.equal(appleVisibleVersion("1.0.40"), "1.0.40");
+  assert.equal(appleVisibleVersion(" 1.0.40+repair.34 "), "1.0.40");
+  assert.equal(compareNumericVersion("1.0.40+repair.34", "1.0.40"), 0);
+  assert.equal(compareNumericVersion("1.10.0+repair.1", "1.9.0"), 1);
+  assert.equal(compareNumericVersion("1.0.40+repair.35", "1.0.40+repair.34"), 0);
+});
+
+test("same-build +repair.N feed matches the mounted Apple marketing version", () => {
   assert.equal(
-    isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "82" }),
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.40", build: "81" },
+      { version: "1.0.40+repair.34", build: "81" }
+    ),
+    true
+  );
+  assert.equal(
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.40+repair.34", build: "81" },
+      { version: "1.0.40+repair.34", build: "81" }
+    ),
+    true
+  );
+  assert.equal(
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.40", build: "81" },
+      { version: "1.0.40", build: "81" }
+    ),
+    true
+  );
+  assert.equal(
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.41", build: "81" },
+      { version: "1.0.40+repair.34", build: "81" }
+    ),
     false
   );
   assert.equal(
-    isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "81" }),
+    offeredMatchesAdvertisedRelease(
+      { version: "1.0.40", build: "82" },
+      { version: "1.0.40+repair.34", build: "81" }
+    ),
+    false
+  );
+  assert.equal(
+    isNewerRelease({ version: "1.0.40+repair.34", build: "81" }, { version: "1.0.40", build: "81" }),
+    false
+  );
+  assert.equal(
+    isNewerRelease({ version: "1.0.40+repair.34", build: "82" }, { version: "1.0.40", build: "81" }),
     true
   );
 });
@@ -542,6 +608,76 @@ test("app install refuses a mounted app whose version or build differs from the 
     assert.equal(code, 1);
     assert.match(env.errors.join(""), /feed advertised/);
     assert.equal(existsSync(join(env.applicationsDir, APP_BUNDLE_NAME)), false);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app install accepts a +repair.N feed when the mounted app has the same marketing version and build", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("OpenBurnBar-1.0.40+repair.34-dmg");
+  const release = makeRelease(bytes, key, {
+    version: "1.0.40+repair.34",
+    build: "81",
+    downloadUrl: "https://downloads.burnbar.ai/OpenBurnBar-1.0.40+repair.34-macOS.dmg",
+    dmg: "OpenBurnBar-1.0.40+repair.34-macOS.dmg"
+  });
+  const env = harness(bytes, release, key, undefined, {
+    version: "1.0.40",
+    build: "81",
+    bundleId: APP_BUNDLE_ID
+  });
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 0);
+    const installed = readInstalledBundle(env.applicationsDir, {
+      exists: (path) => existsSync(path),
+      readFile: (path) => readFileSync(path)
+    });
+    assert.deepEqual(installed, { version: "1.0.40", build: "81", bundleId: APP_BUNDLE_ID });
+    assert.match(env.logs.join(""), /Installed OpenBurnBar 1\.0\.40\+repair\.34 \(build 81\)/);
+    assert.ok(env.commands.some((item) => item.command === "/usr/bin/ditto"));
+    assert.doesNotMatch(env.errors.join(""), /feed advertised/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app install still refuses a +repair.N feed when the mounted marketing version differs", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("signed-but-wrong-marketing-version");
+  const release = makeRelease(bytes, key, {
+    version: "1.0.40+repair.34",
+    build: "81"
+  });
+  const env = harness(bytes, release, key, undefined, {
+    version: "1.0.41",
+    build: "81",
+    bundleId: APP_BUNDLE_ID
+  });
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 1);
+    assert.match(env.errors.join(""), /mounted app is 1\.0\.41 \(build 81\).*advertised 1\.0\.40\+repair\.34 \(build 81\)/s);
+    assert.equal(existsSync(join(env.applicationsDir, APP_BUNDLE_NAME)), false);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app update is a no-op when the installed marketing version matches a +repair.N feed at the same build", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("already-installed-repair-ship");
+  const release = makeRelease(bytes, key, {
+    version: "1.0.40+repair.34",
+    build: "81"
+  });
+  const env = harness(bytes, release, key, { version: "1.0.40", build: "81" });
+  try {
+    const code = await runAppCommand("update", { dryRun: false }, env.deps);
+    assert.equal(code, 0);
+    assert.equal(env.downloads(), 0);
+    assert.match(env.logs.join(""), /already installed/);
   } finally {
     env.cleanup();
   }
@@ -944,9 +1080,18 @@ test("npm pack stays small and never includes a Mac DMG", async () => {
   assert.ok(packed < 1_000_000, `packed size ${packed} must stay small`);
   const files = entry.files ?? [];
   assert.ok(files.length > 0);
+  const packedPaths = new Set(files.map((file) => file.path));
+  assert.ok(packedPaths.has("macos-tray/Info.plist"), "pack must include macos-tray/Info.plist");
+  assert.ok(packedPaths.has("macos-tray/Package.swift"), "pack must include macos-tray/Package.swift");
+  assert.ok(
+    packedPaths.has("macos-tray/Sources/OpenBurnBarGatewayTray/main.swift"),
+    "pack must include macos-tray Swift sources"
+  );
   for (const file of files) {
     assert.doesNotMatch(file.path, /\.dmg$/i);
     assert.doesNotMatch(file.path, /\.app(\/|$)/i);
+    assert.doesNotMatch(file.path, /(^|\/)\.build(\/|$)/u);
+    assert.doesNotMatch(file.path, /\.test\.(js|d\.ts)$/u);
     assert.ok(file.size < 2_000_000, `${file.path} is ${file.size} bytes`);
   }
 });

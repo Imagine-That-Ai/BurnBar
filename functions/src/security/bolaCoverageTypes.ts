@@ -15,7 +15,20 @@ export type BolaCoverageKind =
   | "platform-trigger"
   | "not-applicable-public";
 
-export type BolaExpectedCode = "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated";
+export type BolaExpectedCode =
+  | "permission-denied"
+  | "not-found"
+  | "failed-precondition"
+  | "unauthenticated"
+  | "invalid-argument"
+  | "already-exists";
+
+/**
+ * What the generated BOLA ledger records per object-id endpoint: a measured
+ * denial code, or an explicit no-side-effect outcome for auth-scoped endpoints
+ * whose cross-user invocation may succeed without touching victim rows.
+ */
+export type BolaLedgerCode = BolaExpectedCode | "no-side-effect";
 
 export type BolaCoverageRef = {
   file: string;

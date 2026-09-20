@@ -60,6 +60,11 @@ public enum BurnBarDaemonPaths {
         supportDirectoryURL.appendingPathComponent("proxy-route-events.jsonl", isDirectory: false)
     }
 
+    /// Memory Pro egress log: one content-free, hash-chained line per memory-purpose request.
+    public static var defaultMemoryEgressEventsURL: URL {
+        supportDirectoryURL.appendingPathComponent("memory-egress-events.jsonl", isDirectory: false)
+    }
+
     public static var defaultQuotaSignalsURL: URL {
         supportDirectoryURL.appendingPathComponent("quota-signals.jsonl", isDirectory: false)
     }

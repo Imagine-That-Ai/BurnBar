@@ -1,0 +1,21 @@
+{
+  "schema": "openburnbar.rollback-drill-receipt.v1",
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-02T00:00:00Z",
+  "mode": "fixture",
+  "liveDrill": false,
+  "ok": true,
+  "drill": {
+    "kind": "cloud-run-revision-pin",
+    "serviceName": "fixture-service",
+    "region": "us-central1",
+    "targetRevision": "fixture-revision",
+    "trafficPercent": 100,
+    "healthProbe": "not-run"
+  },
+  "checks": {
+    "revisionListLoaded": true,
+    "trafficPinned": false,
+    "liveGcloudSession": false
+  }
+}

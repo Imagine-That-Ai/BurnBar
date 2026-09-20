@@ -239,6 +239,7 @@ final class OpenBurnBarRuntimeContext {
     #endif
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
+    var sessionCloseMonitor: CLISessionCloseMonitor?
 
     // MARK: - Semantic memory (PR-D3 app wiring)
     //

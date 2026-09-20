@@ -47,6 +47,11 @@ final class AccountManager {
     // MARK: - Private
 
     private var authStateListenerHandle: AuthStateDidChangeListenerHandle?
+    /// Callbacks registered through `observeAccountIdentityChanges(_:)`, fired
+    /// on every uid transition. Retained for the process's lifetime by design —
+    /// the one subscriber is the app-lifetime memory cloud-sync domain, and it
+    /// captures itself weakly.
+    private var accountIdentityObservers: [@MainActor @Sendable (String?) -> Void] = []
     private var currentNonce: String?
     private var firebaseAuthAccessGroup: String?
     /// Retains `AppleSignInPresentationCoordinator` until Sign in with Apple completes.
@@ -187,12 +192,39 @@ final class AccountManager {
     }
 
     private func applyAuthStateSnapshot(_ user: User?) {
+        // Captured BEFORE the assignment: this is the single choke point every
+        // identity change flows through — Firebase's own state listener, the
+        // post-sign-in refresh, and `signOut()` via `refreshAuthStateSnapshot()`
+        // — so comparing here is what makes one observer cover all of them.
+        let previousUID = userID
         currentUser = user
         isSignedIn = user != nil
         isAnonymousUser = user?.isAnonymous ?? true
         userID = user?.uid
         userEmail = user?.email
         userDisplayName = user?.displayName ?? user?.email
+        // Only on an actual transition: the listener also fires on token
+        // refreshes for the SAME member, and re-notifying there would make the
+        // Memory Blind Sync marker thrash (withdrawn, then republished a tick
+        // later) for no state change at all.
+        if previousUID != userID {
+            notifyAccountIdentityChanged()
+        }
+    }
+
+    /// Runs every `observeAccountIdentityChanges(_:)` observer with the current
+    /// uid. Observers are `@MainActor` and this method is too, so they see the
+    /// snapshot that has already been applied above.
+    private func notifyAccountIdentityChanged() {
+        let uid = userID
+        for observer in accountIdentityObservers {
+            observer(uid)
+        }
+    }
+
+    /// See `AccountManaging.observeAccountIdentityChanges(_:)`.
+    func observeAccountIdentityChanges(_ observer: @escaping @MainActor @Sendable (String?) -> Void) {
+        accountIdentityObservers.append(observer)
     }
 
     #if DEBUG
@@ -326,10 +358,13 @@ final class AccountManager {
             googleUser = try await googleSignInResult(presentingWindow: window).user
         } catch {
             Self.logAuthFailure("Google Sign-In", error)
-            guard Self.isGoogleSignInKeychainError(error),
-                  Self.clearGoogleSignInKeychainState(accessGroup: firebaseAuthAccessGroup) else {
+            guard Self.isGoogleSignInKeychainError(error) else {
                 throw error
             }
+            // GoogleSignIn 9 + GTMAppAuth 5 keep OAuth state in the app-scoped
+            // data-protection Keychain. Let the SDK clear that exact store;
+            // manually deleting the legacy file-based `auth` service can match
+            // another app's item and fail with errSecInvalidOwnerEdit (-25244).
             GIDSignIn.sharedInstance.signOut()
             do {
                 googleUser = try await googleSignInResult(presentingWindow: window).user
@@ -612,6 +647,15 @@ final class AccountManager {
         lastOAuthToken = nil
         lastOAuthEmail = nil
         lastOAuthDisplayName = nil
+        // `refreshAuthStateSnapshot()` above already notified IF the uid
+        // actually changed. This second, unconditional notification is the
+        // belt-and-braces half of the Memory Blind Sync closure: a sign-out is
+        // the one transition where "nothing may drain" must hold even when this
+        // process's idea of the uid was already nil (a crash-restored session, a
+        // sign-out with Firebase unavailable, a marker left behind by a previous
+        // run). The observers are idempotent purges, so notifying twice costs a
+        // DELETE that matches nothing.
+        notifyAccountIdentityChanged()
     }
 
     // MARK: - Cloud Sync Toggle
@@ -790,53 +834,6 @@ final class AccountManager {
                 || field.localizedCaseInsensitiveContains("gtmappauth")
                 || field.localizedCaseInsensitiveContains("appauth")
         }
-    }
-
-    private static func clearGoogleSignInKeychainState(accessGroup: String?) -> Bool {
-        var statuses = [
-            ("default", deleteGoogleSignInAuthState(accessGroup: nil, useDataProtectionKeychain: false), false),
-            ("default-dp", deleteGoogleSignInAuthState(accessGroup: nil, useDataProtectionKeychain: true), true)
-        ]
-        if let accessGroup {
-            statuses.append(contentsOf: [
-                (
-                    "access-group",
-                    deleteGoogleSignInAuthState(accessGroup: accessGroup, useDataProtectionKeychain: false),
-                    false
-                ),
-                (
-                    "access-group-dp",
-                    deleteGoogleSignInAuthState(accessGroup: accessGroup, useDataProtectionKeychain: true),
-                    true
-                )
-            ])
-        }
-
-        for (label, status, _) in statuses {
-            authLogger.info("Google Sign-In keychain cleanup \(label, privacy: .public) status=\(status)")
-        }
-
-        return statuses.allSatisfy { _, status, isDataProtectionQuery in
-            isRecoverableKeychainDeleteStatus(status, allowMissingEntitlement: isDataProtectionQuery)
-        }
-    }
-
-    private static func deleteGoogleSignInAuthState(
-        accessGroup: String?,
-        useDataProtectionKeychain: Bool
-    ) -> OSStatus {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "auth",
-            kSecAttrAccount as String: "OAuth"
-        ]
-        if let accessGroup {
-            query[kSecAttrAccessGroup as String] = accessGroup
-        }
-        if useDataProtectionKeychain {
-            query[kSecUseDataProtectionKeychain as String] = true
-        }
-        return SecItemDelete(query as CFDictionary)
     }
 
     private static func isFirebaseAuthKeychainError(_ error: Error) -> Bool {

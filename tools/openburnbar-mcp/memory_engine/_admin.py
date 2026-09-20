@@ -1,0 +1,1169 @@
+"""`MemoryEngine`'s maintenance surface, mixed into the engine class.
+
+Only methods live here; construction and shared state stay in `engine.py`."""
+
+from __future__ import annotations
+
+import os
+from datetime import UTC, datetime
+from pathlib import Path
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
+
+import project_code_memory as pcm
+
+from . import gate
+from ._util import (
+    _aux_strings,
+    _ingest_decision,
+    _json_dumps,
+    _json_loads,
+    _parse_iso,
+    now_iso,
+    sha256_hex,
+)
+from .constants import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_ORPHAN_GRACE_PERIOD_SECONDS,
+    DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS,
+    EMBEDDING_PROVIDER_ENV,
+    ENGINE_SCHEMA_VERSION,
+    LINEAGE_HOLD_QUEUE_MAX_SIZE,
+    MAX_MEMORIES_PER_PROJECT_SOFT,
+    TEAM_ROW_PRESENT_SQL,
+)
+from .embeddings import encode_vector
+from .extract import Fact
+from .store import (
+    audit_event,
+    default_db_path,
+    project_payload,
+    read_project_dotfile,
+    resolve_project,
+    verify_audit_chain,
+)
+
+if TYPE_CHECKING:  # pragma: no cover — annotation only; the value is built in `_namespaces`.
+    from ._namespaces import _SessionTeamLinks
+
+
+# The auxiliary-exposure sweep is a regex pass over short strings, so the cap is
+# generous: 5,000 rows costs a small fraction of a `doctor` call. It exists so a
+# pathological store cannot make `doctor` hang, and whenever it bites, the scan
+# says so rather than returning a quietly partial answer.
+AUX_SCAN_ROW_LIMIT = 5_000
+
+
+class _Maintenance:
+    """`MemoryEngine`'s maintenance surface: doctor, export/import, reindex, stats."""
+
+    def _embed_rows(self, memory_ids: Sequence[str]) -> int:
+        if not self.provider.available or not memory_ids:
+            return 0
+        if self.conn.in_transaction:
+            self._commit()
+        rows = self.conn.execute(
+            f"SELECT rowid, id, project_id, body_hash, body_cipher, body_nonce FROM memories WHERE id IN ({','.join('?' * len(memory_ids))})",  # noqa: S608 — placeholders only
+            list(memory_ids),
+        ).fetchall()
+        bodies: list[tuple[int, str, str, str]] = []
+        for row in rows:
+            body = self._open_body(str(row["id"]), str(row["project_id"]), row["body_cipher"], row["body_nonce"])
+            if body is not None:
+                bodies.append((int(row["rowid"]), str(row["id"]), str(row["body_hash"]), body))
+        vectors = self.provider.embed([body for _, _, _, body in bodies])
+        count = 0
+        for (rowid, memory_id, embedded_hash, _), vector in zip(bodies, vectors, strict=False):
+            if vector is None:
+                continue
+            if not self.conn.in_transaction:
+                self.conn.execute("BEGIN IMMEDIATE")
+            current = self.conn.execute(
+                "SELECT body_hash, valid_to FROM memories WHERE rowid = ? AND id = ?", (rowid, memory_id)
+            ).fetchone()
+            if current is None or current["valid_to"] is not None or str(current["body_hash"]) != embedded_hash:
+                # Another process changed or retired the body while the
+                # provider was working. Preserve its current vector and let a
+                # later reindex embed the new body.
+                continue
+            self.conn.execute("DELETE FROM memory_vectors WHERE memory_rowid = ?", (rowid,))
+            self.conn.execute(
+                "INSERT INTO memory_vectors (memory_rowid, embedding_version, dimension, vector) VALUES (?, ?, ?, ?)",
+                (rowid, self.provider.version_id, len(vector), encode_vector(vector)),
+            )
+            self.conn.execute(
+                "UPDATE memories SET embedding_version = ? WHERE id = ?", (self.provider.version_id, memory_id)
+            )
+            count += 1
+        return count
+
+    def embedding_pending(self, *, project_id: str | None = None) -> int:
+        """Active rows without a vector for the current embedding version (what `reindex` would embed)."""
+        sql = (
+            "SELECT COUNT(*) FROM memories m LEFT JOIN memory_vectors v "
+            "ON v.memory_rowid = m.rowid AND v.embedding_version = ? WHERE m.valid_to IS NULL AND v.memory_rowid IS NULL"
+        )
+        params: list[Any] = [self.provider.version_id]
+        if project_id is not None:
+            sql += " AND m.project_id = ?"
+            params.append(project_id)
+        return int(self.conn.execute(sql, params).fetchone()[0])
+
+    def reindex(
+        self, *, project_path: str | None = None, all_projects: bool = False, batch_size: int = 32
+    ) -> dict[str, Any]:
+        if not self.provider.available:
+            return {"status": "unavailable", "code": "EMBEDDINGS_UNAVAILABLE", "embedding": self.provider.describe()}
+        if all_projects:
+            rows = self.conn.execute(
+                "SELECT m.id FROM memories m LEFT JOIN memory_vectors v ON v.memory_rowid = m.rowid AND v.embedding_version = ? WHERE m.valid_to IS NULL AND v.memory_rowid IS NULL",
+                (self.provider.version_id,),
+            ).fetchall()
+            payload: dict[str, Any] = {}
+            stale_params: tuple[Any, ...] = (self.provider.version_id,)
+            stale_count_sql = "SELECT COUNT(*) FROM memory_vectors WHERE embedding_version != ?"
+            stale_delete_sql = "DELETE FROM memory_vectors WHERE embedding_version != ?"
+        else:
+            project_id, root = resolve_project(self.conn, project_path)
+            rows = self.conn.execute(
+                "SELECT m.id FROM memories m LEFT JOIN memory_vectors v ON v.memory_rowid = m.rowid AND v.embedding_version = ? WHERE m.valid_to IS NULL AND v.memory_rowid IS NULL AND m.project_id = ?",
+                (self.provider.version_id, project_id),
+            ).fetchall()
+            payload = project_payload(project_id, root)
+            stale_params = (self.provider.version_id, project_id)
+            stale_count_sql = """
+                SELECT COUNT(*)
+                FROM memory_vectors AS v
+                JOIN memories AS m ON m.rowid = v.memory_rowid
+                WHERE v.embedding_version != ? AND m.project_id = ?
+            """
+            stale_delete_sql = """
+                DELETE FROM memory_vectors
+                WHERE embedding_version != ?
+                  AND memory_rowid IN (SELECT rowid FROM memories WHERE project_id = ?)
+            """
+        ids = [str(row["id"]) for row in rows]
+        stale = int(self.conn.execute(stale_count_sql, stale_params).fetchone()[0])
+        embedded = 0
+        for start in range(0, len(ids), max(1, batch_size)):
+            embedded += self._embed_rows(ids[start : start + batch_size])
+        self.conn.execute(stale_delete_sql, stale_params)
+        audit_event(
+            self.conn,
+            action="memory.reindex",
+            project_id=payload.get("projectID"),
+            subject_id=None,
+            labels=[f"embedded:{embedded}", f"version:{self.provider.version_id}"],
+            actor=self.config.actor,
+        )
+        self._commit()
+        self._invalidate_cache()
+        return {
+            "status": "ok",
+            "pending": len(ids),
+            "embedded": embedded,
+            "staleVectorsPurged": stale,
+            "embedding": self.provider.describe(),
+            **payload,
+        }
+
+    def stats(self, *, project_path: str | None = None) -> dict[str, Any]:
+        project_id, root = resolve_project(self.conn, project_path)
+
+        def grouped_sql(column: str) -> str:
+            return (
+                f"SELECT {column}, COUNT(*) FROM memories WHERE project_id = ? AND valid_to IS NULL GROUP BY {column}"  # noqa: S608 — column from fixed allowlist
+            )
+
+        def grouped(column: str) -> dict[str, int]:
+            return {str(row[0]): int(row[1]) for row in self.conn.execute(grouped_sql(column), (project_id,))}
+
+        total = int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE project_id = ? AND valid_to IS NULL", (project_id,)
+            ).fetchone()[0]
+        )
+        superseded = int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE project_id = ? AND valid_to IS NOT NULL", (project_id,)
+            ).fetchone()[0]
+        )
+        embedded = int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM memories m JOIN memory_vectors v ON v.memory_rowid = m.rowid WHERE m.project_id = ? AND m.valid_to IS NULL AND v.embedding_version = ?",
+                (project_id, self.provider.version_id),
+            ).fetchone()[0]
+        )
+        vault = int(
+            self.conn.execute("SELECT COUNT(*) FROM memory_vault WHERE project_id = ?", (project_id,)).fetchone()[0]
+        )
+        all_projects = int(self.conn.execute("SELECT COUNT(DISTINCT project_id) FROM memories").fetchone()[0])
+        return {
+            "status": "ok",
+            "total": total,
+            "superseded": superseded,
+            "byKind": grouped("kind"),
+            "byScope": grouped("scope"),
+            "bySensitivity": grouped("sensitivity"),
+            "byReviewStatus": grouped("review_status"),
+            "embeddedActive": embedded,
+            "embeddingCoverage": round(embedded / total, 3) if total else None,
+            "vaultEntries": vault,
+            "projectsInStore": all_projects,
+            "embedding": self.provider.describe(),
+            "policy": {
+                "secret": self.config.secret_policy,
+                "pii": self.config.pii_policy,
+                "retainAllowed": self.config.retain_allowed,
+            },
+            **project_payload(project_id, root),
+        }
+
+    def audit_trail(self, *, project_path: str | None = None, limit: int = 50) -> dict[str, Any]:
+        project_id, root = resolve_project(self.conn, project_path)
+        rows = self.conn.execute(
+            "SELECT * FROM memory_audit WHERE project_id = ? OR project_id IS NULL ORDER BY seq DESC LIMIT ?",
+            (project_id, max(1, min(int(limit), 500))),
+        ).fetchall()
+        events = [
+            {
+                "seq": int(row["seq"]),
+                "ts": row["ts"],
+                "actor": row["actor"],
+                "action": row["action"],
+                "domain": row["domain"],
+                "projectID": row["project_id"],
+                "subjectID": row["subject_id"],
+                "labels": _json_loads(row["labels_json"], []),
+                "prevHash": row["prev_hash"],
+                "hash": row["hash"],
+            }
+            for row in rows
+        ]
+        return {
+            "status": "ok",
+            "events": events,
+            "chain": verify_audit_chain(self.conn),
+            **project_payload(project_id, root),
+        }
+
+    def export(
+        self,
+        *,
+        project_path: str | None = None,
+        include_secrets: bool = False,
+        include_superseded: bool = False,
+        all_projects: bool = False,
+    ) -> dict[str, Any]:
+        """Every memory this session may be served, as JSON.
+
+        T4: an export SERVES bodies — whole ones, with their ids, to whatever
+        holds `sensitive_read` — so it answers to `_team_row_servable` exactly
+        as `recall`, `list` and `get` do. `all_projects` widens the PROJECT
+        fence and never the team one: a team row is exported only where THIS
+        checkout links its team to the project that row landed in, so an
+        unrelated repository exports none of them, and deleting the link stops
+        the export on the very next call rather than at the next pull.
+
+        The omission is counted, never silent. `teamRowsWithheld` tells an
+        operator taking a backup that N rows were held back, so a restore is
+        not quietly short of rows nobody can name — the same reason
+        `import_memories` counts its own strips and skips. A1 is what makes that
+        count honest on the NARROW export too: a team row's landing partition is
+        a `teamProjectId`, so `m.project_id = ?` used to drop every one of them
+        before the team fence could see it — the row was neither exported nor
+        counted, and a linked member's own backup was silently short of the team
+        memory they are entitled to.
+        """
+        params: list[Any] = [self.provider.version_id]
+        where = "WHERE 1=1"
+        payload: dict[str, Any] = {}
+        if not all_projects:
+            project_id, root = resolve_project(self.conn, project_path)
+            # A1: the team fence below decides a team row, not the local one.
+            where += f" AND (m.project_id = ? OR {TEAM_ROW_PRESENT_SQL})"
+            params.append(project_id)
+            payload = project_payload(project_id, root)
+        if not include_superseded:
+            where += " AND m.valid_to IS NULL"
+        rows = self.conn.execute(self._SELECT + where + " ORDER BY m.created_at ASC", params).fetchall()
+        # Both resolved lazily, and for the reason `_team_serves_memory` gives:
+        # a store holding no team row must not gain a `projects` upsert or a
+        # link-file read because somebody took a backup.
+        session_project_id: str | None = payload.get("projectID")
+        links: _SessionTeamLinks | None = None
+        team_rows_withheld = 0
+        items = []
+        for row in rows:
+            memory = self._row_to_memory(row)
+            if memory is None:
+                continue
+            team_id = self._metadata_team_id(memory.metadata)
+            if team_id is not None:
+                if session_project_id is None:
+                    session_project_id = resolve_project(self.conn, project_path)[0]
+                if links is None:
+                    links = self._session_team_links(session_project_id)
+                if not self._team_row_servable(team_id, memory.project_id, session_project_id, links):
+                    team_rows_withheld += 1
+                    continue
+            item = memory.public()
+            if memory.sensitivity == "secret":
+                item["secretText"] = self._open_vault(memory.id, memory.project_id) if include_secrets else None
+            items.append(item)
+        audit_event(
+            self.conn,
+            action="memory.export",
+            project_id=payload.get("projectID"),
+            subject_id=None,
+            labels=[
+                f"count:{len(items)}",
+                f"secrets:{'yes' if include_secrets else 'no'}",
+                f"teamWithheld:{team_rows_withheld}",
+            ],
+            actor=self.config.actor,
+        )
+        self._commit()
+        return {
+            "status": "ok",
+            "schema": "openburnbar.memory_export.v1",
+            "allProjects": all_projects,
+            "exportedAt": now_iso(),
+            "count": len(items),
+            "teamRowsWithheld": team_rows_withheld,
+            "memories": items,
+            **payload,
+        }
+
+    def import_memories(
+        self, items: Sequence[dict[str, Any]], *, project_path: str | None, source_kind: str = "import"
+    ) -> dict[str, Any]:
+        decisions = []
+        historical_skipped = 0
+        project_id, root = resolve_project(self.conn, project_path)
+        source_projects = sorted(
+            {str(raw.get("projectID")) for raw in items if isinstance(raw, dict) and raw.get("projectID")}
+        )
+        if len(source_projects) > 1:
+            return {
+                "status": "unavailable",
+                "code": "PROJECT_OWNERSHIP_MISMATCH",
+                "reason": "multi-project exports cannot be flattened into one destination project",
+                "projectIDs": source_projects,
+                "summary": {event: 0 for event in ("ADD", "UPDATE", "NONE", "DELETE", "REJECT")},
+                "decisions": [],
+                "historicalSkipped": 0,
+                **project_payload(project_id, root),
+            }
+        reserved_stripped = 0
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            if raw.get("validTo") or raw.get("valid_to"):
+                # Historical export rows are archival evidence, not active
+                # import candidates. Skipping them prevents retired facts from
+                # becoming recallable again when an archive is restored.
+                historical_skipped += 1
+                continue
+            fact = Fact.from_mapping({**raw, "text": raw.get("body") or raw.get("text")})
+            if fact is None:
+                continue
+            if raw.get("secretText"):
+                fact.text = str(raw["secretText"])
+            # Engine-owned metadata is recomputed on write and must not leak across stores.
+            for key in ("daemonMemoryID", "gateLabels", "injectionLabels"):
+                fact.metadata.pop(key, None)
+            # T6, and the same rule those three already state, generalised to
+            # the reserved namespace: an archive row may carry a team stamp this
+            # store never earned. STRIPPED rather than refused, because an
+            # import is a machine-generated payload and one stale row must not
+            # make a whole restore unimportable — the body lands as what it
+            # actually is here, a personal memory. Counted, so it is not silent.
+            reserved_stripped += len(self._strip_reserved_metadata(fact.metadata))
+            decisions.append(
+                self._commit_fact(
+                    project_id=project_id,
+                    root=root,
+                    fact=fact,
+                    source_kind=source_kind,
+                    source_hash=None,
+                    extractor="import",
+                )
+            )
+        audit_event(
+            self.conn,
+            action="memory.import",
+            project_id=project_id,
+            subject_id=None,
+            labels=[f"count:{len(decisions)}"],
+            actor=self.config.actor,
+        )
+        self._commit()
+        self._invalidate_cache()
+        summary = {
+            event: sum(1 for item in decisions if item["event"] == event)
+            for event in ("ADD", "UPDATE", "NONE", "DELETE", "REJECT")
+        }
+        return {
+            "status": "ok",
+            "summary": summary,
+            "decisions": decisions,
+            "historicalSkipped": historical_skipped,
+            "reservedMetadataStripped": reserved_stripped,
+            **project_payload(project_id, root),
+        }
+
+    def import_assistant_export(
+        self,
+        payload: dict[str, Any],
+        *,
+        schema: str,
+        project_path: str | None = None,
+        batch_cap: int | None = None,
+        cursor: int | str | None = None,
+    ) -> dict[str, Any]:
+        """Import memories from a ChatGPT or Claude.ai assistant export payload."""
+        import assistant_export
+
+        return assistant_export.import_assistant_export(
+            self,
+            payload,
+            schema=schema,
+            project_path=project_path,
+            batch_cap=batch_cap,
+            cursor=cursor,
+        )
+
+    def import_legacy(self, items: Sequence[dict[str, Any]], *, project_path: str | None) -> dict[str, Any]:
+        """Import rows from the daemon-owned `agent_memories` store exactly once.
+
+        Each item carries `legacyMemoryID`; the engine records
+        `memory_ingest.source_hash = "legacy:<id>"` after the write, so a row
+        is never imported twice even across processes. Rows go through the
+        same gate and reconciliation as any other write.
+        """
+        project_id, root = resolve_project(self.conn, project_path)
+        imported = 0
+        skipped = 0
+        retryable = 0
+        decisions: list[dict[str, Any]] = []
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            legacy_id = str(
+                raw.get("legacyMemoryID") or (raw.get("metadata") or {}).get("legacyMemoryID") or ""
+            ).strip()
+            if not legacy_id:
+                continue
+            key = f"legacy:{legacy_id}"
+            if self.conn.execute("SELECT 1 FROM memory_ingest WHERE source_hash = ?", (key,)).fetchone() is not None:
+                skipped += 1
+                continue
+            owner_path = raw.get("legacyProjectPath")
+            legacy_owner_id = str((raw.get("metadata") or {}).get("legacyProjectID") or "").strip()
+            if owner_path:
+                try:
+                    owner_project_id, owner_root = resolve_project(self.conn, str(owner_path))
+                except ValueError:
+                    owner_project_id, owner_root = "", root
+            elif legacy_owner_id and legacy_owner_id != project_id:
+                owner_project_id, owner_root = "", root
+            else:
+                owner_project_id, owner_root = project_id, root
+            if not owner_project_id:
+                decisions.append(
+                    {
+                        "event": "REJECT",
+                        "code": "LEGACY_PROJECT_UNAVAILABLE",
+                        "reason": "legacy memory owner path is unavailable; refusing to reassign it to the active project",
+                        "legacyMemoryID": legacy_id,
+                    }
+                )
+                retryable += 1
+                continue
+            fact = Fact.from_mapping(raw)
+            if fact is None:
+                continue
+            fact.metadata = {**fact.metadata, "legacyMemoryID": legacy_id}
+            # T6: same strip as `import_memories`, and here it also keeps a
+            # stamped legacy row from becoming permanently retryable — a REJECT
+            # is non-terminal, so it would be re-offered on every drain for ever.
+            self._strip_reserved_metadata(fact.metadata)
+            decision = self._commit_fact(
+                project_id=owner_project_id,
+                root=owner_root,
+                fact=fact,
+                source_kind="legacy_daemon",
+                source_hash=key,
+                extractor="legacy-import",
+            )
+            decision["legacyMemoryID"] = legacy_id
+            decisions.append(decision)
+            terminal = decision["event"] in ("ADD", "UPDATE", "DELETE") or (
+                decision["event"] == "NONE" and decision.get("code") != "PREVIOUSLY_REJECTED"
+            )
+            if terminal:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO memory_ingest (source_hash, project_id, ts, decisions_json) VALUES (?, ?, ?, ?)",
+                    (key, owner_project_id, now_iso(), _json_dumps([_ingest_decision(decision)])),
+                )
+                if decision.get("memoryID"):
+                    self.record_daemon_mirror(
+                        str(decision["memoryID"]),
+                        legacy_id,
+                        body_hash=sha256_hex(str(decision.get("text") or raw.get("text") or "")),
+                        project_path=str(owner_root),
+                    )
+            else:
+                retryable += 1
+            if terminal and decision["event"] in ("ADD", "UPDATE", "NONE"):
+                imported += 1
+        audit_event(
+            self.conn,
+            action="memory.legacy_import",
+            project_id=project_id,
+            subject_id=None,
+            labels=[f"imported:{imported}", f"skipped:{skipped}"]
+            + sorted({f"event:{item['event']}" for item in decisions}),
+            actor=self.config.actor,
+        )
+        self._commit()
+        self._invalidate_cache()
+        return {
+            "status": "ok",
+            "imported": imported,
+            "skipped": skipped,
+            "retryable": retryable,
+            "decisions": decisions,
+            **project_payload(project_id, root),
+        }
+
+    def _scan_aux_value(self, text: str) -> list[str]:
+        """Secret labels in one stored auxiliary string.
+
+        Also scans the uppercased form. The rows this hunts for leaked precisely
+        because a tag was lowercased before the gate saw it, so `AKIA…` no longer
+        matched its case-sensitive corpus pattern; scanning only the stored form
+        would miss exactly the rows worth reporting.
+        """
+        labels = list(gate.scan_text(text).secret_labels)
+        if not labels and text != text.upper():
+            labels = list(gate.scan_text(text.upper()).secret_labels)
+        return labels
+
+    def aux_secret_exposure(
+        self, project_id: str | None, *, limit: int | None = None, after_rowid: int = 0
+    ) -> dict[str, Any]:
+        """Rows whose plaintext auxiliary columns still hold a secret, plus how
+        much of the store the sweep actually covered.
+
+        Auxiliary fields are gated on their raw form now, but rows written before
+        that fix can carry a credential in the plaintext `tags_json` column, and
+        nothing re-examines a row once it is written. Superseded revisions are
+        scanned too: retiring a row does not remove its plaintext from the file.
+
+        The coverage half matters as much as the result. An empty list from a
+        capped, corpus-less, or project-less sweep is byte-identical to an empty
+        list from a complete one, so `scan` always records which it was:
+        `{"rowsScanned", "rowsTotal", "truncated", "skipped", "nextCursor"}`,
+        where `skipped` is None, "corpus_unavailable" or "no_project".
+
+        `after_rowid` resumes the sweep past a row already covered, and a
+        truncated sweep returns the last rowid it looked at as
+        `scan["nextCursor"]`. Without that, a store over the cap had rows no
+        invocation could ever reach.
+        """
+        cap = AUX_SCAN_ROW_LIMIT if limit is None else limit
+        cursor = max(0, int(after_rowid or 0))
+        scan: dict[str, Any] = {
+            "rowsScanned": 0,
+            "rowsTotal": 0,
+            "truncated": False,
+            "skipped": None,
+            "nextCursor": None,
+        }
+        if project_id is None:
+            scan["skipped"] = "no_project"
+            return {"exposures": [], "scan": scan}
+        # `rowsTotal` counts what is still ahead of the cursor, so "N of M rows
+        # scanned" stays true of the page the caller actually asked for.
+        scan["rowsTotal"] = int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE project_id = ? AND rowid > ?", (project_id, cursor)
+            ).fetchone()[0]
+        )
+        if not gate.GATE_CORPUS_AVAILABLE:
+            # Fail loud, not quiet: with no corpus every row would read as clean.
+            scan["skipped"] = "corpus_unavailable"
+            return {"exposures": [], "scan": scan}
+        # `rowid` rather than `id`: insertion order is stable, so a truncated
+        # sweep covers a prefix an operator can reason about -- and resume from.
+        rows = self.conn.execute(
+            "SELECT rowid AS scan_rowid, id, valid_to, tags_json, entities_json, metadata_json, "
+            "source_ref, source_kind "
+            "FROM memories WHERE project_id = ? AND rowid > ? ORDER BY rowid LIMIT ?",
+            (project_id, cursor, cap),
+        ).fetchall()
+        scan["rowsScanned"] = len(rows)
+        scan["truncated"] = len(rows) < scan["rowsTotal"]
+        if scan["truncated"] and rows:
+            scan["nextCursor"] = int(rows[-1]["scan_rowid"])
+        exposures: list[dict[str, Any]] = []
+        for row in rows:
+            tags = _json_loads(row["tags_json"], [])
+            entities = _json_loads(row["entities_json"], [])
+            metadata = _json_loads(row["metadata_json"], {})
+            revision = "active" if row["valid_to"] is None else "superseded"
+            surfaces: tuple[tuple[str, list[str]], ...] = (
+                ("tags", _aux_strings(tags, [], None, None)),
+                ("entities", _aux_strings([], entities, None, None)),
+                ("metadata", _aux_strings([], [], metadata, None)),
+                ("sourceRef", _aux_strings([], [], None, row["source_ref"])),
+                ("sourceKind", [str(row["source_kind"])] if row["source_kind"] else []),
+            )
+            for surface, values in surfaces:
+                labels = sorted({label for value in values for label in self._scan_aux_value(str(value))})
+                if labels:
+                    exposures.append({"id": str(row["id"]), "surface": surface, "revision": revision, "labels": labels})
+        return {"exposures": exposures, "scan": scan}
+
+    def doctor(
+        self,
+        *,
+        project_path: str | None = None,
+        aux_scan_cursor: int | None = None,
+        apply: bool = False,
+        grace_period_seconds: float = DEFAULT_ORPHAN_GRACE_PERIOD_SECONDS,
+        parked_retention_days: int = DEFAULT_PARKED_SUPERSEDE_RETENTION_DAYS,
+    ) -> dict[str, Any]:
+        db_path = self.db_path or default_db_path()
+        # Resolved first: the auxiliary-exposure scan below is per project, so it
+        # has to know which one before the findings are assembled.
+        project_extra: dict[str, Any] = {}
+        active_project_id: str | None = None
+        if project_path or os.environ.get("OPENBURNBAR_ACTIVE_PROJECT_PATH"):
+            try:
+                active_project_id, root = resolve_project(self.conn, project_path)
+                project_extra = dict(project_payload(active_project_id, root))
+            except ValueError as exc:
+                project_extra = {"projectError": str(exc)}
+
+        pruned_orphans = 0
+        pruned_supersedes = 0
+        unstamped_provenance = 0
+
+        if apply:
+            # A7's `--apply` bound, deliberately narrow: prune aged orphan bodies
+            # and aged parked supersedes, and *nothing else*. It never heals a
+            # ledger, never deletes a finding, and never writes the app-owned
+            # `remote_sync_watermarks` table — a watermark the doctor rewound
+            # would silently re-drain or skip a member's inbox, and a finding the
+            # doctor deleted is a report that lies on its next run. Everything
+            # this pass will not repair stays in `findings` for a human.
+            now_dt = datetime.now(UTC)
+
+            for orphan in self.orphan_memory_bodies():
+                mid = str(orphan["memory_id"])
+                emid = str(orphan["engine_memory_id"])
+                ts = _parse_iso(orphan.get("updated_at") or orphan.get("created_at"))
+                # No usable timestamp means no way to prove the row cleared the
+                # grace period, so it is reported rather than deleted.
+                if ts is None or (now_dt - ts).total_seconds() <= grace_period_seconds:
+                    continue
+                # Referenced by a forget receipt: the receipt is the evidence that
+                # refuses a replay, and the body it names is not ours to drop.
+                if (
+                    self.conn.execute(
+                        "SELECT 1 FROM engine_meta "
+                        "WHERE key = ? OR key = ? OR (key LIKE 'forget_receipt:%' AND value LIKE ?) LIMIT 1",
+                        (f"forget_receipt:{emid}", f"forget_receipt:{mid}", f"%{emid}%"),
+                    ).fetchone()
+                    is not None
+                ):
+                    continue
+                # Referenced by an upload this device staged and has not yet sent.
+                if (
+                    self.conn.execute(
+                        "SELECT 1 FROM engine_meta "
+                        "WHERE (key LIKE 'staged_upload:%' OR key LIKE 'pending_upload:%' OR key LIKE 'in_flight_upload:%') "
+                        "AND (key LIKE ? OR key LIKE ? OR value LIKE ? OR value LIKE ?) LIMIT 1",
+                        (f"%{emid}%", f"%{mid}%", f"%{emid}%", f"%{mid}%"),
+                    ).fetchone()
+                    is not None
+                ):
+                    continue
+                # Referenced by a live row in the daemon's own store.
+                if "agent_memories" in pcm.table_names(self.conn) and (
+                    self.conn.execute(
+                        "SELECT 1 FROM agent_memories WHERE id = ? AND (review_status = 'approved' OR valid_to IS NULL)",
+                        (mid,),
+                    ).fetchone()
+                    is not None
+                ):
+                    continue
+                self.conn.execute("DELETE FROM agent_memory_bodies WHERE memory_id = ?", (mid,))
+                pruned_orphans += 1
+
+            retention_seconds = parked_retention_days * 86400.0
+            for parked in self.parked_supersedes():
+                ts = _parse_iso(parked.get("receivedAt") or parked.get("reportedAt") or parked.get("updatedAt"))
+                # Same rule as the orphan loop above, and for the same reason: no
+                # usable timestamp means no way to prove the row cleared the
+                # retention window, so it is reported rather than deleted.
+                # `parked_supersedes()` builds these as `str(x or y or "")`, and
+                # `_parse_iso("")` is None — falling through here pruned rows at
+                # ZERO age under the default 30-day window.
+                if ts is None or (now_dt - ts).total_seconds() <= retention_seconds:
+                    continue
+                source = parked.get("source")
+                if source == "engine_meta" and parked.get("key"):
+                    self.conn.execute("DELETE FROM engine_meta WHERE key = ?", (parked["key"],))
+                elif source == "memories" and parked.get("memoryID"):
+                    # T5: `--apply` runs on this device, for this user, and a
+                    # parked supersede edge is part of a team row's state — the
+                    # team lane put it there and the team lane resolves it. The
+                    # finding stays in the report either way, so nothing is
+                    # hidden by declining to write.
+                    if self._team_write_refusal(str(parked["memoryID"]), project_id=active_project_id) is not None:
+                        continue
+                    self.conn.execute("UPDATE memories SET superseded_by = NULL WHERE id = ?", (parked["memoryID"],))
+                else:
+                    # `source == "inbox"` lands here deliberately. `agent_memory_inbox`
+                    # is the daemon's transport table: an unapplied document is one
+                    # the engine has not acknowledged — a lineage-held revision sits
+                    # exactly like this by design — and deleting it loses the memory
+                    # permanently and silently, the same class of harm as rewinding
+                    # `remote_sync_watermarks`. The doctor reports it; the daemon
+                    # drains it.
+                    continue
+                pruned_supersedes += 1
+
+            # T6 recovery, and the one repair in this pass that RESTORES access
+            # rather than reclaiming space. A stamped row no `sync_identity:team:`
+            # entry accounts for is a row the team lane never wrote — a caller
+            # forged the stamp before the write paths refused it — and it is
+            # invisible to every read and locked against `forget` and `update`,
+            # the unstamping included. Un-stamping is the only way out, it
+            # touches nothing but the engine's own namespace, and the finding
+            # below still reports whatever this loop could not repair.
+            for orphan in self.orphan_team_provenance():
+                if self._clear_team_provenance(str(orphan["memoryID"])):
+                    unstamped_provenance += 1
+
+            if pruned_orphans or pruned_supersedes or unstamped_provenance:
+                self._commit()
+            if unstamped_provenance:
+                # These rows were fenced out of `_load_active`'s pool; a cached
+                # list from before the repair still hides them.
+                self._invalidate_cache()
+
+        aux = self.aux_secret_exposure(active_project_id, after_rowid=aux_scan_cursor or 0)
+        exposures, aux_scan = aux["exposures"], aux["scan"]
+        undecryptable = 0
+        rows = self.conn.execute("SELECT id, project_id, body_cipher, body_nonce FROM memories LIMIT 500").fetchall()
+        for row in rows:
+            if self._open_body(str(row["id"]), str(row["project_id"]), row["body_cipher"], row["body_nonce"]) is None:
+                undecryptable += 1
+        total = int(self.conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0])
+        findings: list[dict[str, Any]] = []
+        if undecryptable:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "UNDECRYPTABLE_ROWS",
+                    "detail": f"{undecryptable} of {len(rows)} sampled rows cannot be decrypted with key {self.keyring.key_id} ({self.keyring.source}).",
+                }
+            )
+        if not gate.GATE_CORPUS_AVAILABLE:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "SECRET_CORPUS_UNAVAILABLE",
+                    "detail": "secret-pattern-corpus.json not found; writes fail closed.",
+                }
+            )
+        if not self.provider.available:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "EMBEDDINGS_UNAVAILABLE",
+                    "detail": self.provider.describe().get("reason")
+                    or self.provider.describe().get("error")
+                    or "lexical-only recall",
+                    "fix": f"Run `ollama pull {DEFAULT_EMBEDDING_MODEL}` and keep Ollama running, or set {EMBEDDING_PROVIDER_ENV}=none to silence.",
+                }
+            )
+        if total > MAX_MEMORIES_PER_PROJECT_SOFT:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "LARGE_STORE",
+                    "detail": f"{total} memories; in-process BM25 stays fast into the tens of thousands but consider pruning.",
+                }
+            )
+        if exposures:
+            affected = sorted({str(item["id"]) for item in exposures})
+            surfaces = ", ".join(sorted({str(item["surface"]) for item in exposures}))
+            superseded = sum(1 for item in exposures if item["revision"] == "superseded")
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "AUX_SECRET_EXPOSURE",
+                    "detail": f"{len(affected)} of {aux_scan['rowsScanned']} scanned rows carry a secret in a "
+                    f"plaintext auxiliary column ({surfaces}); {superseded} on superseded revisions. "
+                    "Rows written before auxiliary fields were gated on their raw form can hold one.",
+                    "fix": "Forget the affected memories, or `update` them with clean tags / entities / metadata.",
+                }
+            )
+        if aux_scan["truncated"] or aux_scan["skipped"]:
+            reasons = {
+                "corpus_unavailable": "the secret-pattern corpus is unavailable, so no row could be classified",
+                "no_project": "no project resolved, so there was nothing to scan",
+            }
+            because = reasons.get(str(aux_scan["skipped"]), f"the {AUX_SCAN_ROW_LIMIT}-row scan cap was reached")
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "AUX_SCAN_INCOMPLETE",
+                    "detail": f"{aux_scan['rowsScanned']} of {aux_scan['rowsTotal']} rows scanned for auxiliary "
+                    f"secrets: {because}. An empty auxSecretExposure list does not mean the store is clean.",
+                    "fix": (
+                        "Re-run doctor with the project resolved and the corpus present, or resume the sweep with "
+                        f"aux_scan_cursor={aux_scan['nextCursor']}."
+                        if aux_scan["nextCursor"]
+                        else "Re-run doctor with the project resolved and the corpus present, or scan in batches."
+                    ),
+                }
+            )
+        chain = verify_audit_chain(self.conn)
+        if not chain["ok"]:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "AUDIT_CHAIN_BROKEN",
+                    "detail": f"hash chain breaks at seq {chain['brokenAtSeq']}",
+                }
+            )
+
+        # Sync-ledger pass (A7)
+        epoch_dt = datetime.min.replace(tzinfo=UTC)
+
+        # 1. Watermark sanity across both ledgers
+        trans_wm = self.transport_watermarks()
+        for acct, wm in trans_wm.items():
+            s_row = self.conn.execute("SELECT applied_updated_at FROM sync_state WHERE user_id = ?", (acct,)).fetchone()
+            # ONLY the processed cursor. `lastSyncedAt` is set to the current
+            # instant when the app creates this row on opt-in, with
+            # `lastProcessedRemoteUpdateAt` NULL: that row is the consent marker,
+            # not evidence a remote fact was ever processed. Falling back to it
+            # reported a stranded transport on every healthy device whose
+            # `sync_state` was simply empty because no remote fact had arrived.
+            t_iso = wm.get("lastProcessedRemoteUpdateAt")
+            t_ts = _parse_iso(t_iso) if t_iso else None
+            is_stranded = False
+            if s_row is None:
+                if t_ts is not None and t_ts > epoch_dt:
+                    is_stranded = True
+            else:
+                e_ts = _parse_iso(s_row["applied_updated_at"])
+                if t_ts is not None and (e_ts is None or t_ts > e_ts):
+                    is_stranded = True
+            if is_stranded:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "STRANDED_TRANSPORT_WATERMARK",
+                        "detail": (
+                            f"Transport watermark ({t_iso}) for user '{acct}' is ahead of engine applied watermark "
+                            f"({s_row['applied_updated_at'] if s_row else 'none'})."
+                        ),
+                    }
+                )
+
+        # 2. Orphan agent_memory_bodies
+        orphan_rows = self.orphan_memory_bodies()
+        if orphan_rows:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "ORPHAN_MEMORY_BODIES",
+                    "detail": f"{len(orphan_rows)} orphan row(s) in agent_memory_bodies with no owning record in memories.",
+                    "fix": "Run doctor with apply=True to prune eligible aged orphans.",
+                }
+            )
+
+        # 3. Parked supersedes
+        parked_list = self.parked_supersedes()
+        if parked_list:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "PARKED_SUPERSEDES",
+                    "detail": f"{len(parked_list)} parked supersede(s) waiting for target memories.",
+                    "fix": (
+                        "Wait for the target memories to sync. `apply=True` prunes only the engine's own "
+                        "notes past the retention window, and only where their age can be proved; an "
+                        "unapplied inbox document belongs to the daemon and is never deleted from here."
+                    ),
+                }
+            )
+
+        # 4. Receipt coverage
+        rcpt_gaps = self.receipt_coverage_gaps()
+        if rcpt_gaps:
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "RECEIPT_COVERAGE_GAP",
+                    "detail": f"{len(rcpt_gaps)} receipt coverage gap(s) found (missing convergence identity or forget receipt).",
+                    "fix": "Re-run the pull; a gap that persists means a receipt or its identity was never written and needs a forget replay.",
+                }
+            )
+
+        # 5. Open lineage holds
+        #
+        # The queue is bounded and its only clearer is the next re-offer of the
+        # document that filled a slot, so a note whose peer stopped sending it
+        # sits there for good. Nothing reported it, and a full queue does not
+        # fail loudly: lineage advice simply stops applying and every arriving
+        # revision takes LWW immediately. Report-only — releasing a slot is the
+        # sync path's decision, never the doctor's.
+        holds = self.lineage_holds()
+        if holds:
+            seen = sorted(str(hold.get("firstSeen") or "") for hold in holds if hold.get("firstSeen"))
+            oldest = seen[0] if seen else None
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "OPEN_LINEAGE_HOLDS",
+                    "count": len(holds),
+                    "oldestFirstSeen": oldest,
+                    "detail": (
+                        f"{len(holds)} of {LINEAGE_HOLD_QUEUE_MAX_SIZE} lineage hold slot(s) are occupied"
+                        + (f", the oldest held since {oldest}" if oldest else "")
+                        + ". A full queue applies last-writer-wins to every arriving revision at once."
+                    ),
+                    "fix": (
+                        "Pull again: a hold is released when the document it describes is re-offered, or lapses "
+                        "on the gap timeout. A slot that never clears means the peer that filled it stopped "
+                        "sending; there is nothing to repair here and `apply` does not touch it."
+                    ),
+                }
+            )
+
+        # 6. Unresolved gaps
+        for gap in self.unresolved_gaps():
+            findings.append(
+                {
+                    "severity": "warn",
+                    "code": "UNRESOLVED_GAP",
+                    "detail": (
+                        f"Memory {gap.get('memoryID')} timed out waiting for predecessor hash "
+                        f"{str(gap.get('expectedHash', ''))[:8]}; applied via LWW."
+                    ),
+                }
+            )
+        if active_project_id:
+            proj_row = self.conn.execute(
+                "SELECT fingerprint FROM projects WHERE project_id = ?", (active_project_id,)
+            ).fetchone()
+            if proj_row and str(proj_row[0] or "").startswith("path:"):
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "PROVISIONAL_PROJECT_IDENTITY",
+                        "detail": (
+                            f"Project '{active_project_id}' uses provisional path-hashed identity; "
+                            "initialize git or adopt an explicit project ID via `project adopt <id>`."
+                        ),
+                        "fix": "Run `git init` or adopt an explicit project ID via `project adopt <id>`.",
+                    }
+                )
+        else:
+            provisional_rows = self.conn.execute(
+                "SELECT project_id FROM projects WHERE fingerprint LIKE 'path:%'"
+            ).fetchall()
+            for prow in provisional_rows:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "PROVISIONAL_PROJECT_IDENTITY",
+                        "detail": (
+                            f"Project '{prow[0]}' uses provisional path-hashed identity; "
+                            "initialize git or adopt an explicit project ID via `project adopt <id>`."
+                        ),
+                        "fix": "Run `git init` or adopt an explicit project ID via `project adopt <id>`.",
+                    }
+                )
+
+        if active_project_id and project_extra.get("projectRoot"):
+            # The dotfile is read HERE, not on the read path that resolves a
+            # project — reading it is a report, and reporting is what the doctor
+            # is for. `read_project_dotfile` validates the shape and never
+            # returns unvalidated bytes, so nothing a cloned repository wrote
+            # can reach this payload: the doctor hands its findings to the
+            # calling model unwrapped, and the old `fix` string was
+            # "Run `project adopt <verbatim file contents>`" — a
+            # prompt-injection channel one surface over from the one P8 closes.
+            proposed, digest = read_project_dotfile(Path(str(project_extra["projectRoot"])))
+            if proposed is not None and proposed != active_project_id:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "UNCONFIRMED_PROJECT_DOTFILE",
+                        "detail": (
+                            "This folder carries a .burnbar/project-id proposing another project. It is a "
+                            "proposal only: nothing resolves through it and nothing is stored until you adopt it."
+                        ),
+                        "proposedProjectID": proposed,
+                        # Named, never interpolated into a command: the fix tells
+                        # the member where to look, and they run it themselves.
+                        "fix": (
+                            "Read .burnbar/project-id in this folder yourself. If you meant it, run "
+                            "`project adopt` there and confirm; if you did not, delete the file."
+                        ),
+                    }
+                )
+            elif proposed is None and digest is not None:
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "MALFORMED_PROJECT_DOTFILE",
+                        # The content is identified by hash. Echoing it is the
+                        # whole defect: it is repository-controlled text.
+                        "detail": (
+                            f"This folder's .burnbar/project-id (sha256 {digest[:12]}) is not a project id. "
+                            "It is ignored entirely."
+                        ),
+                        "fix": "Delete .burnbar/project-id in this folder, or replace it with a real project id.",
+                    }
+                )
+
+        orphan_provenance = self.orphan_team_provenance()
+        if orphan_provenance:
+            findings.append(
+                {
+                    "severity": "error",
+                    "code": "ORPHAN_TEAM_PROVENANCE",
+                    "detail": (
+                        f"{len(orphan_provenance)} memories carry team provenance that no team convergence "
+                        "ledger entry accounts for. The team lane never wrote them, so they are hidden from "
+                        "recall and locked against forget and update."
+                    ),
+                    "memoryIDs": [item["memoryID"] for item in orphan_provenance][:20],
+                    "fix": "Run burnbar_memory_doctor with apply=true (requires memory_write) to un-stamp them.",
+                }
+            )
+
+        # The link file's diagnostic (D16 follow-up). Checkout-relative by
+        # nature — "which teams does THIS repository publish to" has no answer
+        # without a repository — so it runs only when a project resolved, the
+        # same condition the auxiliary-exposure scan above is gated on.
+        #
+        # WARN, not ERROR: every state it reports is a configuration a member
+        # can hold on purpose for a while (a team synced but not yet linked in
+        # this repository is the normal state of every repository the team does
+        # not share), and none of them lock a row the way orphan provenance
+        # does. Counts and ids only, like every other team finding.
+        #
+        # NO `apply`, AND NO REMEDIATION SCRIPT (D16 Cursor ruling, clause 3).
+        # The link is a checked-in, human decision about what a repository
+        # publishes to whom; a doctor that wrote it would be committing on the
+        # member's behalf, and a doctor whose `fix` reads as a command to run
+        # would be handing an agent the same door by another route. So the
+        # finding names the tool, states plainly what linking DOES — it makes
+        # this checkout's approved memories uploadable to that team, and admits
+        # that team's facts here — and says a human must confirm and commit it.
+        # `decision` carries that sentence as its own field so a caller cannot
+        # render the fix without it.
+        if active_project_id is not None:
+            link_report = self.team_project_link_report(project_path=project_path)
+            project_extra.setdefault("teamProjectLinks", link_report["links"])
+            flagged = [
+                team
+                for team in link_report["teams"]
+                if team["factsWithheldTeamProjectNotLinked"]
+                or (team["syncedOnThisMac"] and not team["linkedInThisCheckout"])
+                or team["linkNamesNoHeldPartition"]
+                or team["linkWrittenButNotCommitted"]
+            ]
+            if flagged:
+                withheld_total = sum(int(team["factsWithheldTeamProjectNotLinked"]) for team in flagged)
+                unlinked = [team["teamID"] for team in flagged if not team["linkedInThisCheckout"]]
+                mismatched = [team["teamID"] for team in flagged if team["linkNamesNoHeldPartition"]]
+                # Reported apart from `unlinked` even though every one of these
+                # is also unlinked: "you have not linked this team" and "you
+                # wrote this link and have not committed it" are different
+                # sentences with different next steps, and collapsing them is
+                # what made an uncommitted file look like a working link.
+                uncommitted = [team["teamID"] for team in flagged if team["linkWrittenButNotCommitted"]]
+                findings.append(
+                    {
+                        "severity": "warn",
+                        "code": "TEAM_PROJECT_LINK_GAPS",
+                        "detail": (
+                            f"{len(flagged)} team(s) have a link problem in this checkout: "
+                            f"{withheld_total} team fact(s) are held back from this session for "
+                            f"TEAM_PROJECT_NOT_LINKED, {len(unlinked)} team(s) this Mac syncs have no entry in "
+                            f"{link_report['linkPath']} that HEAD carries, {len(uncommitted)} of those name a "
+                            "teamProjectId in the working tree that was never committed (a written link is not a "
+                            f"link), and {len(mismatched)} link(s) name a project id none of the facts this store "
+                            "holds for that team landed in."
+                        ),
+                        "teams": flagged,
+                        "linkPath": link_report["linkPath"],
+                        "uncommittedTeamIDs": uncommitted,
+                        "decision": (
+                            "Linking a repository to a team makes this checkout's approved memories eligible to "
+                            "upload to that team — readable by every member of it, now and in future — and admits "
+                            "that team's facts into this checkout's sessions. That is a human decision about what "
+                            "this repository publishes and to whom. It is not a step to run because a report "
+                            "mentioned it."
+                        ),
+                        "fix": (
+                            "If — and only if — the team agreed to share this repository, a human confirms the "
+                            "teamProjectId the team agreed on (burnbar_team_link_project takes confirm=true and "
+                            "requires memory_write) and COMMITS the file. Until the entry is in HEAD it links "
+                            "nothing: the engine reads the committed file, so an uncommitted or locally-modified "
+                            "entry uploads nothing and serves nothing."
+                        ),
+                    }
+                )
+
+        payload: dict[str, Any] = {
+            "status": "ok" if not any(item["severity"] == "error" for item in findings) else "degraded",
+            "engine": {
+                "schemaVersion": ENGINE_SCHEMA_VERSION,
+                "dbPath": str(db_path),
+                "dbExists": db_path.exists(),
+                "memories": total,
+            },
+            "encryption": {
+                "algorithm": "AES-256-GCM",
+                "keyID": self.keyring.key_id,
+                "keySource": self.keyring.source,
+                "undecryptableSampled": undecryptable,
+            },
+            "embedding": self.provider.describe(),
+            "embeddingPending": self.embedding_pending(project_id=active_project_id),
+            "policy": {
+                "secret": self.config.secret_policy,
+                "pii": self.config.pii_policy,
+                "retainAllowed": self.config.retain_allowed,
+                "corpusAvailable": gate.GATE_CORPUS_AVAILABLE,
+                "auxSecretExposures": len(exposures),
+            },
+            "auditChain": chain,
+            "auxScan": aux_scan,
+            "auxSecretExposure": exposures,
+            "findings": findings,
+        }
+        if apply:
+            payload["apply"] = {
+                "applied": True,
+                "prunedOrphans": pruned_orphans,
+                "prunedSupersedes": pruned_supersedes,
+                "unstampedTeamProvenance": unstamped_provenance,
+            }
+        payload.update(project_extra)
+        return payload

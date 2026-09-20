@@ -50,6 +50,11 @@ function errorDetails(err: unknown): RebuildErrorDetails | undefined {
   };
 }
 
+/** True when the callable refused because another rebuild is still committing. */
+export function rebuildUsageKeepsWaiting(err: unknown): boolean {
+  return errorDetails(err)?.reason === "in_flight";
+}
+
 /**
  * Map a `rebuildUsageRollups` refusal/failure onto a sentence the profile
  * can show. Gate refusals (`circuit_open` / `in_flight` / `force_cooldown`)
@@ -63,7 +68,7 @@ export function rebuildUsageErrorMessage(err: unknown): string {
   const retryAt = details?.retryAt;
   const message = errorMessage(err);
 
-  if (reason === "circuit_open" || code.endsWith("/unavailable")) {
+  if (reason === "circuit_open") {
     return retryAt
       ? `Usage repair is paused until ${retryAt} after repeated failures.`
       : "Usage repair is paused after repeated failures. Try again in an hour.";

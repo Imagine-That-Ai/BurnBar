@@ -104,7 +104,7 @@ enum CLIAgentMissionRequestPayloadFactory {
     ) throws -> UntypedJSONObject {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        var payload = build(
+        let payload = build(
             id: id,
             title: title,
             prompt: prompt,

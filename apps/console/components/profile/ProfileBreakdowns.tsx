@@ -3,8 +3,10 @@
 /**
  * Searchable, clickable breakdown lists for the explorer rail: providers,
  * models, harnesses, combos, devices, and accounts. Every row is a control —
- * click to add that facet chip and recompute what the rollup can recompute.
- * The Pensieve search-box idiom keeps long catalogs scannable.
+ * click toggles that facet chip; shift/alt-click (or the row's inspect
+ * affordance) ALSO focuses the entity in the inspector, so a dismissed
+ * inspector is one click away from anywhere. The Pensieve search-box idiom
+ * keeps long catalogs scannable.
  */
 
 import * as React from "react";
@@ -54,6 +56,8 @@ function ClickRow({
   barLabel,
   value,
   onClick,
+  onInspect,
+  inspectLabel,
 }: {
   active: boolean;
   logoId: string;
@@ -65,28 +69,44 @@ function ClickRow({
   barLabel: string;
   value: string;
   onClick: () => void;
+  /** Entity drill-in (facet + inspector focus, one update). */
+  onInspect: () => void;
+  inspectLabel: string;
 }) {
   return (
     <li>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-pressed={active}
-        title={nameTitle}
+      <div
         className={cn(
-          "flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm transition-colors hover:bg-mercury-wash",
+          "group flex w-full min-w-0 items-center gap-token-2 rounded-md px-token-2 py-token-2 text-left text-sm transition-colors hover:bg-mercury-wash",
           active && "bg-mercury-wash ring-1 ring-[color:var(--accent)]",
         )}
       >
-        <BrandLogo id={logoId} label={logoLabel} size={18} />
-        <span className="w-28 shrink-0 truncate text-content-bright sm:w-32">{name}</span>
-        <span className="min-w-0 flex-1" role="img" aria-label={barLabel}>
-          <ProportionBar value={barValue} color={barColor} />
-        </span>
-        <span className="min-w-[4rem] shrink-0 whitespace-nowrap text-right text-content-mute tabular-nums">
-          {value}
-        </span>
-      </button>
+        <button
+          type="button"
+          onClick={onClick}
+          aria-pressed={active}
+          title={nameTitle}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+        >
+          <BrandLogo id={logoId} label={logoLabel} size={18} />
+          <span className="w-28 shrink-0 truncate text-content-bright sm:w-32">{name}</span>
+          <span className="min-w-0 flex-1" role="img" aria-label={barLabel}>
+            <ProportionBar value={barValue} color={barColor} />
+          </span>
+          <span className="min-w-[4rem] shrink-0 whitespace-nowrap text-right text-content-mute tabular-nums">
+            {value}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onInspect}
+          title={inspectLabel}
+          aria-label={inspectLabel}
+          className="shrink-0 rounded border border-glass-line px-token-2 py-0.5 text-[0.68rem] text-content-mute transition-colors hover:border-accent hover:text-content-bright focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+        >
+          Inspect
+        </button>
+      </div>
     </li>
   );
 }
@@ -150,6 +170,7 @@ export function ProfileBreakdowns({
   metric,
   activeFacets,
   onToggle,
+  onInspect,
 }: {
   data: BreakdownData;
   metric: ProfileMetric;
@@ -161,6 +182,7 @@ export function ProfileBreakdowns({
     devices: readonly string[];
   };
   onToggle: (f: BreakdownFacet) => void;
+  onInspect: (f: BreakdownFacet) => void;
 }) {
   const pv = (p: ProviderSummary) =>
     metric === "tokens" ? p.totalTokens : metric === "runs" ? p.totalRequests : p.totalCost;
@@ -170,7 +192,8 @@ export function ProfileBreakdowns({
     metric === "tokens" ? h.totalTokens : metric === "runs" ? h.totalRequests : h.totalCost;
   const cv = (c: ComboSummary) =>
     metric === "tokens" ? c.tokens : metric === "runs" ? c.requests : c.cost;
-  const dv = (d: DeviceSummary) => (metric === "spend" ? 0 : metric === "runs" ? d.requests : d.tokens);
+  const dv = (d: DeviceSummary) =>
+    metric === "spend" ? 0 : metric === "runs" ? d.requests : d.tokens;
   const av = (a: AccountSummary) =>
     metric === "tokens" ? a.totalTokens : metric === "runs" ? a.totalRequests : a.totalCost;
 
@@ -211,6 +234,8 @@ export function ProfileBreakdowns({
                 barLabel={`${providerDisplayName(p.provider)} ${fmtMetric(metric, pv(p))}`}
                 value={fmtMetric(metric, pv(p))}
                 onClick={() => onToggle({ kind: "provider", id: p.provider })}
+                onInspect={() => onInspect({ kind: "provider", id: p.provider })}
+                inspectLabel={`Inspect ${providerDisplayName(p.provider)} in the inspector`}
               />
             ))}
           </ul>
@@ -233,6 +258,8 @@ export function ProfileBreakdowns({
             barLabel={`${modelDisplayName(m.model)} ${fmtMetric(metric, mv(m))}`}
             value={fmtMetric(metric, mv(m))}
             onClick={() => onToggle({ kind: "model", id: m.model })}
+            onInspect={() => onInspect({ kind: "model", id: m.model })}
+            inspectLabel={`Inspect ${modelDisplayName(m.model)} in the inspector`}
           />
         ))}
         renderItem={(q) =>
@@ -251,6 +278,8 @@ export function ProfileBreakdowns({
                 barLabel={`${modelDisplayName(m.model)} ${fmtMetric(metric, mv(m))}`}
                 value={fmtMetric(metric, mv(m))}
                 onClick={() => onToggle({ kind: "model", id: m.model })}
+                onInspect={() => onInspect({ kind: "model", id: m.model })}
+                inspectLabel={`Inspect ${modelDisplayName(m.model)} in the inspector`}
               />
             ))
         }
@@ -273,6 +302,8 @@ export function ProfileBreakdowns({
               barLabel={`${h.sourceName} ${fmtMetric(metric, hv(h))}`}
               value={fmtMetric(metric, hv(h))}
               onClick={() => onToggle({ kind: "harness", id: h.sourceId })}
+              onInspect={() => onInspect({ kind: "harness", id: h.sourceId })}
+              inspectLabel={`Inspect ${h.sourceName} in the inspector`}
             />
           ))}
           renderItem={(q) =>
@@ -291,6 +322,8 @@ export function ProfileBreakdowns({
                   barLabel={`${h.sourceName} ${fmtMetric(metric, hv(h))}`}
                   value={fmtMetric(metric, hv(h))}
                   onClick={() => onToggle({ kind: "harness", id: h.sourceId })}
+                  onInspect={() => onInspect({ kind: "harness", id: h.sourceId })}
+                  inspectLabel={`Inspect ${h.sourceName} in the inspector`}
                 />
               ))
           }
@@ -303,31 +336,42 @@ export function ProfileBreakdowns({
           <ul className="max-h-64 space-y-token-1 overflow-y-auto pr-1">
             {combos.map((c) => (
               <li key={`${c.sourceId}/${c.provider}/${c.model}`}>
-                <button
-                  type="button"
-                  onClick={() => onToggle({ kind: "harness", id: c.sourceId })}
-                  title={`${c.sourceName} × ${c.model} · ${formatCompact(c.tokens)} tok — click to filter by ${c.sourceName}`}
-                  className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm transition-colors hover:bg-mercury-wash"
-                >
-                  <BrandLogo id={c.sourceId} label={c.sourceName} size={18} />
-                  <span className="w-40 shrink-0 truncate text-content-bright sm:w-44">
-                    {c.sourceName} <span className="text-content-dim">×</span>{" "}
-                    {comboModelShortName(c.sourceName, c.model)}
-                  </span>
-                  <span
-                    className="min-w-0 flex-1"
-                    role="img"
-                    aria-label={`${c.sourceName} ${modelDisplayName(c.model)} ${fmtMetric(metric, cv(c))}`}
+                <div className="group flex w-full min-w-0 items-center gap-token-2 rounded-md px-token-2 py-token-2 text-left text-sm transition-colors hover:bg-mercury-wash">
+                  <button
+                    type="button"
+                    onClick={() => onToggle({ kind: "harness", id: c.sourceId })}
+                    title={`${c.sourceName} × ${c.model} · ${formatCompact(c.tokens)} tok — click to filter by ${c.sourceName}`}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
                   >
-                    <ProportionBar
-                      value={comboMax > 0 ? cv(c) / comboMax : 0}
-                      color={providerBarFill(c.provider)}
-                    />
-                  </span>
-                  <span className="min-w-[4rem] shrink-0 whitespace-nowrap text-right text-content-mute tabular-nums">
-                    {fmtMetric(metric, cv(c))}
-                  </span>
-                </button>
+                    <BrandLogo id={c.sourceId} label={c.sourceName} size={18} />
+                    <span className="w-40 shrink-0 truncate text-content-bright sm:w-44">
+                      {c.sourceName} <span className="text-content-dim">×</span>{" "}
+                      {comboModelShortName(c.sourceName, c.model)}
+                    </span>
+                    <span
+                      className="min-w-0 flex-1"
+                      role="img"
+                      aria-label={`${c.sourceName} ${modelDisplayName(c.model)} ${fmtMetric(metric, cv(c))}`}
+                    >
+                      <ProportionBar
+                        value={comboMax > 0 ? cv(c) / comboMax : 0}
+                        color={providerBarFill(c.provider)}
+                      />
+                    </span>
+                    <span className="min-w-[4rem] shrink-0 whitespace-nowrap text-right text-content-mute tabular-nums">
+                      {fmtMetric(metric, cv(c))}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onInspect({ kind: "harness", id: c.sourceId })}
+                    title={`Inspect ${c.sourceName} in the inspector`}
+                    aria-label={`Inspect ${c.sourceName} in the inspector`}
+                    className="shrink-0 rounded border border-glass-line px-token-2 py-0.5 text-[0.68rem] text-content-mute transition-colors hover:border-accent hover:text-content-bright focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+                  >
+                    Inspect
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -351,6 +395,8 @@ export function ProfileBreakdowns({
                 barLabel={`${d.deviceId} ${fmtMetric(metric, dv(d))}`}
                 value={fmtMetric(metric, dv(d))}
                 onClick={() => onToggle({ kind: "device", id: d.deviceId })}
+                onInspect={() => onInspect({ kind: "device", id: d.deviceId })}
+                inspectLabel={`Inspect ${d.deviceId} in the inspector`}
               />
             ))}
           </ul>
@@ -374,6 +420,8 @@ export function ProfileBreakdowns({
               barLabel={`${a.accountLabel} ${fmtMetric(metric, av(a))}`}
               value={fmtMetric(metric, av(a))}
               onClick={() => onToggle({ kind: "account", id: a.id })}
+              onInspect={() => onInspect({ kind: "account", id: a.id })}
+              inspectLabel={`Inspect ${a.accountLabel} in the inspector`}
             />
           ))}
           renderItem={(q) =>
@@ -392,6 +440,8 @@ export function ProfileBreakdowns({
                   barLabel={`${a.accountLabel} ${fmtMetric(metric, av(a))}`}
                   value={fmtMetric(metric, av(a))}
                   onClick={() => onToggle({ kind: "account", id: a.id })}
+                  onInspect={() => onInspect({ kind: "account", id: a.id })}
+                  inspectLabel={`Inspect ${a.accountLabel} in the inspector`}
                 />
               ))
           }
@@ -399,7 +449,7 @@ export function ProfileBreakdowns({
       )}
 
       <p className="text-xs text-content-dim">
-        Click a row to filter the whole page by it. Click again to remove.
+        Click a row to filter. Hover a row for Inspect → to reopen the inspector.
       </p>
     </div>
   );

@@ -100,7 +100,89 @@ public sealed partial class WindowsSqlCipherProvisioner
                 WindowsSchemaUpgradeStatement.Always(
                     "CREATE INDEX IF NOT EXISTS token_usage_start_time_idx ON token_usage(startTime)"),
             }),
+
+        // v65_memory_quarantine_bodies — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
+        new WindowsSchemaUpgradeStep(
+            "v65_memory_quarantine_bodies",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.Always(MemoryQuarantineBodiesTableSql),
+                WindowsSchemaUpgradeStatement.Always(
+                    "CREATE INDEX IF NOT EXISTS memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id)"),
+            }),
+
+        // v66_agent_memory_bodies — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
+        new WindowsSchemaUpgradeStep(
+            "v66_agent_memory_bodies",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.Always(AgentMemoryBodiesTableSql),
+                WindowsSchemaUpgradeStatement.Always(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS agent_memory_bodies_engine_idx ON agent_memory_bodies(engine_memory_id)"),
+            }),
+
+        // v67_agent_memory_inbox — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
+        new WindowsSchemaUpgradeStep(
+            "v67_agent_memory_inbox",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.Always(AgentMemoryInboxTableSql),
+                WindowsSchemaUpgradeStatement.Always(
+                    "CREATE INDEX IF NOT EXISTS agent_memory_inbox_user_applied_idx ON agent_memory_inbox(user_id, applied_at)"),
+            }),
+
+        // v68_agent_memories_review_default_repair — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift. The Mac/daemon
+        // migration rebuilds `agent_memories` when an older bootstrap left
+        // `review_status` with `DEFAULT 'approved'`. Windows provisioning never
+        // creates `agent_memories` (daemon-owned, see
+        // budgets/migrator-parity-baseline.json), so there is nothing to repair
+        // here: the step only advances the stamp, keeping an upgraded database
+        // identical to a freshly provisioned one.
+        new WindowsSchemaUpgradeStep(
+            "v68_agent_memories_review_default_repair",
+            Array.Empty<WindowsSchemaUpgradeStatement>()),
     };
+
+    internal const string AgentMemoryInboxTableSql =
+        """
+        CREATE TABLE IF NOT EXISTS agent_memory_inbox (
+            doc_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            engine_memory_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            remote_updated_at TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            applied_at TEXT
+        )
+        """;
+
+    internal const string AgentMemoryBodiesTableSql =
+        """
+        CREATE TABLE IF NOT EXISTS agent_memory_bodies (
+            memory_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            engine_memory_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """;
+
+    internal const string MemoryQuarantineBodiesTableSql =
+        """
+        CREATE TABLE IF NOT EXISTS memory_quarantine_bodies (
+            memory_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """;
 
     /// <summary>
     /// The standing-orders table, kept identical to the fresh-install statement in

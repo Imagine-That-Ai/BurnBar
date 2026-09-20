@@ -9,6 +9,11 @@ import SwiftUI
 struct MemoryConsentSheet: View {
     var onDecision: (Bool) -> Void
 
+    /// The privacy promise. Cloud models for memory are a separate, off-by-default
+    /// opt-in (`MemoryCloudModelsConsentSheet`), so this bullet must not claim
+    /// an unconditional "nothing leaves your device".
+    static let privacyBullet = "Nothing leaves your device unless you turn on cloud models in Settings → Privacy."
+
     init(onDecision: @escaping (Bool) -> Void) {
         self.onDecision = onDecision
     }
@@ -16,23 +21,12 @@ struct MemoryConsentSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    DesignSystem.Colors.ember.opacity(0.35),
-                                    DesignSystem.Colors.amber.opacity(0.25)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 48, height: 48)
-                    Image(systemName: "brain.head.profile")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                }
+                // The kernel is the emblem: a living fluid aurora in BurnBar's
+                // colours (whimsy → mint → lavender → ember) replaces the flat
+                // circle-and-glyph, so the permission moment reads as the app's
+                // own weather. It carries the emblem's accessibility meaning
+                // under VoiceOver, replacing the SF Symbol entirely.
+                FluidAuroraKernelView(size: 48, accessibilityLabel: "Memory")
 
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     Text("Remember useful details from your chats?")
@@ -68,7 +62,7 @@ struct MemoryConsentSheet: View {
                 bullet(
                     icon: "lock",
                     tint: DesignSystem.Colors.textMuted,
-                    text: "Nothing leaves your device. Change this anytime in Settings → Privacy."
+                    text: Self.privacyBullet
                 )
             }
 

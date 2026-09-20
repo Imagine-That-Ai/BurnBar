@@ -11,7 +11,20 @@ import {
   assertFails,
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
-import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  documentId,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  Timestamp,
+} from "firebase/firestore";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +39,13 @@ const opaqueDigits = "0123456789abcdef";
 
 function opaqueId(index) {
   return opaqueDigits[index % opaqueDigits.length].repeat(64);
+}
+
+// A second opaque-id family for the agent-sourced (blind sync) cases. The
+// trailing 32 hex chars are never uniform, so these can never collide with
+// an `opaqueId` above while still matching `^[a-f0-9]{64}$`.
+function agentOpaqueId(index) {
+  return opaqueDigits[index % opaqueDigits.length].repeat(32) + opaqueDigits.repeat(2);
 }
 
 function memoryAad(uid, docID) {
@@ -227,6 +247,129 @@ async function main() {
           },
         })
       )
+    );
+  });
+
+  // ---- Memory blind sync: agent-sourced engine memories -------------------
+  // The Memory MCP engine mirrors approved, non-secret rows into the control
+  // plane as `source_kind = 'agent'`; the app seals them through the same
+  // envelope chat memories already use. The rules therefore admit the `agent`
+  // partition and the engine's kind vocabulary — and nothing else.
+
+  await step("agent-sourced engine memories are accepted", async () => {
+    for (const [index, kind] of [
+      "decision",
+      "architecture",
+      "procedure",
+      "gotcha",
+      "todo"
+    ].entries()) {
+      const docID = agentOpaqueId(index);
+      await assertSucceeds(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`),
+          memoryFact(aliceUid, docID, { sourceKind: "agent", kind })
+        )
+      );
+    }
+  });
+
+  await step("chat memories keep the widened kind vocabulary", async () => {
+    const docID = agentOpaqueId(5);
+    await assertSucceeds(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`),
+        memoryFact(aliceUid, docID, { sourceKind: "chat", kind: "preference" })
+      )
+    );
+  });
+
+  await step("memory facts reject source kinds outside chat and agent", async () => {
+    for (const [index, sourceKind] of ["code", "safari_ask", "agent_session", ""].entries()) {
+      const docID = agentOpaqueId(index + 6);
+      await assertFails(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`),
+          memoryFact(aliceUid, docID, { sourceKind })
+        )
+      );
+    }
+  });
+
+  await step("agent memory facts reject kinds outside the allowlist", async () => {
+    const docID = agentOpaqueId(10);
+    await assertFails(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`),
+        memoryFact(aliceUid, docID, { sourceKind: "agent", kind: "secret" })
+      )
+    );
+  });
+
+  await step("agent memory facts reject plaintext and vector material", async () => {
+    const fields = ["text", "body", "citations", "vector", "cloakedVector", "embedding"];
+    for (const [index, field] of fields.entries()) {
+      const docID = agentOpaqueId(index + 11);
+      await assertFails(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`),
+          memoryFact(aliceUid, docID, {
+            sourceKind: "agent",
+            kind: "decision",
+            [field]: field === "citations" ? ["raw"] : "raw"
+          })
+        )
+      );
+    }
+  });
+
+  await step("agent memory facts still require the Data Vault entitlement", async () => {
+    // `cloudOnlyUid` holds a hosted-quota entitlement, not Data Vault.
+    const cloudOnlyDocID = agentOpaqueId(0);
+    await assertFails(
+      setDoc(
+        doc(cloudOnlyDB, `users/${cloudOnlyUid}/memory_facts/${cloudOnlyDocID}`),
+        memoryFact(cloudOnlyUid, cloudOnlyDocID, { sourceKind: "agent", kind: "decision" })
+      )
+    );
+    // `bobUid` holds no entitlement at all.
+    const bobDocID = agentOpaqueId(1);
+    await assertFails(
+      setDoc(
+        doc(bobDB, `users/${bobUid}/memory_facts/${bobDocID}`),
+        memoryFact(bobUid, bobDocID, { sourceKind: "agent", kind: "decision" })
+      )
+    );
+  });
+
+  await step("a CloudVault rotation can rewrap a memory fact in place", async () => {
+    // Mirrors what CloudVaultRotationRewrapWorker writes: the resealed
+    // envelope plus the rotation bookkeeping companions.
+    const docID = agentOpaqueId(2);
+    await assertSucceeds(
+      setDoc(
+        doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`),
+        memoryFact(aliceUid, docID, { sourceKind: "agent", kind: "decision" })
+      )
+    );
+    // The worker paginates `orderBy(documentId()).limit(batch)` before it can
+    // reseal anything, so the list query is part of the rotation contract.
+    await assertSucceeds(
+      getDocs(
+        query(
+          collection(aliceDB, `users/${aliceUid}/memory_facts`),
+          orderBy(documentId()),
+          limit(50)
+        )
+      )
+    );
+    await assertSucceeds(
+      updateDoc(doc(aliceDB, `users/${aliceUid}/memory_facts/${docID}`), {
+        sealedMemory: sealedBlob(memoryAad(aliceUid, docID)),
+        vaultGeneration: 2,
+        rewrapJobId: "rotation-job-1",
+        updatedAt: serverTimestamp()
+      })
     );
   });
 

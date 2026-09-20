@@ -50,6 +50,8 @@ final class NavigationCoordinator {
         /// AI Inbox. The associated id is the item a notification was about, so a
         /// tapped alert lands on that item rather than the top of the list.
         case inbox(itemID: String?)
+        /// Itemized token burn slips and cache discounts register.
+        case receipts
     }
     
     // MARK: - Navigation Methods
@@ -111,6 +113,10 @@ final class NavigationCoordinator {
             return true
         case "recap":
             setDashboardRoute(.recap)
+            pendingNavigation = .dashboard
+            return true
+        case "receipts":
+            setDashboardRoute(.receipts)
             pendingNavigation = .dashboard
             return true
         default:

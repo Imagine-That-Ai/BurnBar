@@ -10,9 +10,12 @@
 
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const DIST = new URL("../dist", import.meta.url).pathname;
+// fileURLToPath, not `.pathname`: a checkout under a directory with a space in
+// its name (or any character a URL percent-encodes) resolves to "…%20…" through
+// `.pathname`, and every fs call against it fails with "dist/ does not exist".
+const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";

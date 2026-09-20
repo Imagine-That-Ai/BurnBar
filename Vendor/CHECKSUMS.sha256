@@ -1,0 +1,8 @@
+# SHA-256 checksums for tracked Vendor binary artifacts.
+# Paths are relative to this Vendor directory. Regenerate with
+#   scripts/supply-chain/refresh-vendor-checksums.sh
+# after re-vendoring an AAR; scripts/supply-chain/verify-vendor-checksums.sh
+# fails on any binary without an entry, any entry without a binary, and any drift.
+dd83d351b9348a9a1e9e03694a2b9d31238d844a298a6e218f0162e39e359b75  burnbar-remote.aar
+b5eab11d3d7ed6db21c5ab9c4859dc7d1a2b88a0864e954322dc4b49832b9c76  openburnbar-domain-core.aar
+1856ddc131ed878bdfa5ef279e5455d2bf6dcf8f7a7c64d9d4fb2755349ef68d  openburnbar-iroh.aar

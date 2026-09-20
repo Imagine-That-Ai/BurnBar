@@ -180,6 +180,11 @@ final class DashboardUsageViewModelTests: XCTestCase {
         let usageStore = UsageStore(dbQueue: queue)
         let calendar = Calendar.current
         let todayStart = calendar.startOfDay(for: Date())
+        // Pin the query clock at a local noon so the "today" window
+        // (`startOfDay...now`) always contains the 01:00 row. Run between
+        // midnight and 01:00, a wall-clock `now` would place that row in
+        // the future and the overlap window would exclude it.
+        let noon = todayStart.addingTimeInterval(12 * 3_600)
         let earlyToday = todayStart.addingTimeInterval(60 * 60)
         let yesterday = todayStart.addingTimeInterval(-60 * 60)
 
@@ -204,7 +209,7 @@ final class DashboardUsageViewModelTests: XCTestCase {
             endTime: yesterday.addingTimeInterval(60)
         ))
 
-        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100, now: noon)
         let today = try XCTUnwrap(snapshot.windowSummaries[.today])
 
         XCTAssertEqual(today.sessionCount, 1)

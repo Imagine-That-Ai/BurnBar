@@ -9,7 +9,7 @@ pinned SQLCipher parameters and rationale, and
 
 | File | What it is |
 | ---- | ---------- |
-| `openburnbar-db-compat-v64.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v64_token_usage_start_time_index` and seeded with the canonical FTS corpus. Genuinely encrypted (no plaintext SQLite header). |
+| `openburnbar-db-compat-v64.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v65_memory_quarantine_bodies` and seeded with the canonical FTS corpus. The legacy filename stays stable for downstream fixture consumers; the vector records the actual endpoint. Genuinely encrypted (no plaintext SQLite header). |
 | `openburnbar-db-compat-vector.json` | The **DB-compat vector**: expected schema hash (SHA-256 over normalized `sqlite_master` DDL) + the expected FTS5 `bm25()`/`snippet()` row set for a fixed set of `MATCH` probes. |
 | `openburnbar-db-compat-params-observed.json` | The SQLCipher parameters **read back from the live 4.16.0 binary** (evidence for the pinned values). |
 
@@ -85,8 +85,12 @@ follow the endpoint. Grep for the previous count before you assume it is done.
    endpoint schema itself (`.Schema.cs`).
 6. The Windows test pins, **endpoint _and_ count together**:
    `windows/storage/OpenBurnBar.Storage.Tests/TokenUsageWriteRoundTripTests.cs`,
-   `.../SwitcherProfileWriteSeamRoundTripTests.cs` (schema hash + count), and
-   `windows/tests/storage/WindowsStorageDevHostRuntimeTests.cs`.
+   `.../SwitcherProfileWriteSeamRoundTripTests.cs` (schema hash + count),
+   `windows/tests/storage/WindowsStorageDevHostRuntimeTests.cs`, and the
+   presentation-layer pin that is easy to miss because it lives outside
+   `windows/storage/`: `windows/tests/presentation/Switcher/SqlCipherSwitcherProfileStoreTests.cs`
+   (schema hash). `grep -rl <old hash>` across the whole repo before you
+   push; the storage-layer files are not the only readers of this fixture.
 7. Every `openburnbar-db-compat-vN.sqlcipher` filename reference under
    `windows/` — csproj `<Content>` links, `RepoFixtures`, and the per-suite
    `FixtureName` constants.

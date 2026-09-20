@@ -807,6 +807,7 @@ final class RemoteUnlockCredentialController {
             case .daemonUnavailable: return "remote_access_daemon_unavailable"
             case .readFailed: return "remote_access_daemon_read_failed"
             case .responseTooLarge: return "remote_access_daemon_response_too_large"
+            case .serverUntrusted(let detail): return "remote_access_daemon_untrusted: \(detail)"
             case .socketPathTooLong: return "remote_access_daemon_socket_path_too_long"
             case .socketUnavailable: return "remote_access_daemon_socket_unavailable"
             case .timedOut: return "remote_access_daemon_timed_out"
@@ -829,7 +830,12 @@ final class RemoteUnlockCredentialController {
     }
 }
 
-private struct RemoteAccessAgentClient: Sendable {
+// Internal (not private) so `@testable import OpenBurnBar` tests can pin the
+// client-side server-trust gate with an impostor listener, mirroring
+// `PrivilegedInputSocketClientTrustTests` in the core package.
+struct RemoteAccessAgentClient: Sendable {
+    typealias ServerCodeSignatureValidator = @Sendable (audit_token_t) throws -> Void
+
     private static let defaultSocketPath = "/var/run/openburnbar-remote-access-agent.sock"
     private static let maximumResponseBytes = 16 * 1024
     // Must exceed the helper's worker-exit backstop so the app never gives up while the helper is
@@ -839,9 +845,21 @@ private struct RemoteAccessAgentClient: Sendable {
     // still return in milliseconds — this is only the maximum wait, not an added delay.
     private static let requestIOTimeoutSeconds: time_t = 20
     private var socketPath: String = Self.defaultSocketPath
+    private let expectedServerUID: uid_t
+    private let serverCodeSignatureValidator: ServerCodeSignatureValidator
 
-    init(socketPath: String = Self.defaultSocketPath) {
+    init(
+        socketPath: String = Self.defaultSocketPath,
+        expectedServerUID: uid_t = 0,
+        serverCodeSignatureValidator: ServerCodeSignatureValidator? = nil
+    ) {
         self.socketPath = socketPath
+        // The remote-access agent is a root LaunchDaemon, so the server side of
+        // this socket must always present uid 0 — a user-owned impostor bound
+        // to the same path fails this check before any payload is written.
+        self.expectedServerUID = expectedServerUID
+        self.serverCodeSignatureValidator = serverCodeSignatureValidator
+            ?? Self.defaultServerCodeSignatureValidator
     }
 
     /// Blocking socket send runs off the main actor: this is a `nonisolated`
@@ -856,6 +874,23 @@ private struct RemoteAccessAgentClient: Sendable {
     /// Runs off the main actor (`nonisolated` `async`, SE-0338).
     func wakeDisplay() async throws {
         try send(RemoteAccessAgentRequest(operation: "wakeDisplay", password: nil))
+    }
+
+    /// Synchronous send seam so tests can pin the server-trust gate directly
+    /// (impostor listener receives zero bytes on trust failure).
+    func sendForTesting(_ request: RemoteAccessAgentRequest) throws {
+        try send(request)
+    }
+
+    private static let defaultServerCodeSignatureValidator: ServerCodeSignatureValidator = { token in
+        // Pin the server to the remote-access agent's EXACT identifier, not the
+        // shared privileged-input allowlist: `typeCredential` writes the macOS
+        // login password, so another first-party root helper squatting this
+        // socket path must not be able to receive it.
+        try OpenBurnBarPrivilegedTrust.validateCodeSignature(
+            ofAuditToken: token,
+            requirementString: OpenBurnBarPrivilegedTrust.remoteAccessAgentDesignatedRequirement
+        )
     }
 
     private func send(_ request: RemoteAccessAgentRequest) throws {
@@ -882,6 +917,22 @@ private struct RemoteAccessAgentClient: Sendable {
             }
         }
         guard connected == 0 else { throw RemoteAccessAgentClientError.daemonUnavailable }
+
+        // Authenticate the server BEFORE writing anything: `typeCredential`
+        // requests carry the macOS login password, and a successful connect(2)
+        // proves only that *something* is listening at the path. The agent is
+        // a root LaunchDaemon, so the peer must be uid 0 AND satisfy the
+        // first-party designated requirement — the same mutual-auth invariant
+        // the privileged-input lane enforces (`PrivilegedInputXPCClient`).
+        do {
+            try OpenBurnBarPrivilegedTrust.validateServerPeer(
+                socketFD: fd,
+                expectedUID: expectedServerUID,
+                codeSignatureValidator: serverCodeSignatureValidator
+            )
+        } catch {
+            throw RemoteAccessAgentClientError.serverUntrusted(String(describing: error))
+        }
 
         var payload = try JSONEncoder().encode(request)
         payload.append(0x0A)
@@ -999,6 +1050,11 @@ private enum RemoteUnlockVirtualHIDClientError: Error {
         case .writeFailed: self = .writeFailed
         case .readFailed: self = .readFailed
         case .responseTooLarge: self = .responseTooLarge
+        case .serverUntrusted(let detail):
+            // Server-side trust validation failed before any payload was
+            // written — surface it verbatim for diagnostics, mirroring the
+            // privileged-input lane's serverUntrusted handling.
+            self = .rejected("remote_access_daemon_untrusted: \(detail)")
         case .socketPathTooLong: self = .socketPathTooLong
         }
     }
@@ -1022,7 +1078,7 @@ private enum RemoteUnlockVirtualHIDClientError: Error {
     }
 }
 
-private struct RemoteAccessAgentRequest: Encodable, Sendable {
+struct RemoteAccessAgentRequest: Encodable, Sendable {
     var operation: String
     var password: String?
 }
@@ -1032,11 +1088,12 @@ private struct RemoteAccessAgentResponse: Decodable {
     var error: String?
 }
 
-private enum RemoteAccessAgentClientError: Error {
+enum RemoteAccessAgentClientError: Error {
     case daemonRejected(String)
     case daemonUnavailable
     case readFailed
     case responseTooLarge
+    case serverUntrusted(String)
     case socketPathTooLong
     case socketUnavailable
     case timedOut

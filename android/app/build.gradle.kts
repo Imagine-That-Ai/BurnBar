@@ -57,6 +57,8 @@ plugins {
 val openBurnBarAppVersionName =
     providers.gradleProperty("openBurnBarAppVersionName")
         .orElse("1.0.40")
+val openBurnBarCompileSdk: Int by rootProject.extra
+val openBurnBarTargetSdk: Int by rootProject.extra
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
 
@@ -224,7 +226,7 @@ gradle.taskGraph.whenReady {
 
 android {
     namespace = "com.openburnbar"
-    compileSdk = 35
+    compileSdk = openBurnBarCompileSdk
 
     val releaseKeystorePath = providers.environmentVariable("OPENBURNBAR_ANDROID_KEYSTORE_PATH").orNull
     val releaseKeystorePassword = providers.environmentVariable("OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD").orNull
@@ -252,7 +254,7 @@ android {
     defaultConfig {
         applicationId = "com.openburnbar"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = openBurnBarTargetSdk
         versionCode = 48
         versionName = openBurnBarAppVersionName.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -636,6 +638,10 @@ dependencies {
 
     // Activity & Lifecycle
     implementation("androidx.activity:activity-compose:1.9.3")
+    // Explicit fragment pin: MainActivity's registerForActivityResult trips
+    // lintVital's InvalidFragmentVersionForActivityResult when the resolved
+    // transitive androidx.fragment predates 1.3.0.
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")

@@ -35,7 +35,7 @@ extension SessionLogSyncService {
             let sourceTypeRaw = data["sourceType"] as? String ?? OpenBurnBarCore.ConversationSourceType.providerLog.rawValue
             let sourceType = OpenBurnBarCore.ConversationSourceType(rawValue: sourceTypeRaw) ?? .providerLog
             let decryptedTitle: String? = vaultKey.flatMap { key in
-                guard let envelope = Self.decodeSealedText(data["sealedTitle"]) else { return nil }
+                guard let envelope = CloudVaultCrypto.decodeSealedText(from: data["sealedTitle"]) else { return nil }
                 do {
                     return try CloudVaultCrypto.openText(
                         envelope,

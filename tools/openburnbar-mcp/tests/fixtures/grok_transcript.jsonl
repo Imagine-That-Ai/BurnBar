@@ -1,0 +1,5 @@
+{"type":"user","content":"We chose RRF over a linear blend because the two rankers disagree on scale."}
+{"type":"assistant","content":"Confirmed. Reciprocal Rank Fusion normalizes different score ranges.","model_id":"grok-build"}
+{"type":"tool","content":"Tests finished with zero failures."}
+{malformed grok json
+{"type":"assistant","content":[{"type":"text","text":"Prefer ruff over black for formatting in this repository."}],"model_id":"grok-build"}

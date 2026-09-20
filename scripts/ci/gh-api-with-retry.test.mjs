@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const SCRIPT = new URL("./gh-api-with-retry.sh", import.meta.url);
@@ -50,7 +51,7 @@ printf 'success-payload\n'
 }
 
 function run(args, env) {
-  return spawnSync("bash", [SCRIPT.pathname, ...args], {
+  return spawnSync("bash", [fileURLToPath(SCRIPT), ...args], {
     env,
     encoding: "utf8",
   });

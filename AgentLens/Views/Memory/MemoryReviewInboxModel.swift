@@ -11,10 +11,13 @@ import OpenBurnBarCore
 /// lifetime of the view.
 ///
 /// U7: the inbox serves usage memories (`.safariAsk` / `.agentSession`) alongside
-/// chat. Each bucket is loaded once per storage partition — chat with the exact
-/// pre-U7 request/paging semantics, usage kinds with the same semantics over the
-/// `usage:` partition — and merged in page order, so the chat lane stays
-/// byte-identical and neither lane can crowd the other out of its page cap.
+/// chat, and `.agent` — memories the Memory MCP engine mirrors for a coding agent
+/// — joined them once that lane started landing quarantined (D-0005). Each bucket
+/// is loaded once per storage partition — chat with the exact pre-U7
+/// request/paging semantics, usage kinds with the same semantics over the
+/// `usage:` partition, agent rows over the daemon's unscoped partition — and
+/// merged in page order, so the chat lane stays byte-identical and no lane can
+/// crowd another out of its page cap.
 /// A second filter axis (`SourceFilter`) narrows the visible rows by source, and
 /// every review action routes through the source-kind-guarded store methods with
 /// the acted-on row's own kind.
@@ -33,13 +36,41 @@ final class MemoryReviewInboxModel {
             case unavailable
         }
 
+        /// What a local re-scan of this row's body concluded. Deliberately a
+        /// SCAN, not a verdict: no app producer can ever fill in "which gate
+        /// quarantined this row" (every app-side gate DROPS a candidate and
+        /// `quarantined` is the DDL default), so the row names what a fresh
+        /// scan sees and nothing else. See `MemoryReviewGateScan`.
+        typealias GateState = MemoryReviewGateScan.GateState
+
         let memory: Memory          // OpenBurnBarCore.Memory
         let body: String            // transiently-opened sealed body (display only)
         let bodyLoadState: BodyLoadState
+        let gateState: GateState
         var id: MemoryID { memory.id }
         var canApprove: Bool {
             bodyLoadState == .loaded &&
                 body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        /// The verdict on this row is taken and the daemon has not published the
+        /// body yet (I-56) — where an in-app approval lands when the daemon is
+        /// unreachable. Derived from the row itself
+        /// (`ControlPlaneStore.isAwaitingDaemonPublication`), so it clears the
+        /// moment the retry lands and no reload can show it stale.
+        var isAwaitingPublication: Bool {
+            ControlPlaneStore.isAwaitingDaemonPublication(memory)
+        }
+
+        init(
+            memory: Memory,
+            body: String,
+            bodyLoadState: BodyLoadState,
+            gateState: GateState = .noGateFired
+        ) {
+            self.memory = memory
+            self.body = body
+            self.bodyLoadState = bodyLoadState
+            self.gateState = gateState
         }
     }
 
@@ -81,11 +112,17 @@ final class MemoryReviewInboxModel {
     typealias OpenBody = (MemoryID) async throws -> String?
     typealias SetStatus = (MemoryID, MemoryReviewStatus, Set<MemorySourceKind>) async throws -> Bool
     typealias Forget = (MemoryID, Set<MemorySourceKind>) async throws -> Bool
+    /// Re-scans one already-opened body. Injected so a test can drive the
+    /// fail-closed branch, which is otherwise process-wide corpus state.
+    typealias GateScan = (String) -> Item.GateState
 
-    /// Every source kind the inbox serves. Daemon-owned `.code` rows are not
-    /// review-inbox material and stay invisible here.
+    /// Every source kind the inbox serves. `.agent` joined the set when the
+    /// agent-autonomous lane started landing in review (D-0005): a memory a
+    /// coding agent asks BurnBar to remember is now quarantined on arrival, and
+    /// this is the surface that approves it. Daemon-owned `.code` rows are
+    /// repository knowledge, not review-inbox material, and stay invisible here.
     static let servedSourceKinds: Set<MemorySourceKind> =
-        Set([MemorySourceKind.chat]).union(MemorySourceKind.usageKinds)
+        Set([MemorySourceKind.chat, MemorySourceKind.agent]).union(MemorySourceKind.usageKinds)
 
     private(set) var pending: [Item] = []
     private(set) var approved: [Item] = []
@@ -106,6 +143,7 @@ final class MemoryReviewInboxModel {
     private let openBody: OpenBody
     private let setStatus: SetStatus
     private let forgetRecord: Forget
+    private let gateScan: GateScan
 
     /// Largest page we request per bucket and per source partition. The inbox is
     /// a review surface, not a paginated browser, so a single generous page keeps
@@ -121,7 +159,8 @@ final class MemoryReviewInboxModel {
         loadPage: @escaping LoadPage,
         openBody: @escaping OpenBody,
         setStatus: @escaping SetStatus,
-        forget: @escaping Forget
+        forget: @escaping Forget,
+        gateScan: @escaping GateScan = { MemoryReviewGateScan.scan($0) }
     ) {
         self.scope = scope
         self.sourceFilter = sourceFilter
@@ -129,13 +168,15 @@ final class MemoryReviewInboxModel {
         self.openBody = openBody
         self.setStatus = setStatus
         self.forgetRecord = forget
+        self.gateScan = gateScan
     }
 
     /// Loads both buckets: pending keeps only `.quarantined` (requesting quarantined
-    /// rows), approved keeps only `.approved`. Each bucket loads chat and usage
-    /// partitions separately — the chat call is the exact pre-U7 fetch — and merges
-    /// them in page order. Each kept memory's sealed body is opened best-effort for
-    /// display. Drives `isLoading` and surfaces failures via `errorMessage`.
+    /// rows), approved keeps only `.approved`. Each bucket loads the chat, usage and
+    /// agent partitions separately — the chat call is the exact pre-U7 fetch — and
+    /// merges them in page order. Each kept memory's sealed body is opened
+    /// best-effort for display. Drives `isLoading` and surfaces failures via
+    /// `errorMessage`.
     func load() async {
         isLoading = true
         errorMessage = nil
@@ -152,6 +193,11 @@ final class MemoryReviewInboxModel {
                 includeQuarantined: true,
                 keep: .quarantined
             )
+            let pendingAgent = try await loadBucket(
+                sourceKinds: [.agent],
+                includeQuarantined: true,
+                keep: .quarantined
+            )
             let approvedChat = try await loadBucket(
                 sourceKinds: [.chat],
                 includeQuarantined: false,
@@ -162,8 +208,13 @@ final class MemoryReviewInboxModel {
                 includeQuarantined: false,
                 keep: .approved
             )
-            pending = Self.mergedInPageOrder(pendingChat, pendingUsage)
-            approved = Self.mergedInPageOrder(approvedChat, approvedUsage)
+            let approvedAgent = try await loadBucket(
+                sourceKinds: [.agent],
+                includeQuarantined: false,
+                keep: .approved
+            )
+            pending = Self.mergedInPageOrder(pendingChat, pendingUsage, pendingAgent)
+            approved = Self.mergedInPageOrder(approvedChat, approvedUsage, approvedAgent)
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
@@ -217,11 +268,11 @@ final class MemoryReviewInboxModel {
             .map { [$0.memory.sourceKind] } ?? Self.servedSourceKinds
     }
 
-    /// Merge two per-partition bucket loads back into page order (updatedAt DESC,
+    /// Merge the per-partition bucket loads back into page order (updatedAt DESC,
     /// id ASC) — the same comparator `memoryPage` serves pages in, so a chat-only
     /// merge is exactly the pre-U7 chat list.
-    private static func mergedInPageOrder(_ lhs: [Item], _ rhs: [Item]) -> [Item] {
-        (lhs + rhs).sorted { a, b in
+    private static func mergedInPageOrder(_ buckets: [Item]...) -> [Item] {
+        buckets.flatMap { $0 }.sorted { a, b in
             if a.memory.updatedAt == b.memory.updatedAt { return a.id < b.id }
             return a.memory.updatedAt > b.memory.updatedAt
         }
@@ -259,7 +310,17 @@ final class MemoryReviewInboxModel {
                     AppLogger.dataStore.silentFailure("Failed to open memory body for \(memory.id)", error: error)
                     bodyState = ("", .unavailable)
                 }
-                items.append(Item(memory: memory, body: bodyState.0, bodyLoadState: bodyState.1))
+                // A body that could not be opened was never re-checked, so the
+                // row says so rather than rendering as a clean "no gate fired".
+                let gateState: Item.GateState = bodyState.1 == .loaded
+                    ? gateScan(bodyState.0)
+                    : .scannerUnavailable
+                items.append(Item(
+                    memory: memory,
+                    body: bodyState.0,
+                    bodyLoadState: bodyState.1,
+                    gateState: gateState
+                ))
                 if items.count >= pageSize { break }
             }
 

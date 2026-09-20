@@ -47,6 +47,7 @@ const mainTarget = "OpenBurnBarCore";
 const siblingTargets = [
   "OpenBurnBarDomainCoreRuntime",
   "OpenBurnBarAssistantModels",
+  "OpenBurnBarProjectCodeContracts",
   "OpenBurnBarKernel",
   "OpenBurnBarParserSupport",
   "OpenBurnBarSQLiteReader",
@@ -134,6 +135,13 @@ const PLANNED_CEILINGS = {
   // leaf below Kernel. The ceiling leaves modest file/LOC headroom without
   // allowing the extracted slice to become another monolith.
   OpenBurnBarAssistantModels: { maxFiles: 15, maxLines: 2700 },
+  // Project-code intelligence wire contracts, carved out of Kernel's
+  // `BurnBarProjectCodeMemoryContracts.swift` (which held two unrelated contract
+  // families) when Kernel hit its LOC ceiling. Seeded just above the measured
+  // 866 LOC: this leaf holds ONE contract family, so a second file or a few
+  // hundred more lines should have to argue for itself rather than turn the leaf
+  // into the next dumping ground.
+  OpenBurnBarProjectCodeContracts: { maxFiles: 2, maxLines: 1000 },
   // Linux parity adds daemon-owned cloud/privacy/trusted-device/media contracts
   // after the assistant-model extraction. Keep the ceiling below the next
   // monolith while accounting for those cross-platform authority surfaces.

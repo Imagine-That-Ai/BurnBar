@@ -11,9 +11,13 @@ import {
   ADVISORY_ALLOWLIST,
   AUDIT_DIRS,
   AUDIT_ATTEMPTS,
+  AUDIT_CONCURRENCY,
   classifyAuditResult,
+  runAuditGate,
   runWithRetries,
 } from "./check-npm-audit-fail-closed.mjs";
+
+// The pooled-runner block below uses top-level await, which .mjs supports.
 
 let passed = 0;
 let failed = 0;
@@ -427,6 +431,86 @@ expectAttempts(
   [RETRYABLE, CLEAN],
   2,
 );
+
+// --- pooled runner --------------------------------------------------------
+// runAuditGate drives the same audits through a bounded pool (2026-09-03/04
+// registry degradation: serial wall time exceeded every job budget). The
+// pool must (a) bound concurrency, (b) keep every directory's own verdict,
+// and (c) report in the configured order even when lanes finish out of order.
+// auditRunner is the injected seam, so no network and no filesystem is
+// touched: the fake runner resolves per-dir verdicts after controlled delays.
+{
+  const label = "runAuditGate pool: bounded lanes, per-dir verdicts, ordered reporting";
+
+  // Fake audits: a resolves fast, b hangs a beat, c fails closed. The
+  // in-flight probe proves at most `concurrency` audits run at once.
+  const inFlight = { current: 0, max: 0 };
+  const verdicts = new Map([
+    ["a", { ok: true, retryable: false, messages: ["clean a"] }],
+    ["b", { ok: true, retryable: false, messages: ["clean b"] }],
+    ["c", { ok: false, retryable: false, messages: ["finding c"] }],
+  ]);
+  const delays = new Map([
+    ["a", 5],
+    ["b", 40],
+    ["c", 15],
+  ]);
+  const fakeAudit = async (repoRoot, dir) => {
+    inFlight.current += 1;
+    inFlight.max = Math.max(inFlight.max, inFlight.current);
+    await new Promise((resolve) => setTimeout(resolve, delays.get(dir)));
+    inFlight.current -= 1;
+    return verdicts.get(dir);
+  };
+
+  const events = [];
+  const origLog = console.log;
+  const origErr = console.error;
+  console.log = (line) => events.push(["log", line]);
+  console.error = (line) => events.push(["err", line]);
+  try {
+    const ok = await runAuditGate("/nonexistent-root", ["a", "b", "c"], {
+      concurrency: 2,
+      auditRunner: fakeAudit,
+    });
+
+    // c's finding fails the whole gate.
+    if (ok === false) {
+      passed += 1;
+      origLog(`  \u2713 ${label}: gate fails when any directory fails`);
+    } else {
+      failed += 1;
+      origErr(`  \u2717 ${label}: expected gate failure, got pass`);
+    }
+
+    // Bounded parallelism: with 3 dirs and concurrency 2, never 3 in flight.
+    if (inFlight.max <= 2) {
+      passed += 1;
+      origLog(`  \u2713 ${label}: max in-flight ${inFlight.max} <= 2`);
+    } else {
+      failed += 1;
+      origErr(`  \u2717 ${label}: concurrency exceeded bound (${inFlight.max})`);
+    }
+
+    // Ordered reporting: messages appear in a,b,c order regardless of delays.
+    const messageOrder = events
+      .map(([, line]) => line)
+      .filter((line) => line.startsWith("clean ") || line.startsWith("finding "));
+    const wantOrder = ["clean a", "clean b", "finding c"];
+    if (JSON.stringify(messageOrder) === JSON.stringify(wantOrder)) {
+      passed += 1;
+      origLog(`  \u2713 ${label}: reporting order is deterministic`);
+    } else {
+      failed += 1;
+      origErr(
+        `  \u2717 ${label}: expected ${JSON.stringify(wantOrder)}, got ${JSON.stringify(messageOrder)}`,
+      );
+    }
+  } finally {
+    console.log = origLog;
+    console.error = origErr;
+  }
+}
 
 console.log(
   `\n${failed === 0 ? "PASS" : "FAIL"}: ${passed} passed, ${failed} failed`,

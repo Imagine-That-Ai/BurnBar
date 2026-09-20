@@ -7,9 +7,10 @@ import { describe, it, expect } from "vitest";
 import { DATA_DOMAINS, DATA_DOMAIN_IDS, TIER_META, RETENTION_META, dataDomain } from "../lib/domains";
 
 describe("data-domain registry binding", () => {
-  it("ships the 12 canonical domains", () => {
-    expect(DATA_DOMAINS.length).toBe(12);
+  it("ships the 13 canonical domains", () => {
+    expect(DATA_DOMAINS.length).toBe(13);
     expect(DATA_DOMAIN_IDS).toContain("pensieve");
+    expect(DATA_DOMAIN_IDS).toContain("team_pensieve");
     expect(DATA_DOMAIN_IDS).toContain("audit_timeline");
   });
 

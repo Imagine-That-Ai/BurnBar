@@ -323,6 +323,66 @@ enum SettingsManifest {
             keywords: ["search", "index", "embeddings", "rag", "rerank"],
             helpText: "Indexed transcripts never leave this Mac unless cloud backup is enabled."
         ),
+        SettingsItem(
+            id: "general.indexing.memory",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemory,
+            title: "Memory (Pensieve) Controls",
+            subtitle: "On-device memory: learning toggle, high-recall, review pending, reset, sealed cloud backup opt-in",
+            keywords: ["memory", "pensieve", "remember", "recall", "learn", "preferences", "consent", "reset memory", "review memories", "approved memories", "high-recall", "memory controls"],
+            helpText: "Opens the on-device Memory controls. Free on this Mac — no Cloud plan required; sealed cloud backup of approved memories is a separate opt-in."
+        ),
+        SettingsItem(
+            id: "general.indexing.memoryDeviceSync",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemoryDeviceSync,
+            title: "Sync Memories to My Other Devices",
+            subtitle: "Opt-in sub-toggle of cloud backup: read your own approved memories back down onto this Mac from your other signed-in devices",
+            keywords: ["memory", "sync", "device sync", "cross-device", "pull", "download", "data vault", "pensieve", "backup", "other devices"],
+            helpText: "Requires \"Back up approved memories\" and the Data Vault plan (Pro Max or Ultra). Off by default even when backup is already on."
+        ),
+        SettingsItem(
+            id: "general.indexing.memoryCloudModels",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemoryCloudModels,
+            title: "Cloud Models for Memory (Pro)",
+            subtitle: "Opt-in: frontier models for memory extraction, reconciliation, embeddings, rerank and answers on your own keys or subscription",
+            keywords: ["memory", "pro", "cloud models", "openrouter", "vercel", "anthropic", "openai", "claude code", "codex", "retention", "daily cap", "blind"],
+            helpText: "Pro. Off by default. Providers you consent to receive redacted memory text directly from this Mac; BurnBar never receives your memory data."
+        ),
+        SettingsItem(
+            id: "general.indexing.teamMemory",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingTeamMemory,
+            title: "Team Memory",
+            subtitle: "Opt-in per team: share approved project memories with a team space, see the roster, rotate the team key",
+            keywords: ["team", "team memory", "shared memory", "roster", "invite", "join team", "leave team", "rotate key", "members", "blind", "pensieve"],
+            helpText: "Off for every team by default, and a strict subset of your own memory sync. Joining a team grants access to the team's existing history; leaving protects future memories only. Every active member holds the team key and can read every team fact."
+        ),
+        SettingsItem(
+            id: "general.indexing.memoryHealth",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemoryHealth,
+            title: "Memory Health",
+            subtitle: "Per-project memory counters, audit-chain integrity, sync ages and the checks this Mac can run itself",
+            keywords: ["memory", "health", "audit", "chain", "integrity", "counters", "analytics", "sync", "watermark", "marker", "pending review", "doctor", "diagnostics"],
+            helpText: "Counters come from the local daemon; the checks are run on this Mac. Engine doctor findings are not measured here."
+        ),
+        SettingsItem(
+            id: "general.indexing.memorySyncStatus",
+            tab: .general,
+            pageRoute: .indexing,
+            anchorID: SettingsAnchor.indexingMemorySyncStatus,
+            title: "Memory Sync Status",
+            subtitle: "Both transport cursors, the device-sync consent marker's age, and what is parked in the inbox",
+            keywords: ["memory", "sync", "status", "watermark", "cursor", "marker", "stale", "inbox", "parked", "forget receipts", "diagnostics", "debug"],
+            helpText: "Read from this Mac's own database and never sent anywhere. Rejected and skipped counts come from the memory engine and are not measured here."
+        ),
 
         // MARK: General → Session summaries
 
@@ -489,6 +549,42 @@ enum SettingsManifest {
             subtitle: "Hosted refresh, backup, remote MCP clients, and member status",
             keywords: ["cloud", "member", "pro", "hosted", "backup", "remote mcp", "subscription", "billing", "relay"]
         ),
+        SettingsItem(
+            id: "cloud.remoteMCP",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudRemoteMCP,
+            title: "Remote MCP — Memory for your AI tools",
+            subtitle: "Connect Codex, Claude Code, and more to your sealed Pensieve memory",
+            keywords: ["remote mcp", "mcp", "memory", "pensieve", "recall", "sealed", "search", "codex", "claude code", "droid", "kimi", "endpoint", "shim", "hosted mcp", "tour", "how memory works"]
+        ),
+        SettingsItem(
+            id: "cloud.remoteMCP.connect",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudRemoteMCPConnect,
+            title: "Link this Mac's CLI (Remote MCP)",
+            subtitle: "One-tap setup for supported AI tools — or copy the endpoint by hand",
+            keywords: ["link cli", "remote mcp", "mcp", "endpoint", "shim", "connect", "setup", "codex", "claude code"]
+        ),
+        SettingsItem(
+            id: "cloud.remoteMCP.doctor",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudRemoteMCPDoctor,
+            title: "Memory MCP Doctor",
+            subtitle: "Check that the memory link is healthy",
+            keywords: ["doctor", "remote mcp", "mcp", "diagnose", "health check", "troubleshoot", "link", "connection"]
+        ),
+        SettingsItem(
+            id: "cloud.memoryTour",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudMemoryTour,
+            title: "How Memory works — one-minute tour",
+            subtitle: "Meet the Pensieve, see the controls, learn the recall prompts",
+            keywords: ["memory tour", "how memory works", "pensieve tour", "walkthrough", "memory mcp tour", "guide", "recall", "sealed", "tour"]
+        ),
 
         // MARK: Agents (unified Connections + Account Switcher + AI Environments tab)
 
@@ -648,6 +744,27 @@ enum SettingsManifest {
         ),
 
         // MARK: Devices & Sync
+
+        // MARK: Receipts
+
+        SettingsItem(
+            id: "receipts.overview",
+            tab: .receipts,
+            pageRoute: .receiptsRoot,
+            anchorID: SettingsAnchor.receiptsOverview,
+            title: "Session Receipts",
+            subtitle: "Menu bar popup, notification banner and printer sound when a CLI session closes",
+            keywords: ["receipt", "receipts", "session", "cli", "close", "flyout", "popup", "notification", "banner", "sound", "thermal", "printer", "drawer"]
+        ),
+        SettingsItem(
+            id: "receipts.qualityReview",
+            tab: .receipts,
+            pageRoute: .receiptsRoot,
+            anchorID: SettingsAnchor.receiptsQualityReview,
+            title: "Receipt Quality Review",
+            subtitle: "Auto-run a quality review on close and pick the review model",
+            keywords: ["receipt", "quality", "review", "audit", "model", "score", "auto", "llm"]
+        ),
 
         SettingsItem(
             id: "devices.cloudSync",
@@ -927,6 +1044,8 @@ enum SettingsManifest {
     /// setting that has no scroll target.
     static let visibleAnchorIDs: Set<String> = Set([
         SettingsAnchor.homeOverview,
+        SettingsAnchor.receiptsOverview,
+        SettingsAnchor.receiptsQualityReview,
         SettingsAnchor.modelProxyOverview,
         SettingsAnchor.modelProxyEndpoint,
         SettingsAnchor.modelProxyRouting,
@@ -951,6 +1070,12 @@ enum SettingsManifest {
         SettingsAnchor.defaultsUsageMode,
         SettingsAnchor.refreshInterval,
         SettingsAnchor.indexingToggle,
+        SettingsAnchor.indexingMemory,
+        SettingsAnchor.indexingMemoryDeviceSync,
+        SettingsAnchor.indexingMemoryCloudModels,
+        SettingsAnchor.indexingTeamMemory,
+        SettingsAnchor.indexingMemoryHealth,
+        SettingsAnchor.indexingMemorySyncStatus,
         SettingsAnchor.summariesAuto,
         SettingsAnchor.aiInboxOverview,
         SettingsAnchor.aiInboxEnable,
@@ -969,6 +1094,10 @@ enum SettingsManifest {
         SettingsAnchor.accountSubscription,
         SettingsAnchor.accountDelete,
         SettingsAnchor.cloudOverview,
+        SettingsAnchor.cloudRemoteMCP,
+        SettingsAnchor.cloudRemoteMCPConnect,
+        SettingsAnchor.cloudRemoteMCPDoctor,
+        SettingsAnchor.cloudMemoryTour,
         SettingsAnchor.agentsAccounts,
         SettingsAnchor.agentsCLIs,
         SettingsAnchor.agentsRuntimes,

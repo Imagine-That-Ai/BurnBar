@@ -3,16 +3,25 @@ from __future__ import annotations
 import copy
 from datetime import UTC, datetime
 import hashlib
-import io
 import importlib.util
 import json
 import subprocess
 import sys
-import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+
+try:
+    from tests.support.domain_core_rollback_archive import (
+        create_candidate_repository,
+        write_git_source_archive,
+    )
+except ModuleNotFoundError:
+    from support.domain_core_rollback_archive import (
+        create_candidate_repository,
+        write_git_source_archive,
+    )
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1267,11 +1276,17 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
 
     def test_rollback_artifact_verifier_binds_candidate_and_retention(self) -> None:
         verifier = GATE.SignedEvidenceVerifier()
+        source_files = {
+            "Cargo.toml": b"[workspace]\nresolver = \"2\"\n",
+            "domain-core/src/lib.rs": (
+                b"pub const DOMAIN_CORE_ABI_VERSION: u32 = 3;\n"
+            ),
+        }
         identity = {
             "candidateCommit": "1" * 40,
-            "coreVersion": "1.2.3",
+            "coreVersion": "0.1.0",
             "abiVersion": 3,
-            "sourceSha256": "2" * 64,
+            "sourceSha256": ROLLBACK_BUNDLE.source_fingerprint(source_files),
         }
         activation = {
             "candidateCommit": identity["candidateCommit"],
@@ -1298,6 +1313,18 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             activation_path = root / "activation.json"
             source_path = root / "legacy-source.tar.gz"
             bundle_path = root / "rollback.zip"
+            repository, candidate_commit = create_candidate_repository(
+                root,
+                source_files=source_files,
+                core_version=identity["coreVersion"],
+                abi_version=identity["abiVersion"],
+                source_sha256=identity["sourceSha256"],
+                extra_repository_files={
+                    "config/domain-core-build-profiles.json": b"{}\n"
+                },
+            )
+            identity["candidateCommit"] = candidate_commit
+            activation["candidateCommit"] = candidate_commit
             profile_value = {
                 "schemaVersion": 1,
                 "name": "public-production-rollback",
@@ -1313,16 +1340,12 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                     "commit": activation["activationCommit"],
                 },
             }
-            with tarfile.open(source_path, "w:gz") as source:
-                for name, value in (
-                    ("OpenBurnBar/config/domain-core-build-profiles.json", b"{}\n"),
-                    ("OpenBurnBar/crates/openburnbar-domain-core/Cargo.toml", b"[workspace]\n"),
-                ):
-                    info = tarfile.TarInfo(name)
-                    info.size = len(value)
-                    source.addfile(info, io.BytesIO(value))
-            identity["sourceSha256"] = hashlib.sha256(source_path.read_bytes()).hexdigest()
-            activation["sourceSha256"] = identity["sourceSha256"]
+            write_git_source_archive(
+                repository,
+                source_path,
+                candidate_commit=candidate_commit,
+                version="1.2.3",
+            )
             profile.write_text(json.dumps(profile_value))
             activation_path.write_text(json.dumps(activation))
             download_bytes = {}
@@ -1334,6 +1357,7 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
                 version="1.2.3",
                 tag="v1.2.3",
                 commit=activation["activationCommit"],
+                repository_root=repository,
             )
             contents = bundle_path.read_bytes()
         predicate = {

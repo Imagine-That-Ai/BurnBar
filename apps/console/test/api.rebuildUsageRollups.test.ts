@@ -26,13 +26,13 @@ describe("rebuildUsageRollups client envelope", () => {
     mocks.httpsCallable.mockReturnValue(mocks.callable);
   });
 
-  it("uses a 540s timeout so the JS SDK default 70s cannot abort a full rebuild", async () => {
-    expect(REBUILD_USAGE_ROLLUPS_TIMEOUT_MS).toBe(540_000);
+  it("uses a 600s timeout so transport headroom sits above the 540s server budget", async () => {
+    expect(REBUILD_USAGE_ROLLUPS_TIMEOUT_MS).toBe(600_000);
     await expect(rebuildUsageRollups(true)).resolves.toEqual({ success: true });
     expect(mocks.httpsCallable).toHaveBeenCalledWith(
       { app: "test-functions" },
       "rebuildUsageRollups",
-      { timeout: 540_000 },
+      { timeout: 600_000 },
     );
     expect(mocks.callable).toHaveBeenCalledWith({ force: true });
   });

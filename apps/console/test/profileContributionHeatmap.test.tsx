@@ -32,6 +32,8 @@ function render(
   mode: "daily" | "weekly" | "cumulative",
   today = TODAY,
   dailyProviderTokens?: Record<string, Record<string, number>>,
+  dailyModelTokens?: Record<string, Record<string, number>>,
+  dailyModelProviders?: Record<string, Record<string, string>>,
 ) {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -43,6 +45,8 @@ function render(
         mode={mode}
         today={today}
         dailyProviderTokens={dailyProviderTokens}
+        dailyModelTokens={dailyModelTokens}
+        dailyModelProviders={dailyModelProviders}
       />,
     );
   });
@@ -227,5 +231,204 @@ describe("ContributionHeatmap", () => {
       window.dispatchEvent(new Event("scroll"));
     });
     expect(document.querySelector(".glass-pane--elevated")).toBeNull();
+  });
+
+  it("paints daily cells in the dominant provider's brand hue", () => {
+    const el = render(pts(["2026-08-14", 1000]), "daily", TODAY, {
+      "2026-08-14": { anthropic: 800, openai: 200 },
+    });
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Aug 14"),
+    )!;
+    // Anthropic wins 800/1000 — the cell wears its fill, not the accent.
+    expect(cell.getAttribute("fill")).not.toBe("var(--accent)");
+    expect(cell.getAttribute("fill")).toContain("#CC785C");
+    const title = cell.querySelector("title")!;
+    expect(title.textContent).toContain("Anthropic leads");
+  });
+
+  it("falls back to the accent when a day has no split", () => {
+    const el = render(pts(["2026-08-14", 1000]), "daily", TODAY, {
+      "2026-08-15": { anthropic: 500 },
+    });
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Aug 14"),
+    )!;
+    expect(cell.getAttribute("fill")).toBe("var(--accent)");
+  });
+
+  it("paints daily cells by dominant model when the provider split is absent", () => {
+    const el = render(
+      pts(["2026-08-14", 1000]),
+      "daily",
+      TODAY,
+      undefined,
+      { "2026-08-14": { "gpt-5.3": 700, "kimi-k2": 300 } },
+    );
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Aug 14"),
+    )!;
+    expect(cell.getAttribute("fill")).not.toBe("var(--accent)");
+    // Model mix reaches the hover card when providers can't.
+    hoverDay(el, "Aug 14");
+    const card = document.querySelector(".glass-pane--elevated")!;
+    expect(card.textContent).toContain("GPT 5.3");
+    expect(card.textContent).toContain("70%");
+  });
+
+  it("blends weekly columns across the week's top shares", () => {
+    const el = render(pts(["2026-08-14", 600], ["2026-08-15", 400]), "weekly", TODAY, {
+      "2026-08-14": { anthropic: 600 },
+      "2026-08-15": { openai: 400 },
+    });
+    const labels = [...el.querySelectorAll("rect")].map((r) => r.getAttribute("aria-label"));
+    const weekLabel = labels.find((l) => l?.startsWith("Week of Aug 9"));
+    expect(weekLabel).toBe("Week of Aug 9, 2026 — 1K tokens");
+    const cell = [...el.querySelectorAll("rect")].find(
+      (r) => r.getAttribute("aria-label") === weekLabel,
+    )!;
+    // Multi-share weeks reference a real SVG paint server, not a CSS string.
+    const fill = cell.getAttribute("fill") ?? "";
+    expect(fill.startsWith("url(#profile-week-")).toBe(true);
+    const gradId = fill.slice(5, -1); // strip `url(#` … `)`
+    const grad = [...el.querySelectorAll("linearGradient")].find(
+      (g) => g.getAttribute("id") === gradId,
+    )!;
+    expect(grad).toBeTruthy();
+    const offsets = [...grad.querySelectorAll("stop")].map((s) =>
+      s.getAttribute("offset"),
+    );
+    // 60/40 hard-stop bands: 0→60, 60→100.
+    expect(offsets).toEqual(["0.0%", "60.0%", "60.0%", "100.0%"]);
+    // This is the peak week, so it paints at full bucket opacity (magnitude
+    // encoding is pinned separately in "paints single-share weeks solid").
+    expect(cell.getAttribute("fill-opacity")).toBe("1");
+  });
+
+  it("paints single-share weeks solid with bucket opacity", () => {
+    // Two weeks: a quiet 100-token week and a 1,600-token peak week, so the
+    // bucket opacity differs between them (magnitude still encodes).
+    const el = render(pts(["2026-08-09", 100], ["2026-08-16", 1600]), "weekly", TODAY, {
+      "2026-08-09": { anthropic: 100 },
+      "2026-08-16": { anthropic: 1600 },
+    });
+    const quiet = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Week of Aug 9"),
+    )!;
+    // One share → solid dominant fill, no paint-server indirection.
+    expect(quiet.getAttribute("fill")).toContain("#CC785C");
+    // sqrt(100/1600) = 0.25 → bucket 1 → 0.28, dimmer than the peak week.
+    expect(quiet.getAttribute("fill-opacity")).toBe("0.28");
+    const peak = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Week of Aug 16"),
+    )!;
+    expect(peak.getAttribute("fill-opacity")).toBe("1");
+  });
+
+  it("names the weekly leader from the weekly aggregate", () => {
+    const el = render(pts(["2026-08-14", 600], ["2026-08-15", 400]), "weekly", TODAY, {
+      "2026-08-14": { anthropic: 600 },
+      "2026-08-15": { openai: 400 },
+    });
+    const titles = [...el.querySelectorAll("rect")].map(
+      (r) => r.querySelector("title")?.textContent ?? "",
+    );
+    const weekTitles = titles.filter((t) => t.startsWith("Week of Aug 9"));
+    expect(weekTitles.length).toBeGreaterThan(1);
+    // Every row in the column names the WEEK winner (anthropic 600 > 400).
+    for (const t of weekTitles) expect(t).toContain("Anthropic leads");
+  });
+
+  it("restricts weekly blends to the displayed range", () => {
+    // Points cover Aug 14–16 only, but the split map carries an older day.
+    const el = render(pts(["2026-08-14", 100], ["2026-08-16", 100]), "weekly", TODAY, {
+      "2026-08-01": { openai: 9_999 },
+      "2026-08-14": { anthropic: 100 },
+      "2026-08-16": { anthropic: 100 },
+    });
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Week of Aug 9"),
+    )!;
+    const title = cell.querySelector("title")!;
+    // Aug 1 (out of range) must not leak into the week's color or leader.
+    expect(title.textContent).toContain("Anthropic leads");
+    expect(title.textContent).not.toContain("OpenAI");
+  });
+
+  it("falls back to model blends when the provider map is empty", () => {
+    const el = render(
+      pts(["2026-08-14", 600], ["2026-08-15", 400]),
+      "weekly",
+      TODAY,
+      {},
+      { "2026-08-14": { "gpt-5.3": 600 }, "2026-08-15": { "kimi-k2": 400 } },
+    );
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Week of Aug 9"),
+    )!;
+    const fill = cell.getAttribute("fill") ?? "";
+    expect(fill.startsWith("url(#profile-week-")).toBe(true);
+  });
+
+  it("colors model cells by stored provider, not the model prefix", () => {
+    const el = render(
+      pts(["2026-08-14", 1000]),
+      "daily",
+      TODAY,
+      undefined,
+      { "2026-08-14": { "gpt-5.3": 1000 } },
+      { "2026-08-14": { "gpt-5.3": "openai" } },
+    );
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Aug 14"),
+    )!;
+    // OpenAI's brand (#00A67E), not the generic accent the raw id resolves to.
+    expect(cell.getAttribute("fill")).toContain("#00A67E");
+  });
+
+  it("adds an other row when the model hover truncates", () => {
+    const el = render(
+      pts(["2026-08-14", 1000]),
+      "daily",
+      TODAY,
+      undefined,
+      {
+        "2026-08-14": { a: 400, b: 300, c: 150, d: 100, e: 50 },
+      },
+    );
+    hoverDay(el, "Aug 14");
+    const card = document.querySelector(".glass-pane--elevated")!;
+    expect(card.textContent).toContain("other");
+    // Percentages divide by the MODEL total (1000), not the cell value.
+    expect(card.textContent).toContain("40%");
+    expect(card.textContent).toContain("5%");
+  });
+
+  it("resolves weekly model blends to stored providers", () => {
+    // No provider split at all: the week aggregates models, but stops must
+    // still wear provider hues via dailyModelProviders.
+    const el = render(
+      pts(["2026-08-14", 600], ["2026-08-15", 400]),
+      "weekly",
+      TODAY,
+      {},
+      { "2026-08-14": { "gpt-5.3": 600 }, "2026-08-15": { "kimi-k2": 400 } },
+      { "2026-08-14": { "gpt-5.3": "openai" }, "2026-08-15": { "kimi-k2": "moonshot" } },
+    );
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Week of Aug 9"),
+    )!;
+    const fill = cell.getAttribute("fill") ?? "";
+    expect(fill.startsWith("url(#profile-week-")).toBe(true);
+    const gradId = fill.slice(5, -1);
+    const grad = [...el.querySelectorAll("linearGradient")].find(
+      (g) => g.getAttribute("id") === gradId,
+    )!;
+    const colors = [...grad.querySelectorAll("stop")].map((s) =>
+      s.getAttribute("stop-color"),
+    );
+    // OpenAI (#00A67E) + Moonshot (#6366F1) hues, never the generic accent.
+    expect(colors.some((c) => c?.includes("#00A67E"))).toBe(true);
+    expect(colors.some((c) => c?.includes("#6366F1"))).toBe(true);
   });
 });

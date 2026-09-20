@@ -147,6 +147,20 @@ enum OpenBurnBarDaemonSocketClient {
         AppLogger.daemon.error("daemon_rpc_failed", metadata: error.logMetadata)
     }
 
+    static func membershipRestore(at socketURL: URL) throws -> BurnBarMembershipRestoreResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarMembershipRestoreResponse> = try send(
+            BurnBarRPCRequestEnvelope(method: .membershipRestore),
+            socketURL: socketURL
+        )
+        if let error = envelope.error {
+            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+        }
+        guard let result = envelope.result else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+        return result
+    }
+
     static func config(at socketURL: URL) throws -> BurnBarProviderConfigurationSnapshot {
         let envelope: BurnBarRPCResponseEnvelope<BurnBarConfigResponse> = try send(
             BurnBarRPCRequestEnvelope(method: .configGet),
@@ -338,6 +352,138 @@ enum OpenBurnBarDaemonSocketClient {
         }
 
         return result.usage
+    }
+
+    /// Per-project memory counters from the daemon's own store — which is this
+    /// app's database, indexed by the daemon at
+    /// `OpenBurnBarAppPaths.live(...).databaseURL`.
+    ///
+    /// `daemon.memory.analytics` already exists, already maps to the
+    /// `memory_read` capability, and is already `.full` for the `.app` peer, so
+    /// this is a client method and nothing more: no new RPC id, no new contract,
+    /// no new capability. `projectPath` is resolved to a project identity
+    /// DAEMON-side — the app never guesses one — and nil asks about the daemon's
+    /// own default project.
+    ///
+    /// A refusing or unreachable daemon THROWS. It must never degrade to a
+    /// zeroed response: "we could not ask" and "this project has no memories"
+    /// are different statements, and only one of them is ever observed here.
+    static func memoryAnalytics(
+        projectPath: String?,
+        at socketURL: URL
+    ) throws -> BurnBarProjectMemoryAnalyticsResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarProjectMemoryAnalyticsResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryAnalytics,
+                params: BurnBarProjectMemoryAnalyticsRequest(projectPath: projectPath)
+            ),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+        }
+
+        guard let result = envelope.result else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+
+        return result
+    }
+
+    /// Hand one review verdict to the daemon so IT publishes the body.
+    ///
+    /// The app writes its own `memory.approve` / `memory.reject` audit row and
+    /// flips `review_status` in the shared `agent_memories` table, but moving a
+    /// quarantined body into the project-memory snapshot and refilling the
+    /// syncable `body_hash` is the daemon's `setReviewStatus` and nothing else's
+    /// (I-56: the daemon stays the single publisher). This is the call that asks
+    /// it to, and it is the same RPC the Linux desktop's review surface and the
+    /// `burnbar_memory_review` MCP tool already use — no new RPC id, no new
+    /// contract, no new capability (`memory_write` is already `.full` for the
+    /// `.app` peer).
+    ///
+    /// `projectPath` is the root the DAEMON itself recorded in `pcm_projects`,
+    /// read back out of the shared database: the daemon resolves a path through
+    /// the WRITING resolver, so any other string would register a project rather
+    /// than address one.
+    ///
+    /// A refusing or unreachable daemon THROWS. The approval itself already
+    /// happened — the caller keeps it and shows the row as awaiting publication
+    /// — but this method never reports a publication that did not occur.
+    ///
+    /// `expectedUpdatedAt` carries the `updated_at` stamp the caller wrote when
+    /// it committed the verdict locally (review #2565): two overlapping verdicts
+    /// race on the wire, and the stamp is what lets the daemon refuse to
+    /// resurrect a Reject an earlier Approve RPC would have overwritten. The
+    /// response's `applied` is `false` on that refusal, with `status` naming the
+    /// verdict that actually won.
+    static func memoryReviewStatus(
+        memoryID: String,
+        projectPath: String,
+        status: MemoryReviewStatus,
+        expectedUpdatedAt: String? = nil,
+        at socketURL: URL
+    ) throws -> BurnBarProjectMemoryReviewStatusResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarProjectMemoryReviewStatusResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryReviewStatus,
+                params: BurnBarProjectMemoryReviewStatusRequest(
+                    memoryID: memoryID,
+                    projectPath: projectPath,
+                    status: status,
+                    expectedUpdatedAt: expectedUpdatedAt
+                )
+            ),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+        }
+
+        guard let result = envelope.result else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+
+        return result
+    }
+
+    /// The daemon's hard forget for an agent-lane memory (review #2565): it
+    /// removes the quarantine body, the published project-memory section, and
+    /// the engine-side mirror — the halves the app's local delete cannot reach.
+    /// The app calls this BEFORE removing its `agent_memories` authority row,
+    /// because the daemon needs the row's `project_id` to locate the body, and
+    /// it fails closed: a throwing call leaves every local byte in place.
+    ///
+    /// `requireCloudDelete` stays `false` — the daemon cannot mint the
+    /// member-keyed cloud tombstone; the app's own forget lane writes it.
+    static func memoryForget(
+        memoryID: String,
+        projectPath: String,
+        at socketURL: URL
+    ) throws -> BurnBarProjectMemoryForgetResponse {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarProjectMemoryForgetResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .memoryForget,
+                params: BurnBarProjectMemoryForgetRequest(
+                    memoryID: memoryID,
+                    projectPath: projectPath,
+                    requireCloudDelete: false
+                )
+            ),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw OpenBurnBarDaemonManagerError.rpcError(error.message)
+        }
+
+        guard let result = envelope.result else {
+            throw OpenBurnBarDaemonManagerError.emptyResponse
+        }
+
+        return result
     }
 
     static func proxyRouteLog(

@@ -72,6 +72,12 @@ extension OpenBurnBarApp {
                 runtimeContext: context
             )
         }
+        router.openBugReport = {
+            windowManager.openBugReport()
+        }
+        router.openHelpSupport = {
+            windowManager.openHelpSupport()
+        }
         router.makeMenuBarPopoverContent = { onDismiss in
             AnyView(
                 MenuBarPopoverView(
@@ -271,6 +277,16 @@ extension OpenBurnBarApp {
                 }
                 StartupProfiler.interval("quota_refresh_schedule") {
                     context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
+                }
+                StartupProfiler.interval("receipts_session_close_monitor_start") {
+                    let monitor = CLISessionCloseMonitor(
+                        dataStore: context.dataStore,
+                        settingsManager: context.settingsManager,
+                        onReceiptPrinted: { [weak appDelegate] receipt in
+                            appDelegate?.showReceiptFlyout(for: receipt)
+                        }
+                    )
+                    context.sessionCloseMonitor = monitor
                 }
                 // Routing decides with the DAEMON's copy of quota state, whose
                 // only writers used to be the Provider Plan wizard's dashboard

@@ -45,12 +45,30 @@ export interface ModelSummary {
   requests: number;
   tokens: number;
   cost: number;
+  label: string;
 }
 
 export interface DeviceSummary {
   deviceId: string;
   requests: number;
   tokens: number;
+  label: string;
+}
+
+/**
+ * Provider-account totals (who paid / which login burned it). Mirrors the
+ * server's ProviderAccountSummary (`functions/src/types/legacy/quota-usage.ts`):
+ * `id` is the raw `providerAccountID` when the event carried one, otherwise
+ * the synthetic `${providerID}:unattributed` key the counters use.
+ */
+export interface AccountSummary {
+  id: string;
+  providerID: string;
+  accountID?: string;
+  accountLabel: string;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost: number;
 }
 
 /**
@@ -76,6 +94,7 @@ export interface ExecutionSourceSummary {
   totalRequests: number;
   totalTokens: number;
   totalCost: number;
+  label: string;
 }
 
 /** Harness × model pairing, e.g. "Codex × gpt-5.2". */
@@ -246,22 +265,30 @@ export function normalizeRollup(raw: unknown, window: UsageWindowKey): UsageRoll
 
   const modelSummaries: ModelSummary[] = arr(raw.modelSummaries)
     .filter(isRecord)
-    .map((m) => ({
-      model: str(m.model, "unknown"),
-      provider: str(m.provider, "unknown"),
-      requests: num(m.requests),
-      tokens: num(m.tokens),
-      cost: num(m.cost),
-    }))
+    .map((m) => {
+      const model = str(m.model, "unknown");
+      return {
+        model,
+        provider: str(m.provider, "unknown"),
+        requests: num(m.requests),
+        tokens: num(m.tokens),
+        cost: num(m.cost),
+        label: model,
+      };
+    })
     .sort((a, b) => b.cost - a.cost || b.tokens - a.tokens);
 
   const deviceSummaries: DeviceSummary[] = arr(raw.deviceSummaries)
     .filter(isRecord)
-    .map((d) => ({
-      deviceId: str(d.deviceId, "unknown"),
-      requests: num(d.requests),
-      tokens: num(d.tokens),
-    }))
+    .map((d) => {
+      const deviceId = str(d.deviceId, "unknown");
+      return {
+        deviceId,
+        requests: num(d.requests),
+        tokens: num(d.tokens),
+        label: deviceId,
+      };
+    })
     .sort((a, b) => b.tokens - a.tokens);
 
   const accountSummaries: AccountSummary[] = arr(raw.accountSummaries)
@@ -293,13 +320,18 @@ export function normalizeRollup(raw: unknown, window: UsageWindowKey): UsageRoll
 
   const executionSourceSummaries: ExecutionSourceSummary[] = arr(raw.executionSourceSummaries)
     .filter(isRecord)
-    .map((s) => ({
-      sourceId: str(s.sourceId, "unknown"),
-      sourceName: str(s.sourceName, str(s.sourceId, "unknown")),
-      totalRequests: num(s.totalRequests),
-      totalTokens: num(s.totalTokens),
-      totalCost: num(s.totalCost),
-    }))
+    .map((s) => {
+      const sourceId = str(s.sourceId, "unknown");
+      const sourceName = str(s.sourceName, sourceId);
+      return {
+        sourceId,
+        sourceName,
+        totalRequests: num(s.totalRequests),
+        totalTokens: num(s.totalTokens),
+        totalCost: num(s.totalCost),
+        label: sourceName,
+      };
+    })
     .sort((a, b) => b.totalTokens - a.totalTokens || b.totalRequests - a.totalRequests);
 
   const comboSummaries: ComboSummary[] = arr(raw.comboSummaries)

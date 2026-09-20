@@ -44,3 +44,7 @@ struct AnthropicMessagesRequest: Decodable {
     let model: String
     let stream: Bool?
 }
+
+struct EmbeddingsRequest: Decodable {
+    let model: String
+}

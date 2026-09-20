@@ -192,6 +192,7 @@ export function createFunctionsDeploymentEvidence(
       "profile",
       "compiledReceipt",
       "runtimeArtifact",
+      "domainCoreInactive",
       "releaseGate",
     ],
     "Functions deploy proof",
@@ -203,6 +204,28 @@ export function createFunctionsDeploymentEvidence(
     proof.workflowPath !== ".github/workflows/deploy-production.yml"
   ) {
     throw new Error("Functions deploy proof identity is invalid");
+  }
+  // A missing release gate is only ever legitimate on the declared inactive
+  // lane, and that lane is only ever legitimate for the all-legacy
+  // public-production profile. Anything else is a dropped promotion proof.
+  if (typeof proof.domainCoreInactive !== "boolean") {
+    throw new Error("Functions deploy proof must declare the activation lane");
+  }
+  if ((proof.releaseGate === null) !== proof.domainCoreInactive) {
+    throw new Error(
+      "Functions deploy proof release gate does not match its declared activation lane",
+    );
+  }
+  if (
+    proof.domainCoreInactive &&
+    (proof.profile?.value?.name !== "public-production" ||
+      Object.values(proof.profile?.value?.modes ?? {}).some(
+        (mode) => mode !== "legacy",
+      ))
+  ) {
+    throw new Error(
+      "inactive domain-core mode is only valid for the legacy public-production profile",
+    );
   }
   const deployRun = requireDeployRunVerification(runVerification, proof);
   if (health?.project !== "burnbar" || health?.tag !== proof.release.tag) {

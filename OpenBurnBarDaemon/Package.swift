@@ -92,6 +92,13 @@ if !buildForLinuxBoundary {
     ])
     daemonTargetDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
     daemonTargetDependencies.append(.product(name: "SQLCipher", package: "SQLCipher.swift"))
+    // Release BB-E — `openburnbar-cli memory export` (docs/MEMORY_EXPORT_MIF.md).
+    // macOS-only and non-boundary-only, matching where OpenBurnBarCore vends the
+    // product: the store this reads lives under ~/Library, and the Linux daemon
+    // lane has no memory to export. The define gates the CLI source, so the
+    // Linux graph compiles as if BB-E did not exist.
+    daemonTargetDependencies.append(.product(name: "OpenBurnBarMemoryExport", package: "OpenBurnBarCore"))
+    daemonSwiftSettings.append(.define("OPENBURNBAR_MEMORY_EXPORT"))
     daemonLinkerSettings = [.unsafeFlags(["-framework", "Network", "-framework", "CoreServices"])]
     daemonExecutableDependencies.append(.product(name: "Sentry", package: "sentry-cocoa"))
 } else {
@@ -264,6 +271,17 @@ var packageTargets: [Target] = [
 ] + linuxSupportTargets
 
 #if os(macOS)
+var daemonTestDependencies: [Target.Dependency] = [
+    "OpenBurnBarDaemon",
+    .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore")
+]
+var daemonTestExcludes: [String] = []
+if !buildForLinuxBoundary {
+    daemonTestDependencies.append(.product(name: "OpenBurnBarMemoryExport", package: "OpenBurnBarCore"))
+} else {
+    daemonTestExcludes.append("OpenBurnBarMemoryExportSigningKeyTests.swift")
+}
+
 packageProducts.append(contentsOf: [
     .executable(
         name: "OpenBurnBarRemoteAccessAgent",
@@ -337,10 +355,8 @@ packageTargets.append(contentsOf: [
     ),
     .testTarget(
         name: "OpenBurnBarDaemonTests",
-        dependencies: [
-            "OpenBurnBarDaemon",
-            .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore")
-        ],
+        dependencies: daemonTestDependencies,
+        exclude: daemonTestExcludes,
         // Harness-only test target stays Swift 5 (region-isolation checker gaps).
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),

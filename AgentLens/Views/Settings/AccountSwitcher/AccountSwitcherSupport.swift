@@ -221,6 +221,16 @@ extension SwitcherCLIProfileType {
             return .omp
         case .primeAgent:
             return .primeAgent
+        case .hermes:
+            return .hermes
+        case .goose:
+            return .goose
+        case .windsurf:
+            return .windsurf
+        case .openClaude:
+            return .openClaude
+        case .openClaw:
+            return .openClaw
         }
     }
 }

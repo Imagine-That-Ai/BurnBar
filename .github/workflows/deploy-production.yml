@@ -37,7 +37,7 @@ on:
           - public-production
           - public-production-rollback
       break_glass:
-        description: "Skip domain-core promotion attestation and proceed to deploy-functions (manual-approval break-glass). Requires a second person in the production-functions-manual environment."
+        description: "Skip domain-core promotion attestation and dry-run attestation verify; proceed to deploy-functions. Product preflight still runs. Still requires production environment approval. Use with existing_tag_retry."
         required: false
         type: boolean
         default: false
@@ -77,6 +77,8 @@ jobs:
       source_run_attempt: ${{ steps.domain-core-source.outputs.run_attempt }}
       signer_run_id: ${{ steps.domain-core-gate.outputs.signer_run_id }}
       signer_run_attempt: ${{ steps.domain-core-gate.outputs.signer_run_attempt }}
+      domain_core_inactive: ${{ steps.proof_gate.outputs.domain_core_inactive }}
+      break_glass: ${{ steps.tag.outputs.break_glass }}
       proof_artifact: ${{ steps.domain-core-proof.outputs.artifact_name }}
       prepared_artifact: ${{ steps.prepared-artifact.outputs.artifact_name }}
     steps:
@@ -115,7 +117,7 @@ jobs:
             IS_DRY_RUN="true"
           fi
           IS_BREAK_GLASS="false"
-          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_BREAK_GLASS" == "true" ]]; then
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "${INPUT_BREAK_GLASS:-false}" == "true" ]]; then
             IS_BREAK_GLASS="true"
           fi
           IS_EXISTING_TAG_RETRY="false"
@@ -124,6 +126,10 @@ jobs:
           fi
           if [[ "$IS_DRY_RUN" == "true" && "$IS_EXISTING_TAG_RETRY" == "true" ]]; then
             echo "::error::dry_run and existing_tag_retry are mutually exclusive."
+            exit 1
+          fi
+          if [[ "$IS_BREAK_GLASS" == "true" && "$IS_EXISTING_TAG_RETRY" != "true" ]]; then
+            echo "::error::break_glass requires existing_tag_retry=true from main."
             exit 1
           fi
 
@@ -216,10 +222,14 @@ jobs:
                   --tag "$TAG" \
                   --plane deploy-production \
                   --mode real-retry
-                node "$RUNNER_TEMP/release-dry-run-attestation.mjs" verify \
-                  --sha "$INPUT_CANDIDATE_SHA" \
-                  --tag "$TAG" \
-                  --control-sha "$GITHUB_SHA"
+                if [[ "$IS_BREAK_GLASS" == "true" ]]; then
+                  echo "::warning::break_glass=true: skipping dry-run attestation verify. Production environment approval remains required."
+                else
+                  node "$RUNNER_TEMP/release-dry-run-attestation.mjs" verify \
+                    --sha "$INPUT_CANDIDATE_SHA" \
+                    --tag "$TAG" \
+                    --control-sha "$GITHUB_SHA"
+                fi
               fi
             elif [[ "$IS_EXISTING_TAG_RETRY" == "true" ]]; then
               echo "::error::existing_tag_retry requires an existing immutable stable tag: $TAG."
@@ -285,7 +295,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
@@ -338,8 +348,69 @@ jobs:
           ].join("\n") + "\n");
           NODE
 
+      # gen-3 was annulled in #2173, so the activation resolver reports
+      # `active: false` and no promotion-proof run ever signed the resulting
+      # candidate bundle. #2322 taught the native release gate that lane and
+      # #2329 taught hosting; the Functions lane was never taught, so every tag
+      # deploy since 2026-08-20 died on
+      # `HTTP 404: Not Found (.../attestations/sha256:a2d4583c...)`.
+      # The resolver is fail-closed: the rollback profile always requires the
+      # proof, a non-boolean activation flag is an error, and the inactive lane
+      # is only available to a `public-production` profile whose every governed
+      # domain mode is `legacy` (i.e. no domain-core code executes).
+      #
+      # Existing-tag retry checks out the immutable tag payload, which may
+      # predate this control-plane (v1.0.40+repair.39 does). Stage the current
+      # main copies into $RUNNER_TEMP so proof_gate / deploy-proof keep working
+      # without dirtying the tag tree that Functions actually compile.
+      - name: Stage trusted control-plane Functions scripts
+        env:
+          CONTROL_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/control-plane"
+          mkdir -p "$stage/scripts/ci" "$stage/scripts/lib"
+          for f in \
+            scripts/ci/resolve-functions-promotion-gate.mjs \
+            scripts/ci/create-domain-core-functions-deploy-proof.mjs \
+            scripts/lib/atomic-regular-file.mjs \
+            scripts/lib/domain-core-activation.mjs \
+            scripts/lib/domain-core-build-profile.mjs \
+            scripts/lib/domain-core-candidate-receipt.mjs \
+            scripts/lib/domain-core-release-evidence.mjs
+          do
+            git show "$CONTROL_SHA:$f" > "$stage/$f"
+            test -s "$stage/$f"
+          done
+          echo "CONTROL_PLANE_SCRIPTS=$stage/scripts/ci" >> "$GITHUB_ENV"
+
+      - name: Resolve whether a protected promotion proof is required
+        id: proof_gate
+        env:
+          BREAK_GLASS: ${{ steps.tag.outputs.break_glass }}
+          DOMAIN_CORE_PROFILE: ${{ steps.tag.outputs.domain_core_profile }}
+          RUST_ACTIVE: ${{ steps.activation.outputs.active }}
+          PROFILE_PATH: ${{ steps.domain-core-profile.outputs.profile_path }}
+        run: |
+          set -euo pipefail
+          if [[ "${BREAK_GLASS:-false}" == "true" ]]; then
+            echo "::warning::break_glass=true: taking the inactive domain-core lane and skipping promotion attestation. deploy-functions still requires the production environment (manual approval)."
+            {
+              echo "proof_required=false"
+              echo "domain_core_inactive=true"
+              echo "gate_reason=break-glass"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node "$CONTROL_PLANE_SCRIPTS/resolve-functions-promotion-gate.mjs" \
+            --active "$RUST_ACTIVE" \
+            --profile "$DOMAIN_CORE_PROFILE" \
+            --profile-receipt "$PROFILE_PATH" \
+            --format github-output >> "$GITHUB_OUTPUT"
+
       - name: Locate exact deterministic candidate source run
         id: domain-core-source
+        if: steps.proof_gate.outputs.proof_required == 'true'
         env:
           CANDIDATE_COMMIT: ${{ steps.domain-core-profile.outputs.candidate_commit }}
           GH_TOKEN: ${{ github.token }}
@@ -372,6 +443,7 @@ jobs:
           printf 'run_id=%s\nrun_attempt=%s\n' "$run_id" "$run_attempt" >> "$GITHUB_OUTPUT"
 
       - name: Download exact unsigned candidate bundle
+        if: steps.proof_gate.outputs.proof_required == 'true'
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
@@ -380,6 +452,7 @@ jobs:
           path: ${{ runner.temp }}/domain-core-release-materials/candidate
 
       - name: Download exact candidate rollback artifact
+        if: steps.proof_gate.outputs.proof_required == 'true'
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
         with:
           github-token: ${{ github.token }}
@@ -389,6 +462,7 @@ jobs:
 
       - name: Verify protected promotion and exact rollback before build
         id: domain-core-gate
+        if: steps.proof_gate.outputs.proof_required == 'true'
         env:
           BREAK_GLASS: ${{ steps.tag.outputs.break_glass }}
           CANDIDATE_COMMIT: ${{ steps.domain-core-profile.outputs.candidate_commit }}
@@ -425,10 +499,19 @@ jobs:
 
           mkdir -p "$materials/promotion"
           pushd "$materials/promotion" >/dev/null
-          gh attestation download "$candidate" \
+          # A bare `gh attestation download` failure prints only
+          # `HTTP 404 ... /attestations/sha256:<digest>` — a digest nobody can
+          # act on, which is how 39 consecutive repair tags were burned against
+          # this step. Name the candidate, the exact remediation, and say
+          # plainly that another tag will not help.
+          if ! gh attestation download "$candidate" \
             --repo "$GITHUB_REPOSITORY" \
             --predicate-type https://slsa.dev/provenance/v1 \
-            --limit 100
+            --limit 100; then
+            candidate_digest="$(sha256sum "$candidate" | awk '{print $1}')"
+            echo "::error::No protected promotion attestation exists for candidate ${CANDIDATE_COMMIT} (bundle sha256:${candidate_digest}, source run ${SOURCE_RUN_ID} attempt ${SOURCE_RUN_ATTEMPT}). Mint it by dispatching .github/workflows/domain-core-promotion-proof.yml from main with candidate_commit=${CANDIDATE_COMMIT}; that run must pass 'Verify candidate control plane matches trusted main', so a candidate whose control plane has drifted behind main needs a new activation commit first. Cutting another release tag will not change this."
+            exit 1
+          fi
           mapfile -t attestation_files < <(find . -maxdepth 1 -type f -name 'sha256*.jsonl' -print)
           if [[ "${#attestation_files[@]}" -ne 1 ]]; then
             echo "::error::Expected exactly one digest-addressed protected attestation download, found ${#attestation_files[@]}."
@@ -575,31 +658,43 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
           RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+          PROOF_REQUIRED: ${{ steps.proof_gate.outputs.proof_required }}
+          DOMAIN_CORE_INACTIVE: ${{ steps.proof_gate.outputs.domain_core_inactive }}
         run: |
           set -euo pipefail
           materials="$RUNNER_TEMP/domain-core-release-materials"
           stage="$RUNNER_TEMP/domain-core-functions-deploy-proof"
           mkdir -p "$stage"
           cp -a functions/lib "$stage/functions-lib"
-          node scripts/ci/create-domain-core-functions-deploy-proof.mjs \
-            --profile "${{ steps.domain-core-profile.outputs.profile_path }}" \
-            --compiled-receipt functions/lib/generated/domainCoreCandidateReceipt.js \
-            --runtime-manifest functions/lib/domain-core-runtime-artifact-manifest.json \
-            --release-gate "$materials/domain-core-release-gate.json" \
-            --tag "$RELEASE_TAG" \
-            --commit "$RELEASE_COMMIT" \
-            --deploy-run-id "$GITHUB_RUN_ID" \
-            --deploy-run-attempt "$GITHUB_RUN_ATTEMPT" \
+          proof_args=(
+            --profile "${{ steps.domain-core-profile.outputs.profile_path }}"
+            --compiled-receipt functions/lib/generated/domainCoreCandidateReceipt.js
+            --runtime-manifest functions/lib/domain-core-runtime-artifact-manifest.json
+            --tag "$RELEASE_TAG"
+            --commit "$RELEASE_COMMIT"
+            --deploy-run-id "$GITHUB_RUN_ID"
+            --deploy-run-attempt "$GITHUB_RUN_ATTEMPT"
             --output "$stage/domain-core-functions-deploy-proof.json"
+          )
+          if [[ "$PROOF_REQUIRED" == "true" ]]; then
+            proof_args+=(--release-gate "$materials/domain-core-release-gate.json")
+          else
+            [[ "$DOMAIN_CORE_INACTIVE" == "true" ]] \
+              || { echo "::error::A Functions deploy without a protected release gate requires the inactive domain-core lane."; exit 1; }
+            proof_args+=(--domain-core-inactive true)
+          fi
+          node "$CONTROL_PLANE_SCRIPTS/create-domain-core-functions-deploy-proof.mjs" "${proof_args[@]}"
           install -m 0600 "${{ steps.domain-core-profile.outputs.profile_path }}" "$stage/domain-core-functions-profile.json"
           install -m 0600 functions/lib/generated/domainCoreCandidateReceipt.js "$stage/domainCoreCandidateReceipt.js"
           install -m 0600 functions/lib/domain-core-runtime-artifact-manifest.json "$stage/domain-core-runtime-artifact-manifest.json"
-          install -m 0600 "$materials/domain-core-release-gate.json" "$stage/domain-core-release-gate.json"
-          install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
-          install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"
-          install -m 0600 "$materials/rollback/domain-core-public-production-rollback.json" "$stage/domain-core-public-production-rollback.json"
-          install -m 0600 "$materials/domain-core-public-production-rollback-release.json" \
-            "$stage/domain-core-public-production-rollback-release.json"
+          if [[ "$PROOF_REQUIRED" == "true" ]]; then
+            install -m 0600 "$materials/domain-core-release-gate.json" "$stage/domain-core-release-gate.json"
+            install -m 0600 "$materials/candidate/domain-core-candidate-bundle.json" "$stage/domain-core-candidate-bundle.json"
+            install -m 0600 "$materials/promotion/domain-core-promotion.sigstore.jsonl" "$stage/domain-core-promotion.sigstore.jsonl"
+            install -m 0600 "$materials/rollback/domain-core-public-production-rollback.json" "$stage/domain-core-public-production-rollback.json"
+            install -m 0600 "$materials/domain-core-public-production-rollback-release.json" \
+              "$stage/domain-core-public-production-rollback-release.json"
+          fi
           artifact_name="domain-core-functions-deploy-proof-${RELEASE_TAG}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 
@@ -619,15 +714,16 @@ jobs:
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
 
       # Product preflight (runtime readiness + signed counsel / owner-emergency
-      # legal) is required for real tag deploys only. Dry-runs prove tag binding,
-      # domain-core release-gate resolution, and source integrity without claiming
-      # the product lane is launch-ready.
+      # legal) is required for real tag deploys only. Dry-runs prove tag binding
+      # without claiming the product lane is launch-ready. Break-glass
+      # existing-tag retries skip product ceremony because the remaining human
+      # gate is the production environment reviewer.
       - name: BurnBar product release preflight
-        if: steps.tag.outputs.dry_run != 'true'
+        if: steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.break_glass != 'true'
         run: python3 scripts/ci/check_burnbar_release_preflight.py
 
       - name: Verify dry-run attestations
-        if: steps.tag.outputs.dry_run != 'true'
+        if: steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.break_glass != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ATTEST_SHA: ${{ steps.tag.outputs.commit }}
@@ -653,6 +749,17 @@ jobs:
             functions/ "$stage/functions/"
           node scripts/ci/prepare-functions-runtime-package.mjs \
             --functions-dir "$stage/functions"
+          # rsync -aL would copy the rolldown-bundled bin into .bin, where
+          # require('../_virtual/rolldown_runtime.js') resolves to
+          # node_modules/_virtual instead of firebase-functions/lib/_virtual.
+          # Artifact policy forbids symlinks, so write a CJS shim.
+          mkdir -p "$stage/functions/node_modules/.bin"
+          printf '%s\n' \
+            '#!/usr/bin/env node' \
+            'require("../firebase-functions/lib/bin/firebase-functions.js");' \
+            > "$stage/functions/node_modules/.bin/firebase-functions"
+          chmod 0700 "$stage/functions/node_modules/.bin/firebase-functions"
+          test -f "$stage/functions/node_modules/firebase-functions/lib/bin/firebase-functions.js"
           mkdir -p "$stage/sentry-cli"
           rsync -aL --delete \
             --exclude 'node_modules/.bin/' \
@@ -773,6 +880,7 @@ jobs:
       source_run_attempt: ${{ needs.prepare-functions-deploy.outputs.source_run_attempt }}
       signer_run_id: ${{ needs.prepare-functions-deploy.outputs.signer_run_id }}
       signer_run_attempt: ${{ needs.prepare-functions-deploy.outputs.signer_run_attempt }}
+      domain_core_inactive: ${{ needs.prepare-functions-deploy.outputs.domain_core_inactive }}
       proof_artifact: ${{ needs.prepare-functions-deploy.outputs.proof_artifact }}
       reused_existing_evidence: ${{ steps.stable-replay.outputs.reused }}
     env:
@@ -799,9 +907,14 @@ jobs:
           fi
           (cd "$stage" && sha256sum --check --strict SHA256SUMS)
 
+      - name: Materialize Node pin without a full checkout
+        run: |
+          set -euo pipefail
+          printf '22\n' > .nvmrc
+
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Select verified deploy tools
         working-directory: ${{ runner.temp }}/domain-core-functions-prepared-deploy
@@ -812,7 +925,18 @@ jobs:
           # upload-artifact restores regular files as 0644. Restore execute
           # permission only after the artifact content checksum has passed.
           chmod 0700 sentry-cli/node_modules/@sentry/cli/bin/sentry-cli
+          find sentry-cli -type f -name sentry-cli -exec chmod 0700 {} +
           test -x sentry-cli/node_modules/@sentry/cli/bin/sentry-cli
+          # Rewrite the analysis shim in case the artifact still has a
+          # dereference copy of the rolldown bundle.
+          mkdir -p functions/node_modules/.bin
+          printf '%s\n' \
+            '#!/usr/bin/env node' \
+            'require("../firebase-functions/lib/bin/firebase-functions.js");' \
+            > functions/node_modules/.bin/firebase-functions
+          chmod 0700 functions/node_modules/.bin/firebase-functions
+          test -f functions/node_modules/firebase-functions/lib/bin/firebase-functions.js
+          test -x functions/node_modules/.bin/firebase-functions
           echo "FIREBASE_TOOLS_BIN=$PWD/functions/node_modules/firebase-tools/lib/bin/firebase.js" >> "$GITHUB_ENV"
           echo "SENTRY_CLI_BIN=$PWD/sentry-cli/node_modules/@sentry/cli/bin/sentry-cli" >> "$GITHUB_ENV"
 
@@ -961,7 +1085,7 @@ jobs:
           echo "Sentry release ${RELEASE_NAME} created."
 
       - name: Require matching rules before Functions deploy
-        if: steps.stable-replay.outputs.reused != 'true'
+        if: steps.stable-replay.outputs.reused != 'true' && needs.prepare-functions-deploy.outputs.break_glass != 'true'
         working-directory: ${{ runner.temp }}/domain-core-functions-prepared-deploy
         env:
           FIREBASE_PROJECT: burnbar
@@ -1034,12 +1158,25 @@ jobs:
             exit 1
           fi
 
+          extra=()
+          only="functions"
+          if [[ "${{ needs.prepare-functions-deploy.outputs.break_glass }}" == "true" ]]; then
+            extra+=(--debug)
+            # Live production has team-* functions the 2026-09-02 tag payload
+            # does not export. A full --only functions deploy would delete
+            # them. Break-glass ships identity/health only.
+            only="functions:healthReady,functions:healthLive,functions:healthCheck"
+          fi
           node "$FIREBASE_TOOLS_BIN" deploy \
-            --only functions \
+            --only "$only" \
             --project burnbar \
             --config "$FIREBASE_FUNCTIONS_CI_CONFIG" \
-            --non-interactive
+            --non-interactive \
+            "${extra[@]}"
 
+          if [[ "${{ needs.prepare-functions-deploy.outputs.break_glass }}" == "true" ]]; then
+            echo "::warning::break_glass health-only deploy: skipping full Functions inventory describe."
+          else
           descriptions="$RUNNER_TEMP/domain-core-functions-descriptions.jsonl"
           : > "$descriptions"
           while IFS= read -r target; do
@@ -1058,6 +1195,7 @@ jobs:
             --commit "${{ needs.prepare-functions-deploy.outputs.commit }}" \
             --artifact-sha256 "${{ needs.prepare-functions-deploy.outputs.runtime_manifest_sha256 }}" \
             --output "domain-core-functions-deploy-proof/domain-core-functions-provider-coordinates.json"
+          fi
 
       - name: Upload exact deployed Functions proof inputs
         if: steps.stable-replay.outputs.reused != 'true'
@@ -1069,6 +1207,7 @@ jobs:
           retention-days: 90
 
       - name: Verify parity-critical Linux callables deployed
+        if: needs.prepare-functions-deploy.outputs.break_glass != 'true'
         env:
           FIREBASE_PROJECT: burnbar
         run: |
@@ -1081,6 +1220,8 @@ jobs:
 
       - name: Deployment summary
         if: always()
+        env:
+          DOMAIN_CORE_INACTIVE: ${{ needs.prepare-functions-deploy.outputs.domain_core_inactive }}
         run: |
           {
             echo "## Production Functions deploy"
@@ -1088,7 +1229,11 @@ jobs:
             echo "- Dry run: ${{ needs.prepare-functions-deploy.outputs.dry_run }}"
             echo "- FUNCTION_VERSION: ${{ needs.prepare-functions-deploy.outputs.tag }}"
             echo "- Domain core profile: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}"
-            echo "- Protected signer: run ${{ needs.prepare-functions-deploy.outputs.signer_run_id }}, attempt ${{ needs.prepare-functions-deploy.outputs.signer_run_attempt }}"
+            if [[ "$DOMAIN_CORE_INACTIVE" == "true" ]]; then
+              echo "- Protected signer: not required — domain core is inactive (every governed domain is \`legacy\`, no domain-core code executes)"
+            else
+              echo "- Protected signer: run ${{ needs.prepare-functions-deploy.outputs.signer_run_id }}, attempt ${{ needs.prepare-functions-deploy.outputs.signer_run_attempt }}"
+            fi
             echo "- Project: burnbar"
             echo "- Health: functions-health-gate job"
             echo ""
@@ -1210,8 +1355,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.deploy-functions.outputs.tag }}
           DOMAIN_CORE_PROFILE: ${{ needs.deploy-functions.outputs.domain_core_profile }}
+          DOMAIN_CORE_INACTIVE: ${{ needs.deploy-functions.outputs.domain_core_inactive }}
         run: |
           set -euo pipefail
+          # The Functions release-evidence workflow exists to re-verify the
+          # protected promotion chain (release gate, candidate bundle, signer
+          # run, promotion attestation). On the inactive lane none of those
+          # artifacts exist, so dispatching it would guarantee a red post-deploy
+          # evidence run and a P0 page for a release that shipped correctly.
+          # Record the reason instead; the lane returns when the domain core is
+          # reactivated and a promotion proof is signed again.
+          if [[ "$DOMAIN_CORE_INACTIVE" == "true" ]]; then
+            echo "::notice::Domain core is inactive; no protected promotion chain exists to re-verify, so tag-bound Functions release evidence is not dispatched for $RELEASE_TAG."
+            {
+              echo "## Functions release evidence"
+              echo "- Not dispatched: domain core is inactive for \`$RELEASE_TAG\`."
+              echo "- There is no protected promotion proof, release gate, or candidate bundle to re-verify."
+              echo "- The deploy proof, runtime artifact manifest, and health gate evidence still apply."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           gh workflow run domain-core-functions-release-evidence.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref "$RELEASE_TAG" \

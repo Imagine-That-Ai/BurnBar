@@ -1,5 +1,5 @@
 /**
- * BOLA negative coverage — cli_agent_mission_requests / mission_groups object ownership.
+ * BOLA negative coverage — cli_agent_mission_requests object ownership.
  */
 
 import { describe, it, vi } from "vitest";
@@ -36,15 +36,6 @@ vi.mock("../../callables/publicRateLimit.js", () => ({
   assertCallableApprovalNotLocked: vi.fn(async () => undefined),
 }));
 
-export const BOLA_MANIFEST = {
-  createCliAgentMission: ["createCliAgentMission rejects cross-user object access"],
-  createCliAgentMissionGroup: ["createCliAgentMissionGroup rejects cross-user object access"],
-  cancelCliAgentMission: ["cancelCliAgentMission rejects cross-user object access"],
-  claimCliAgentMission: ["claimCliAgentMission rejects cross-user object access"],
-  appendCliAgentMissionEvent: ["appendCliAgentMissionEvent rejects cross-user object access"],
-  updateCliAgentMissionStatus: ["updateCliAgentMissionStatus rejects cross-user object access"],
-} as const;
-
 const VAULT = `v1_${"ab".repeat(16)}`;
 
 function sealed(collection: string, docId: string, field = "sealedPayload") {
@@ -55,19 +46,6 @@ function sealed(collection: string, docId: string, field = "sealedPayload") {
     vaultKeyID: VAULT,
     sealedBoxBase64: Buffer.from("sealed-box").toString("base64"),
     aad: cloudVaultAADContext(ALICE_UID, collection, docId, field),
-  };
-}
-
-function createMissionProbe(): Record<string, unknown> {
-  return {
-    requestId: "bob-request",
-    remoteCommandID: "bob-remote-cmd",
-    deviceId: "bob-device",
-    nonce: "bola-test-nonce",
-    actionProof: { nonce: "bola-action-proof", signature: "YQ==" },
-    publicFields: { missionKind: "chat", requestedRuntime: "codex", source: "ios", schemaVersion: 2 },
-    sealedPayload: sealed("cli_agent_mission_requests", "bob-request"),
-    initialEvent: sealed("cli_agent_mission_requests/events", "bob-request/000001"),
   };
 }
 
@@ -92,15 +70,14 @@ function createGroupProbe(): Record<string, unknown> {
   };
 }
 
-function missionSubjectProbe(extra: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    requestId: "bob-request",
-    deviceId: "bob-device",
-    nonce: "bola-test-nonce",
-    actionProof: { nonce: "bola-action-proof", signature: "YQ==" },
-    ...extra,
-  };
-}
+export const BOLA_MANIFEST = {
+  createCliAgentMission: ["createCliAgentMission rejects cross-user object access"],
+  createCliAgentMissionGroup: ["createCliAgentMissionGroup rejects cross-user object access"],
+  cancelCliAgentMission: ["cancelCliAgentMission rejects cross-user object access"],
+  claimCliAgentMission: ["claimCliAgentMission rejects cross-user object access"],
+  appendCliAgentMissionEvent: ["appendCliAgentMissionEvent rejects cross-user object access"],
+  updateCliAgentMissionStatus: ["updateCliAgentMissionStatus rejects cross-user object access"],
+} as const;
 
 describe("BOLA — cliAgentMissions", () => {
   it("createCliAgentMission rejects cross-user object access", async () => {
@@ -109,8 +86,8 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "createCliAgentMission",
       run,
-      payload: createMissionProbe(),
-      expectedOutcome: "no-side-effect",
+      expectedCode: "invalid-argument",
+      expectedOutcome: "throws",
     });
   });
 
@@ -131,10 +108,7 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "cancelCliAgentMission",
       run,
-      payload: missionSubjectProbe({
-        sealedStatePayload: sealed("cli_agent_mission_requests", "bob-request", "sealedStatePayload"),
-      }),
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -145,13 +119,7 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "claimCliAgentMission",
       run,
-      payload: missionSubjectProbe({
-        nextStatus: "accepted",
-        selectedRuntime: "codex",
-        selectedRuntimeName: "Codex",
-        sealedStatePayload: sealed("cli_agent_mission_requests", "bob-request", "sealedStatePayload"),
-      }),
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -162,19 +130,7 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "appendCliAgentMissionEvent",
       run,
-      payload: missionSubjectProbe({
-        hostWriteNonce: "bola-host-write-nonce",
-        eventId: "000002",
-        sealedEvent: sealed("cli_agent_mission_requests/events", "bob-request/000002"),
-        publicEventShape: {
-          sequence: 2,
-          kind: "status",
-          phase: "running",
-          runtime: "codex",
-          source: "mac",
-        },
-      }),
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -185,12 +141,7 @@ describe("BOLA — cliAgentMissions", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "updateCliAgentMissionStatus",
       run,
-      payload: missionSubjectProbe({
-        status: "starting",
-        hostWriteNonce: "bola-host-write-nonce",
-        sealedStatePayload: sealed("cli_agent_mission_requests", "bob-request", "sealedStatePayload"),
-      }),
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });

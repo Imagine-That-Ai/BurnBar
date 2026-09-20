@@ -137,6 +137,29 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
         let detail = "Pi quota is out of limits for this account."
         XCTAssertEqual(CLIQuotaExhaustionClassifier.classify(for: .pi, in: detail), detail)
     }
+
+    func test_classifierMatchesNewCLIQuotaPhrases() {
+        XCTAssertEqual(
+            CLIQuotaExhaustionClassifier.classify(for: .hermes, in: "hermes quota exceeded"),
+            "hermes quota exceeded"
+        )
+        XCTAssertEqual(
+            CLIQuotaExhaustionClassifier.classify(for: .goose, in: "block goose quota reached"),
+            "block goose quota reached"
+        )
+        XCTAssertEqual(
+            CLIQuotaExhaustionClassifier.classify(for: .windsurf, in: "flex credit exhausted"),
+            "flex credit exhausted"
+        )
+        XCTAssertEqual(
+            CLIQuotaExhaustionClassifier.classify(for: .openClaude, in: "claude code usage limit reached"),
+            "claude code usage limit reached"
+        )
+        XCTAssertEqual(
+            CLIQuotaExhaustionClassifier.classify(for: .openClaw, in: "openclaw limit reached"),
+            "openclaw limit reached"
+        )
+    }
 }
 
 private final class SupervisorEventRecorder: Sendable {

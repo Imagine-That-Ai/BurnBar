@@ -174,6 +174,14 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case memoryForget = "daemon.memory.forget"
     case memoryAuditTrail = "daemon.memory.audit_trail"
     case memoryAnalytics = "daemon.memory.analytics"
+    /// Memory Pro: what the memory engine may use (Pro state, consented providers,
+    /// models per purpose, CLI consent) plus a scoped loopback-gateway token.
+    case memoryModelPolicy = "daemon.memory.model_policy"
+    /// Memory Blind Sync (PR-2): the engine drains the remote facts the app's
+    /// pull lane verified and parked, then acknowledges what it merged. Reading
+    /// the inbox is a memory read; the acknowledgement writes `applied_at`.
+    case memorySyncInboxList = "daemon.memory.sync.inbox.list"
+    case memorySyncInboxAck = "daemon.memory.sync.inbox.ack"
     case codeIndexProject = "daemon.code.index_project"
     case codeSearch = "daemon.code.search"
     case codeContextPack = "daemon.code.context_pack"

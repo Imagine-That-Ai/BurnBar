@@ -13,6 +13,25 @@ final class FakeAccountManager: AccountManaging {
     var currentUser: User? = nil
     var currentUID: String? = nil
 
+    /// Observers registered through `observeAccountIdentityChanges(_:)`, so a
+    /// test can assert that a subject actually subscribed AND drive a
+    /// sign-out / account switch without a live Firebase auth listener.
+    private(set) var accountIdentityObservers: [@MainActor @Sendable (String?) -> Void] = []
+
+    func observeAccountIdentityChanges(_ observer: @escaping @MainActor @Sendable (String?) -> Void) {
+        accountIdentityObservers.append(observer)
+    }
+
+    /// Stands in for Firebase's auth-state listener: applies the new identity
+    /// and fires every observer, exactly as `AccountManager` does.
+    func simulateAccountIdentityChange(to uid: String?) {
+        currentUID = uid
+        isSignedIn = uid != nil
+        for observer in accountIdentityObservers {
+            observer(uid)
+        }
+    }
+
     static func makeSignedIn(uid: String = "test-uid-1") -> FakeAccountManager {
         let manager = FakeAccountManager()
         manager.isSignedIn = true

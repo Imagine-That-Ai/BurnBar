@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { RELEASE_CONSUMERS } from "../lib/domain-core-release-evidence.mjs";
 import { deriveDomainCoreFunctionsTargets } from "./verify-domain-core-functions-target-inventory.mjs";
@@ -601,9 +602,10 @@ test("protected Functions inventory covers every pricing execution entry and bot
   assert.equal(functionsTargets.schemaVersion, 1);
   assert.deepEqual(
     functionsTargets.targets,
-    deriveDomainCoreFunctionsTargets(
-      new URL("../..", import.meta.url).pathname,
-    ),
+    // `.pathname` keeps URL percent-encoding, so a checkout under a path
+    // containing a space resolves to a `%20` directory that does not exist.
+    // CI runners never see it; local worktrees under "Samsung NVME" always do.
+    deriveDomainCoreFunctionsTargets(fileURLToPath(new URL("../..", import.meta.url))),
   );
   for (const target of functionsTargets.targets) {
     assert.match(functionsIndex, new RegExp(`\\b${target}\\b`, "u"), target);
@@ -983,7 +985,7 @@ test("rust-and-csharp preserves the Rust toolchain step after the PR-head checko
   const rust = workflowJob(core, "rust-and-csharp");
   assert.match(
     rust,
-    /^      - name: Install Rust toolchain\n        uses: dtolnay\/rust-toolchain@[0-9a-f]+\s*# v1\n        with:\n          toolchain: "1\.96\.0"\n          components: rustfmt,clippy\n/mu,
+    /^      - name: Install Rust toolchain\n        uses: dtolnay\/rust-toolchain@[0-9a-f]+\s*# v1\n        with:\n          toolchain: "1\.96\.0"[^\n]*\n          components: rustfmt,clippy\n/mu,
     "rust-and-csharp must keep the Install Rust toolchain step (dtolnay/rust-toolchain) — the pre-fix edit accidentally dropped it",
   );
 });

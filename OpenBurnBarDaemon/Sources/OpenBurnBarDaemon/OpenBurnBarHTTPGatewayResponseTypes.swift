@@ -182,6 +182,8 @@ extension BurnBarHTTPGatewayServer {
         let executionSource: UsageExecutionSource
         let requestedModel: GatewayRequestedModel
         let logContext: GatewayRequestContext
+        /// Memory Pro purpose, when the request declared one.
+        let purpose: GatewayPurpose?
     }
 
     /// Control-flow signal returned by `attemptSingleRoute` so the caller's loop

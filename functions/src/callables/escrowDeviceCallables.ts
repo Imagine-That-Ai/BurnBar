@@ -27,6 +27,7 @@ import {
 import { db } from "../adminRuntime.js";
 import { logInfo, logWarn, wrapCallableHandler } from "../logging.js";
 import { boundedTrimmedString } from "./shared/validators.js";
+import { fanoutDeviceApprovalRequest } from "../deviceApprovalPush.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import {
   ESCROW_PLATFORMS,
@@ -154,6 +155,18 @@ export const registerEscrowDevice = onCall(
         device_id: deviceId,
         platform,
       });
+
+      // Fan out device approval push notifications to existing companion devices
+      void fanoutDeviceApprovalRequest({
+        uid,
+        deviceId,
+        deviceName,
+        platform,
+        safetyCode: typeof publicKeyFingerprint === "string" ? publicKeyFingerprint.slice(0, 8) : undefined,
+      }).catch((err) => {
+        logInfo({ event: "native_device_approval_fanout_error", error: String(err) });
+      });
+
       return { ok: true, deviceId, trustState: "pending" };
     },
   ),

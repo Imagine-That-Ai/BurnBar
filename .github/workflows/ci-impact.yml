@@ -15,6 +15,8 @@ on:
         value: ${{ jobs.classify.outputs.android }}
       rust:
         value: ${{ jobs.classify.outputs.rust }}
+      rustTooling:
+        value: ${{ jobs.classify.outputs.rustTooling }}
       daemon:
         value: ${{ jobs.classify.outputs.daemon }}
       functions:
@@ -39,6 +41,7 @@ jobs:
       mobile: ${{ steps.impact.outputs.mobile }}
       android: ${{ steps.impact.outputs.android }}
       rust: ${{ steps.impact.outputs.rust }}
+      rustTooling: ${{ steps.impact.outputs.rustTooling }}
       daemon: ${{ steps.impact.outputs.daemon }}
       functions: ${{ steps.impact.outputs.functions }}
       web: ${{ steps.impact.outputs.web }}

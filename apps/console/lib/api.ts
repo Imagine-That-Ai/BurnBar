@@ -66,10 +66,10 @@ export const getDataDomainUsage = () =>
 // ── rebuildUsageRollups ─────────────────────────────────────────────────────
 // Recomputes the member's usage_rollups server-side before a fresh read.
 // `force: true` rebuilds even when the rollup job reports clean.
-// Timeout matches FULL_USAGE_REBUILD_RUNTIME (540s). The JS SDK default is
-// 70s, which aborted the client while the server was still (or already
-// OOM-killed) rebuilding a real account's history.
-export const REBUILD_USAGE_ROLLUPS_TIMEOUT_MS = 540_000;
+// Server budget is FULL_USAGE_REBUILD_RUNTIME (540s). The client timer
+// starts before the request reaches Cloud Run, so give 60s of transport /
+// cold-start / response headroom rather than matching the deadline exactly.
+export const REBUILD_USAGE_ROLLUPS_TIMEOUT_MS = 600_000;
 export interface RebuildUsageRollupsResponse {
   ok?: boolean;
   computedAt?: string;
@@ -294,6 +294,32 @@ export const searchKnowledge = (payload: {
   sourceSlug?: string;
   limit?: number;
 }) => call<typeof payload, SearchKnowledgeResponse>("searchKnowledge", payload);
+
+export interface KnowledgeChunkItem {
+  vectorId: string;
+  ciphertext: unknown;
+  sealedMetadata: unknown;
+  signalEnvelope?: unknown;
+  sourceKind: string;
+  slugHmac?: string;
+  dedupHash?: string;
+  byteCount: number;
+  updatedAtMillis: number;
+}
+
+export interface ListKnowledgeChunksResponse {
+  ok: boolean;
+  chunks: KnowledgeChunkItem[];
+  hasMore: boolean;
+  nextStartAfterId: string | null;
+}
+
+export const listKnowledgeChunks = (payload?: {
+  sourceKind?: string;
+  slugHmac?: string;
+  limit?: number;
+  startAfterId?: string;
+}) => call<typeof payload, ListKnowledgeChunksResponse>("listKnowledgeChunks", payload ?? {});
 
 // ── Passkeys ───────────────────────────────────────────────────────────────
 export const registerPasskey = () =>

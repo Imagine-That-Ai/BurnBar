@@ -6,6 +6,7 @@
  * rollup day format) and all output is deterministic.
  */
 
+import type { AccountSummary, DeviceSummary, ExecutionSourceSummary, ModelSummary, ProviderSummary } from "@/lib/usage";
 import type { ProfileUsageEvent } from "./profileEvents";
 
 /** 7 × 24 grid of event counts + tokens, Monday-first row order for display. */
@@ -93,6 +94,149 @@ export interface NamedShare {
   cost: number;
 }
 
+/**
+ * Aggregate bounded events into per-dimension summary rows with the SAME
+ * shapes as the rollup summaries (ModelSummary / ExecutionSourceSummary /
+ * AccountSummary / DeviceSummary). Custom-range breakdowns use these rows
+ * because the rollup has no window docs for custom ranges.
+ */
+export function summarizeEvents(
+  events: readonly ProfileUsageEvent[],
+): {
+  providers: ProviderSummary[];
+  models: ModelSummary[];
+  harnesses: ExecutionSourceSummary[];
+  accounts: AccountSummary[];
+  devices: DeviceSummary[];
+} {
+  type Acc = { label: string; tokens: number; requests: number; cost: number };
+  type DeviceAcc = { label: string; tokens: number; requests: number };
+  const providers = new Map<string, Acc & { providerID?: string }>();
+  const models = new Map<string, Acc & { provider: string; model: string }>();
+  const harnesses = new Map<string, Acc & { sourceId: string; sourceName: string }>();
+  const accounts = new Map<string, Acc & { id: string; providerID: string; accountID?: string }>();
+  const devices = new Map<string, DeviceAcc & { deviceId: string }>();
+  for (const e of events) {
+    const providerKey = e.providerID ?? e.provider;
+    const p = providers.get(providerKey) ?? {
+      label: e.provider,
+      tokens: 0,
+      requests: 0,
+      cost: 0,
+      providerID: e.providerID,
+    };
+    p.tokens += e.totalTokens;
+    p.requests += 1;
+    p.cost += e.costUsd;
+    providers.set(providerKey, p);
+
+    const modelKey = `${providerKey}/${e.model ?? "unknown"}`;
+    const m = models.get(modelKey) ?? {
+      label: e.model ?? "Unknown model",
+      tokens: 0,
+      requests: 0,
+      cost: 0,
+      provider: providerKey,
+      model: e.model ?? "unknown",
+    };
+    m.tokens += e.totalTokens;
+    m.requests += 1;
+    m.cost += e.costUsd;
+    models.set(modelKey, m);
+
+    const harnessKey = e.harnessId ?? "unknown";
+    const h = harnesses.get(harnessKey) ?? {
+      label: e.harnessName ?? e.harnessId ?? "Unknown",
+      tokens: 0,
+      requests: 0,
+      cost: 0,
+      sourceId: harnessKey,
+      sourceName: e.harnessName ?? e.harnessId ?? "Unknown",
+    };
+    h.tokens += e.totalTokens;
+    h.requests += 1;
+    h.cost += e.costUsd;
+    harnesses.set(harnessKey, h);
+
+    const accountKey = e.accountId ?? `${e.providerID ?? e.provider}:unattributed`;
+    const a = accounts.get(accountKey) ?? {
+      label: e.accountLabel ?? accountKey,
+      tokens: 0,
+      requests: 0,
+      cost: 0,
+      id: accountKey,
+      providerID: e.providerID ?? e.provider,
+      accountID: e.accountId,
+    };
+    a.tokens += e.totalTokens;
+    a.requests += 1;
+    a.cost += e.costUsd;
+    accounts.set(accountKey, a);
+
+    const deviceKey = e.deviceId ?? e.sourceDeviceId ?? "unknown";
+    const d = devices.get(deviceKey) ?? {
+      label: deviceKey,
+      tokens: 0,
+      requests: 0,
+      deviceId: deviceKey,
+    };
+    d.tokens += e.totalTokens;
+    d.requests += 1;
+    devices.set(deviceKey, d);
+  }
+  const byTokens = <T extends { tokens: number }>(rows: T[]): T[] =>
+    rows.sort((a, b) => b.tokens - a.tokens);
+  const withKeys = <T extends { tokens: number }>(
+    map: Map<string, T>,
+  ): (T & { key: string })[] =>
+    byTokens([...map.entries()].map(([key, v]) => ({ ...v, key })));
+  const toModel = (r: Acc & { provider: string; model: string; key: string }): ModelSummary => ({
+    model: r.model,
+    provider: r.provider,
+    requests: r.requests,
+    tokens: r.tokens,
+    cost: r.cost,
+    label: r.label,
+  });
+  const toProvider = (r: Acc & { providerID?: string; key: string }): ProviderSummary => ({
+    provider: r.key,
+    providerID: r.providerID,
+    totalRequests: r.requests,
+    totalTokens: r.tokens,
+    totalCost: r.cost,
+  });
+  const toHarness = (r: Acc & { sourceId: string; sourceName: string; key: string }): ExecutionSourceSummary => ({
+    sourceId: r.sourceId,
+    sourceName: r.sourceName,
+    totalRequests: r.requests,
+    totalTokens: r.tokens,
+    totalCost: r.cost,
+    label: r.label,
+  });
+  const toAccount = (r: Acc & { id: string; providerID: string; accountID?: string; key: string }): AccountSummary => ({
+    id: r.id,
+    providerID: r.providerID,
+    accountID: r.accountID,
+    accountLabel: r.label,
+    totalRequests: r.requests,
+    totalTokens: r.tokens,
+    totalCost: r.cost,
+  });
+  const toDevice = (r: DeviceAcc & { deviceId: string; key: string }): DeviceSummary => ({
+    deviceId: r.deviceId,
+    requests: r.requests,
+    tokens: r.tokens,
+    label: r.label,
+  });
+  return {
+    providers: withKeys(providers).map(toProvider),
+    models: withKeys(models).map(toModel),
+    harnesses: withKeys(harnesses).map(toHarness),
+    accounts: withKeys(accounts).map(toAccount),
+    devices: withKeys(devices).map(toDevice),
+  };
+}
+
 /** Rank providers / models / harnesses / accounts / devices inside a day or range. */
 export function rankShares(
   events: readonly ProfileUsageEvent[],
@@ -104,7 +248,10 @@ export function rankShares(
     let label: string | undefined;
     switch (by) {
       case "provider":
-        key = e.provider;
+        // Canonical ID groups ("claude-code"); display label kept separate —
+        // producers store "Claude Code" and "claude-code" interchangeably in
+        // `provider`, and grouping by display would split one provider.
+        key = e.providerID ?? e.provider;
         label = e.provider;
         break;
       case "model":
@@ -174,3 +321,135 @@ export function eventsOnDay(
 ): ProfileUsageEvent[] {
   return events.filter((e) => e.startedAt && dayKeyOf(e.startedAt) === day);
 }
+
+/**
+ * Per-day per-model token totals ("YYYY-MM-DD" → model → tokens) from bounded
+ * event aggregates. The rollup carries no model split, so the explorer builds
+ * one client-side wherever the event path has loaded — powers per-model
+ * heatmap coloring and the hover mix when the provider split is absent.
+ */
+export function dailyModelTokenSplit(
+  events: readonly ProfileUsageEvent[],
+): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const e of events) {
+    if (!e.startedAt || e.totalTokens <= 0) continue;
+    const day = dayKeyOf(e.startedAt);
+    const model = e.model ?? "unknown";
+    const split = out[day] ?? {};
+    split[model] = (split[model] ?? 0) + e.totalTokens;
+    out[day] = split;
+  }
+  return out;
+}
+
+/**
+ * Per-day per-model provider attribution ("day" → model → providerID) from
+ * the same pass. Raw model ids ("gpt-5.3") don't resolve in the provider
+ * brand table, so cells look up the stored providerID instead of guessing
+ * from the model prefix — no silent accent fallbacks for common models.
+ */
+export function dailyModelProviders(
+  events: readonly ProfileUsageEvent[],
+): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {};
+  for (const e of events) {
+    if (!e.startedAt || e.totalTokens <= 0) continue;
+    const day = dayKeyOf(e.startedAt);
+    const model = e.model ?? "unknown";
+    const provider = e.providerID ?? e.provider;
+    const split = out[day] ?? {};
+    // First writer wins per model/day — one model rarely spans providers
+    // in a day, and ties don't change the hue family.
+    split[model] ??= provider;
+    out[day] = split;
+  }
+  return out;
+}
+
+/** One hard-stop band of a weekly blend kernel. */
+export interface BlendStop {
+  color: string;
+  /** 0..1 fraction where the band starts. */
+  from: number;
+  /** 0..1 fraction where the band ends. */
+  to: number;
+}
+
+/**
+ * Weighted-blend stops for aggregate (weekly) cells: the top provider/model
+ * shares (up to 3 + remainder), each sized by its share — a kernel of the
+ * colors weighted by predominance. Rendered as SVG <linearGradient> hard
+ * stops (NOT a CSS gradient string — SVG fill can't paint those).
+ * Returns null when the split is empty (caller falls back to the accent).
+ */
+export function blendShareStops(
+  split: Record<string, number> | undefined,
+  colorFor: (key: string) => string,
+): BlendStop[] | null {
+  if (!split) return null;
+  const entries = Object.entries(split)
+    .filter(([, tokens]) => tokens > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((n, [, tokens]) => n + tokens, 0);
+  if (entries.length === 0 || total <= 0) return null;
+  const top = entries.slice(0, 3);
+  const rest = total - top.reduce((n, [, tokens]) => n + tokens, 0);
+  const shares: [string, number][] = top.map(([key, tokens]) => [colorFor(key), tokens / total]);
+  if (rest > 0) shares.push(["var(--accent)", rest / total]);
+  let cursor = 0;
+  return shares.map(([color, share]) => {
+    const from = cursor;
+    cursor += share;
+    return { color, from, to: cursor };
+  });
+}
+
+/**
+ * Dominant-share color math for heatmap cells. Given a per-day (or per-week)
+ * token split and the series max, returns the cell fill: the DOMINANT
+ * provider/model's brand color at sqrt-scaled opacity (same perceptual trick
+ * as the intensity buckets), so one-provider days read solid and mixed days
+ * read as the winner's hue. Returns null when the split is empty — the
+ * caller falls back to the accent fill.
+ */
+export function dominantShareFill(
+  split: Record<string, number> | undefined,
+  max: number,
+  colorFor: (key: string) => string,
+): { fill: string; fillOpacity: number } | null {
+  if (!split) return null;
+  let bestKey: string | null = null;
+  let bestTokens = 0;
+  let total = 0;
+  for (const [key, tokens] of Object.entries(split)) {
+    if (tokens <= 0) continue;
+    total += tokens;
+    if (tokens > bestTokens) {
+      bestTokens = tokens;
+      bestKey = key;
+    }
+  }
+  if (!bestKey || total <= 0 || max <= 0) return null;
+  const ratio = Math.sqrt(total / max);
+  const opacity = ratio <= 0.25 ? 0.28 : ratio <= 0.5 ? 0.48 : ratio <= 0.75 ? 0.72 : 1;
+  return { fill: colorFor(bestKey), fillOpacity: opacity };
+}
+
+/**
+ * Dominant key of a split (most tokens), or null when empty. Shared by cell
+ * titles and weekly-leader labels so both name the same winner.
+ */
+export function dominantShareKey(split: Record<string, number> | undefined): string | null {
+  if (!split) return null;
+  let best: string | null = null;
+  let bestTokens = 0;
+  for (const [key, tokens] of Object.entries(split)) {
+    if (tokens > bestTokens) {
+      bestTokens = tokens;
+      best = key;
+    }
+  }
+  return bestTokens > 0 ? best : null;
+}
+

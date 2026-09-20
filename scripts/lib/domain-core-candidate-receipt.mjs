@@ -22,16 +22,22 @@ export function parseDomainCoreBuildProfileResolverArgs(argv) {
     "--expected-release-commit",
     "--expected-release-version",
     "--expected-release-tag",
+    "--allow-dirty",
   ]);
   const args = new Map();
-  for (let index = 0; index < argv.length; index += 2) {
+  for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
-    const value = argv[index + 1];
     if (!allowed.has(flag)) throw new Error(`unknown argument: ${flag}`);
     if (args.has(flag)) throw new Error(`duplicate argument: ${flag}`);
+    if (flag === "--allow-dirty") {
+      args.set(flag, true);
+      continue;
+    }
+    const value = argv[index + 1];
     if (value === undefined || value.startsWith("--"))
       throw new Error(`${flag} requires a value`);
     args.set(flag, value);
+    index += 1;
   }
   if (!args.has("--profile")) throw new Error("--profile is required");
   return args;

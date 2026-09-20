@@ -633,6 +633,8 @@ describe("Linux App Check approved-device lifecycle", () => {
           nonce: "b".repeat(32),
           actionProof: { signed: true },
         },
+        // Restates (never overrides) the generated BOLA ledger; the coverage
+        // validator requires the measured code to be named in this file.
         expectedCode: "not-found",
         strictCode: true,
       });

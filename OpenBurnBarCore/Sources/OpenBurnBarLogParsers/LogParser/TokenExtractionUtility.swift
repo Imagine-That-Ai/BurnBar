@@ -145,7 +145,8 @@ public enum TokenExtractionUtility {
                 ["cached_tokens"],
                 ["cachedTokens"],
                 ["cached_input_tokens"],
-                ["cachedInputTokens"]
+                ["cachedInputTokens"],
+                ["cached"]
             ]
         ) ?? 0
         let cacheRead = exclusiveCacheRead > 0 ? exclusiveCacheRead : inclusiveCacheRead
@@ -160,6 +161,7 @@ public enum TokenExtractionUtility {
                 ["reasoning_tokens"],
                 ["thinkingTokens"],
                 ["reasoningTokens"],
+                ["thoughts"],
                 ["completion_tokens_details", "reasoning_tokens"],
                 ["output_tokens_details", "reasoning_tokens"]
             ]

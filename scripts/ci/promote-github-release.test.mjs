@@ -248,6 +248,7 @@ function audit(
   client,
   domainCoreVerifier = () => {},
   domainCoreProfile = files.domainCoreProfile,
+  activationResolver = () => true,
 ) {
   return auditExistingRelease(
     {
@@ -258,7 +259,7 @@ function audit(
       receiptPath: files.receiptPath,
       domainCoreProfile,
     },
-    { client, domainCoreVerifier },
+    { client, domainCoreVerifier, activationResolver },
   );
 }
 
@@ -267,6 +268,49 @@ function mutations(client) {
     (args) => args[0] === "release" && args[1] === "edit",
   );
 }
+
+test("sidecar expectations use cosign's sanitised subject names", () => {
+  // cosign writes bundles under a filesystem-safe subject, so a +repair build
+  // ships `..._repair.N-macOS.dmg.sigstore.json`. verify-release-attestations.sh
+  // re-derives the same form. Building these from the raw version made the audit
+  // demand names no release can carry, and renaming the assets to match simply
+  // broke the attestation verifier instead.
+  const { required } = expectedReleaseAssets("1.0.40+repair.30", "public-production");
+  for (const name of [
+    "OpenBurnBar-1.0.40_repair.30-macOS.dmg.sigstore.json",
+    "OpenBurnBar-1.0.40_repair.30-macOS.dmg.predicate.json",
+    "checksums-v1.0.40_repair.30.txt.sigstore.json",
+    "sbom-v1.0.40_repair.30.spdx.json.sigstore.json",
+    "openburnbar-v1.0.40_repair.30.vex.json.predicate.json",
+  ]) {
+    assert.equal(required.has(name), true, name);
+  }
+  // Only the cosign-produced sidecars are sanitised. The domain-core bundles
+  // are `cp`'d to deterministic ${VERSION} names by the "Stage deterministic
+  // attestation bundle names" step in release.yml, so they legitimately keep
+  // the `+`. Pin both halves so neither is "fixed" into the other.
+  for (const name of [...required]) {
+    if (name.includes("domain-core") || name.includes("legacy-rollback")) continue;
+    assert.equal(
+      /\+.*\.(?:sigstore|predicate)\.json$/u.test(name),
+      false,
+      `cosign sidecar must be sanitised: ${name}`,
+    );
+  }
+  // Both non-cosign families keep the raw version: the domain-core bundles are
+  // `cp`'d to explicit ${VERSION} names, and the rollback sidecars are built
+  // from ${ROLLBACK_PATH##*/} by release.yml.
+  for (const name of [
+    "OpenBurnBar-1.0.40+repair.30-apple-quota-domain-core.sigstore.json",
+    "OpenBurnBar-1.0.40+repair.30-legacy-rollback.zip.sigstore.json",
+    "OpenBurnBar-1.0.40+repair.30-legacy-rollback.zip.predicate.json",
+  ]) {
+    assert.equal(required.has(name), true, `must keep raw version: ${name}`);
+  }
+  // A version with no build metadata is unchanged.
+  const plain = expectedReleaseAssets("1.0.41", "public-production").required;
+  assert.equal(plain.has("OpenBurnBar-1.0.41-macOS.dmg.sigstore.json"), true);
+});
 
 test("audits the exact complete remote release and writes an immutable receipt", () => {
   withFixture((files) => {
@@ -516,6 +560,86 @@ test("a declared profile that mismatches the published asset set fails closed", 
     );
     assert.equal(mutations(client).length, 0);
   });
+});
+
+test("a Rust-inactive public-production release without domain-core evidence audits and promotes", () => {
+  // The documented legacy lane: publication accepts rust_active=false under
+  // public-production and publishes no domain-core evidence and no iOS assets.
+  // The audit must derive that mode from the activation resolver — never from
+  // the release's own assets — and then treat the evidence set as
+  // verify-if-present, exactly like a governed rollback release.
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    const result = audit(
+      files,
+      client,
+      verifyDomainCoreBundles,
+      PUBLIC_PROFILE,
+      () => false,
+    );
+    assert.equal(
+      result.release.identity.assets.some((asset) =>
+        asset.name.includes("-domain-core"),
+      ),
+      false,
+    );
+    const receipt = JSON.parse(readFileSync(files.receiptPath, "utf8"));
+    assert.equal(receipt.domainCoreProfile, PUBLIC_PROFILE);
+    assert.equal(receipt.rustActive, false);
+    client.calls.length = 0;
+    assert.deepEqual(promoteAuditedRelease(files.receiptPath, { client }), {
+      promoted: true,
+      promotionApplied: true,
+    });
+  }, ROLLBACK_PROFILE);
+});
+
+test("a Rust-active public-production release still requires every evidence asset", () => {
+  // The resolver says active, so the same legacy-shaped release fails closed:
+  // rustActive can only relax the audit when the activation authority at the
+  // release commit actually says the release is the legacy lane.
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    assert.throws(
+      () =>
+        audit(
+          files,
+          client,
+          verifyDomainCoreBundles,
+          PUBLIC_PROFILE,
+          () => true,
+        ),
+      /asset set mismatch/u,
+    );
+    assert.equal(mutations(client).length, 0);
+  }, ROLLBACK_PROFILE);
+});
+
+test("a Rust-inactive release that still publishes evidence verifies it instead of skipping it", () => {
+  // Verify-if-present never means skip-what-exists: a legacy release that
+  // carries a domain-core bundle must still have it cryptographically
+  // verified. The fake client's `attestation` command is unsupported, so the
+  // verification demand surfaces as the fake client's unsupported-command
+  // error rather than a silent pass.
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    client.assets.set(
+      `OpenBurnBar-${VERSION}-apple-quota-domain-core.sigstore.json`,
+      Buffer.from("bundle"),
+    );
+    assert.throws(
+      () =>
+        audit(
+          files,
+          client,
+          verifyDomainCoreBundles,
+          PUBLIC_PROFILE,
+          () => false,
+        ),
+      /unsupported fake command: attestation/u,
+    );
+    assert.equal(mutations(client).length, 0);
+  }, ROLLBACK_PROFILE);
 });
 
 test("an ungoverned domain-core profile is rejected before any release lookup", () => {

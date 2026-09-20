@@ -46,6 +46,7 @@ struct AgentInsightsTabScreen: View {
                 .ignoresSafeArea()
             adaptiveLayout
         }
+        .accessibilityIdentifier("screen.insights")
         .sheet(isPresented: $showWorkspace) {
             InsightsWorkspaceSheet(
                 dashboardStore: dashboardStore,

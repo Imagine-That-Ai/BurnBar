@@ -19,11 +19,15 @@ fs.mkdirSync(outDir, { recursive: true });
 const env = { ...process.env, OB_EVIDENCE_OUT: outDir };
 
 const r = spawnSync('npm', ['test'], { cwd: appDir, encoding: 'utf8', env });
+const testExitCode = r.status ?? 1;
 const transcript = [
   `### shell evidence harness`,
   `OB_EVIDENCE_OUT=${outDir}`,
   `npm test`,
-  `exit_code=${r.status ?? 1}`,
+  `exit_code=${testExitCode}`,
+  `status=${testExitCode === 0 ? 'passed' : r.error ? 'infra-failed' : 'failed'}`,
+  `failure_class=${testExitCode === 0 ? 'none' : r.error ? 'infra' : 'product'}`,
+  `reason_code=${testExitCode === 0 ? 'none' : r.error?.code === 'ENOENT' ? 'npm-unavailable' : 'shell-evidence-tests-failed'}`,
   r.stdout,
   r.stderr
 ].join('\n');
@@ -54,8 +58,29 @@ const artifacts = [
   TEXT_EXPANSION_NATIVE_RECEIPT
 ];
 const missing = artifacts.filter((a) => !fs.existsSync(path.join(outDir, a)));
+const failureClass = testExitCode === 0 && missing.length === 0
+  ? null
+  : (missing.length > 0 || r.error ? 'infra' : 'product');
+const reasonCode = failureClass === null
+  ? null
+  : missing.length > 0
+    ? 'evidence-artifacts-missing'
+    : r.error?.code === 'ENOENT'
+      ? 'npm-unavailable'
+      : 'shell-evidence-tests-failed';
+fs.writeFileSync(
+  path.join(outDir, 'shell-evidence-result.json'),
+  JSON.stringify({
+    schemaVersion: 1,
+    status: failureClass === null ? 'passed' : failureClass === 'infra' ? 'infra-failed' : 'failed',
+    failureClass,
+    reasonCode,
+    exitCode: testExitCode,
+    missingArtifacts: missing,
+  }, null, 2) + '\n'
+);
 if (missing.length) {
   console.error('Missing evidence artifacts:', missing.join(', '));
   process.exit(1);
 }
-process.exit(r.status ?? 1);
+process.exit(testExitCode);

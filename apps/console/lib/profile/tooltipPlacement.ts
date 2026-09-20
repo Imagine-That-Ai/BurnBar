@@ -48,7 +48,14 @@ export function placeTooltip(
   // roomier side (a giant card on a tiny viewport still picks sanely).
   const above =
     spaceAbove >= size.height || (spaceBelow < size.height && spaceAbove >= spaceBelow);
-  const top = above ? anchor.y - size.height - ANCHOR_GAP : anchor.y + anchor.height + ANCHOR_GAP;
+  const unclampedTop = above
+    ? anchor.y - size.height - ANCHOR_GAP
+    : anchor.y + anchor.height + ANCHOR_GAP;
+  // Horizontal already clamps. Do the same on Y: a card taller than both
+  // remaining gutters (zoom, short window) still has to stay on-screen.
+  const minTop = TOOLTIP_MARGIN;
+  const maxTop = Math.max(minTop, viewport.height - size.height - TOOLTIP_MARGIN);
+  const top = Math.min(Math.max(unclampedTop, minTop), maxTop);
 
   const idealLeft = anchor.x + anchor.width / 2 - size.width / 2;
   const minLeft = TOOLTIP_MARGIN;

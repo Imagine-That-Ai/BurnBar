@@ -66,6 +66,93 @@ struct BurnBarCLIExecutable {
             }
         }
 
+        if arguments == ["memory-model-policy"] {
+            do {
+                writeLine(try BurnBarCLIRunner(client: client).runMemoryModelPolicy())
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        if arguments == ["memory-remember"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("memory-remember request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runMemoryRemember(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        if arguments == ["memory-forget"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("memory-forget request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runMemoryForget(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        // Memory Blind Sync: the drain the Python memory engine calls on signed
+        // installs, wired exactly like `search-sql` / `memory-remember` above.
+        if arguments == ["memory-sync-inbox-list"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("memory-sync-inbox-list request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runMemorySyncInboxList(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        if arguments == ["memory-sync-inbox-ack"] {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                guard input.count <= 256 * 1024 else {
+                    throw BurnBarCLIError.missingArgument("memory-sync-inbox-ack request exceeds 256 KiB")
+                }
+                writeLine(try BurnBarCLIRunner(client: client).runMemorySyncInboxAck(input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
+        // Project code memory. Reads already reached the daemon through
+        // `search-sql`; these are the three operations that could not, and so
+        // died at the first-party peer gate on every signed install. The name
+        // table, the 256 KiB cap and the runner dispatch live in
+        // `BurnBarCLIRunner.ProjectCodeCourierCommand`, where they are unit
+        // tested; this block owns only stdin, stdout and the exit code — the
+        // three things `@main` cannot hand to a test.
+        if arguments.count == 1,
+           let courierCommand = BurnBarCLIRunner.ProjectCodeCourierCommand(rawValue: arguments[0]) {
+            do {
+                let input = FileHandle.standardInput.readDataToEndOfFile()
+                writeLine(try courierCommand.run(BurnBarCLIRunner(client: client), input: input))
+                exit(EXIT_SUCCESS)
+            } catch {
+                writeLine(Self.message(for: error), toStandardError: true)
+                exit(EXIT_FAILURE)
+            }
+        }
+
         if arguments == ["privacy-rpc"] {
             do {
                 let input = FileHandle.standardInput.readDataToEndOfFile()

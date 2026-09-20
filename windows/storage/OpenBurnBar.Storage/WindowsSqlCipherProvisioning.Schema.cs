@@ -104,6 +104,43 @@ public sealed partial class WindowsSqlCipherProvisioner
         )
         """,
         "CREATE INDEX IF NOT EXISTS standing_orders_enabled_fired_idx ON standing_orders(isEnabled, lastFiredAt)",
+        // v65_memory_quarantine_bodies — mirrors the canonical GRDB migration.
+        """
+        CREATE TABLE IF NOT EXISTS memory_quarantine_bodies (
+            memory_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id)",
+        // v66_agent_memory_bodies — mirrors the canonical GRDB migration.
+        """
+        CREATE TABLE IF NOT EXISTS agent_memory_bodies (
+            memory_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            engine_memory_id TEXT NOT NULL,
+            body TEXT NOT NULL,
+            body_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS agent_memory_bodies_engine_idx ON agent_memory_bodies(engine_memory_id)",
+        // v67_agent_memory_inbox — mirrors the canonical GRDB migration.
+        """
+        CREATE TABLE IF NOT EXISTS agent_memory_inbox (
+            doc_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            engine_memory_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            remote_updated_at TEXT NOT NULL,
+            received_at TEXT NOT NULL,
+            applied_at TEXT
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS agent_memory_inbox_user_applied_idx ON agent_memory_inbox(user_id, applied_at)",
         """
         CREATE TABLE IF NOT EXISTS conversations (
             id TEXT NOT NULL PRIMARY KEY,

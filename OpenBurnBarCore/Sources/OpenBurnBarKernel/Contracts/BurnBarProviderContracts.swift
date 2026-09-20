@@ -1121,25 +1121,74 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
     }
 }
 
+/// Memory Pro egress policy: what the memory engine may send to which providers.
+/// Written by the app's consent UI, enforced by the loopback gateway, reported by
+/// `daemon.memory.model_policy`. Every field decodes with a default.
+public struct BurnBarMemoryEgressPolicy: Codable, Hashable, Sendable {
+    public static let purposes = ["memory-extract", "memory-judge", "memory-embed", "memory-rerank", "memory-answer"]
+    public static let cliProviderIDs = ["claude_cli", "codex_cli"]
+    public static let maxDailyCapUSD: Double = 1_000
+
+    public var enabled: Bool
+    public var consentedProviderIDs: [String]
+    public var consentedCLIProviderIDs: [String]
+    public var allowedModelIDsByPurpose: [String: [String]]
+    public var requireNoRetention: Bool
+    public var dailyCapUSD: Double
+    public var updatedAt: Date?
+
+    public init(
+        enabled: Bool = false,
+        consentedProviderIDs: [String] = [],
+        consentedCLIProviderIDs: [String] = [],
+        allowedModelIDsByPurpose: [String: [String]] = [:],
+        requireNoRetention: Bool = true,
+        dailyCapUSD: Double = 2.0,
+        updatedAt: Date? = nil
+    ) {
+        self.enabled = enabled
+        self.consentedProviderIDs = consentedProviderIDs
+        self.consentedCLIProviderIDs = consentedCLIProviderIDs
+        self.allowedModelIDsByPurpose = allowedModelIDsByPurpose
+        self.requireNoRetention = requireNoRetention
+        self.dailyCapUSD = dailyCapUSD
+        self.updatedAt = updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        self.consentedProviderIDs = try container.decodeIfPresent([String].self, forKey: .consentedProviderIDs) ?? []
+        self.consentedCLIProviderIDs = try container.decodeIfPresent([String].self, forKey: .consentedCLIProviderIDs) ?? []
+        self.allowedModelIDsByPurpose = try container.decodeIfPresent([String: [String]].self, forKey: .allowedModelIDsByPurpose) ?? [:]
+        self.requireNoRetention = try container.decodeIfPresent(Bool.self, forKey: .requireNoRetention) ?? true
+        self.dailyCapUSD = try container.decodeIfPresent(Double.self, forKey: .dailyCapUSD) ?? 2.0
+        self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
+    }
+}
+
 public struct BurnBarProviderConfigurationSnapshot: Codable, Hashable, Sendable {
     public var providers: [BurnBarProviderSettings]
     public var routerMode: ProviderRouterMode
     public var telemetryEnabled: Bool
     public var privacyOptIn: Bool
     public var cloudSyncEnabled: Bool
+    public var memoryEgress: BurnBarMemoryEgressPolicy
 
     public init(
         providers: [BurnBarProviderSettings],
         routerMode: ProviderRouterMode = .providerFamilyFailover,
         telemetryEnabled: Bool = false,
         privacyOptIn: Bool = false,
-        cloudSyncEnabled: Bool = false
+        cloudSyncEnabled: Bool = false,
+        memoryEgress: BurnBarMemoryEgressPolicy = BurnBarMemoryEgressPolicy()
     ) {
         self.providers = providers
         self.routerMode = routerMode
         self.telemetryEnabled = telemetryEnabled
         self.privacyOptIn = privacyOptIn
         self.cloudSyncEnabled = cloudSyncEnabled
+        self.memoryEgress = memoryEgress
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1148,6 +1197,7 @@ public struct BurnBarProviderConfigurationSnapshot: Codable, Hashable, Sendable 
         case telemetryEnabled
         case privacyOptIn
         case cloudSyncEnabled
+        case memoryEgress
     }
 
     public init(from decoder: Decoder) throws {
@@ -1158,6 +1208,8 @@ public struct BurnBarProviderConfigurationSnapshot: Codable, Hashable, Sendable 
         self.telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
         self.privacyOptIn = try container.decodeIfPresent(Bool.self, forKey: .privacyOptIn) ?? false
         self.cloudSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .cloudSyncEnabled) ?? false
+        self.memoryEgress = try container.decodeIfPresent(BurnBarMemoryEgressPolicy.self, forKey: .memoryEgress)
+            ?? BurnBarMemoryEgressPolicy()
     }
 
     public func providerSettings(id: String) -> BurnBarProviderSettings? {

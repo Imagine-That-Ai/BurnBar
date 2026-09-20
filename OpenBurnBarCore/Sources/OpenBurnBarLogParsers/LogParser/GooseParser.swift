@@ -639,6 +639,8 @@ public final class GooseParser: LogParser, Sendable {
 
         candidates.append(("~/Library/Application Support/Block/goose/sessions" as NSString).expandingTildeInPath)
         candidates.append(("~/.local/share/goose/sessions" as NSString).expandingTildeInPath)
+        candidates.append(("~/.goose/sessions" as NSString).expandingTildeInPath)
+        candidates.append(("~/.config/goose/sessions" as NSString).expandingTildeInPath)
         candidates.append((provider.logDirectory as NSString).expandingTildeInPath)
 
         var seen: Set<String> = []

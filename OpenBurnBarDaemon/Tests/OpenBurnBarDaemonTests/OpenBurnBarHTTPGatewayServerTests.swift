@@ -5742,6 +5742,7 @@ final class GatewayHarness: @unchecked Sendable {
     private let modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning
     private let modelCatalogCacheTTL: TimeInterval
     private let modelHealthStore: BurnBarGatewayModelHealthStore
+    private let memoryEgressFactory: ((BurnBarConfigStore, BurnBarUsageRecorder) -> BurnBarMemoryEgressEnforcer)?
     private let logger = BurnBarDaemonLogger(category: "gateway-tests")
 
     init(
@@ -5755,8 +5756,10 @@ final class GatewayHarness: @unchecked Sendable {
         crossVendorDegradePolicy: BurnBarCrossVendorDegradePolicy = .disabled,
         modelCatalogSession: URLSession = GatewayHarness.makeUpstreamSession(),
         modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner(),
-        modelCatalogCacheTTL: TimeInterval = 0
+        modelCatalogCacheTTL: TimeInterval = 0,
+        memoryEgress: ((BurnBarConfigStore, BurnBarUsageRecorder) -> BurnBarMemoryEgressEnforcer)? = nil
     ) throws {
+        self.memoryEgressFactory = memoryEgress
         self.port = try Self.reservePort()
         self.authToken = authToken
         self.rateLimit = rateLimit
@@ -5818,7 +5821,8 @@ final class GatewayHarness: @unchecked Sendable {
             modelCatalogSession: modelCatalogSession,
             modelCatalogDroidProcessRunner: modelCatalogDroidProcessRunner,
             modelCatalogCacheTTL: modelCatalogCacheTTL,
-            logger: logger
+            logger: logger,
+            memoryEgress: memoryEgressFactory?(configStore, usageRecorder)
         )
     }
 
@@ -5847,7 +5851,8 @@ final class GatewayHarness: @unchecked Sendable {
             modelCatalogSession: modelCatalogSession,
             modelCatalogDroidProcessRunner: modelCatalogDroidProcessRunner,
             modelCatalogCacheTTL: modelCatalogCacheTTL,
-            logger: logger
+            logger: logger,
+            memoryEgress: memoryEgressFactory?(configStore, usageRecorder)
         )
     }
 

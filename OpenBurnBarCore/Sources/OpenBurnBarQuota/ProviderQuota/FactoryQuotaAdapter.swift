@@ -249,33 +249,31 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         // meaningful numbers — marked `isEstimated` so the UI reflects that
         // it's inferred rather than confirmed.
         let planTier = context.factoryPlan
+        let fiveHourCap = planTier.fiveHourTokenCap ?? 500_000
+        let sevenDayCap = planTier.sevenDayTokenCap ?? 5_000_000
         let confirmedCap = planTier.monthlyTokenCap
         let monthlyCap = confirmedCap ?? Self.inferredMonthlyTokenCap
         let isInferredCap = confirmedCap == nil
 
-        func percent(_ used: Int64) -> Double {
-            guard monthlyCap > 0 else { return 0 }
-            return min(max(Double(used) / monthlyCap * 100, 0), 100)
+        func percent(used: Int64, cap: Double) -> Double {
+            guard cap > 0 else { return 0 }
+            return min(max(Double(used) / cap * 100, 0), 100)
         }
 
-        func remaining(_ used: Int64) -> Double {
-            max(monthlyCap - Double(used), 0)
+        func remaining(used: Int64, cap: Double) -> Double {
+            max(cap - Double(used), 0)
         }
 
-        // 5-hour rolling Standard Usage window. Factory enforces independent
-        // 5h / 7d / 30d caps — Standard Usage is consumed first, then Droid
-        // Core (free, separate pool) or Extra Usage (prepaid) take over.
-        // Per-window caps aren't published; we display the 5h burn against
-        // the monthly cap so users can see "% of plan" at this time scale.
+        // 5-hour rolling Standard Usage window.
         if fiveHourTokens > 0 {
             buckets.append(ProviderQuotaBucket(
                 key: "factory-5h",
                 label: "5-hour rolling",
                 windowKind: .rollingHours,
                 usedValue: Double(fiveHourTokens),
-                limitValue: monthlyCap,
-                remainingValue: remaining(fiveHourTokens),
-                usedPercent: percent(fiveHourTokens),
+                limitValue: fiveHourCap,
+                remainingValue: remaining(used: fiveHourTokens, cap: fiveHourCap),
+                usedPercent: percent(used: fiveHourTokens, cap: fiveHourCap),
                 resetsAt: calendar.date(byAdding: .hour, value: 5, to: now),
                 unit: .tokens,
                 isEstimated: isInferredCap
@@ -289,9 +287,9 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
                 label: "7-day rolling",
                 windowKind: .rollingDays,
                 usedValue: Double(sevenDayTokens),
-                limitValue: monthlyCap,
-                remainingValue: remaining(sevenDayTokens),
-                usedPercent: percent(sevenDayTokens),
+                limitValue: sevenDayCap,
+                remainingValue: remaining(used: sevenDayTokens, cap: sevenDayCap),
+                usedPercent: percent(used: sevenDayTokens, cap: sevenDayCap),
                 resetsAt: calendar.date(byAdding: .day, value: 7, to: now),
                 unit: .tokens,
                 isEstimated: isInferredCap
@@ -317,8 +315,8 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
                 windowKind: .monthly,
                 usedValue: Double(thirtyDayTokens),
                 limitValue: monthlyCap,
-                remainingValue: remaining(thirtyDayTokens),
-                usedPercent: percent(thirtyDayTokens),
+                remainingValue: remaining(used: thirtyDayTokens, cap: monthlyCap),
+                usedPercent: percent(used: thirtyDayTokens, cap: monthlyCap),
                 resetsAt: rollingMonthlyReset,
                 unit: .tokens,
                 isEstimated: isInferredCap

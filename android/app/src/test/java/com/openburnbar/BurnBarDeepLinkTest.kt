@@ -1,5 +1,7 @@
 package com.openburnbar
 
+import com.openburnbar.data.policy.MobileOsDestination
+import com.openburnbar.data.policy.MobileOsRouteDecision
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -9,6 +11,7 @@ class BurnBarDeepLinkTest {
     @After
     fun tearDown() {
         InboxPendingItem.reset()
+        OsPendingNavigation.reset()
     }
 
     @Test
@@ -86,5 +89,20 @@ class BurnBarDeepLinkTest {
         InboxPendingItem.stash("inb_second")
         observed.add(InboxPendingItem.pending.value)
         assertEquals(listOf("inb_first", "inb_second"), observed)
+    }
+
+    @Test
+    fun deviceApprovalPendingNavigationStashesYouTab() {
+        OsPendingNavigation.request(
+            MobileOsRouteDecision(
+                destination = MobileOsDestination.DEVICES,
+                deviceId = "mac_mini_1",
+            ),
+        )
+        val pending = OsPendingNavigation.pending.value
+        assertEquals(MobileOsDestination.DEVICES, pending?.destination)
+        assertEquals("you", pending?.route)
+        assertEquals(MobileOsDestination.DEVICES, OsPendingNavigation.claim()?.destination)
+        assertNull(OsPendingNavigation.claim())
     }
 }

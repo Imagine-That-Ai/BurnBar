@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { Lock, ShieldCheck, RefreshCw, CheckCircle2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Lock, ShieldCheck, RefreshCw, CheckCircle2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +25,7 @@ type Step = "idle" | "registering" | "pending" | "unwrapping" | "ready" | "error
  *  2. registerBrowserEscrowDevice(publicKeyJwk) -> status:"pending".
  *  3. The user approves on a trusted NATIVE device (approveEscrowDeviceTrust),
  *     which mints a cloud_vault_key_wrapper for this browser device.
- *  4. We poll, fetch the wrapper, unwrap the vault key in-memory, and hold the
+ *  4. We auto-poll, fetch the wrapper, unwrap the vault key in-memory, and hold the
  *     non-extractable AES-GCM CryptoKey to decrypt sealed content on demand.
  *
  * The vault key never leaves this tab's memory and is never serialised.
@@ -92,6 +92,15 @@ export function EscrowFlow({
     }
   }, [escrowDeviceId, fetchWrappedKey, onVaultKeyReady, track]);
 
+  // Automatic live detection: poll every 1.8 seconds while in pending step
+  useEffect(() => {
+    if (step !== "pending" || !escrowDeviceId) return;
+    const interval = setInterval(() => {
+      void poll();
+    }, 1800);
+    return () => clearInterval(interval);
+  }, [step, escrowDeviceId, poll]);
+
   return (
     <Card>
       <CardHeader>
@@ -118,7 +127,7 @@ export function EscrowFlow({
             done={step === "unwrapping" || step === "ready"}
             icon={<RefreshCw className="size-4" />}
             title="Approve on a trusted device"
-            detail="Open BurnBar on your Mac or phone and approve this browser. Then check for approval."
+            detail="Open BurnBar on your Mac or phone and approve this browser. Auto-unlocking as soon as approved."
           />
           <StepRow
             active={step === "unwrapping"}
@@ -131,18 +140,29 @@ export function EscrowFlow({
 
         {error && <p className="text-xs text-[color:var(--color-seal-crimson)]">{error}</p>}
 
-        <div className="flex flex-wrap gap-token-2">
+        <div className="flex flex-wrap items-center gap-token-2">
           {(step === "idle" || step === "error") && (
             <Button onClick={register}>Register this browser</Button>
           )}
           {step === "registering" && <Button disabled>Registering…</Button>}
           {step === "pending" && (
-            <Button variant="secondary" onClick={poll}>
-              <RefreshCw className="size-3.5" />
-              Check for approval
+            <>
+              <Button variant="secondary" onClick={poll}>
+                <RefreshCw className="size-3.5" />
+                Check for approval
+              </Button>
+              <span className="flex items-center gap-1.5 text-xs text-content-dim animate-pulse">
+                <Loader2 className="size-3 animate-spin text-tier-end-to-end" />
+                Waiting for approval on Mac/phone (auto-detects)...
+              </span>
+            </>
+          )}
+          {step === "unwrapping" && (
+            <Button disabled>
+              <Loader2 className="size-3.5 animate-spin mr-1.5" />
+              Unwrapping…
             </Button>
           )}
-          {step === "unwrapping" && <Button disabled>Unwrapping…</Button>}
           {step === "ready" && (
             <p className="flex items-center gap-token-2 text-sm text-tier-end-to-end">
               <CheckCircle2 className="size-4" />

@@ -5,9 +5,13 @@
 
 import { readdirSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SITE = "https://burnbar.ai";
-const DIST = new URL("../dist", import.meta.url).pathname;
+// fileURLToPath, not `.pathname`: a checkout under a directory with a space in
+// its name resolves to "…%20…" through `.pathname`, and the sitemap step then
+// exits with "dist/ does not exist" on an otherwise successful build.
+const DIST = fileURLToPath(new URL("../dist", import.meta.url));
 // Pages we do not want indexed: the 404 page and the noindex'd auth-utility
 // surfaces (device linking + Hermes account connect).
 const EXCLUDE = ["/404", "/link", "/hermes/connect"];

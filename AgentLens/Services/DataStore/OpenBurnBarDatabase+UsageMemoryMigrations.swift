@@ -45,7 +45,8 @@ extension OpenBurnBarDatabase {
                 ON memory_usage_candidates(source_kind, simhash)
                 """
             )
-            // Salience sidecar: the consolidation worker is the sole writer.
+            // Salience sidecar: consolidation owns corroboration/source trust;
+            // daemon recall owns hit reinforcement for project-memory ranking.
             // A sidecar (not an ALTER on agent_memories) keeps the mirrored
             // agent_memories DDL untouched across app/daemon/python/doc copies.
             try db.execute(

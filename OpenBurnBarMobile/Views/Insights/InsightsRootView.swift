@@ -142,7 +142,6 @@ private struct AdaptiveInsightsLayout: View {
     @State private var showInspector: Bool = false
     @State private var showTemplateGallery: Bool = false
     @State private var showMissionDetail: Bool = false
-    private static let iPhoneNavigationTrayClearance: CGFloat = 96
     @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
 
     var body: some View {
@@ -199,7 +198,6 @@ private struct AdaptiveInsightsLayout: View {
                     .frame(maxHeight: .infinity)
                 missionStatusBanner
                 composerBar
-                    .padding(.bottom, Self.iPhoneNavigationTrayClearance)
             }
             .background(
                 Group {

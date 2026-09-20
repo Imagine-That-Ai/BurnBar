@@ -21,9 +21,12 @@ plugins {
     id("androidx.baselineprofile")
 }
 
+val openBurnBarCompileSdk: Int by rootProject.extra
+val openBurnBarTargetSdk: Int by rootProject.extra
+
 android {
     namespace = "com.openburnbar.macrobenchmark"
-    compileSdk = 35
+    compileSdk = openBurnBarCompileSdk
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
@@ -33,7 +36,7 @@ android {
     defaultConfig {
         // Macrobenchmark requires 23+; baseline-profile capture requires 28+.
         minSdk = 28
-        targetSdk = 35
+        targetSdk = openBurnBarTargetSdk
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -229,10 +229,33 @@ function sha256GitBlob(repoRoot, revision, path) {
 }
 
 function requireCleanCheckout(repoRoot) {
-  if (
-    git(repoRoot, ["status", "--porcelain=v1", "--untracked-files=all"]) !== ""
-  ) {
-    throw new Error("signed domain-core activation checkout must be clean");
+  // --ignore-submodules=dirty: Vendor/libsignal is a submodule and CI builds
+  // libsignal from it (Rust target/ etc). The superproject .gitignore cannot
+  // suppress dirt inside a submodule work tree, so every release reached this
+  // guard with `M Vendor/libsignal (modified content)` and failed. Build
+  // residue inside a submodule does not change the superproject bytes this
+  // evidence is bound to. A moved submodule gitlink is still reported, as is
+  // any superproject modification or untracked file.
+  const status = git(repoRoot, [
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+    "--ignore-submodules=dirty",
+  ]);
+  if (status !== "") {
+    // Name the offending paths. Reaching this guard requires a full release
+    // build (~90 min on macOS), so a bare "must be clean" costs an entire
+    // release cycle to diagnose. Porcelain v1 lines are `XY <path>` — paths
+    // here are repository-relative build residue, not secret material, and the
+    // guard already refuses to proceed regardless of what it finds.
+    const paths = status
+      .split("\n")
+      .filter((line) => line !== "")
+      .slice(0, 20)
+      .join(", ");
+    throw new Error(
+      `signed domain-core activation checkout must be clean; dirty entries: ${paths}`,
+    );
   }
 }
 
@@ -457,8 +480,11 @@ export function validateDomainCoreActivation({
   candidateCommit,
   activationCommit,
   requireHead = true,
+  requireClean = true,
 }) {
-  requireCleanCheckout(repoRoot);
+  if (requireClean) {
+    requireCleanCheckout(repoRoot);
+  }
   const candidate = candidateAt(
     repoRoot,
     commit(candidateCommit, "candidate commit"),
@@ -535,6 +561,7 @@ export function validateDomainCoreReleaseActivation({
   candidateCommit,
   releaseCommit,
   requireHead = true,
+  requireClean = true,
 }) {
   const release = commit(releaseCommit, "release commit");
   if (requireHead && git(repoRoot, ["rev-parse", "HEAD"]) !== release) {
@@ -542,12 +569,16 @@ export function validateDomainCoreReleaseActivation({
       "release commit must equal the exact release checkout HEAD",
     );
   }
+  if (requireClean) {
+    requireCleanCheckout(repoRoot);
+  }
   const activationSha = resolveActivationAuthorityCommit(repoRoot, release);
   const activation = validateDomainCoreActivation({
     repoRoot,
     candidateCommit,
     activationCommit: activationSha,
     requireHead: false,
+    requireClean,
   });
   // Post-activation drift protects the authority files and the activation's
   // append-only evidence (receipts, attestations, bundles, provenance) — the
@@ -1042,9 +1073,16 @@ export function resolveActiveDomainCoreActivation({
   repoRoot,
   activationCommit,
   verifyArtifactIdentity = true,
+  requireClean = true,
 }) {
   const releaseCommit = commit(activationCommit, "activation commit");
-  requireExactCheckout(repoRoot, releaseCommit);
+  if (requireClean) {
+    requireExactCheckout(repoRoot, releaseCommit);
+  } else if (git(repoRoot, ["rev-parse", "HEAD"]) !== releaseCommit) {
+    throw new Error(
+      "signed domain-core activation checkout must match the activation commit",
+    );
+  }
   const authorityActivationCommit = resolveActivationAuthorityCommit(
     repoRoot,
     releaseCommit,
@@ -1156,6 +1194,7 @@ export function resolveActiveDomainCoreActivation({
         candidateCommit: authorityActivationCommit,
         activationCommit: authorityActivationCommit,
         requireHead: false,
+        requireClean,
       }),
       domains: [],
     };
@@ -1172,6 +1211,7 @@ export function resolveActiveDomainCoreActivation({
       candidateCommit: [...candidates][0],
       activationCommit: authorityActivationCommit,
       requireHead: false,
+      requireClean,
     }),
     domains,
   };

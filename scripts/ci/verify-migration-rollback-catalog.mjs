@@ -22,7 +22,7 @@ export const INTENTIONAL_DIVERGENCES = {
     reason: "The app copy qualifies OpenBurnBarIdentity through the imported OpenBurnBarCore module.",
   },
   v46_drain_target_per_provider: {
-    app: "b71f29aa36fb42d5ae4d589e7c01a766b27f99cc149cbfd7f3dc1b714b02ddb6",
+    app: "d9785e121f267f8cae8e5e79b5fcadbbafd572fc8796a2a303c78027af8e911b",
     shared: "92860497ca3f6cc3c173e9b65ca792e97ccdec23c9f1e3fd05308bd837f80d4f",
     appExternalDependencies: [
       {
@@ -35,7 +35,7 @@ export const INTENTIONAL_DIVERGENCES = {
       },
     ],
     sharedDependencies: ["providerIDForSwitcherCLIType"],
-    reason: "The shared-data target cannot depend on the app enum; both its frozen map and the app's enum dependencies are pinned. Fingerprints refreshed for Junie + Prime Agent + fx switcher providerIDs.",
+    reason: "The shared-data target cannot depend on the app enum; both its frozen map and the app's enum dependencies are pinned. App fingerprint refreshed for Hermes + Goose + Windsurf + OpenClaude + OpenClaw switcher mappings.",
   },
 };
 

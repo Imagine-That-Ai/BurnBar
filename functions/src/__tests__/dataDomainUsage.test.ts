@@ -9,7 +9,7 @@ import {
 } from "../callables/dataDomainUsage.js";
 
 type DataTier = Parameters<typeof wandParallelMaxForDataTier>[0];
-type RegistryDomain = { id: string; byteSource?: string | null };
+type RegistryDomain = { id: string; byteSource?: string | null; countSource?: string | null };
 
 const registry: { domains: RegistryDomain[] } = JSON.parse(
   readFileSync(join(process.cwd(), "..", "packages", "data-domains", "registry.json"), "utf8"),
@@ -75,6 +75,26 @@ describe("data domain usage byte-source coverage", () => {
         expect(source.byteField, `${domain.id} byteField`).toBeTruthy();
       }
     }
+  });
+
+  it("declares a count source exactly where the registry declares one", () => {
+    // PR 4 review L7. `count: 0` for a domain nobody can count reads as "you
+    // have none of this", which for a member with hundreds of team facts is
+    // false. The registry's `countSource` is the authority for whether a
+    // per-user count exists at all, and the server map must agree with it —
+    // otherwise the `countable` flag on the response is decorative.
+    for (const domain of registry.domains) {
+      const source = DATA_DOMAIN_USAGE[domain.id];
+      expect(source, `${domain.id} missing from DATA_DOMAIN_USAGE`).toBeTruthy();
+      if (domain.countSource) {
+        expect(source.countCollection, `${domain.id} countCollection`).toBeTruthy();
+      } else {
+        expect(source.countCollection, `${domain.id} must not claim a count source`).toBeUndefined();
+      }
+    }
+    // Team memory is the case the flag exists for: its facts live in a shared
+    // tenant at `team_memory_facts/{teamId}/facts`, not under `users/{uid}/`.
+    expect(DATA_DOMAIN_USAGE.team_pensieve.countCollection).toBeUndefined();
   });
 
   it("uses the stored manifest byte fields for searchable logs and media", () => {

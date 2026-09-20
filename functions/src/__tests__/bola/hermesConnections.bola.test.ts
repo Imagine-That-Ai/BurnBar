@@ -47,7 +47,7 @@ describe("BOLA — hermes", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "revokeHermesConnection",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -61,7 +61,7 @@ describe("BOLA — hermes", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "updateHermesConnectionStatus",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });

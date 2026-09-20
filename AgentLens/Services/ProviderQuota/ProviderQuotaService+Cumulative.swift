@@ -177,7 +177,7 @@ extension ProviderQuotaService {
         case .codex:
             return CLIAuthDiscovery.discoverAuthState(for: cliType).accountDescription
                 ?? "Current \(cliType.displayName) login"
-        case .claude, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
+        case .claude, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             return "Current \(cliType.displayName) login"
         }
     }
@@ -202,6 +202,16 @@ extension ProviderQuotaService {
             return .fx
         case .primeAgent:
             return .primeAgent
+        case .hermes:
+            return .hermes
+        case .goose:
+            return .goose
+        case .windsurf:
+            return .windsurf
+        case .openClaude:
+            return .openClaude
+        case .openClaw:
+            return .openClaw
         case .muse:
             return nil
         default:

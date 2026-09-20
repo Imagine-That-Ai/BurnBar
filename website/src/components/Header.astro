@@ -9,6 +9,7 @@ const path = Astro.url.pathname.replace(/\/$/, "");
    Footer keeps the flat list; header groups for scan. */
 const PRODUCT_DROPDOWN = [
   { href: "/product", label: "Overview" },
+  { href: "/memory", label: "Memory MCP" },
   { href: "/platforms", label: "Platforms" },
   { href: "/providers", label: "Providers" },
   { href: "/benefits", label: "Why it matters" }
@@ -16,6 +17,7 @@ const PRODUCT_DROPDOWN = [
 const MORE_DROPDOWN = [
   { href: "/trust", label: "Trust" },
   { href: "/privacy", label: "Privacy" },
+  { href: SITE.consoleUrl, label: "Your data console" },
   { href: "/security", label: "Security" },
   { href: "/mcp", label: "MCP" },
   { href: "/support", label: "Support" },
@@ -38,6 +40,7 @@ const HEADER_NAV: NavItem[] = [
 ];
 const MOBILE_NAV = [
   { href: "/product", label: "Product" },
+  { href: "/memory", label: "Memory MCP" },
   { href: "/router", label: "Router" },
   { href: "/bench", label: "Bench" },
   { href: "/floo", label: "Floo" },
@@ -47,7 +50,8 @@ const MOBILE_NAV = [
   { href: "/pricing", label: "Pricing" },
   { href: "/trust", label: "Trust" },
   { href: "/faq", label: "FAQ" },
-  { href: "/download", label: "Download" }
+  { href: "/download", label: "Download" },
+  { href: SITE.consoleUrl, label: "Your data console" }
 ];
 
 function isActive(href: string): boolean {

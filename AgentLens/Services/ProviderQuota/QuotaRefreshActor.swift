@@ -733,6 +733,16 @@ private func defaultSwitcherConfigDirectory(
         return homeDirectoryURL.appendingPathComponent(".omp", isDirectory: true).path
     case .primeAgent:
         return homeDirectoryURL.appendingPathComponent(".prime", isDirectory: true).path
+    case .hermes:
+        return homeDirectoryURL.appendingPathComponent(".hermes", isDirectory: true).path
+    case .goose:
+        return homeDirectoryURL.appendingPathComponent(".config/goose", isDirectory: true).path
+    case .windsurf:
+        return homeDirectoryURL.appendingPathComponent(".codeium/windsurf", isDirectory: true).path
+    case .openClaude:
+        return homeDirectoryURL.appendingPathComponent(".openclaude", isDirectory: true).path
+    case .openClaw:
+        return homeDirectoryURL.appendingPathComponent(".openclaw", isDirectory: true).path
     }
 }
 
@@ -791,6 +801,16 @@ private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider
         return .omp
     case .primeAgent:
         return .primeAgent
+    case .hermes:
+        return .hermes
+    case .goose:
+        return .goose
+    case .windsurf:
+        return .windsurf
+    case .openClaude:
+        return .openClaude
+    case .openClaw:
+        return .openClaw
     }
 }
 

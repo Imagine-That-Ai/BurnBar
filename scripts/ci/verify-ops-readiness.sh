@@ -46,6 +46,9 @@ echo "==> production ops plane scripts"
 bash -n scripts/rollback.sh
 bash -n scripts/rollback.test.sh
 bash scripts/rollback.test.sh
+bash -n scripts/ops/rollback-revision.sh
+bash -n scripts/ops/rollback-revision.test.sh
+bash scripts/ops/rollback-revision.test.sh
 bash -n scripts/ops/rollback-macos-appcast.sh
 bash -n scripts/ops/rollback-macos-appcast.test.sh
 bash scripts/ops/rollback-macos-appcast.test.sh

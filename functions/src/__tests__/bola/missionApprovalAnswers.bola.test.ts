@@ -43,7 +43,7 @@ describe("BOLA — missionApprovalAnswers", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "publishMissionApprovalCeiling",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -54,7 +54,7 @@ describe("BOLA — missionApprovalAnswers", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "redeemMissionApprovalAnswer",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });

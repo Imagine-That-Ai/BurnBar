@@ -50,7 +50,7 @@ describe("BOLA — signal", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "publishSignalPrekeyBundle",
       run,
-      expectedCode: "not-found",
+      expectedCode: "failed-precondition",
       expectedOutcome: "throws",
     });
   });
@@ -64,7 +64,7 @@ describe("BOLA — signal", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "claimSignalPrekeyBundle",
       run,
-      expectedCode: "not-found",
+      expectedCode: "failed-precondition",
       expectedOutcome: "throws",
     });
   });
@@ -78,7 +78,7 @@ describe("BOLA — signal", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "recordSignalSession",
       run,
-      expectedCode: "not-found",
+      expectedCode: "failed-precondition",
       expectedOutcome: "throws",
     });
   });
@@ -92,7 +92,7 @@ describe("BOLA — signal", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "recordSignalRotation",
       run,
-      expectedCode: "not-found",
+      expectedCode: "failed-precondition",
       expectedOutcome: "throws",
     });
   });
@@ -106,7 +106,7 @@ describe("BOLA — signal", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "signalPrekeyWatermark",
       run,
-      expectedCode: "not-found",
+      expectedCode: "failed-precondition",
       expectedOutcome: "throws",
     });
   });

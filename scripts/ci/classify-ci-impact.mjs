@@ -40,6 +40,7 @@ export const LANES = [
   "mobile",
   "android",
   "rust",
+  "rustTooling",
   "daemon",
   "functions",
   "web",
@@ -74,6 +75,10 @@ const SAFARI_EXTENSION_NPM_MANIFESTS = Object.freeze([
 const FULL_PATTERN_EXEMPTIONS = Object.freeze([
   ...NODE_SIGNAL_ENVELOPE_CONTRACTS,
   ...SAFARI_EXTENSION_NPM_MANIFESTS,
+  // Owned by DOMAIN_CORE_TOOLING: evidence libraries whose contract tests run
+  // in promotion-contracts. The generic scripts/lib/ rule would otherwise wake
+  // every product lane, macOS libsignal rebuild included, for a verifier edit.
+  /^scripts\/lib\/domain-core-/,
 ]);
 
 const FULL_PATTERNS = [
@@ -130,6 +135,9 @@ const LANE_PATTERNS = {
     /^tools\/(?:hermes-platform-burnbar|openburnbar-mcp)\//,
     /^\.github\/workflows\/domain-core\.yml$/,
   ],
+  // Owned via DOMAIN_CORE_TOOLING below; the empty list keeps the generic
+  // lane loop total over LANES.
+  rustTooling: [],
   daemon: [
     /^OpenBurnBarDaemon\//,
     /^OpenBurnBarDaemonTests\//,
@@ -151,8 +159,34 @@ const SHARED_SWIFT = [
   /^OpenBurnBarShared\//,
   /^CloudSync\//,
 ];
+// Evidence machinery, not product. These paths cannot change what any
+// consumer builds or loads -- they are the scripts, configs, workflows and
+// tests that *verify* the domain core. They still need the promotion
+// contracts (that is where the control-plane digest drift guard lives, and
+// unrepinned edits must be caught on the PR that makes them, not blamed on
+// the next author -- runbook incidents #2343/#2344/#2347), but waking the
+// full 17-job native fleet for them bought nothing: the fleet builds product
+// code these paths cannot affect.
+const DOMAIN_CORE_TOOLING = [
+  /^scripts\/(?:ci|lib|ops)\/[^/]*domain[-_]?core/i,
+  // Evidence helpers governed by the trigger policy whose names do not carry
+  // "domain-core": retry wrapper, deploy health gate, hosting smoke, candidate
+  // commit resolver, and the C# binding drift CHECKER (the bindings themselves
+  // live under windows/ and stay product-owned).
+  /^scripts\/ci\/(?:gh-api-with-retry|post-deploy-health-gate|hosting-smoke|canonical-candidate-commit)/,
+  /^scripts\/windows-port\/check-csharp-binding-drift\.sh$/,
+  /^config\/domain-core-/,
+  /^tests\/test_domain_core/,
+  /^\.github\/workflows\/domain-core[^/]+\.ya?ml$/,
+  /^docs\/(?:SHARED_RUST_|runbooks\/shared-rust-|contracts\/domain-core-)/,
+];
 const DOMAIN_CORE_TRANSITIVE = [
-  /domain[-_]?core/i,
+  // Product surfaces named after the domain core. The old catch-all
+  // /domain[-_]?core/i also matched every path above plus docs, so editing a
+  // verifier or a runbook ran the full native fleet, macOS included.
+  /^Vendor\/[^/]*domain[-_]?core/i,
+  /^OpenBurnBarCore\/Sources\/OpenBurnBarDomainCore\//,
+  /^(?:OpenBurnBarCore|OpenBurnBarShared|CloudSync|AgentLens|OpenBurnBarMobile|OpenBurnBarDaemon|windows\/(?!tests\/)|android\/|apps\/|functions\/src\/|tools\/)[^\0]*domain[-_]?core/i,
   /^AgentLens\/Services\/ProviderQuota\//,
   /^OpenBurnBarCore\/Sources\/OpenBurnBarCore\/(?:ProviderQuota\/|Services\/LogParser\/(?:ModelPricing|DomainCorePricingAdapter)\.swift$)/,
   /^AgentLens\/Services\/(?:ProviderUsageAPI\/.*UsageAPI|UsageAggregatorParsers.*|CursorConnector\/CursorConnectorManager)\.swift$/,
@@ -252,7 +286,10 @@ export function classifyPaths(
       lanes.macos = lanes.mobile = lanes.daemon = true;
       owned = true;
     }
-    if (
+    if (matchesAny(path, DOMAIN_CORE_TOOLING)) {
+      lanes.rustTooling = true;
+      owned = true;
+    } else if (
       matchesAny(path, DOMAIN_CORE_TRANSITIVE) ||
       matchesAny(path, DOMAIN_CORE_OWNED_PATH_PATTERNS)
     ) {

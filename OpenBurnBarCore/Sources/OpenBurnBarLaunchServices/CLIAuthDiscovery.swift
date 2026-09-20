@@ -79,6 +79,10 @@ public struct CLIAuthInfo: Identifiable, Equatable, Sendable {
 /// stay in the shared `OpenBurnBarCore` package.
 public enum CLIAuthDiscovery {
 
+    nonisolated(unsafe) static var environmentProvider: () -> [String: String] = {
+        ProcessInfo.processInfo.environment
+    }
+
     /// Scans all CLI types and returns their auth states.
     public static func discoverAuthStates() -> [CLIAuthInfo] {
         return SwitcherCLIProfileType.allCases.map { cliType in
@@ -194,16 +198,18 @@ public enum CLIAuthDiscovery {
                 accountDescription: exists ? "Forge local profile" : nil
             )
         case .antigravity:
+            let geminiConfigDir = "\(home)/.gemini/antigravity"
             let primaryConfigDir = normalizedConfigDirectory(
                 configDirectoryOverride,
-                fallback: "\(home)/.antigravity"
+                fallback: FileManager.default.fileExists(atPath: geminiConfigDir) ? geminiConfigDir : "\(home)/.antigravity"
             )
             let legacyConfigDir = "\(home)/.gemini/antigravity-cli"
             let exists = FileManager.default.fileExists(atPath: primaryConfigDir)
+                || FileManager.default.fileExists(atPath: geminiConfigDir)
                 || FileManager.default.fileExists(atPath: legacyConfigDir)
             let configDir = FileManager.default.fileExists(atPath: primaryConfigDir)
                 ? primaryConfigDir
-                : legacyConfigDir
+                : (FileManager.default.fileExists(atPath: geminiConfigDir) ? geminiConfigDir : legacyConfigDir)
             let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
             return CLIAuthInfo(
                 cliType: cliType,
@@ -381,13 +387,28 @@ public enum CLIAuthDiscovery {
             let sessionsDir = "\(configDir)/sessions"
             let hasConfig = FileManager.default.fileExists(atPath: configDir)
             let hasRecordedSessions = directoryContainsAnyEntry(atPath: sessionsDir)
-            // fx authenticates through Vercel OAuth (auth.json) or an API key
-            // file; recorded sessions are the strongest local evidence of a
-            // usable login, mirroring the Junie heuristic.
+            let fileCredential = fxFileCredentialState(configDirectory: configDir)
+            let environment = environmentProvider()
+            let hasEnvironmentKey = normalizedNonEmpty(environment["AI_GATEWAY_API_KEY"]) != nil
+            // Current fx keeps OAuth in auth.json/chatgpt-auth.json (or the
+            // FX_OAUTH_SESSION_V1 Keychain item after migration) and API keys
+            // in `api-key`, AI_GATEWAY_API_KEY, or FX_AI_GATEWAY_API_KEY in
+            // Keychain. Merely launching fx creates ~/.fx, and old sessions
+            // survive logout, so neither is authentication evidence.
+            let keychainCredential = configDirectoryOverride == nil
+                ? fxKeychainCredentialState()
+                : nil
             let authState: CLIAuthState = {
                 if executablePath == nil { return .notInstalled }
-                if hasRecordedSessions { return .authenticated(lastRefresh: nil) }
-                if hasConfig { return .authenticated(lastRefresh: nil) }
+                if fileCredential == .authenticated(lastRefresh: nil)
+                    || keychainCredential == .authenticated(lastRefresh: nil) {
+                    return .authenticated(lastRefresh: nil)
+                }
+                if fileCredential == .apiKeyPresent
+                    || keychainCredential == .apiKeyPresent
+                    || hasEnvironmentKey {
+                    return .apiKeyPresent
+                }
                 return .notAuthenticated
             }()
             return CLIAuthInfo(
@@ -398,8 +419,144 @@ public enum CLIAuthDiscovery {
                 configDirectory: hasConfig ? configDir : normalizedNonEmpty(configDir),
                 accountDescription: hasRecordedSessions ? "fx local sessions" : nil
             )
+
+        case .hermes:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.hermes"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Hermes local profile" : nil
+            )
+
+        case .goose:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.config/goose"
+            )
+            let altConfigDir = "\(home)/.goose"
+            let exists = FileManager.default.fileExists(atPath: configDir) || FileManager.default.fileExists(atPath: altConfigDir)
+            let resolvedDir = FileManager.default.fileExists(atPath: configDir) ? configDir : altConfigDir
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? resolvedDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Goose local profile" : nil
+            )
+
+        case .windsurf:
+            let configDir = "\(home)/Library/Application Support/Windsurf - Next/User/globalStorage"
+            let altConfigDir = "\(home)/Library/Application Support/Windsurf/User/globalStorage"
+            let exists = FileManager.default.fileExists(atPath: configDir) || FileManager.default.fileExists(atPath: altConfigDir)
+            let resolvedDir = FileManager.default.fileExists(atPath: configDir) ? configDir : altConfigDir
+            let authState: CLIAuthState = exists ? .authenticated(lastRefresh: nil) : (executablePath != nil ? .notAuthenticated : .notInstalled)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil || exists,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? resolvedDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "Windsurf profile" : nil
+            )
+
+        case .openClaude:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.openclaude"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "OpenClaude profile" : nil
+            )
+
+        case .openClaw:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.openclaw"
+            )
+            let exists = FileManager.default.fileExists(atPath: configDir)
+            let authState: CLIAuthState = executablePath == nil ? .notInstalled : (exists ? .authenticated(lastRefresh: nil) : .notAuthenticated)
+            return CLIAuthInfo(
+                cliType: cliType,
+                isInstalled: executablePath != nil,
+                executablePath: executablePath,
+                authState: authState,
+                configDirectory: exists ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: exists ? "OpenClaw profile" : nil
+            )
         }
         #endif
+    }
+
+    // MARK: - fx Auth Detection
+
+    private static func fxFileCredentialState(configDirectory: String) -> CLIAuthState? {
+        for name in ["auth.json", "chatgpt-auth.json"]
+            where fileContainsNonWhitespace(atPath: "\(configDirectory)/\(name)") {
+            return .authenticated(lastRefresh: nil)
+        }
+        return fileContainsNonWhitespace(atPath: "\(configDirectory)/api-key")
+            ? .apiKeyPresent
+            : nil
+    }
+
+    /// Checks Keychain item metadata only. Omitting `-w` is intentional: the
+    /// auth panel needs presence, never the credential bytes.
+    private static func fxKeychainCredentialState() -> CLIAuthState? {
+        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/security") else { return nil }
+        if keychainItemExists(service: "FX_OAUTH_SESSION_V1") {
+            return .authenticated(lastRefresh: nil)
+        }
+        if keychainItemExists(service: "FX_AI_GATEWAY_API_KEY") {
+            return .apiKeyPresent
+        }
+        return nil
+    }
+
+    private static func keychainItemExists(service: String) -> Bool {
+        #if os(macOS)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = [
+            "find-generic-password",
+            "-s", service
+        ]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+        #else
+        // iOS and other non-Mac targets cannot launch the macOS `security` CLI.
+        return false
+        #endif
+    }
+
+    private static func fileContainsNonWhitespace(atPath path: String) -> Bool {
+        guard let data = FileManager.default.contents(atPath: path),
+              let text = String(data: data, encoding: .utf8) else { return false }
+        return normalizedNonEmpty(text) != nil
     }
 
     // MARK: - Codex Auth Detection

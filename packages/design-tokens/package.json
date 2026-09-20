@@ -18,11 +18,12 @@
     "test": "node config.mjs && node --test"
   },
   "devDependencies": {
-    "style-dictionary": "5.5.1"
+    "style-dictionary": "5.5.2"
   },
   "license": "AGPL-3.0-only",
   "overrides": {
     "brace-expansion": "^5.0.9",
-    "minimatch": "^10.0.3"
+    "minimatch": "^10.0.3",
+    "qs": "6.16.0"
   }
 }

@@ -46,7 +46,7 @@ describe("BOLA — cloudVault", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "rotateCloudVaultKey",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });

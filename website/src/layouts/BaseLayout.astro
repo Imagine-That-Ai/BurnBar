@@ -14,6 +14,9 @@ interface Props {
   title: string;
   description?: string;
   ogImage?: string;
+  /** Alt text for the card. Defaults to the site line; a page that ships its
+   *  own OG image should describe that image instead. */
+  ogImageAlt?: string;
   pathname?: string;
   noindex?: boolean;
   transactional?: boolean;
@@ -24,6 +27,7 @@ const {
   title,
   description = SITE.description,
   ogImage = "/og/default.png",
+  ogImageAlt = `${SITE.name} — ${SITE.tagline}`,
   pathname,
   noindex = false,
   transactional = false,
@@ -84,7 +88,7 @@ const fullTitle =
     <meta property="og:image" content={new URL(ogImage, SITE.url).toString()} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content={`${SITE.name} — ${SITE.tagline}`} />
+    <meta property="og:image:alt" content={ogImageAlt} />
     <meta property="og:locale" content="en_US" />
 
     <!-- Twitter -->

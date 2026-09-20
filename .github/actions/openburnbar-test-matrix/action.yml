@@ -30,17 +30,27 @@ runs:
       # All macOS lanes float on the runner image's default Xcode (no
       # DEVELOPER_DIR pin anywhere — diligence P2-8). A hard path pin breaks
       # on every image refresh, so this is a drift tripwire instead: the
-      # MAJOR Xcode version must match expectations, and the exact version is
-      # printed in every run log so a silent image migration is attributable.
+      # MAJOR Xcode version must match the repo's .xcode-version pin file
+      # (a major/range; ADR docs/architecture/011-toolchain-pins.md
+      # supersedes the P2-8 float note by anchoring the RANGE in-repo), and
+      # the exact version is printed in every run log so a silent image
+      # migration is attributable.
       shell: bash
       run: |
         set -euo pipefail
         if [[ "$(uname)" == "Darwin" ]]; then
           xcodebuild -version
+          version_file="$GITHUB_WORKSPACE/.xcode-version"
+          if [[ ! -f "$version_file" ]]; then
+            echo "::error::missing .xcode-version pin file at the repo root (ADR docs/architecture/011-toolchain-pins.md)."
+            exit 1
+          fi
+          expected="$(head -1 "$version_file")"
+          expected="${expected#\^}"      # a range like ^26.0 anchors at its major
+          expected="${expected%%.*}"     # 26.0 -> 26
           major="$(xcodebuild -version | sed -n 's/^Xcode \([0-9]*\).*/\1/p')"
-          expected="26"
           if [[ "$major" != "$expected" ]]; then
-            echo "::error::Runner Xcode major version is $major, expected $expected. The runner image migrated under us — verify the toolchain and bump 'expected' deliberately."
+            echo "::error::Runner Xcode major version is $major, expected $expected (.xcode-version). The runner image migrated under us — verify the toolchain and bump .xcode-version deliberately."
             exit 1
           fi
         fi

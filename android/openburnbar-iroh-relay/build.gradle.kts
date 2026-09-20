@@ -22,9 +22,11 @@ plugins {
     jacoco
 }
 
+val openBurnBarCompileSdk: Int by rootProject.extra
+
 android {
     namespace = "com.openburnbar.irohrelay"
-    compileSdk = 35
+    compileSdk = openBurnBarCompileSdk
 
     defaultConfig {
         minSdk = 26

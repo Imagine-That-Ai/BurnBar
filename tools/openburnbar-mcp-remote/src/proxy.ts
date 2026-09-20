@@ -1,67 +1,93 @@
-import { execFileSync } from "node:child_process";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { execFileSync, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import {
-  readFileSync,
+  chmodSync,
+  closeSync,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import http, { type IncomingMessage, type ServerResponse } from "node:http";
-import { tmpdir } from "node:os";
+import http from "node:http";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-
-export const DEFAULT_PROXY_PORT = 8320;
-export const DEFAULT_PROXY_HOST = "127.0.0.1";
-export const LOCAL_CLIPROXY_KEY = "local-cliproxy";
-export const MAX_PROXY_BODY_BYTES = 8 * 1024 * 1024;
-
-const PROXY_SERVICE = "openburnbar-proxy";
-const PID_FILE_VERSION = 1;
-const CONTROL_HEADER = "x-openburnbar-proxy-token";
-const HEALTH_TIMEOUT_MS = 1_000;
-const STOP_TIMEOUT_MS = 3_000;
+import { fileURLToPath } from "node:url";
+import {
+  DEFAULT_PROXY_HOST,
+  DEFAULT_PROXY_PORT,
+  LOCAL_CLIPROXY_KEY,
+  PROXY_CONTROL_HEADER,
+  anthropicGatewayUrl,
+  containsUnsafeDisplayText,
+  isAuthorized,
+  isLoopbackHttpUrl,
+  isLoopbackIp,
+  normalizeLoopbackUpstream,
+  normalizeProxyHost,
+  openaiGatewayUrl,
+  type ProxyOptions,
+  type StandaloneProvider,
+} from "./proxyAuth.js";
+import {
+  MAX_PROXY_BODY_BYTES,
+  NON_STREAM_FETCH_TIMEOUT_MS,
+  REQUEST_TOO_LARGE_MESSAGE,
+} from "./proxyRelay.js";
+import { createProxyServer } from "./proxyRoutes.js";
+import { allProxySnippetText, proxySnippets } from "./proxySnippets.js";
+import {
+  PROXY_SERVICE,
+  buildProxyStatusPayload,
+  isProxyConfigured,
+  type ProxyHealth,
+} from "./proxyStatus.js";
+import { openLoopbackPanel } from "./proxyPanel.js";
+import { runProxyWireCli } from "./proxyWire.js";
+import { ensureGatewayTrayApp, spawnGatewayTray } from "./proxyTray.js";
 
 export const PROXY_USAGE = `Usage:
-  openburnbar proxy [--port <8320>] [--host <127.0.0.1>] [--allow-local-key] [--token <token>]
+  openburnbar proxy [--port <8320>] [--host <127.0.0.1>] [--token <token>] [--require-token] [--tray]
   openburnbar proxy status [--port <8320>]
   openburnbar proxy stop [--port <8320>]
+  openburnbar proxy wire <grok|droid|forge|opencode|codex|claude|pi> [--port 8320] [--write]
+  openburnbar proxy unwire <client> [--write]
 
 Options:
-  --port, -p <port>    Port to bind or inspect (default: 8320)
-  --host <host>        Loopback host to bind (default: 127.0.0.1)
-  --allow-local-key    Accept Bearer local-cliproxy on loopback (enabled by default)
-  --token, -t <token>  Accept one additional Bearer token
+  --port, -p <port>     Port to bind or inspect (default: 8320)
+  --host <host>         Loopback host to bind (default: 127.0.0.1)
+  --token, -t <token>   Accept one additional Bearer / x-api-key token
+  --token-file <path>   Read the accept token from a file (keeps it out of argv/ps)
+  --require-token       Disable the default local-cliproxy key (requires --token)
+  --tray                macOS: menu-bar helper. Elsewhere: open the loopback HTML panel.
+
+Loopback accepts Bearer / x-api-key \`local-cliproxy\` unless --require-token is passed.
 
 Environment:
-  XAI_API_KEY                         Standalone xAI chat-completions provider
+  XAI_API_KEY                         Standalone xAI provider (chat + responses)
   OPENBURNBAR_PROVIDER_BASE_URL       Standalone OpenAI-compatible provider base URL
   OPENBURNBAR_PROVIDER_API_KEY        Credential for that standalone provider
   OPENBURNBAR_UPSTREAM                Loopback OpenBurnBar-compatible gateway to forward to
   OPENBURNBAR_GATEWAY_TOKEN           Extra local token and forward-upstream token
+  OPENBURNBAR_REQUIRE_TOKEN           Set to 1 to require a private token and disable local-cliproxy
 
-app install puts OpenBurnBar.app on disk; proxy starts the local OpenAI gateway; npm i never starts either.
+This npm gateway is a loopback relay on :8320 (chat, messages, responses, Responses
+WebSocket, GET/DELETE /v1/responses/:id). It does not translate dialects or count burn.
+Bodies are capped at 8 MiB until a real client 413 proves we should raise it.
+Bind is 127.0.0.1 only — never use localhost (macOS often resolves it to ::1).
+
+Forward to BurnBar on :8317 only with a matching token:
+  export OPENBURNBAR_UPSTREAM=http://127.0.0.1:8317
+  export OPENBURNBAR_GATEWAY_TOKEN='<same token BurnBar's gateway expects>'
+
+app install puts OpenBurnBar.app on disk; proxy starts the local OpenAI/Anthropic gateway; npm i never starts either.
 `;
 
 export type ProxyCommand = "start" | "status" | "stop";
-
-export interface StandaloneProvider {
-  name: string;
-  baseUrl: string;
-  apiKey: string;
-}
-
-export interface ProxyOptions {
-  port: number;
-  host: string;
-  allowLocalKey: boolean;
-  token?: string;
-  upstream?: string;
-  upstreamToken?: string;
-  provider?: StandaloneProvider;
-  instanceToken?: string;
-}
 
 export interface ProxyCliOptions extends ProxyOptions {
   command: ProxyCommand;
@@ -70,6 +96,12 @@ export interface ProxyCliOptions extends ProxyOptions {
 export interface ProcessPortInfo {
   pid: number;
   command: string;
+}
+
+export interface ProxyCliRuntime {
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  writeStderr?: (text: string) => void;
 }
 
 interface ProxyPidFile {
@@ -81,121 +113,26 @@ interface ProxyPidFile {
   startedAt: string;
 }
 
-interface ProxyHealth {
-  status: "ok";
-  service: typeof PROXY_SERVICE;
-  pid: number;
-  port: number;
-  mode: "standalone" | "forward";
-  provider: string | null;
-  instance: boolean;
-}
-
-interface RequestError extends Error {
-  status: number;
-  code: string;
-}
-
-interface RelayTarget {
-  label: string;
-  modelsUrl: string;
-  completionsUrl: string;
-  authorization: string;
-}
-
-const CURATED_MODELS = [
-  "grok-4.6",
-  "grok-composer-2.5-fast",
-  "grok-4.5",
-  "gpt-5.6-luna",
-  "claude-opus-5",
-  "claude-fable-5",
-  "claude-sonnet-4-6",
-  "deepseek/deepseek-v4-flash",
-  "kimi/k3",
-].map((id) => ({
-  id,
-  object: "model",
-  created: 1_700_000_000,
-  owned_by: "openburnbar",
-}));
-
-const HOP_BY_HOP_RESPONSE_HEADERS = new Set([
-  "connection",
-  "content-encoding",
-  "content-length",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-]);
-
-const SAFE_UPSTREAM_REQUEST_HEADERS = ["x-grok-conv-id"] as const;
-const REDIRECT_STATUS_CODES = new Set([300, 301, 302, 303, 305, 307, 308]);
-
-function requestError(status: number, code: string, message: string): RequestError {
-  return Object.assign(new Error(message), { status, code });
-}
+const PID_FILE_VERSION = 1;
+const HEALTH_TIMEOUT_MS = 1_000;
 
 function strictPort(value: string): number {
   if (!/^\d{1,5}$/u.test(value)) {
     throw new Error(`error: invalid port number "${value}"`);
   }
   const port = Number(value);
-  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
-    throw new Error(`error: invalid port number "${value}"`);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`error: invalid port number "${value}" (must be 1-65535)`);
   }
   return port;
 }
 
-function requiredOptionValue(argv: string[], index: number, option: string): string {
+function requiredOptionValue(argv: string[], index: number, optionName: string): string {
   const value = argv[index + 1];
   if (!value || value.startsWith("-")) {
-    throw new Error(`error: ${option} requires a value`);
+    throw new Error(`error: ${optionName} requires a value`);
   }
   return value;
-}
-
-export function normalizeProxyHost(value: string): string {
-  if (
-    value === DEFAULT_PROXY_HOST ||
-    value === "localhost" ||
-    value === "::1" ||
-    value === "[::1]"
-  ) {
-    return DEFAULT_PROXY_HOST;
-  }
-  throw new Error(`error: proxy host must be loopback; received "${value}"`);
-}
-
-export function normalizeLoopbackUpstream(value: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error(
-      `error: OPENBURNBAR_UPSTREAM must be a valid loopback HTTP URL; received "${value}"`
-    );
-  }
-  const loopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]";
-  const rootPath = parsed.pathname === "" || parsed.pathname === "/";
-  if (
-    parsed.protocol !== "http:" ||
-    !loopback ||
-    parsed.username ||
-    parsed.password ||
-    !rootPath ||
-    parsed.search ||
-    parsed.hash
-  ) {
-    throw new Error(
-      "error: OPENBURNBAR_UPSTREAM must be an origin-only http://127.0.0.1 or http://[::1] URL"
-    );
-  }
-  return parsed.origin;
 }
 
 function normalizeProviderBaseUrl(value: string): string {
@@ -254,8 +191,10 @@ export function parseProxyCliOptions(
   let command: ProxyCommand = "start";
   let port = DEFAULT_PROXY_PORT;
   let host = DEFAULT_PROXY_HOST;
-  let allowLocalKey = true;
+  const allowLocalKey = true;
+  let requireToken = env["OPENBURNBAR_REQUIRE_TOKEN"] === "1";
   let token = env["OPENBURNBAR_GATEWAY_TOKEN"]?.trim() || undefined;
+  let tray = false;
 
   let index = 0;
   if (argv[0] === "status" || argv[0] === "stop") {
@@ -278,11 +217,11 @@ export function parseProxyCliOptions(
       index += 1;
       continue;
     }
-    if (arg === "--allow-local-key") {
+    if (arg === "--require-token") {
       if (command !== "start") {
         throw new Error(`error: ${command} only accepts --port`);
       }
-      allowLocalKey = true;
+      requireToken = true;
       continue;
     }
     if (arg === "--token" || arg === "-t") {
@@ -293,455 +232,293 @@ export function parseProxyCliOptions(
       index += 1;
       continue;
     }
+    if (arg === "--token-file") {
+      if (command !== "start") {
+        throw new Error(`error: ${command} only accepts --port`);
+      }
+      const tokenFilePath = requiredOptionValue(argv, index, arg);
+      try {
+        token = readSecureTokenFile(tokenFilePath);
+      } catch (error) {
+        throw new Error(
+          `error: could not read token file "${tokenFilePath}": ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+      index += 1;
+      continue;
+    }
+    if (arg === "--tray") {
+      if (command !== "start") {
+        throw new Error(`error: ${command} only accepts --port`);
+      }
+      tray = true;
+      continue;
+    }
+    if (arg === "--allow-local-key") {
+      if (command !== "start") {
+        throw new Error(`error: ${command} only accepts --port`);
+      }
+      // Allowed by default on loopback; flag accepted for backward compatibility.
+      continue;
+    }
     throw new Error(`error: unknown proxy argument "${arg ?? ""}"`);
   }
 
   if (command !== "start") {
-    return { command, port, host, allowLocalKey };
+    return { command, port, host, allowLocalKey, requireToken };
+  }
+
+  if (requireToken && !token) {
+    throw new Error("error: --require-token requires a private token via --token, --token-file, or OPENBURNBAR_GATEWAY_TOKEN");
   }
 
   const upstreamValue = env["OPENBURNBAR_UPSTREAM"]?.trim();
+  const upstreamToken = env["OPENBURNBAR_GATEWAY_TOKEN"]?.trim() || undefined;
+  if (upstreamValue && !upstreamToken) {
+    throw new Error(
+      "error: OPENBURNBAR_UPSTREAM requires OPENBURNBAR_GATEWAY_TOKEN (the token BurnBar's gateway expects)"
+    );
+  }
   return {
     command,
     port,
     host,
     allowLocalKey,
+    requireToken,
     token,
+    tray,
     upstream: upstreamValue ? normalizeLoopbackUpstream(upstreamValue) : undefined,
-    upstreamToken: env["OPENBURNBAR_GATEWAY_TOKEN"]?.trim() || undefined,
+    upstreamToken,
     provider: resolveStandaloneProvider(env),
   };
 }
 
+export function sanitizeProcessCommand(command: string): string {
+  return command
+    .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[a-zA-Z]`, "gu"), "")
+    .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .replace(
+      /(?<![\w-])(--[\w-]*(?:token|key|secret|password|bearer|auth|credential)[\w-]*|-t|-k)(\s*[=\s]\s*)(\S+)/gi,
+      "$1 [REDACTED]"
+    )
+    .replace(
+      /\b([A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL))=(\S+)/gi,
+      "$1=[REDACTED]"
+    )
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [REDACTED]")
+    .replace(/\b(sk|xai|gsk|ghp|pat)-[A-Za-z0-9._-]{8,}/gi, "[REDACTED]")
+    .replace(
+      /(?<![\w-])(--?[\w-]*(?:pass|pwd)[\w-]*)(\s*[=\s]\s*)(\S+)/gi,
+      "$1 [REDACTED]"
+    )
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)([^/\s:@]+):([^/\s@]+)@/gi, "$1$2:[REDACTED]@")
+    .trim()
+    .slice(0, 512);
+}
+
+function resolveBin(defaults: string[]): string | null {
+  for (const candidate of defaults) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+export function getProcessCommand(pid: number): string | null {
+  try {
+    const psBin = resolveBin(["/bin/ps", "/usr/bin/ps"]);
+    if (!psBin) {
+      return null;
+    }
+    const fullCommand = execFileSync(psBin, ["-p", String(pid), "-o", "command="], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1_500,
+    }).trim();
+    return fullCommand ? sanitizeProcessCommand(fullCommand) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function getProcessOnPort(port: number): ProcessPortInfo | null {
   try {
+    const lsofBin = resolveBin(["/usr/sbin/lsof", "/usr/bin/lsof", "/bin/lsof"]);
+    if (!lsofBin) {
+      return null;
+    }
+    const psBin = resolveBin(["/bin/ps", "/usr/bin/ps"]);
     const stdout = execFileSync(
-      "lsof",
-      ["-nP", `-iTCP@${DEFAULT_PROXY_HOST}:${port}`, "-sTCP:LISTEN"],
+      lsofBin,
+      ["-nP", `-iTCP@${DEFAULT_PROXY_HOST}:${port}`, "-sTCP:LISTEN", "-F", "pcn"],
       {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
         timeout: 1_500,
       }
     );
-    const row = stdout.trim().split("\n")[1]?.trim().split(/\s+/u);
-    const pid = Number(row?.[1]);
-    if (!Number.isInteger(pid) || pid <= 0) {
+    const pids: number[] = [];
+    const commands: string[] = [];
+    let currentPid: number | null = null;
+    let currentCommand = "unknown";
+
+    const flushCurrent = (): void => {
+      if (currentPid !== null && !pids.includes(currentPid)) {
+        pids.push(currentPid);
+        let command = currentCommand;
+        if (psBin) {
+          try {
+            const fullCommand = execFileSync(psBin, ["-p", String(currentPid), "-o", "command="], {
+              encoding: "utf8",
+              stdio: ["ignore", "pipe", "ignore"],
+              timeout: 1_500,
+            }).trim();
+            if (fullCommand) {
+              command = sanitizeProcessCommand(fullCommand);
+            }
+          } catch {
+            // Keep lsof command
+          }
+        }
+        commands.push(`PID ${currentPid} (${command})`);
+      }
+      currentPid = null;
+      currentCommand = "unknown";
+    };
+
+    for (const line of stdout.split("\n")) {
+      const tag = line[0];
+      const value = line.slice(1);
+      if (tag === "p") {
+        flushCurrent();
+        const pid = Number(value);
+        if (Number.isInteger(pid) && pid > 0) {
+          currentPid = pid;
+        }
+      } else if (tag === "c" && currentPid !== null) {
+        currentCommand = sanitizeProcessCommand(value);
+      }
+    }
+    flushCurrent();
+
+    const firstPid = pids[0];
+    if (firstPid === undefined) {
       return null;
     }
-    let command = row?.[0] ?? "unknown";
-    try {
-      const fullCommand = execFileSync("ps", ["-p", String(pid), "-o", "command="], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: 1_500,
-      }).trim();
-      if (fullCommand) {
-        command = fullCommand;
-      }
-    } catch {
-      // The lsof command name is still useful when ps is unavailable.
-    }
-    return { pid, command };
+    return { pid: firstPid, command: commands.join(", ") };
   } catch {
     return null;
   }
 }
 
-export function isLoopbackIp(ip: string | undefined): boolean {
-  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-}
-
-function safeTokenEqual(provided: string, expected: string): boolean {
-  const providedBytes = Buffer.from(provided);
-  const expectedBytes = Buffer.from(expected);
-  return (
-    providedBytes.length === expectedBytes.length &&
-    timingSafeEqual(providedBytes, expectedBytes)
-  );
-}
-
-export function isAuthorized(
-  authHeader: string | undefined,
-  clientIp: string | undefined,
-  options: { allowLocalKey: boolean; token?: string }
-): boolean {
-  if (!authHeader || !isLoopbackIp(clientIp)) {
-    return false;
-  }
-  // Match only the scheme and slice the rest. `/^Bearer\s+(.+)$/` is quadratic on
-  // this input: `\s` and `.` both match tab/space/FF/VT, so when the tail fails the
-  // engine retries every split point of the whitespace run. `authHeader` comes
-  // straight off the wire (CodeQL js/polynomial-redos). Anchored `\s+` with nothing
-  // after it has no split points to retry, so this stays linear.
-  const scheme = /^Bearer\s+/iu.exec(authHeader);
-  const provided = scheme ? authHeader.slice(scheme[0].length).trim() : undefined;
-  if (!provided) {
-    return false;
-  }
-  if (options.token && safeTokenEqual(provided, options.token)) {
-    return true;
-  }
-  return options.allowLocalKey && safeTokenEqual(provided, LOCAL_CLIPROXY_KEY);
-}
-
-function sendJson(res: ServerResponse, status: number, data: unknown): void {
-  const json = JSON.stringify(data);
-  res.writeHead(status, {
-    "Cache-Control": "no-store",
-    "Content-Length": Buffer.byteLength(json),
-    "Content-Type": "application/json; charset=utf-8",
-    "X-Content-Type-Options": "nosniff",
-  });
-  res.end(json);
-}
-
-function sendApiError(
-  res: ServerResponse,
-  status: number,
-  code: string,
-  message: string,
-  type = "invalid_request_error"
-): void {
-  sendJson(res, status, { error: { message, type, code } });
-}
-
-function readBody(req: IncomingMessage): Promise<string> {
-  const declaredLength = Number(req.headers["content-length"] ?? 0);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_PROXY_BODY_BYTES) {
-    throw requestError(
-      413,
-      "request_too_large",
-      `Request body exceeds the ${MAX_PROXY_BODY_BYTES}-byte limit`
-    );
-  }
-
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let bytes = 0;
-    let settled = false;
-
-    const finish = (callback: () => void): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      callback();
-    };
-
-    req.on("data", (chunk: Buffer | string) => {
-      if (settled) {
-        return;
-      }
-      const bytesChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      bytes += bytesChunk.length;
-      if (bytes > MAX_PROXY_BODY_BYTES) {
-        finish(() => {
-          req.resume();
-          reject(
-            requestError(
-              413,
-              "request_too_large",
-              `Request body exceeds the ${MAX_PROXY_BODY_BYTES}-byte limit`
-            )
-          );
-        });
-        return;
-      }
-      chunks.push(bytesChunk);
-    });
-    req.on("end", () => finish(() => resolve(Buffer.concat(chunks).toString("utf8"))));
-    req.on("aborted", () =>
-      finish(() => reject(requestError(400, "request_aborted", "Request body was interrupted")))
-    );
-    req.on("error", (error) => finish(() => reject(error)));
-  });
-}
-
-function validateChatBody(rawBody: string): void {
-  let parsed: unknown;
+function readSecureTokenFile(filePath: string): string {
+  let fd: number | null = null;
   try {
-    parsed = JSON.parse(rawBody);
-  } catch {
-    throw requestError(400, "bad_request", "Invalid JSON payload in request body");
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw requestError(400, "bad_request", "Request body must be a JSON object");
-  }
-  const body = parsed as Record<string, unknown>;
-  if (typeof body["model"] !== "string" || body["model"].trim().length === 0) {
-    throw requestError(400, "bad_request", "Request body requires a non-empty model");
-  }
-  if (!Array.isArray(body["messages"]) || body["messages"].length === 0) {
-    throw requestError(400, "bad_request", "Request body requires a non-empty messages array");
-  }
-  if (body["stream"] !== undefined && typeof body["stream"] !== "boolean") {
-    throw requestError(400, "bad_request", "stream must be a boolean when provided");
-  }
-}
-
-function providerEndpoint(baseUrl: string, path: string): string {
-  return new URL(path, `${baseUrl.replace(/\/+$/u, "")}/`).toString();
-}
-
-function relayTarget(options: ProxyOptions): RelayTarget | null {
-  if (options.upstream) {
-    return {
-      label: "OpenBurnBar upstream",
-      modelsUrl: new URL("/v1/models", options.upstream).toString(),
-      completionsUrl: new URL("/v1/chat/completions", options.upstream).toString(),
-      authorization: `Bearer ${options.upstreamToken ?? LOCAL_CLIPROXY_KEY}`,
-    };
-  }
-  if (options.provider) {
-    return {
-      label: `${options.provider.name} provider`,
-      modelsUrl: providerEndpoint(options.provider.baseUrl, "models"),
-      completionsUrl: providerEndpoint(options.provider.baseUrl, "chat/completions"),
-      authorization: `Bearer ${options.provider.apiKey}`,
-    };
-  }
-  return null;
-}
-
-function responseHeaders(headers: Headers): Record<string, string> {
-  const result: Record<string, string> = {
-    "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff",
-  };
-  headers.forEach((value, key) => {
-    if (!HOP_BY_HOP_RESPONSE_HEADERS.has(key.toLowerCase())) {
-      result[key] = value;
+    const stat = lstatSync(filePath);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      throw new Error("token file must be a regular file, not a symlink");
     }
-  });
-  return result;
-}
-
-function relayRequestHeaders(
-  req: IncomingMessage,
-  authorization: string,
-  hasBody: boolean
-): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: req.headers["accept"] ?? "*/*",
-    "Accept-Encoding": "identity",
-    Authorization: authorization,
-    ...(hasBody
-      ? { "Content-Type": req.headers["content-type"] ?? "application/json" }
-      : {}),
-  };
-  for (const name of SAFE_UPSTREAM_REQUEST_HEADERS) {
-    const value = req.headers[name];
-    if (typeof value === "string" && value.length > 0) {
-      headers[name] = value;
+    if (typeof process.getuid === "function" && stat.uid !== process.getuid()) {
+      throw new Error("token file must be owned by the current user");
     }
-  }
-  return headers;
-}
-
-async function relay(
-  req: IncomingMessage,
-  res: ServerResponse,
-  target: RelayTarget,
-  url: string,
-  rawBody?: string
-): Promise<void> {
-  const controller = new AbortController();
-  const abort = (): void => controller.abort();
-  req.once("aborted", abort);
-  res.once("close", abort);
-
-  try {
-    const upstreamResponse = await fetch(url, {
-      method: rawBody === undefined ? "GET" : "POST",
-      headers: relayRequestHeaders(req, target.authorization, rawBody !== undefined),
-      body: rawBody,
-      redirect: "manual",
-      signal: controller.signal,
-    });
-
-    if (REDIRECT_STATUS_CODES.has(upstreamResponse.status)) {
-      await upstreamResponse.body?.cancel();
-      sendApiError(
-        res,
-        502,
-        "unsafe_upstream_redirect",
-        `${target.label} returned a redirect; configure its final API base URL instead`,
-        "upstream_error"
-      );
-      return;
+    if ((stat.mode & 0o077) !== 0) {
+      throw new Error("token file permissions are too open (must not be group/world accessible)");
     }
-
-    res.writeHead(upstreamResponse.status, responseHeaders(upstreamResponse.headers));
-    if (!upstreamResponse.body) {
-      res.end();
-      return;
+    fd = openSync(filePath, "r");
+    const fstat = fstatSync(fd);
+    if (typeof process.getuid === "function" && fstat.uid !== process.getuid()) {
+      throw new Error("token file must be owned by the current user");
     }
-    await pipeline(
-      Readable.fromWeb(
-        upstreamResponse.body as import("node:stream/web").ReadableStream<Uint8Array>
-      ),
-      res
-    );
-  } catch (error) {
-    if (controller.signal.aborted) {
-      return;
+    if ((fstat.mode & 0o077) !== 0 || !fstat.isFile() || fstat.size > 8192) {
+      throw new Error("token file must be a non-empty regular file <= 8 KiB with mode 0600");
     }
-    if (!res.headersSent) {
-      sendApiError(
-        res,
-        502,
-        "bad_gateway",
-        `${target.label} is unavailable: ${error instanceof Error ? error.message : String(error)}`,
-        "upstream_error"
-      );
-    } else {
-      res.destroy(error instanceof Error ? error : new Error(String(error)));
+    const buffer = Buffer.alloc(fstat.size);
+    readSync(fd, buffer, 0, fstat.size, 0);
+    const content = buffer.toString("utf8").trim();
+    if (!content) {
+      throw new Error("token file is empty");
     }
+    return content;
   } finally {
-    req.off("aborted", abort);
-    res.off("close", abort);
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Ignore
+      }
+    }
   }
 }
 
-function proxyMode(options: ProxyOptions): Pick<ProxyHealth, "mode" | "provider"> {
-  if (options.upstream) {
-    return { mode: "forward", provider: null };
-  }
-  return { mode: "standalone", provider: options.provider?.name ?? null };
-}
-
-function pathname(req: IncomingMessage): string {
+function securePidDirectory(dir: string): string {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  let st: ReturnType<typeof lstatSync>;
   try {
-    return new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+    st = lstatSync(dir);
   } catch {
-    throw requestError(400, "bad_request", "Malformed request URL");
+    return dir;
   }
+  if (st.isSymbolicLink()) {
+    throw new Error(`error: ${dir} is a symlink; refusing to store proxy ownership state there`);
+  }
+  if (typeof process.getuid === "function" && st.uid !== process.getuid()) {
+    throw new Error(`error: ${dir} is not owned by the current user`);
+  }
+  if ((st.mode & 0o077) !== 0) {
+    try {
+      chmodSync(dir, 0o700);
+    } catch {
+      throw new Error(`error: ${dir} is group/world accessible and could not be tightened`);
+    }
+  }
+  return dir;
 }
 
-export function createProxyServer(options: ProxyOptions): http.Server {
-  normalizeProxyHost(options.host);
-  if (options.upstream) {
-    normalizeLoopbackUpstream(options.upstream);
+export function proxyPidDirectory(): string {
+  const runtimeDir = process.env["XDG_RUNTIME_DIR"];
+  if (runtimeDir) {
+    return securePidDirectory(join(runtimeDir, "openburnbar", "proxy"));
   }
-  const instanceToken = options.instanceToken ?? randomBytes(32).toString("hex");
-
-  const server = http.createServer((req, res) => {
-    void (async () => {
-      const requestPath = pathname(req);
-
-      if (req.method === "GET" && requestPath === "/health") {
-        const providedToken = req.headers[CONTROL_HEADER];
-        const tokenValue = Array.isArray(providedToken) ? providedToken[0] : providedToken;
-        const mode = proxyMode(options);
-        sendJson(res, 200, {
-          status: "ok",
-          service: PROXY_SERVICE,
-          pid: process.pid,
-          port: options.port,
-          mode: mode.mode,
-          provider: mode.provider,
-          instance: Boolean(tokenValue && safeTokenEqual(tokenValue, instanceToken)),
-        } satisfies ProxyHealth);
-        return;
-      }
-
-      if (!isAuthorized(req.headers["authorization"], req.socket.remoteAddress, options)) {
-        sendApiError(
-          res,
-          401,
-          "invalid_api_key",
-          "Incorrect API key or missing Bearer authorization header"
-        );
-        return;
-      }
-
-      const target = relayTarget(options);
-      if (requestPath === "/v1/models") {
-        if (req.method !== "GET") {
-          res.setHeader("Allow", "GET");
-          sendApiError(res, 405, "method_not_allowed", "GET is required for /v1/models");
-          return;
-        }
-        if (target) {
-          await relay(req, res, target, target.modelsUrl);
-          return;
-        }
-        sendJson(res, 200, { object: "list", data: CURATED_MODELS });
-        return;
-      }
-
-      if (requestPath === "/v1/chat/completions") {
-        if (req.method !== "POST") {
-          res.setHeader("Allow", "POST");
-          sendApiError(
-            res,
-            405,
-            "method_not_allowed",
-            "POST is required for /v1/chat/completions"
-          );
-          return;
-        }
-        if (!req.headers["content-type"]?.toLowerCase().startsWith("application/json")) {
-          sendApiError(res, 415, "unsupported_media_type", "Content-Type must be application/json");
-          return;
-        }
-        const rawBody = await readBody(req);
-        validateChatBody(rawBody);
-        if (!target) {
-          sendApiError(
-            res,
-            503,
-            "provider_not_configured",
-            "Standalone mode needs XAI_API_KEY or OPENBURNBAR_PROVIDER_BASE_URL plus OPENBURNBAR_PROVIDER_API_KEY",
-            "configuration_error"
-          );
-          return;
-        }
-        await relay(req, res, target, target.completionsUrl, rawBody);
-        return;
-      }
-
-      sendApiError(
-        res,
-        404,
-        "not_found",
-        `Not found: ${req.method ?? "GET"} ${requestPath}`
-      );
-    })().catch((error: unknown) => {
-      if (res.headersSent || res.destroyed) {
-        res.destroy(error instanceof Error ? error : new Error(String(error)));
-        return;
-      }
-      const known = error as Partial<RequestError>;
-      if (known.status === 413) {
-        res.setHeader("Connection", "close");
-      }
-      sendApiError(
-        res,
-        known.status ?? 500,
-        known.code ?? "internal_error",
-        error instanceof Error ? error.message : String(error),
-        known.status && known.status < 500 ? "invalid_request_error" : "server_error"
-      );
-    });
-  });
-
-  server.headersTimeout = 10_000;
-  server.requestTimeout = 30_000;
-  server.keepAliveTimeout = 5_000;
-  server.maxHeadersCount = 100;
-  return server;
+  const home = homedir();
+  if (home) {
+    return securePidDirectory(join(home, ".openburnbar", "proxy"));
+  }
+  const uid = typeof process.getuid === "function" ? process.getuid() : "user";
+  return securePidDirectory(join(tmpdir(), `openburnbar-${uid}-proxy`));
 }
 
 export function proxyPidFilePath(port: number): string {
-  const uid = typeof process.getuid === "function" ? process.getuid() : "user";
-  return join(tmpdir(), `openburnbar-proxy-${uid}-${port}.json`);
+  return join(proxyPidDirectory(), `openburnbar-proxy-${port}.json`);
 }
 
 function readPidFile(port: number): ProxyPidFile | null {
+  let fd: number | null = null;
   try {
-    const parsed = JSON.parse(readFileSync(proxyPidFilePath(port), "utf8")) as Partial<ProxyPidFile>;
+    const filePath = proxyPidFilePath(port);
+    const stat = lstatSync(filePath);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      return null;
+    }
+    if (typeof process.getuid === "function" && stat.uid !== process.getuid()) {
+      return null;
+    }
+    if ((stat.mode & 0o022) !== 0) {
+      // Refuse group- or world-writable PID files
+      return null;
+    }
+    fd = openSync(filePath, "r");
+    const fstat = fstatSync(fd);
+    if (typeof process.getuid === "function" && fstat.uid !== process.getuid()) {
+      return null;
+    }
+    if ((fstat.mode & 0o022) !== 0 || !fstat.isFile() || fstat.size > 8192) {
+      return null;
+    }
+    const buffer = Buffer.alloc(fstat.size);
+    readSync(fd, buffer, 0, fstat.size, 0);
+    const parsed = JSON.parse(buffer.toString("utf8")) as Partial<ProxyPidFile>;
     if (
       parsed.version !== PID_FILE_VERSION ||
       parsed.port !== port ||
@@ -757,6 +534,14 @@ function readPidFile(port: number): ProxyPidFile | null {
     return parsed as ProxyPidFile;
   } catch {
     return null;
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Ignore close errors
+      }
+    }
   }
 }
 
@@ -772,14 +557,13 @@ function writePidFile(record: ProxyPidFile): void {
 }
 
 function removePidFile(record: ProxyPidFile): void {
-  const current = readPidFile(record.port);
-  if (!current || current.pid !== record.pid || !safeTokenEqual(current.token, record.token)) {
-    return;
-  }
   try {
-    unlinkSync(proxyPidFilePath(record.port));
+    const existing = readPidFile(record.port);
+    if (existing && existing.pid === record.pid) {
+      unlinkSync(proxyPidFilePath(record.port));
+    }
   } catch {
-    // A concurrent cleanup may already have removed it.
+    // Ignore cleanup errors
   }
 }
 
@@ -792,91 +576,159 @@ function processExists(pid: number): boolean {
   }
 }
 
-export async function probeProxy(
+async function getHealth(
   port: number,
-  pidFile: ProxyPidFile | null = readPidFile(port)
-): Promise<ProxyHealth | null> {
-  if (!pidFile) {
-    return null;
-  }
+  headers: Record<string, string> = {}
+): Promise<Partial<ProxyHealth> | null> {
+  const MAX_HEALTH_BYTES = 64 * 1024;
   return new Promise((resolve) => {
+    let finished = false;
+    const finish = (result: Partial<ProxyHealth> | null): void => {
+      if (!finished) {
+        finished = true;
+        resolve(result);
+      }
+    };
+
+    const hardStop = setTimeout(() => {
+      finish(null);
+    }, HEALTH_TIMEOUT_MS);
+    hardStop.unref();
+
     const request = http.get(
       {
         host: DEFAULT_PROXY_HOST,
         port,
         path: "/health",
-        headers: { [CONTROL_HEADER]: pidFile.token },
+        headers,
         timeout: HEALTH_TIMEOUT_MS,
       },
-      (response) => {
+      (res) => {
         const chunks: Buffer[] = [];
         let bytes = 0;
-        response.on("data", (chunk: Buffer) => {
+        res.on("data", (chunk: Buffer) => {
           bytes += chunk.length;
-          if (bytes <= 65_536) {
-            chunks.push(chunk);
+          if (bytes > MAX_HEALTH_BYTES) {
+            clearTimeout(hardStop);
+            res.destroy();
+            finish(null);
+            return;
           }
+          chunks.push(chunk);
         });
-        response.on("end", () => {
-          try {
-            const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Partial<ProxyHealth>;
-            if (
-              response.statusCode === 200 &&
-              parsed.status === "ok" &&
-              parsed.service === PROXY_SERVICE &&
-              parsed.pid === pidFile.pid &&
-              parsed.port === port &&
-              parsed.instance === true
-            ) {
-              resolve(parsed as ProxyHealth);
-              return;
-            }
-          } catch {
-            // A foreign listener may return non-JSON or an unrelated JSON shape.
+        res.on("end", () => {
+          clearTimeout(hardStop);
+          if (res.statusCode !== 200) {
+            finish(null);
+            return;
           }
-          resolve(null);
+          try {
+            const raw = Buffer.concat(chunks).toString("utf8");
+            finish(JSON.parse(raw) as Partial<ProxyHealth>);
+          } catch {
+            finish(null);
+          }
         });
       }
     );
-    request.on("error", () => resolve(null));
+    request.on("error", () => {
+      clearTimeout(hardStop);
+      finish(null);
+    });
     request.on("timeout", () => {
+      clearTimeout(hardStop);
       request.destroy();
-      resolve(null);
+      finish(null);
     });
   });
 }
 
+export async function probeProxy(
+  port: number,
+  expectedPidFile?: ProxyPidFile | null
+): Promise<Partial<ProxyHealth> | null> {
+  const basic = await getHealth(port);
+  if (!basic || basic.service !== PROXY_SERVICE || basic.port !== port) {
+    return null;
+  }
+  const mode = basic.mode === "standalone" || basic.mode === "forward" ? basic.mode : undefined;
+  const provider =
+    typeof basic.provider === "string" && basic.provider.length <= 64
+      ? sanitizeProcessCommand(basic.provider)
+      : undefined;
+  const sanitizedBasic: Partial<ProxyHealth> = {
+    ...basic,
+    mode,
+    provider,
+    requireToken: basic.requireToken,
+  };
+  if (!expectedPidFile) {
+    return sanitizedBasic;
+  }
+  if (basic.pid !== expectedPidFile.pid) {
+    return null;
+  }
+  if (!processExists(expectedPidFile.pid)) {
+    return null;
+  }
+  const holder = getProcessOnPort(port);
+  if (holder && holder.pid !== expectedPidFile.pid) {
+    return null;
+  }
+  const detailed = await getHealth(port, {
+    [PROXY_CONTROL_HEADER]: expectedPidFile.token,
+  });
+  if (!detailed || detailed.instance !== true || detailed.pid !== expectedPidFile.pid) {
+    return null;
+  }
+  return { ...detailed, mode, provider, requireToken: detailed.requireToken ?? basic.requireToken };
+}
+
 export async function runProxyStatus(port = DEFAULT_PROXY_PORT): Promise<number> {
   const pidFile = readPidFile(port);
-  const [health, processInfo] = await Promise.all([
-    probeProxy(port, pidFile),
-    Promise.resolve(getProcessOnPort(port)),
-  ]);
-  const owned =
-    Boolean(pidFile && health) &&
-    (!processInfo || processInfo.pid === pidFile?.pid) &&
-    processExists(pidFile?.pid ?? -1);
-
-  const output: Record<string, unknown> = {
-    listening: owned,
-    port,
-    url: `http://${DEFAULT_PROXY_HOST}:${port}/v1/chat/completions`,
-  };
-  if (owned && pidFile && health) {
-    output["pid"] = pidFile.pid;
-    output["mode"] = health.mode;
-    output["provider"] = health.provider;
-  } else if (processInfo) {
-    output["occupied"] = true;
-    output["pid"] = processInfo.pid;
-    output["command"] = processInfo.command;
-  }
-  process.stdout.write(`${JSON.stringify(output)}\n`);
+  const health = await probeProxy(port, pidFile);
+  const owned = Boolean(pidFile && health && health.instance === true);
+  const processInfo = getProcessOnPort(port);
+  const payload = health
+    ? buildProxyStatusPayload({
+        port,
+        listening: true,
+        pid: health.pid,
+        mode: health.mode,
+        provider: health.provider,
+        requireToken: health.requireToken,
+        configured: health.mode === "forward" || Boolean(health.provider),
+      })
+    : buildProxyStatusPayload({
+        port,
+        listening: false,
+        occupied: Boolean(processInfo),
+        pid: processInfo?.pid,
+        command: processInfo?.command,
+        configured: false,
+      });
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
   return owned ? 0 : 1;
 }
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function signal(pid: number, sig: NodeJS.Signals): "sent" | "gone" | "denied" {
+  try {
+    process.kill(pid, sig);
+    return "sent";
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH") {
+      return "gone";
+    }
+    if (code === "EPERM") {
+      return "denied";
+    }
+    throw error;
+  }
 }
 
 export async function runProxyStop(port = DEFAULT_PROXY_PORT): Promise<number> {
@@ -892,47 +744,69 @@ export async function runProxyStop(port = DEFAULT_PROXY_PORT): Promise<number> {
     process.stdout.write(`OpenBurnBar proxy is not running on port ${port}.\n`);
     return 0;
   }
+  if (processInfo && processInfo.pid !== pidFile.pid) {
+    process.stderr.write(
+      `Refusing to stop PID ${processInfo.pid} (${processInfo.command}): port ${port} is not owned by this OpenBurnBar proxy instance.\n`
+    );
+    return 1;
+  }
+  if (!processExists(pidFile.pid)) {
+    removePidFile(pidFile);
+    process.stdout.write(`OpenBurnBar proxy stopped on port ${port} (PID ${pidFile.pid}).\n`);
+    return 0;
+  }
 
-  const health = await probeProxy(port, pidFile);
-  if (
-    !health ||
-    !processExists(pidFile.pid) ||
-    (processInfo !== null && processInfo.pid !== pidFile.pid)
-  ) {
-    if (!processExists(pidFile.pid)) {
+  if (!processInfo) {
+    const health = await getHealth(port, { [PROXY_CONTROL_HEADER]: pidFile.token });
+    if (!health?.instance || health.pid !== pidFile.pid) {
       removePidFile(pidFile);
+      process.stderr.write(
+        `Refusing to stop PID ${pidFile.pid}: nothing is listening on port ${port} and the ` +
+        `recorded PID did not answer the instance-token challenge. Removed stale PID file.\n`
+      );
+      return 1;
     }
-    const occupied = processInfo
-      ? ` PID ${processInfo.pid} (${processInfo.command}) owns the port.`
-      : "";
-    process.stderr.write(
-      `Refusing to stop port ${port}: the listener does not match the OpenBurnBar proxy pid file.${occupied}\n`
-    );
-    return 1;
   }
 
-  try {
-    process.kill(pidFile.pid, "SIGTERM");
-  } catch (error) {
-    process.stderr.write(
-      `Failed to stop OpenBurnBar proxy PID ${pidFile.pid}: ${error instanceof Error ? error.message : String(error)}\n`
-    );
-    return 1;
+  const cmd = getProcessCommand(pidFile.pid);
+  if (!cmd || (!cmd.includes("openburnbar") && !cmd.includes("proxy"))) {
+    const health = await getHealth(port, { [PROXY_CONTROL_HEADER]: pidFile.token });
+    if (!health?.instance || health.pid !== pidFile.pid) {
+      removePidFile(pidFile);
+      process.stderr.write(
+        `Refusing to stop PID ${pidFile.pid}: could not confirm process identity. Removed stale PID file.\n`
+      );
+      return 1;
+    }
   }
 
-  const deadline = Date.now() + STOP_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    if (!(await probeProxy(port, pidFile))) {
+  const termResult = signal(pidFile.pid, "SIGTERM");
+  if (termResult === "gone") {
+    removePidFile(pidFile);
+    process.stdout.write(`OpenBurnBar proxy stopped on port ${port} (PID ${pidFile.pid}).\n`);
+    return 0;
+  }
+  if (termResult === "denied") {
+    process.stderr.write(`Refusing to stop PID ${pidFile.pid}: process is owned by another user.\n`);
+    return 1;
+  }
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await delay(50);
+    if (!processExists(pidFile.pid)) {
       removePidFile(pidFile);
       process.stdout.write(`OpenBurnBar proxy stopped on port ${port} (PID ${pidFile.pid}).\n`);
       return 0;
     }
-    await delay(100);
   }
-  process.stderr.write(
-    `OpenBurnBar proxy PID ${pidFile.pid} did not stop within ${STOP_TIMEOUT_MS}ms after SIGTERM.\n`
-  );
-  return 1;
+
+  const killResult = signal(pidFile.pid, "SIGKILL");
+  removePidFile(pidFile);
+  if (killResult === "denied") {
+    process.stderr.write(`Refusing to SIGKILL PID ${pidFile.pid}: process is owned by another user.\n`);
+    return 1;
+  }
+  process.stdout.write(`OpenBurnBar proxy stopped on port ${port} (PID ${pidFile.pid}).\n`);
+  return 0;
 }
 
 function startupMode(options: ProxyOptions): string {
@@ -956,6 +830,59 @@ export async function runProxyServer(options: ProxyOptions): Promise<void> {
     startedAt: new Date().toISOString(),
   };
 
+  let trayChild: ChildProcess | null = null;
+  let shuttingDown = false;
+  let listening = false;
+  let resolveClose: (() => void) | undefined;
+  const closed = new Promise<void>((resolve) => {
+    resolveClose = resolve;
+  });
+
+  const trayOptions = {
+    port: options.port,
+    parentPid: process.pid,
+    nodePath: process.execPath,
+    cliPath: fileURLToPath(new URL("./index.js", import.meta.url)),
+    token: options.token ?? (options.requireToken ? undefined : LOCAL_CLIPROXY_KEY),
+    isStopping: () => shuttingDown,
+  };
+
+  const shutdown = (): void => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    if (trayChild && trayChild.exitCode === null && !trayChild.killed) {
+      trayChild.kill("SIGTERM");
+    }
+    if (listening) {
+      const forceClose = setTimeout(() => server.closeAllConnections(), 1_000);
+      forceClose.unref();
+      server.close(() => {
+        removePidFile(pidFile);
+        clearTimeout(forceClose);
+        resolveClose?.();
+      });
+      return;
+    }
+    resolveClose?.();
+  };
+
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+  process.once("SIGHUP", shutdown);
+
+  let preparedTray: { executable: string } | null = null;
+  if (options.tray && process.platform === "darwin") {
+    preparedTray = await ensureGatewayTrayApp(trayOptions);
+  }
+  if (shuttingDown) {
+    process.off("SIGINT", shutdown);
+    process.off("SIGTERM", shutdown);
+    process.off("SIGHUP", shutdown);
+    return;
+  }
+
   await new Promise<void>((resolve, reject) => {
     const handleStartupError = (error: NodeJS.ErrnoException): void => {
       if (error.code === "EADDRINUSE") {
@@ -978,6 +905,16 @@ export async function runProxyServer(options: ProxyOptions): Promise<void> {
     server.once("error", handleStartupError);
     server.listen({ port: options.port, host }, () => {
       server.off("error", handleStartupError);
+      server.on("error", (err) => {
+        process.stderr.write(`[OpenBurnBar Proxy] Server error: ${err.message}\n`);
+      });
+      if (shuttingDown) {
+        server.close();
+        removePidFile(pidFile);
+        resolveClose?.();
+        resolve();
+        return;
+      }
       try {
         writePidFile(pidFile);
       } catch (error) {
@@ -989,38 +926,33 @@ export async function runProxyServer(options: ProxyOptions): Promise<void> {
         );
         return;
       }
+      listening = true;
       process.stdout.write(`${startupMode(serverOptions)}\n`);
       resolve();
     });
   });
 
-  await new Promise<void>((resolve) => {
-    let shuttingDown = false;
-    const shutdown = (): void => {
-      if (shuttingDown) {
-        return;
-      }
-      shuttingDown = true;
-      removePidFile(pidFile);
-      const forceClose = setTimeout(() => server.closeAllConnections(), 1_000);
-      forceClose.unref();
-      server.close(() => {
-        clearTimeout(forceClose);
-        resolve();
-      });
-    };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
-    server.once("close", () => {
-      removePidFile(pidFile);
-      process.off("SIGINT", shutdown);
-      process.off("SIGTERM", shutdown);
-      resolve();
-    });
+  if (preparedTray && !shuttingDown) {
+    trayChild = spawnGatewayTray(preparedTray.executable, trayOptions);
+  } else if (options.tray && process.platform !== "darwin" && !shuttingDown) {
+    await openLoopbackPanel(options.port);
+  }
+
+  server.once("close", () => {
+    removePidFile(pidFile);
+    process.off("SIGINT", shutdown);
+    process.off("SIGTERM", shutdown);
+    process.off("SIGHUP", shutdown);
+    resolveClose?.();
   });
+  await closed;
 }
 
-export async function runProxyCli(argv: string[]): Promise<number> {
+export async function runProxyCli(
+  argv: string[],
+  runtime: ProxyCliRuntime = {}
+): Promise<number> {
+  const writeStderr = runtime.writeStderr ?? ((text: string) => process.stderr.write(text));
   if (
     argv.length === 1 &&
     (argv[0] === "--help" || argv[0] === "-h" || argv[0] === "help")
@@ -1029,7 +961,10 @@ export async function runProxyCli(argv: string[]): Promise<number> {
     return 0;
   }
   try {
-    const options = parseProxyCliOptions(argv);
+    if (argv[0] === "wire" || argv[0] === "unwire") {
+      return await runProxyWireCli(argv);
+    }
+    const options = parseProxyCliOptions(argv, runtime.env ?? process.env);
     if (options.command === "status") {
       return await runProxyStatus(options.port);
     }
@@ -1039,8 +974,30 @@ export async function runProxyCli(argv: string[]): Promise<number> {
     await runProxyServer(options);
     return 0;
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
     const exitCode = (error as { exitCode?: unknown }).exitCode;
     return typeof exitCode === "number" ? exitCode : 2;
   }
 }
+
+export {
+  DEFAULT_PROXY_HOST,
+  DEFAULT_PROXY_PORT,
+  LOCAL_CLIPROXY_KEY,
+  MAX_PROXY_BODY_BYTES,
+  NON_STREAM_FETCH_TIMEOUT_MS,
+  REQUEST_TOO_LARGE_MESSAGE,
+  anthropicGatewayUrl,
+  containsUnsafeDisplayText,
+  createProxyServer,
+  isAuthorized,
+  isLoopbackHttpUrl,
+  isLoopbackIp,
+  isProxyConfigured,
+  normalizeLoopbackUpstream,
+  openaiGatewayUrl,
+  allProxySnippetText,
+  proxySnippets,
+};
+
+export type { ProxyOptions, StandaloneProvider };

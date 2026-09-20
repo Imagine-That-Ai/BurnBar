@@ -1,0 +1,47 @@
+{
+  "uid": "usr_test_windows_1",
+  "docID": "757b901ead3165a21db786dde850c89759597cfb59a5b7a0467bdb441692c1af",
+  "vaultKeyHex": "4242424242424242424242424242424242424242424242424242424242424242",
+  "data": {
+    "citationCount": 0,
+    "docID": "757b901ead3165a21db786dde850c89759597cfb59a5b7a0467bdb441692c1af",
+    "kind": "fact",
+    "replicatedAt": "2026-09-05T15:00:00.000Z",
+    "reviewStatus": "approved",
+    "schemaVersion": 1,
+    "sealedMemory": {
+      "aad": "OpenBurnBar-CloudVault-aad-v2|usr_test_windows_1|memory_facts|757b901ead3165a21db786dde850c89759597cfb59a5b7a0467bdb441692c1af|sealedMemory|2|sealedMemory",
+      "algorithm": "AES-256-GCM",
+      "createdAt": 810295813.17258596,
+      "integrityHashVersion": 1,
+      "keyVersion": 1,
+      "plaintextHMAC": "e0f66da6f187e07137ff2aa515787ee96e27d5734f35b1a38b10ec0a80d38836",
+      "schemaVersion": 2,
+      "sealedBoxBase64": "QeO57yEuWJrwYtVnyrS3oK0QKf+k2neaNsnSS9zt1oj9fluq4LLxJNsuJmTUDkq6Y4AAbU/yS9ngcDiXrWHyJlER1GUcbl5nFQACjj4TWJI3s0R9yOe5iV0AZzEyZEna5c+zFy9ZzBnOmqC0JgwkNhOkURJ9cAixjUBuWsBAF6w5eVsa1ebB3V43umIku4P/No5CS9VWB4rBeyRHOTHr2FW1wFi+yEd5N+0bn0hSHCzRZRAqik/5+lseM0Hi9YHqvxyN/Jk0jcZN5hjr3JhnxO3LLVxepxtYlqifuYSTsslpTS9jtzSM9A4jK6z5a9M6DscyrwpdKWf6ZhcWgCZHjSscw5pU1qVAxjSg33tyrHyUOI35Yx4xlnm0NMugCgAehKjsgMytmDzKKjuiOuHip14d39W9EgIZ7gWPFtfEWHmcu3WGew3GcovsECx9C4vExFaIKotFnYPZeDoTI+QkRzTVgHTrqOUKm/1cXGx6D15412G6U8M1xUEVoFvqkWmzIuCIQib9iysIW4nt50eSM79JdhPE1Tih8XauMCUW6PWqtNfYqmuFAmlPXwYnTmFszdcDSgYmqYkntCXNAr0Xh8moq+hjIW5xXUXwjp8uZiPXWM6tJ6XXBwfljovzLJEtzBju+61SdRmuAWXpDP7ZC1L2dAK8RLGvgjANUHM0fl5XiMC1x8HnQOCE7DEdOuU/QWhcDL0ssdB2xl8yBo0JRuvKav11UeE67Kq+xcjV32W0G6Oc6xARWlfev8x203twI5cw8b3r5NAxNvKbMTQjXsl5mzSupt9xlQdsf0Gs898G2YpWFl4FhUHLzfeMnC5UXvPJT6Ri++fNM+bB7H0qeRFWsS6MCN1p1XdSu9YGE9Rx9sQI3RPoBzKGhculA/nsU12y"
+    },
+    "sourceKind": "agent",
+    "uid": "usr_test_windows_1",
+    "updatedAt": "2026-09-05T12:00:00.000Z",
+    "validFrom": "2026-09-01T12:00:00.000Z"
+  },
+  "expectedPayload": {
+    "bodyHash": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+    "confidence": 0.98,
+    "engineScope": "project",
+    "kind": "fact",
+    "memoryID": "mem_swift_retired_fact_001",
+    "previousBodyHash": "112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00",
+    "projectID": "proj_burnbar_core",
+    "schemaVersion": 2,
+    "supersededBy": "mem_swift_replacement_fact_002",
+    "tags": [
+      "swift",
+      "safety"
+    ],
+    "text": "Never use force unwraps in production code.",
+    "updatedAt": "2026-09-05T12:00:00.000Z",
+    "validFrom": "2026-09-01T12:00:00.000Z",
+    "validTo": "2026-09-05T14:30:00.000Z",
+    "writerDevice": "device_macbook_pro_01"
+  }
+}

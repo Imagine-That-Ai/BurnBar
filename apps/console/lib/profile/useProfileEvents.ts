@@ -5,11 +5,15 @@
  * `users/{uid}/usage` reads with cursor pagination and the 2,000-doc
  * aggregate cap, mirroring iOS `fetchUsagePage`.
  *
- * The hook fires only when `enabled` (the caller gates on `needsEventPath`
- * + a bounded range). Facet/range/auth changes hard-reset the cursor and
- * re-page from the top; in-flight pages from the previous generation are
- * dropped. Fail-soft: a denied / index-missing read surfaces `error` (the
- * page renders the index-build hint) instead of throwing.
+ * The hook fires only when `enabled` (the caller gates on a bounded range).
+ * Pages fetch SEQUENTIALLY and automatically until the server runs dry or
+ * the aggregate cap hits — the hour grid, token mix, day inspector, and
+ * ledger all aggregate the full loaded range, never just page one.
+ * `loadMore` continues past an interruption; when everything is loaded it is
+ * a no-op. Facet/range/auth changes hard-reset the cursor and re-page from
+ * the top; in-flight pages from the previous generation are dropped.
+ * Fail-soft: failures surface a stable error KIND (member copy lives in
+ * `profileEventErrorCopy`), never raw Firebase text.
  */
 
 import * as React from "react";
@@ -25,17 +29,19 @@ import {
   type ProfileUsageEvent,
 } from "./profileEvents";
 
+export type ProfileEventsError = "index" | "denied" | "network" | null;
+
 export interface UseProfileEventsResult {
   events: ProfileUsageEvent[];
   /** True while any page is in flight. */
   loading: boolean;
   /** True when the aggregate cap stopped the pass (range is wider than 2k docs). */
   capped: boolean;
-  /** Raw Firestore error text (missing index, denied) or null. */
-  error: string | null;
-  /** Whether more pages exist beyond what was fetched. */
+  /** Stable failure kind, or null. */
+  error: ProfileEventsError;
+  /** True when the server has more pages AND the cap is not hit. */
   hasMore: boolean;
-  /** Fetch the next page (ledger "load more"). No-op when !hasMore/loading. */
+  /** Continue paging (after an interruption) or retry a failed page. */
   loadMore: () => void;
 }
 
@@ -49,8 +55,8 @@ export function useProfileEvents(
   const [hasMore, setHasMore] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [capped, setCapped] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  /** Load-more counter; reset to 0 on every generation change (page one). */
+  const [error, setError] = React.useState<ProfileEventsError>(null);
+  /** Manual continue/retry counter; reset to 0 on every generation change. */
   const [nonce, setNonce] = React.useState(0);
 
   // The query spec as a stable string: facet/range object identity churns
@@ -68,13 +74,15 @@ export function useProfileEvents(
   });
 
   // Running pagination state lives in refs so a filter change can't strand a
-  // stale cursor or counter inside an in-flight fetch closure.
+  // stale cursor or counter inside an in-flight fetch closure. rawRef counts
+  // RAW server docs (pre client-filter) so zero-match gaps can't end the
+  // pass early or run it forever.
   const cursorRef = React.useRef<DocumentSnapshot<DocumentData> | null>(null);
-  const totalRef = React.useRef(0);
+  const rawRef = React.useRef(0);
 
   React.useEffect(() => {
     cursorRef.current = null;
-    totalRef.current = 0;
+    rawRef.current = 0;
     setEvents([]);
     setHasMore(false);
     setCapped(false);
@@ -87,8 +95,6 @@ export function useProfileEvents(
     if (!enabled || authLoading || !user) return;
     const uid = user.uid;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
     // key already serializes facets/range, so parsing it back keeps this
     // effect on a single stable dep instead of churning object identities.
@@ -111,46 +117,69 @@ export function useProfileEvents(
       },
       range: { fromDay: spec.f, toDay: spec.t },
     };
-    const cursor = nonce === 0 ? undefined : (cursorRef.current ?? undefined);
-    fetchProfileEventPage(db(), uid, q, cursor)
-      .then(({ page, error: err }) => {
-        if (cancelled) return;
-        if (err) {
-          setError(err);
-          setHasMore(false);
-          return;
+
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Sequential auto-page: every page lands in state as it arrives so
+        // the ledger paints progressively; aggregates settle when the pass
+        // completes or the cap hits. Exhaustion is RAW server truth
+        // (page.serverHasMore) — a full page of zero client matches is a gap,
+        // not the end; later pages can still match. The raw-doc counter
+        // bounds the pass so a never-matching filter cannot page forever.
+        for (;;) {
+          if (cancelled) return;
+          if (rawRef.current >= PROFILE_EVENTS_AGGREGATE_CAP) {
+            setCapped(true);
+            setHasMore(false);
+            return;
+          }
+          const { page, error: err } = await fetchProfileEventPage(
+            db(),
+            uid,
+            q,
+            cursorRef.current ?? undefined,
+          );
+          if (cancelled) return;
+          if (err) {
+            setError(err);
+            // Keep what already loaded; a cursor means the pass can continue.
+            setHasMore(cursorRef.current != null);
+            return;
+          }
+          setError(null);
+          cursorRef.current = page.cursor;
+          rawRef.current += page.rawCount;
+          if (page.events.length > 0) {
+            setEvents((prev) => {
+              const room = PROFILE_EVENTS_AGGREGATE_CAP - prev.length;
+              if (room <= 0) return prev;
+              return [...prev, ...page.events.slice(0, room)];
+            });
+          }
+          if (!page.serverHasMore) {
+            setHasMore(false);
+            return;
+          }
+          if (rawRef.current >= PROFILE_EVENTS_AGGREGATE_CAP) {
+            setCapped(true);
+            setHasMore(false);
+            return;
+          }
+          setHasMore(true);
         }
-        setError(null);
-        cursorRef.current = page.cursor;
-        const prior = nonce === 0 ? 0 : totalRef.current;
-        totalRef.current = prior + page.events.length;
-        const remaining = PROFILE_EVENTS_AGGREGATE_CAP - prior;
-        if (remaining <= 0) {
-          setCapped(true);
-          setHasMore(false);
-          return;
-        }
-        const keep = page.events.slice(0, remaining);
-        if (
-          keep.length < page.events.length ||
-          totalRef.current > PROFILE_EVENTS_AGGREGATE_CAP
-        ) {
-          setCapped(true);
-          setHasMore(false);
-        } else {
-          setHasMore(page.hasMore);
-        }
-        setEvents((prev) => (nonce === 0 ? keep : [...prev, ...keep]));
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Could not load usage events.");
-          setHasMore(false);
-        }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+
+    run().catch(() => {
+      if (!cancelled) {
+        setError("network");
+        setLoading(false);
+      }
+    });
 
     return () => {
       cancelled = true;
@@ -158,9 +187,10 @@ export function useProfileEvents(
   }, [enabled, authLoading, user, key, nonce]);
 
   const loadMore = React.useCallback(() => {
-    if (!hasMore || loading) return;
+    if (loading) return;
+    if (!hasMore && !error) return;
     setNonce((n) => n + 1);
-  }, [hasMore, loading]);
+  }, [hasMore, error, loading]);
 
   return { events, loading, capped, error, hasMore, loadMore };
 }

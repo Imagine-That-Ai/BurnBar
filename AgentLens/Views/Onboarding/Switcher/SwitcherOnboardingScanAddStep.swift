@@ -139,6 +139,11 @@ struct SwitcherOnboardingScanAddStep: View {
                     case .fx: cliKind = .fxCLI
                     case .omp: cliKind = .ompCLI
                     case .primeAgent: cliKind = .primeAgentCLI
+                    case .hermes: cliKind = .hermesCLI
+                    case .goose: cliKind = .gooseCLI
+                    case .windsurf: cliKind = .windsurfCLI
+                    case .openClaude: cliKind = .openClaudeCLI
+                    case .openClaw: cliKind = .openClawCLI
                     }
                     guard enforceCap(for: cliKind) else { return }
                     withAnimation(DesignSystem.Animation.snappy) {
@@ -443,6 +448,61 @@ struct SwitcherOnboardingScanAddStep: View {
                 ) {
                     await connectDifferentCLI(.omp)
                 }
+
+            case .hermesCLI:
+                differentAccountButton(
+                    title: "Connect Hermes",
+                    subtitle: "Verify the local Hermes CLI profile on this Mac",
+                    icon: "wind",
+                    color: Color(hex: "38BDF8"),
+                    isLoading: connectingCLIType == .hermes
+                ) {
+                    await connectDifferentCLI(.hermes)
+                }
+
+            case .gooseCLI:
+                differentAccountButton(
+                    title: "Connect Goose",
+                    subtitle: "Verify the local Goose CLI profile on this Mac",
+                    icon: "bird.fill",
+                    color: Color(hex: "F59E0B"),
+                    isLoading: connectingCLIType == .goose
+                ) {
+                    await connectDifferentCLI(.goose)
+                }
+
+            case .windsurfCLI:
+                differentAccountButton(
+                    title: "Connect Windsurf",
+                    subtitle: "Verify the local Windsurf profile on this Mac",
+                    icon: "sailboat.fill",
+                    color: Color(hex: "06B6D4"),
+                    isLoading: connectingCLIType == .windsurf
+                ) {
+                    await connectDifferentCLI(.windsurf)
+                }
+
+            case .openClaudeCLI:
+                differentAccountButton(
+                    title: "Connect OpenClaude",
+                    subtitle: "Verify the local OpenClaude CLI profile on this Mac",
+                    icon: "terminal.fill",
+                    color: Color(hex: "D97706"),
+                    isLoading: connectingCLIType == .openClaude
+                ) {
+                    await connectDifferentCLI(.openClaude)
+                }
+
+            case .openClawCLI:
+                differentAccountButton(
+                    title: "Connect OpenClaw",
+                    subtitle: "Verify the local OpenClaw CLI profile on this Mac",
+                    icon: "terminal.fill",
+                    color: Color(hex: "10B981"),
+                    isLoading: connectingCLIType == .openClaw
+                ) {
+                    await connectDifferentCLI(.openClaw)
+                }
             }
         }
     }
@@ -609,7 +669,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
     private func signInIdentity(_ identity: DiscoveredIdentity) {
         switch identity.source {
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -628,7 +688,7 @@ struct SwitcherOnboardingScanAddStep: View {
             Task { await signInDifferentGoogle() }
         case .safari:
             Task { await signInDifferentApple() }
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -659,6 +719,11 @@ struct SwitcherOnboardingScanAddStep: View {
         case .fx: return .fxCLI
         case .omp: return .ompCLI
         case .primeAgent: return .primeAgentCLI
+        case .hermes: return .hermesCLI
+        case .goose: return .gooseCLI
+        case .windsurf: return .windsurfCLI
+        case .openClaude: return .openClaudeCLI
+        case .openClaw: return .openClawCLI
         }
     }
 
@@ -709,6 +774,16 @@ struct SwitcherOnboardingScanAddStep: View {
             kind = .ompCLI
         case .primeAgent:
             kind = .primeAgentCLI
+        case .hermes:
+            kind = .hermesCLI
+        case .goose:
+            kind = .gooseCLI
+        case .windsurf:
+            kind = .windsurfCLI
+        case .openClaude:
+            kind = .openClaudeCLI
+        case .openClaw:
+            kind = .openClawCLI
         }
 
         guard enforceCap(for: kind) else { return }
@@ -955,7 +1030,7 @@ private struct IdentityCard: View {
             return "Signed in with a different Google account?"
         case .safari:
             return "Use a different Apple ID?"
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             return "Connect another account for this provider?"
         }
     }
@@ -1033,6 +1108,26 @@ private struct IdentityCard: View {
             Image(systemName: "command")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(hex: "EC4899"))
+        case .hermes:
+            Image(systemName: "wind")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "38BDF8"))
+        case .goose:
+            Image(systemName: "bird.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "F59E0B"))
+        case .windsurf:
+            Image(systemName: "sailboat.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "06B6D4"))
+        case .openClaude:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "D97706"))
+        case .openClaw:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "10B981"))
         }
     }
 
@@ -1324,7 +1419,7 @@ private extension DiscoveredIdentity {
                 return "Not installed"
             }
 
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             switch authState {
             case .authenticated:
                 return "Logged in"
@@ -1361,7 +1456,12 @@ private extension DiscoveredIdentity {
              .pi(let executablePath, let configDirectory),
              .junie(let executablePath, let configDirectory),
              .fx(let executablePath, let configDirectory),
-             .primeAgent(let executablePath, let configDirectory):
+             .primeAgent(let executablePath, let configDirectory),
+             .hermes(let executablePath, let configDirectory),
+             .goose(let executablePath, let configDirectory),
+             .windsurf(let executablePath, let configDirectory),
+             .openClaude(let executablePath, let configDirectory),
+             .openClaw(let executablePath, let configDirectory):
             return normalized(executablePath) ?? normalized(configDirectory) ?? subtitle
         }
     }

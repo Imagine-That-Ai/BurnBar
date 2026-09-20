@@ -78,6 +78,14 @@
       "filter": "OpenBurnBarDaemonLinuxGatewayTests",
       "minimumExecutedTests": 28,
       "scratchPath": "OpenBurnBarDaemon/.build"
+    },
+    {
+      "id": "memory-export",
+      "packagePath": "OpenBurnBarCore",
+      "target": "OpenBurnBarMemoryExportTests",
+      "filter": "OpenBurnBarMemoryExportTests",
+      "minimumExecutedTests": 100,
+      "scratchPath": ".build-linux-swift-tests/core"
     }
   ]
 }

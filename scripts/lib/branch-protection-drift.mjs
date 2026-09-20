@@ -252,7 +252,9 @@ function normalizeRuleset(ruleset) {
     dismissStaleReviews: pr?.dismissStaleReviews === true,
     requireLastPushApproval: pr?.requireLastPushApproval === true,
     bypassActors,
-    requireConversationResolution: byType.has("required_conversation_resolution"),
+    requireConversationResolution:
+      byType.has("required_conversation_resolution")
+      || pr?.requireConversationResolution === true,
     forbidsForcePush: byType.has("non_fast_forward"),
     forbidsDeletion: byType.has("deletion"),
     pullRequestRules,
@@ -269,6 +271,7 @@ function canonicalRulesetPullRequestRule(rule) {
     requireCodeOwnerReviews: p.require_code_owner_review === true,
     dismissStaleReviews: p.dismiss_stale_reviews_on_push === true,
     requireLastPushApproval: p.require_last_push_approval === true,
+    requireConversationResolution: p.required_review_thread_resolution === true,
   };
 }
 
@@ -312,6 +315,7 @@ function aggregatePullRequestRules(rules) {
     requireCodeOwnerReviews: rules.some((rule) => rule.requireCodeOwnerReviews),
     dismissStaleReviews: rules.some((rule) => rule.dismissStaleReviews),
     requireLastPushApproval: rules.some((rule) => rule.requireLastPushApproval),
+    requireConversationResolution: rules.some((rule) => rule.requireConversationResolution),
   };
 }
 

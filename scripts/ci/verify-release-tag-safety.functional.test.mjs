@@ -156,6 +156,7 @@ function runResolve({ cloneDir, originUrl, env }) {
     GITHUB_REF: env.GITHUB_REF || "refs/heads/main",
     GITHUB_SHA: env.GITHUB_SHA || env.INPUT_CANDIDATE_SHA || "",
     INPUT_EXISTING_TAG_RETRY: env.INPUT_EXISTING_TAG_RETRY || "false",
+    INPUT_BREAK_GLASS: env.INPUT_BREAK_GLASS || "false",
     RUNNER_TEMP: runnerTemp,
   };
 

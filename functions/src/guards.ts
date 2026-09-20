@@ -17,7 +17,6 @@ import type {
   ProviderConnectionDoc,
   QuotaBucket,
   RollupJobDoc,
-  UsageEventDoc,
 } from "./types.js";
 
 const PROVIDER_VALUES: ReadonlySet<string> = new Set(SUPPORTED_PROVIDERS);
@@ -513,83 +512,6 @@ export function coerceFirestoreDate(value: unknown): Date | undefined {
     }
   }
   return undefined;
-}
-
-/** Mirrors rollup `eventDate()` precedence so legacy Firestore shapes keep parsing. */
-function synthesizeRecordedAt(raw: Record<string, unknown>): string | undefined {
-  if (typeof raw.recordedAt === "string" && raw.recordedAt.trim()) {
-    return raw.recordedAt;
-  }
-  const date =
-    coerceFirestoreDate(raw.timestamp) ??
-    coerceFirestoreDate(raw.startTime) ??
-    coerceFirestoreDate(raw.endTime) ??
-    coerceFirestoreDate(raw.createdAt) ??
-    coerceFirestoreDate(raw.updatedAt);
-  return date?.toISOString();
-}
-
-function assignUsageEventStringFields(doc: UsageEventDoc, raw: Record<string, unknown>): void {
-  if (typeof raw.providerID === "string") doc.providerID = raw.providerID;
-  if (typeof raw.providerAccountID === "string") doc.providerAccountID = raw.providerAccountID;
-  if (typeof raw.providerAccountLabel === "string") doc.providerAccountLabel = raw.providerAccountLabel;
-  if (isProviderAccountStorageScope(raw.providerAccountSource)) {
-    doc.providerAccountSource = raw.providerAccountSource;
-  }
-  if (typeof raw.model === "string") doc.model = raw.model;
-  if (typeof raw.sessionId === "string") doc.sessionId = raw.sessionId;
-  if (typeof raw.deviceId === "string") doc.deviceId = raw.deviceId;
-  if (typeof raw.sourceDeviceId === "string") doc.sourceDeviceId = raw.sourceDeviceId;
-  if (typeof raw.executionSourceID === "string") doc.executionSourceID = raw.executionSourceID;
-  if (typeof raw.executionSourceName === "string") doc.executionSourceName = raw.executionSourceName;
-  if (typeof raw.executionSourceKind === "string") doc.executionSourceKind = raw.executionSourceKind;
-  if (typeof raw.executionSourceConfidence === "string") doc.executionSourceConfidence = raw.executionSourceConfidence;
-}
-
-function assignUsageEventNumberFields(doc: UsageEventDoc, raw: Record<string, unknown>): void {
-  if (typeof raw.inputTokens === "number") doc.inputTokens = raw.inputTokens;
-  if (typeof raw.outputTokens === "number") doc.outputTokens = raw.outputTokens;
-  if (typeof raw.cacheCreationTokens === "number") doc.cacheCreationTokens = raw.cacheCreationTokens;
-  if (typeof raw.cacheReadTokens === "number") doc.cacheReadTokens = raw.cacheReadTokens;
-  if (typeof raw.reasoningTokens === "number") doc.reasoningTokens = raw.reasoningTokens;
-  if (typeof raw.totalTokens === "number") doc.totalTokens = raw.totalTokens;
-  if (typeof raw.costUsd === "number") doc.costUsd = raw.costUsd;
-  if (typeof raw.cost === "number") doc.cost = raw.cost;
-  if (typeof raw.provenanceConfidence === "string") doc.provenanceConfidence = raw.provenanceConfidence;
-}
-
-function assignUsageEventRawTimeFields(doc: UsageEventDoc, raw: Record<string, unknown>): void {
-  if (raw.timestamp !== undefined) doc.timestamp = raw.timestamp;
-  if (raw.startTime !== undefined) doc.startTime = raw.startTime;
-  if (raw.endTime !== undefined) doc.endTime = raw.endTime;
-  if (raw.createdAt !== undefined) doc.createdAt = raw.createdAt;
-  if (raw.updatedAt !== undefined) doc.updatedAt = raw.updatedAt;
-}
-
-export function parseUsageEventDoc(raw: unknown): UsageEventDoc | undefined {
-  if (!isRecord(raw)) {
-    return undefined;
-  }
-  // Uploaders store the display name in `provider` ("Claude Code") and the
-  // canonical ID in `providerID` ("claude-code"). Resolve to the canonical ID
-  // so counter buckets, daily splits, and console breakdowns all key alike.
-  const provider = resolveUsageEventProvider(raw);
-  if (!provider) return undefined;
-  const schemaVersion = typeof raw.schemaVersion === "number" ? raw.schemaVersion : 1;
-  const recordedAt = synthesizeRecordedAt(raw);
-  if (!recordedAt) return undefined;
-  const doc: UsageEventDoc = {
-    provider,
-    recordedAt,
-    schemaVersion,
-  };
-  assignUsageEventStringFields(doc, raw);
-  assignUsageEventNumberFields(doc, raw);
-  assignUsageEventRawTimeFields(doc, raw);
-  // Canonicalize the stored ID: a garbage-but-present `providerID` must not
-  // shadow the resolved provider downstream (counter splits, logical keys).
-  doc.providerID = resolveProviderToken(raw.providerID) ?? provider;
-  return doc;
 }
 
 export function parseQuotaBucket(raw: unknown): QuotaBucket | undefined {

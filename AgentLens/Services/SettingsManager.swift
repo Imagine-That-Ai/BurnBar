@@ -57,6 +57,35 @@ final class SettingsManager {
     let elderWand: ElderWandSettings
     let visualCapture: VisualCapturePreferences
     let activation: ActivationSettings
+    let receipts: ReceiptSettings
+
+    // MARK: - Receipts (forwarded so views bind `$settingsManager.receipt…` and
+    // services read `settingsManager.receipt…`, like every other store here)
+
+    var receiptFlyoutEnabled: Bool {
+        get { receipts.receiptFlyoutEnabled }
+        set { receipts.receiptFlyoutEnabled = newValue }
+    }
+
+    var receiptSystemNotificationsEnabled: Bool {
+        get { receipts.receiptSystemNotificationsEnabled }
+        set { receipts.receiptSystemNotificationsEnabled = newValue }
+    }
+
+    var receiptAutoQualityReviewEnabled: Bool {
+        get { receipts.receiptAutoQualityReviewEnabled }
+        set { receipts.receiptAutoQualityReviewEnabled = newValue }
+    }
+
+    var receiptSoundEnabled: Bool {
+        get { receipts.receiptSoundEnabled }
+        set { receipts.receiptSoundEnabled = newValue }
+    }
+
+    var receiptReviewModel: String {
+        get { receipts.receiptReviewModel }
+        set { receipts.receiptReviewModel = newValue }
+    }
     private var computerUseRemoteConfigTask: Task<Void, Never>?
     private(set) var hasResolvedComputerUseRemoteConfig = false
 
@@ -76,7 +105,12 @@ final class SettingsManager {
         flushDelayNanoseconds: UInt64 = 100_000_000,
         usageMemoryRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = {
             SettingsManager.activeUsageMemoryRemoteConfigSnapshot()
-        }
+        },
+        // No org ceiling ships in Remote Config yet, so this seeds nil and the
+        // org lane stays closed. Wiring it to Firebase's active cached snapshot
+        // is D16's job, and the closed-until-resolved shape above is what makes
+        // that wiring safe to add later.
+        orgMemoryRemoteConfigSeed: () -> OrgMemoryRemoteConfigSnapshot? = { nil }
     ) {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults, flushDelayNanoseconds: flushDelayNanoseconds)
         self.persistence = coordinator
@@ -112,8 +146,12 @@ final class SettingsManager {
         self.cliAssistant = CLIAssistantSettings(persistence: coordinator)
         self.memory = MemorySettings(
             persistence: coordinator,
-            usageRemoteConfigSeed: usageMemoryRemoteConfigSeed
+            usageRemoteConfigSeed: usageMemoryRemoteConfigSeed,
+            orgMemoryRemoteConfigSeed: orgMemoryRemoteConfigSeed
         )
+        if let cachedCloudModels = Self.cachedMemoryCloudModelsRemoteConfigEnabled(), !cachedCloudModels {
+            memory.remoteConfigCloudModelsEnabled = false
+        }
         self.summary = SummarySettings(persistence: coordinator)
         self.quotas = QuotaSettings(persistence: coordinator)
         self.providerPath = ProviderPathSettings(persistence: coordinator)
@@ -123,6 +161,7 @@ final class SettingsManager {
         self.elderWand = ElderWandSettings(persistence: coordinator)
         self.visualCapture = VisualCapturePreferences(persistence: coordinator)
         self.activation = ActivationSettings(persistence: coordinator)
+        self.receipts = ReceiptSettings(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(
@@ -280,12 +319,21 @@ final class SettingsManager {
         // errors keep any active cached false authoritative while avoiding
         // stranding opted-in local extraction when no kill is cached.
         "memory_extraction_enabled": NSNumber(value: true),
+        // Memory Pro cloud-models fleet kill switch. Default true (allowed);
+        // Remote Config sets false to close the gate and hand the daemon a
+        // disabled policy. Same transport posture as memory_extraction_enabled.
+        "memory_cloud_models_enabled": NSNumber(value: true),
         // Usage-memory fleet kill switches. Same posture as memory_extraction_enabled:
         // default true (allowed); Remote Config sets false to halt usage-memory
         // extraction / durable authority writes instantly. Fetch transport errors
         // keep any active cached false authoritative.
         "memory_usage_extraction_enabled": NSNumber(value: true),
         "memory_usage_authority_writes_enabled": NSNumber(value: true),
+        // Team-memory fleet ceiling (memory program D16). Default true
+        // (allowed), and — unlike the switches above — inert on its own: the
+        // team lane is CLOSED UNTIL RESOLVED, so this default can never open a
+        // lane before an actual Remote Config value has been applied.
+        "memory_team_sync_enabled": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
         "media_normal_file_gb_per_day": NSNumber(value: 5),
@@ -329,6 +377,16 @@ final class SettingsManager {
         )
     }
 
+    /// The ACTIVE CACHED `memory_cloud_models_enabled` value, read synchronously
+    /// at init so a returning opted-in install never opens the cloud-models gate
+    /// ahead of a fleet kill that is already on disk. Nil without Firebase.
+    private static func cachedMemoryCloudModelsRemoteConfigEnabled() -> Bool? {
+        guard FirebaseApp.app() != nil else { return nil }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        remoteConfig.setDefaults(commercialRemoteConfigDefaults)
+        return remoteConfig.configValue(forKey: "memory_cloud_models_enabled").boolValue
+    }
+
     private func refreshComputerUseRemoteConfigOnce() async {
         guard FirebaseApp.app() != nil else { return }
         let remoteConfig = RemoteConfig.remoteConfig()
@@ -345,6 +403,25 @@ final class SettingsManager {
                 forKey: "memory_usage_authority_writes_enabled"
             ).boolValue
         )
+        // The team ceiling resolves on the SAME two beats as the usage ones —
+        // the cached value before the round trip, the active value after it —
+        // because it is the lever that RESOLVES the team lane out of its
+        // held-closed state. Without a producer the gate's `remoteConfigResolved`
+        // term is never true and nothing in the team lane can run in production
+        // at all; with one, a fleet kill cached on disk closes it before the
+        // first cycle rather than after.
+        applyTeamMemoryRemoteConfig(
+            teamSyncEnabled: remoteConfig.configValue(forKey: "memory_team_sync_enabled").boolValue
+        )
+
+        // Same for the Memory Pro cloud-models switch: a cached fleet kill must
+        // close the gate (and re-send the daemon a disabled policy) before the
+        // round trip, not after it.
+        if !remoteConfig.configValue(forKey: "memory_cloud_models_enabled").boolValue,
+           memoryCloudModelsRemoteConfigEnabled {
+            memoryCloudModelsRemoteConfigEnabled = false
+            NotificationCenter.default.post(name: .memoryCloudModelsRemoteConfigKillSwitchDidFire, object: self)
+        }
 
         let fetchResult = await withCheckedContinuation { continuation in
             remoteConfig.fetchAndActivate { status, error in
@@ -352,10 +429,12 @@ final class SettingsManager {
             }
         }
         let activeMemoryExtractionEnabled = remoteConfig.configValue(forKey: "memory_extraction_enabled").boolValue
+        let activeMemoryCloudModelsEnabled = remoteConfig.configValue(forKey: "memory_cloud_models_enabled").boolValue
         let activeUsageExtractionEnabled = remoteConfig.configValue(forKey: "memory_usage_extraction_enabled").boolValue
         let activeUsageAuthorityWritesEnabled = remoteConfig.configValue(
             forKey: "memory_usage_authority_writes_enabled"
         ).boolValue
+        let activeTeamSyncEnabled = remoteConfig.configValue(forKey: "memory_team_sync_enabled").boolValue
         if fetchResult.1 != nil {
             computerUseKillSwitch = true
             hasResolvedComputerUseRemoteConfig = true
@@ -367,6 +446,10 @@ final class SettingsManager {
             if !activeMemoryExtractionEnabled {
                 memoryExtractionRemoteConfigEnabled = false
                 NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
+            }
+            if !activeMemoryCloudModelsEnabled {
+                memoryCloudModelsRemoteConfigEnabled = false
+                NotificationCenter.default.post(name: .memoryCloudModelsRemoteConfigKillSwitchDidFire, object: self)
             }
             // The usage switches need no transport-error branch of their own: the
             // pre-fetch apply above already made this same active config (a cached
@@ -406,11 +489,16 @@ final class SettingsManager {
         if !memoryRCEnabled {
             NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
         }
+        memoryCloudModelsRemoteConfigEnabled = activeMemoryCloudModelsEnabled
+        if !activeMemoryCloudModelsEnabled {
+            NotificationCenter.default.post(name: .memoryCloudModelsRemoteConfigKillSwitchDidFire, object: self)
+        }
 
         applyUsageMemoryRemoteConfig(
             extractionEnabled: activeUsageExtractionEnabled,
             authorityWritesEnabled: activeUsageAuthorityWritesEnabled
         )
+        applyTeamMemoryRemoteConfig(teamSyncEnabled: activeTeamSyncEnabled)
     }
 
     // MARK: - Backward Compatibility (Computed Properties)
@@ -872,6 +960,169 @@ final class SettingsManager {
     /// false), so `MemoryCloudSyncDomain` performs zero egress out of the box.
     var memoryApprovedCloudBackupEnabled: Bool {
         memory.approvedCloudBackupEnabled && memory.remoteConfigExtractionEnabled
+    }
+
+    /// Raw user opt-in to the PULL half of memory sync — reading the member's own
+    /// sealed facts back down onto this device (default OFF — Memory Blind Sync
+    /// PR-2). Persisted toggle only; the scheduler consults
+    /// `memoryDeviceSyncEnabled`, which folds this under the backup gate.
+    var memoryDeviceSyncOptIn: Bool {
+        get { memory.deviceSyncEnabled }
+        set { memory.deviceSyncEnabled = newValue }
+    }
+
+    /// The EFFECTIVE gate for the pull half (`MemoryDeviceSyncGate`): the
+    /// device-sync sub-toggle AND the backup opt-in AND the live Data Vault
+    /// entitlement AND the Remote Config fleet ceiling. Default OFF. Turning
+    /// cloud backup off stops downloads too — a member who revokes memory
+    /// egress does not keep an active memory sync channel — and a lapsed or
+    /// not-yet-resolved entitlement closes it as well.
+    ///
+    /// The entitlement lever is here, and not merely on the row, because
+    /// `firestore.rules` gates `memory_facts` **writes** on
+    /// `hasActiveDataVaultEntitlement(userId)` while **reads** are granted by
+    /// the per-user namespace rule with no entitlement check. This client gate
+    /// is what keeps an unentitled install from issuing a live `memory_facts`
+    /// read at all.
+    var memoryDeviceSyncEnabled: Bool {
+        MemoryDeviceSyncGate.isEnabled(
+            deviceSyncOptIn: memory.deviceSyncEnabled,
+            backupOptIn: memory.approvedCloudBackupEnabled,
+            entitlementSatisfied: memory.deviceSyncEntitlementSatisfied,
+            remoteConfigEnabled: memory.remoteConfigExtractionEnabled
+        )
+    }
+
+    /// Live Data Vault entitlement check for the device-sync gate (default
+    /// OFF — fail closed, not persisted). Refreshed from
+    /// `MacCloudEntitlementStore` by the Privacy & Indexing view as the
+    /// member's resolved tier changes, and by `MemoryCloudSyncDomain` on every
+    /// sync cycle so the pull's gate never depends on Settings having been
+    /// opened. See `MemorySettings.deviceSyncEntitlementSatisfied`.
+    var memoryDeviceSyncEntitlementSatisfied: Bool {
+        get { memory.deviceSyncEntitlementSatisfied }
+        set { memory.deviceSyncEntitlementSatisfied = newValue }
+    }
+
+    /// Whether the device-sync row can be interacted with at all: the backup
+    /// gate (opt-in AND fleet ceiling) AND the Data Vault entitlement.
+    /// Deliberately excludes the sub-toggle itself — a member who has satisfied
+    /// every other lever must still be free to flip the sub-toggle on or off.
+    var memoryDeviceSyncRowUnlocked: Bool {
+        memoryApprovedCloudBackupEnabled && memory.deviceSyncEntitlementSatisfied
+    }
+
+    /// What the "Sync memories to my other devices" row displays. Identical to
+    /// `memoryDeviceSyncEnabled` by construction: the row shows exactly the
+    /// gate the pull obeys, so a greyed-out switch never reads "on" and an
+    /// on-looking switch never corresponds to a dormant channel.
+    var memoryDeviceSyncRowEnabled: Bool { memoryDeviceSyncEnabled }
+
+    // MARK: Team memory (memory program D16)
+
+    /// The teams the member has opted into sharing memory with (default EMPTY).
+    /// The scheduler ANDs this per team with the whole device-sync gate through
+    /// `TeamMemorySyncGate`, so this set alone can never start a team upload.
+    var memoryTeamSyncEnabledTeamIDs: Set<String> {
+        get { memory.teamMemorySyncEnabled }
+        set { memory.teamMemorySyncEnabled = newValue }
+    }
+
+    /// The team lane's fleet ceiling and its resolution state. See
+    /// `MemorySettings.applyTeamRemoteConfig`.
+    var memoryTeamSyncRemoteConfigAllowed: Bool { memory.remoteConfigTeamSyncEnabled }
+    var memoryTeamSyncRemoteConfigResolved: Bool { memory.hasResolvedTeamRemoteConfig }
+
+    /// Apply a resolved Remote Config value to the team fleet ceiling and open
+    /// it for gating. The only path that resolves it, mirroring
+    /// `applyUsageMemoryRemoteConfig`; called from `refreshComputerUseRemoteConfigOnce`
+    /// on both the cached and the fetched beat. Resolution alone opens nothing:
+    /// `TeamMemorySyncGate` still needs the personal gate, the account levers,
+    /// a per-team opt-in and an active roster row.
+    ///
+    /// WHAT RESOLUTION ACTUALLY PROVES. The cached beat reads whatever
+    /// `RemoteConfig` has, which on an install that has never completed a fetch
+    /// is the REGISTERED DEFAULT — so "resolved" means "a value was applied",
+    /// not "a fleet value was observed", and an offline install resolves to the
+    /// default rather than staying held closed. This matches the usage lanes'
+    /// precedent exactly and is harmless while the opt-in set is empty (nothing
+    /// can run without a per-team opt-in, and no UI mints one before PR 4). PR 4
+    /// lands that UI: if the ceiling must be a POSITIVE fleet observation before
+    /// a member can opt in, register the default `false` and let the fetched
+    /// beat be the only thing that opens it.
+    func applyTeamMemoryRemoteConfig(teamSyncEnabled: Bool) {
+        memory.applyTeamRemoteConfig(teamSyncEnabled: teamSyncEnabled)
+    }
+
+    // MARK: Memory Pro cloud models (opt-in, blind)
+
+    /// Raw user opt-in to cloud / big models for memory (default OFF). The
+    /// value the daemon actually receives is `memoryCloudModelsEnabled`.
+    var memoryCloudModelsOptIn: Bool {
+        get { memory.cloudModelsEnabled }
+        set { memory.cloudModelsEnabled = newValue }
+    }
+
+    var memoryCloudModelsConsentShown: Bool {
+        get { memory.cloudModelsConsentShown }
+        set { memory.cloudModelsConsentShown = newValue }
+    }
+
+    var memoryCloudModelsRequireNoRetention: Bool {
+        get { memory.cloudModelsRequireNoRetention }
+        set { memory.cloudModelsRequireNoRetention = newValue }
+    }
+
+    var memoryCloudModelsDailyCapUSD: Double {
+        get { memory.cloudModelsDailyCapUSD }
+        set { memory.cloudModelsDailyCapUSD = newValue }
+    }
+
+    var memoryCloudModelsConsentedProviders: [MemoryCloudProviderID] {
+        get { memory.cloudModelsConsentedProviderIDs }
+        set { memory.cloudModelsConsentedProviderIDs = newValue }
+    }
+
+    /// Remote Config `memory_cloud_models_enabled`. Not user-settable; written
+    /// by RC refreshes with the same posture as `memoryExtractionRemoteConfigEnabled`.
+    var memoryCloudModelsRemoteConfigEnabled: Bool {
+        get { memory.remoteConfigCloudModelsEnabled }
+        set { memory.remoteConfigCloudModelsEnabled = newValue }
+    }
+
+    /// Combined cloud-models gate: memory consent **and** the cloud-models
+    /// toggle **and** the fleet switch. This is what the daemon policy carries.
+    var memoryCloudModelsEnabled: Bool {
+        MemoryCloudModelsGate.isEnabled(
+            consentGranted: memory.consentGranted,
+            cloudModelsEnabled: memory.cloudModelsEnabled,
+            remoteConfigEnabled: memory.remoteConfigCloudModelsEnabled
+        )
+    }
+
+    /// The daemon's memory egress policy as implied by these settings. CLI
+    /// providers are included only while Mac CLI agents are allowed too; API
+    /// providers map to daemon provider ids. Disabling keeps the provider list
+    /// so re-enabling restores the member's choice.
+    func memoryEgressPolicy(now: Date = Date()) -> BurnBarMemoryEgressPolicy {
+        // "No retention only" is a promise about every route, and the daemon can
+        // only enforce it for API providers; subscription CLIs (`localQuota`) and
+        // provider-policy APIs are therefore left out of the policy entirely
+        // while it is on, instead of being sent and trusted.
+        let noRetentionOnly = memory.cloudModelsRequireNoRetention
+        let consented = memory.cloudModelsConsentedProviderIDs
+            .filter { !noRetentionOnly || $0.retention == .deny }
+        var policy = BurnBarMemoryEgressPolicy()
+        policy.enabled = memoryCloudModelsEnabled
+        policy.consentedProviderIDs = consented.compactMap(\.daemonProviderID)
+        policy.consentedCLIProviderIDs = cliAssistantAllowed
+            ? consented.filter(\.requiresCLIConsent).map(\.rawValue)
+            : []
+        policy.allowedModelIDsByPurpose = [:]
+        policy.requireNoRetention = memory.cloudModelsRequireNoRetention
+        policy.dailyCapUSD = memory.cloudModelsDailyCapUSD
+        policy.updatedAt = now
+        return policy
     }
 
     // MARK: Activation Checklist

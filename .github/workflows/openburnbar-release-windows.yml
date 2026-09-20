@@ -324,7 +324,9 @@ jobs:
     environment: windows-release
     timeout-minutes: 60
     permissions:
+      attestations: write
       contents: read
+      id-token: write
     defaults:
       run:
         shell: bash
@@ -995,6 +997,16 @@ jobs:
             --version "$VERSION" --commit "$RELEASE_COMMIT"
           ( cd artifacts && sha256sum "OpenBurnBar-${VERSION}-windows-release.zip" >> "checksums-windows-v${VERSION}.txt" )
           test -s "artifacts/OpenBurnBar-${VERSION}-windows-release.zip"
+
+      - name: Create GitHub SLSA provenance for Windows packages and checksums
+        id: build-provenance
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: |
+            artifacts/*.zip
+            artifacts/*.msix
+            artifacts/store/*.msix
+            artifacts/checksums-windows-v${{ needs.resolve-release.outputs.version }}.txt
 
       - name: Upload Windows release artifacts
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)

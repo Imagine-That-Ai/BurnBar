@@ -7,6 +7,7 @@ enum OnboardingWizardStep: Int, CaseIterable {
     case connect
     case scan
     case tour
+    case memory
     case chatEngine
     case complete
 
@@ -133,6 +134,8 @@ struct OnboardingWizardView: View {
                 )
             case .tour:
                 OnboardingTourView(currentPage: $tourPage)
+            case .memory:
+                OnboardingMemoryView()
             case .chatEngine:
                 OnboardingChatEngineView(
                     enabledBackends: $enabledBackends,
@@ -206,6 +209,7 @@ struct OnboardingWizardView: View {
         case .connect: return "Scan"
         case .scan: return aggregator?.isRefreshing == true ? "Scanning\u{2026}" : "Continue"
         case .tour: return tourPage < 3 ? "Next" : "Continue"
+        case .memory: return "Continue"
         case .chatEngine: return "Finish"
         case .complete: return ""
         }
@@ -216,6 +220,9 @@ struct OnboardingWizardView: View {
         case .providers: return !selectedProviders.isEmpty
         case .scan: return aggregator?.isRefreshing != true
         case .tour: return true
+        // The memory step is informational and entirely optional: it never
+        // gates the flow, and "Skip" in the footer still leaves at any time.
+        case .memory: return true
         case .chatEngine: return true
         case .connect: return true
         case .complete: return true

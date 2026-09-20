@@ -1348,6 +1348,29 @@ public struct CloudVaultKeyStore: Sendable {
         #endif
     }
 
+    /// Remove a stored key. Used by the team key ring to destroy a PENDING
+    /// generation the roster authority has burned (`abandonTeamKeyGeneration`,
+    /// memory program D16 / P21): that version is never rotated to again, so
+    /// its key can open nothing that will ever exist, and leaving it behind
+    /// would keep a slot whose bytes only this Mac holds.
+    ///
+    /// `errSecItemNotFound` is success — deleting a key that is not there
+    /// leaves exactly the state the caller asked for, so the operation is an
+    /// idempotent retry like `saveKey`.
+    public func deleteKey(uid: String) throws {
+        #if canImport(Security)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account(uid: uid)
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw CloudVaultCryptoError.keychainError(Int(status))
+        }
+        #endif
+    }
+
     private func account(uid: String) -> String {
         "vault-key:\(uid)"
     }

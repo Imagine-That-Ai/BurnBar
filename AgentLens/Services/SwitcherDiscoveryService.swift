@@ -24,6 +24,11 @@ enum DiscoverySource: Equatable {
     case fx(executablePath: String?, configDirectory: String?)
     case omp(executablePath: String?, configDirectory: String?)
     case primeAgent(executablePath: String?, configDirectory: String?)
+    case hermes(executablePath: String?, configDirectory: String?)
+    case goose(executablePath: String?, configDirectory: String?)
+    case windsurf(executablePath: String?, configDirectory: String?)
+    case openClaude(executablePath: String?, configDirectory: String?)
+    case openClaw(executablePath: String?, configDirectory: String?)
 }
 
 /// Authentication state of a discovered identity.
@@ -223,6 +228,16 @@ final class SwitcherDiscoveryService: ObservableObject {
                 source = .omp(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             case .primeAgent:
                 source = .primeAgent(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .hermes:
+                source = .hermes(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .goose:
+                source = .goose(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .windsurf:
+                source = .windsurf(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .openClaude:
+                source = .openClaude(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
+            case .openClaw:
+                source = .openClaw(executablePath: cliInfo.executablePath, configDirectory: cliInfo.configDirectory)
             }
 
             guard cliInfo.isInstalled else {
@@ -483,6 +498,66 @@ final class SwitcherDiscoveryService: ObservableObject {
                     displayLabel: "Prime Agent",
                     configDirectory: configDirectory,
                     accountDescription: "Prime Agent local profile"
+                ),
+                sortKey: 0
+            )
+        case .hermes(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .hermes,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Hermes",
+                    configDirectory: configDirectory,
+                    accountDescription: "Hermes local profile"
+                ),
+                sortKey: 0
+            )
+        case .goose(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .goose,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Goose",
+                    configDirectory: configDirectory,
+                    accountDescription: "Goose local profile"
+                ),
+                sortKey: 0
+            )
+        case .windsurf(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .windsurf,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "Windsurf",
+                    configDirectory: configDirectory,
+                    accountDescription: "Windsurf local profile"
+                ),
+                sortKey: 0
+            )
+        case .openClaude(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .openClaude,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "OpenClaude",
+                    configDirectory: configDirectory,
+                    accountDescription: "OpenClaude local profile"
+                ),
+                sortKey: 0
+            )
+        case .openClaw(_, let configDirectory):
+            record = SwitcherProfileRecord(
+                targetKind: .cli,
+                cliType: .openClaw,
+                cliMetadata: SwitcherCLIProfileMetadata(
+                    workingDirectory: nil,
+                    displayLabel: "OpenClaw",
+                    configDirectory: configDirectory,
+                    accountDescription: "OpenClaw local profile"
                 ),
                 sortKey: 0
             )
@@ -1039,6 +1114,16 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .omp(executablePath: CLILaunchAdapter.executablePath(for: .omp), configDirectory: nil)
         case .primeAgent:
             return .primeAgent(executablePath: CLILaunchAdapter.executablePath(for: .primeAgent), configDirectory: nil)
+        case .hermes:
+            return .hermes(executablePath: CLILaunchAdapter.executablePath(for: .hermes), configDirectory: nil)
+        case .goose:
+            return .goose(executablePath: CLILaunchAdapter.executablePath(for: .goose), configDirectory: nil)
+        case .windsurf:
+            return .windsurf(executablePath: CLILaunchAdapter.executablePath(for: .windsurf), configDirectory: nil)
+        case .openClaude:
+            return .openClaude(executablePath: CLILaunchAdapter.executablePath(for: .openClaude), configDirectory: nil)
+        case .openClaw:
+            return .openClaw(executablePath: CLILaunchAdapter.executablePath(for: .openClaw), configDirectory: nil)
         }
     }
 
@@ -1072,7 +1157,7 @@ final class SwitcherDiscoveryService: ObservableObject {
             success = true
             #endif
 
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent, .fx, .hermes, .goose, .windsurf, .openClaude, .openClaw:
             // Quick CLI version check
             let cliType: SwitcherCLIProfileType
             switch identity.source {
@@ -1091,6 +1176,11 @@ final class SwitcherDiscoveryService: ObservableObject {
             case .fx: cliType = .fx
             case .omp: cliType = .omp
             case .primeAgent: cliType = .primeAgent
+            case .hermes: cliType = .hermes
+            case .goose: cliType = .goose
+            case .windsurf: cliType = .windsurf
+            case .openClaude: cliType = .openClaude
+            case .openClaw: cliType = .openClaw
             default: cliType = .codex
             }
             let execPath = CLILaunchAdapter.executablePath(for: cliType)
@@ -1180,6 +1270,16 @@ final class SwitcherDiscoveryService: ObservableObject {
             return .omp
         case .primeAgent:
             return .primeAgent
+        case .hermes:
+            return .hermes
+        case .goose:
+            return .goose
+        case .windsurf:
+            return .windsurf
+        case .openClaude:
+            return .openClaude
+        case .openClaw:
+            return .openClaw
         }
     }
 
@@ -1361,6 +1461,11 @@ extension DiscoverySource {
         case .fx: return .fx
         case .omp: return .omp
         case .primeAgent: return .primeAgent
+        case .hermes: return .hermes
+        case .goose: return .goose
+        case .windsurf: return .windsurf
+        case .openClaude: return .openClaude
+        case .openClaw: return .openClaw
         default: return nil
         }
     }

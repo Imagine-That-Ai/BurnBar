@@ -57,12 +57,16 @@ export function ProfileProviderMix({
   pending,
   activeProviders,
   onToggleProvider,
+  onInspectProvider,
+  eventSourced,
 }: {
   providers: ProviderSummary[];
   metric: ProfileMetric;
   pending: boolean;
   activeProviders: readonly string[];
   onToggleProvider: (id: string) => void;
+  onInspectProvider: (id: string) => void;
+  eventSourced?: boolean;
 }) {
   const pv = (p: ProviderSummary) =>
     metric === "tokens" ? p.totalTokens : metric === "runs" ? p.totalRequests : p.totalCost;
@@ -117,21 +121,32 @@ export function ProfileProviderMix({
           <ul className="mt-token-3 space-y-token-2">
             {top.map((p) => (
               <li key={p.provider}>
-                <button
-                  type="button"
-                  onClick={() => onToggleProvider(p.provider)}
-                  aria-pressed={activeProviders.includes(p.provider)}
-                  className="flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm transition-colors hover:bg-mercury-wash"
-                  title={`${formatCompact(p.totalTokens)} tok · ${formatCompact(p.totalRequests)} runs · ${formatUsd(p.totalCost)} — click to filter`}
-                >
-                  <BrandLogo id={p.provider} label={p.provider} size={18} />
-                  <span className="truncate text-content-bright">
-                    {providerDisplayName(p.provider)}
-                  </span>
-                  <span className="ml-auto shrink-0 text-content-mute tabular-nums">
-                    {fmt(pv(p))}
-                  </span>
-                </button>
+                <div className="group flex w-full min-w-0 items-center gap-token-1">
+                  <button
+                    type="button"
+                    onClick={() => onToggleProvider(p.provider)}
+                    aria-pressed={activeProviders.includes(p.provider)}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm transition-colors outline-none hover:bg-mercury-wash focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+                    title={`${formatCompact(p.totalTokens)} tok · ${formatCompact(p.totalRequests)} runs · ${formatUsd(p.totalCost)}${eventSourced ? " (bounded events)" : ""} — click to filter`}
+                  >
+                    <BrandLogo id={p.provider} label={p.provider} size={18} />
+                    <span className="truncate text-content-bright">
+                      {providerDisplayName(p.provider)}
+                    </span>
+                    <span className="ml-auto shrink-0 text-content-mute tabular-nums">
+                      {fmt(pv(p))}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onInspectProvider(p.provider)}
+                    title={`Inspect ${providerDisplayName(p.provider)} in the inspector`}
+                    aria-label={`Inspect ${providerDisplayName(p.provider)} in the inspector`}
+                    className="shrink-0 rounded border border-glass-line px-token-2 py-0.5 text-[0.68rem] text-content-mute transition-colors hover:border-accent hover:text-content-bright focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+                  >
+                    Inspect
+                  </button>
+                </div>
               </li>
             ))}
             {other > 0 ? (
@@ -174,6 +189,8 @@ export function ProfileInsightsPanel({
   spendInView,
   freshness,
   onToggleModel,
+  onInspectModel,
+  eventSourced,
 }: {
   pending: boolean;
   activeDays: number;
@@ -182,6 +199,8 @@ export function ProfileInsightsPanel({
   spendInView: number;
   freshness: string;
   onToggleModel: (id: string) => void;
+  onInspectModel: (id: string) => void;
+  eventSourced?: boolean;
 }) {
   const num = (v: number) => (pending ? "—" : formatCompact(v));
   return (
@@ -194,19 +213,30 @@ export function ProfileInsightsPanel({
           label="Most used model"
           value={
             !pending && topModel ? (
-              <button
-                type="button"
-                onClick={() => onToggleModel(topModel.model)}
-                title="Filter by this model"
-                className="inline-flex items-center gap-2 whitespace-nowrap underline-offset-2 hover:underline"
-              >
-                <BrandLogo
-                  id={topModel.provider}
-                  label={topModel.provider}
-                  size={18}
-                />
-                {modelDisplayName(topModel.model)}
-              </button>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <button
+                  type="button"
+                  onClick={() => onToggleModel(topModel.model)}
+                  title={`Filter by this model${eventSourced ? " (bounded events)" : ""}`}
+                  className="inline-flex items-center gap-2 rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+                >
+                  <BrandLogo
+                    id={topModel.provider}
+                    label={topModel.provider}
+                    size={18}
+                  />
+                  {modelDisplayName(topModel.model)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onInspectModel(topModel.model)}
+                  title={`Inspect ${modelDisplayName(topModel.model)} in the inspector`}
+                  aria-label={`Inspect ${modelDisplayName(topModel.model)} in the inspector`}
+                  className="rounded border border-glass-line px-token-2 py-0.5 text-[0.68rem] text-content-mute transition-colors hover:border-accent hover:text-content-bright focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+                >
+                  Inspect
+                </button>
+              </span>
             ) : (
               "—"
             )

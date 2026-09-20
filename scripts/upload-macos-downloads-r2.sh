@@ -125,6 +125,26 @@ elif command -v wrangler >/dev/null 2>&1; then
 else
   wrangler=(npm exec --yes wrangler@latest --)
 fi
+# `wrangler r2 object put` refuses anything over 300 MiB -- it uploads in a
+# single request and never starts a multipart upload. The macOS DMG is ~449 MiB,
+# so the immutable group cannot go through wrangler at all; v1.0.40+repair.33
+# was the first release to reach this step and it failed here. Cloudflare's own
+# guidance is to use an S3-compatible client for objects this size.
+#
+# R2's S3 endpoint takes R2 API tokens, which are NOT the CLOUDFLARE_API_TOKEN
+# wrangler uses, so the credentials are separate on purpose. Everything else
+# here stays on wrangler: the mutable pointers are a few KiB and their ordering
+# and rollback behaviour is what the surrounding logic is built around.
+r2_single_request_limit=$((300 * 1024 * 1024))
+r2_s3_endpoint=""
+if [[ -n "${R2_ACCESS_KEY_ID:-}" && -n "${R2_SECRET_ACCESS_KEY:-}" ]]; then
+  if [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
+    echo "R2 S3 credentials are set but CLOUDFLARE_ACCOUNT_ID is missing" >&2
+    exit 1
+  fi
+  r2_s3_endpoint="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
+fi
+
 if ! command -v "$curl_bin" >/dev/null 2>&1; then
   echo "curl-compatible command is unavailable: $curl_bin" >&2
   exit 1
@@ -338,6 +358,51 @@ for (const entry of manifest.groups[group]) {
 NODE
 }
 
+object_size() {
+  # BSD stat on the macOS runner, GNU stat elsewhere.
+  stat -f%z "$1" 2>/dev/null || stat -c%s "$1"
+}
+
+put_object() {
+  local path="$1"
+  local name="$2"
+  local content_type="$3"
+  local cache_control="$4"
+  local size
+  size="$(object_size "$path")"
+
+  if ((size <= r2_single_request_limit)); then
+    "${wrangler[@]}" r2 object put "$bucket/$name" \
+      --remote \
+      --file "$path" \
+      --content-type "$content_type" \
+      --cache-control "$cache_control"
+    return
+  fi
+
+  if [[ -z "$r2_s3_endpoint" ]]; then
+    echo "$name is $((size / 1024 / 1024)) MiB, above the ${r2_single_request_limit}-byte single-request limit." >&2
+    echo "Set R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY (an R2 API token with Object Read & Write on $bucket) so it can be uploaded multipart." >&2
+    return 1
+  fi
+
+  if ! command -v aws >/dev/null 2>&1; then
+    echo "aws is required to upload $name multipart but is not installed" >&2
+    return 1
+  fi
+
+  # The AWS CLI splits this into a multipart upload on its own and retries each
+  # part, which is what makes a ~449 MiB object survive a flaky leg.
+  AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
+  AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+  AWS_DEFAULT_REGION=auto \
+    aws s3 cp "$path" "s3://$bucket/$name" \
+      --endpoint-url "$r2_s3_endpoint" \
+      --content-type "$content_type" \
+      --cache-control "$cache_control" \
+      --only-show-errors
+}
+
 upload_group() {
   local group="$1"
   local plan="$support_dir/upload-$group.plan"
@@ -347,11 +412,7 @@ upload_group() {
     IFS= read -r -d '' content_type &&
     IFS= read -r -d '' cache_control; do
     echo "Uploading $group asset $name to R2 bucket $bucket"
-    "${wrangler[@]}" r2 object put "$bucket/$name" \
-      --remote \
-      --file "$path" \
-      --content-type "$content_type" \
-      --cache-control "$cache_control"
+    put_object "$path" "$name" "$content_type" "$cache_control"
   done <"$plan"
 }
 

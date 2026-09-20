@@ -14,7 +14,7 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
     MARKETING_VERSION: "1.0.40"
-    CURRENT_PROJECT_VERSION: 81
+    CURRENT_PROJECT_VERSION: 86
     CODE_SIGN_STYLE: Automatic
     # Release scripts override only this host-specific variable. Keeping the
     # Safari appex's CODE_SIGN_ENTITLEMENTS target-local prevents a command-line
@@ -72,7 +72,7 @@ packages:
     from: "12.15.0"
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
-    from: "8.0.0"
+    from: "9.2.0"
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: "8.0.0"
@@ -247,6 +247,23 @@ targets:
           # only perturbs the ad-hoc-signed test host (observed as an
           # XCTest hang on CI runners) without protecting anything.
           OTHER_CODE_SIGN_FLAGS: --options runtime,library
+          # The shared Rust candidate identity is not a Rust static on Apple:
+          # domain-ffi's build.rs compiles it into its own object so it can sit
+          # in __TEXT,__obb_core_id, which release verification reads back out
+          # of the shipped binary.
+          #
+          # That object is only ever an archive member of
+          # libopenburnbar_domain_ffi.a, and nothing references the symbol, so
+          # ld never pulls the member in. The section was dropped from every
+          # shipped Apple binary and the release could not pass its own
+          # provenance gate: "observed Rust binary must contain exactly one
+          # canonical embedded identity; found 0". Verified against the real
+          # archive -- linking without this flag yields 0 markers and no
+          # section, linking with it yields 1 and the section is present.
+          #
+          # Empty unless the protected release lane supplies it; a fresh checkout
+          # has no domain-core xcframework, where -u could not resolve.
+          OTHER_LDFLAGS: "$(inherited) $(OBB_DOMAIN_CORE_IDENTITY_LDFLAGS)"
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is gitignored and may be absent on fresh
@@ -497,7 +514,6 @@ targets:
     scheme:
       testTargets:
         - OpenBurnBarTests
-        - OpenBurnBarDaemonTests
 
   # The Safari Web Extension that ships inside OpenBurnBar.app. The web payload is
   # the committed bundle at extensions/safari/dist; this target wraps it in the
@@ -612,24 +628,31 @@ targets:
       # UI-free OpenBurnBarEngine umbrella (+ ComputerUseCore/IrohRelay/Media/
       # LinuxSecurity), NEVER the SwiftUI/AppKit OpenBurnBarCore monolith, so this
       # binary has no path to the UI. See docs/CORE_DECOMPOSITION_PROGRAM.md.
+      #
+      # These package products are LINKED here (not `link: false`) so XCBuild
+      # propagates their linkage to executables that link this static library
+      # (OpenBurnBarDaemonExecutable). Static-library targets record package
+      # products as packageProductDependencies without an embed-copy command;
+      # a standalone executable (`type: tool`) that names them DIRECTLY gets a
+      # copy of every transitive binary framework (openburnbar_domain_ffiFFI
+      # from OpenBurnBarDomainCore.xcframework, via Kernel) into the shared
+      # $BUILT_PRODUCTS_DIR/Frameworks — and two tools doing that collide with
+      # "Multiple commands produce". Keep tools off direct package-product
+      # deps; route them through a static-library target like this one
+      # (OpenBurnBarRemoteAccessAgentCore plays the same role for the
+      # privileged-input tools).
       - package: OpenBurnBarCore
         product: OpenBurnBarEngine
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarInsights
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarMedia
-        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
-        link: false
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -659,19 +682,36 @@ targets:
       # Core-decomposition P-18 (S17): OpenBurnBarDaemonMain imports OpenBurnBarEngine
       # (the UI-free umbrella), matching OpenBurnBarDaemon/Package.swift; no path to
       # the OpenBurnBarCore UI monolith. See docs/CORE_DECOMPOSITION_PROGRAM.md.
+      #
+      # Package products are `link: false` here on purpose: a standalone
+      # executable (`type: tool`) with DIRECT package-product deps makes
+      # XCBuild copy every transitive binary framework (openburnbar_domain_ffiFFI
+      # from OpenBurnBarDomainCore.xcframework, via Kernel) into the shared
+      # $BUILT_PRODUCTS_DIR/Frameworks, and two tools doing so collide with
+      # "Multiple commands produce" (first seen in release run 32525126144 —
+      # the only lane where the DomainCore xcframework exists). Linkage
+      # propagates from the linked OpenBurnBarDaemon static library, whose
+      # package products are linked; `link: false` keeps module import + build
+      # ordering without the embed copy.
       - target: OpenBurnBarDaemon
       - package: OpenBurnBarCore
         product: OpenBurnBarEngine
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarInsights
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarMedia
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
+        link: false
 
   OpenBurnBarPrivilegedInputExecution:
     type: tool
@@ -722,8 +762,19 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         SKIP_INSTALL: true
     dependencies:
+      # ComputerUseCore linkage arrives transitively through the
+      # OpenBurnBarRemoteAccessAgentCore static library (same shape as the
+      # PrivilegedInputExecution / VirtualHIDBridge siblings). A direct linked
+      # package-product dep on a `type: tool` target would make XCBuild copy
+      # the transitive openburnbar_domain_ffiFFI binary framework into the
+      # shared $BUILT_PRODUCTS_DIR/Frameworks and collide with any other tool
+      # doing the same ("Multiple commands produce", release run 32525126144).
+      # `link: false` keeps the `import OpenBurnBarComputerUseCore` module
+      # dependency explicit without the embed copy.
+      - target: OpenBurnBarRemoteAccessAgentCore
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
 
   OpenBurnBarRemoteAccessAgentCore:
     type: library.static
@@ -889,12 +940,16 @@ targets:
         embed: false
       - package: OpenBurnBarCore
         product: OpenBurnBarEngine
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarInsights
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarLinuxSecurity
+        link: false
 
   OpenBurnBarMobile:
     type: application
@@ -946,7 +1001,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 84
+        CURRENT_PROJECT_VERSION: 86
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
@@ -1110,6 +1165,7 @@ targets:
             CFBundleURLName: com.openburnbar.app
             CFBundleURLSchemes:
               - burnbar
+              - openburnbar
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.openburnbar.app.google-sign-in
             CFBundleURLSchemes:
@@ -1248,7 +1304,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 84
+        CURRENT_PROJECT_VERSION: 86
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
@@ -1300,7 +1356,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarKeyboard
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.keyboard
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 84
+        CURRENT_PROJECT_VERSION: 86
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements

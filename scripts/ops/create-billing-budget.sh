@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Create (or verify) the GCP billing budget that feeds the alert plane
+# (Wave 0 workstream W0-5; human queue items 7-9).
+#
+# HUMAN-RUN ONLY: creating a budget needs billing.admin on the billing
+# account. The ops-verifier identity (governance/ops-plane-verifier-sa.json)
+# is deliberately viewer-only and can never do this — which is why this is a
+# documented runbook step and not a CI job.
+#
+# Usage:
+#   scripts/ops/create-billing-budget.sh --dry-run   # print the exact gcloud commands
+#   scripts/ops/create-billing-budget.sh             # apply (idempotent by display name)
+#
+# Env:
+#   BILLING_ACCOUNT  billing account id (required)
+#   PROJECT_ID       project the budget watches + hosts the Pub/Sub topic (default: burnbar)
+#   BUDGET_AMOUNT    monthly amount in USD (default: 200)
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+
+DRY_RUN=false
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=true
+elif [[ -n "${1:-}" ]]; then
+  echo "usage: $0 [--dry-run]" >&2
+  exit 2
+fi
+
+# The committed budget contract (governance/ops-billing-budget.json) is the
+# source of truth for name, amount, thresholds, and topic; the live drift check
+# (scripts/ops/check-billing-budget-drift.mjs) compares against the same file.
+BUDGET_MANIFEST="governance/ops-billing-budget.json"
+manifest_field() {
+  python3 - "${BUDGET_MANIFEST}" "$1" <<'JSONFIELD'
+import json, sys
+value = json.load(open(sys.argv[1]))[sys.argv[2]]
+print(" ".join(str(v) for v in value) if isinstance(value, list) else value)
+JSONFIELD
+}
+BILLING_ACCOUNT="${BILLING_ACCOUNT:-<billing-account-id>}"
+PROJECT_ID="${PROJECT_ID:-$(manifest_field projectId)}"
+BUDGET_NAME="$(manifest_field displayName)"
+BUDGET_AMOUNT="${BUDGET_AMOUNT:-$(manifest_field amountUsd)}"
+TOPIC_NAME="$(basename "$(manifest_field pubsubTopic)")"
+PUBSUB_TOPIC="projects/${PROJECT_ID}/topics/${TOPIC_NAME}"
+THRESHOLD_ARGS=()
+for percent in $(manifest_field thresholdPercents); do
+  THRESHOLD_ARGS+=("--threshold-rule=percent=${percent}")
+done
+# --filter-projects scopes the budget to this project; without it the budget
+# watches the whole billing account.
+CREATE_ARGS=(
+  --billing-account="${BILLING_ACCOUNT}"
+  --display-name="${BUDGET_NAME}"
+  --budget-amount="${BUDGET_AMOUNT}USD"
+  --filter-projects="projects/${PROJECT_ID}"
+  "${THRESHOLD_ARGS[@]}"
+  --notifications-rule-pubsub-topic="${PUBSUB_TOPIC}"
+)
+
+if $DRY_RUN; then
+  echo "DRY-RUN (export BILLING_ACCOUNT=<billing account id> to run for real):"
+  echo "DRY-RUN: gcloud pubsub topics describe '${TOPIC_NAME}' --project='${PROJECT_ID}' || gcloud pubsub topics create '${TOPIC_NAME}' --project='${PROJECT_ID}'"
+  echo "DRY-RUN: gcloud billing budgets list --billing-account='${BILLING_ACCOUNT}' --filter='displayName=\"${BUDGET_NAME}\"' --format='value(name)'"
+  echo "DRY-RUN: gcloud billing budgets create ${CREATE_ARGS[*]}"
+  exit 0
+fi
+
+BILLING_ACCOUNT="${BILLING_ACCOUNT:?set BILLING_ACCOUNT (the billing account id)}"
+if [[ "${BILLING_ACCOUNT}" == "<billing-account-id>" ]]; then
+  echo "BILLING_ACCOUNT is not set (see --dry-run for the commands it would run)" >&2
+  exit 1
+fi
+
+# The notification topic must exist before the budget references it.
+if ! gcloud pubsub topics describe "${TOPIC_NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+  echo "Creating Pub/Sub topic '${TOPIC_NAME}' in project '${PROJECT_ID}'..."
+  gcloud pubsub topics create "${TOPIC_NAME}" --project="${PROJECT_ID}"
+fi
+
+# Idempotent: a budget with this display name is not created twice.
+existing="$(gcloud billing budgets list \
+  --billing-account="${BILLING_ACCOUNT}" \
+  --filter="displayName='${BUDGET_NAME}'" \
+  --format="value(name)")"
+
+if [[ -n "${existing}" ]]; then
+  echo "Budget '${BUDGET_NAME}' already exists: ${existing}"
+  echo "Nothing to do (idempotent re-run)."
+  exit 0
+fi
+
+echo "Creating billing budget '${BUDGET_NAME}' (amount: \$${BUDGET_AMOUNT}, project filter: ${PROJECT_ID}, thresholds: $(manifest_field thresholdPercents), topic: ${PUBSUB_TOPIC})..."
+gcloud billing budgets create "${CREATE_ARGS[@]}"
+
+echo "Done. The budget's Pub/Sub notifications feed the alert plane verified by"
+echo "scripts/ops/check-ops-alert-plane-drift.mjs (schedule lanes in ops-plane-verify.yml)."

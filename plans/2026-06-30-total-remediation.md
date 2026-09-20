@@ -145,7 +145,7 @@ Per-item prove-it check (named above). Phase-exit = **external/isolated verifier
 
 ## Delivery & tracking
 
-Commit at `plans/2026-06-30-total-remediation.md`; fold rows into `docs/TECH_DEBT_STRATEGY.md §3`; wire `TECH_DEBT_METRICS.md`. **Before** `git rm`-ing the root `DILIGENCE_REPORT_2026-06-10/11.md` + `TECH_DEBT_AUDIT_2026-06-11.md` (+ untracked 06-30 audit): publish the prior-ID → `R-ID` cross-map and migrate the open residuals (R-O3, R-PF9, R-S6, R-L3, R-GH7). Reconcile WS-2 with the operator's in-flight `.github/workflows/` edits before landing. Each item → tracked issue/PR under the factory loop, sensitive lanes gated by R-G1.
+Commit at `plans/2026-06-30-total-remediation.md`; fold rows into `docs/TECH_DEBT_STRATEGY.md §3`; wire `TECH_DEBT_METRICS.md`. **Before** moving the archived `docs/audits/2026-06/DILIGENCE_REPORT_2026-06-10.md`, `docs/audits/2026-06/DILIGENCE_REPORT_2026-06-11.md`, and `docs/audits/2026-06/TECH_DEBT_AUDIT_2026-06-11.md` (+ 06-30 audit): publish the prior-ID → `R-ID` cross-map and migrate the open residuals (R-O3, R-PF9, R-S6, R-L3, R-GH7). Reconcile WS-2 with the operator's in-flight `.github/workflows/` edits before landing. Each item → tracked issue/PR under the factory loop, sensitive lanes gated by R-G1.
 
 ## GSTACK REVIEW REPORT
 

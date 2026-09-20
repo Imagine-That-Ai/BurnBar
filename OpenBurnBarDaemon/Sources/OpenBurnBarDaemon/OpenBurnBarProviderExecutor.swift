@@ -441,7 +441,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         let outboundBody = try Self.rewritingChatCompletionsBody(
             in: body,
             to: route.resolvedModelID,
-            variant: variant
+            variant: variant,
+            providerID: route.providerID
         )
         let endpoint = baseURL.appending(path: "chat/completions")
         var request = URLRequest(url: endpoint)
@@ -502,7 +503,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             to: route.resolvedModelID,
             variant: variant,
             effortOnly: true,
-            enableStreamUsage: true
+            enableStreamUsage: true,
+            providerID: route.providerID
         )
         let endpoint = baseURL.appending(path: "chat/completions")
         var request = URLRequest(url: endpoint)
@@ -610,7 +612,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             stagedBody = try Self.rewritingChatCompletionsBody(
                 in: body,
                 to: route.resolvedModelID,
-                variant: variant
+                variant: variant,
+                providerID: route.providerID
             )
         } else {
             stagedBody = body
@@ -648,6 +651,72 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
+    /// OpenRouter honors a per-request data-collection preference; Memory Pro
+    /// treats OpenRouter as a no-retention provider only because every request
+    /// carries it.
+    static func applyProviderPrivacyPreferences(to object: inout [String: Any], providerID: String?) {
+        guard providerID?.lowercased() == "openrouter" else { return }
+        var provider = (object["provider"] as? [String: Any]) ?? [:]
+        provider["data_collection"] = "deny"
+        object["provider"] = provider
+    }
+
+    /// `POST {baseURL}/embeddings` (OpenAI shape). Buffered only.
+    public func proxyEmbeddings(body: Data, route: BurnBarProviderRoute) async throws -> BurnBarProviderProxyResponse {
+        let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
+        let json = try JSONSerialization.jsonObject(with: body)
+        guard var object = json as? [String: Any] else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+        object["model"] = route.resolvedModelID
+        Self.applyProviderPrivacyPreferences(to: &object, providerID: route.providerID)
+        let outboundBody = try JSONSerialization.data(withJSONObject: object, options: [])
+        var request = URLRequest(url: baseURL.appending(path: "embeddings"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(route.apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = outboundBody
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "application/json"
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw BurnBarProviderExecutorError.upstreamErrorWithHeaders(
+                httpResponse.statusCode,
+                String(data: data, encoding: .utf8) ?? "",
+                BurnBarProxyStreaming.normalizedHeaders(from: httpResponse)
+            )
+        }
+        return BurnBarProviderProxyResponse(
+            statusCode: httpResponse.statusCode,
+            contentType: contentType,
+            headers: BurnBarProxyStreaming.normalizedHeaders(from: httpResponse),
+            body: data,
+            usage: Self.extractEmbeddingsUsage(requestBody: outboundBody, responseBody: data)
+        )
+    }
+
+    static func extractEmbeddingsUsage(requestBody: Data, responseBody: Data) -> BurnBarProviderProxyUsage? {
+        struct Usage: Decodable {
+            let promptTokens: Int?
+            let totalTokens: Int?
+            enum CodingKeys: String, CodingKey {
+                case promptTokens = "prompt_tokens"
+                case totalTokens = "total_tokens"
+            }
+        }
+        struct Envelope: Decodable {
+            let usage: Usage?
+        }
+        let decoded = try? JSONDecoder().decode(Envelope.self, from: responseBody)
+        if let inputTokens = decoded?.usage?.promptTokens ?? decoded?.usage?.totalTokens {
+            return BurnBarProviderProxyUsage(inputTokens: inputTokens, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, reasoningTokens: 0, confidence: .exact)
+        }
+        guard decoded != nil else { return nil }
+        return BurnBarProviderProxyUsage(inputTokens: max(1, requestBody.count / 4), outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, reasoningTokens: 0, confidence: .lowConfidenceEstimate)
+    }
+
     static func rewritingModel(
         in body: Data,
         to modelID: String,
@@ -671,13 +740,15 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         to modelID: String,
         variant: BurnBarModelVariant? = nil,
         effortOnly: Bool = true,
-        enableStreamUsage: Bool = false
+        enableStreamUsage: Bool = false,
+        providerID: String? = nil
     ) throws -> Data {
         let json = try JSONSerialization.jsonObject(with: body)
         guard var object = json as? [String: Any] else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
         object["model"] = modelID
+        Self.applyProviderPrivacyPreferences(to: &object, providerID: providerID)
         normalizeOpenAICompatibleMessages(in: &object)
         if let variant {
             applyOpenAIVariant(variant, to: &object, isResponsesShape: false, effortOnly: effortOnly)

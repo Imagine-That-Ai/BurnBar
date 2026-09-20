@@ -12,7 +12,7 @@ import OpenBurnBarCore
 // typealiases. Mac-only behaviors (log directories, file patterns, support
 // levels) live as extensions on the package types further down in this file.
 
-typealias AgentProvider = OpenBurnBarCore.AgentProvider
+public typealias AgentProvider = OpenBurnBarCore.AgentProvider
 typealias TokenUsage = OpenBurnBarCore.TokenUsage
 typealias UsageProvenanceMethod = OpenBurnBarCore.UsageProvenanceMethod
 typealias UsageProvenanceConfidence = OpenBurnBarCore.UsageProvenanceConfidence
@@ -78,7 +78,7 @@ extension AgentProvider {
         case .piAgent: return "*.jsonl"
         case .augment: return "*.jsonl"
         case .geminiCLI: return "*.json"
-        case .antigravity: return "history.jsonl"
+        case .antigravity: return "*.jsonl"
         case .cursorAgent: return "*.jsonl"
         case .goose: return "sessions.db"
         case .openClaw: return "*.jsonl"

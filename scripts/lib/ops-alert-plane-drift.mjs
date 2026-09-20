@@ -36,13 +36,26 @@ import {
  */
 export const MANAGED_APP_LABEL = "openburnbar";
 
+/**
+ * GCP Monitoring stores threshold as protobuf double. Default 0 is omitted on
+ * readback, so `gcloud monitoring policies list --format=json` serializes it as
+ * `null`. A committed `thresholdValue: 0` must MATCH that live null, or the
+ * scheduled ops-plane drift gate stays red on an identical plane. Non-numeric
+ * garbage is left as-is so it still fingerprints as drift.
+ */
+function normalizeThresholdValue(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : value;
+}
+
 /** Canonical, order-independent fingerprint of one condition. */
 function conditionFingerprint(condition) {
   const t = condition.conditionThreshold || {};
   return {
     filter: normalizeFilter(t.filter || ""),
     comparison: t.comparison || null,
-    thresholdValue: t.thresholdValue ?? null,
+    thresholdValue: normalizeThresholdValue(t.thresholdValue),
     duration: t.duration || null,
     aggregations: stableComparable(t.aggregations || []),
     trigger: stableComparable(t.trigger || null),

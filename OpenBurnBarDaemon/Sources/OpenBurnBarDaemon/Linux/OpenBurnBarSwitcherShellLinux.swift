@@ -205,6 +205,11 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         case .fx: return ["fx"]
         case .primeAgent: return ["prime-agent"]
         case .antigravity: return ["agy", "antigravity"]
+        case .hermes: return ["hermes"]
+        case .goose: return ["goose"]
+        case .windsurf: return ["windsurf"]
+        case .openClaude: return ["openclaude"]
+        case .openClaw: return ["openclaw"]
         }
     }
 }

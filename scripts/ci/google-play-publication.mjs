@@ -9,6 +9,9 @@ const TRACKS = new Set(["internal", "alpha", "beta", "production"]);
 const RELEASE_STATUSES = new Set(["draft", "completed"]);
 const TAG_PATTERN =
   /^v[0-9]{1,3}\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/u;
+const ANDROID_GRADLE_PROPERTIES = fileURLToPath(
+  new URL("../../android/gradle.properties", import.meta.url),
+);
 
 function requireString(value, label) {
   if (typeof value !== "string" || value.length === 0) {
@@ -34,10 +37,47 @@ function parsePositiveInteger(value, label) {
   return parsed;
 }
 
+function readGradleIntegerProperty(source, name) {
+  const values = source
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith(`${name}=`))
+    .map((line) => line.slice(name.length + 1).trim());
+  if (values.length !== 1) {
+    throw new Error(
+      `${name} must appear exactly once in android/gradle.properties`,
+    );
+  }
+  return parsePositiveInteger(values[0], name);
+}
+
+export function parseAndroidReleasePolicy(source) {
+  const policy = {
+    compileSdk: readGradleIntegerProperty(
+      source,
+      "openburnbar.android.compileSdk",
+    ),
+    targetSdk: readGradleIntegerProperty(
+      source,
+      "openburnbar.android.targetSdk",
+    ),
+  };
+  if (policy.targetSdk > policy.compileSdk) {
+    throw new Error("Android target SDK cannot exceed compile SDK");
+  }
+  return policy;
+}
+
+export const ANDROID_RELEASE_POLICY = Object.freeze(
+  parseAndroidReleasePolicy(
+    readFileSync(ANDROID_GRADLE_PROPERTIES, "utf8"),
+  ),
+);
+
 function parseArguments(argv) {
   if (argv.length === 0 || argv[0] !== "prepare") {
     throw new Error(
-      "usage: prepare --artifact PATH --tag TAG --commit SHA --track TRACK --confirm-non-internal BOOL --dry-run BOOL --release-status STATUS --package PACKAGE --version-name VERSION --version-code CODE --sha256 SHA --prepared-at ISO8601 --repository OWNER/REPO --run-id ID --run-attempt ATTEMPT --output PATH",
+      "usage: prepare --artifact PATH --tag TAG --commit SHA --track TRACK --confirm-non-internal BOOL --dry-run BOOL --release-status STATUS --package PACKAGE --version-name VERSION --version-code CODE --target-sdk SDK --bundletool-version VERSION --sha256 SHA --prepared-at ISO8601 --repository OWNER/REPO --run-id ID --run-attempt ATTEMPT --output PATH",
     );
   }
   const values = new Map();
@@ -95,6 +135,12 @@ export function validatePublicationRequest(input) {
     throw new Error(`unexpected Android package: ${input.packageName}`);
   }
   const versionCode = parsePositiveInteger(input.versionCode, "versionCode");
+  const targetSdk = parsePositiveInteger(input.targetSdk, "targetSdk");
+  if (targetSdk !== ANDROID_RELEASE_POLICY.targetSdk) {
+    throw new Error(
+      `Google Play publication requires target SDK ${ANDROID_RELEASE_POLICY.targetSdk}; bundle targets ${targetSdk}`,
+    );
+  }
   const sha256 = requireString(input.sha256, "sha256");
   if (!/^[0-9a-f]{64}$/u.test(sha256)) {
     throw new Error("sha256 must be a lowercase SHA-256 digest");
@@ -115,6 +161,7 @@ export function validatePublicationRequest(input) {
     commit,
     packageName: input.packageName,
     versionCode,
+    targetSdk,
     sha256,
     artifactName: input.artifactName,
   };
@@ -140,6 +187,13 @@ export function buildPublicationManifest(input) {
   if (repository !== "Imagine-That-Ai/BurnBar") {
     throw new Error(`unexpected source repository: ${repository}`);
   }
+  const bundletoolVersion = requireString(
+    input.bundletoolVersion,
+    "bundletoolVersion",
+  );
+  if (!/^[1-9][0-9]*\.[0-9]+\.[0-9]+$/u.test(bundletoolVersion)) {
+    throw new Error("bundletoolVersion must be a canonical numeric version");
+  }
   return {
     schemaVersion: 1,
     publication: {
@@ -153,6 +207,7 @@ export function buildPublicationManifest(input) {
       tag: request.tag,
       versionName: request.versionName,
       versionCode: request.versionCode,
+      targetSdk: request.targetSdk,
       commit: request.commit,
       repository,
       signerWorkflow: ".github/workflows/release.yml",
@@ -162,6 +217,11 @@ export function buildPublicationManifest(input) {
       sha256: request.sha256,
       sizeBytes,
       uploadCertificateSha256,
+    },
+    validation: {
+      requiredTargetSdk: ANDROID_RELEASE_POLICY.targetSdk,
+      observedTargetSdk: request.targetSdk,
+      bundletoolVersion,
     },
     preparation: {
       preparedAt,
@@ -194,6 +254,8 @@ export function run(argv) {
     packageName: args.get("--package"),
     versionName: args.get("--version-name"),
     versionCode: args.get("--version-code"),
+    targetSdk: args.get("--target-sdk"),
+    bundletoolVersion: args.get("--bundletool-version"),
     sha256: expectedSha256,
     sizeBytes: stat.size,
     uploadCertificateSha256: requireString(

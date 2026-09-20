@@ -75,7 +75,7 @@ describe("BOLA — credentialTransfer", () => {
         transferId: TRANSFER_ID,
         payload: `v2.${"s".repeat(22)}.${"i".repeat(16)}.${"c".repeat(32)}`,
       }),
-      "failed-precondition",
+      "already-exists",
     );
     expect(store.get(`credential_transfers/${TRANSFER_ID}`)).toEqual(before);
   });
@@ -125,8 +125,10 @@ describe("BOLA — credentialTransfer", () => {
 
     const mod = await import("../../callables/credentialTransfer.js");
     const run = callableRunner(mod.consumeCredentialTransfer);
-    await expect(run(callableRequest(ALICE_UID, { transferId: "ABCDEFGHJKMN" }))).rejects.toMatchObject({
-      code: "invalid-argument",
-    });
+    await expectCallableDenial(
+      run,
+      callableRequest(ALICE_UID, { transferId: "ABCDEFGHJKMN" }),
+      "invalid-argument",
+    );
   });
 });

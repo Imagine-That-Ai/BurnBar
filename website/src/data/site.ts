@@ -10,6 +10,10 @@ export const SITE = {
   twitter: "",
   github: "https://github.com/Imagine-That-Ai/BurnBar",
   releasesUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases",
+  // The member console (apps/console) — sign in to see and control everything
+  // BurnBar holds for you. Linked from the header More menu, the footer trust
+  // column, and the privacy page's data-domain inventory.
+  consoleUrl: "https://app.burnbar.ai",
   // burnbar.ai has live MX (Namecheap forwarding); openburnbar.app was never
   // registered — mail to it bounced as NXDOMAIN (diligence 2026-06-11 NB-1).
   supportContact: "support@burnbar.ai",
@@ -110,11 +114,12 @@ export const SITE = {
   },
   // Public macOS download and update feeds. The first-party host is backed by
   // the verified openburnbar-downloads R2 bucket.
-  macReleaseLatest: "1.0.29",
-  macReleaseFile: "OpenBurnBar-1.0.29-macOS.dmg",
+  macReleaseLatest: "1.0.40+repair.41",
+  macReleaseFile: "OpenBurnBar-1.0.40+repair.41-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
-  macDownloadBaseUrl: "https://downloads.burnbar.ai",
+  macDownloadBaseUrl:
+    "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.40+repair.41",
   macUpdateBaseUrl: "https://downloads.burnbar.ai",
   macMin: "macOS 14 Sonoma",
   // Public Linux download. First release ships aarch64/ARM64 artifacts from the
@@ -144,6 +149,7 @@ export const SITE = {
 
 export const NAV_PRIMARY = [
   { href: "/product", label: "Product" },
+  { href: "/memory", label: "Memory MCP" },
   { href: "/router", label: "Router" },
   { href: "/bench", label: "Bench" },
   { href: "/floo", label: "Floo" },
@@ -159,6 +165,7 @@ export const NAV_PRIMARY = [
 export const NAV_FOOTER = {
   product: [
     { href: "/product", label: "Overview" },
+    { href: "/memory", label: "Memory MCP — agent memory" },
     { href: "/router", label: "Fire Hydrant — router" },
     { href: "/bench", label: "BurnBench — benchmarks" },
     { href: "/floo", label: "Floo — phone & Mac" },
@@ -174,8 +181,10 @@ export const NAV_FOOTER = {
     { href: "/trust", label: "Open & secure" },
     { href: "/privacy", label: "Privacy model" },
     { href: "/privacy#data-domains", label: "What we can see" },
+    { href: SITE.consoleUrl, label: "Your data console", external: true },
     { href: "/security", label: "Security model" },
     { href: "/mcp", label: "MCP integration" },
+    { href: "/memory", label: "Memory MCP" },
     { href: "/legal/source", label: "Source offer" },
     { href: "/legal/privacy-policy", label: "Privacy policy" },
     { href: "/legal/terms", label: "Terms" }

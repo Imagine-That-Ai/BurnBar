@@ -19,6 +19,14 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_semantic_search_conversations` | Local deterministic semantic search over indexed conversation chunks; returns structured `unavailable` when semantic tables or compatible embeddings are absent |
 | `burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search; query hashes are derived locally and snippets decrypt locally |
 | `burnbar_cloud_get_conversation_body` | Decrypt the full hosted session body for a cloud search hit |
+| `burnbar_remember` / `burnbar_memorize` | **Write** durable memories: one fact, or extract from a conversation / text / pre-extracted `facts` with ADD / UPDATE / NONE / DELETE reconciliation |
+| `burnbar_recall` / `burnbar_recall_pack` | Hybrid BM25 + vector recall with salience rerank and mem0-style filters; a token-budgeted prompt pack Memory Pro: `rerank=true` re-orders the top hits by model relevance; `trustSignal.rerank` is `applied`, `off`, or `skipped:<code>`. |
+| `burnbar_memory_ask` | Memory Pro: a grounded answer with `[mem_…]` citations or an explicit refusal; needs `memory_llm_read` (`OPENBURNBAR_LOCAL_MCP_ENABLE_MEMORY_LLM_READ=true`) |
+| `burnbar_memory_get` / `_list` / `_update` / `_history` / `_review` | Memory CRUD, paging, per-memory history, review status |
+| `burnbar_forget` / `burnbar_forget_all` | **Write** hard deletes with label-only audit; bulk delete needs `confirm="DELETE"` plus the `selection_token` from the preview |
+| `burnbar_audit_trail` / `burnbar_memory_analytics` | Label-only audit hash chain with verification; store statistics (counts by kind/scope/sensitivity, embedding coverage, vault entries, policy) |
+| `burnbar_memory_entities` / `_relations` / `_export` / `_import` / `_reindex` | Entities, relations, JSON export/import, re-embed for the active model version |
+| `burnbar_memory_sync_pull` | **Write** Memory Blind Sync: merge this member's memories from their other devices — last-writer-wins on `updatedAt`, convergence on `(project_id, scope, body_hash)`, the same gate a `burnbar_remember` passes, and a forgotten memory is never revived |
 | `burnbar_index_project` | **Write** local Project Code Memory index through the daemon write path |
 | `burnbar_search_code` | Search indexed local project code with untrusted snippet wrappers |
 | `burnbar_code_context_pack` | Build token-budgeted context from indexed code |
@@ -27,6 +35,7 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_call_graph` | Traverse bounded call graph edges |
 | `burnbar_index_status` | Report parser, encryption, semantic, and production-readiness status |
 | `burnbar_memory_doctor` | Diagnose local memory/code schema and readiness |
+| `burnbar_team_link_project` | **Write** which shared `teamProjectId` this repository publishes to a team, in `.openburnbar/project.json` — needs `confirm=true`, and counts only once committed |
 | `burnbar_get_conversation` | Full row + fullText for one conversation by ID |
 | `burnbar_chat_messages` | In-app assistant chat_messages tail |
 | `burnbar_record_hermes_usage` | **Write** an idempotent row to the daemon usage ledger |
@@ -36,6 +45,10 @@ SQLite tools, hosted encrypted cloud-search tools, and 2 ledger tools:
 | `burnbar_inbox_status` | AI Inbox tick telemetry and today's spend against the daily budget |
 | `burnbar_inbox_plans_list` | List Founder Plans (accepted commitments) with status and rolling grade |
 | `burnbar_inbox_plans_get` | Read one Founder Plan in full: steps, grades, mission/follow-up links |
+
+Memories are also collected automatically: the Claude Code `SessionEnd` hook `tools/openburnbar-mcp/hooks/claude-code-session-end.sh` memorizes each session transcript through `burnbar_memorize` (same gate, encryption, and audit; `OPENBURNBAR_MEMORY_SESSION_HOOK=off` disables it). See the README section "Automatic collection from Claude Code sessions".
+
+If this member syncs memories across devices, call `burnbar_memory_sync_pull` ONCE near the start of a session in a synced project, before your first `burnbar_recall`. It merges what their other Macs learned into this store; without it, those memories are parked and invisible to recall here. It is idempotent and returns immediately when nothing is pending, and it is a no-op when device sync is off. The opt-in `SessionStart` hook `tools/openburnbar-mcp/hooks/claude-code-session-start.sh` does the same thing automatically when `OPENBURNBAR_MEMORY_SYNC_HOOK=on`; if you can see that it ran, do not call the tool again.
 
 ## Setup
 

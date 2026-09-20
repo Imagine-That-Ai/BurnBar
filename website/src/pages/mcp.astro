@@ -494,6 +494,9 @@ const slo = [
   title="MCP integration — speak the protocol your agents already speak"
   description="OpenBurnBar's four MCP channels: a free local server over your SQLite, the hosted Remote MCP at mcp.burnbar.ai, a local stdio shim that decrypts, and the Cursor Marketplace plugin."
 >
+  {/* Copy-button announcements for assistive technology. */}
+  <p class="sr-only" role="status" aria-live="polite" data-copy-live></p>
+
   {/* ────────────────────────── 1 · HERO ────────────────────────── */}
   <section class="mcp-hero" aria-labelledby="mcp-hero-h">
     <div class="container container--wide mcp-hero__inner">
@@ -685,6 +688,34 @@ const slo = [
     </div>
   </section>
 
+  {
+    /* ─────────── 1b · SIGNPOST ───────────
+      This page is the transport reference. Readers who arrived looking for
+      the durable memory engine want /memory, and the fastest way to serve
+      them is to say so before they read four channel cards. ─────────── */
+  }
+  <section class="signpost" aria-labelledby="signpost-h">
+    <div class="container container--wide">
+      <div class="signpost__inner">
+        <div class="signpost__text">
+          <span class="eyebrow eyebrow--mercury">Looking for agent memory?</span>
+          <h2 id="signpost-h" class="signpost__h">The Memory MCP has its own page.</h2>
+          <p class="signpost__p">
+            This page is about transports — which endpoint speaks which protocol, and how to point a
+            client at it. The local server is a product in its own right, and it has the fuller
+            story: what the memory keeps, the gate that keeps credentials out of it, what happens
+            when a fact changes, what a delete actually deletes, the code index and session search
+            that ship alongside it, the measured numbers, and an atlas of every tool it registers
+            with the capability that gates each one.
+          </p>
+        </div>
+        <a class="btn btn--ember signpost__cta" href="/memory"
+          >The Memory MCP <span class="btn-arrow" aria-hidden="true">→</span></a
+        >
+      </div>
+    </div>
+  </section>
+
   {/* ────────────────────────── 2 · FOUR CHANNELS ────────────────────────── */}
   <section class="channels" aria-labelledby="channels-h">
     <div class="container container--wide">
@@ -854,7 +885,7 @@ const slo = [
         </p>
       </header>
 
-      <div class="termmux" data-mux="hosted">
+      <div class="termmux" data-mux="hosted" data-tabs>
         <header class="termmux__head">
           <h3 class="termmux__title">Hosted · <span class="ember">mcp.burnbar.ai</span></h3>
           <p class="termmux__sub mono">
@@ -871,6 +902,7 @@ const slo = [
                 aria-selected={i === 0 ? "true" : "false"}
                 aria-controls={`hosted-panel-${s.id}`}
                 id={`hosted-tab-${s.id}`}
+                tabindex={i === 0 ? 0 : -1}
                 data-target={s.id}
               >
                 {s.label}
@@ -886,15 +918,23 @@ const slo = [
               aria-labelledby={`hosted-tab-${s.id}`}
               class="termmux__panel"
               data-panel={s.id}
-              hidden={i !== 0}
+              data-panel-index={i}
+              data-code
+              tabindex="0"
             >
+              <p class="termmux__nojs mono">{s.label}</p>
               <div class="termmux__strip">
                 <span class="mono termmux__strip-meta">{s.meta}</span>
-                <button class="termmux__copy mono" type="button" data-copy>
+                <button
+                  class="termmux__copy mono"
+                  type="button"
+                  data-copy
+                  data-copy-label={`hosted ${s.label} snippet`}
+                >
                   copy
                 </button>
               </div>
-              <pre class="termmux__pre mono">
+              <pre class="termmux__pre mono" tabindex="0">
                 <code>{s.lines.join("\n")}</code>
               </pre>
             </section>
@@ -902,7 +942,7 @@ const slo = [
         }
       </div>
 
-      <div class="termmux" data-mux="local">
+      <div class="termmux" data-mux="local" data-tabs>
         <header class="termmux__head">
           <h3 class="termmux__title">
             Local · <span class="ember">SQLite, free, no account</span>
@@ -919,6 +959,7 @@ const slo = [
                 aria-selected={i === 0 ? "true" : "false"}
                 aria-controls={`local-panel-${s.id}`}
                 id={`local-tab-${s.id}`}
+                tabindex={i === 0 ? 0 : -1}
                 data-target={s.id}
               >
                 {s.label}
@@ -934,21 +975,35 @@ const slo = [
               aria-labelledby={`local-tab-${s.id}`}
               class="termmux__panel"
               data-panel={s.id}
-              hidden={i !== 0}
+              data-panel-index={i}
+              data-code
+              tabindex="0"
             >
+              <p class="termmux__nojs mono">{s.label}</p>
               <div class="termmux__strip">
                 <span class="mono termmux__strip-meta">{s.meta}</span>
-                <button class="termmux__copy mono" type="button" data-copy>
+                <button
+                  class="termmux__copy mono"
+                  type="button"
+                  data-copy
+                  data-copy-label={`local ${s.label} snippet`}
+                >
                   copy
                 </button>
               </div>
-              <pre class="termmux__pre mono">
+              <pre class="termmux__pre mono" tabindex="0">
                 <code>{s.lines.join("\n")}</code>
               </pre>
             </section>
           ))
         }
       </div>
+
+      <p class="install__memory">
+        Setting up the durable memory engine rather than a transport? <a href="/memory#setup"
+          >The Memory MCP page has a per-client setup path</a
+        > with the exact absolute paths, and a checklist that proves the install.
+      </p>
     </div>
   </section>
 
@@ -1233,63 +1288,74 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
   </section>
 </BaseLayout>
 
-{/* ────────────────────────── INTERACTIONS ────────────────────────── */}
+{
+  /* ────────────────────────── INTERACTIONS ──────────────────────────
+    The tabs and copy buttons now run on src/scripts/mcpSetup.ts, shared
+    with /memory: one roving-tabindex implementation, one clipboard failure
+    path, one live-region announcement, fixed in one place. ───────────── */
+}
 <script>
-  // Tabbed terminal mux + copy-to-clipboard
-  document.querySelectorAll<HTMLElement>(".termmux").forEach((mux) => {
-    const tabs = mux.querySelectorAll<HTMLButtonElement>(".termmux__tab");
-    const panels = mux.querySelectorAll<HTMLElement>(".termmux__panel");
-    tabs.forEach((tab) => {
-      tab.addEventListener("click", () => {
-        const target = tab.dataset.target;
-        tabs.forEach((t) => t.setAttribute("aria-selected", t === tab ? "true" : "false"));
-        panels.forEach((p) => {
-          if (p.dataset.panel === target) p.removeAttribute("hidden");
-          else p.setAttribute("hidden", "");
-        });
-      });
-      // keyboard arrows for accessibility
-      tab.addEventListener("keydown", (e) => {
-        const arr = Array.from(tabs);
-        const i = arr.indexOf(tab);
-        let next = -1;
-        if (e.key === "ArrowRight") next = (i + 1) % arr.length;
-        if (e.key === "ArrowLeft") next = (i - 1 + arr.length) % arr.length;
-        if (next >= 0) {
-          e.preventDefault();
-          const nextTab = arr[next];
-          if (!nextTab) return;
-          nextTab.focus();
-          nextTab.click();
-        }
-      });
-    });
-  });
+  import { initMcpSetup } from "../scripts/mcpSetup.ts";
 
-  document.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const panel = btn.closest<HTMLElement>(".termmux__panel");
-      const pre = panel?.querySelector("pre code");
-      if (!pre) return;
-      try {
-        await navigator.clipboard.writeText(pre.textContent ?? "");
-        const original = btn.textContent;
-        btn.textContent = "copied ✓";
-        btn.setAttribute("data-flash", "true");
-        setTimeout(() => {
-          btn.textContent = original;
-          btn.removeAttribute("data-flash");
-        }, 1400);
-      } catch {
-        btn.textContent = "press ⌘C";
-      }
-    });
-  });
+  initMcpSetup();
 </script>
 
 {/* ────────────────────────── STYLES ────────────────────────── */}
 <style>
   /* ---------- shared section head ---------- */
+  /* ---------- signpost to /memory ---------- */
+  .signpost {
+    padding-block: 0 var(--s-7);
+  }
+  .signpost__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-5);
+    padding: var(--s-5) var(--s-6);
+    border: 1px dashed var(--ink-line-bright);
+    border-radius: var(--r-lg);
+    background: linear-gradient(90deg, var(--mercury-wash), transparent 70%);
+  }
+  .signpost__text {
+    display: grid;
+    gap: var(--s-2);
+    justify-items: start;
+    min-width: 0;
+    max-width: 62ch;
+  }
+  .signpost__h {
+    font-size: var(--t-h3);
+    font-weight: var(--wght-semibold);
+    margin: 0;
+    --opsz: var(--opsz-h3);
+  }
+  .signpost__p {
+    margin: 0;
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+  }
+  .signpost__cta {
+    flex: none;
+  }
+
+  .install__memory {
+    margin: var(--s-6) 0 0;
+    padding-top: var(--s-4);
+    border-top: 1px solid var(--ink-line-soft);
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+    max-width: 82ch;
+  }
+  .install__memory a {
+    /* Caption-sized ember, so it takes the text-safe token rather than the
+       accent: --ember-text is 5.50:1 on paper and 6.95:1 on the dark ground,
+       and it matches the ember /memory itself uses for small labels. */
+    color: var(--ember-text);
+    text-decoration: underline;
+  }
+
   .sec-head {
     display: grid;
     gap: var(--s-3);
@@ -1840,6 +1906,32 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     background: rgba(0, 0, 0, 0.4);
     border-bottom: 1px solid var(--ink-line);
   }
+
+  /* Every snippet is server-rendered visible, each under its own target name,
+     so a blocked bundle leaves a readable stack rather than one panel and a
+     dead tab strip. `mcpSetup.ts` hides the rest and stamps [data-tabs-ready];
+     the rule below holds them hidden from the first paint under `html.js` so
+     the enhanced page never flashes the stack. */
+  :global(html:not(.js)) .termmux__tabs {
+    display: none;
+  }
+
+  :global(html.js) .termmux:not([data-tabs-ready]) [data-panel]:not([data-panel-index="0"]) {
+    display: none;
+  }
+
+  .termmux__nojs {
+    margin: 0;
+    padding: var(--s-3) var(--s-4) 0;
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    color: var(--ember-text);
+  }
+
+  :global(html.js) .termmux__nojs {
+    display: none;
+  }
   .termmux__tab {
     appearance: none;
     background: transparent;
@@ -1910,9 +2002,18 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     line-height: 1.55;
     color: var(--text-base);
     overflow-x: auto;
+    scrollbar-width: thin;
     white-space: pre;
     background: transparent;
     border: 0;
+  }
+  /* Scrollable regions and tab panels are keyboard-reachable (tabindex="0"
+     in the markup), so they need a visible focus ring. */
+  .termmux__pre:focus-visible,
+  .termmux__panel:focus-visible {
+    outline: 2px solid var(--ember-bright);
+    outline-offset: -2px;
+    border-radius: var(--r-sm);
   }
   .termmux__pre code {
     background: transparent;

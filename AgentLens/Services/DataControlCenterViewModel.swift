@@ -34,12 +34,33 @@ final class DataControlCenterViewModel {
         let domain: DataDomain
         var count: Int
         var bytes: Int64
+        /// Whether a per-user record count EXISTS for this domain (memory
+        /// program D16 / P22, PR 4 review L7).
+        ///
+        /// `count == 0` has two meanings and they are not the same claim: "you
+        /// have none of this" and "there is nothing here to count". Team memory
+        /// is the second — its facts live in a shared tenant at
+        /// `team_memory_facts/{teamId}/facts`, never under `users/{uid}/`, so
+        /// the server reports `countable: false` and rendering a `0` would tell
+        /// a member with hundreds of team facts that they have none.
+        var isCountable: Bool
+
+        init(domain: DataDomain, count: Int, bytes: Int64, isCountable: Bool? = nil) {
+            self.domain = domain
+            self.count = count
+            self.bytes = bytes
+            // The registry is the local fallback for the same fact: a domain
+            // with no `countSource` has no per-user count by construction.
+            self.isCountable = isCountable ?? (domain.countSource != nil)
+        }
 
         var id: String { domain.id }
         var title: String { domain.title }
         /// True when the domain holds at least one record (the record COUNT,
         /// not a collection — guards SwiftLint's empty_count rewrites).
-        var hasRecords: Bool { count >= 1 }
+        var hasRecords: Bool { isCountable && count >= 1 }
+        /// What the Records column shows: a number only where one exists.
+        var countDisplay: String { isCountable ? "\(count)" : "—" }
         var tier: EncryptionTier { domain.encryptionTier }
         var retention: String { domain.retention }
 
@@ -170,18 +191,28 @@ final class DataControlCenterViewModel {
                 bytes: int64Value(pensieve["bytes"])
             )
         }
-        var usageByID: [String: (count: Int, bytes: Int64)] = [:]
+        var usageByID: [String: (count: Int, bytes: Int64, countable: Bool?)] = [:]
         if let domains = dict["domains"] as? [[String: Any]] {
             for entry in domains {
                 guard let id = entry["id"] as? String else { continue }
-                usageByID[id] = (intValue(entry["count"]), int64Value(entry["bytes"]))
+                usageByID[id] = (
+                    intValue(entry["count"]),
+                    int64Value(entry["bytes"]),
+                    // Absent on an older backend: fall back to the registry.
+                    entry["countable"] as? Bool
+                )
             }
         }
         // Re-build from the registry so every domain row is present and ordered
         // exactly as the registry declares it.
         rows = DataDomains.all.map { domain in
             let usage = usageByID[domain.id]
-            return DomainRow(domain: domain, count: usage?.count ?? 0, bytes: usage?.bytes ?? 0)
+            return DomainRow(
+                domain: domain,
+                count: usage?.count ?? 0,
+                bytes: usage?.bytes ?? 0,
+                isCountable: usage?.countable
+            )
         }
     }
 
@@ -200,8 +231,11 @@ final class DataControlCenterViewModel {
         if totalBytes > 0 {
             return Double(sealedBytes) / Double(totalBytes)
         }
-        let sealedCount = rows.filter { $0.tier != .serverReadable }.reduce(0) { $0 + $1.count }
-        let totalCount = rows.reduce(0) { $0 + $1.count }
+        // Uncountable domains contribute to neither side: a 0 that means
+        // "not counted here" must not weigh the fraction down.
+        let countable = rows.filter(\.isCountable)
+        let sealedCount = countable.filter { $0.tier != .serverReadable }.reduce(0) { $0 + $1.count }
+        let totalCount = countable.reduce(0) { $0 + $1.count }
         return totalCount > 0 ? Double(sealedCount) / Double(totalCount) : 0
     }
 

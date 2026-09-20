@@ -728,6 +728,16 @@ public enum CLILaunchAdapter {
             return ["PRIME_HOME", "PRIME_AGENT_HOME"]
         case .fx:
             return ["FX_HOME"]
+        case .hermes:
+            return ["HERMES_HOME", "HERMES_CONFIG_PATH"]
+        case .goose:
+            return ["GOOSE_HOME", "GOOSE_PATH_ROOT"]
+        case .windsurf:
+            return ["WINDSURF_HOME", "CODEIUM_HOME"]
+        case .openClaude:
+            return ["OPENCLAUDE_CONFIG_DIR"]
+        case .openClaw:
+            return ["OPENCLAW_HOME", "OPENCLAW_CONFIG_PATH"]
         }
     }
 }

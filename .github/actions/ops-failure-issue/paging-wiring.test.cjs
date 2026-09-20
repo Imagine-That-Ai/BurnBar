@@ -23,11 +23,13 @@ const OPEN_WORKFLOWS = [
   { file: "deploy-cloud-run.yml", lanes: ["deploy-cloud-run"] },
   { file: "deploy-firestore.yml", lanes: ["deploy-firestore"] },
   { file: "deploy-hosting.yml", lanes: ["deploy-hosting"] },
+  { file: "deploy-lane-health.yml", lanes: ["deploy-health"] },
   { file: "deploy-production.yml", lanes: ["deploy-production"] },
   { file: "linux-nightly.yml", lanes: ["linux-nightly"] },
   { file: "nightly-dast-sandbox.yml", lanes: ["nightly-sandbox"] },
   { file: "nightly-e2e.yml", lanes: ["nightly-e2e"] },
-  { file: "ops-confidence.yml", lanes: ["ops-confidence", "deploy-freshness"] },
+  { file: "nightly-health.yml", lanes: ["nightly-health"] },
+  { file: "ops-confidence.yml", lanes: ["ops-confidence", "deploy-freshness", "deploy-freshness-identity"] },
 ];
 
 const ACTION_USES = "./.github/actions/ops-failure-issue";
@@ -132,6 +134,11 @@ function workflowPreamble(relFile) {
 // Per-workflow wiring: open must page, close must not.
 // ---------------------------------------------------------------------------
 
+// Lanes that open a tracking issue but deliberately never page: W0-5 routes
+// verifier-identity failures (WIF/provisioning drift) to an issue without
+// treating them as a production freeze.
+const NO_PAGING_LANES = new Set(["deploy-freshness-identity"]);
+
 for (const { file, lanes } of OPEN_WORKFLOWS) {
   test(`${file} wires paging-slack-webhook on every mode: open and omits it on mode: close`, () => {
     const blocks = extractActionBlocks(file);
@@ -152,10 +159,17 @@ for (const { file, lanes } of OPEN_WORKFLOWS) {
     // Validate every open invocation independently: each must page and use one
     // of this workflow's explicitly expected lanes.
     for (const { lane, block } of openBlocks) {
-      assert.ok(
-        block.includes(PAGING_LINE),
-        `${file} mode: open block must wire paging-slack-webhook to the repo secret:\n${block}`,
-      );
+      if (NO_PAGING_LANES.has(lane)) {
+        assert.ok(
+          !/^\s+paging-slack-webhook:\s/m.test(block),
+          `${file} mode: open block for no-paging lane ${lane} must NOT wire paging-slack-webhook:\n${block}`,
+        );
+      } else {
+        assert.ok(
+          block.includes(PAGING_LINE),
+          `${file} mode: open block must wire paging-slack-webhook to the repo secret:\n${block}`,
+        );
+      }
       assert.ok(
         lanes.includes(lane),
         `${file} mode: open block must declare one of the exact expected lanes (${lanes.join(", ")}):\n${block}`,
@@ -301,7 +315,7 @@ test("Firestore serializes every trigger through one project-scoped concurrency 
 // Sanity: every open caller is accounted for (no missing/extra wiring).
 // ---------------------------------------------------------------------------
 
-test("exactly the 8 expected workflows call ops-failure-issue with mode: open", () => {
+test("exactly the 10 expected workflows call ops-failure-issue with mode: open", () => {
   const allYml = fs
     .readdirSync(WORKFLOWS_DIR)
     .filter((f) => f.endsWith(".yml"));
@@ -319,7 +333,7 @@ test("exactly the 8 expected workflows call ops-failure-issue with mode: open", 
   assert.deepEqual(
     actual,
     expected,
-    "the set of workflows with a mode: open call to ops-failure-issue must be exactly the 8 P-OPS-4 paging lanes",
+    "the set of workflows with a mode: open call to ops-failure-issue must be exactly the 10 paging lanes (8 P-OPS-4 + the W0-2 deploy-health and nightly-health scoreboards)",
   );
 });
 

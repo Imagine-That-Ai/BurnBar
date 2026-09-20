@@ -2134,6 +2134,48 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertTrue(manager.isCloudSyncEnabled)
     }
 
+    // MARK: - Account identity observers (Memory Blind Sync PR-2)
+
+    /// Signing out must tell its observers so the Memory Blind Sync inbox and
+    /// its consent marker are cleared at that instant. Before this the only
+    /// things that re-evaluated them were the 600 s refresh tick and the Settings
+    /// toggle, so a sign-out left the daemon's marker standing over the previous
+    /// member's parked plaintext — indefinitely if the app then quit, because the
+    /// daemon outlives it.
+    func test_signOut_notifiesAccountIdentityObserversWithNoMember() throws {
+        let manager = AccountManager()
+        let recorder = AccountIdentityRecorder()
+        manager.observeAccountIdentityChanges { uid in recorder.record(uid) }
+
+        try manager.signOut()
+
+        XCTAssertEqual(recorder.observed.count, 1, "one notification per sign-out")
+        XCTAssertNil(recorder.observed.first ?? "not-nil", "and it names nobody, which is what withdraws consent")
+    }
+
+    /// Every registered observer runs, so adding a second subscriber later does
+    /// not silently displace the memory one.
+    func test_accountIdentityObservers_allRunOnASignOut() throws {
+        let manager = AccountManager()
+        let first = AccountIdentityRecorder()
+        let second = AccountIdentityRecorder()
+        manager.observeAccountIdentityChanges { uid in first.record(uid) }
+        manager.observeAccountIdentityChanges { uid in second.record(uid) }
+
+        try manager.signOut()
+
+        XCTAssertEqual(first.observed.count, 1)
+        XCTAssertEqual(second.observed.count, 1)
+    }
+
+    /// A main-actor reference box: the observer closure is `@Sendable`, so it
+    /// cannot capture a mutable local.
+    @MainActor
+    private final class AccountIdentityRecorder {
+        private(set) var observed: [String?] = []
+        func record(_ uid: String?) { observed.append(uid) }
+    }
+
     // MARK: - Cloud Sync Toggle Tests
 
     func test_setCloudSyncEnabled_updatesState() {

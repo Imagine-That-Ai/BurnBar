@@ -330,7 +330,7 @@ extension BurnBarProviderRouter {
                             credentialSlotLabel: slot.slot.label,
                             baseURL: resolvedEndpoint.baseURL,
                             requestedModel: modelName,
-                            resolvedModelID: resolvedModel.id,
+                            resolvedModelID: upstreamModelID(for: resolvedModel, providerID: configuration.provider.id),
                             canonicalModelID: resolvedModel.canonicalModelID,
                             apiKey: key,
                             pricing: resolvedModel.pricing,
@@ -370,7 +370,7 @@ extension BurnBarProviderRouter {
                             credentialSlotLabel: endpointRoute.slot.label,
                             baseURL: endpointRoute.endpoint.baseURL,
                             requestedModel: modelName,
-                            resolvedModelID: resolvedModel.id,
+                            resolvedModelID: upstreamModelID(for: resolvedModel, providerID: configuration.provider.id),
                             canonicalModelID: resolvedModel.canonicalModelID,
                             apiKey: endpointRoute.apiKey ?? "",
                             pricing: resolvedModel.pricing,
@@ -396,7 +396,7 @@ extension BurnBarProviderRouter {
                         providerDisplayName: configuration.provider.displayName,
                         baseURL: resolvedEndpoint.baseURL,
                         requestedModel: modelName,
-                        resolvedModelID: resolvedModel.id,
+                        resolvedModelID: upstreamModelID(for: resolvedModel, providerID: configuration.provider.id),
                         canonicalModelID: resolvedModel.canonicalModelID,
                         apiKey: apiKey,
                         pricing: resolvedModel.pricing,
@@ -421,7 +421,7 @@ extension BurnBarProviderRouter {
                         providerDisplayName: configuration.provider.displayName,
                         baseURL: resolvedEndpoint.baseURL,
                         requestedModel: modelName,
-                        resolvedModelID: resolvedModel.id,
+                        resolvedModelID: upstreamModelID(for: resolvedModel, providerID: configuration.provider.id),
                         canonicalModelID: resolvedModel.canonicalModelID,
                         apiKey: "",
                         pricing: resolvedModel.pricing,
@@ -813,4 +813,16 @@ extension BurnBarProviderRouter {
 
         return nil
     }
+}
+
+/// Gateway aggregators (OpenRouter, Vercel AI Gateway) list models under
+/// catalog ids that are unique repo-wide (`openrouter-anthropic-claude-opus-5`);
+/// the name the provider accepts on the wire is the model's first alias
+/// (`anthropic/claude-opus-5`). Every other provider keeps its catalog id.
+func upstreamModelID(for model: BurnBarCatalogModel, providerID: String) -> String {
+    let aggregators: Set<String> = ["openrouter", "vercel-ai-gateway"]
+    guard aggregators.contains(providerID.lowercased()), let alias = model.aliases.first, !alias.isEmpty else {
+        return model.id
+    }
+    return alias
 }

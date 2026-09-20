@@ -339,18 +339,28 @@ function writeModelsJson(modelsPath, data) {
   const dir = path.dirname(modelsPath);
   fs.mkdirSync(dir, { recursive: true });
   const payload = `${JSON.stringify(data, null, 2)}\n`;
+  const writeOwnerOnly = (filePath, contents) => {
+    const descriptor = fs.openSync(filePath, "w", 0o600);
+    try {
+      fs.fchmodSync(descriptor, 0o600);
+      fs.writeFileSync(descriptor, contents);
+    } finally {
+      fs.closeSync(descriptor);
+    }
+  };
   // Atomic replace: no existsSync check before write (CodeQL js/file-system-race).
   const tmpPath = `${modelsPath}.${process.pid}.tmp`;
-  fs.writeFileSync(tmpPath, payload, "utf8");
+  writeOwnerOnly(tmpPath, payload);
   try {
     try {
-      fs.copyFileSync(modelsPath, `${modelsPath}.bak`);
+      writeOwnerOnly(`${modelsPath}.bak`, fs.readFileSync(modelsPath));
     } catch (err) {
       if (err?.code !== "ENOENT") {
         // Best-effort backup only.
       }
     }
     fs.renameSync(tmpPath, modelsPath);
+    fs.chmodSync(modelsPath, 0o600);
   } catch (err) {
     try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
     throw err;

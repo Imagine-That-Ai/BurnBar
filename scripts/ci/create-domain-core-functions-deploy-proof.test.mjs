@@ -518,3 +518,95 @@ test("rejects a runtime manifest whose candidate identity differs from the profi
     rmSync(files.directory, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Inactive domain-core lane. gen-3 was annulled in #2173, so no promotion
+// proof exists to bind; the proof must record that lane explicitly rather than
+// silently omitting the release gate.
+// ---------------------------------------------------------------------------
+
+function inactiveArgs(files) {
+  const values = args(files);
+  const gate = values.indexOf("--release-gate");
+  values.splice(gate, 2, "--domain-core-inactive", "true");
+  return values;
+}
+
+test("inactive lane: an all-legacy public-production deploy proof records the lane and no gate", () => {
+  const files = workspace(profile("public-production", "legacy"));
+  try {
+    const proof = run(inactiveArgs(files));
+    assert.equal(proof.domainCoreInactive, true);
+    assert.equal(proof.releaseGate, null);
+    assert.equal(proof.profile.value.name, "public-production");
+    assert.match(proof.runtimeArtifact.sha256, /^[0-9a-f]{64}$/u);
+    assert.equal(
+      JSON.parse(readFileSync(files.output, "utf8")).domainCoreInactive,
+      true,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("promoted lane: a gated deploy proof records domainCoreInactive false", () => {
+  const files = workspace();
+  try {
+    const proof = run(args(files));
+    assert.equal(proof.domainCoreInactive, false);
+    assert.match(proof.releaseGate.sha256, /^[0-9a-f]{64}$/u);
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("inactive lane refuses the protected rollback profile", () => {
+  const files = workspace(profile("public-production-rollback", "legacy"));
+  try {
+    assert.throws(
+      () => run(inactiveArgs(files)),
+      /inactive domain-core mode is only valid for the legacy public-production profile/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("inactive lane refuses a profile that leaves a domain on rust", () => {
+  const files = workspace(profile("public-production", "rust"));
+  try {
+    assert.throws(
+      () => run(inactiveArgs(files)),
+      /inactive domain-core mode is only valid for the legacy public-production profile/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("a deploy proof cannot drop the release gate without declaring the inactive lane", () => {
+  const files = workspace(profile("public-production", "legacy"));
+  try {
+    const values = args(files);
+    const gate = values.indexOf("--release-gate");
+    values.splice(gate, 2);
+    assert.throws(
+      () => run(values),
+      /exactly one of --release-gate or --domain-core-inactive true is required/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});
+
+test("a deploy proof cannot claim the inactive lane and a release gate at once", () => {
+  const files = workspace(profile("public-production", "legacy"));
+  try {
+    assert.throws(
+      () => run([...args(files), "--domain-core-inactive", "true"]),
+      /exactly one of --release-gate or --domain-core-inactive true is required/u,
+    );
+  } finally {
+    rmSync(files.directory, { recursive: true, force: true });
+  }
+});

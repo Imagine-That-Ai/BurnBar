@@ -194,12 +194,26 @@ extension DashboardView {
             .accessibilityHint("Mines session logs and updates the dashboard chart and Burn total.")
             .accessibilityIdentifier(OBBAccessibilityID.dashboardRefreshButton)
 
-            BurnRailSettingsButton {
-                presentSettings()
-            }
+            BurnBarProfileAvatarButton(
+                size: .toolbar,
+                onOpenSettings: { presentSettings() },
+                onOpenSettingsTab: { tab in
+                    UserDefaults.standard.set(tab.rawValue, forKey: SettingsDeepLinkRouting.pendingTabKey)
+                    presentSettings()
+                },
+                onOpenSettingsItem: { item in
+                    presentSettings(itemID: item)
+                },
+                isScanning: isScanning,
+                onImport: { runScan() },
+                onRecount: { runRecount() },
+                canRunRecount: canRunRecount,
+                mtdSpendFormatted: settingsManager.formatUsageMetric(
+                    cost: totalCostForTimeRange,
+                    tokens: totalTokensForTimeRange
+                )
+            )
             .accessibilityIdentifier(OBBAccessibilityID.dashboardSettingsButton)
-
-            commandDeckOverflow
         }
     }
 
@@ -892,19 +906,19 @@ private struct DashboardIslandSparkline: View {
     var body: some View {
         Chart {
             RuleMark(y: .value("Baseline", 0))
-                .foregroundStyle(DesignSystem.Colors.border.opacity(0.32))
+                .foregroundStyle(DesignSystem.Colors.border.opacity(0.25))
 
             ForEach(points) { point in
                 AreaMark(
                     x: .value("Time", point.date),
                     y: .value("Normalized token spend", point.value)
                 )
-                .interpolationMethod(.monotone)
+                .interpolationMethod(.catmullRom)
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            DesignSystem.Colors.ember.opacity(0.48),
-                            DesignSystem.Colors.whimsy.opacity(0.20),
+                            DesignSystem.Colors.ember.opacity(0.40),
+                            DesignSystem.Colors.whimsy.opacity(0.15),
                             .clear
                         ],
                         startPoint: .top,
@@ -916,8 +930,8 @@ private struct DashboardIslandSparkline: View {
                     x: .value("Time", point.date),
                     y: .value("Normalized token spend", point.value)
                 )
-                .interpolationMethod(.monotone)
-                .lineStyle(StrokeStyle(lineWidth: 2.1, lineCap: .round, lineJoin: .round))
+                .interpolationMethod(.catmullRom)
+                .lineStyle(StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [DesignSystem.Colors.whimsy, DesignSystem.Colors.ember, DesignSystem.Colors.blaze],
@@ -928,7 +942,7 @@ private struct DashboardIslandSparkline: View {
             }
         }
         .chartXScale(domain: range)
-        .chartYScale(domain: 0...1.04)
+        .chartYScale(domain: 0...1.22)
         .chartXAxis {
             AxisMarks(position: .bottom, values: labelDates) { value in
                 if let date = value.as(Date.self) {
@@ -945,6 +959,8 @@ private struct DashboardIslandSparkline: View {
         .chartPlotStyle { plot in
             plot.background(.clear)
         }
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
         .accessibilityLabel("Token spend from \(label(for: range.lowerBound)) to \(label(for: range.upperBound))")
     }
 
@@ -1435,6 +1451,7 @@ extension DashboardMainRoute {
         case "controlDeck": return .controlDeck
         case "home": return .home
         case "fleet": return .fleet
+        case "receipts": return .receipts
         default: return nil
         }
     }

@@ -53,6 +53,16 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
         "com.openburnbar.cli"
     ]
 
+    /// Exact bundle identifier of the root remote-access LaunchDaemon behind
+    /// `/var/run/openburnbar-remote-access-agent.sock`. Clients MUST
+    /// authenticate the agent server against this identifier specifically
+    /// (``remoteAccessAgentDesignatedRequirement``), not against the shared
+    /// ``privilegedInputPeerBundleIdentifiers`` allowlist: the socket path
+    /// carries the macOS login password, and any first-party root helper
+    /// listening there (daemon, input helper, HID bridge) would otherwise
+    /// pass the shared-allowlist requirement and receive the credential.
+    public static let remoteAccessAgentIdentifier = "com.openburnbar.remote-access-agent"
+
     /// Exact bundle identifiers of first-party binaries permitted on privileged
     /// input/control sockets. These sockets can carry local-auth credentials or
     /// synthesize user input, so helper trust is narrower than daemon RPC trust
@@ -67,6 +77,15 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     /// no identifier-prefix operator in the language, so we enumerate the exact
     /// privileged peers and OR them together. The Team-ID + hardened-runtime +
     /// library-validation clauses remain the primary first-party gate.
+    ///
+    /// The remote-access agent (`com.openburnbar.remote-access-agent`) is
+    /// deliberately NOT in this shared allowlist (Cursor security review,
+    /// round 2): listing it here would let a uid-0 process signed as the agent
+    /// satisfy the default peer requirement on sibling privileged-input / HID /
+    /// kill-switch lanes where it has no business, contradicting its
+    /// HID/keychain isolation. Clients authenticate the agent SERVER through
+    /// the exact-identifier ``remoteAccessAgentDesignatedRequirement`` instead,
+    /// and the agent does not act as a client on those other lanes.
     public static let privilegedInputPeerBundleIdentifiers: [String] = [
         "com.openburnbar.app",
         "com.openburnbar.daemon",
@@ -122,6 +141,16 @@ public enum OpenBurnBarPrivilegedTrust: Sendable {
     /// token and RPC-level authorization.
     public static let daemonRPCPeerDesignatedRequirement: String = """
     anchor apple generic and certificate leaf[subject.OU] = "\(teamID)" and \(daemonRPCPeerIdentifierClause)
+    """
+
+    /// Designated requirement the remote-access-agent SERVER must satisfy when
+    /// a client authenticates it over `/var/run/openburnbar-remote-access-agent.sock`.
+    /// Pinned to the agent's exact identifier rather than the shared
+    /// privileged-input allowlist: the socket carries the macOS login password,
+    /// so any first-party root helper squatting the path must NOT pass. Only
+    /// the agent itself may receive credentials typed through this lane.
+    public static let remoteAccessAgentDesignatedRequirement: String = """
+    anchor apple generic and certificate leaf[subject.OU] = "\(teamID)" and identifier "\(remoteAccessAgentIdentifier)"
     """
 
     /// Backwards-compatible default: the strict privileged-input profile.

@@ -23,6 +23,10 @@ final class WindowManager: ObservableObject {
 
     private var dashboardWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private var bugReportWindow: NSWindow?
+    private var bugReportWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
+    private var helpSupportWindow: NSWindow?
+    private var helpSupportWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
     private var onboardingWindow: NSWindow?
     private var onboardingWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
     private var hermesSetupWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
@@ -31,6 +35,8 @@ final class WindowManager: ObservableObject {
     private var hermesSetupWindow: NSWindow?
     private var switcherOnboardingWindow: NSWindow?
     private var startupRecoveryWindow: NSWindow?
+    private var receiptsWindow: NSWindow?
+    private var receiptsWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
     private var dashboardWindowLifecycleHandler: DashboardWindowLifecycleDelegate?
     private var settingsWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
 
@@ -53,10 +59,13 @@ final class WindowManager: ObservableObject {
         let documentWindows: [NSWindow?] = [
             dashboardWindow,
             settingsWindow,
+            bugReportWindow,
+            helpSupportWindow,
             onboardingWindow,
             hermesSetupWindow,
             switcherOnboardingWindow,
             startupRecoveryWindow,
+            receiptsWindow,
             WindowManager.chatPopOutWindow
         ]
         let hasVisibleDocument = documentWindows.contains { window in
@@ -211,6 +220,74 @@ final class WindowManager: ObservableObject {
 
         settingsWindow = window
         settingsWindowLifecycleHandler = settingsLifecycle
+    }
+
+    func openBugReport() {
+        promoteToRegularActivation()
+
+        if let window = bugReportWindow {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = BugReportSheetView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 640),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Report an Issue or Feedback"
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.isReleasedWhenClosed = false
+        let lifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.bugReportWindow = nil
+            self?.bugReportWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = lifecycle
+        window.makeKeyAndOrderFront(nil)
+
+        bugReportWindow = window
+        bugReportWindowLifecycleHandler = lifecycle
+    }
+
+    func openHelpSupport() {
+        promoteToRegularActivation()
+
+        if let window = helpSupportWindow {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = HelpSupportHubView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 580),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Help & Support"
+        window.contentMinSize = NSSize(width: 580, height: 480)
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.setFrameAutosaveName("openburnbar.helpsupport")
+        window.isReleasedWhenClosed = false
+        let lifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.helpSupportWindow = nil
+            self?.helpSupportWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = lifecycle
+        window.makeKeyAndOrderFront(nil)
+
+        helpSupportWindow = window
+        helpSupportWindowLifecycleHandler = lifecycle
     }
 
     func openOnboardingWizard(
@@ -450,6 +527,65 @@ final class WindowManager: ObservableObject {
     func closeStartupRecovery() {
         startupRecoveryWindow?.close()
         startupRecoveryWindow = nil
+        demoteToAccessoryIfIdle()
+    }
+
+    // MARK: - Receipts Window
+
+    func openReceiptsWindow(dataStore: DataStore, initialReceiptId: String? = nil) {
+        promoteToRegularActivation()
+
+        if let window = receiptsWindow {
+            if let initialReceiptId {
+                let contentView = ReceiptDrawerView(
+                    dataStore: dataStore,
+                    initialReceiptId: initialReceiptId,
+                    onClose: { [weak self] in
+                        self?.closeReceiptsWindow()
+                    }
+                )
+                .frame(minWidth: 840, minHeight: 600)
+                window.contentView = NSHostingView(rootView: contentView)
+            }
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = ReceiptDrawerView(
+            dataStore: dataStore,
+            initialReceiptId: initialReceiptId,
+            onClose: { [weak self] in
+                self?.closeReceiptsWindow()
+            }
+        )
+        .frame(minWidth: 840, minHeight: 600)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 920, height: 680),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "OpenBurnBar Receipts"
+        window.backgroundColor = NSColor.windowBackgroundColor
+        window.contentView = NSHostingView(rootView: contentView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        window.isReleasedWhenClosed = false
+
+        let lifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.receiptsWindow = nil
+            self?.receiptsWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = lifecycle
+        receiptsWindowLifecycleHandler = lifecycle
+        receiptsWindow = window
+    }
+
+    func closeReceiptsWindow() {
+        receiptsWindow?.close()
+        receiptsWindow = nil
         demoteToAccessoryIfIdle()
     }
 

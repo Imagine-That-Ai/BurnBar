@@ -1062,6 +1062,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.memory.model_policy",
+    "caseName": "memoryModelPolicy",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarMemoryModelPolicyRequest",
+    "result": "BurnBarMemoryModelPolicyResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.memory.recall",
     "caseName": "memoryRecall",
     "domain": "memory",
@@ -1089,6 +1099,26 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.memory.review_status",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.memory.sync.inbox.ack",
+    "caseName": "memorySyncInboxAck",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.memory.sync.inbox.ack",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.memory.sync.inbox.list",
+    "caseName": "memorySyncInboxList",
+    "domain": "memory",
+    "capability": "memory_read",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.memory.sync.inbox",
     "error": "BurnBarRPCError"
   },
   {

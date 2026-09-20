@@ -50,7 +50,7 @@ describe("BOLA — knowledge", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "commitKnowledgeBatch",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -64,7 +64,7 @@ describe("BOLA — knowledge", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "configureKnowledgeSource",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -78,7 +78,7 @@ describe("BOLA — knowledge", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "deleteKnowledgeSource",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -92,7 +92,7 @@ describe("BOLA — knowledge", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "connectKnowledgeRepo",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });
@@ -106,7 +106,7 @@ describe("BOLA — knowledge", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "disconnectKnowledgeRepo",
       run,
-      expectedCode: "not-found",
+      expectedCode: "permission-denied",
       expectedOutcome: "throws",
     });
   });

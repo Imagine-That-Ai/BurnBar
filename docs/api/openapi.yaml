@@ -22,7 +22,7 @@ info:
 servers:
   - url: https://us-central1-burnbar.cloudfunctions.net
     description: Production (Firebase Cloud Functions)
-  - url: http://localhost:5001/openburnbar/us-central1
+  - url: http://localhost:5001/burnbar/us-central1
     description: Local Firebase Emulator
 
 tags:

@@ -12,12 +12,17 @@ class MobileOsIntegrationParityTest {
     // Walks every fixture vector:
     // os.notification.denied-not-delivered, os.notification.granted-may-deliver,
     // os.push.agent-reply-route, os.push.inbox-route, os.push.quota-route,
-    // os.push.mercury-call-route, os.push.mission-route, os.push.unknown-type-no-route,
+    // os.push.mercury-call-route, os.push.mission-route, os.push.device-approval-route,
+    // os.push.device-approval-navigate-without-uid,
+    // os.push.device-approval-honor-uid-mismatch, os.push.device-approval-honor-expiry,
+    // os.push.device-approval-unique-event-id, os.push.device-approval-repeat-not-duplicate,
+    // os.push.unknown-type-no-route,
     // os.push.omit-uid-expiry-no-navigate, os.push.evil-https-deep-link-ignored,
     // os.push.navigate-happy-path, os.push.stale-expired-no-navigate,
     // os.push.account-mismatch-no-navigate, os.push.duplicate-tap-idempotent,
     // os.deeplink.cold-inbox, os.deeplink.warm-assistants,
     // os.deeplink.mixed-case-inbox-id, os.deeplink.encoded-thread-id,
+    // os.deeplink.approve-device-openburnbar, os.deeplink.devices-burnbar,
     // os.widget.no-raw-uid, os.widget.no-secret, os.widget.no-conversation-text,
     // os.widget.aggregate-snapshot-safe, os.background.retry-attempt-0,
     // os.background.retry-attempt-1, os.background.retry-attempt-2,
@@ -105,6 +110,7 @@ class MobileOsIntegrationParityTest {
         if (expected.has("itemId")) assertEquals(expected.getString("itemId"), routed.itemId)
         if (expected.has("threadId")) assertEquals(expected.getString("threadId"), routed.threadId)
         if (expected.has("runtime")) assertEquals(expected.getString("runtime"), routed.runtime)
+        if (expected.has("deviceId")) assertEquals(expected.getString("deviceId"), routed.deviceId)
     }
 
     private fun assertPrivacy(vector: JSONObject) {

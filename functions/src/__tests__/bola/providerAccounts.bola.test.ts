@@ -60,7 +60,7 @@ describe("BOLA — providerAccounts", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "connectProviderAccount",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -74,7 +74,7 @@ describe("BOLA — providerAccounts", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "connectHostedQuotaAccount",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -88,7 +88,7 @@ describe("BOLA — providerAccounts", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "connectSelfHostedQuotaAccount",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -116,7 +116,7 @@ describe("BOLA — providerAccounts", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "deleteHostedQuotaCredentials",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });

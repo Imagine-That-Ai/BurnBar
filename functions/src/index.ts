@@ -101,6 +101,7 @@ export {
   publishMissionApprovalCeiling,
   redeemMissionApprovalAnswer,
 } from "./callables/missionApprovalAnswers.js";
+export { submitBugReport } from "./callables/bugReporting.js";
 
 export {
   createPiAgentPairing,
@@ -163,7 +164,7 @@ export {
   detectStalePendingCloudVaultRotations,
 } from "./cloudVaultRotationResilience.js";
 export { getDataDomainUsage } from "./callables/dataDomainUsage.js";
-export { searchKnowledge } from "./callables/knowledgeSearch.js";
+export { searchKnowledge, listKnowledgeChunks } from "./callables/knowledgeSearch.js";
 export { exportUserData } from "./callables/dataExport.js";
 export { deleteDomainData } from "./callables/dataDeletion.js";
 export { setupRecovery, confirmRecovery, listRecovery } from "./callables/recovery.js";
@@ -271,3 +272,18 @@ export { backfillPrivacyPlaintext, backfillPrivacyPlaintextScheduled } from "./c
 export { scanLegacyPlaintextArtifacts } from "./callables/sharedArtifactLegacyScan.js";
 
 export { submitDomainCoreShadowSamples } from "./callables/domainCoreShadowEvidence.js";
+
+// Team memory roster authority (D16 / P21). Firestore rules deny every client
+// write to `team_rosters/**`, so these callables are the only path by which a
+// team, its membership, or its key generation ever changes.
+export {
+  createTeam,
+  inviteTeamMember,
+  acceptTeamInvite,
+  promoteTeamMember,
+  removeTeamMember,
+  rotateTeamKey,
+  abandonTeamKeyGeneration,
+  recordTeamRewrapComplete,
+  recordTeamSlugKeyId,
+} from "./callables/teamRosterCallables.js";

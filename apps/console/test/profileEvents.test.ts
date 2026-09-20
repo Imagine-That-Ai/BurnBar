@@ -36,14 +36,23 @@ vi.mock("firebase/firestore", () => ({
 import {
   PROFILE_EVENTS_PAGE_SIZE,
   buildProfileEventConstraints,
+  classifyProfileEventError,
   eventTimeToIso,
+  matchEventFacets,
   normalizeProfileEvent,
+  profileEventErrorCopy,
 } from "../lib/profile/profileEvents";
 import {
+  blendShareStops,
+  dailyModelProviders,
+  dailyModelTokenSplit,
+  dominantShareFill,
+  dominantShareKey,
   eventsOnDay,
   hourWeekdayGrid,
   rankShares,
   summarizeDay,
+  summarizeEvents,
   tokenMix,
 } from "../lib/profile/profileAggregates";
 import type { ProfileUsageEvent } from "../lib/profile/profileEvents";
@@ -80,11 +89,11 @@ describe("buildProfileEventConstraints", () => {
     expect(PROFILE_EVENTS_PAGE_SIZE).toBe(100);
   });
 
-  it("uses == for single values and a bounded range", () => {
+  it("applies at most one server equality plus the bounded range", () => {
     whereCalls.length = 0;
     buildProfileEventConstraints({
       facets: {
-        providers: ["Claude Code"],
+        providers: ["claude-code"],
         models: ["gpt-5.3"],
         devices: ["mac"],
         harnesses: ["claude-code"],
@@ -92,11 +101,11 @@ describe("buildProfileEventConstraints", () => {
       },
       range: { fromDay: "2026-08-01", toDay: "2026-08-16" },
     });
-    expect(whereCalls).toContainEqual(["provider", "==", "Claude Code"]);
+    // Model wins the priority order; providers NEVER constrain server-side
+    // (display/canonical split), the rest filter client-side.
     expect(whereCalls).toContainEqual(["model", "==", "gpt-5.3"]);
-    expect(whereCalls).toContainEqual(["deviceId", "==", "mac"]);
-    expect(whereCalls).toContainEqual(["executionSourceID", "==", "claude-code"]);
-    expect(whereCalls).toContainEqual(["providerAccountID", "==", "acct-1"]);
+    expect(whereCalls).not.toContainEqual(["provider", "==", "claude-code"]);
+    expect(whereCalls.filter((c) => c[1] === "==")).toHaveLength(1);
     expect(whereCalls).toContainEqual([
       "startTime",
       ">=",
@@ -109,14 +118,14 @@ describe("buildProfileEventConstraints", () => {
     ]);
   });
 
-  it("uses `in` for multi-value facets and appends the cursor", () => {
+  it("never truncates multi-value groups server-side; cursor appends", () => {
     whereCalls.length = 0;
     startAfterCalls = 0;
     buildProfileEventConstraints(
       {
         facets: {
           providers: ["a", "b"],
-          models: [],
+          models: ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10", "m11"],
           devices: [],
           harnesses: [],
           accounts: [],
@@ -125,8 +134,81 @@ describe("buildProfileEventConstraints", () => {
       },
       { __cursor: true } as never,
     );
-    expect(whereCalls).toContainEqual(["provider", "in", ["a", "b"]]);
+    // No `in`, no truncation — all eleven models filter client-side.
+    expect(whereCalls).toEqual([]);
     expect(startAfterCalls).toBe(1);
+  });
+
+  it("skips the server equality for synthetic unattributed account keys", () => {
+    whereCalls.length = 0;
+    buildProfileEventConstraints({
+      facets: { providers: [], models: [], devices: [], harnesses: [], accounts: ["codex:unattributed"] },
+      range: { fromDay: "2026-08-01", toDay: "2026-08-16" },
+    });
+    expect(whereCalls.filter((c) => c[1] === "==")).toHaveLength(0);
+  });
+});
+
+describe("matchEventFacets", () => {
+  const base = ev({
+    id: "x",
+    provider: "Claude Code",
+    providerID: "claude-code",
+    model: "m-1",
+    harnessId: "h-1",
+    deviceId: "mac",
+  });
+  const empty = { providers: [], models: [], devices: [], harnesses: [], accounts: [] };
+
+  it("matches everything when no facet is active", () => {
+    expect(matchEventFacets(base, empty)).toBe(true);
+  });
+
+  it("matches providers by display name OR canonical id", () => {
+    expect(matchEventFacets(base, { ...empty, providers: ["claude-code"] })).toBe(true);
+    expect(matchEventFacets(base, { ...empty, providers: ["Claude Code"] })).toBe(true);
+    expect(matchEventFacets(base, { ...empty, providers: ["codex"] })).toBe(false);
+  });
+
+  it("matches synthetic unattributed accounts against missing account ids", () => {
+    const unattributed = ev({ id: "u", provider: "X", providerID: "codex" });
+    expect(
+      matchEventFacets(unattributed, { ...empty, accounts: ["codex:unattributed"] }),
+    ).toBe(true);
+    expect(matchEventFacets(base, { ...empty, accounts: ["codex:unattributed"] })).toBe(false);
+    const linked = ev({ id: "l", provider: "X", providerID: "codex", accountId: "acct-9" });
+    expect(matchEventFacets(linked, { ...empty, accounts: ["acct-9"] })).toBe(true);
+  });
+
+  it("ands groups and ors values", () => {
+    expect(
+      matchEventFacets(base, { ...empty, models: ["m-1", "m-2"], devices: ["mac"] }),
+    ).toBe(true);
+    expect(matchEventFacets(base, { ...empty, models: ["m-2"] })).toBe(false);
+    expect(matchEventFacets(base, { ...empty, devices: ["other"] })).toBe(false);
+  });
+
+  it("matches synthetic unknown chips against missing dimensions", () => {
+    const noModel = ev({ id: "u1" });
+    expect(matchEventFacets(noModel, { ...empty, models: ["unknown"] })).toBe(true);
+    expect(matchEventFacets(noModel, { ...empty, models: ["m-1"] })).toBe(false);
+    const noHarness = ev({ id: "u2", model: "m-1" });
+    expect(matchEventFacets(noHarness, { ...empty, harnesses: ["unknown"] })).toBe(true);
+    const noDevice = ev({ id: "u3", model: "m-1", harnessId: "h-1" });
+    expect(matchEventFacets(noDevice, { ...empty, devices: ["unknown"] })).toBe(true);
+    // …but a real chip still rejects a missing dimension.
+    expect(matchEventFacets(noDevice, { ...empty, devices: ["mac"] })).toBe(false);
+  });
+});
+
+describe("classifyProfileEventError", () => {
+  it("maps failures onto stable kinds with member copy", () => {
+    expect(classifyProfileEventError(new Error("failed-precondition: requires an index"))).toBe("index");
+    expect(classifyProfileEventError(new Error("permission-denied"))).toBe("denied");
+    expect(classifyProfileEventError(new Error("boom"))).toBe("network");
+    expect(profileEventErrorCopy("index")).toMatch(/warming up/);
+    expect(profileEventErrorCopy("denied")).toMatch(/Sign in again/);
+    expect(profileEventErrorCopy("network")).toMatch(/connection/);
   });
 });
 
@@ -146,6 +228,20 @@ describe("eventTimeToIso", () => {
 });
 
 describe("normalizeProfileEvent", () => {
+  it("reads the canonical costUSD field first (Elder Wand spelling)", () => {
+    const e = normalizeProfileEvent("doc-cost", {
+      provider: "openburnbar",
+      costUSD: 0.42,
+      costUsd: 0.11,
+      cost: 0.07,
+      recordedAt: "2026-08-15T12:00:00.000Z",
+    });
+    expect(e.costUsd).toBe(0.42);
+    expect(
+      normalizeProfileEvent("doc-cost-legacy", { provider: "x", costUsd: 0.11 }).costUsd,
+    ).toBe(0.11);
+  });
+
   it("sums the token mix and derives the UTC hour", () => {
     const e = normalizeProfileEvent("doc-1", {
       provider: "Claude Code",
@@ -257,10 +353,108 @@ describe("profileAggregates", () => {
     expect(rankShares(events, "harness").map((r) => r.key)).toContain("h-1");
   });
 
+  it("rankShares groups providers by canonical id, not display name", () => {
+    const mixed = [
+      ev({ id: "p1", provider: "Claude Code", providerID: "claude-code", totalTokens: 100, costUsd: 1 }),
+      ev({ id: "p2", provider: "claude-code", providerID: "claude-code", totalTokens: 50, costUsd: 0.5 }),
+      ev({ id: "p3", provider: "Codex", totalTokens: 25, costUsd: 0.25 }),
+    ];
+    const byProvider = rankShares(mixed, "provider");
+    expect(byProvider.map((r) => r.key)).toEqual(["claude-code", "Codex"]);
+    expect(byProvider[0]).toMatchObject({ tokens: 150, events: 2, cost: 1.5 });
+  });
+
   it("summarizeDay + eventsOnDay slice one day", () => {
     expect(eventsOnDay(events, "2026-08-14").map((e) => e.id)).toEqual(["a", "b"]);
     const day = summarizeDay("2026-08-14", events);
     expect(day).toMatchObject({ day: "2026-08-14", events: 2, tokens: 450, cost: 3 });
     expect(day.byModel[0]).toMatchObject({ key: "m-1", tokens: 450 });
+  });
+
+  it("summarizeEvents aggregates every dimension in rollup shapes", () => {
+    const s = summarizeEvents(events);
+    // Models carry rollup ModelSummary fields (model/provider/requests/
+    // tokens/cost/label) so breakdowns render both shapes identically.
+    expect(s.models).toMatchObject([
+      { model: "m-1", provider: "Claude Code", requests: 2, tokens: 450, cost: 3, label: "m-1" },
+      { model: "m-2", provider: "Claude Code", requests: 1, tokens: 50, cost: 0.5, label: "m-2" },
+    ]);
+    expect(s.harnesses).toEqual([
+      { label: "H2", sourceId: "h-2", sourceName: "H2", totalRequests: 1, totalTokens: 300, totalCost: 2 },
+      { label: "H1", sourceId: "h-1", sourceName: "H1", totalRequests: 1, totalTokens: 150, totalCost: 1 },
+      { label: "Unknown", sourceId: "unknown", sourceName: "Unknown", totalRequests: 1, totalTokens: 50, totalCost: 0.5 },
+    ]);
+    // Totals reconcile: every dimension sums to the same event totals.
+    const sum = (rows: { tokens: number; requests: number; cost: number }[]) => ({
+      tokens: rows.reduce((n, r) => n + r.tokens, 0),
+      requests: rows.reduce((n, r) => n + r.requests, 0),
+      cost: rows.reduce((n, r) => n + r.cost, 0),
+    });
+    const sumHarness = (rows: { totalTokens: number; totalRequests: number; totalCost: number }[]) => ({
+      tokens: rows.reduce((n, r) => n + r.totalTokens, 0),
+      requests: rows.reduce((n, r) => n + r.totalRequests, 0),
+      cost: rows.reduce((n, r) => n + r.totalCost, 0),
+    });
+    const sumDevice = (rows: { tokens: number; requests: number }[]) => ({
+      tokens: rows.reduce((n, r) => n + r.tokens, 0),
+      requests: rows.reduce((n, r) => n + r.requests, 0),
+    });
+    expect(sum(s.models)).toEqual({ tokens: 500, requests: 3, cost: 3.5 });
+    expect(sumHarness(s.harnesses)).toEqual({ tokens: 500, requests: 3, cost: 3.5 });
+    // Devices are cost-blind server-side (DeviceSummary has no cost field);
+    // the rollup never writes device cost, so accumulate tokens/runs only.
+    expect(sumDevice(s.devices)).toEqual({ tokens: 500, requests: 3 });
+    expect(sumHarness(s.accounts)).toEqual({ tokens: 500, requests: 3, cost: 3.5 });
+    // Unattributed accounts use the synthetic rollup key.
+    expect(s.accounts[0]).toMatchObject({ id: "Claude Code:unattributed" });
+  });
+
+  it("dailyModelTokenSplit groups tokens by day and model", () => {
+    const split = dailyModelTokenSplit(events);
+    expect(split["2026-08-14"]).toEqual({ "m-1": 450 });
+    expect(split["2026-08-15"]).toEqual({ "m-2": 50 });
+    expect(split["2026-08-16"]).toBeUndefined();
+  });
+
+  it("dominantShareFill wears the winner's hue at sqrt-scaled opacity", () => {
+    const colorFor = (key: string) => `color:${key}`;
+    // 800/1000 → sqrt(0.8) ≈ 0.89 → bucket 4 → opacity 1.
+    expect(
+      dominantShareFill({ anthropic: 800, openai: 200 }, 1000, colorFor),
+    ).toEqual({ fill: "color:anthropic", fillOpacity: 1 });
+    // 100/1600 → sqrt(1/16) = 0.25 → bucket 1 → opacity 0.28.
+    expect(
+      dominantShareFill({ x: 100 }, 1600, colorFor),
+    ).toEqual({ fill: "color:x", fillOpacity: 0.28 });
+    expect(dominantShareFill({}, 100, colorFor)).toBeNull();
+    expect(dominantShareFill(undefined, 100, colorFor)).toBeNull();
+    expect(dominantShareFill({ x: 0 }, 100, colorFor)).toBeNull();
+  });
+
+  it("blendShareStops weights up to three shares as hard-stop bands", () => {
+    const colorFor = (key: string) => `color:${key}`;
+    const stops = blendShareStops({ a: 600, b: 400 }, colorFor)!;
+    expect(stops).toEqual([
+      { color: "color:a", from: 0, to: 0.6 },
+      { color: "color:b", from: 0.6, to: 1 },
+    ]);
+    // A single share is one full-range band (solid paint, no gradient).
+    expect(blendShareStops({ a: 600 }, colorFor)).toEqual([
+      { color: "color:a", from: 0, to: 1 },
+    ]);
+    expect(blendShareStops({}, colorFor)).toBeNull();
+    expect(blendShareStops(undefined, colorFor)).toBeNull();
+  });
+
+  it("dailyModelProviders attributes each model to its stored provider", () => {
+    const byDay = dailyModelProviders(events);
+    expect(byDay["2026-08-14"]).toEqual({ "m-1": "Claude Code" });
+    expect(byDay["2026-08-15"]).toEqual({ "m-2": "Claude Code" });
+  });
+
+  it("dominantShareKey names the winner, null when empty", () => {
+    expect(dominantShareKey({ a: 100, b: 300 })).toBe("b");
+    expect(dominantShareKey({})).toBeNull();
+    expect(dominantShareKey(undefined)).toBeNull();
   });
 });

@@ -42,7 +42,7 @@ describe("BOLA — burnbarAttachments", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "beginBurnbarAttachment",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -53,7 +53,7 @@ describe("BOLA — burnbarAttachments", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "mintBurnbarAttachmentPartURL",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -64,7 +64,7 @@ describe("BOLA — burnbarAttachments", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "composeBurnbarAttachment",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -75,7 +75,7 @@ describe("BOLA — burnbarAttachments", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "finalizeBurnbarAttachment",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -86,7 +86,7 @@ describe("BOLA — burnbarAttachments", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "deleteBurnbarAttachment",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });
@@ -97,7 +97,7 @@ describe("BOLA — burnbarAttachments", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "ticketBurnbarAttachmentDownload",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });

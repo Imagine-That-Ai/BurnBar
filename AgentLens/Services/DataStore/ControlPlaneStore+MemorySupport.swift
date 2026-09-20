@@ -4,7 +4,7 @@ import CryptoKit
 import OpenBurnBarCore
 
 extension ControlPlaneStore {
-    struct MemoryBodySnapshot: Codable {
+    struct MemoryBodySnapshot: Codable, Sendable {
         let schemaVersion: Int
         let memoryID: MemoryID
         let sourceKind: MemorySourceKind
@@ -21,15 +21,31 @@ extension ControlPlaneStore {
     /// explicit project. Chat keeps its shipped `chat:` prefix byte-identical;
     /// both usage kinds share `usage:` so cross-source dedup and corroboration
     /// happen inside the existing project-scoped queries.
+    ///
+    /// The agent lane is the odd one out and has its own case: the daemon writes
+    /// those rows under its own per-project `project_id` and fills in none of the
+    /// app's scope columns, so they live in no app-shaped bucket at all. The case
+    /// exists to say that, not to name a prefix — a mirrored row always carries a
+    /// real `project_id`, so `memoryStorageProjectID` never falls through to the
+    /// `agent:` spelling. See `fetchActiveMemoryAuthorityRecords`.
     enum MemoryStoragePartition: String {
         case chat
         case usage
+        case agent
 
         init(_ sourceKind: MemorySourceKind) {
-            self = MemorySourceKind.usageKinds.contains(sourceKind) ? .usage : .chat
+            if sourceKind == .agent {
+                self = .agent
+            } else {
+                self = MemorySourceKind.usageKinds.contains(sourceKind) ? .usage : .chat
+            }
         }
 
         init(_ sourceKinds: Set<MemorySourceKind>) {
+            if sourceKinds.isEmpty == false, sourceKinds.isSubset(of: [.agent]) {
+                self = .agent
+                return
+            }
             let isUsage = sourceKinds.isEmpty == false
                 && sourceKinds.isSubset(of: MemorySourceKind.usageKinds)
             self = isUsage ? .usage : .chat
@@ -44,8 +60,9 @@ extension ControlPlaneStore {
         _ kinds: Set<MemorySourceKind>
     ) -> [Set<MemorySourceKind>] {
         let usage = kinds.intersection(MemorySourceKind.usageKinds)
-        let chatLike = kinds.subtracting(MemorySourceKind.usageKinds)
-        return [chatLike, usage].filter { $0.isEmpty == false }
+        let agent = kinds.intersection([.agent])
+        let chatLike = kinds.subtracting(MemorySourceKind.usageKinds).subtracting([.agent])
+        return [chatLike, usage, agent].filter { $0.isEmpty == false }
     }
 
     static func memorySnapshotSlug(_ id: MemoryID) -> String {
@@ -70,7 +87,7 @@ extension ControlPlaneStore {
         switch sourceKind {
         case .safariAsk: .safariAsk
         case .agentSession: .agentSessionEvent
-        case .chat, .code: .chatMessage
+        case .chat, .code, .agent: .chatMessage
         }
     }
 
@@ -132,6 +149,27 @@ extension ControlPlaneStore {
             ])
         }
         return json
+    }
+
+    /// Decode the sealed snapshot for `id` on an existing connection.
+    ///
+    /// Body-only callers go through `openChatMemoryBody`; the reseal path needs
+    /// the whole snapshot so an edit can carry the A-MEM `context` sentence
+    /// forward. Resealing without it would drop the sentence and downgrade the
+    /// snapshot from `schemaVersion` 2 back to 1.
+    static func memoryBodySnapshot(db: Database, id: MemoryID) throws -> MemoryBodySnapshot? {
+        guard let snapshotJSON = try String.fetchOne(
+            db,
+            sql: "SELECT snapshot_json FROM memory_body_snapshots WHERE id = ? AND memory_id = ?",
+            arguments: [memorySnapshotSlug(id), id]
+        ),
+              let data = snapshotJSON.data(using: .utf8)
+        else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(MemoryBodySnapshot.self, from: data)
     }
 
     static func memoryProvenanceID(memoryID: MemoryID, citationID: String) -> String {

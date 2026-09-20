@@ -5,9 +5,11 @@ extension BurnBarProjectCodeMemoryStore {
     func migrateLegacyPlaintextAgentMemories() throws {
         let rows = try queryRows(
             """
-            SELECT id, project_id, kind, scope, body_redacted, tags_json, source_path, updated_at
+            SELECT id, project_id, kind, scope, body_redacted, tags_json, source_path, updated_at, review_status
             FROM agent_memories
             WHERE body_redacted NOT LIKE 'Project Memory snapshot ref:%'
+              AND body_redacted NOT LIKE 'Quarantine body ref:%'
+              AND body_redacted != ''
             """,
             []
         )
@@ -17,21 +19,271 @@ extension BurnBarProjectCodeMemoryStore {
             let body = row.string(4)
             let tags = decodeStringArray(row.string(5))
             let now = row.optionalString(7) ?? Self.isoNow()
-            try upsertProjectMemorySection(
+            let reviewStatus = MemoryReviewStatus(rawValue: row.string(8)) ?? .approved
+            if reviewStatus == .approved {
+                try upsertProjectMemorySection(
+                    projectID: projectID,
+                    projectDisplayName: projectID,
+                    memoryID: memoryID,
+                    body: body,
+                    kind: row.string(2),
+                    scope: row.string(3),
+                    tags: tags,
+                    sourcePath: row.optionalString(6),
+                    now: now
+                )
+            } else if reviewStatus != .forgotten {
+                try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+            }
+            try execute(
+                "UPDATE agent_memories SET body_redacted = ?, updated_at = ? WHERE id = ?",
+                [
+                    .text(
+                        reviewStatus == .approved
+                            ? Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
+                            : Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)
+                    ),
+                    .text(now),
+                    .text(memoryID)
+                ]
+            )
+        }
+        let legacyReviewRows = try queryRows(
+            """
+            SELECT id, project_id, updated_at
+            FROM agent_memories
+            WHERE body_redacted LIKE 'Project Memory snapshot ref:%'
+              AND review_status IN ('quarantined', 'rejected')
+            """,
+            []
+        )
+        for row in legacyReviewRows {
+            let memoryID = row.string(0)
+            let projectID = row.string(1)
+            let now = row.optionalString(2) ?? Self.isoNow()
+            guard let body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID) else { continue }
+            try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+            try removeProjectMemorySection(
                 projectID: projectID,
                 projectDisplayName: projectID,
                 memoryID: memoryID,
-                body: body,
-                kind: row.string(2),
-                scope: row.string(3),
-                tags: tags,
-                sourcePath: row.optionalString(6),
                 now: now
             )
             try execute(
-                "UPDATE agent_memories SET body_redacted = ?, updated_at = ? WHERE id = ?",
-                [.text(Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)), .text(now), .text(memoryID)]
+                "UPDATE agent_memories SET body_redacted = ? WHERE id = ? AND project_id = ?",
+                [.text(Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)), .text(memoryID), .text(projectID)]
             )
+        }
+    }
+
+    func backfillMemoryEmbeddings() throws {
+        guard embeddingProvider.isAvailable else { return }
+        let rows = try queryRows(
+            """
+            SELECT m.id, m.project_id
+            FROM agent_memories AS m
+            LEFT JOIN memory_embedding_refs AS e
+              ON e.memory_id = m.id AND e.embedding_version_id = ?
+            WHERE m.review_status = 'approved' AND m.valid_to IS NULL AND e.memory_id IS NULL
+            """,
+            [.text(embeddingProvider.versionID)]
+        )
+        for row in rows {
+            let memoryID = row.string(0)
+            let projectID = row.string(1)
+            guard let body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID) else { continue }
+            try upsertMemoryEmbedding(memoryID: memoryID, body: body, now: Self.isoNow())
+        }
+    }
+
+    func upsertMemoryEmbedding(memoryID: String, body: String, now: String) throws {
+        guard embeddingProvider.isAvailable,
+              let vector = embeddingProvider.embed(body),
+              vector.count == embeddingProvider.dimension else { return }
+        let norm = vector.reduce(0.0) { $0 + Double($1 * $1) }.squareRoot()
+        try execute(
+            """
+            INSERT OR REPLACE INTO memory_embedding_refs
+                (memory_id, embedding_version_id, dimension, vector, norm, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                .text(memoryID), .text(embeddingProvider.versionID), .int(vector.count),
+                .blob(BurnBarCodeVectorCodec.encode(vector)), .double(norm), .text(now)
+            ]
+        )
+    }
+
+    func setReviewStatus(
+        _ request: BurnBarProjectMemoryReviewStatusRequest
+    ) throws -> BurnBarProjectMemoryReviewStatusResponse {
+        let traceID = TraceContextBridge.currentContext().traceID
+        let root = try projectRoot(request.projectPath)
+        let projectID = try resolveProjectIdentity(root: root).projectID
+        let memoryID = request.memoryID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard memoryID.isEmpty == false else {
+            throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
+        }
+        guard request.status == .quarantined || request.status == .approved || request.status == .rejected else {
+            throw BurnBarProjectCodeMemoryStoreError.invalidMemoryReviewStatus(request.status.rawValue)
+        }
+
+        return try databaseSync {
+            try execute("BEGIN IMMEDIATE", [])
+            do {
+                let rows = try queryRows(
+                    """
+                    SELECT kind, scope, tags_json, source_path, review_status, updated_at
+                    FROM agent_memories
+                    WHERE id = ? AND project_id = ?
+                    LIMIT 1
+                    """,
+                    [.text(memoryID), .text(projectID)]
+                )
+                guard let row = rows.first else {
+                    throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
+                }
+                let currentStatus = MemoryReviewStatus(rawValue: row.string(4)) ?? .approved
+                let currentUpdatedAt = row.string(5)
+
+                // Version-conditional transition (review #2565): a caller that
+                // committed a verdict locally at `expectedUpdatedAt` must not
+                // overwrite a NEWER verdict that landed meanwhile — an Approve
+                // RPC arriving after the member's later Reject would otherwise
+                // resurrect the rejected body into publication. The comparison
+                // uses the exact stored stamp and verdict: date conversion can
+                // round distinct stamps together, and equal timestamps alone
+                // cannot distinguish Approve from Reject. Refusal makes no status
+                // write, no body move, no review event. The audit row IS
+                // written — a refused publish is exactly the event a postmortem
+                // looks for.
+                if let expected = request.expectedUpdatedAt {
+                    let stale = expected.isEmpty || currentUpdatedAt != expected || currentStatus != request.status
+                    if stale {
+                        let auditHash = try auditEvent(
+                            action: "memory.review_status_stale",
+                            domain: "memory",
+                            projectID: projectID,
+                            subjectID: memoryID,
+                            labels: [
+                                "review_status:\(request.status.rawValue)",
+                                "current_status:\(currentStatus.rawValue)",
+                                "expected_updated_at:\(expected)",
+                                "current_updated_at:\(currentUpdatedAt)"
+                            ]
+                        )
+                        try execute("COMMIT", [])
+                        return BurnBarProjectMemoryReviewStatusResponse(
+                            traceID: traceID,
+                            projectID: projectID,
+                            memoryID: memoryID,
+                            status: currentStatus,
+                            auditHash: auditHash,
+                            applied: false
+                        )
+                    }
+                }
+                // Where the body IS depends on where the row has been, not only on
+                // what `review_status` says right now. The macOS app writes its own
+                // approval into this shared table and THEN calls
+                // `daemon.memory.review_status` so the daemon stays the single
+                // publisher (I-56), so an app-approved row reads `approved` while its
+                // body is still parked in `memory_quarantine_bodies` — which is the
+                // publication this call exists to perform. Each status still looks in
+                // its own home first, so every daemon-side transition reads exactly
+                // the row it read before; the fallback is what makes the app's
+                // follow-up call publish instead of throwing `memoryNotFound`, in
+                // both directions (an app-side reject leaves the body published).
+                let body: String?
+                if currentStatus == .approved {
+                    body = try projectMemorySectionBody(projectID: projectID, memoryID: memoryID)
+                        ?? quarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                } else {
+                    body = try quarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                        ?? projectMemorySectionBody(projectID: projectID, memoryID: memoryID)
+                }
+                guard let body else {
+                    throw BurnBarProjectCodeMemoryStoreError.memoryNotFound(memoryID)
+                }
+                let now = Self.isoNow()
+                let bodyReference: String
+                if request.status == .approved {
+                    try upsertProjectMemorySection(
+                        projectID: projectID,
+                        projectDisplayName: root.lastPathComponent,
+                        memoryID: memoryID,
+                        body: body,
+                        kind: row.string(0),
+                        scope: row.string(1),
+                        tags: decodeStringArray(row.string(2)),
+                        sourcePath: row.optionalString(3),
+                        now: now
+                    )
+                    try upsertMemoryEmbedding(memoryID: memoryID, body: body, now: now)
+                    try removeQuarantineMemoryBody(projectID: projectID, memoryID: memoryID)
+                    // A mirrored row that waited in review gets its syncable body back:
+                    // `remember` recorded the engine id with an empty body, and blind
+                    // sync seals whatever is in this table. Rows with no mapping (plain
+                    // repository knowledge) are untouched.
+                    if let engineMemoryID = try engineMemoryID(projectID: projectID, memoryID: memoryID) {
+                        try upsertAgentMemoryBody(
+                            projectID: projectID,
+                            memoryID: memoryID,
+                            engineMemoryID: engineMemoryID,
+                            body: body,
+                            bodyHash: Self.sha256Hex(body),
+                            now: now
+                        )
+                    }
+                    bodyReference = Self.memoryBodyReference(memoryID: memoryID, projectID: projectID)
+                } else {
+                    try upsertQuarantineMemoryBody(projectID: projectID, memoryID: memoryID, body: body, now: now)
+                    try removeProjectMemorySection(
+                        projectID: projectID,
+                        projectDisplayName: root.lastPathComponent,
+                        memoryID: memoryID,
+                        now: now
+                    )
+                    // The other half of the same invariant: a row leaving `approved`
+                    // must not leave approved content behind in the sync lane's table.
+                    // The engine id stays so the sealed cloud copy is still deletable.
+                    try blankAgentMemoryBody(projectID: projectID, memoryID: memoryID, now: now)
+                    bodyReference = Self.quarantineBodyReference(memoryID: memoryID, projectID: projectID)
+                }
+                // The applied row keeps the caller's verdict stamp, not a fresh
+                // clock read: the next preconditioned call compares `updated_at`
+                // against the stamp ITS verdict was committed under, and the two
+                // must be the same instant or every second call would look stale
+                // to itself.
+                let statusStamp = request.expectedUpdatedAt?.isEmpty == false
+                    ? request.expectedUpdatedAt ?? now
+                    : now
+                try execute(
+                    "UPDATE agent_memories SET body_redacted = ?, review_status = ?, updated_at = ? WHERE id = ? AND project_id = ?",
+                    [
+                        .text(bodyReference), .text(request.status.rawValue), .text(statusStamp),
+                        .text(memoryID), .text(projectID)
+                    ]
+                )
+                let auditHash = try auditEvent(
+                    action: "memory.review_status",
+                    domain: "memory",
+                    projectID: projectID,
+                    subjectID: memoryID,
+                    labels: ["review_status:\(request.status.rawValue)"]
+                )
+                try execute("COMMIT", [])
+                return BurnBarProjectMemoryReviewStatusResponse(
+                    traceID: traceID,
+                    projectID: projectID,
+                    memoryID: memoryID,
+                    status: request.status,
+                    auditHash: auditHash
+                )
+            } catch {
+                try? execute("ROLLBACK", [])
+                throw error
+            }
         }
     }
 
@@ -107,6 +359,96 @@ extension BurnBarProjectCodeMemoryStore {
             }
         }
         return nil
+    }
+
+    func upsertQuarantineMemoryBody(projectID: String, memoryID: String, body: String, now: String) throws {
+        try execute(
+            """
+            INSERT INTO memory_quarantine_bodies (memory_id, project_id, body, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(memory_id) DO UPDATE SET
+                project_id = excluded.project_id,
+                body = excluded.body,
+                updated_at = excluded.updated_at
+            """,
+            [.text(memoryID), .text(projectID), .text(body), .text(now), .text(now)]
+        )
+    }
+
+    /// The approved body of a memory the Memory MCP engine mirrored, kept in the
+    /// shared encrypted database so blind sync can seal and upload it. Only rows the
+    /// engine already cleared (approved, non-secret, non-expiring) ever reach here.
+    func upsertAgentMemoryBody(
+        projectID: String,
+        memoryID: String,
+        engineMemoryID: String,
+        body: String,
+        bodyHash: String,
+        now: String
+    ) throws {
+        try execute(
+            """
+            INSERT INTO agent_memory_bodies
+                (memory_id, project_id, engine_memory_id, body, body_hash, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(memory_id) DO UPDATE SET
+                project_id = excluded.project_id,
+                engine_memory_id = excluded.engine_memory_id,
+                body = excluded.body,
+                body_hash = excluded.body_hash,
+                updated_at = excluded.updated_at
+            """,
+            [
+                .text(memoryID), .text(projectID), .text(engineMemoryID),
+                .text(body), .text(bodyHash), .text(now), .text(now)
+            ]
+        )
+    }
+
+    func removeAgentMemoryBody(projectID: String, memoryID: String) throws {
+        try execute(
+            "DELETE FROM agent_memory_bodies WHERE memory_id = ? AND project_id = ?",
+            [.text(memoryID), .text(projectID)]
+        )
+    }
+
+    /// Purge a memory's syncable body while keeping its engine id. The body is
+    /// content that must not be (re)uploaded and goes immediately; the id is a
+    /// random 128-bit label that travels only as a keyed hash, and the cloud copy
+    /// stays addressable through it, so the sync lane can still delete the sealed
+    /// document. Used both by forget and when an approved, uploaded memory is
+    /// remirrored as quarantined or rejected: deleting the mapping in either case
+    /// would strand the member's memory in the cloud. A row that never had a
+    /// mapping (quarantined from birth) is untouched.
+    func blankAgentMemoryBody(projectID: String, memoryID: String, now: String) throws {
+        try execute(
+            """
+            UPDATE agent_memory_bodies SET body = '', body_hash = '', updated_at = ?
+            WHERE memory_id = ? AND project_id = ?
+            """,
+            [.text(now), .text(memoryID), .text(projectID)]
+        )
+    }
+
+    func engineMemoryID(projectID: String, memoryID: String) throws -> String? {
+        try queryRows(
+            "SELECT engine_memory_id FROM agent_memory_bodies WHERE memory_id = ? AND project_id = ?",
+            [.text(memoryID), .text(projectID)]
+        ).first?.optionalString(0)
+    }
+
+    func quarantineMemoryBody(projectID: String, memoryID: String) throws -> String? {
+        try queryRows(
+            "SELECT body FROM memory_quarantine_bodies WHERE memory_id = ? AND project_id = ? LIMIT 1",
+            [.text(memoryID), .text(projectID)]
+        ).first?.optionalString(0)
+    }
+
+    func removeQuarantineMemoryBody(projectID: String, memoryID: String) throws {
+        try execute(
+            "DELETE FROM memory_quarantine_bodies WHERE memory_id = ? AND project_id = ?",
+            [.text(memoryID), .text(projectID)]
+        )
     }
 
     func loadProjectMemorySnapshot(projectID: String, projectDisplayName: String, now: String) throws -> [String: Any] {
@@ -231,6 +573,10 @@ extension BurnBarProjectCodeMemoryStore {
 
     static func memoryBodyReference(memoryID: String, projectID: String) -> String {
         "Project Memory snapshot ref:\(projectMemorySlug(for: projectID))#\(memoryID)"
+    }
+
+    static func quarantineBodyReference(memoryID: String, projectID: String) -> String {
+        "Quarantine body ref:\(projectMemorySlug(for: projectID))#\(memoryID)"
     }
 
     static func jsonData(_ object: Any) throws -> Data {

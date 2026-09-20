@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.openburnbar.OsPendingNavigation
+import com.openburnbar.data.policy.MobileOsDestination
 import com.openburnbar.data.stores.CloudSyncHealthStore
 import com.openburnbar.data.stores.DevicesStore
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
@@ -67,6 +71,13 @@ fun YouView(
     subscriptionStore: HostedQuotaSubscriptionStore = viewModel(),
 ) {
     var subScreen by rememberSaveable { mutableStateOf(YouSubScreen.Root) }
+    val pendingOs by OsPendingNavigation.pending.collectAsStateWithLifecycle()
+
+    LaunchedEffect(pendingOs) {
+        if (pendingOs?.destination != MobileOsDestination.DEVICES) return@LaunchedEffect
+        if (OsPendingNavigation.claim()?.destination != MobileOsDestination.DEVICES) return@LaunchedEffect
+        subScreen = YouSubScreen.ConnectedDevices
+    }
 
     AnimatedContent(
         targetState = subScreen,

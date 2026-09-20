@@ -35,8 +35,8 @@ const GITHUB_RELEASE_CDN_HOSTS = new Set([
   "release-assets.githubusercontent.com",
   "github-releases.githubusercontent.com"
 ]);
-const GITHUB_RELEASE_ASSET = /^\/Imagine-That-Ai\/BurnBar\/releases\/(?:latest\/download|download\/[^/]+)\/[^/]+$/u;
-const GITHUB_FEED_ASSET = /^\/Imagine-That-Ai\/BurnBar\/releases\/(?:latest\/download|download\/[^/]+)\/latest-macos\.json$/u;
+const GITHUB_RELEASE_ASSET = /^\/Imagine-That-Ai\/BurnBar\/releases\/(?:latest\/download|download\/[^/%]+)\/[^/]+$/u;
+const GITHUB_FEED_ASSET = /^\/Imagine-That-Ai\/BurnBar\/releases\/(?:latest\/download|download\/[^/%]+)\/latest-macos\.json$/u;
 
 export type AppCommand = "install" | "update";
 
@@ -250,9 +250,30 @@ export function assertWellFormedRelease(release: MacOSReleaseFeed): void {
   }
 }
 
+/**
+ * Apple-visible marketing version.
+ *
+ * SemVer `+build` metadata (e.g. `1.0.40+repair.34`) identifies the immutable
+ * release tag and stays on the public feed / asset names. Apple forbids `+` in
+ * `CFBundleShortVersionString`, so the signed app is `1.0.40`. Same rule as
+ * `scripts/ci/verify-public-macos-download-trust.sh` (`${version%%+*}`).
+ */
+export function appleVisibleVersion(version: string): string {
+  const plus = version.indexOf("+");
+  return (plus === -1 ? version : version.slice(0, plus)).trim();
+}
+
+export function offeredMatchesAdvertisedRelease(
+  offered: Pick<InstalledBundle, "version" | "build">,
+  advertised: Pick<MacOSReleaseFeed, "version" | "build">
+): boolean {
+  return offered.build === advertised.build
+    && appleVisibleVersion(offered.version) === appleVisibleVersion(advertised.version);
+}
+
 export function compareNumericVersion(left: string, right: string): number {
-  const leftParts = left.split(".").map((part) => Number.parseInt(part, 10));
-  const rightParts = right.split(".").map((part) => Number.parseInt(part, 10));
+  const leftParts = appleVisibleVersion(left).split(".").map((part) => Number.parseInt(part, 10));
+  const rightParts = appleVisibleVersion(right).split(".").map((part) => Number.parseInt(part, 10));
   const n = Math.max(leftParts.length, rightParts.length);
   for (let i = 0; i < n; i += 1) {
     const a = Number.isFinite(leftParts[i]) ? leftParts[i] as number : 0;
@@ -672,7 +693,7 @@ async function installVerifiedDmg(
         `The update has bundle identifier ${offered.bundleId}; expected ${APP_BUNDLE_ID}.`
       );
     }
-    if (offered.build !== release.build || !feedVersionMatchesMountedApp(release.version, offered.version)) {
+    if (!offeredMatchesAdvertisedRelease(offered, release)) {
       throw new AppInstallError(
         `The mounted app is ${offered.version} (build ${offered.build}) but the feed advertised ${release.version} (build ${release.build}).`
       );

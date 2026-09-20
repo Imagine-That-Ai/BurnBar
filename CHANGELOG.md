@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Also created the documented `rollup-user-rebuilds` Cloud Tasks queue —
   only a camelCase lookalike existed, so every 5-minute scheduler tick
   failed with `5 NOT_FOUND` and the background worker path was dead.
+
+### Changed
 - **Console profile glow-up** — the heatmap hover card portals out of the
   scroll container (it used to clip on every side) with viewport-aware
   placement; breakdowns render in fixed per-provider brand hues mirrored
@@ -152,14 +154,146 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gate so extra windows cannot clone a second Inbox. `ShowInsightsTab` selects
   Insights. You stays labeled You, not Store.
 
+### Added
+- **app.burnbar.ai is now reachable from every surface.** The member Data &
+  Privacy Control Center existed only as a bare URL — nothing linked to it.
+  The website's header More menu, mobile nav, footer trust column, and the
+  privacy page's data-domain inventory now link to the console; the Mac app
+  gained "Open the Data console" on Settings › Cloud, an "Open the web
+  console" action on the Data & Privacy landing's free-options card, and a
+  third walkthrough verb "Open Pensieve online" (step 4) deep-linking to
+  app.burnbar.ai/pensieve. Console URLs are pinned by tests
+  (`MacCloudConsoleURLs`) so the host can't silently drift.
+- **Living fluid aurora kernel emblem** (`MemoryConsentSheet`) — the first-run
+  memory-consent modal's flat circle-and-`brain.head.profile` glyph is now a
+  circular living aurora in BurnBar's colours: three luminous fluid ribbons
+  (whimsy → mint → lavender → ember) drifting over a deep ground with a
+  breathing specular core, composited as native SwiftUI content. New
+  `FluidAuroraKernelView` is reusable at any diameter; the motion is pure
+  wrapped-phase math (`FluidAuroraMotion`, sine/cosine tracks on mutually
+  incommensurate 2.9–37s periods, so the loop never phase-locks or stutters on
+  long-lived sheets), and the palette (`FluidAuroraKernelPalette`) resolves
+  through the adaptive design tokens with two new house stops — `auroraMint`
+  and `auroraLavender` — declared in the same `Color.adaptive` dialect as the
+  rest of the theme. Light mode renders the ribbons as a quieter pearl
+  watermark (no glow headroom on cream), Reduce Transparency sinks the kernel
+  into a near-opaque printed tint, and Reduce Motion resolves to the authored
+  time-zero still pose — a fanned three-layer silhouette, not a paused
+  arbitrary frame. The emblem keeps the "Memory" accessibility label the SF
+  Symbol owed VoiceOver. Pinned by `FluidAuroraKernelTests` (12 tests).
+
 ### Fixed
 - Direct-download macOS updates no longer offer a same-build repair tag as an
   upgrade. The live feed advertises `1.0.40+repair.36` at build 82 while the
   installed app reports Apple marketing `1.0.40` at build 82; the checker used
   to treat the `+repair.N` string as newer, download the DMG, then refuse the
   swap. Offer and install now both require a strictly greater
-  `CFBundleVersion`. `openburnbar app update` matches that rule and accepts a
-  `+repair.N` feed tag when the mounted marketing version is the prefix.
+  `CFBundleVersion`. `openburnbar app update` matches that rule. Bumped
+  `CURRENT_PROJECT_VERSION` to `86` so this cut is a real update over live
+  build 82 and GitHub Latest `v1.0.40+repair.40` build 85.
+- **Functions break-glass dispatch.** `deploy-production.yml` accepts
+  `break_glass=true` on a main `existing_tag_retry` so production Cloud
+  Functions can ship when the domain-core promotion attestation is missing.
+  The inactive-lane proof gate and product preflight stay; the tag tree is
+  not dirtied — control scripts are staged from current main into
+  `$RUNNER_TEMP`. Production environment approval is still required.
+- **Remote-access agent: Developer-ID signing + client-side server authentication (M-10).**
+  `scripts/install-remote-access-agent.sh` now signs the root
+  `OpenBurnBarRemoteAccessAgent` with the Developer ID identity (hardened runtime +
+  library validation, exact `com.openburnbar.remote-access-agent` identifier) and
+  fails closed when no identity is available; dev installs must opt in explicitly
+  via `OPENBURNBAR_AGENT_ADHOC=1`. `RemoteAccessAgentClient` authenticates
+  the agent server (peer UID must be 0 + first-party designated requirement)
+  before writing any request — `typeCredential` carries the macOS login password,
+  so a squatted or unsigned listener at
+  `/var/run/openburnbar-remote-access-agent.sock` now receives zero bytes.
+  `scripts/verify-remote-access-agent.sh` fails closed on unsigned deployed
+  binaries. Pinned by `RemoteAccessAgentClientTrustTests` (impostor listener
+  receives zero bytes) and the allowlist tests in `PrivilegedPeerAuthenticatorTests`.
+  **Review round 1 hardening (Codex P2 findings):** the client's server gate now
+  pins the **exact agent identifier** (`remoteAccessAgentDesignatedRequirement`)
+  instead of the shared privileged-input allowlist — a first-party daemon or HID
+  bridge squatting the socket path can no longer receive the login password;
+  the installer asserts `TeamIdentifier=4Y367DF25B` so another team's Developer
+  ID certificate cannot install "successfully"; the ad-hoc dev lane keeps the
+  exact identifier; and `verify-remote-access-agent.sh` runs strict
+  `codesign --verify` before trusting displayed metadata (catching
+  tamper-after-signing the way the client's live `SecCodeCheckValidity` does).
+  **Review round 2 (Cursor security):** the agent identifier is deliberately
+  **removed from the shared `privilegedInputPeerBundleIdentifiers` allowlist** —
+  a uid-0 process signed as the agent must not pass default peer checks on
+  sibling privileged-input / HID / kill-switch lanes; the agent lane uses only
+  the exact-identifier requirement.
+- Console Profile compact counts now use B and T, so a trillion-token lifetime
+  total reads as `1.09T` instead of `1085491M`. Model, harness, and combo labels
+  wrap instead of clipping, and harness/combo breakdowns stay visible on
+  narrow screens.
+- The menu-bar pending-device banner lists every waiting device instead of only
+  the first, shows why Approve cannot run from an untrusted Mac, and deep-links
+  to Settings › Trusted Devices instead of hanging on a silent self-approve.
+- Tapping a new-computer approval banner on iPhone no longer crashes. The
+  missing `DEVICE_APPROVAL_REQUEST` category is registered, `openburnbar://`
+  and `burnbar://devices` both open You → Devices, and review stays explicit —
+  the tap never auto-approves. Android FCM taps land on Connected Devices the
+  same way. iOS `CURRENT_PROJECT_VERSION` is 85 so TestFlight can attach a new
+  IPA.
+- Bumped Mac and iOS `CURRENT_PROJECT_VERSION` to `85` and bound the owner-emergency release packet to `v1.0.40+repair.39` so the release is strictly newer than live `1.0.40+repair.36` build 82 and previous `v1.0.40+repair.37` tag. The in-app updater compares numeric `CFBundleVersion` first and refuses same-build installs. (Re-cut from `repair.38`: tag protection froze that tag before the release-gate test-import fix landed.)
+- Console Profile no longer treats a present-but-zeroed `all_time` rollup as
+  healthy. The cheap scheduled path can write that document before any device
+  has published usage, which hid Re-sync and skipped the one-time
+  `rebuildUsageRollups` pass. A zeroed or pre-v3 rollup now auto-rebuilds once
+  per session and keeps the Re-sync CTA visible until real activity lands.
+- New companion devices now fan out a high-priority approval push to existing
+  Mac / iOS / Android devices, with a menu-bar banner, `openburnbar://approve-device`
+  deep link, and Android FCM handling so the request is visible instead of
+  sitting silently in Settings. The banner polls the existing device-trust
+  gateway instead of opening a raw Firestore listener from the popover.
+- Restored Goose and Windsurf as first-class mission-runtime catalog rows in
+  the schema-sync fixture. They had been generated-only, so catalog `--check`
+  deleted them on regen.
+- Pensieve on app.burnbar.ai can list and browse the member's own knowledge
+  chunks (`listKnowledgeChunks`) instead of search-only, and escrow device /
+  identity docs are owner-readable so the console Trust flow can actually load.
+- The Memory (Pensieve) walkthrough's "Show me" buttons now land on real,
+  actionable controls. The "It saves itself" page routes to the on-device
+  Memory section in Settings › General › Indexing (previously the decorative
+  Cloud hero) and its copy no longer claims Cloud Pro is the switch — local
+  memory is consent-gated and free. The Connect page spotlights the actual
+  "Link this Mac's CLI" button (previously the static Stdio shim row). The
+  Control page's destination now opens the Pensieve workbench outright for
+  Cloud Pro members instead of parking on the Data & Privacy landing, and
+  free members arriving there get a new "On this Mac — free, no account
+  needed" card with working actions (Memory controls, tour) instead of a
+  dead-end paywall. The Indexing & Search page also gained its missing scroll
+  view so the Memory controls below the fold are reachable at all, and
+  Settings › Cloud deep links now scroll to and highlight their targets.
+- Bumped Mac `CURRENT_PROJECT_VERSION` to `82` so the next `1.0.40+repair.N`
+  cut is strictly newer than live `1.0.40+repair.34` build 81. The in-app
+  updater compares numeric `CFBundleVersion` first and refuses same-build
+  installs, so a same-build repair tag would package but never replace the
+  installed app.
+- Fixed official macOS builds getting stuck on “Anonymous Account” after Google
+  Sign-In returned a Keychain error. OpenBurnBar now ships GoogleSignIn 9.2.0
+  with GTMAppAuth 5.0.0, which stores OAuth state in the app-scoped
+  data-protection Keychain instead of the collision-prone global `auth` item.
+  Recovery now asks GoogleSignIn to clear its own store rather than manually
+  deleting a legacy item that may belong to another app, and the lockfile gate
+  rejects regressions below the Keychain-safe dependency floor.
+- `openburnbar app install` (npm 0.2.2) no longer aborts a verified macOS DMG when the
+  public feed advertises a SemVer tag with `+repair.N` (for example
+  `1.0.40+repair.34` build 81) and the mounted app's
+  `CFBundleShortVersionString` is the Apple-visible marketing version
+  (`1.0.40` build 81). Apple forbids `+` in the bundle string; the feed keeps
+  the immutable tag. Same-build marketing-version pairs now install; a
+  different marketing version or build still refuses.
+- Android now compiles and targets Android 16 (API level 36) across the app,
+  native bridge libraries, and macrobenchmark producer. Google Play publishing
+  also reads the signed AAB manifest and fails before authentication unless the
+  exact artifact targets API 36, closing the August 31, 2026 target-level
+  requirement without relying on a deadline extension.
+- Release rollback packaging now binds the app release version and shared Rust
+  core version as separate identities, so a valid app release is no longer
+  blocked when the retained rollback core has its own independent version.
 - Prime Agent gateway proxy resolves the auth token headlessly
   (`scripts/prime-agent-openburnbar-proxy.mjs`) — non-interactive shells (SSH,
   CI, subagents) fell through to the `openburnbar-local` placeholder and got 401s
@@ -233,6 +367,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Insights destination from You overflow. Plan copy:
   `plans/2026-08-20-iphone-remote-continuation-master-plan.md`.
 
+- **Memory walkthrough modal + guide** (`docs/MEMORY_MCP_GUIDE.md`) — a
+  five-page, under-a-minute guided tour of Memory (Pensieve) and the Memory
+  MCP with a friendly Pensieve voice, spotlight previews, and “Show me” deep
+  links that take the reader straight to the real controls. Three persistent
+  entry points: the Remote MCP card's “How Memory works” button, **Help › How
+  Memory Works…** (⇧⌘M), **Settings search** (“memory tour”, “pensieve tour”,
+  “how memory works”), and a link on the **Data & Privacy** landing. Each
+  tour page previews the destination card with an amber halo and drives the
+  user via manifest routing to anchored rows in Settings › Cloud (including
+  the new `cloud.remoteMCP`/`cloud.remoteMCP.connect`/`cloud.remoteMCP.doctor`
+  scroll anchors) or Settings › Data & Privacy. Copyable endpoint/shim/doctor
+  rows, example recall prompts, and export/forget/Panic controls stay on their
+  pages. Content lives in `MemoryWalkthroughContent` and is pinned against the
+  live endpoint and shim command by `MemoryMCPWalkthroughTests`.
 - **Monthly Recap** (`docs/RECAP.md`) — a new destination that reads a calendar
   month of AI usage back as an editorial deck of cards: favourite model and
   model+harness pairing, weekday and late-night habits, streaks, project focus,
@@ -520,6 +668,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Console: analytics consent banner on mobile** — the flex-wrap row squeezed
   the copy into a ~150px column at phone widths; the banner now stacks
   (text full-width, buttons on their own row) below sm.
+
+## [openburnbar 0.2.0] - 2026-08-20
+
+### Added
+- npm `openburnbar proxy` is a portable loopback **relay** on `127.0.0.1:8320`
+  for chat completions, Anthropic Messages, OpenAI Responses (HTTP SSE plus
+  the Responses WebSocket), and `GET`/`DELETE /v1/responses/:id`. It does not
+  translate dialects or count burn. OpenAI clients use
+  `http://127.0.0.1:8320/v1`; Claude Code / Droid `anthropic` use the origin
+  `http://127.0.0.1:8320`. Always `127.0.0.1`, never `localhost`.
+- Optional `--tray`: on macOS, compiles shipped `macos-tray/` sources into an
+  ad-hoc-signed `LSUIElement` helper (`point.3.connected.trianglepath`, not the
+  BurnBar flame). Elsewhere it opens the loopback HTML panel at `/gateway`.
+  Missing Xcode CLT keeps the proxy headless. Install Podex is an honest
+  coming-soon sheet.
+- `openburnbar proxy wire <client> [--write]` writes `:8320` snippets with a
+  sentinel distinct from BurnBar Mac Connect (`:8317`). Dry-run is the default.
+- Request bodies stay capped at **8 MiB**. The 413 names that limit and says
+  this gateway does not raise it without a real client 413.
+
+### Changed
+- Bump the separately versioned `openburnbar` Node CLI from `0.1.2` to `0.2.0`.
 
 ## [openburnbar 0.1.2] - 2026-08-18
 

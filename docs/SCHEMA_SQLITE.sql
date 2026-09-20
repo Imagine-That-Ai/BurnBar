@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: ba38a165da9b661f6ebc457f7c5dc6995a70053f2038d1e384f7ab4adca72c01
+-- Schema hash: 0e0610aa91306bdd2210a326b20592ff800029cb79c16fb66e0f644d18b4bdfd
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -372,7 +372,8 @@ CREATE TABLE memory_usage_candidates (
 CREATE INDEX memory_usage_candidates_status_idx ON memory_usage_candidates(status, salience_hint, created_at);
 CREATE INDEX memory_usage_candidates_simhash_idx ON memory_usage_candidates(source_kind, simhash);
 
--- Salience sidecar (consolidation worker is the sole writer). A sidecar, not
+-- Salience sidecar (consolidation owns corroboration/source trust; daemon
+-- recall owns hit reinforcement). A sidecar, not
 -- an ALTER on agent_memories, so the mirrored agent_memories DDL stays
 -- byte-identical across app/daemon/python/doc copies.
 CREATE TABLE memory_salience (
@@ -412,6 +413,55 @@ CREATE TABLE memory_embedding_refs (
 );
 
 CREATE INDEX memory_embedding_refs_version_idx ON memory_embedding_refs(embedding_version_id, dimension);
+
+-- Daemon review holding area inside the SQLCipher database. Quarantined and
+-- rejected bodies stay out of project_memory_snapshots until explicitly
+-- approved, so the default project-memory surface cannot expose them.
+CREATE TABLE memory_quarantine_bodies (
+  memory_id  TEXT NOT NULL PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX memory_quarantine_bodies_project_idx ON memory_quarantine_bodies(project_id);
+
+-- Approved bodies for memories the Memory MCP engine mirrors. The engine store is
+-- canonical; this is the shared-database copy blind sync seals and uploads, so it
+-- carries the engine's own 128-bit id (the daemon's id is derived from
+-- projectID:bodyHash and differs between a member's devices). A forget empties the
+-- body but keeps the id, so the sealed cloud copy stays addressable for deletion.
+CREATE TABLE agent_memory_bodies (
+  memory_id        TEXT NOT NULL PRIMARY KEY,
+  project_id       TEXT NOT NULL,
+  engine_memory_id TEXT NOT NULL,
+  body             TEXT NOT NULL,
+  body_hash        TEXT NOT NULL,
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX agent_memory_bodies_engine_idx ON agent_memory_bodies(engine_memory_id);
+
+-- Landing zone for memory facts pulled back down from the member's own cloud
+-- vault (Memory Blind Sync). Deliberately separate from agent_memories: that
+-- table is this device's upload source, so a remote row landing there would be
+-- re-sealed and re-uploaded in a loop. payload_json is the opened plaintext
+-- payload and rests in SQLCipher exactly as memory_body_snapshots does. The
+-- Memory MCP engine drains unapplied rows through the daemon and stamps
+-- applied_at; a re-pulled document with the same remote_updated_at is a no-op.
+CREATE TABLE agent_memory_inbox (
+  doc_id            TEXT PRIMARY KEY,           -- pensieveSlugHmac("memory-fact:<engine id>")
+  user_id           TEXT NOT NULL,
+  engine_memory_id  TEXT NOT NULL,
+  payload_json      TEXT NOT NULL,
+  remote_updated_at TEXT NOT NULL,
+  received_at       TEXT NOT NULL,
+  applied_at        TEXT                        -- NULL until the engine merges it
+);
+
+CREATE INDEX agent_memory_inbox_user_applied_idx ON agent_memory_inbox(user_id, applied_at);
 
 CREATE TABLE memory_body_snapshots (
   id            TEXT NOT NULL PRIMARY KEY,
@@ -871,3 +921,56 @@ CREATE TABLE IF NOT EXISTS standing_orders (
 
 CREATE INDEX IF NOT EXISTS standing_orders_enabled_fired_idx
     ON standing_orders(isEnabled, lastFiredAt);
+
+-- ── Receipts & Receipts FTS (v65+) ──────────────────────────────────────────
+-- Durable itemized receipts for completed agent runs with token economics,
+-- cache savings, duration, provenance signature, and FTS5 indexing.
+
+CREATE TABLE IF NOT EXISTS receipts (
+    id TEXT PRIMARY KEY NOT NULL,
+    sessionId TEXT NOT NULL,
+    projectName TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    modelName TEXT NOT NULL,
+    timestamp DATETIME NOT NULL,
+    durationSeconds REAL NOT NULL DEFAULT 0.0,
+    inputTokens INTEGER NOT NULL DEFAULT 0,
+    outputTokens INTEGER NOT NULL DEFAULT 0,
+    cacheReadTokens INTEGER NOT NULL DEFAULT 0,
+    cacheWriteTokens INTEGER NOT NULL DEFAULT 0,
+    totalCostUSD REAL NOT NULL DEFAULT 0.0,
+    estimatedCacheSavingsUSD REAL NOT NULL DEFAULT 0.0,
+    cacheHitPercentage REAL NOT NULL DEFAULT 0.0,
+    tokensPerSecond REAL NOT NULL DEFAULT 0.0,
+    promptSummary TEXT NOT NULL DEFAULT '',
+    filesTouchedJSON TEXT NOT NULL DEFAULT '[]',
+    toolsUsedJSON TEXT NOT NULL DEFAULT '[]',
+    gitBranch TEXT,
+    gitCommit TEXT,
+    isStarred BOOLEAN NOT NULL DEFAULT 0,
+    contentSignature TEXT NOT NULL,
+    createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Added by v66_receipts_accomplishments_and_quality:
+    harness TEXT NOT NULL DEFAULT '',
+    actualAccomplishmentsJSON TEXT NOT NULL DEFAULT '[]',
+    qualityReviewJSON TEXT NOT NULL DEFAULT '{}',
+    achievementsJSON TEXT NOT NULL DEFAULT '[]',
+    gitStatsJSON TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS receipts_session_idx ON receipts(sessionId);
+CREATE INDEX IF NOT EXISTS receipts_timestamp_idx ON receipts(timestamp);
+CREATE INDEX IF NOT EXISTS receipts_project_idx ON receipts(projectName);
+CREATE INDEX IF NOT EXISTS receipts_provider_idx ON receipts(provider);
+CREATE INDEX IF NOT EXISTS receipts_cost_idx ON receipts(totalCostUSD);
+CREATE INDEX IF NOT EXISTS receipts_starred_idx ON receipts(isStarred);
+CREATE INDEX IF NOT EXISTS receipts_harness_idx ON receipts(harness);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS receipts_fts USING fts5(
+    promptSummary,
+    filesTouched,
+    toolsUsed,
+    modelName,
+    projectName,
+    tokenize='porter unicode61'
+);

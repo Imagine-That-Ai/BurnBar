@@ -15,7 +15,16 @@ extension OpenBurnBarDatabase {
         "v61_usage_memory",
         "v62_war_room_originator",
         "v63_standing_orders",
-        "v64_token_usage_start_time_index"
+        "v64_token_usage_start_time_index",
+        "v65_memory_quarantine_bodies",
+        // Reviewed 2026-09-03 (Memory Blind Sync): two `IF NOT EXISTS` statements,
+        // one new table and its index. No pre-existing row is read, rewritten or
+        // deleted, so transactional rollback is sufficient protection.
+        "v66_agent_memory_bodies",
+        // Reviewed 2026-09-04 (Memory Blind Sync PR-2): two `IF NOT EXISTS`
+        // statements, one new table and its index. No pre-existing row is read,
+        // rewritten or deleted, so transactional rollback is sufficient protection.
+        "v67_agent_memory_inbox"
     ]
 
     enum OpenBurnBarDatabaseError: Error {

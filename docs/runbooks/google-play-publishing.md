@@ -19,6 +19,16 @@ the protected release workflow; it never rebuilds or re-signs the application.
 
 ## Validate without uploading
 
+Before dispatching the workflow, confirm the release source compiles and targets
+Android 16 (API level 36). The canonical compile/target policy lives in
+`android/gradle.properties`; every Android module and the publication gate
+consume those values. The publisher independently reads
+`uses-sdk/@android:targetSdkVersion` from the signed AAB with bundletool and
+fails before authentication if the value differs from the reviewed policy
+(`36` for this release). This keeps the August 31, 2026 Google Play target API
+requirement attached to the exact artifact rather than trusting the Gradle
+source alone.
+
 1. Open **Actions → Publish Android to Google Play → Run workflow**.
 2. Select the `main` branch. The workflow fails closed if its own definition is
    not executing from protected `main`.
@@ -59,8 +69,9 @@ status. Any uncommitted publication or readback edit is deleted on exit.
 - Successful live runs, including verified no-ops, retain
   `google-play-receipt-*` for 400 days. The receipt binds the action, provider
   edit when committed, package, track, requested and observed release status,
-  tag, commit, version, AAB SHA-256, upload certificate, workflow run, track
-  readback, and provider responses.
+  tag, commit, version, verified/required target SDK, pinned bundletool version,
+  AAB SHA-256, upload certificate, workflow run, track readback, and provider
+  responses.
 - Dry-runs retain `google-play-prepared-*` for 90 days.
 - Google Play version codes are immutable. Rollback means publishing a new,
   higher-versionCode AAB that restores the desired behavior; never reuse or

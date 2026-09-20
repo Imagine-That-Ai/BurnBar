@@ -52,11 +52,17 @@ struct CLIProcessStreamRunner: Sendable {
                 cliType: .codex
             ),
             grantStillActive: grantStillActive,
-            continuation: continuation
-        ) { line in
-            let result = parser.events(fromLine: line)
-            return (result.events, result.error, result.error != nil)
-        }
+            continuation: continuation,
+            // No finalize: the codex exec stream is line-oriented JSONL with
+            // no tail buffer to flush, and CodexExecJSONLParser has no
+            // finish() — the call the layout sweep pattern-matched in here
+            // never compiled (nothing in CI builds this app; the release
+            // lane's first-ever full compile caught it).
+            parseLine: { line in
+                let result = parser.events(fromLine: line)
+                return (result.events, result.error, result.error != nil)
+            }
+        )
     }
 
     func runDroid(
@@ -274,6 +280,9 @@ struct CLIProcessStreamRunner: Sendable {
         invocation: CLIProcessInvocation,
         grantStillActive: (@Sendable () async -> Bool)? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation,
+        finalize: () -> (events: [CLIChatStreamEvent], error: CLIBridgeError?) = {
+            ([], nil)
+        },
         parseLine: (String) -> (events: [CLIChatStreamEvent], error: CLIBridgeError?, terminate: Bool)
     ) async {
         let process = Process()
@@ -419,6 +428,15 @@ struct CLIProcessStreamRunner: Sendable {
         stderrTask.cancel()
         await stderrTask.value
         await runtime.clearRunningProcess(token: processToken)
+
+        if quotaRecorder.snapshot() == nil, parserError == nil {
+            let final = finalize()
+            for event in final.events {
+                continuation.yield(event)
+            }
+            parserError = final.error
+        }
+
         let failed = quotaRecorder.snapshot() != nil
             || parserError != nil
             || (process.terminationStatus != 0 && process.terminationStatus != 15)
@@ -464,7 +482,7 @@ struct CLIProcessStreamRunner: Sendable {
         case .claude:
             return .claudeCode
         case .opencode:
-            return .openClaw
+            return .openCode
         case .droid:
             return .factory
         case .forge:
@@ -489,6 +507,16 @@ struct CLIProcessStreamRunner: Sendable {
             return .primeAgent
         case .fx:
             return .fx
+        case .hermes:
+            return .hermes
+        case .goose:
+            return .goose
+        case .windsurf:
+            return .windsurf
+        case .openClaude:
+            return .openClaude
+        case .openClaw:
+            return .openClaw
         }
     }
 

@@ -176,6 +176,10 @@ public final class MuseParser: LogParser, Sendable {
                             usages: [u]
                         )
                         cacheMutated = true
+                        // Persist per file so a later 100MB+ transcript cannot
+                        // discard the live sessions already counted this pass.
+                        cacheStore.persist(parseCache)
+                        cacheMutated = false
                     }
                 }
                 if let c = pair.conversation { conversations.append(c) }

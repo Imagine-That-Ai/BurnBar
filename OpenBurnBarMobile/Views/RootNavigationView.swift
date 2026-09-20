@@ -196,6 +196,10 @@ struct RootNavigationView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
             openSettingsRoute()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowDevices"))) { _ in
+            guard case .devices = MobilePendingOsRouteStore.shared.consume() else { return }
+            openDevicesRoute()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .init("NavigateToDashboard"))) { _ in
             selection = .pulse
         }
@@ -579,6 +583,15 @@ struct RootNavigationView: View {
         updateColumnVisibility(animated: false)
     }
 
+    /// Lands a device-approval banner or `openburnbar://approve-device` tap on
+    /// the Devices sidebar destination. Review stays explicit; this never
+    /// auto-approves.
+    private func openDevicesRoute() {
+        selection = .devices
+        detailPath = NavigationPath()
+        updateColumnVisibility(for: .devices, animated: false)
+    }
+
     private func openHermesGatewayPairingRoute(_: Notification) {
         settingsRouter.prepareDeepLink(anchor: SettingsAnchor.hermesCloudGateway)
         selection = .settings
@@ -629,6 +642,8 @@ struct RootNavigationView: View {
             presentMercuryCall(connectionId: connectionId)
         case .mission(let missionId):
             presentMissionConsole(missionId: missionId)
+        case .devices:
+            openDevicesRoute()
         case nil:
             break
         }

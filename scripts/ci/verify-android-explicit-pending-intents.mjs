@@ -29,6 +29,13 @@ export const pendingIntentContracts = [
     sink: "getActivity",
   },
   {
+    // Device-approval FCM tap: opens the companion-device deep link in MainActivity.
+    file: "android/app/src/main/java/com/openburnbar/services/media/MercuryFcmServiceSupport.kt",
+    variable: "openIntent",
+    component: "MainActivity",
+    sink: "getActivity",
+  },
+  {
     // AI Inbox push tap-target: opens the deep-linked item in MainActivity.
     // Explicit component, direct package pin, and FLAG_IMMUTABLE, so a hostile
     // app cannot intercept the intent or mutate the item it resolves to.

@@ -4,6 +4,7 @@ import { emptyRollup, type UsageRollup } from "@/lib/usage";
 import {
   profileRollupNeedsFullRebuild,
   rebuildUsageErrorMessage,
+  rebuildUsageKeepsWaiting,
 } from "@/lib/profile/rollupHealth";
 
 function live(overrides: Partial<UsageRollup> = {}): UsageRollup {
@@ -52,6 +53,7 @@ describe("profileRollupNeedsFullRebuild", () => {
             {
               sourceId: "cursor",
               sourceName: "Cursor",
+              label: "Cursor",
               totalRequests: 3,
               totalTokens: 900,
               totalCost: 0.4,
@@ -79,6 +81,16 @@ describe("rebuildUsageErrorMessage", () => {
     ).toBe("A usage rebuild is already running. This page fills in when it finishes.");
   });
 
+  it("keeps waiting only for an in_flight refusal", () => {
+    expect(
+      rebuildUsageKeepsWaiting({ code: "functions/aborted", details: { reason: "in_flight" } }),
+    ).toBe(true);
+    expect(
+      rebuildUsageKeepsWaiting({ code: "functions/unavailable", details: { reason: "circuit_open" } }),
+    ).toBe(false);
+    expect(rebuildUsageKeepsWaiting({ code: "functions/aborted" })).toBe(false);
+  });
+
   it("maps force_cooldown onto a retry-after sentence", () => {
     expect(
       rebuildUsageErrorMessage({
@@ -100,5 +112,9 @@ describe("rebuildUsageErrorMessage", () => {
 
   it("falls back to the Error message", () => {
     expect(rebuildUsageErrorMessage(new Error("firestore denied"))).toBe("firestore denied");
+  });
+
+  it("does not treat a bare functions/unavailable as a circuit break", () => {
+    expect(rebuildUsageErrorMessage({ code: "functions/unavailable", message: "UNAVAILABLE" })).toBe("UNAVAILABLE");
   });
 });

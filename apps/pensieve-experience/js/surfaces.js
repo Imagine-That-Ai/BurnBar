@@ -673,7 +673,7 @@
         '<div class="surface__inner stack-6">' +
           window.C.surfaceHero("Control Center · every domain", "What the server can and cannot see.",
             "Every kind of data BurnBar holds, with its honest encryption tier. No domain claims more than it earns — " +
-            "<span class='amber'>chat is server-readable</span>, never labeled end-to-end.") +
+            "a sealed domain still leaks <span class='amber'>structure</span>: counts, timing, routing metadata, team membership.") +
           '<div class="panel stack-4">' + groups + "</div>" +
           '<div class="panel stack-4" style="border-color:rgba(197,34,31,0.3)">' +
             window.C.sectionHead("Account-wide actions") +
@@ -875,8 +875,9 @@
                 window.C.facet("wrapped key blobs", "3 devices · cloud_vault_key_wrappers") +
                 window.C.facet("vault key", "Keychain / 0600 file · never uploaded", true) +
                 '<div class="honesty" style="border-color:var(--color-tier-zero-access)"><h4 class="slate">' + icon("info") + " Honest status</h4>" +
-                  '<p class="small muted">Encryption-at-rest for the cross-device chat mirror is <b class="slate">in progress</b> — a tracked hardening, ' +
-                  'not yet active. We label it server-readable until it ships, rather than over-claim.</p></div>' +
+                  '<p class="small muted">Chat is sealed on-device before Firestore sees it, so the cross-device mirror carries ciphertext. ' +
+                  'The honest residue: your per-item AI Inbox state — <b class="slate">read, archived, snoozed, useful/not-useful</b> — rides as ' +
+                  'plaintext status metadata so every device converges on the same inbox.</p></div>' +
               "</div>" +
               '<div class="panel stack-3">' +
                 window.C.sectionHead("Recovery methods", "survive total device loss") +
@@ -967,7 +968,7 @@
             '<div class="panel stack-3">' + window.C.sectionHead("What to remember") +
               toggle("set-repo", "Repo docs", "Markdown & docs from connected repositories", true) +
               toggle("set-notes", "Notes", "Your personal notes folder", true) +
-              toggle("set-chat", "Chat-derived", "Salient facts distilled from chats (server-readable source)", false) +
+              toggle("set-chat", "Chat-derived", "Salient facts distilled from chats (sealed fact envelopes)", false) +
             "</div>" +
             '<div class="panel stack-3">' + window.C.sectionHead("Confidence & retention") +
               '<div class="meter__row"><span class="meter__label">Confidence threshold</span><span class="meter__val" id="set-conf">0.55</span></div>' +

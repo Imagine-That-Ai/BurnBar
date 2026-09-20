@@ -3,10 +3,10 @@
 **Goal:** take every diligence lane from the 2026-07-14 scores (Architecture 8, Code Quality 7.5, Reliability/Ops 5, Security 7, Performance 7, QA/Delivery 6.5) to **≥9/10 in a fresh adversarial swarm re-audit**, with a plan explicit enough that weaker implementation models cannot degrade quality.
 
 **Acceptance bar (user-confirmed):**
-1. Every lane independently re-scores ≥9 in a fresh 6-lane adversarial re-audit (same method as `DILIGENCE_REPORT_2026-07-14.md`).
+1. Every lane independently re-scores ≥9 in a fresh 6-lane adversarial re-audit (same method as `audits/2026-07/DILIGENCE_REPORT_2026-07-14.md`).
 2. "Mechanisms now, soak tracked": the plan completes when every fix is landed, first green proofs exist, and monitoring/gates are live. Time-series evidence (weeks of green runs and mission-enforcement observations) accrues on a tracked checklist (`docs/OPERATION_9_SOAK_LEDGER.md`) after plan completion.
 
-**Source of truth for findings:** `DILIGENCE_REPORT_2026-07-14.md` (repo root, committed with this plan) + the six lane reports in this session. Every packet below cites its originating finding.
+**Source of truth for findings:** `audits/2026-07/DILIGENCE_REPORT_2026-07-14.md` (the committed audit archive) + the six lane reports in this session. Every packet below cites its originating finding.
 
 **On approval, first action:** commit this plan into the repo as `docs/OPERATION_9_PLAN.md` (per house convention — plans live as committed repo markdown), plus the empty `docs/OPERATION_9_SOAK_LEDGER.md`, so every implementing agent reads the same contract from the tree rather than from a chat transcript.
 
@@ -284,7 +284,7 @@ Each packet is self-contained: originating finding, exact files (paths corrected
 - `docs/OPERATION_9_SOAK_LEDGER.md` tracks consecutive green scheduled deploys, consecutive green harness-required runs on main, nightly-E2E green count, and the mission divergence window/default-flip date. It carries no quota sample-count or elapsed-time gate.
 
 ### Final re-audit (P-META-1)
-Re-run the exact 6-lane adversarial swarm from `DILIGENCE_REPORT_2026-07-14.md` against the new `main`, with the per-lane "Definition of 9" table above as the rubric. Each lane must independently reach ≥9 with live evidence (not badges): live `gcloud` freshness, live `gh` run history for the harness/E2E green streak, executed gate scripts for the new C#/force-unwrap/perf gates, and a fresh gitleaks + governance-drift check. Publish `DILIGENCE_REPORT_<date>.md` as the successor. Any lane below 9 spawns a follow-up packet; the program isn't "9" until the re-audit says so.
+Re-run the exact 6-lane adversarial swarm from `audits/2026-07/DILIGENCE_REPORT_2026-07-14.md` against the new `main`, with the per-lane "Definition of 9" table above as the rubric. Each lane must independently reach ≥9 with live evidence (not badges): live `gcloud` freshness, live `gh` run history for the harness/E2E green streak, executed gate scripts for the new C#/force-unwrap/perf gates, and a fresh gitleaks + governance-drift check. Publish `DILIGENCE_REPORT_<date>.md` as the successor. Any lane below 9 spawns a follow-up packet; the program isn't "9" until the re-audit says so.
 
 ### What could still hold a lane under 9 (honest risks)
 - **Ops/QA** depend on time-series green streaks — a flaky emulator or a red scheduled deploy can still hold these lanes at 8.5 even after mechanisms are live.

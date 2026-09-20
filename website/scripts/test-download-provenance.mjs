@@ -34,10 +34,11 @@ const releaseDocs = read("docs/RELEASE_MACOS.md");
 // This is intentionally duplicated from SITE. Changing the public DMG URL must
 // update this audited live URL in the same PR, after the replacement artifact is
 // published and manually verified.
-const AUDITED_LIVE_MAC_DOWNLOAD_URL = "https://downloads.burnbar.ai/OpenBurnBar-1.0.29-macOS.dmg";
+const AUDITED_LIVE_MAC_DOWNLOAD_URL =
+  "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.40+repair.41/OpenBurnBar-1.0.40+repair.41-macOS.dmg";
 
 const TRUSTED_GITHUB_RELEASE_PATH =
-  /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/]+(?:\/OpenBurnBar-[A-Za-z0-9._-]+-macOS\.dmg)?$/;
+  /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/%]+(?:\/OpenBurnBar-[A-Za-z0-9._+-]+-macOS\.dmg)?$/;
 
 function assertHttpsDownloadUrl(url, label) {
   assert.equal(url.protocol, "https:", `${label} must use HTTPS`);
@@ -48,7 +49,7 @@ function assertHttpsDownloadUrl(url, label) {
 
   if (url.hostname === "downloads.burnbar.ai") {
     assert(
-      /^\/(?:OpenBurnBar-[A-Za-z0-9._-]+-macOS\.dmg)?$/.test(url.pathname),
+      /^\/(?:OpenBurnBar-[A-Za-z0-9._+-]+-macOS\.dmg)?$/.test(url.pathname),
       `${label} must stay on the first-party download root or macOS DMG asset`
     );
     return;
@@ -69,7 +70,7 @@ const macDownloadBaseUrl = new URL(stringValue(siteSource, "macDownloadBaseUrl")
 const macReleaseFile = stringValue(siteSource, "macReleaseFile");
 assert.match(
   macReleaseFile,
-  /^OpenBurnBar-[A-Za-z0-9._-]+-macOS\.dmg$/,
+  /^OpenBurnBar-[A-Za-z0-9._+-]+-macOS\.dmg$/,
   "SITE.macReleaseFile must be a plain OpenBurnBar macOS DMG filename"
 );
 assertHttpsDownloadUrl(macDownloadBaseUrl, "SITE.macDownloadBaseUrl");
@@ -138,13 +139,14 @@ if (macUpdateBaseUrlRaw) {
   const macUpdateBaseUrl = new URL(macUpdateBaseUrlRaw);
   assert(
     macUpdateBaseUrl.hostname === "github.com" ||
+      macUpdateBaseUrl.hostname === "downloads.burnbar.ai" ||
       macUpdateBaseUrl.hostname === macDownloadBaseUrl.hostname,
     "SITE.macUpdateBaseUrl must be GitHub Releases or the first-party download host"
   );
 }
 
-assert.match(downloadPage, /macOS DMG is served from OpenBurnBar's first-party download host/);
-assert.match(downloadPage, /checksum\s+matches the immutable GitHub Release asset/);
+assert.match(downloadPage, /macOS\s+DMG\s+is\s+served\s+from\s+the\s+signed\s+GitHub\s+Release\s+for\s+this\s+cut/);
+assert.match(downloadPage, /checksum\s+matches\s+the\s+immutable\s+GitHub\s+Release\s+asset/);
 assert.match(
   downloadPage,
   /<BaseLayout[\s\S]*?ambientEffects=\{false\}[\s\S]*?>/,

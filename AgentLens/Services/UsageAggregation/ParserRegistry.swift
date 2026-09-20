@@ -75,8 +75,8 @@ enum ParserRegistry {
         parsers[.openCode] = RegisteredLogParser(OpenCodeParser())
         parsers[.piAgent] = RegisteredLogParser(PiAgentParser())
         parsers[.omp] = RegisteredLogParser(OMPParser())
-        parsers[.zai] = RegisteredLogParser(ModelFilterParser(modelPattern: "zai", provider: .zai))
-        parsers[.minimax] = RegisteredLogParser(ModelFilterParser(modelPattern: "minimax", provider: .minimax))
+        parsers[.zai] = RegisteredLogParser(ModelFilterParser(modelPattern: "zai,glm,zhipu,chatglm", provider: .zai))
+        parsers[.minimax] = RegisteredLogParser(ModelFilterParser(modelPattern: "minimax,abab", provider: .minimax))
         parsers[.kimi] = RegisteredLogParser(KimiParser())
         parsers[.xAI] = RegisteredLogParser(GrokParser())
         parsers[.cline] = RegisteredLogParser(ClineFormatParser(provider: .cline, storagePaths: clineStoragePaths()))
@@ -102,22 +102,27 @@ enum ParserRegistry {
         return parsers
     }
 
+    private static let ideHosts = [
+        "Code", "Cursor", "Windsurf", "Windsurf - Next", "Code - Insiders", "VSCodium", "Positron"
+    ]
+
+    private static func pathsForExtensionIDs(_ ids: [String]) -> [String] {
+        ideHosts.flatMap { host in
+            ids.map { id in
+                "~/Library/Application Support/\(host)/User/globalStorage/\(id)/tasks"
+            }
+        }
+    }
+
     private static func clineStoragePaths() -> [String] {
-        var paths: [String] = []
-        paths.append("~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks")
-        return paths
+        pathsForExtensionIDs(["saoudrizwan.claude-dev"])
     }
 
     private static func kiloCodeStoragePaths() -> [String] {
-        var paths: [String] = []
-        paths.append("~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks")
-        return paths
+        pathsForExtensionIDs(["kilocode.kilo-code"])
     }
 
     private static func rooCodeStoragePaths() -> [String] {
-        var paths: [String] = []
-        paths.append("~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks")
-        paths.append("~/Library/Application Support/Code/User/globalStorage/roo-inc.roo-code/tasks")
-        return paths
+        pathsForExtensionIDs(["rooveterinaryinc.roo-cline", "roo-inc.roo-code"])
     }
 }

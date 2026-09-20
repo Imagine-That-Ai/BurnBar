@@ -98,7 +98,7 @@ extension CloudSyncService {
         docID: String,
         field: String
     ) -> EncryptedSearchFieldDecode {
-        guard let envelope = decodeSealedText(raw) else {
+        guard let envelope = CloudVaultCrypto.decodeSealedText(from: raw) else {
             // Distinguish a genuinely-absent field from a PRESENT-but-undecodable
             // one. A present sealed field that cannot be parsed into a
             // CloudVaultSealedText (missing required tag/nonce, wrong types, or a
@@ -265,20 +265,6 @@ extension CloudSyncService {
     private nonisolated static func sealedFieldIsPresent(_ raw: Any?) -> Bool {
         guard let raw else { return false }
         return !(raw is NSNull)
-    }
-
-    // Pure parser: returns nil for an absent OR present-but-undecodable field.
-    // The present-vs-absent (and therefore tamper-vs-absent) security decision is
-    // made by `decryptEncryptedSearchField` via `sealedFieldIsPresent`, so these
-    // `try?` reads are genuinely best-effort here.
-    // `nonisolated`: pure JSON parse, no `@MainActor` state — keeps the
-    // `decryptEncryptedSearchField` chain callable off the main actor.
-    private nonisolated static func decodeSealedText(_ raw: Any?) -> CloudVaultSealedText? {
-        guard let dict = raw as? [String: Any],
-              let data = try? JSONSerialization.data(withJSONObject: dict) else { // try?-ok(parse; caller fails closed)
-            return nil
-        }
-        return try? JSONDecoder().decode(CloudVaultSealedText.self, from: data) // try?-ok(decode; caller fails closed)
     }
 
     // MARK: - Chunking

@@ -1172,8 +1172,33 @@ public actor BurnBarConfigStore {
             routerMode: snapshot.routerMode,
             telemetryEnabled: snapshot.telemetryEnabled,
             privacyOptIn: snapshot.privacyOptIn,
-            cloudSyncEnabled: snapshot.cloudSyncEnabled
+            cloudSyncEnabled: snapshot.cloudSyncEnabled,
+            memoryEgress: normalizedMemoryEgress(snapshot.memoryEgress)
         )
+    }
+
+    /// Memory Pro egress policy hygiene. Never throws: an unknown provider id
+    /// written by a newer or older app is dropped, not fatal, so a stale
+    /// policy can never brick `snapshot()`.
+    private func normalizedMemoryEgress(_ policy: BurnBarMemoryEgressPolicy) -> BurnBarMemoryEgressPolicy {
+        var normalized = policy
+        normalized.consentedProviderIDs = Array(Set(policy.consentedProviderIDs.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }.filter { !$0.isEmpty && catalogSupport.isSupported(providerID: $0) })).sorted()
+        normalized.consentedCLIProviderIDs = Array(Set(policy.consentedCLIProviderIDs.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }.filter { BurnBarMemoryEgressPolicy.cliProviderIDs.contains($0) })).sorted()
+        var purposes: [String: [String]] = [:]
+        for (purpose, modelIDs) in policy.allowedModelIDsByPurpose where BurnBarMemoryEgressPolicy.purposes.contains(purpose) {
+            var seen = Set<String>()
+            let deduped = modelIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty && seen.insert($0).inserted }
+            if !deduped.isEmpty {
+                purposes[purpose] = deduped
+            }
+        }
+        normalized.allowedModelIDsByPurpose = purposes
+        normalized.dailyCapUSD = min(max(policy.dailyCapUSD.isFinite ? policy.dailyCapUSD : 0, 0), BurnBarMemoryEgressPolicy.maxDailyCapUSD)
+        return normalized
     }
 
     /// Controls how `normalize` reacts to `preferredModelIDs` that the active

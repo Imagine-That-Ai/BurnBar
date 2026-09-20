@@ -478,6 +478,21 @@ public final class HermesParser: LogParser, Sendable {
                 summary = summaryValue
             }
 
+            // Check session_model_usage table for multi-model accounting if primary session row is 0
+            if inputTokens == 0 && outputTokens == 0 && cacheReadTokens == 0 && cacheWriteTokens == 0 && tables.contains("session_model_usage") {
+                if let modelUsageRows = try? reader.query(
+                    "SELECT SUM(input_tokens) AS inp, SUM(output_tokens) AS outp, SUM(cache_read_tokens) AS cr, SUM(cache_write_tokens) AS cw, SUM(reasoning_tokens) AS rz FROM session_model_usage WHERE session_id = ?",
+                    arguments: [.text(rawSessionId)]
+                ), let firstRow = modelUsageRows.first {
+                    let inp = integerValue(firstRow, column: "inp")
+                    let outp = integerValue(firstRow, column: "outp") + integerValue(firstRow, column: "rz")
+                    if inp > 0 || outp > 0 {
+                        inputTokens = inp
+                        outputTokens = outp
+                    }
+                }
+            }
+
             // VAL-TOKEN-004: Fallback/estimation runs only when explicit usage buckets are unavailable.
             // When all session row buckets are zero, try summary, then estimation as last resort.
             if inputTokens == 0 && outputTokens == 0 && cacheReadTokens == 0 && cacheWriteTokens == 0 {

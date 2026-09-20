@@ -7,7 +7,7 @@
  * never converts audit execution failures into a passing check.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -47,14 +47,61 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
  * suppression rot. Keep entries in sync with the osv-scanner.toml ignore list
  * (same id, same expiry) and the rationale in docs/LINT_RATIONALE.md.
  */
-// No advisories are currently tolerated. Every entry must be time-boxed
-// ({ reason, expires: "YYYY-MM-DD" }, keyed by GHSA id) and kept in sync with
-// the paired osv-scanner.toml ignore (same id, same expiry) plus the rationale
-// in docs/LINT_RATIONALE.md. The last entry (GHSA-mh99-v99m-4gvg,
-// brace-expansion DoS) was retired when the vendored callable shim in
-// functions/vendor/openburnbar/brace-expansion-cjs removed the final
-// vulnerable 1.x copies from the dependency tree.
-export const ADVISORY_ALLOWLIST = {};
+// Every entry must be time-boxed ({ reason, expires: "YYYY-MM-DD" }, keyed by
+// GHSA id) and kept in sync with the paired osv-scanner.toml ignore (same id,
+// same expiry) plus the rationale in docs/LINT_RATIONALE.md. The previous entry
+// (GHSA-mh99-v99m-4gvg, brace-expansion DoS) was retired when the vendored
+// callable shim in functions/vendor/openburnbar/brace-expansion-cjs removed the
+// final vulnerable 1.x copies from the dependency tree.
+export const ADVISORY_ALLOWLIST = {
+  "GHSA-82fw-gwwq-j7x9": {
+    // reason: @vitest/mocker redirect-mock path traversal (moderate) in the
+    // dev-only vitest 4.1.8 the monorepo is syncpack-pinned to; the fixed
+    // 4.1.11 cannot be re-locked in website with npm 10.9.8 (arborist
+    // `edgesOut` fault). Paired with the osv-scanner.toml entry.
+    reason:
+      "vitest mocker path traversal: moderate, dev-only test runner; monorepo-wide bump to 4.1.11 is a follow-up",
+    expires: "2026-12-09",
+  },
+  "GHSA-2q42-4q24-7rgv": {
+    // reason: @typespec/compiler and @typespec/openapi3 1.15.0 are
+    // devDependencies of tools/schema-sync, a schema-generation tool that only
+    // reads developer-selected local spec files. OSV lists no fixed version, so
+    // there is nothing to bump to. Paired with the osv-scanner.toml entry.
+    reason:
+      "TypeSpec compiler/openapi3 advisory: dev-only schema-sync tooling over local files, no fixed release published",
+    expires: "2026-12-09",
+  },
+  "GHSA-528h-pc64-c93x": {
+    // reason: quadratic path-recompute DoS in stream-json's pick/ignore/filter/
+    // replace filters. Only firebase-tools depends on it, as a devDependency,
+    // and it requires the 1.x CommonJS entry points. The only fixed line
+    // (3.5.0+) is pure ESM with renamed exports and stream-chain 4 factory
+    // links; forcing it through an override was measured and breaks
+    // `firebase database:import`, `firebase auth:import` and the Next.js
+    // framework integration with MODULE_NOT_FOUND. firebase-tools 15.29.0 still
+    // declares `stream-json: ^1.7.3`, and no patched 1.x release exists, so
+    // there is nothing to bump to. Unreachable in this consumer: the filters
+    // only see developer-selected local files from a CLI, never untrusted
+    // request bodies on a served event loop, and the package is never part of a
+    // deployed functions bundle. Re-evaluate when firebase-tools migrates.
+    reason:
+      "stream-json filter DoS: dev-only transitive of firebase-tools, which requires the 1.x CommonJS entry points; the only fix (3.5.0+) is ESM-only with renamed exports and breaks database:import/auth:import/Next.js at load time, and no patched 1.x exists.",
+    expires: "2026-12-03",
+  },
+  "GHSA-8cw4-87c7-c6xx": {
+    // reason: csv-parse 5.6.0 replaces a parsed record's prototype when a CSV
+    // carries a duplicated `__proto__` header with `columns` and
+    // `group_columns_by_name` both set. Only firebase-tools depends on it, as a
+    // functions/ devDependency that never reaches a deployed bundle, and it only
+    // parses developer-selected local files (`firebase auth:import`). The only
+    // fixed line is 7.0.2, a major firebase-tools has not adopted; an override
+    // is untested against auth:import. Paired with the osv-scanner.toml entry.
+    reason:
+      "csv-parse prototype replacement via duplicated __proto__ header: dev-only transitive of firebase-tools over developer-selected local CSV files; the only fix (7.0.2) is a major firebase-tools has not adopted",
+    expires: "2026-12-09",
+  },
+};
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -220,6 +267,14 @@ export function classifyAuditResult(
 }
 
 export const AUDIT_ATTEMPTS = 3;
+
+/**
+ * Bounded parallelism for the pooled runner. Four concurrent audits keeps a
+ * degraded registry from serialising ~20 lockfile audits into an hour-plus of
+ * wall time (2026-09-03/04 incident) while staying gentle on the audit
+ * endpoint and the runner's own CPU (each npm audit is mostly network wait).
+ */
+export const AUDIT_CONCURRENCY = 4;
 const RETRY_BACKOFF_SECONDS = [5, 15];
 
 function sleepSeconds(seconds) {
@@ -280,6 +335,38 @@ function runAuditOnce(absoluteDir, dir) {
   });
 }
 
+/**
+ * Async variant used by the pooled runner: identical args and classification
+ * as runAuditOnce, just through child_process.spawn so multiple audits can be
+ * in flight at once. Verdicts are byte-for-byte the same classifier.
+ */
+function runAuditOnceAsync(absoluteDir, dir) {
+  return new Promise((resolve) => {
+    const child = spawn(
+      "npm",
+      ["audit", "--prefix", absoluteDir, "--audit-level=high", "--json"],
+      { encoding: "utf8" },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      if (stdout.length > 20 * 1024 * 1024) child.kill();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      resolve(
+        classifyAuditResult({ dir, status: null, stdout, stderr, error }),
+      );
+    });
+    child.on("close", (status) => {
+      resolve(classifyAuditResult({ dir, status, stdout, stderr }));
+    });
+  });
+}
+
 function auditDirectory(repoRoot, dir) {
   const absoluteDir = join(repoRoot, dir);
   if (!existsSync(join(absoluteDir, "package-lock.json"))) {
@@ -297,20 +384,84 @@ function auditDirectory(repoRoot, dir) {
   });
 }
 
-export function runAuditGate(repoRoot = REPO_ROOT, dirs = AUDIT_DIRS) {
-  let ok = true;
-  for (const dir of dirs) {
-    console.log(`==> npm audit: ${dir}`);
-    const result = auditDirectory(repoRoot, dir);
-    for (const message of result.messages) {
-      const writer = result.ok ? console.log : console.error;
-      writer(message);
-    }
-    ok = ok && result.ok;
+/**
+ * Pooled variant: same preflight check and retry budget as auditDirectory,
+ * but awaits the async audit subprocess. Used by runAuditGate's worker pool.
+ */
+async function auditDirectoryAsync(repoRoot, dir) {
+  const absoluteDir = join(repoRoot, dir);
+  if (!existsSync(join(absoluteDir, "package-lock.json"))) {
+    return {
+      ok: false,
+      retryable: false,
+      messages: [
+        `Configured npm audit directory is missing package-lock.json: ${dir}`,
+      ],
+    };
   }
-  return ok;
+
+  // runWithRetries drives a synchronous attempt; the async variant needs the
+  // same bounded-attempt loop expressed as a promise chain. Same budget, same
+  // backoff, same non-retryable-on-findings semantics.
+  const attempt = () => runAuditOnceAsync(absoluteDir, dir);
+  const sleep = (seconds) =>
+    new Promise((resolve) => {
+      setTimeout(resolve, seconds * 1000);
+    });
+  let result = await attempt();
+  for (let index = 1; index < AUDIT_ATTEMPTS && result.retryable; index += 1) {
+    const backoff = RETRY_BACKOFF_SECONDS[index - 1] ?? 15;
+    console.log(
+      `    npm audit for ${dir} failed transiently; retrying in ${backoff}s ` +
+        `(attempt ${index + 1}/${AUDIT_ATTEMPTS})`,
+    );
+    await sleep(backoff);
+    result = await attempt();
+  }
+  return result;
+}
+
+export function runAuditGate(
+  repoRoot = REPO_ROOT,
+  dirs = AUDIT_DIRS,
+  { concurrency = AUDIT_CONCURRENCY, auditRunner = auditDirectoryAsync } = {},
+) {
+  // The audits are independent subprocesses, so a bounded pool across
+  // directories does not change any verdict: every directory keeps its own
+  // fail-closed classification and attempt/retry budget, and the gate fails
+  // if ANY directory fails. Serial execution spent 3-7 minutes per directory
+  // during the 2026-09-03/04 npm registry degradation (~20 dirs = over an
+  // hour of wall time), turning a transport slowdown into required-check
+  // failures on every PR. Concurrency shortens wall time only; it never
+  // converts a failure into a pass. auditRunner is the test seam.
+  const queue = [...dirs];
+  const results = new Map();
+
+  async function worker() {
+    for (let dir = queue.shift(); dir !== undefined; dir = queue.shift()) {
+      console.log(`==> npm audit: ${dir}`);
+      results.set(dir, await auditRunner(repoRoot, dir));
+    }
+  }
+
+  return (async () => {
+    const lanes = Math.min(concurrency, dirs.length);
+    await Promise.all(Array.from({ length: lanes }, worker));
+    // Report in the configured order so the log stays deterministic
+    // regardless of which lane finished first.
+    let ok = true;
+    for (const dir of dirs) {
+      const result = results.get(dir);
+      for (const message of result.messages) {
+        const writer = result.ok ? console.log : console.error;
+        writer(message);
+      }
+      ok = ok && result.ok;
+    }
+    return ok;
+  })();
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exit(runAuditGate() ? 0 : 1);
+  runAuditGate().then((ok) => process.exit(ok ? 0 : 1));
 }

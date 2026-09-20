@@ -4,7 +4,7 @@ This ledger separates **mechanism/first-proof completion** from **time-series so
 
 **Last verified:** 2026-07-17T13:30:00Z
 **Program contract:** [`OPERATION_9_PLAN.md`](OPERATION_9_PLAN.md)
-**Original audit:** [`DILIGENCE_REPORT_2026-07-14.md`](../DILIGENCE_REPORT_2026-07-14.md)
+**Original audit:** [`DILIGENCE_REPORT_2026-07-14.md`](audits/2026-07/DILIGENCE_REPORT_2026-07-14.md)
 **Current shared-Rust candidate:** [PR #1820](https://github.com/Imagine-That-Ai/BurnBar/pull/1820); use the live PR head as authority. Exact-head closure commits include `937a19e1f`, `0efd221cc`, `3c654d445`, and `264942c43`.
 **Completion state:** not complete. Waves 0–2 mechanisms are merged, but live operator actions, exact-head PR #1820, deterministic activation/deletion, and P-META-1 remain open.
 

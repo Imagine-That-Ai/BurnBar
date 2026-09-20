@@ -144,6 +144,11 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .memoryForget: "daemon.memory.forget",
         .memoryAuditTrail: "daemon.memory.audit_trail",
         .memoryAnalytics: "daemon.memory.analytics",
+
+        .memoryModelPolicy: "daemon.memory.model_policy",
+        // Memory Blind Sync PR-2: the engine's drain of verified remote facts.
+        .memorySyncInboxList: "daemon.memory.sync.inbox.list",
+        .memorySyncInboxAck: "daemon.memory.sync.inbox.ack",
         .codeIndexProject: "daemon.code.index_project",
         .codeWatchProject: "daemon.code.watch_project",
         .codeSearch: "daemon.code.search",

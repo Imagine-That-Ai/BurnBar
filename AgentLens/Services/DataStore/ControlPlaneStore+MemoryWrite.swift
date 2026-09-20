@@ -4,6 +4,22 @@ import CryptoKit
 import OpenBurnBarCore
 
 extension ControlPlaneStore {
+    /// How a reseal treats the sealed snapshot's A-MEM `context` sentence.
+    ///
+    /// A body edit must never touch it *implicitly*: resealing without carrying
+    /// the stored sentence forward destroys it and downgrades a usage snapshot
+    /// from `schemaVersion` 2 back to 1. `MemoryPatch` deliberately does not
+    /// carry this — the `MemoryServing` contract is frozen and cross-track
+    /// coordinated, so the knob lives on the store method instead.
+    enum MemoryContextEdit: Sendable, Equatable {
+        /// Carry the stored context sentence forward unchanged. The default,
+        /// and the only correct behavior for a body-only edit.
+        case preserve
+        /// Replace the context sentence deliberately. `nil` (or whitespace)
+        /// clears it, taking the snapshot back to `schemaVersion` 1.
+        case replace(String?)
+    }
+
     func updateChatMemoryAuthorityRecord(id: MemoryID, patch: MemoryPatch, now: Date = Date()) async throws -> Bool {
         try await updateMemoryAuthorityRecord(id: id, patch: patch, sourceKinds: [.chat], now: now)
     }
@@ -12,47 +28,93 @@ extension ControlPlaneStore {
         id: MemoryID,
         patch: MemoryPatch,
         sourceKinds: Set<MemorySourceKind>,
+        actingAccountUserID: String? = nil,
+        context: MemoryContextEdit = .preserve,
         now: Date = Date()
     ) async throws -> Bool {
-        guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
+        guard let existing = try await fetchMemoryAuthorityRecord(
+            id: id,
+            sourceKinds: sourceKinds,
+            actingAccountUserID: actingAccountUserID
+        ) else { return false }
         let partition = MemoryStoragePartition(existing.sourceKind)
         let patchedBody = patch.text?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let patchedBody {
-            guard patchedBody.isEmpty == false else { throw ChatMemoryAuthorityError.emptyBody }
-            let secretLabels = Self.memoryGateFindingIDs(in: patchedBody)
-            if secretLabels.isEmpty == false {
-                try await appendMemoryAuditEvent(
-                    action: "memory.secret_rejected",
-                    projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
-                    subjectID: id,
-                    labels: [
-                        "memory_id": id,
-                        "source_kind": existing.sourceKind.rawValue,
-                        "labels": secretLabels.joined(separator: ",")
-                    ],
-                    now: now
-                )
-                throw ChatMemoryAuthorityError.secretRejected(labels: secretLabels)
+        if let patchedBody, patchedBody.isEmpty {
+            throw ChatMemoryAuthorityError.emptyBody
+        }
+        // `let`, not `var` — the write closure below captures it, and Swift 6
+        // rejects a captured `var` in concurrently-executing code.
+        let replacementContext: String? = {
+            guard case .replace(let value) = context else { return nil }
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed?.isEmpty == true ? nil : trimmed
+        }()
+        // G7 covers every string this call would seal into `snapshot_json` —
+        // the new body and, when the caller replaces it, the context sentence.
+        // Order-preserving union so a body-only edit reports exactly the labels
+        // it reported before this parameter existed.
+        var secretLabels: [String] = []
+        for text in [patchedBody, replacementContext].compactMap({ $0 }) {
+            for label in Self.memoryGateFindingIDs(in: text) where secretLabels.contains(label) == false {
+                secretLabels.append(label)
             }
         }
+        func rejectSecrets(_ labels: [String]) async throws {
+            try await appendMemoryAuditEvent(
+                action: "memory.secret_rejected",
+                projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
+                subjectID: id,
+                labels: [
+                    "memory_id": id,
+                    "source_kind": existing.sourceKind.rawValue,
+                    "labels": labels.joined(separator: ",")
+                ],
+                now: now
+            )
+            throw ChatMemoryAuthorityError.secretRejected(labels: labels)
+        }
+        if secretLabels.isEmpty == false {
+            try await rejectSecrets(secretLabels)
+        }
 
+        // A reseal is needed when this call changes sealed content: a new body,
+        // or a deliberate context replacement on an unchanged body.
+        let resealsSnapshot = patchedBody != nil || context != .preserve
         let snapshotSlug = Self.memorySnapshotSlug(id)
         let auditLabels = [
             "memory_id:\(id)",
             "source_kind:\(existing.sourceKind.rawValue)"
         ]
         let nowString = Self.iso8601String(now)
-        try await dbQueue.write { db in
-            if let patchedBody {
-                let bodyHash = Self.sha256Hex(patchedBody)
+        let preservedContextLabels = try await dbQueue.write { db -> [String] in
+            // Read the stored snapshot inside the write transaction so a
+            // concurrent reseal cannot slip between the read and the rewrite.
+            let stored = try resealsSnapshot ? Self.memoryBodySnapshot(db: db, id: id) : nil
+            // `stored?.body` only carries a context-only edit; a body patch
+            // reseals even when the snapshot row is somehow absent, exactly as
+            // this path did before.
+            if resealsSnapshot, let resealBody = patchedBody ?? stored?.body {
+                let resealContext: String?
+                switch context {
+                case .preserve: resealContext = stored?.context
+                case .replace: resealContext = replacementContext
+                }
+                // A preserved sentence may predate the add-path G7 scan, so it is
+                // scanned here; a hit returns before anything is written.
+                if context == .preserve, let resealContext {
+                    let labels = Self.memoryGateFindingIDs(in: resealContext)
+                    if labels.isEmpty == false { return labels }
+                }
+                let bodyHash = Self.sha256Hex(resealBody)
                 let bodyRef = Self.memorySnapshotRef(snapshotSlug)
                 let snapshotJSON = try Self.memoryBodySnapshotJSON(
                     memoryID: id,
-                    body: patchedBody,
+                    body: resealBody,
                     bodyHash: bodyHash,
                     citations: existing.citations,
                     createdAt: existing.createdAt,
-                    sourceKind: existing.sourceKind
+                    sourceKind: existing.sourceKind,
+                    context: resealContext
                 )
                 try db.execute(
                     sql: """
@@ -103,6 +165,10 @@ extension ControlPlaneStore {
                 labels: auditLabels,
                 nowString: nowString
             )
+            return []
+        }
+        if preservedContextLabels.isEmpty == false {
+            try await rejectSecrets(preservedContextLabels)
         }
         return true
     }
@@ -115,9 +181,14 @@ extension ControlPlaneStore {
         id: MemoryID,
         status: MemoryReviewStatus,
         sourceKinds: Set<MemorySourceKind>,
+        actingAccountUserID: String? = nil,
         now: Date = Date()
     ) async throws -> Bool {
-        guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
+        guard let existing = try await fetchMemoryAuthorityRecord(
+            id: id,
+            sourceKinds: sourceKinds,
+            actingAccountUserID: actingAccountUserID
+        ) else { return false }
         let partition = MemoryStoragePartition(existing.sourceKind)
         let auditLabels = [
             "memory_id:\(id)",
@@ -157,7 +228,7 @@ extension ControlPlaneStore {
                 WHERE id = ?
                   AND source_kind = ?
                 """,
-                arguments: [status.rawValue, now, id, existing.sourceKind.rawValue]
+                arguments: [status.rawValue, nowString, id, existing.sourceKind.rawValue]
             )
             try Self.insertMemoryAuditEvent(
                 db: db,
@@ -166,6 +237,25 @@ extension ControlPlaneStore {
                 subjectID: id,
                 labels: auditLabels,
                 nowString: nowString
+            )
+        }
+        // The verdict is durable and audited above; publishing the BODY is the
+        // daemon's, so an agent-lane verdict is handed to
+        // `daemon.memory.review_status` and the daemon stays the single
+        // publisher (I-56). The call never throws and never undoes the verdict:
+        // an unreachable daemon leaves the row in the derived
+        // pending-publication state the inbox shows and the next launch
+        // retries. Chat and usage rows keep their bodies in the app's own
+        // snapshot table and have nothing to hand over.
+        if existing.sourceKind == .agent {
+            // The stamp is the `updated_at` this verdict was committed under:
+            // sent as the daemon's precondition so an RPC that lands after a
+            // newer verdict is refused instead of resurrecting it (#2565-F4).
+            await publishAgentMemoryReview(
+                id: id,
+                status: status,
+                projectID: existing.scope.projectID,
+                expectedUpdatedAt: nowString
             )
         }
         return true
@@ -178,18 +268,68 @@ extension ControlPlaneStore {
     func deleteMemoryAuthorityRecord(
         id: MemoryID,
         sourceKinds: Set<MemorySourceKind>,
+        actingAccountUserID: String? = nil,
         now: Date = Date()
     ) async throws -> Bool {
-        guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
+        guard let existing = try await fetchMemoryAuthorityRecord(
+            id: id,
+            sourceKinds: sourceKinds,
+            actingAccountUserID: actingAccountUserID
+        ) else { return false }
         let partition = MemoryStoragePartition(existing.sourceKind)
         let auditLabels = [
             "memory_id:\(id)",
             "source_kind:\(existing.sourceKind.rawValue)"
         ]
         let nowString = Self.iso8601String(now)
+
+        // Review #2565-F1: an agent-lane forget goes to the daemon FIRST and
+        // fails closed. The daemon owns the mirrored memory's other halves —
+        // the quarantined plaintext in `memory_quarantine_bodies`, the
+        // published project-memory section, the engine mirror — and it needs
+        // this row's `project_id` to find them, so the row must still exist
+        // when the call lands. A refused or unreachable daemon throws and
+        // every local byte stays: a forget that cannot reach the daemon is
+        // not a forget.
+        let engineMemoryID: String?
+        if existing.sourceKind == .agent {
+            let resolvedEngineID = try await self.engineMemoryID(for: id)
+            guard let projectID = existing.scope.projectID, projectID.isEmpty == false,
+                  let root = try await memoryProjectRecordedRoot(engineProjectID: projectID) else {
+                throw ChatMemoryAuthorityError.agentForgetRequiresDaemon
+            }
+            let response = try await forgetAgentMemory(id, root)
+            guard response.localDeleted,
+                  response.memoryID == id,
+                  response.projectID == projectID else {
+                throw ChatMemoryAuthorityError.agentForgetRequiresDaemon
+            }
+            engineMemoryID = resolvedEngineID
+        } else {
+            engineMemoryID = nil
+        }
+
         try await dbQueue.write { db in
-            if existing.reviewStatus == .approved,
-               existing.scope.userID != nil {
+            // The sealed cloud copy deletes through a fact tombstone — keyed on
+            // the engine id for a mirrored row, the same spelling
+            // `enqueueTombstonesForUnsyncableAgentMemories` uses, because that
+            // is what the cloud document is named. A mirrored row that was ever
+            // owned may have been uploaded under ANY earlier verdict, so the
+            // tombstone is not gated on `review_status` the way the chat path's
+            // is: a rejected or still-parked row can still have a cloud copy.
+            if existing.sourceKind == .agent {
+                if let owner = existing.scope.userID ?? actingAccountUserID {
+                    try Self.insertAgentMemoryFactTombstone(
+                        db: db,
+                        memoryID: id,
+                        userID: owner,
+                        engineMemoryID: engineMemoryID,
+                        reason: "user_delete",
+                        now: now
+                    )
+                }
+            } else if existing.reviewStatus == .approved,
+                      existing.scope.userID != nil {
                 try Self.insertMemoryFactTombstone(
                     db: db,
                     memory: existing,
@@ -201,6 +341,21 @@ extension ControlPlaneStore {
             try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, existing.sourceKind.rawValue])
             try db.execute(sql: "DELETE FROM memory_body_snapshots WHERE memory_id = ?", arguments: [id])
+            // The daemon's forget already removed its own copies; these are the
+            // same shared tables, so the deletes are belt-and-suspenders for a
+            // pre-forget daemon build or a row it never saw. The sync-body row
+            // is BLANKED, not deleted: `engine_memory_id` is a routing label,
+            // not memory content, and it is the only handle the fact-tombstone
+            // drain has on the sealed cloud document — deleting the row would
+            // make `cloudFactIdentity` fall back to the local id and leave the
+            // engine-keyed copy behind for ever.
+            if existing.sourceKind == .agent {
+                try db.execute(sql: "DELETE FROM memory_quarantine_bodies WHERE memory_id = ?", arguments: [id])
+                try db.execute(
+                    sql: "UPDATE agent_memory_bodies SET body = '', body_hash = '', updated_at = ? WHERE memory_id = ?",
+                    arguments: [nowString, id]
+                )
+            }
             try Self.insertMemoryAuditEvent(
                 db: db,
                 action: "memory.delete",
@@ -225,6 +380,12 @@ extension ControlPlaneStore {
         for record in records where try await deleteChatMemoryAuthorityRecord(id: record.id, now: now) {
             deleted += 1
         }
+        // "Reset memory" must leave nothing readable behind. The blind-sync
+        // inbox holds an opened plaintext copy of every fact pulled down from
+        // the member's other devices, merged or not, and no other delete path
+        // touches it — so a reset that skipped it would empty the surface the
+        // member can see while leaving the copy they cannot.
+        try await purgeAllRemoteMemoryFacts()
         return deleted
     }
 

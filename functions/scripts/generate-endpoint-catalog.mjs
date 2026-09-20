@@ -12,6 +12,7 @@ import { parseGeneratedLiteral } from "./generated-literal-parser.mjs";
 const repoRoot = resolve(import.meta.dirname, "../..");
 const indexPath = resolve(repoRoot, "functions/src/index.ts");
 const outPath = resolve(repoRoot, "functions/src/security/endpointAuthorizationCatalog.generated.ts");
+const expectedCodesPath = resolve(repoRoot, "functions/src/__tests__/bola/bolaExpectedCodes.generated.ts");
 
 function exportedNames() {
   const source = readFileSync(indexPath, "utf8");
@@ -33,6 +34,46 @@ function exportedNames() {
 
 /** Endpoint-specific overrides merged onto scaffold defaults during regeneration. */
 const CATALOG_OVERRIDES = {
+  submitBugReport: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck: "handler derives uid from request.auth.uid only",
+    handlerModule: "callables/bugReporting.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["submitBugReport"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  listKnowledgeChunks: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck: "handler derives uid from request.auth.uid only",
+    handlerModule: "callables/knowledgeSearch.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["listKnowledgeChunks"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   curateUsageMemoryBatch: {
     trigger: "callable",
     authMethod: "Firebase Auth with lane-scoped BurnBar Pro / Pro Max entitlement gates",
@@ -190,8 +231,10 @@ const CATALOG_OVERRIDES = {
         test: "resolution cannot read a cross-user route",
         kind: "runtime-cross-user",
         covers: ["resolveActiveIrohControllerRoutes"],
-        expectedOutcome: "throws",
-        expectedCode: "failed-precondition",
+        // The cross-user proof asserts an empty resolution with the victim's
+        // rows untouched; the handler does not reject, so no denial code is
+        // claimed for it.
+        expectedOutcome: "no-side-effect",
       },
     ],
     highRiskComputerUse: false,
@@ -445,11 +488,11 @@ const CATALOG_OVERRIDES = {
     handlerModule: "callables/linuxAppCheckDevices.ts",
     bolaCoverage: [{
       file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-      test: "requires explicit trusted-native approval and an action proof",
+      test: "rejects cross-user App Check device operations without victim side effects",
       kind: "runtime-cross-user",
       covers: ["approveLinuxAppCheckDevice"],
       expectedOutcome: "throws",
-      expectedCode: "permission-denied",
+      expectedCode: "not-found",
     }],
     highRiskComputerUse: true,
   },
@@ -464,11 +507,11 @@ const CATALOG_OVERRIDES = {
     handlerModule: "callables/linuxAppCheckDevices.ts",
     bolaCoverage: [{
       file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
-      test: "lists public review material and revokes without ever returning private material",
+      test: "rejects cross-user App Check device operations without victim side effects",
       kind: "runtime-cross-user",
       covers: ["revokeLinuxAppCheckDevice"],
       expectedOutcome: "throws",
-      expectedCode: "permission-denied",
+      expectedCode: "not-found",
     }],
     highRiskComputerUse: true,
   },
@@ -955,6 +998,189 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+  createTeam: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with a server-side Data Vault entitlement check",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives the founding admin from request.auth.uid only and mints a fresh server-side team id",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["createTeam"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  inviteTeamMember: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck: "handler requires an ACTIVE ADMIN row at team_rosters/{teamId}/members/{request.auth.uid} before resolving the invitee uid or writing an invite",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "inviteTeamMember rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["inviteTeamMember"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  acceptTeamInvite: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck: "handler requires a verified email claim and an invite whose server-stored inviteeUid equals request.auth.uid; escrow key fingerprints are read from the caller's own namespace",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "acceptTeamInvite rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["acceptTeamInvite"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  promoteTeamMember: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId", "uid"],
+    ownershipCheck: "handler requires an ACTIVE ADMIN row for request.auth.uid on that team, and verifies key envelope coverage addressed to the named member before activating it",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "promoteTeamMember rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["promoteTeamMember"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  removeTeamMember: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId", "targetUid"],
+    ownershipCheck: "handler allows self-leave, otherwise requires an ACTIVE ADMIN row for request.auth.uid on that team",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "removeTeamMember rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["removeTeamMember"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  abandonTeamKeyGeneration: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck:
+      "handler requires an ACTIVE ADMIN row for request.auth.uid on that team, and burns only the next unclaimed key version, only when it is neither active nor retained and an envelope for it exists",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "abandonTeamKeyGeneration rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["abandonTeamKeyGeneration"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  recordTeamRewrapComplete: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck: "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and refuses any key version but the roster's current activeKeyVersion",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "recordTeamRewrapComplete rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["recordTeamRewrapComplete"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  recordTeamSlugKeyId: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck:
+      "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and records the founding slug-key fingerprint write-once, refusing any second, different value",
+    handlerModule: "teamSlugKeyRecord.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "recordTeamSlugKeyId rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["recordTeamSlugKeyId"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  rotateTeamKey: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with server-side team roster membership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
+    objectIdsFromClient: ["teamId"],
+    ownershipCheck: "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and refuses any key version but activeKeyVersion + 1",
+    handlerModule: "callables/teamRosterCallables.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
+        test: "rotateTeamKey rejects cross-user object access",
+        kind: "runtime-cross-user",
+        covers: ["rotateTeamKey"],
+        expectedOutcome: "throws",
+        expectedCode: "permission-denied",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   triggerVoIPCall: {
     bolaCoverage: [
       {
@@ -967,6 +1193,74 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
+};
+
+/**
+ * Measured by the W0-12 forced-strict BOLA run. These are intentionally kept
+ * separate from the contract defaults above: W1-1a drains this ledger by
+ * aligning each handler's malformed, foreign, and missing-id paths.
+ */
+const BOLA_MEASURED_EXPECTED_CODES = {
+  appendCliAgentMissionEvent: "invalid-argument",
+  approveEscrowDeviceTrust: "invalid-argument",
+  beginBurnbarAttachment: "invalid-argument",
+  beginEncryptedSessionBlobUpload: "permission-denied",
+  cancelCliAgentMission: "invalid-argument",
+  claimCliAgentMission: "invalid-argument",
+  claimSignalPrekeyBundle: "failed-precondition",
+  commitEncryptedProjectMemorySnapshot: "permission-denied",
+  commitEncryptedSearchIndexBatch: "permission-denied",
+  commitKnowledgeBatch: "permission-denied",
+  completeCliLink: "permission-denied",
+  completeHermesPairing: "permission-denied",
+  completePiAgentPairing: "permission-denied",
+  composeBurnbarAttachment: "invalid-argument",
+  configureKnowledgeSource: "permission-denied",
+  confirmRecovery: "invalid-argument",
+  connectHostedQuotaAccount: "invalid-argument",
+  connectKnowledgeRepo: "permission-denied",
+  connectProviderAccount: "invalid-argument",
+  connectSelfHostedQuotaAccount: "invalid-argument",
+  createCliAgentMission: "invalid-argument",
+  createCredentialTransfer: "already-exists",
+  createHermesPairing: "permission-denied",
+  createPiAgentPairing: "permission-denied",
+  deleteBurnbarAttachment: "invalid-argument",
+  deleteHostedQuotaCredentials: "invalid-argument",
+  deleteKnowledgeSource: "permission-denied",
+  disconnectKnowledgeRepo: "permission-denied",
+  enqueueHermesGatewayEvent: "failed-precondition",
+  finalizeBurnbarAttachment: "invalid-argument",
+  getEncryptedProjectMemorySnapshot: "permission-denied",
+  getEncryptedSessionBlobDownloadUrl: "permission-denied",
+  mintBurnbarAttachmentPartURL: "invalid-argument",
+  publishAgentGrantAuthority: "permission-denied",
+  publishIrohPairingPublicKey: "permission-denied",
+  publishIrohPairingRecord: "permission-denied",
+  publishMissionApprovalCeiling: "invalid-argument",
+  publishPhoneControlAuthority: "permission-denied",
+  publishRelaySenderKey: "permission-denied",
+  publishSignalPrekeyBundle: "failed-precondition",
+  queryConversations: "permission-denied",
+  queueAgentCapabilityGrantRequest: "invalid-argument",
+  recordSignalRotation: "failed-precondition",
+  recordSignalSession: "failed-precondition",
+  redeemMissionApprovalAnswer: "invalid-argument",
+  registerEscrowDevice: "invalid-argument",
+  respondMissionApproval: "invalid-argument",
+  revokeHermesConnection: "permission-denied",
+  revokeIrohPairingRecord: "permission-denied",
+  revokePiAgentConnection: "permission-denied",
+  rotateCloudVaultKey: "permission-denied",
+  searchEncryptedConversationIndex: "permission-denied",
+  setHermesGatewayOversightMode: "failed-precondition",
+  signalPrekeyWatermark: "failed-precondition",
+  submitAgentNotificationReply: "invalid-argument",
+  ticketBurnbarAttachmentDownload: "invalid-argument",
+  updateCliAgentMissionStatus: "invalid-argument",
+  updateHermesConnectionStatus: "permission-denied",
+  updatePiAgentConnectionStatus: "permission-denied",
+  consumeCredentialTransfer: "permission-denied",
 };
 
 const SIGNAL_MIGRATION_TRIGGER_NAMES = [
@@ -1315,11 +1609,62 @@ if (!existingJson) {
 const prior = parseGeneratedLiteral(existingJson[1]);
 const priorByName = Object.fromEntries(prior.map((row) => [row.exportedName, row]));
 
-const merged = names.map((exportedName) => {
-  const base = priorByName[exportedName] ?? defaultEntry(exportedName);
-  const override = CATALOG_OVERRIDES[exportedName];
-  return override ? { ...base, ...override, exportedName } : base;
-});
+const merged = names
+  .map((exportedName) => {
+    const base = priorByName[exportedName] ?? defaultEntry(exportedName);
+    const override = CATALOG_OVERRIDES[exportedName];
+    return override ? { ...base, ...override, exportedName } : base;
+  })
+  .map((entry) => {
+    const measuredCode = BOLA_MEASURED_EXPECTED_CODES[entry.exportedName];
+    if (!measuredCode) return entry;
+
+    let updatedRuntimeRef = false;
+    const bolaCoverage = entry.bolaCoverage.map((ref) => {
+      if (ref.kind !== "runtime-cross-user" || !ref.covers.includes(entry.exportedName)) {
+        return ref;
+      }
+      updatedRuntimeRef = true;
+      return { ...ref, expectedCode: measuredCode };
+    });
+    if (!updatedRuntimeRef) {
+      throw new Error(`Measured BOLA code has no runtime coverage ref for ${entry.exportedName}`);
+    }
+    return { ...entry, bolaCoverage };
+  });
+
+// The ledger never invents a code: an object-id endpoint either has a measured
+// denial code on its runtime-cross-user ref, or an explicit no-side-effect
+// outcome. A throwing ref without a measured code fails generation.
+const objectExpectedCodes = Object.fromEntries(
+  merged
+    .filter((entry) => entry.objectIdsFromClient?.length > 0)
+    .map((entry) => {
+      const runtimeRefs = entry.bolaCoverage.filter(
+        (ref) => ref.kind === "runtime-cross-user" && ref.covers.includes(entry.exportedName),
+      );
+      const codedRef = runtimeRefs.find((ref) => typeof ref.expectedCode === "string");
+      if (codedRef) return [entry.exportedName, codedRef.expectedCode];
+      if (runtimeRefs.some((ref) => ref.expectedOutcome === "no-side-effect")) {
+        return [entry.exportedName, "no-side-effect"];
+      }
+      throw new Error(
+        `${entry.exportedName}: runtime-cross-user coverage claims a rejection but has no measured expectedCode; ` +
+          "add it to BOLA_MEASURED_EXPECTED_CODES or mark the ref expectedOutcome: \"no-side-effect\"",
+      );
+    }),
+);
+
+// 95 pre-existing object-id endpoints + the six team roster callables that
+// take a teamId / member uid from the client (D16 / P21) — the sixth,
+// `abandonTeamKeyGeneration`, landed with PR 2's rotation escape hatch — plus
+// the rotation completion marker (D16 / P22, PR 4) and the founding
+// slug-key fingerprint recorder (D16, this PR).
+if (Object.keys(objectExpectedCodes).length !== 103) {
+  throw new Error(
+    `Expected exactly 103 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
+  );
+}
 
 const header = `/** AUTO-GENERATED by scripts/generate-endpoint-catalog.mjs — do not hand-edit rows. */
 import type { EndpointAuthorizationEntry } from "./bolaCoverageTypes.js";
@@ -1332,4 +1677,13 @@ writeFileSync(
 `,
 );
 
+const expectedCodesHeader = `/** AUTO-GENERATED by scripts/generate-endpoint-catalog.mjs — do not hand-edit rows. */
+import type { BolaLedgerCode } from "../../security/bolaCoverageTypes.js";
+
+export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = `;
+
+writeFileSync(expectedCodesPath, `${expectedCodesHeader}${formatTsLiteral(objectExpectedCodes)};
+`);
+
 console.log(`Wrote ${merged.length} catalog entries to ${outPath}`);
+console.log(`Wrote ${Object.keys(objectExpectedCodes).length} BOLA expected codes to ${expectedCodesPath}`);

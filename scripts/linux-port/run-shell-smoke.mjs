@@ -116,6 +116,7 @@ function currentDesktopArtifactsAreReusable() {
   const oracle = readJSON('daemon-session-oracle.json');
   const generatedAt = report?.generatedAt ? Date.parse(report.generatedAt) : Number.NaN;
   const maxAgeMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_ARTIFACT_MAX_AGE_MS || '86400000', 10);
+  const artifactAgeMs = Date.now() - generatedAt;
   const runtimeRows = fs.readFileSync(path.join(outDir, 'runtime-perf-samples.jsonl'), 'utf8')
     .split('\n')
     .filter((line) => line.trim().length > 0);
@@ -134,7 +135,8 @@ function currentDesktopArtifactsAreReusable() {
     });
   });
   return Number.isFinite(generatedAt) &&
-    Date.now() - generatedAt <= maxAgeMs &&
+    artifactAgeMs >= 0 &&
+    artifactAgeMs <= maxAgeMs &&
     report?.performance?.appStartMs > 0 &&
     report?.performance?.ipcHealthRoundTripMs > 0 &&
     report?.accessibility?.atspiTree?.pass === true &&
@@ -175,6 +177,7 @@ try {
 } catch (error) {
   if (error.code !== 'ENOENT') {
     console.error(`unable to clear stale shell smoke failure summary: ${error.message}`);
+    process.exit(1);
   }
 }
 
@@ -186,24 +189,98 @@ function persistTranscript() {
 }
 
 function serializeStep(step, index) {
+  const failure = classifyStep(step);
   return {
     index: index + 1,
     command: step.cmd,
     status: step.code === 0 ? 'passed' : 'failed',
     exitCode: step.code,
-    timed_out: step.timedOut
+    timed_out: step.timedOut,
+    failureClass: failure.failureClass,
+    reasonCode: failure.reasonCode
   };
 }
 
+function classifyStep(step) {
+  if (step.code === 0) return { failureClass: null, reasonCode: null };
+  if (step.timedOut) return { failureClass: 'infra', reasonCode: 'linux-step-timeout' };
+  if (step.cmd.includes('npm install')) {
+    return { failureClass: 'infra', reasonCode: 'linux-dependency-install-failed' };
+  }
+  if (step.cmd.includes("npm test")) {
+    return { failureClass: 'product', reasonCode: 'linux-shell-tests-failed' };
+  }
+  if (step.cmd.includes("npm run build")) {
+    return { failureClass: 'product', reasonCode: 'linux-shell-build-failed' };
+  }
+  if (step.cmd.includes('run-shell-desktop-session')) {
+    const desktopResult = readJSON('linux-desktop-session-wrapper-result.json');
+    if (desktopResult?.failureClass && desktopResult?.reasonCode) {
+      return {
+        failureClass: desktopResult.failureClass,
+        reasonCode: desktopResult.reasonCode
+      };
+    }
+    return { failureClass: 'infra', reasonCode: 'linux-desktop-session-failed' };
+  }
+  if (step.cmd.includes('run-shell-evidence')) {
+    const evidenceResult = readJSON('shell-evidence-result.json');
+    if (evidenceResult?.failureClass && evidenceResult?.reasonCode) {
+      return {
+        failureClass: evidenceResult.failureClass,
+        reasonCode: evidenceResult.reasonCode
+      };
+    }
+    return { failureClass: 'infra', reasonCode: 'linux-shell-evidence-failed' };
+  }
+  if (step.cmd.includes('run-matched-performance')) {
+    const comparison = readJSON('matched-performance-comparison.json');
+    if (!comparison) {
+      return { failureClass: 'infra', reasonCode: 'linux-matched-performance-evidence-unavailable' };
+    }
+    return { failureClass: 'product', reasonCode: 'linux-matched-performance-failed' };
+  }
+  if (step.cmd.includes('run-perf-budget')) {
+    const perfReport = readJSON('perf-budget.json');
+    if (perfReport?.failureClass === 'infra' && perfReport.reasonCode) {
+      return {
+        failureClass: 'infra',
+        reasonCode: perfReport.reasonCode
+      };
+    }
+    if (!perfReport) {
+      return { failureClass: 'infra', reasonCode: 'linux-performance-evidence-unavailable' };
+    }
+    return { failureClass: 'product', reasonCode: 'linux-performance-budget-failed' };
+  }
+  if (step.cmd.includes('verify-shell-evidence')) {
+    const verification = readJSON('shell-evidence-verify.json');
+    if (verification?.failureClass && verification?.reasonCode) {
+      return {
+        failureClass: verification.failureClass,
+        reasonCode: verification.reasonCode
+      };
+    }
+    return { failureClass: 'infra', reasonCode: 'linux-shell-evidence-failed' };
+  }
+  return { failureClass: 'infra', reasonCode: 'linux-shell-step-failed' };
+}
+
 function persistFailureSummary() {
+  const serializedSteps = steps.map(serializeStep);
+  const failedSteps = serializedSteps.filter((step) => step.status === 'failed');
+  const firstFailure = failedSteps.find((step) => step.failureClass === 'infra')
+    ?? failedSteps[0]
+    ?? null;
   const summary = {
     schemaVersion: 1,
     type: 'openburnbar.shell-smoke-failure',
     generatedAt: new Date().toISOString(),
-    failedSteps: steps
-      .map(serializeStep)
-      .filter((step) => step.status === 'failed'),
-    steps: steps.map(serializeStep),
+    status: firstFailure?.failureClass === 'infra' ? 'infra-failed' : 'failed',
+    failureClass: firstFailure?.failureClass ?? null,
+    reasonCode: firstFailure?.reasonCode ?? null,
+    failedSteps,
+    steps: serializedSteps,
     artifacts: existingArtifacts(outDir),
     runtime: runtimeMetadata()
   };
@@ -233,7 +310,10 @@ recordStep(run('npm', ['run', 'build'], appDir, evidenceEnv, 180000));
 // Fresh arm64 packaging can spend more than 25 minutes compiling the native
 // daemon/CLI before the desktop evidence matrix begins. Match the wrapper's
 // 60-minute default while keeping the workflow's 75-minute job cap intact.
-const desktopSessionTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '3600000', 10);
+const requestedDesktopTimeoutMs = Number.parseInt(process.env.OB_SHELL_DESKTOP_TIMEOUT_MS || '3600000', 10);
+const desktopSessionTimeoutMs = Number.isSafeInteger(requestedDesktopTimeoutMs) && requestedDesktopTimeoutMs > 0
+  ? requestedDesktopTimeoutMs
+  : 3_600_000;
 recordStep(currentDesktopArtifactsAreReusable()
   ? reusedDesktopStep()
   : run('node', [path.join(root, 'scripts/linux-port/run-shell-desktop-session.mjs')], root, evidenceEnv, desktopSessionTimeoutMs));

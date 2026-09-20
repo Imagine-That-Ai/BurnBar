@@ -33,7 +33,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Run jscpd duplicate code detection
         run: |
@@ -69,7 +69,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Check for version drift across packages
         run: |
@@ -86,13 +86,17 @@ jobs:
   unused-deps-functions:
     name: Unused Dependencies (functions)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 2026-09-03/04 npm registry degradation: this job was killed at its
+    # hard cap with clean partial output (see PR #2507 CI history), so a
+    # slow registry was reported as a job failure. 30m rides out the
+    # degradation; the gate itself is unchanged.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
@@ -114,7 +118,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: extensions/openburnbar/package-lock.json
 
@@ -133,7 +137,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Run structural debt ratchets
         run: |
@@ -146,13 +150,17 @@ jobs:
   dependency-boundaries:
     name: Dependency Boundaries (dependency-cruiser)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 2026-09-03/04 npm registry degradation: this job was killed at its
+    # hard cap with clean partial output (see PR #2507 CI history), so a
+    # slow registry was reported as a job failure. 30m rides out the
+    # degradation; the gate itself is unchanged.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
@@ -197,7 +205,7 @@ jobs:
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       - name: Install extension dependencies and build
         run: |
@@ -284,13 +292,17 @@ jobs:
   build-performance:
     name: Build Timing Summary
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 2026-09-03/04 npm registry degradation: this job was killed at its
+    # hard cap with clean partial output (see PR #2507 CI history), so a
+    # slow registry was reported as a job failure. 30m rides out the
+    # degradation; the gate itself is unchanged.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: functions/package-lock.json
 

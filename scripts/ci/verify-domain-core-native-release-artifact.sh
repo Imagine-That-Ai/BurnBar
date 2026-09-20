@@ -11,6 +11,7 @@ selected_profile="${6:-}"
 observed_identity="${7:-}"
 candidate_bundle="${8:-}"
 android_abi_manifest="${9:-}"
+rust_active="${RUST_ACTIVE:-}"
 apple_signing_policy="$repo_root/config/apple-release-signing-policy.json"
 
 if [[ "$consumer" != "apple" && "$consumer" != "android" ]]; then
@@ -37,9 +38,26 @@ for pair in "$artifact:native release artifact" "$selected_profile:selected publ
     exit 1
   fi
 done
-if [[ "$consumer" == "android" && ( -z "$observed_identity" || ! -f "$observed_identity" || -L "$observed_identity" || ! -s "$observed_identity" ) ]]; then
-  echo "observed Rust identity must be a nonempty regular non-symlink file: $observed_identity" >&2
-  exit 1
+if [[ "$consumer" == "android" ]]; then
+  if [[ -z "$rust_active" ]]; then
+    rust_active="$(node -e '
+      const fs = require("node:fs");
+      const profile = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      const modes = Object.values(profile.modes ?? {});
+      process.stdout.write(String(modes.some((mode) => mode === "rust")));
+    ' "$selected_profile")"
+  fi
+  case "$rust_active" in
+    true | false) ;;
+    *)
+      echo "RUST_ACTIVE must be true or false for Android release verification: $rust_active" >&2
+      exit 1
+      ;;
+  esac
+  if [[ "$rust_active" == "true" && ( -z "$observed_identity" || ! -f "$observed_identity" || -L "$observed_identity" || ! -s "$observed_identity" ) ]]; then
+    echo "observed Rust identity must be a nonempty regular non-symlink file: $observed_identity" >&2
+    exit 1
+  fi
 fi
 # A legacy release has no attested candidate bundle, so there is nothing to
 # bind the packaged domain-core library back to and no ABI manifest to emit.
@@ -67,7 +85,9 @@ fi
 
 artifact="$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")"
 selected_profile="$(cd "$(dirname "$selected_profile")" && pwd)/$(basename "$selected_profile")"
-observed_identity="$(cd "$(dirname "$observed_identity")" && pwd)/$(basename "$observed_identity")"
+if [[ -n "$observed_identity" ]]; then
+  observed_identity="$(cd "$(dirname "$observed_identity")" && pwd)/$(basename "$observed_identity")"
+fi
 if [[ -n "$candidate_bundle" ]]; then
   candidate_bundle="$(cd "$(dirname "$candidate_bundle")" && pwd)/$(basename "$candidate_bundle")"
 fi
@@ -249,7 +269,11 @@ verify_android() {
     echo "unable to extract packaged Android domain-core native library" >&2
     exit 1
   fi
-  verify_selected_identity "$packaged_library"
+  if [[ "$rust_active" == "true" ]]; then
+    verify_selected_identity "$packaged_library"
+  else
+    echo "Android release uses legacy domain-core modes; no loaded Rust identity is required."
+  fi
 }
 
 if [[ "$consumer" == "apple" ]]; then
@@ -258,4 +282,8 @@ else
   verify_android
 fi
 
-echo "verified $consumer domain-core release artifact and loaded Rust identity: $expected_name"
+if [[ "$consumer" == "android" && "$rust_active" != "true" ]]; then
+  echo "verified $consumer domain-core release artifact with legacy domain-core modes: $expected_name"
+else
+  echo "verified $consumer domain-core release artifact and loaded Rust identity: $expected_name"
+fi

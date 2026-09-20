@@ -9,6 +9,7 @@ import {
   clearMineFilters,
   effectiveRange,
   emptyFilters,
+  ensureFacetValue,
   needsEventPath,
   parseProfileFilters,
   serializeProfileFilters,
@@ -56,6 +57,16 @@ describe("parseProfileFilters", () => {
     expect(f.day).toBeNull();
     expect(f.metric).toBe("tokens");
     expect(f.entity).toBeNull();
+  });
+
+  it("rejects impossible calendar dates and reversed ranges", () => {
+    expect(parseProfileFilters("?day=2026-99-99").day).toBeNull();
+    expect(parseProfileFilters("?from=2026-02-30").from).toBeNull();
+    expect(parseProfileFilters("?day=2026-02-29").day).toBeNull(); // 2026 is not a leap year
+    expect(parseProfileFilters("?day=2024-02-29").day).toBe("2024-02-29");
+    const reversed = parseProfileFilters("?from=2026-08-16&to=2026-08-01");
+    expect(reversed.from).toBeNull();
+    expect(reversed.to).toBeNull();
   });
 
   it("dedupes facet values", () => {
@@ -148,6 +159,19 @@ describe("snapWindowForEventFacets (the 91k guard)", () => {
     expect(snapWindowForEventFacets(f)).toMatchObject({ window: "90d" });
   });
 
+  it("clears a pinned day and entity when snapping, so All never re-triggers", () => {
+    // The guard runs on every applyFilters call: if it kept day/entity, a
+    // re-applied filter would stay "needs event path" on All forever. The
+    // snap carries the window only; pins re-apply cleanly on 90d.
+    const f = {
+      ...emptyFilters(),
+      day: "2026-09-01",
+      facets: { ...emptyFilters().facets, models: ["gpt-5.3"] },
+    };
+    const snapped = snapWindowForEventFacets(f);
+    expect(snapped).toMatchObject({ window: "90d" });
+  });
+
   it("leaves non-All, custom-range, and rollup-only filters alone", () => {
     expect(snapWindowForEventFacets(emptyFilters())).toBeNull();
     const preset = {
@@ -165,10 +189,15 @@ describe("snapWindowForEventFacets (the 91k guard)", () => {
   });
 });
 
-describe("toggleFacetValue + clearMineFilters", () => {
+describe("toggleFacetValue + ensureFacetValue + clearMineFilters", () => {
   it("toggles add/remove", () => {
     expect(toggleFacetValue([], "a")).toEqual(["a"]);
     expect(toggleFacetValue(["a", "b"], "a")).toEqual(["b"]);
+  });
+
+  it("ensure keeps an active facet (Inspect never untoggles)", () => {
+    expect(ensureFacetValue(["a", "b"], "a")).toEqual(["a", "b"]);
+    expect(ensureFacetValue(["a"], "b")).toEqual(["a", "b"]);
   });
 
   it("clear keeps the metric", () => {

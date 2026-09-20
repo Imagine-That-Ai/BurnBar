@@ -51,10 +51,6 @@ openburnbar_app_test_has_terminal_concrete_xctest_failure() {
         return 1
     fi
 
-    if is_xcode_false_negative_pass "$log_path"; then
-        return 1
-    fi
-
     if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
         openburnbar_app_test_has_concrete_xctest_failure "$log_path"
         return $?
@@ -107,28 +103,6 @@ openburnbar_app_test_final_selected_summary_is_green() {
     ' "$log_path"
 }
 
-openburnbar_app_test_has_final_failing_tests_section() {
-    local log_path="$1"
-
-    awk '
-        /^Failing tests:/ {
-            in_failing = 1
-            found = 0
-            next
-        }
-        in_failing && /^[[:space:]]*$/ { next }
-        in_failing && /^[^[:space:]]/ { in_failing = 0 }
-        in_failing && NF { found = 1 }
-        END { exit found ? 0 : 1 }
-    ' "$log_path"
-}
-
-openburnbar_app_test_has_xcode_test_failed_marker() {
-    local log_path="$1"
-
-    grep -Fq "** TEST FAILED **" "$log_path"
-}
-
 is_swiftpm_dependency_resolution_transient() {
     local log_path="$1"
 
@@ -144,41 +118,6 @@ is_swiftpm_dependency_resolution_transient() {
 
     grep -Eq "Could not resolve package dependencies|failed downloading .* which is required by binary target|Failed to clone repository|fatal: unable to access|Git command .* config --get remote\\.origin\\.url|binary target .*OpenBurnBarSignalFfi.* could not be mapped" "$log_path" || return 1
     grep -Eiq "downloadError\\(\"The request timed out\\.\"\\)|Failed to connect to .* port 443|Couldn'?t connect to server|Connection (reset|timed out)|network connection was lost|TLS handshake timeout|HTTP (502|503|504)|Bad Gateway|Service Unavailable|Gateway Timeout|fatal: cannot change to .+: No such file or directory|binary target .*OpenBurnBarSignalFfi.* could not be mapped to an artifact with expected name .*OpenBurnBarSignalFfi" "$log_path"
-}
-
-openburnbar_app_test_has_concrete_failure_after_final_selected_green_summary() {
-    local log_path="$1"
-
-    awk '
-        /Test Suite '\''Selected tests'\'' passed/ {
-            waiting_for_summary = 1
-            after_green_summary = 0
-            failed = 0
-            next
-        }
-        waiting_for_summary && /Executed [0-9]+ tests?/ {
-            if ($0 ~ /Executed [1-9][0-9]* tests?, with ([0-9]+ tests? skipped and )?0 failures/) {
-                after_green_summary = 1
-            } else {
-                after_green_summary = 0
-            }
-            waiting_for_summary = 0
-            next
-        }
-        after_green_summary && /Test Case '\''-\[[^]]+\]'\'' failed/ {
-            failed = 1
-            next
-        }
-        after_green_summary && /Test Suite '\''Selected tests'\'' failed/ {
-            failed = 1
-            next
-        }
-        after_green_summary && /Executed [0-9]+ tests?, with ([0-9]+ tests? skipped and )?[1-9][0-9]* failures?/ {
-            failed = 1
-            next
-        }
-        END { exit failed ? 0 : 1 }
-    ' "$log_path"
 }
 
 is_known_hang() {
@@ -200,31 +139,4 @@ is_known_hang() {
         fi
     done
     return 1
-}
-
-is_xcode_false_negative_pass() {
-    local log_path="$1"
-
-    # Xcode can occasionally return 65 and print "** TEST FAILED **" after the
-    # selected XCTest suite has already reported a clean run. Accept that as
-    # success only when the final selected-suite summary is unambiguously green
-    # and the final selected-suite execution itself has no concrete failures.
-    #
-    # A final "Failing tests:" footer is authoritative even when Xcode restarted
-    # the test host and later printed a green summary. Treating that footer as
-    # stale can hide failures from an earlier host launch in the same test run.
-    if openburnbar_app_test_has_execution_timeout_restart "$log_path"; then
-        return 1
-    fi
-
-    openburnbar_app_test_has_xcode_test_failed_marker "$log_path" || return 1
-    openburnbar_app_test_final_selected_summary_is_green "$log_path" || return 1
-
-    if openburnbar_app_test_has_concrete_failure_after_final_selected_green_summary "$log_path"; then
-        return 1
-    fi
-
-    openburnbar_app_test_has_final_failing_tests_section "$log_path" && return 1
-
-    return 0
 }

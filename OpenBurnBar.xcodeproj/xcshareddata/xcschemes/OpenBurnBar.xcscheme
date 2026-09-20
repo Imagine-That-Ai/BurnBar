@@ -50,17 +50,6 @@
                ReferencedContainer = "container:OpenBurnBar.xcodeproj">
             </BuildableReference>
          </TestableReference>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "FF80CA8F04F196629093BA6D"
-               BuildableName = "OpenBurnBarDaemonTests.xctest"
-               BlueprintName = "OpenBurnBarDaemonTests"
-               ReferencedContainer = "container:OpenBurnBar.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

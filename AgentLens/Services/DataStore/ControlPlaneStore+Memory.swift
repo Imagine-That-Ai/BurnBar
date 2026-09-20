@@ -23,6 +23,7 @@ extension ControlPlaneStore {
         case disabled
         case emptyBody
         case secretRejected(labels: [String])
+        case agentForgetRequiresDaemon
 
         var errorDescription: String? {
             switch self {
@@ -32,6 +33,8 @@ extension ControlPlaneStore {
                 "Chat memory body is empty."
             case .secretRejected(let labels):
                 "Chat memory body was rejected by the secret scanner: \(labels.joined(separator: ", "))."
+            case .agentForgetRequiresDaemon:
+                "The daemon could not hard-forget this memory, so nothing was deleted."
             }
         }
     }
@@ -133,7 +136,15 @@ extension ControlPlaneStore {
         let dedupSourceKinds: Set<MemorySourceKind> =
             partition == .usage ? MemorySourceKind.usageKinds : [sourceKind]
 
-        let secretLabels = Self.memoryGateFindingIDs(in: body)
+        // G7 covers every string sealed into `snapshot_json` — the body and the
+        // usage extraction's context sentence. Chat passes no context, so its
+        // labels stay byte-identical.
+        var secretLabels = Self.memoryGateFindingIDs(in: body)
+        if let context {
+            for label in Self.memoryGateFindingIDs(in: context) where secretLabels.contains(label) == false {
+                secretLabels.append(label)
+            }
+        }
         if secretLabels.isEmpty == false {
             try await appendMemoryAuditEvent(
                 action: "memory.secret_rejected",

@@ -120,6 +120,61 @@ class AgentReplyNotificationStateTest {
     }
 
     @Test
+    fun `device approval request with created_at_millis allows repeat requests for same device`() {
+        val payload1 = mapOf(
+            "type" to "device_approval_request",
+            "device_id" to "dev-1",
+            "created_at_millis" to "1000",
+            "deep_link" to "openburnbar://approve-device?deviceId=dev-1",
+        )
+        val envelope1 = MobileOsIntegrationPolicy.envelope(payload1)
+        val decision1 = com.openburnbar.MobileOsIntentNavigation.navigation(
+            payload = mapOf(
+                "type" to "device_approval_request",
+                "event_id" to envelope1.eventId,
+                "created_at_millis" to "1000",
+                "deep_link" to "openburnbar://approve-device?deviceId=dev-1",
+            ),
+            activeUid = null,
+            lastConsumedEventId = null,
+        )
+        assertEquals(MobileNavigationDecision.NAVIGATE, decision1)
+
+        // Duplicate tap of same event is ignored
+        val duplicateDecision = com.openburnbar.MobileOsIntentNavigation.navigation(
+            payload = mapOf(
+                "type" to "device_approval_request",
+                "event_id" to envelope1.eventId,
+                "created_at_millis" to "1000",
+                "deep_link" to "openburnbar://approve-device?deviceId=dev-1",
+            ),
+            activeUid = null,
+            lastConsumedEventId = envelope1.eventId,
+        )
+        assertEquals(MobileNavigationDecision.IGNORE_DUPLICATE, duplicateDecision)
+
+        // New request arriving later at t=2000 for the same device produces a distinct eventId and navigates
+        val payload2 = mapOf(
+            "type" to "device_approval_request",
+            "device_id" to "dev-1",
+            "created_at_millis" to "2000",
+            "deep_link" to "openburnbar://approve-device?deviceId=dev-1",
+        )
+        val envelope2 = MobileOsIntegrationPolicy.envelope(payload2)
+        val decision2 = com.openburnbar.MobileOsIntentNavigation.navigation(
+            payload = mapOf(
+                "type" to "device_approval_request",
+                "event_id" to envelope2.eventId,
+                "created_at_millis" to "2000",
+                "deep_link" to "openburnbar://approve-device?deviceId=dev-1",
+            ),
+            activeUid = null,
+            lastConsumedEventId = envelope1.eventId,
+        )
+        assertEquals(MobileNavigationDecision.NAVIGATE, decision2)
+    }
+
+    @Test
     fun `same-thread foreground reply is suppressed`() {
         assertTrue(
             MobileOsIntegrationPolicy.shouldSuppressForegroundSameThread(

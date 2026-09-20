@@ -102,12 +102,19 @@ extension ChatBackendID {
         case .hermes: return "Agent harness"
         case .piAgent: return "Empathy agent"
         case .openclaw: return "Gateway agent"
-        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx:
+        case .codex, .claude, .droid, .forge, .antigravity, .cursorAgent, .openClaude, .omp, .junie, .fx,
+             .grok, .kimi:
+            // grok and kimi belong here, not in a "Cloud agent" arm of their own.
+            // #2362 introduced them as ACP backends whose launch paths are local
+            // processes — `grok agent stdio` and `kimi acp`
+            // (`CLIArgumentBuilder.grokACPArguments` / `.kimiACPArguments`) — and
+            // `requiresCLIAssistantConsent` is true for both, which is this app's
+            // own definition of "spawns a CLI on this machine". The mobile twin
+            // this copy is borrowed from ships `case .grok: return "CLI agent"`.
+            // The earlier "Cloud agent" wording came from #2384, a compile-error
+            // fix that had to make this switch exhaustive; it read #2362 as
+            // hosted-API and no shipped copy or test ever agreed with it.
             return "CLI agent"
-        case .grok, .kimi:
-            // Hosted API backends (#2362): no CLI invocation, probed like
-            // gateway agents once an execution path exists.
-            return "Cloud agent"
         }
     }
 
@@ -770,7 +777,14 @@ struct AgentSigil: View {
             }
             .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        // `.borderlessButton` renders each Menu through AppKit's popup-button
+        // path, whose cell sizes to its *widest menu item* rather than to the
+        // SwiftUI label — which is why this pill blew out to 379pt against a
+        // ~200pt label, and why the blowup scaled with the agent roster and the
+        // model catalog. `.button` + `.plain` keeps the chrome-free look and
+        // puts layout back in SwiftUI's hands. Fenced by `AgentSigilLabelTests`.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityElement(children: .ignore)
@@ -801,7 +815,10 @@ struct AgentSigil: View {
             }
             .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        // Laid out by SwiftUI, not by an AppKit popup-button cell — see
+        // `agentSegment` above.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityElement(children: .ignore)
@@ -1187,10 +1204,18 @@ struct AgentGhostRow: View {
                     .strokeBorder(DesignSystem.Colors.border.opacity(0.5), lineWidth: 0.75)
             )
         }
-        .menuStyle(.borderlessButton)
+        // Same rendering path as the Sigil's segments above, so the three chips
+        // in this bar press and highlight identically.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
+        // `.button` presents a pull-down, so pin the exposed role the way the
+        // Sigil's two segments do — otherwise VoiceOver's announcement drifts
+        // from pop-up button to menu button with the style change.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(hidden.count) more agents")
+        .accessibilityAddTraits(.isButton)
         .popoverTooltip("\(hidden.count) more agents")
     }
 }

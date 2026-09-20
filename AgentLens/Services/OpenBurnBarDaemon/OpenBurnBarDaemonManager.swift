@@ -172,6 +172,9 @@ struct OpenBurnBarDaemonDependencies: Sendable {
     let requestControllerProjects: @Sendable (URL) throws -> [BurnBarReviewProjectSnapshot]
     let upsertControllerProject: @Sendable (URL, BurnBarReviewProjectSnapshot) throws -> BurnBarReviewProjectSnapshot?
     let recordControllerReviewRun: @Sendable (URL, BurnBarReviewRunSnapshot) throws -> BurnBarControllerReviewRunRecordResponse
+    /// `daemon.membership.restore`: re-pull the membership snapshot the daemon
+    /// caches for Memory Pro gating (`BurnBarMembershipFreshness`).
+    let membershipRestore: @Sendable (URL) throws -> BurnBarMembershipRestoreResponse
 
     let validateDaemonBinary: @Sendable (URL) throws -> Void
 
@@ -186,6 +189,9 @@ struct OpenBurnBarDaemonDependencies: Sendable {
         requestControllerProjects: @escaping @Sendable (URL) throws -> [BurnBarReviewProjectSnapshot],
         upsertControllerProject: @escaping @Sendable (URL, BurnBarReviewProjectSnapshot) throws -> BurnBarReviewProjectSnapshot?,
         recordControllerReviewRun: @escaping @Sendable (URL, BurnBarReviewRunSnapshot) throws -> BurnBarControllerReviewRunRecordResponse,
+        membershipRestore: @escaping @Sendable (URL) throws -> BurnBarMembershipRestoreResponse = { socketURL in
+            try OpenBurnBarDaemonSocketClient.membershipRestore(at: socketURL)
+        },
         validateDaemonBinary: @escaping @Sendable (URL) throws -> Void = { _ in }
     ) {
         self.fileManager = fileManager
@@ -198,6 +204,7 @@ struct OpenBurnBarDaemonDependencies: Sendable {
         self.requestControllerProjects = requestControllerProjects
         self.upsertControllerProject = upsertControllerProject
         self.recordControllerReviewRun = recordControllerReviewRun
+        self.membershipRestore = membershipRestore
         self.validateDaemonBinary = validateDaemonBinary
     }
 
@@ -233,6 +240,9 @@ struct OpenBurnBarDaemonDependencies: Sendable {
             },
             recordControllerReviewRun: { socketURL, run in
                 try OpenBurnBarDaemonSocketClient.recordControllerReviewRun(run, at: socketURL)
+            },
+            membershipRestore: { socketURL in
+                try OpenBurnBarDaemonSocketClient.membershipRestore(at: socketURL)
             },
             validateDaemonBinary: { url in
                 #if os(macOS)
@@ -336,6 +346,11 @@ final class OpenBurnBarDaemonManager {
 
     var status: OpenBurnBarDaemonStatus = .checking
     var lastError: String?
+    /// Memory Pro: debounced hand-off of the cloud-models policy and the
+    /// daemon membership-cache refresh (`+MemoryEgress`, `+Membership`).
+    var memoryEgressHandoffTask: Task<Void, Never>?
+    var memoryProObservers: [NSObjectProtocol] = []
+    var lastMembershipRefreshAt: Date?
     var isBusy = false
     var routerMode: ProviderRouterMode = .providerFamilyFailover
     var providerConfigurations: [OpenBurnBarDaemonProviderConfiguration] = []
@@ -479,6 +494,7 @@ final class OpenBurnBarDaemonManager {
             await refreshInstalledDaemonIfNeededForCurrentAppBuild()
             await refreshHealth()
             await repairProviderCredentialSlotSecrets()
+            await startMemoryProConcierge()
         }
     }
 

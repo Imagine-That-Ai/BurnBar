@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 2,
+  "memoryID": "mem_00112233445566778899aabbccddeeff",
+  "text": "Always run fast feedback before opening a PR.",
+  "kind": "fact",
+  "scope": {
+    "userID": "usr_test",
+    "appID": "openburnbar"
+  },
+  "confidence": 0.95,
+  "citations": [],
+  "validFrom": "2026-09-05T00:00:00.000Z",
+  "updatedAt": "2026-09-05T00:00:00.000Z",
+  "validTo": null,
+  "supersededBy": null,
+  "tags": [
+    "testing",
+    "workflow"
+  ],
+  "bodyHash": "f5a9e22467d020e98031d6dd8b95fb305c48b7f836528d9c57d7620ad6a81bf6",
+  "projectID": "proj_burnbar",
+  "engineScope": "project",
+  "futureField": "x"
+}

@@ -124,19 +124,7 @@ enum HermesMobileChatPreferences {
 }
 
 enum HermesChatLayout {
-    static let hiddenNavigationTrayReserve: CGFloat = 70
     static let composerBottomPadding: CGFloat = 8
-}
-
-/// How `HermesChatView` was presented to its host. The push variant
-/// keeps the floating `AuroraNavigationTray` visible behind the chat
-/// stack — so we add a 70pt reserve under the composer to keep the
-/// input bar from sitting on top of the tray. The cover variant fully
-/// occludes the tray (`fullScreenCover`), so that reserve becomes a
-/// dead gap above the home indicator.
-enum HermesChatPresentation {
-    case push
-    case cover
 }
 
 extension Notification.Name {

@@ -125,7 +125,38 @@ def test_owner_attested_soft_approval_is_bound_to_expected_release_tag() -> None
 
     errors = validate_owner_attested_soft_approval(data, expected_release_tag="v1.0.8")
 
-    assert "repo.releaseTag must match the current release tag 'v1.0.8', found 'v1.0.7'" in errors
+    assert (
+        "repo.releaseTag must name the current release train 'v1.0.8' "
+        "(build metadata ignored), found 'v1.0.7'" in errors
+    )
+
+
+def test_owner_attested_soft_approval_accepts_any_build_of_the_bound_train() -> None:
+    """A packet bound to v1.0.8 authorizes v1.0.8+repair.N without a rebind
+    commit; a packet from another train still fails closed."""
+    data = valid_owner_attestation()
+    data["repo"]["releaseTag"] = "v1.0.8"  # type: ignore[index]
+
+    assert (
+        validate_owner_attested_soft_approval(
+            data, expected_release_tag="v1.0.8+repair.3"
+        )
+        == []
+    )
+
+    data["repo"]["releaseTag"] = "v1.0.8+repair.1"  # type: ignore[index]
+    assert (
+        validate_owner_attested_soft_approval(
+            data, expected_release_tag="v1.0.8+repair.9"
+        )
+        == []
+    )
+
+    data["repo"]["releaseTag"] = "v1.0.9"  # type: ignore[index]
+    errors = validate_owner_attested_soft_approval(
+        data, expected_release_tag="v1.0.8+repair.3"
+    )
+    assert errors, "a packet from a different train must fail closed"
 
 
 def test_owner_attested_soft_approval_is_not_signed_counsel_approval() -> None:

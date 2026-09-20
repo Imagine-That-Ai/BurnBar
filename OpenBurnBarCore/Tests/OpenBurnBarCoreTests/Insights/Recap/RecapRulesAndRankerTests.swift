@@ -76,6 +76,44 @@ final class RecapRulesAndRankerTests: XCTestCase {
         }
     }
 
+    func testIncompleteHistorySuppressesLifetimeAndFirstEverClaims() {
+        let facts = RecapFixtures.facts(august, calendar: calendar, costScale: 3)
+        let history = august.priorMonths(4).map {
+            RecapFixtures.facts($0, calendar: calendar, costScale: 0.2)
+        }
+        let context = RecapContext(
+            facts: facts,
+            history: history,
+            calendar: calendar,
+            hasCompleteHistory: false
+        )
+
+        XCTAssertFalse(context.allowsLifetimeClaims)
+        XCTAssertNil(context.allTimeBest(\.totalCostUSD))
+        XCTAssertTrue(context.newModels().isEmpty)
+        XCTAssertTrue(context.newProjects().isEmpty)
+        XCTAssertTrue(context.newTools().isEmpty)
+        XCTAssertNil(RecapEconomyRules.volumeMilestone(context))
+
+        let ruleIDs = Set(RecapCandidateGenerator.candidates(for: context).map(\.ruleID))
+        XCTAssertFalse(ruleIDs.contains("spend-record"))
+        XCTAssertFalse(ruleIDs.contains("new-models"))
+        XCTAssertFalse(ruleIDs.contains("new-project"))
+        XCTAssertFalse(ruleIDs.contains("new-tools"))
+        XCTAssertFalse(ruleIDs.contains("volume-milestone"))
+
+        let noKnownMonths = RecapContext(
+            facts: facts,
+            history: [],
+            calendar: calendar,
+            hasCompleteHistory: false
+        )
+        XCTAssertFalse(
+            noKnownMonths.isFirstMonthEver,
+            "an empty bounded cache is not proof that this is the user's first month"
+        )
+    }
+
     /// Missing conversation data is not the same as "you used no tools".
     func testToolRulesStaySilentWithoutSessionData() {
         let batch = RecapFixtures.busyMonth(august, calendar: calendar)

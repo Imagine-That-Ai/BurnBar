@@ -1,5 +1,11 @@
 {
   "context": "BurnBar CI Gate",
+  "circuitBreaker": {
+    "mode": "observe",
+    "overrideActors": [
+      "Ajnunezg"
+    ]
+  },
   "cancelled_grace_seconds": 120,
   "poll_interval_seconds": 20,
   "timeout_minutes": 45,

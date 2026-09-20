@@ -42,6 +42,7 @@ struct CloudStoreSettingsView: View {
     @State private var pendingBackupChatThreads = 0
     @State private var didRequestAutomaticCatchUp = false
     @State private var showingHostedMCPUnlock = false
+    @State private var showingMemoryWalkthrough = false
 
     /// Hosted Remote MCP requires Cloud Pro. When the member doesn't hold it,
     /// the card wears the tier lock badge and routes its setup action to the
@@ -55,42 +56,47 @@ struct CloudStoreSettingsView: View {
             EmberSurfaceBackground()
                 .ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 28) {
-                    hero
-                        .padding(.horizontal, 28)
-                        .padding(.top, 24)
-                        .settingsAnchor(SettingsAnchor.cloudOverview)
-
-                    if entitlement.isActive {
-                        auroraMemberCard
+            // The deep-link container lets search results and the Memory
+            // walkthrough's "Show me" buttons actually scroll to and halo
+            // their target rows (hero, backup toggle, Remote MCP card).
+            SettingsDeepLinkScrollContainer(route: .cloudRoot) { _ in
+                ScrollView {
+                    VStack(spacing: 28) {
+                        hero
                             .padding(.horizontal, 28)
+                            .padding(.top, 24)
+                            .settingsAnchor(SettingsAnchor.cloudOverview)
+
+                        if entitlement.isActive {
+                            auroraMemberCard
+                                .padding(.horizontal, 28)
+                        }
+
+                        // The full four-tier pricing lineup — matches the marketing
+                        // site exactly (Local · Cloud · Cloud Pro · Cloud Ultra).
+                        // Shown to everyone: free users to subscribe, members to
+                        // compare and upgrade (a Cloud member can jump to Ultra).
+                        tierLineup
+                            .padding(.horizontal, 28)
+
+                        purchaseSupportRow
+                            .padding(.horizontal, 28)
+
+                        backupSyncCard
+                            .padding(.horizontal, 28)
+                            .settingsAnchor(SettingsAnchor.cloudSyncToggle)
+
+                        capabilityLineup
+                            .padding(.horizontal, 28)
+
+                        remoteMCPCard
+                            .padding(.horizontal, 28)
+
+                        trustCard
+                            .padding(.horizontal, 28)
+
+                        Spacer(minLength: 36)
                     }
-
-                    // The full four-tier pricing lineup — matches the marketing
-                    // site exactly (Local · Cloud · Cloud Pro · Cloud Ultra).
-                    // Shown to everyone: free users to subscribe, members to
-                    // compare and upgrade (a Cloud member can jump to Ultra).
-                    tierLineup
-                        .padding(.horizontal, 28)
-
-                    purchaseSupportRow
-                        .padding(.horizontal, 28)
-
-                    backupSyncCard
-                        .padding(.horizontal, 28)
-                        .settingsAnchor(SettingsAnchor.cloudSyncToggle)
-
-                    capabilityLineup
-                        .padding(.horizontal, 28)
-
-                    remoteMCPCard
-                        .padding(.horizontal, 28)
-
-                    trustCard
-                        .padding(.horizontal, 28)
-
-                    Spacer(minLength: 36)
                 }
             }
         }
@@ -1357,15 +1363,17 @@ struct CloudStoreSettingsView: View {
                         TierLockBadge(tier: GatedFeature.gatedFeature(.hostedMCP).requiredTier)
                     }
                 }
+                .settingsAnchor(SettingsAnchor.cloudRemoteMCP)
 
                 Text("Connect Codex, Claude Code, Droid, Kimi, Forge, or any MCP client to encrypted hosted session-memory search. Direct HTTP uses the hosted endpoint; the local shim keeps decrypted snippets on-device.")
                     .font(.system(size: 12))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                remoteMCPCommandRow(label: "Endpoint", value: "https://mcp.burnbar.ai/mcp")
-                remoteMCPCommandRow(label: "Stdio shim", value: "openburnbar-mcp-remote mcp serve")
-                remoteMCPCommandRow(label: "Doctor", value: "openburnbar mcp doctor")
+                remoteMCPCommandRow(label: "Endpoint", value: MemoryWalkthroughContent.endpoint)
+                remoteMCPCommandRow(label: "Stdio shim", value: MemoryWalkthroughContent.shimCommand)
+                remoteMCPCommandRow(label: "Doctor", value: MemoryWalkthroughContent.doctorCommand)
+                    .settingsAnchor(SettingsAnchor.cloudRemoteMCPDoctor)
 
                 MacRemoteMCPConnectedClientsSection(store: remoteMCPClients)
 
@@ -1404,6 +1412,34 @@ struct CloudStoreSettingsView: View {
                         .foregroundStyle(DesignSystem.Colors.ember)
                     }
                     .buttonStyle(.plain)
+                    // The walkthrough's Connect spotlight lands here — on the
+                    // button that performs the link, not the static shim row.
+                    .settingsAnchor(SettingsAnchor.cloudRemoteMCPConnect)
+
+                    Button {
+                        showingMemoryWalkthrough = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "brain.head.profile")
+                            Text("How Memory works")
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Take the one-minute tour of memory and the Memory MCP")
+                    .settingsAnchor(SettingsAnchor.cloudMemoryTour)
+
+                    Link(destination: MacCloudConsoleURLs.root) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "globe")
+                            Text("Open the Data console")
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Opens app.burnbar.ai — your Data & Privacy Control Center on the web")
                 }
             }
             .padding(20)
@@ -1416,6 +1452,9 @@ struct CloudStoreSettingsView: View {
         .onDisappear { remoteMCPClients.stopListening() }
         .sheet(isPresented: $showingHostedMCPUnlock) {
             FeatureUnlockSheet(feature: GatedFeature.gatedFeature(.hostedMCP))
+        }
+        .sheet(isPresented: $showingMemoryWalkthrough) {
+            MemoryMCPWalkthroughView()
         }
     }
 

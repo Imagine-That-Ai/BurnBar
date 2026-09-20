@@ -15,7 +15,7 @@
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadRegistry } from "./codegen.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -79,4 +79,6 @@ function main() {
   console.log(`[data-domains] no drift — all ${declared.length} user subcollections in firestore.rules are accounted for.`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+// See the note in codegen.mjs: a repo path with a space makes the raw
+// `file://${process.argv[1]}` comparison fail and this check silently pass.
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) main();

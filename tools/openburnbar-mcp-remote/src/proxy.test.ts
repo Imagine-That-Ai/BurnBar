@@ -1,8 +1,18 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import http from "node:http";
+import { connect as netConnect } from "node:net";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   createProxyServer,
   DEFAULT_PROXY_HOST,
@@ -12,7 +22,15 @@ import {
   MAX_PROXY_BODY_BYTES,
   normalizeLoopbackUpstream,
   parseProxyCliOptions,
+  sanitizeProcessCommand,
 } from "./proxy.js";
+import { isAllowedOrigin, isLoopbackHost } from "./proxyAuth.js";
+import { decodeWsFrames, encodeWsFrame } from "./proxyWebsocket.js";
+import {
+  applyWire,
+  GATEWAY_SENTINEL_END,
+  GATEWAY_SENTINEL_START,
+} from "./proxyWire.js";
 
 interface HttpResult {
   status: number;
@@ -191,12 +209,13 @@ test("CLI parsing freezes the loopback-only surface and strict values", () => {
   assert.equal(defaults.allowLocalKey, true);
 
   const custom = parseProxyCliOptions(
-    ["--port", "9999", "--host", "localhost", "--allow-local-key", "--token", "secret"],
+    ["--port", "9999", "--host", "localhost", "--allow-local-key", "--token", "secret", "--tray"],
     {}
   );
   assert.equal(custom.port, 9999);
   assert.equal(custom.host, DEFAULT_PROXY_HOST);
   assert.equal(custom.token, "secret");
+  assert.equal(custom.tray, true);
 
   assert.equal(parseProxyCliOptions(["status", "-p", "8320"], {}).command, "status");
   assert.equal(parseProxyCliOptions(["stop", "--port", "8320"], {}).command, "stop");
@@ -260,33 +279,47 @@ test("forward upstream validation prevents credential exfiltration", () => {
 });
 
 test("authorization is loopback-only and uses explicit bearer tokens", () => {
-  assert.equal(isAuthorized(undefined, "127.0.0.1", { allowLocalKey: true }), false);
-  assert.equal(isAuthorized("Basic abc", "127.0.0.1", { allowLocalKey: true }), false);
+  assert.equal(isAuthorized(undefined, undefined, "127.0.0.1", { allowLocalKey: true }), false);
+  assert.equal(isAuthorized("Basic abc", undefined, "127.0.0.1", { allowLocalKey: true }), false);
   assert.equal(
-    isAuthorized(`Bearer ${LOCAL_CLIPROXY_KEY}`, "127.0.0.1", { allowLocalKey: true }),
+    isAuthorized(`Bearer ${LOCAL_CLIPROXY_KEY}`, undefined, "127.0.0.1", { allowLocalKey: true }),
     true
   );
   assert.equal(
-    isAuthorized(`Bearer ${LOCAL_CLIPROXY_KEY}`, "192.168.1.5", { allowLocalKey: true }),
+    isAuthorized(`Bearer ${LOCAL_CLIPROXY_KEY}`, undefined, "192.168.1.5", { allowLocalKey: true }),
     false
   );
   assert.equal(
-    isAuthorized(`Bearer ${LOCAL_CLIPROXY_KEY}`, undefined, { allowLocalKey: true }),
+    isAuthorized(`Bearer ${LOCAL_CLIPROXY_KEY}`, undefined, undefined, { allowLocalKey: true }),
     false
   );
   assert.equal(
-    isAuthorized("Bearer custom-secret", "::1", {
+    isAuthorized("Bearer custom-secret", undefined, "::1", {
       allowLocalKey: false,
       token: "custom-secret",
     }),
     true
   );
   assert.equal(
-    isAuthorized("Bearer wrong-secret", "127.0.0.1", {
+    isAuthorized("Bearer wrong-secret", undefined, "127.0.0.1", {
       allowLocalKey: false,
       token: "custom-secret",
     }),
     false
+  );
+  assert.equal(
+    isAuthorized(undefined, LOCAL_CLIPROXY_KEY, "127.0.0.1", { allowLocalKey: true }),
+    true
+  );
+  assert.equal(
+    isAuthorized(undefined, LOCAL_CLIPROXY_KEY, "10.0.0.2", { allowLocalKey: true }),
+    false
+  );
+  assert.equal(
+    isAuthorized(`Bearer ${LOCAL_CLIPROXY_KEY}`, undefined, "::ffff:127.0.0.1", {
+      allowLocalKey: true,
+    }),
+    true
   );
 });
 
@@ -313,7 +346,7 @@ test("health proves service identity without exposing the control token", async 
   );
 });
 
-test("models require auth and remain available before provider configuration", async () => {
+test("models require auth and fail honestly when unconfigured", async () => {
   const port = await getFreePort();
   await withServer(
     { port, host: DEFAULT_PROXY_HOST, allowLocalKey: true },
@@ -321,18 +354,13 @@ test("models require auth and remain available before provider configuration", a
       const unauthorized = await request(port, { path: "/v1/models" });
       assert.equal(unauthorized.status, 401);
 
-      const authorized = await request(port, {
+      const unconfigured = await request(port, {
         path: "/v1/models",
         headers: { authorization: `Bearer ${LOCAL_CLIPROXY_KEY}` },
       });
-      assert.equal(authorized.status, 200);
-      const json = JSON.parse(authorized.body) as {
-        object: string;
-        data: Array<{ id: string }>;
-      };
-      assert.equal(json.object, "list");
-      assert.ok(json.data.some((model) => model.id === "grok-4.6"));
-      assert.equal(authorized.headers["access-control-allow-origin"], undefined);
+      assert.equal(unconfigured.status, 503);
+      assert.match(unconfigured.body, /provider_not_configured/u);
+      assert.equal(unconfigured.headers["access-control-allow-origin"], undefined);
     }
   );
 });
@@ -351,7 +379,8 @@ test("browser preflight is denied without enabling cross-origin access", async (
           origin: "https://example.com",
         },
       });
-      assert.equal(result.status, 401);
+      assert.equal(result.status, 403);
+      assert.match(result.body, /cross_origin_forbidden/u);
       assert.equal(result.headers["access-control-allow-origin"], undefined);
       assert.equal(result.headers["access-control-allow-credentials"], undefined);
     }
@@ -382,6 +411,7 @@ test("standalone provider relays models, JSON completions, and SSE with safe hea
   const seen: Array<{
     url: string;
     authorization: string | undefined;
+    xApiKey: string | string[] | undefined;
     conversationId: string | undefined;
     body: string;
   }> = [];
@@ -394,10 +424,11 @@ test("standalone provider relays models, JSON completions, and SSE with safe hea
       seen.push({
         url: req.url ?? "",
         authorization: req.headers["authorization"],
+        xApiKey: req.headers["x-api-key"],
         conversationId: Array.isArray(conversationId) ? conversationId[0] : conversationId,
         body,
       });
-      if (req.url === "/v1/models") {
+      if ((req.url ?? "").startsWith("/v1/models")) {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ object: "list", data: [{ id: "fixture-model" }] }));
         return;
@@ -438,11 +469,12 @@ test("standalone provider relays models, JSON completions, and SSE with safe hea
       },
       async () => {
         const models = await request(proxyPort, {
-          path: "/v1/models",
+          path: "/v1/models?beta=true",
           headers: { authorization: `Bearer ${LOCAL_CLIPROXY_KEY}` },
         });
         assert.equal(models.status, 200);
         assert.match(models.body, /fixture-model/u);
+        assert.equal(seen[0]?.url, "/v1/models?beta=true");
 
         const completion = await chatRequest(
           proxyPort,
@@ -472,6 +504,7 @@ test("standalone provider relays models, JSON completions, and SSE with safe hea
 
   assert.equal(seen.length, 3);
   assert.ok(seen.every((entry) => entry.authorization === "Bearer provider-secret"));
+  assert.ok(seen.every((entry) => entry.xApiKey === undefined));
   assert.equal(seen[1]?.conversationId, "conversation-fixture");
 });
 
@@ -697,6 +730,12 @@ test("status and stop operate only on the pid-file-owned proxy", async () => {
     assert.equal(json["listening"], true);
     assert.equal(json["pid"], child.pid);
     assert.equal(json["mode"], "standalone");
+    assert.equal(json["product"], "openburnbar-gateway");
+    assert.equal(json["openaiUrl"], `http://${DEFAULT_PROXY_HOST}:${port}/v1`);
+    assert.equal(json["anthropicUrl"], `http://${DEFAULT_PROXY_HOST}:${port}`);
+    assert.equal(json["localKey"], LOCAL_CLIPROXY_KEY);
+    assert.doesNotMatch(status.stdout, /xai-|sk-/u);
+    assert.doesNotMatch(status.stdout, /"[a-f0-9]{64}"/u);
 
     const stop = await runCli(["proxy", "stop", "--port", String(port)]);
     assert.equal(stop.code, 0, stop.stderr);
@@ -769,3 +808,317 @@ test("proxy CLI help and invalid arguments preserve the frozen contract", async 
   assert.equal(invalid.stdout, "");
   assert.match(invalid.stderr, /unknown proxy argument "--unknown"/u);
 });
+
+test("loopback Host and Origin validation rejects DNS rebinding and external sites", async () => {
+  assert.equal(isLoopbackHost("127.0.0.1"), true);
+  assert.equal(isLoopbackHost("127.0.0.1:8320"), true);
+  assert.equal(isLoopbackHost("localhost:8320"), true);
+  assert.equal(isLoopbackHost("[::1]:8320"), true);
+  assert.equal(isLoopbackHost("attacker.example.com"), false);
+  assert.equal(isLoopbackHost("192.168.1.100:8320"), false);
+  assert.equal(isLoopbackHost(undefined), false);
+
+  assert.equal(isAllowedOrigin(undefined), true);
+  assert.equal(isAllowedOrigin("null"), false);
+  assert.equal(isAllowedOrigin("vscode-webview://something"), true);
+  assert.equal(isAllowedOrigin("http://127.0.0.1:8320"), true);
+  assert.equal(isAllowedOrigin("http://localhost:3000"), true);
+  assert.equal(isAllowedOrigin("https://evil.com"), false);
+  assert.equal(isAllowedOrigin("http://attacker.example.com"), false);
+
+  const port = await getFreePort();
+  await withServer(
+    { port, host: DEFAULT_PROXY_HOST, allowLocalKey: true },
+    async () => {
+      const rebinding = await request(port, {
+        path: "/v1/models",
+        headers: {
+          Host: "evil-rebinding.com",
+          authorization: `Bearer ${LOCAL_CLIPROXY_KEY}`,
+        },
+      });
+      assert.equal(rebinding.status, 403);
+      assert.match(rebinding.body, /invalid_host_header/u);
+
+      const badOrigin = await request(port, {
+        path: "/v1/models",
+        headers: {
+          Host: `127.0.0.1:${port}`,
+          Origin: "https://attacker.com",
+          authorization: `Bearer ${LOCAL_CLIPROXY_KEY}`,
+        },
+      });
+      assert.equal(badOrigin.status, 403);
+      assert.match(badOrigin.body, /cross_origin_forbidden/u);
+    }
+  );
+});
+
+test("process command sanitization strips control characters and redacts tokens", () => {
+  assert.equal(
+    sanitizeProcessCommand("node /path/index.js proxy --port 8320 --token secret123"),
+    "node /path/index.js proxy --port 8320 --token [REDACTED]"
+  );
+  assert.equal(
+    sanitizeProcessCommand("proxy --bearer-token s3cr3t-value"),
+    "proxy --bearer-token [REDACTED]"
+  );
+  assert.equal(
+    sanitizeProcessCommand("proxy --gateway-token s3cr3t-value"),
+    "proxy --gateway-token [REDACTED]"
+  );
+  assert.equal(
+    sanitizeProcessCommand("proxy --token\ts3cr3t-value"),
+    "proxy --token [REDACTED]"
+  );
+  assert.equal(
+    sanitizeProcessCommand("OPENBURNBAR_GATEWAY_TOKEN=s3cr3t node proxy"),
+    "OPENBURNBAR_GATEWAY_TOKEN=[REDACTED] node proxy"
+  );
+  assert.equal(
+    sanitizeProcessCommand("proxy -t my-secret-token"),
+    "proxy -t [REDACTED]"
+  );
+
+  const withAnsi = sanitizeProcessCommand("\x1b[31mDangerous\x1b[0m Command\x00");
+  assert.match(withAnsi, /Dangerous Command/u);
+});
+
+test("WebSocket frame decoder handles fragmentation and unmasked frame detection", () => {
+  // Unmasked frame (masked: false)
+  const unmasked = encodeWsFrame(0x1, Buffer.from("hello"), false);
+  const decodedUnmasked = decodeWsFrames(unmasked);
+  assert.equal(decodedUnmasked.frames.length, 1);
+  assert.equal(decodedUnmasked.frames[0]?.masked, false);
+
+  // Masked frame (masked: true)
+  const masked = encodeWsFrame(0x1, Buffer.from("world"), true);
+  const decodedMasked = decodeWsFrames(masked);
+  assert.equal(decodedMasked.frames.length, 1);
+  assert.equal(decodedMasked.frames[0]?.masked, true);
+  assert.equal(decodedMasked.frames[0]?.fin, true);
+  assert.equal(decodedMasked.frames[0]?.payload.toString("utf8"), "world");
+});
+
+test("WebSocket frame decoder enforces RFC 6455 RSV bits, opcodes, and control frame limits", () => {
+  // RSV1 bit set (0x40 | 0x80 | 0x01 = 0xc1)
+  assert.throws(
+    () => decodeWsFrames(Buffer.from([0xc1, 0x00])),
+    (err: unknown) => (err as { code?: string }).code === "ws_protocol_error"
+  );
+
+  // Reserved opcode 0x3
+  assert.throws(
+    () => decodeWsFrames(Buffer.from([0x83, 0x00])),
+    (err: unknown) => (err as { code?: string }).code === "ws_protocol_error"
+  );
+
+  // Control frame (ping 0x89) with payload > 125 bytes
+  assert.throws(
+    () => decodeWsFrames(Buffer.from([0x89, 126, 0x00, 126])),
+    (err: unknown) => (err as { code?: string }).code === "ws_protocol_error"
+  );
+
+  // Control frame (close 0x08) with fin = false (0x08)
+  assert.throws(
+    () => decodeWsFrames(Buffer.from([0x08, 0x00])),
+    (err: unknown) => (err as { code?: string }).code === "ws_protocol_error"
+  );
+});
+
+test("unwire dry run never leaks full configuration file body containing secrets", () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), "obb-wire-test-"));
+  try {
+    const grokConfig = join(fakeHome, ".grok", "config.toml");
+    mkdirSync(dirname(grokConfig), { recursive: true });
+    writeFileSync(grokConfig, `api_key = "super-secret-key-12345"\n${GATEWAY_SENTINEL_START}\nfoo = "bar"\n${GATEWAY_SENTINEL_END}\n`);
+
+    const result = applyWire("grok", { port: 8320, home: fakeHome, write: false, unwire: true });
+    assert.equal(result.body, "");
+    assert.equal(result.removed, true);
+    assert.equal(result.wrote, false);
+
+    // Apply with write
+    const writeResult = applyWire("grok", { port: 8320, home: fakeHome, write: true, unwire: true });
+    assert.equal(writeResult.wrote, true);
+    assert.equal(readFileSync(grokConfig, "utf8").trim(), 'api_key = "super-secret-key-12345"');
+  } finally {
+    rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test("OPENBURNBAR_UPSTREAM requires OPENBURNBAR_GATEWAY_TOKEN at CLI parse time", () => {
+  assert.throws(
+    () =>
+      parseProxyCliOptions(
+        [],
+        { OPENBURNBAR_UPSTREAM: "http://127.0.0.1:8317" }
+      ),
+    /OPENBURNBAR_UPSTREAM requires OPENBURNBAR_GATEWAY_TOKEN/u
+  );
+
+  const valid = parseProxyCliOptions(
+    [],
+    {
+      OPENBURNBAR_UPSTREAM: "http://127.0.0.1:8317",
+      OPENBURNBAR_GATEWAY_TOKEN: "valid-secret-token",
+    }
+  );
+  assert.equal(valid.upstream, "http://127.0.0.1:8317");
+  assert.equal(valid.upstreamToken, "valid-secret-token");
+});
+
+test("response ID validation rejects directory traversals and malformed characters", async () => {
+  const port = await getFreePort();
+  await withServer(
+    { port, host: DEFAULT_PROXY_HOST, allowLocalKey: true },
+    async () => {
+      const traversal = await request(port, {
+        path: "/v1/responses/..%2f..%2fetc%2fpasswd",
+        headers: {
+          Host: `127.0.0.1:${port}`,
+          authorization: `Bearer ${LOCAL_CLIPROXY_KEY}`,
+        },
+      });
+      assert.equal(traversal.status, 400);
+      assert.match(traversal.body, /bad_request/u);
+
+      const invalidChars = await request(port, {
+        path: "/v1/responses/resp$<script>",
+        headers: {
+          Host: `127.0.0.1:${port}`,
+          authorization: `Bearer ${LOCAL_CLIPROXY_KEY}`,
+        },
+      });
+      assert.equal(invalidChars.status, 400);
+      assert.match(invalidChars.body, /bad_request/u);
+    }
+  );
+});
+
+test("gateway panel sets protective security headers and escapes HTML content", async () => {
+  const port = await getFreePort();
+  await withServer(
+    { port, host: DEFAULT_PROXY_HOST, allowLocalKey: true },
+    async () => {
+      const panel = await request(port, {
+        path: "/gateway",
+        headers: {
+          Host: `127.0.0.1:${port}`,
+        },
+      });
+      assert.equal(panel.status, 200);
+      assert.equal(panel.headers["x-frame-options"], "DENY");
+      const csp = panel.headers["content-security-policy"];
+      assert.match(typeof csp === "string" ? csp : "", /frame-ancestors 'none'/u);
+    }
+  );
+});
+
+test("token file reading securely loads token and validates CLI options", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "obb-token-file-"));
+  try {
+    const tokenFile = join(tempDir, "secret.token");
+    writeFileSync(tokenFile, "  file-based-secret-token-32-chars-long  \n", {
+      mode: 0o600,
+    });
+    const parsed = parseProxyCliOptions(["--token-file", tokenFile], {});
+    assert.equal(parsed.token, "file-based-secret-token-32-chars-long");
+
+    assert.throws(
+      () => parseProxyCliOptions(["--token-file", join(tempDir, "nonexistent.token")], {}),
+      /could not read token file/u
+    );
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("WebSocket handshake validates Sec-WebSocket-Version and Sec-WebSocket-Key format", async () => {
+  const port = await getFreePort();
+  await withServer(
+    { port, host: DEFAULT_PROXY_HOST, allowLocalKey: true },
+    async () => {
+      // Version != 13 returns 426 Upgrade Required
+      const badVersion = await new Promise<{ status: number; headers: string }>((resolve, reject) => {
+        const sampleKey = Buffer.from("the sample nonce").toString("base64");
+        const client = netConnect({ host: DEFAULT_PROXY_HOST, port }, () => {
+          client.write(
+            `GET /v1/responses HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${sampleKey}\r\nSec-WebSocket-Version: 8\r\nAuthorization: Bearer ${LOCAL_CLIPROXY_KEY}\r\n\r\n`
+          );
+        });
+        let raw = "";
+        client.on("data", (chunk: Buffer) => {
+          raw += chunk.toString("utf8");
+        });
+        client.on("end", () => {
+          const statusMatch = /^HTTP\/1\.1\s+(\d+)/u.exec(raw);
+          resolve({ status: Number(statusMatch?.[1] ?? 0), headers: raw });
+        });
+        client.on("error", reject);
+      });
+      assert.equal(badVersion.status, 426);
+      assert.match(badVersion.headers, /Sec-WebSocket-Version:\s*13/iu);
+
+      // Invalid Sec-WebSocket-Key (not 16-byte base64) returns 400
+      const badKey = await new Promise<{ status: number }>((resolve, reject) => {
+        const client = netConnect({ host: DEFAULT_PROXY_HOST, port }, () => {
+          client.write(
+            `GET /v1/responses HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: not-valid-base64\r\nSec-WebSocket-Version: 13\r\nAuthorization: Bearer ${LOCAL_CLIPROXY_KEY}\r\n\r\n`
+          );
+        });
+        let raw = "";
+        client.on("data", (chunk: Buffer) => {
+          raw += chunk.toString("utf8");
+        });
+        client.on("end", () => {
+          const statusMatch = /^HTTP\/1\.1\s+(\d+)/u.exec(raw);
+          resolve({ status: Number(statusMatch?.[1] ?? 0) });
+        });
+        client.on("error", reject);
+      });
+      assert.equal(badKey.status, 400);
+    }
+  );
+});
+
+test("unclosed wire TOML sentinel block throws clear error", () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), "obb-wire-err-"));
+  try {
+    const grokConfig = join(fakeHome, ".grok", "config.toml");
+    mkdirSync(dirname(grokConfig), { recursive: true });
+    // Write corrupted config with start sentinel but missing end sentinel
+    writeFileSync(grokConfig, `api_key = "123"\n${GATEWAY_SENTINEL_START}\nfoo = "bar"\n`);
+    assert.throws(
+      () => applyWire("grok", { port: 8320, home: fakeHome, write: false, unwire: false }),
+      /unclosed OpenBurnBar sentinel block/u
+    );
+  } finally {
+    rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test("require-token option is propagated into health and panel payloads", async () => {
+  const port = await getFreePort();
+  const token = "custom-private-token-12345678901234567890";
+  await withServer(
+    { port, host: DEFAULT_PROXY_HOST, allowLocalKey: false, requireToken: true, token },
+    async () => {
+      const healthRes = await request(port, { path: "/health" });
+      assert.equal(healthRes.status, 200);
+      const healthJson = JSON.parse(healthRes.body) as Record<string, unknown>;
+      assert.equal(healthJson["requireToken"], true);
+
+      const panelRes = await request(port, {
+        path: "/v1/gateway/panel",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      assert.equal(panelRes.status, 200);
+      const panelJson = JSON.parse(panelRes.body) as Record<string, unknown>;
+      assert.equal(panelJson["requiresPrivateToken"], true);
+      assert.equal(panelJson["localKey"], null);
+    }
+  );
+});
+
+

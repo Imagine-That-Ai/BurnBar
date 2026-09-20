@@ -5,7 +5,9 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Core shipped line is macOS **direct-download `1.0.29`** (see `website/public/downloads/release-metadata.json`). In-tree marketing version is `1.0.40` and is **not** a commercial launch. Windows, iOS, and Android are **Experimental** — not a parity release line. A commercial launch claim requires a validating `launch-evidence/final-launch-evidence.json` GO packet.
+<!-- release-status:start -->
+**Status:** Commercial launch candidate — macOS `1.0.40` is the committed product version; mobile parity claim is `false` (mobile parity remediation in progress); Mac App Store review: operator-asserted (last confirmed 2026-09-01) — UNSET; iOS review: operator-asserted (last confirmed 2026-09-01) — UNSET; manual release: operator-asserted (last confirmed 2026-09-01) — UNSET; Windows channel: operator-asserted (last confirmed 2026-09-01) — UNSET.
+<!-- release-status:end -->
 
 </div>
 

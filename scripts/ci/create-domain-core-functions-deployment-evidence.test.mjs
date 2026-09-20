@@ -33,6 +33,7 @@ function proof() {
     repository: "Imagine-That-Ai/BurnBar",
     workflowPath: ".github/workflows/deploy-production.yml",
     deployRun: { runId: 303, runAttempt: 4 },
+    domainCoreInactive: false,
     release: { tag: "v1.2.3", commit: CANDIDATE.candidateCommit },
     profile: {
       value: {
@@ -275,4 +276,89 @@ test("rejects missing, extra, and duplicate protected target coordinates", () =>
       ),
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// Inactive domain-core lane: a deploy proof may omit the release gate only when
+// it explicitly declares the lane, and only for the all-legacy
+// public-production profile. A silently dropped gate stays a hard failure.
+// ---------------------------------------------------------------------------
+
+function evidenceOf(mutate) {
+  const value = proof();
+  mutate(value);
+  return () =>
+    createFunctionsDeploymentEvidence(
+      value,
+      health(),
+      runVerification(),
+      healthBytes(),
+      providerCoordinates(),
+      inventory,
+    );
+}
+
+test("accepts a declared inactive lane with an all-legacy public-production profile", () => {
+  const value = proof();
+  value.domainCoreInactive = true;
+  value.releaseGate = null;
+  value.profile.value.modes = { pricing: "legacy" };
+  const live = health();
+  live.healthLive.domainCore.pricingMode = "legacy";
+  live.healthReady.domainCore.pricingMode = "legacy";
+  const evidence = createFunctionsDeploymentEvidence(
+    value,
+    live,
+    runVerification(),
+    healthBytes(live),
+    providerCoordinates(),
+    inventory,
+  );
+  assert.equal(evidence.provider, "firebase-functions");
+});
+
+test("rejects a dropped release gate that does not declare the inactive lane", () => {
+  assert.throws(
+    evidenceOf((value) => {
+      value.releaseGate = null;
+    }),
+    /release gate does not match its declared activation lane/u,
+  );
+});
+
+test("rejects an inactive lane that still carries a release gate", () => {
+  assert.throws(
+    evidenceOf((value) => {
+      value.domainCoreInactive = true;
+    }),
+    /release gate does not match its declared activation lane/u,
+  );
+});
+
+test("rejects an inactive lane over a non-legacy or rollback profile", () => {
+  assert.throws(
+    evidenceOf((value) => {
+      value.domainCoreInactive = true;
+      value.releaseGate = null;
+    }),
+    /inactive domain-core mode is only valid for the legacy public-production profile/u,
+  );
+  assert.throws(
+    evidenceOf((value) => {
+      value.domainCoreInactive = true;
+      value.releaseGate = null;
+      value.profile.value.name = "public-production-rollback";
+      value.profile.value.modes = { pricing: "legacy" };
+    }),
+    /inactive domain-core mode is only valid for the legacy public-production profile/u,
+  );
+});
+
+test("rejects a deploy proof that omits the activation lane declaration", () => {
+  assert.throws(
+    evidenceOf((value) => {
+      delete value.domainCoreInactive;
+    }),
+    /Functions deploy proof must contain exactly/u,
+  );
 });

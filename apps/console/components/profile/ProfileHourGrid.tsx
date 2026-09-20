@@ -67,15 +67,19 @@ export function ProfileHourGrid({
         </p>
       ) : !grid ? (
         <p className="rounded-lg border border-glass-line px-token-3 py-token-4 text-sm text-content-dim">
-          Pick a window under 90 days (or a custom range) to light up the hour grid.
+          Pick a 7/30/90-day window (or a custom range) to light up the hour grid.
         </p>
       ) : (
         <>
+          {/* Summary for assistive tech lives here, outside the interactive
+              grid — wrapping buttons in role="img" would flatten their
+              semantics to presentational. */}
+          <p className="sr-only">
+            {`Tokens by weekday and hour of day, UTC. Peak cell holds ${formatCompact(grid.maxTokens)} tokens.`}
+          </p>
           <div
-            className="grid gap-[3px]"
+            className="grid min-w-0 gap-[3px] overflow-hidden"
             style={{ gridTemplateColumns: "2rem repeat(24, minmax(0, 1fr))" }}
-            role="img"
-            aria-label="Tokens by weekday and hour of day, UTC"
           >
             <span aria-hidden />
             {hours.map((h) => (
@@ -110,7 +114,7 @@ export function ProfileHourGrid({
                       title={`${label} ${hour}:00 UTC — ${formatCompact(cell.tokens)} tokens · ${cell.events} runs`}
                       aria-label={`${label} ${hour}:00 UTC, ${formatCompact(cell.tokens)} tokens in ${cell.events} runs`}
                       className={cn(
-                        "h-4 w-full rounded-[3px]",
+                        "h-4 w-full min-w-0 rounded-[3px]",
                         active && "hover:ring-1 hover:ring-[color:var(--accent-deep)]",
                       )}
                       style={{

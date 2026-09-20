@@ -46,7 +46,7 @@ describe("BOLA — agentNotifications", () => {
     await tier2CallableProof(bolaStore, {
       exportedName: "submitAgentNotificationReply",
       run,
-      expectedCode: "not-found",
+      expectedCode: "invalid-argument",
       expectedOutcome: "throws",
     });
   });

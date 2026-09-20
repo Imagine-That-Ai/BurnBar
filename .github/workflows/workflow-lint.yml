@@ -36,10 +36,14 @@ on:
       - "scripts/ci/burnbar-turbo-runner-host.test.mjs"
       - "scripts/ci/verify-merge-queue-workflows.mjs"
       - "scripts/ci/verify-merge-queue-workflows.test.mjs"
+      - "scripts/ci/await-burnbar-ci-gate.mjs"
+      - "scripts/ci/await-burnbar-ci-gate.test.mjs"
       - "scripts/ci/verify-workflow-reachability.mjs"
       - "scripts/ci/verify-workflow-reachability.test.mjs"
       - "scripts/lib/github-workflow.mjs"
       - "governance/workflow-reachability.json"
+      - "scripts/ci/check-toolchain-pins.mjs"
+      - "governance/toolchain-pin-exceptions.json"
       - "scripts/ci/verify-libsignal-toolchain-preflight.mjs"
       - "scripts/ci/verify-libsignal-toolchain-preflight.test.mjs"
       - "scripts/ci/verify-ci-cache-warm.test.mjs"
@@ -52,6 +56,8 @@ on:
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
       - "scripts/lib/resolve-repo-path.sh"
       - "scripts/lib/resolve-repo-path.test.sh"
+      - "scripts/lib/swift-toolchain.sh"
+      - "scripts/lib/swift-toolchain.test.sh"
       - "scripts/ci/verify-signing-profile-certificate.py"
       - "scripts/ci/verify-signing-profile-certificate.sh"
       - "scripts/ci/verify-signing-profile-certificate.test.py"
@@ -189,6 +195,8 @@ on:
       - "scripts/ci/verify-agent-workflow-boundaries.test.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.mjs"
       - "scripts/ci/verify-pr-secret-boundaries.test.mjs"
+      - "scripts/ci/await-burnbar-ci-gate.mjs"
+      - "scripts/ci/await-burnbar-ci-gate.test.mjs"
       - "scripts/ci/verify-burnbar-turbo-workflow.test.mjs"
       - "scripts/ci/burnbar-turbo-runner-host.sh"
       - "scripts/ci/burnbar-turbo-runner-guest.sh"
@@ -201,6 +209,8 @@ on:
       - "scripts/lib/prepare-signal-ffi-xcframework.test.sh"
       - "scripts/lib/resolve-repo-path.sh"
       - "scripts/lib/resolve-repo-path.test.sh"
+      - "scripts/lib/swift-toolchain.sh"
+      - "scripts/lib/swift-toolchain.test.sh"
       - "scripts/ci/verify-signing-profile-certificate.py"
       - "scripts/ci/verify-signing-profile-certificate.sh"
       - "scripts/ci/verify-signing-profile-certificate.test.py"
@@ -321,6 +331,8 @@ on:
       - "scripts/ci/verify-workflow-reachability.test.mjs"
       - "scripts/lib/github-workflow.mjs"
       - "governance/workflow-reachability.json"
+      - "scripts/ci/check-toolchain-pins.mjs"
+      - "governance/toolchain-pin-exceptions.json"
       - "scripts/ci/verify-codeowners-security-trees.test.sh"
       - "third_party/hermes-agent/manifest.json"
       - "third_party/libsignal/manifest.json"
@@ -343,7 +355,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version: "1.24.4"
+          # actionlint v1.7.12's go.mod requires go >= 1.25.0. 1.24.4 plus
+          # GOTOOLCHAIN=local fails the install step:
+          #   github.com/rhysd/actionlint@v1.7.12 requires go >= 1.25.0
+          #   (running go 1.24.4; GOTOOLCHAIN=local)
+          # Honest red: dependabot #2477 Workflow Lint run 33630207454
+          # (Wed 2026-09-02 07:29 CT). This job is the live proof.
+          go-version: "1.25.0"
 
       - name: Install actionlint
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
@@ -356,6 +374,9 @@ jobs:
         run: |
           node scripts/ci/verify-merge-queue-workflows.mjs
           node scripts/ci/verify-merge-queue-workflows.test.mjs
+
+      - name: Self-test BurnBar CI gate circuit breaker
+        run: node --test scripts/ci/await-burnbar-ci-gate.test.mjs
 
       # Two xcframeworks shipping a bare `Headers/module.modulemap` both claim
       # `include/module.modulemap` and break every iOS archive, which blocked
@@ -374,6 +395,15 @@ jobs:
         run: |
           node scripts/ci/verify-workflow-reachability.mjs
           node --test scripts/ci/verify-workflow-reachability.test.mjs
+
+      # Wave 0 W0-7: one pin per language. The checker (and its self-test)
+      # anchor .nvmrc / crates/*/rust-toolchain.toml / .xcode-version /
+      # global.json and fail closed on any floating channel or stale,
+      # expired exception in governance/toolchain-pin-exceptions.json.
+      - name: Verify toolchain pins
+        run: |
+          node scripts/ci/check-toolchain-pins.mjs
+          node scripts/ci/check-toolchain-pins.mjs --self-test
 
       # A macOS Swift job that builds libsignal without this preflight fails only
       # on the self-hosted half of the fleet, and only as an opaque cargo panic
@@ -492,6 +522,9 @@ jobs:
 
       - name: Self-test macOS release output path resolution
         run: bash scripts/lib/resolve-repo-path.test.sh
+
+      - name: Self-test swift toolchain resolution
+        run: bash scripts/lib/swift-toolchain.test.sh
 
       - name: Self-test macOS signing profile certificate matcher
         run: python3 scripts/ci/verify-signing-profile-certificate.test.py

@@ -290,8 +290,14 @@ final class DashboardUsageViewModel {
         let calendar = Calendar.current
         let now = Date()
         let todayStart = calendar.startOfDay(for: now)
-        let weekAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
-        let monthAgo = calendar.date(byAdding: .month, value: -1, to: now) ?? now
+        // Window membership uses interval overlap (session span intersects
+        // the window), matching the canonical SQL snapshot path — an
+        // overnight session that started before midnight and is still burning
+        // counts for "Today" the moment quick hydration paints the status
+        // item instead of waiting for the multi-minute full scan.
+        let todayRange = todayStart...now
+        let weekRange = (calendar.date(byAdding: .day, value: -7, to: now) ?? now)...now
+        let monthRange = (calendar.date(byAdding: .month, value: -1, to: now) ?? now)...now
 
         var totalCostToday: Double = 0
         var totalCostThisWeek: Double = 0
@@ -312,16 +318,16 @@ final class DashboardUsageViewModel {
             totalCostAllTime += usage.cost
             totalTokensAllTime += usage.totalTokens
 
-            if calendar.isDateInToday(usage.startTime) {
+            if usage.intersects(dateRange: todayRange) {
                 totalCostToday += usage.cost
                 totalTokensToday += usage.totalTokens
                 todayProviderCost[usage.provider, default: 0] += usage.cost
             }
-            if usage.startTime >= weekAgo {
+            if usage.intersects(dateRange: weekRange) {
                 totalCostThisWeek += usage.cost
                 totalTokensThisWeek += usage.totalTokens
             }
-            if usage.startTime >= monthAgo {
+            if usage.intersects(dateRange: monthRange) {
                 totalCostThisMonth += usage.cost
                 totalTokensThisMonth += usage.totalTokens
             }

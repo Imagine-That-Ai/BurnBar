@@ -130,24 +130,61 @@ jobs:
             --product-version "$VERSION"
           echo "path=$VEX" >> "$GITHUB_OUTPUT"
 
-      - name: Attest SBOM and VEX (cosign / GitHub attestations)
+      - name: Attest SBOM and VEX (cosign attest-blob, keyless)
+        id: attest
         env:
           SBOM_PATH: ${{ steps.sbom.outputs.path }}
           VEX_PATH: ${{ steps.vex.outputs.path }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.tag.outputs.commit }}
+          VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          cosign attest --yes \
-            --predicate-type https://slsa.dev/provenance/v1 \
-            --type slsaprovenance \
-            "$SBOM_PATH" || cosign attest --yes "$SBOM_PATH"
-          cosign attest --yes "$VEX_PATH"
+          set -euo pipefail
+          # Keyless Sigstore attestation of the freshly generated sidecars, bound
+          # to the resolved tag commit checked out above. No fallback: a failed
+          # attestation fails the workflow.
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          BUNDLE_DIR="$RUNNER_TEMP/supply-chain-attestations-v${VERSION}"
+          mkdir -p "$BUNDLE_DIR"
+          attest_sidecar() {
+            local artifact_path="$1" kind="$2"
+            local base_name predicate_path bundle_path
+            base_name="$(basename "$artifact_path")"
+            predicate_path="$BUNDLE_DIR/${base_name}.predicate.json"
+            bundle_path="$BUNDLE_DIR/${base_name}.sigstore.json"
+            python3 - "$artifact_path" "$predicate_path" "$kind" <<'PY'
+          import hashlib, json, os, sys
+          from pathlib import Path
+          artifact = Path(sys.argv[1])
+          Path(sys.argv[2]).write_text(json.dumps({
+              "schemaVersion": 1,
+              "sidecar": {"kind": sys.argv[3], "fileName": artifact.name,
+                          "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                          "sizeBytes": artifact.stat().st_size},
+              "release": {"version": os.environ["VERSION"], "tag": os.environ["RELEASE_TAG"],
+                          "commit": os.environ["RELEASE_COMMIT"],
+                          "repository": os.environ.get("GITHUB_REPOSITORY", "")},
+          }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+            cosign attest-blob --yes \
+              --predicate "$predicate_path" \
+              --type "https://openburnbar.dev/attestations/supply-chain-${kind}/v1" \
+              --bundle "$bundle_path" \
+              "$artifact_path"
+            test -s "$bundle_path"
+          }
+          attest_sidecar "$SBOM_PATH" sbom
+          attest_sidecar "$VEX_PATH" vex
+          echo "bundle_dir=$BUNDLE_DIR" >> "$GITHUB_OUTPUT"
 
-      - name: Upload provenance bundle
+      - name: Upload SBOM, OpenVEX, and their Sigstore bundles
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
         with:
           name: supply-chain-provenance-${{ steps.tag.outputs.version }}
           path: |
             ${{ steps.sbom.outputs.path }}
             ${{ steps.vex.outputs.path }}
+            ${{ steps.attest.outputs.bundle_dir }}
 
       - name: Ecosystem deny checks
         run: bash scripts/supply-chain/run-ecosystem-deny-checks.sh
@@ -158,6 +195,6 @@ jobs:
             echo "### Supply chain provenance"
             echo ""
             echo "- Tag: \`${{ steps.tag.outputs.tag }}\`"
-            echo "- SBOM + OpenVEX generated and cosign-attested"
+            echo "- SBOM + OpenVEX generated and attested keylessly (cosign attest-blob) against the resolved tag commit; release-artifact attestations are produced by the release workflows"
             echo "- Bit-reproducible **notarized** builds: de-scoped (see docs/security/SUPPLY_CHAIN_PROVENANCE.md)"
           } >> "$GITHUB_STEP_SUMMARY"
