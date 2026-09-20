@@ -78,7 +78,7 @@ export function ProfileHourGrid({
             {`Tokens by weekday and hour of day, UTC. Peak cell holds ${formatCompact(grid.maxTokens)} tokens.`}
           </p>
           <div
-            className="grid gap-[3px]"
+            className="grid min-w-0 gap-[3px] overflow-hidden"
             style={{ gridTemplateColumns: "2rem repeat(24, minmax(0, 1fr))" }}
           >
             <span aria-hidden />
@@ -114,7 +114,7 @@ export function ProfileHourGrid({
                       title={`${label} ${hour}:00 UTC — ${formatCompact(cell.tokens)} tokens · ${cell.events} runs`}
                       aria-label={`${label} ${hour}:00 UTC, ${formatCompact(cell.tokens)} tokens in ${cell.events} runs`}
                       className={cn(
-                        "h-4 w-full rounded-[3px]",
+                        "h-4 w-full min-w-0 rounded-[3px]",
                         active && "hover:ring-1 hover:ring-[color:var(--accent-deep)]",
                       )}
                       style={{

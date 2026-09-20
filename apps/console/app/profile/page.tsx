@@ -41,6 +41,7 @@ import {
   clearMineFilters,
   effectiveRange,
   emptyFilters,
+  ensureFacetValue,
   parseProfileFilters,
   serializeProfileFilters,
   sliceDailyPoints,
@@ -50,6 +51,8 @@ import {
   type ProfileFilters,
 } from "@/lib/profile/profileFilters";
 import {
+  dailyModelProviders,
+  dailyModelTokenSplit,
   hourWeekdayGrid,
   rankShares,
   tokenMix,
@@ -91,6 +94,21 @@ function daysSince(iso: string, today: string): number {
   const end = Date.parse(today + "T00:00:00Z");
   if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
   return Math.max(0, Math.floor((end - start) / 86_400_000));
+}
+
+/**
+ * Entity-focus updates need a LOWER bound: the entity inspector reads the
+ * range event pass, which stays off on unbounded All. Force 90d when the
+ * merged filters would otherwise be unbounded (custom dates already bound).
+ * Also clears any pinned day — day pins take precedence in the inspector,
+ * so a day+entity combo would show the day and swallow the entity.
+ */
+function boundedEntityFilters(next: ProfileFilters): ProfileFilters {
+  const out = { ...next, day: null };
+  if (!out.from && !out.to && out.window === "all") {
+    out.window = "90d";
+  }
+  return out;
 }
 
 /**
@@ -149,9 +167,11 @@ export default function ProfilePage() {
   // window), then replaceState on every change — shareable, reload-stable,
   // and Suspense-free for the static export. The restore path runs the same
   // 91k-event guard as interactive changes so a shared `?m=…` on All snaps
-  // to 90d before any read fires.
+  // to 90d before any read fires. Mount-guarded: the auth listener can
+  // re-fire on tab refocus and must never reset an in-progress mine.
   const [filters, setFilters] = React.useState<ProfileFilters>(() => emptyFilters());
   const [snapNotice, setSnapNotice] = React.useState<string | null>(null);
+  const restoredUrl = React.useRef(false);
   const writeUrl = React.useCallback((next: ProfileFilters) => {
     try {
       const qs = serializeProfileFilters(next);
@@ -161,6 +181,8 @@ export default function ProfilePage() {
     }
   }, []);
   React.useEffect(() => {
+    if (restoredUrl.current) return;
+    restoredUrl.current = true;
     try {
       const parsed = parseProfileFilters(window.location.search);
       const snapped = snapWindowForEventFacets(parsed);
@@ -208,13 +230,58 @@ export default function ProfilePage() {
   );
 
   // Inspector: a pinned day (heatmap cell / record tile) or a focused entity
-  // (ledger row). Day prev/next clamps to the active range so navigation
-  // never leaves the window the rest of the page is scoped to.
+  // (record tile, breakdown row, ledger row). Record + breakdown selections
+  // set the facet chip AND the entity focus in ONE update (two sequential
+  // setFilters calls would race: the second derives from the stale first).
+  // Day prev/next clamps to the active range so navigation never leaves the
+  // window the rest of the page is scoped to.
   const inspector: InspectorSelection | null = filters.day
     ? { kind: "day", day: filters.day }
     : filters.entity
       ? { kind: "entity", entity: filters.entity }
       : null;
+
+  /** Toggle a facet chip AND focus the matching entity, atomically. */
+  const selectFacet = React.useCallback(
+    (f: BreakdownFacet) => {
+      const map = {
+        provider: "providers",
+        model: "models",
+        harness: "harnesses",
+        account: "accounts",
+        device: "devices",
+      } as const;
+      const group = map[f.kind];
+      applyFilters(
+        boundedEntityFilters({
+          ...filters,
+          facets: { ...filters.facets, [group]: ensureFacetValue(filters.facets[group], f.id) },
+          day: null,
+          entity: { kind: f.kind, id: f.id },
+        }),
+      );
+    },
+    [applyFilters, filters],
+  );
+
+  /** Record drill-in: facet chip + entity focus in one update (see above). */
+  const inspectRecord = React.useCallback(
+    (kind: "provider" | "model", id: string) => {
+      const group = kind === "provider" ? "providers" : "models";
+      applyFilters(
+        boundedEntityFilters({
+          ...filters,
+          facets: {
+            ...filters.facets,
+            [group]: ensureFacetValue(filters.facets[group], id),
+          },
+          day: null,
+          entity: { kind, id },
+        }),
+      );
+    },
+    [applyFilters, filters],
+  );
   const activeRange = React.useMemo(() => {
     if (!today) return { fromDay: null as string | null, toDay: null as string | null };
     return effectiveRange(filters, today);
@@ -361,6 +428,17 @@ export default function ProfilePage() {
   const mix = React.useMemo(
     () => (rangeEnabled && !rangeEvents.error ? tokenMix(rangeEvents.events) : null),
     [rangeEnabled, rangeEvents.events, rangeEvents.error],
+  );
+  // Per-day per-model split + provider attribution from the SAME bounded
+  // pass (no extra reads): colors heatmap cells by the day's dominant model
+  // wherever the rollup's provider split is absent, and feeds the hover mix.
+  const modelSplitForHeatmap = React.useMemo(
+    () => (rangeEnabled && !rangeEvents.error ? dailyModelTokenSplit(rangeEvents.events) : undefined),
+    [rangeEnabled, rangeEvents.error, rangeEvents.events],
+  );
+  const modelProvidersForHeatmap = React.useMemo(
+    () => (rangeEnabled && !rangeEvents.error ? dailyModelProviders(rangeEvents.events) : undefined),
+    [rangeEnabled, rangeEvents.error, rangeEvents.events],
   );
 
   // Facet-scoped hero: when model/harness/account/device facets are active
@@ -709,12 +787,15 @@ export default function ProfilePage() {
           {/* Token activity heatmap — click a day to pin the inspector.
               Anchored on the view's right edge so a historical range never
               renders a blank tail past its end. */}
-          <div className="reveal" style={REVEAL.heatmap}>
+          <div className="reveal min-w-0" style={REVEAL.heatmap}>
             {viewToday ? (
               <ProfileHeatmapSection
                 points={providerFilteredPoints}
                 today={viewToday > (today ?? viewToday) ? (today ?? viewToday) : viewToday}
                 dailyProviderTokens={rollup.dailyProviderTokens}
+                dailyModelTokens={modelSplitForHeatmap}
+                dailyModelProviders={modelProvidersForHeatmap}
+                activeProviders={filters.facets.providers}
                 pinnedDay={filters.day}
                 onPinDay={(day) => applyFilters({ ...filters, day })}
               />
@@ -724,7 +805,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Burn by hour — bounded event aggregates. */}
-          <div className="reveal" style={REVEAL.rhythm}>
+          <div className="reveal min-w-0" style={REVEAL.rhythm}>
             <ProfileHourGrid
               grid={grid}
               loading={rangeEvents.loading}
@@ -736,7 +817,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Burn rhythm — mean tokens by weekday, in view. */}
-          <div className="reveal" style={REVEAL.rhythm}>
+          <div className="reveal min-w-0" style={REVEAL.rhythm}>
             {today && stats ? (
               <ProfileRhythmSection
                 rhythm={stats.rhythm}
@@ -749,12 +830,12 @@ export default function ProfilePage() {
           </div>
 
           {/* Token trend */}
-          <div className="reveal" style={REVEAL.trend}>
+          <div className="reveal min-w-0" style={REVEAL.trend}>
             <ProfileTrendSection trend={stats?.trend ?? []} pending={pending} />
           </div>
 
           {/* Token mix — bounded event aggregates. */}
-          <div className="reveal" style={REVEAL.trend}>
+          <div className="reveal min-w-0" style={REVEAL.trend}>
             <ProfileMixPanel
               mix={mix}
               loading={rangeEvents.loading}
@@ -774,7 +855,7 @@ export default function ProfilePage() {
             metric={metric}
             pending={pending}
             activeProviders={filters.facets.providers}
-            onToggleProvider={(id) => toggleFacet({ kind: "provider", id })}
+            onToggleProvider={(id) => selectFacet({ kind: "provider", id })}
           />
 
           <ProfileInsightsPanel
@@ -784,7 +865,7 @@ export default function ProfilePage() {
             topModel={topModelByMetric ?? null}
             spendInView={totalsRollup.providerSummaries.reduce((n, p) => n + p.totalCost, 0)}
             freshness={rollup.computedAt ? rollup.computedAt.slice(0, 10) : pending ? "—" : "unknown"}
-            onToggleModel={(id) => toggleFacet({ kind: "model", id })}
+            onToggleModel={(id) => selectFacet({ kind: "model", id })}
           />
 
           {!pending && (
@@ -800,6 +881,7 @@ export default function ProfilePage() {
               metric={metric}
               activeFacets={filters.facets}
               onToggle={toggleFacet}
+              onInspect={selectFacet}
             />
           )}
           {!pending &&
@@ -878,6 +960,7 @@ export default function ProfilePage() {
           onPinDay={(day) => applyFilters({ ...filters, day })}
           onToggleProvider={(id) => toggleFacet({ kind: "provider", id })}
           onToggleModel={(id) => toggleFacet({ kind: "model", id })}
+          onInspectEntity={inspectRecord}
           onJumpToRhythm={() => {
             document
               .getElementById("profile-burn-rhythm")
@@ -902,7 +985,9 @@ export default function ProfilePage() {
 
       {/* Inspector slide-over — the pinned day (own query) or an entity from
           the range pass. Prev/next clamps to the active range. Query failures
-          surface stable copy + retry, never a false zero. */}
+          surface stable copy + retry, never a false zero.
+          Closing clears the pin; every number, bar, day, and record row
+          reopens it, so the inspector is never stranded unreachable. */}
       <ProfileInspector
         selection={inspector}
         events={inspectorEvents}

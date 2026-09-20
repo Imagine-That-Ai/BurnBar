@@ -29,12 +29,23 @@ export function ProfileHeatmapSection({
   points,
   today,
   dailyProviderTokens,
+  dailyModelTokens,
+  dailyModelProviders,
+  activeProviders,
   pinnedDay,
   onPinDay,
 }: {
   points: readonly DailyPoint[];
   today: string;
   dailyProviderTokens?: Record<string, Record<string, number>>;
+  /** Sparse per-day per-model token split ("day" → model → tokens), derived
+   *  client-side from bounded event aggregates when the rollup's provider
+   *  split is absent. Drives per-model cell coloring + the hover mix. */
+  dailyModelTokens?: Record<string, Record<string, number>>;
+  /** Per-day per-model provider attribution for brand-correct model hues. */
+  dailyModelProviders?: Record<string, Record<string, string>>;
+  /** Active provider-facet selection: cell colors recompute from this subset. */
+  activeProviders?: readonly string[];
   pinnedDay: string | null;
   onPinDay: (day: string | null) => void;
 }) {
@@ -101,12 +112,15 @@ export function ProfileHeatmapSection({
           mode={mode}
           today={today}
           dailyProviderTokens={dailyProviderTokens}
+          dailyModelTokens={dailyModelTokens}
+          dailyModelProviders={dailyModelProviders}
+          visibleProviders={activeProviders}
           onSelectDay={pinDay}
         />
       </div>
       {pinnedDay && (
         <p className="mt-token-2 text-xs text-content-mute">
-          Inspecting {formatDayLabel(pinnedDay)}.{" "}
+          Inspecting {formatDayLabel(pinnedDay)} in the inspector.{" "}
           <button
             type="button"
             onClick={() => onPinDay(null)}
@@ -114,6 +128,12 @@ export function ProfileHeatmapSection({
           >
             Unpin
           </button>
+        </p>
+      )}
+      {!pinnedDay && (
+        <p className="mt-token-2 text-xs text-content-dim">
+          Tip: click any active day, record tile, breakdown row, or ledger time
+          to open the inspector.
         </p>
       )}
     </section>

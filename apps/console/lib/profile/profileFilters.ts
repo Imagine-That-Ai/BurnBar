@@ -239,6 +239,7 @@ export function needsEventPath(f: ProfileFilters): boolean {
 /**
  * The 91k-event guard: a model / harness / account facet on an unbounded
  * "All" window would scan the whole history. Snap to 90d and say so once.
+ * Day/entity pins ride along unchanged — they only narrow the query.
  * Returns the snapped filters, or null when no snap is needed.
  */
 export function snapWindowForEventFacets(f: ProfileFilters): ProfileFilters | null {
@@ -251,6 +252,11 @@ export function snapWindowForEventFacets(f: ProfileFilters): ProfileFilters | nu
 /** Toggle one value in a facet list (add when absent, remove when present). */
 export function toggleFacetValue(list: readonly string[], value: string): string[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+}
+
+/** Ensure one value is in a facet list (add when absent, keep when present). */
+export function ensureFacetValue(list: readonly string[], value: string): string[] {
+  return list.includes(value) ? [...list] : [...list, value];
 }
 
 /** Drop every filter except the metric (the rail's "clear" action). */

@@ -113,7 +113,10 @@ export function ProfileInspector({
         case "harness":
           return e.harnessId === entity.id;
         case "account":
-          return e.accountId === entity.id;
+          // Same synthetic rule as the event query matcher: rollup-only
+          // `${providerID}:unattributed` keys match events with NO stored
+          // account id (matchEventFacets in profileEvents.ts).
+          return (e.accountId ?? `${e.providerID ?? e.provider}:unattributed`) === entity.id;
         case "device":
           return e.deviceId === entity.id;
         case "session":
@@ -346,7 +349,8 @@ function InspectorShell({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close inspector"
+          aria-label="Close inspector (reopen from any day, record, row, or ledger time)"
+          title="Close — reopen from any day, record, row, or ledger time"
           className="shrink-0 rounded-md border border-glass-line px-2 py-0.5 text-xs text-content-dim hover:text-content-bright"
         >
           Esc
