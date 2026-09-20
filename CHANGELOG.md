@@ -24,8 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   partial output) stays unknown instead of looking closed; prompt
   paths are not another workspace; `pi` and `agy` count as live CLIs;
   Pixel Clock keeps its last lanes when `ps` fails; a failed
-  printed-receipt lookup aborts the poll instead of reminting; the
-  Session ID row opens Session Logs without clobbering the clipboard.
+  printed-receipt lookup aborts the poll instead of reminting; a failed
+  usage join aborts instead of minting a zero-token slip; `aider
+  --message server` is not a daemon; IDE `.cursor` rows stay
+  unobservable while `cursor-agent` still is; usage-only sessions
+  re-enter on recent `endTime`; a legacy conversation-id slip is
+  refreshed in place; stale transcript errors cannot paint TAPE JAM on
+  the newer receipt; Session Logs deep links cancel the previous
+  lookup; Chat tape / Session Logs flyout buttons dismiss the panel
+  first; the Session ID row opens Session Logs without clobbering the
+  clipboard.
 - **Console profile sync** — `rebuildUsageRollups` no longer inherits the
   gen2 60s / 256MiB defaults. Production at 2026-09-19 10:10 UTC killed
   Alberto's first-sync with "Memory limit of 256 MiB exceeded with 258 MiB

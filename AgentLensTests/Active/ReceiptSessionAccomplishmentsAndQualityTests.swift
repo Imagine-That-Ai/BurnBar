@@ -317,6 +317,104 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
         )
     }
 
+    func test_receiptLookupKeys_canonicalThenLegacyConversationIdentity() {
+        XCTAssertEqual(
+            CLISessionCloseMonitor.receiptLookupKeys(
+                sessionID: "canonical-sid",
+                conversationIdentity: "conv_legacy"
+            ),
+            ["canonical-sid", "conv_legacy"]
+        )
+        XCTAssertEqual(
+            CLISessionCloseMonitor.receiptLookupKeys(
+                sessionID: "same",
+                conversationIdentity: "same"
+            ),
+            ["same"]
+        )
+    }
+
+    @MainActor
+    func test_cliSessionCloseMonitor_ingestsUsageOnlySessionByRecentEndTime() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: dbQueue)
+        let usageStore = UsageStore(dbQueue: dbQueue)
+        let now = Date()
+        try await usageStore.insert(TokenUsage(
+            provider: .aider,
+            sessionId: "aider-long-session",
+            projectName: "BurnBar",
+            model: "gpt-4o",
+            inputTokens: 40,
+            outputTokens: 12,
+            costUSD: 0.08,
+            startTime: now.addingTimeInterval(-8 * 60 * 60),
+            endTime: now.addingTimeInterval(-20)
+        ))
+
+        let monitor = CLISessionCloseMonitor(dataStore: dataStore)
+        monitor.quietPeriodSeconds = 60
+        await monitor.checkClosedSessions(now: now)
+
+        XCTAssertEqual(monitor.activeSessions.count, 1)
+        let ingested = try XCTUnwrap(monitor.activeSessions["aider-long-session"])
+        XCTAssertEqual(ingested.harness, "Aider")
+        XCTAssertEqual(try XCTUnwrap(ingested.costUSD), 0.08, accuracy: 0.001)
+    }
+
+    @MainActor
+    func test_cliSessionCloseMonitor_refreshesLegacyReceiptIdentityInsteadOfDuplicating() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: dbQueue)
+        let now = Date()
+        let conversation = factoryConversation(
+            sessionId: "factory-canonical",
+            start: now.addingTimeInterval(-90),
+            fileModifiedAt: now.addingTimeInterval(-30),
+            title: "Legacy keyed slip"
+        )
+        try await dataStore.upsertConversation(conversation)
+        try await dataStore.insertReceipt(
+            ReceiptRecord(
+                id: "rcpt_\(conversation.id)",
+                sessionId: conversation.id,
+                projectName: "OpenBurnBar",
+                provider: .factory,
+                modelName: "unknown",
+                harness: "Factory CLI",
+                promptSummary: "Legacy keyed slip",
+                isStarred: true
+            )
+        )
+
+        var printedReceipt: ReceiptRecord?
+        let probe = ToggleReceiptCLIRuntimeProbe(isOpen: true)
+        let monitor = CLISessionCloseMonitor(
+            dataStore: dataStore,
+            settingsManager: .shared,
+            runtimeProbe: probe,
+            onReceiptPrinted: { receipt in
+                printedReceipt = receipt
+            }
+        )
+        monitor.quietPeriodSeconds = 60
+
+        await monitor.checkClosedSessions(now: now.addingTimeInterval(35))
+        XCTAssertNil(printedReceipt, "Still in the terminal — wait")
+        XCTAssertEqual(monitor.activeSessions.count, 1)
+
+        probe.isOpen = false
+        await monitor.checkClosedSessions(now: now.addingTimeInterval(40))
+
+        let canonical = try await dataStore.fetchReceiptForSession(sessionId: "factory-canonical")
+        let legacy = try await dataStore.fetchReceiptForSession(sessionId: conversation.id)
+        XCTAssertEqual(printedReceipt?.id, "rcpt_\(conversation.id)")
+        XCTAssertEqual(printedReceipt?.isStarred, true)
+        XCTAssertEqual(canonical?.id, "rcpt_\(conversation.id)")
+        XCTAssertEqual(canonical?.isStarred, true)
+        XCTAssertNil(legacy, "Refreshing must move the slip onto the canonical session id")
+    }
+
     @MainActor
     func test_cliSessionCloseMonitor_ingestsFromRecentUsageWithoutConversationScan() async throws {
         let dbQueue = try makeDatabaseQueue()

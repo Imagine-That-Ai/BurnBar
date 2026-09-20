@@ -460,6 +460,7 @@ struct ReceiptTranscriptLensView: View {
                 loadState = .missing
             }
         } catch {
+            guard !Task.isCancelled, requested == tapeLoadKey else { return }
             loadState = .failed("Could not read the indexed transcript. Try again, or open Session Logs.")
         }
     }

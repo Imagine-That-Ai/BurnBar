@@ -94,6 +94,14 @@ extension UsageStore {
         }
     }
 
+    /// Index-friendly end-time window for usage-only harnesses whose
+    /// original start fell out of the six-hour start horizon.
+    func fetchUsage(endingIn dateRange: Range<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await dbQueue.read { db -> [TokenUsage] in
+            try Self.fetchUsageRows(db: db, endingIn: dateRange, limit: limit)
+        }
+    }
+
     /// Per-credential all-time cost totals for billing drift detection.
     ///
     /// Replaces the previous approach of materializing EVERY `token_usage`

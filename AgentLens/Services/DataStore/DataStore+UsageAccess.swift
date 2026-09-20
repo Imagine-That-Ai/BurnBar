@@ -55,6 +55,10 @@ extension DataStore {
         try await actor.usageStore.fetchUsage(startingIn: dateRange, limit: limit)
     }
 
+    func fetchUsage(endingIn dateRange: Range<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await actor.usageStore.fetchUsage(endingIn: dateRange, limit: limit)
+    }
+
     func fetchRecentUsage(limit: Int) async throws -> [TokenUsage] {
         try await actor.usageStore.fetchRecentUsage(limit: limit)
     }

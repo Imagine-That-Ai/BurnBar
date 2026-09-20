@@ -107,6 +107,7 @@ public struct ReceiptMiniFlyoutView: View {
 
             HStack(spacing: 12) {
                 Button {
+                    onDismiss()
                     if let url = ReceiptChatBridge.receiptURL(
                         receiptID: receipt.id,
                         lens: .transcript
@@ -127,6 +128,7 @@ public struct ReceiptMiniFlyoutView: View {
                 )
 
                 Button {
+                    onDismiss()
                     if let url = ReceiptChatBridge.sessionURL(
                         conversationID: conversationID
                     ) {

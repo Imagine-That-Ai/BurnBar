@@ -33,6 +33,9 @@ final class CLISessionCloseMonitor {
         var gitCommit: String?
         var hasExplicitlyEnded: Bool
         var messageCount: Int
+        /// Conversation row id when it differs from `id` (the canonical
+        /// `sessionId`). Legacy slips were keyed on this identity.
+        var conversationIdentity: String?
 
         init(
             id: String,
@@ -55,7 +58,8 @@ final class CLISessionCloseMonitor {
             gitBranch: String? = nil,
             gitCommit: String? = nil,
             hasExplicitlyEnded: Bool = false,
-            messageCount: Int = 0
+            messageCount: Int = 0,
+            conversationIdentity: String? = nil
         ) {
             self.id = id
             self.provider = provider
@@ -78,6 +82,7 @@ final class CLISessionCloseMonitor {
             self.gitCommit = gitCommit
             self.hasExplicitlyEnded = hasExplicitlyEnded
             self.messageCount = messageCount
+            self.conversationIdentity = conversationIdentity
         }
     }
 
@@ -85,7 +90,8 @@ final class CLISessionCloseMonitor {
     /// id per run, so those rows stay in the window. Factory / Claude / Grok
     /// reuse one session file for hours; the original start falls out and
     /// the flyout goes silent. Conversations plus a start-time horizon catch
-    /// both shapes without scanning `token_usage.endTime`.
+    /// those. Usage-only harnesses (Aider) have no conversation row, so
+    /// a matching end-time window keeps a long session that just closed.
     private let ingestHorizonSeconds: TimeInterval = 6 * 60 * 60
 
     /// Announce only sessions that actually just finished — not the rest of
@@ -179,6 +185,9 @@ final class CLISessionCloseMonitor {
             if !conversation.keyTools.isEmpty { existing.toolsUsed.formUnion(conversation.keyTools) }
             if !conversation.lastAssistantMessage.isEmpty { existing.lastAssistantMessage = conversation.lastAssistantMessage }
             existing.messageCount = max(existing.messageCount, conversation.messageCount)
+            if existing.conversationIdentity == nil {
+                existing.conversationIdentity = conversation.id
+            }
             if hasExplicitEnd || Self.conversationHasRealEnd(conversation) { existing.hasExplicitlyEnded = true }
             if let activity = Self.conversationActivityDate(conversation), activity > existing.lastActiveAt {
                 existing.lastActiveAt = activity
@@ -207,7 +216,8 @@ final class CLISessionCloseMonitor {
                 gitBranch: nil,
                 gitCommit: nil,
                 hasExplicitlyEnded: hasExplicitEnd || Self.conversationHasRealEnd(conversation),
-                messageCount: conversation.messageCount
+                messageCount: conversation.messageCount,
+                conversationIdentity: conversation.id
             )
         }
 
@@ -267,8 +277,13 @@ final class CLISessionCloseMonitor {
 
     private func ingestRecentSessionsFromDataStore(now: Date) async {
         let horizon = now.addingTimeInterval(-ingestHorizonSeconds)
+        let window = horizon..<now.addingTimeInterval(60)
         let recentByStart = (try? await dataStore.fetchUsage( // try?-ok(ingest skip if usage scan fails)
-            startingIn: horizon..<now.addingTimeInterval(60),
+            startingIn: window,
+            limit: 400
+        )) ?? []
+        let recentByEnd = (try? await dataStore.fetchUsage( // try?-ok(ingest skip if end-time scan fails)
+            endingIn: window,
             limit: 400
         )) ?? []
 
@@ -295,14 +310,20 @@ final class CLISessionCloseMonitor {
         if conversationKeys.isEmpty {
             usageForConversations = []
         } else {
-            usageForConversations = (try? await dataStore.fetchAllUsage( // try?-ok(ingest skip if usage join fails)
-                sessionIDs: conversationKeys
-            )) ?? []
+            do {
+                usageForConversations = try await dataStore.fetchAllUsage(
+                    sessionIDs: conversationKeys
+                )
+            } catch {
+                // Unknown join must not look like "no usage" — that prints
+                // a zero-token slip and retires the session forever.
+                return
+            }
         }
 
         var seenUsageIDs = Set<UUID>()
         var usagesBySession: [String: [TokenUsage]] = [:]
-        for usage in recentByStart + usageForConversations {
+        for usage in recentByStart + recentByEnd + usageForConversations {
             guard seenUsageIDs.insert(usage.id).inserted else { continue }
             guard !usage.sessionId.isEmpty else { continue }
             usagesBySession[usage.sessionId, default: []].append(usage)
@@ -410,7 +431,8 @@ final class CLISessionCloseMonitor {
                 gitBranch: nil,
                 gitCommit: nil,
                 hasExplicitlyEnded: conversation.map(Self.conversationHasRealEnd) ?? false,
-                messageCount: conversation?.messageCount ?? 0
+                messageCount: conversation?.messageCount ?? 0,
+                conversationIdentity: conversation?.id
             )
         }
     }
@@ -436,6 +458,9 @@ final class CLISessionCloseMonitor {
             session.projectName = conversation.projectName
         }
         session.messageCount = max(session.messageCount, conversation.messageCount)
+        if session.conversationIdentity == nil {
+            session.conversationIdentity = conversation.id
+        }
         if Self.conversationHasRealEnd(conversation) { session.hasExplicitlyEnded = true }
         if let activity = Self.conversationActivityDate(conversation), activity > session.lastActiveAt {
             session.lastActiveAt = activity
@@ -486,6 +511,35 @@ final class CLISessionCloseMonitor {
         return true
     }
 
+    /// Canonical session id first, then the conversation row id a legacy
+    /// slip may still be stored under.
+    nonisolated static func receiptLookupKeys(
+        sessionID: String,
+        conversationIdentity: String?
+    ) -> [String] {
+        let primary = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        var keys: [String] = []
+        if !primary.isEmpty { keys.append(primary) }
+        if let alias = conversationIdentity?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !alias.isEmpty,
+           alias != primary {
+            keys.append(alias)
+        }
+        return keys
+    }
+
+    private func existingReceipt(for session: ActiveCLISession) async -> ReceiptRecord? {
+        for key in Self.receiptLookupKeys(
+            sessionID: session.id,
+            conversationIdentity: session.conversationIdentity
+        ) {
+            if let hit = try? await dataStore.fetchReceiptForSession(sessionId: key) { // try?-ok(missing alias is not a miss of the slip)
+                return hit
+            }
+        }
+        return nil
+    }
+
     /// `nil` aborts this ingest. A thrown printed-receipt lookup must
     /// not look like "nothing is minted."
     nonisolated static func printedSessionIDs(
@@ -526,7 +580,7 @@ final class CLISessionCloseMonitor {
         let preexisting = mintedSessionIDs.contains(session.id)
         let receipt: ReceiptRecord?
         if preexisting {
-            receipt = try? await dataStore.fetchReceiptForSession(sessionId: session.id) // try?-ok(preexisting slip missing is not announce)
+            receipt = await existingReceipt(for: session)
         } else if let persisted = await persistReceipt(for: session, closedAt: closedAt, preserving: nil) {
             mintedSessionIDs.insert(session.id)
             receipt = persisted
@@ -660,7 +714,7 @@ final class CLISessionCloseMonitor {
 
         // 2. Build preliminary ReceiptRecord
         var receipt = ReceiptRecord(
-            id: "rcpt_\(session.id)",
+            id: existing?.id ?? "rcpt_\(session.id)",
             sessionId: session.id,
             projectName: session.projectName,
             provider: session.provider,
@@ -678,7 +732,7 @@ final class CLISessionCloseMonitor {
             tokensPerSecond: speed,
             promptSummary: session.promptSummary,
             actualAccomplishments: synthesis.accomplishments,
-            qualityReview: nil,
+            qualityReview: existing?.qualityReview,
             achievements: synthesis.achievements,
             gitStats: synthesis.gitStats,
             filesTouched: Array(session.filesTouched),
@@ -728,7 +782,7 @@ final class CLISessionCloseMonitor {
             return receipt
         } catch {
             AppLogger.dataStore.error("Failed to persist receipt: \(error)")
-            return try? await dataStore.fetchReceiptForSession(sessionId: session.id) // try?-ok(reuse already-printed slip after insert race)
+            return await existingReceipt(for: session)
         }
     }
 

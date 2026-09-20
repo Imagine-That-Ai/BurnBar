@@ -66,6 +66,8 @@ struct DashboardView: View {
     @State private var showCLIConsentSheet = false
     @State private var showSessionLogCloudConsent = false
     @State var sessionLogJumpTarget: ConversationJumpTarget?
+    @State private var sessionLogJumpRequestID = UUID()
+    @State private var sessionLogJumpTask: Task<Void, Never>?
     @State var dashboardCanvasSize: CGSize = .zero
     @State private var overviewViewportHeight: CGFloat = 0
     @State var burnRailDelta: Double?
@@ -364,7 +366,7 @@ struct DashboardView: View {
         case .sessionLogs(let conversationID):
             route = .sessionLogs
             if let conversationID, conversationID.isEmpty == false {
-                Task { await resolveSessionLogJump(conversationID: conversationID) }
+                requestSessionLogJump(conversationID: conversationID)
             }
         case .chat: route = .chat
         case .quota: route = .quota
@@ -923,13 +925,8 @@ struct DashboardView: View {
                         chatController: chatController,
                         selectedTimeRange: $selectedTimeRange,
                         onOpenSessionLog: { conversationID in
-                            // Same landing the inbox uses: resolve a jump target
-                            // so the click opens the session, then navigate.
-                            Task { @MainActor in
-                                let resolver = InboxConversationJumpResolver(dataStore: dataStore)
-                                sessionLogJumpTarget = await resolver.jumpTarget(conversationID: conversationID)
-                                navigate(to: .sessionLogs)
-                            }
+                            requestSessionLogJump(conversationID: conversationID)
+                            navigate(to: .sessionLogs)
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1216,23 +1213,34 @@ struct DashboardView: View {
     /// no longer indexed we still navigate — going nowhere reads as a broken
     /// link.
     func openInboxSessionLog(conversationID: String) {
-        Task { @MainActor in
-            await resolveSessionLogJump(conversationID: conversationID)
-            navigate(to: .sessionLogs)
+        requestSessionLogJump(conversationID: conversationID)
+        navigate(to: .sessionLogs)
+    }
+
+    /// Cancels an in-flight lookup so a later `openburnbar://sessions/…`
+    /// link cannot be overwritten by the earlier one finishing last.
+    func requestSessionLogJump(conversationID: String) {
+        sessionLogJumpTask?.cancel()
+        let requestID = UUID()
+        sessionLogJumpRequestID = requestID
+        sessionLogJumpTarget = nil
+        sessionLogJumpTask = Task { @MainActor in
+            await resolveSessionLogJump(conversationID: conversationID, requestID: requestID)
         }
     }
 
     /// Resolves a Session Logs jump from either a conversation row id or a
     /// receipt `sessionId`. Receipts have been minted against both.
-    func resolveSessionLogJump(conversationID: String) async {
-        sessionLogJumpTarget = nil
+    func resolveSessionLogJump(conversationID: String, requestID: UUID) async {
         let resolver = InboxConversationJumpResolver(dataStore: dataStore)
         if let target = await resolver.jumpTarget(conversationID: conversationID) {
+            guard !Task.isCancelled, requestID == sessionLogJumpRequestID else { return }
             sessionLogJumpTarget = target
             return
         }
         if let record = try? await dataStore.fetchConversationForReceipt(sessionId: conversationID),
            let target = await resolver.jumpTarget(conversationID: record.id) {
+            guard !Task.isCancelled, requestID == sessionLogJumpRequestID else { return }
             sessionLogJumpTarget = target
         }
     }

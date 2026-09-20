@@ -51,8 +51,10 @@ does — scheme and host are case-insensitive, `%20` in the id is
 decoded, and a slash inside a subagent id is one path identity
 (`parentSession/agentId`), not a truncated first segment. A missing or
 deleted receipt id clears the pin instead of leaving the previous slip
-selected. Session Logs jumps clear a stale target when the new id does
-not resolve.
+selected. Session Logs jumps cancel the previous lookup and ignore a
+stale result so two `openburnbar://sessions/…` taps cannot land on the
+first conversation. Chat tape ignores a canceled load's failure so a
+slow error cannot paint TAPE JAM on the newer slip.
 
 ## Live flyout / notification
 
@@ -66,7 +68,9 @@ close sound, including when BurnBar is already in the foreground.
 The flyout loads the conversation overlay before it appears so the
 headline and Session Logs link use the same join as the register.
 Concurrent close events cancel the previous overlay lookup so an older
-slip cannot replace a newer flyout. The banner uses that same overlay
+slip cannot replace a newer flyout. Chat tape and Session Logs buttons
+on the flyout dismiss the panel before they open the dashboard, matching
+View Receipt. The banner uses that same overlay
 when the stored prompt is empty or generic. The Session ID row opens
 Session Logs; it does not overwrite the clipboard (Copy chat link does).
 Banners are on by default; the first one asks for notification permission
@@ -106,16 +110,20 @@ plus a sibling in another repo still holds this slip. Only recognized
 cwd flags (`-C`, `--cd`, `--cwd`, `--workspace`, `--add-dir`, …)
 attribute a process to another workspace. `ps` repeats the executable in
 `ARGS` (`droid /path/to/droid daemon`); the first real subcommand
-after that copy is what decides daemon vs session. A timed-out or
-failed `/bin/ps` is an unknown snapshot: receipts stay open, and Pixel
-Clock keeps its last running lanes instead of going idle. If the
-printed-receipt lookup throws, that poll aborts instead of reminting
-every recent slip.
+after that copy is what decides daemon vs session. A flag value is
+not a subcommand — `aider --message server` is still Aider, not a
+daemon. A timed-out or failed `/bin/ps` is an unknown snapshot:
+receipts stay open, and Pixel Clock keeps its last running lanes
+instead of going idle. If the printed-receipt lookup throws, or the
+complete usage join for conversation keys throws, that poll aborts
+instead of reminting or printing a zero-token slip.
 
 Harnesses we cannot see on `/bin/ps` (Windsurf, Devin, IDE-only Composer)
 still **print** a slip on quiet, but they **announce** only when the
 indexed conversation has a terminal `endTime` that is not the start
 placeholder and not the file-mtime stamp. Duration alone is not a close.
+`.cursor` usage rows from the IDE tracker stay on that unobservable
+path; `.cursorAgent` still waits on the `cursor-agent` process.
 
 Codex is usage-first (new session id every run). Factory, Claude Code,
 Grok, and the other indexed harnesses are conversation-first — the
@@ -140,8 +148,13 @@ Factory / Claude session cannot be crowded out by a busy Codex day. The horizon 
 the newest of file mtime / end / start — never `indexedAt` and never the
 first non-null timestamp — so a stale file mtime cannot hide a later
 end, and a parser restamp cannot resurrect a session with no real
-activity. Usage joined by session id loads **every** row for those
-sessions, so a Warp chat with hundreds of events keeps its full totals.
+activity. Usage-only harnesses (Aider) also enter through a matching
+end-time window, so a long session that just closed is not lost because
+its original start aged out. Usage joined by session id loads **every**
+row for those sessions, so a Warp chat with hundreds of events keeps
+its full totals. A legacy slip stored under the conversation row id is
+refreshed in place when the canonical key is the `sessionId`, so a
+relaunch does not print a second unstarred copy.
 
 Copied markdown includes the chat line plus the slip and Session Logs
 URLs so a shared receipt still has working deep links.

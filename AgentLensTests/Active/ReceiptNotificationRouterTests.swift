@@ -137,6 +137,15 @@ final class ReceiptNotificationRouterTests: XCTestCase {
         XCTAssertNil(AgentCLIProcessClassifier.provider(forProcessLine: "/Applications/Cursor.app/Contents/MacOS/Cursor"))
         XCTAssertNil(AgentCLIProcessClassifier.provider(forProcessLine: "droid daemon --remote-access"))
         XCTAssertEqual(
+            AgentCLIProcessClassifier.provider(forProcessLine: "aider --message server"),
+            .aider,
+            "A flag value must not look like a daemon subcommand"
+        )
+        XCTAssertEqual(
+            AgentCLIProcessClassifier.provider(forProcessLine: "aider --message=server"),
+            .aider
+        )
+        XCTAssertEqual(
             AgentCLIProcessClassifier.provider(forProcessLine: "/opt/homebrew/bin/grok --model grok"),
             .xAI
         )
@@ -336,7 +345,11 @@ final class ReceiptNotificationRouterTests: XCTestCase {
         )
         XCTAssertFalse(AgentCLIProcessClassifier.canObserveRuntime(for: .windsurf))
         XCTAssertFalse(AgentCLIProcessClassifier.canObserveRuntime(for: .devin))
-        XCTAssertTrue(AgentCLIProcessClassifier.canObserveRuntime(for: .cursor))
+        XCTAssertFalse(
+            AgentCLIProcessClassifier.canObserveRuntime(for: .cursor),
+            "IDE Composer usage rows cannot be proven closed from /bin/ps"
+        )
+        XCTAssertTrue(AgentCLIProcessClassifier.canObserveRuntime(for: .cursorAgent))
         XCTAssertTrue(AgentCLIProcessClassifier.canObserveRuntime(for: .factory))
         XCTAssertTrue(AgentCLIProcessClassifier.canObserveRuntime(for: .warp))
         XCTAssertEqual(

@@ -84,8 +84,9 @@ enum AgentCLIProcessClassifier: Sendable {
         return nil
     }
 
-    /// Receipt announce treats Cursor.app as closed and `cursor-agent` as
-    /// open, whether the session was stored as `.cursor` or `.cursorAgent`.
+    /// Process matching collapses Cursor identities so `cursor-agent`
+    /// holds a `.cursorAgent` slip. IDE `.cursor` rows stay unobservable
+    /// in `canObserveRuntime` — Cursor.app is not a close signal.
     static func runtimeFamily(for provider: AgentProvider) -> AgentProvider {
         switch provider {
         case .cursor, .cursorAgent:
@@ -97,14 +98,23 @@ enum AgentCLIProcessClassifier: Sendable {
 
     /// True when receipts can actually see this harness leave: a named
     /// executable and/or a dedicated agent-app bundle. IDE-only providers
-    /// (Windsurf, Devin, Cursor Composer without `cursor-agent`) cannot
+    /// (Windsurf, Devin, Cursor Composer / `.cursor` usage rows) cannot
     /// be proven closed from `/bin/ps`, so quiet time must not announce.
+    /// `cursor-agent` (`.cursorAgent`) is observable; the IDE is not.
     static func canObserveRuntime(for provider: AgentProvider) -> Bool {
         if !ProcessReceiptCLIRuntimeProbe.dedicatedBundleIDs(for: provider).isEmpty {
             return true
         }
+        switch provider {
+        case .cursorAgent:
+            return true
+        case .cursor:
+            return false
+        default:
+            break
+        }
         switch runtimeFamily(for: provider) {
-        case .codex, .claudeCode, .factory, .openCode, .openClaw, .cursor,
+        case .codex, .claudeCode, .factory, .openCode, .openClaw,
              .minimax, .zai, .kimi, .xAI, .hermes, .piAgent, .geminiCLI,
              .aider, .goose, .antigravity, .muse, .openClaude, .primeAgent,
              .junie, .ollama, .forgeDev, .omp, .copilot, .cline, .kiloCode,
@@ -227,13 +237,23 @@ enum AgentCLIProcessClassifier: Sendable {
         let argumentBases: [String]
     }
 
-    /// COMM + ARGS from `ps -axo comm,args`. Skip wrappers and `ENV=val`,
-    /// then the first remaining basename is the executable.
+    /// COMM + ARGS from `ps -axo comm,args`. Skip wrappers, `ENV=val`,
+    /// and values of known flags (`aider --message server`), then the
+    /// first remaining basename is the executable.
     private static func firstExecutable(in line: String) -> ParsedCommand? {
         var base: String?
         var argumentBases: [String] = []
+        var skipNextValue = false
         for raw in line.split(whereSeparator: \.isWhitespace).map(String.init) {
-            guard !raw.isEmpty, !raw.hasPrefix("-") else { continue }
+            if skipNextValue {
+                skipNextValue = false
+                continue
+            }
+            guard !raw.isEmpty else { continue }
+            if raw.hasPrefix("-") {
+                if flagTakesSeparateValue(raw) { skipNextValue = true }
+                continue
+            }
             if raw.contains("="), !raw.contains("/") { continue }
             let token = raw.split(separator: "/").last.map(String.init) ?? raw
             guard !token.isEmpty else { continue }
@@ -249,6 +269,13 @@ enum AgentCLIProcessClassifier: Sendable {
         }
         guard let base else { return nil }
         return ParsedCommand(base: base, argumentBases: argumentBases)
+    }
+
+    /// `--cwd=/tmp` already carries its value. `--message server` must
+    /// not treat `server` as a daemon subcommand.
+    private static func flagTakesSeparateValue(_ token: String) -> Bool {
+        if token.contains("=") { return false }
+        return valueTakingFlags.contains(token)
     }
 
     /// BurnBar itself, `/bin/ps`, and Chrome native-host helpers.
@@ -297,9 +324,18 @@ enum AgentCLIProcessClassifier: Sendable {
     /// (`codex exec "inspect /Users/a/other-app/file"`) is not
     /// attribution. The executable under `/Users/.../bin` is not either.
     private static let workspaceFlags: Set<String> = [
-        "-c", "--cd", "--cwd", "--workdir", "--working-directory",
+        "-c", "-C", "--cd", "--cwd", "--workdir", "--working-directory",
         "--workspace", "--project-dir", "--project-directory", "--add-dir"
     ]
+
+    /// Flags whose next token is a value, not a subcommand. Keep this
+    /// tighter than "any dashed token" so `droid --verbose daemon`
+    /// still sees `daemon`.
+    private static let valueTakingFlags: Set<String> = workspaceFlags.union([
+        "-m", "--message", "--model", "--prompt", "-p",
+        "--input", "--output", "-o", "--provider", "--session",
+        "--profile", "--config", "--file", "--path"
+    ])
 
     private static func mentionsWorkspaceRoot(_ line: String) -> Bool {
         let lower = line.lowercased()
