@@ -61,17 +61,29 @@ public enum IrohPairingError: Error, Equatable, Sendable {
     case invalidSignature
     case expired
     case replayed
+    case replayStoreUnavailable
     case unsupportedProtocolVersion(Int)
     case malformed
 }
 
 /// Defaults used when iOS verifies an inbound pairing record.
 public enum IrohPairingFreshness {
-    /// Reject records older than this when verifying. Mirrors the heartbeat
-    /// cadence on the Mac side (30s) plus generous slack for clock skew and
+    /// Reject records older than this when verifying an idle first dial.
+    /// Mirrors the Mac republish cadence (60s) plus slack for clock skew and
     /// momentary background stalls. Older records describe a Mac endpoint that
     /// may no longer own the advertised NodeAddr and must not be dialed.
+    /// Do not silently widen this bound for idle pairing.
     public static let maximumAgeSeconds: TimeInterval = 3 * 60
+
+    /// Reconnect window while a Mercury / Computer Use / iroh control session
+    /// is already live. Sleep or a stalled republish must not expire pairing
+    /// at the idle 3-minute bound mid-session. Idle first-pair still uses
+    /// `maximumAgeSeconds`.
+    public static let liveSessionMaximumAgeSeconds: TimeInterval = 30 * 60
+
+    public static func maximumAge(remoteSessionLive: Bool) -> TimeInterval {
+        remoteSessionLive ? liveSessionMaximumAgeSeconds : maximumAgeSeconds
+    }
 }
 
 /// Signer + verifier. Mac owns a signing identity persisted in Keychain by

@@ -15,19 +15,22 @@ private final class SendableVideoSampleBuffer: @unchecked Sendable {
     }
 }
 
+private final class EncodedConsumeBox: @unchecked Sendable {
+    var handler: (@Sendable (SendableVideoSampleBuffer) async -> Void)?
+}
+
 /// HEVC (H.265) video encoder for the Mac side of Phase 3 + 5.
 /// `VTCompressionSession`-backed. Falls back to H.264 when HEVC hardware
 /// encode isn't available (pre-Skylake Intel Macs).
 ///
 /// Encoded NAL units are wrapped in `MediaFrame` envelopes via
-/// `MediaPacketCodec` and emitted to the iroh stream as one stream per
-/// GOP. Keyframe interval pinned at 2 s for fast recovery on stalled
-/// streams.
+/// `MediaPacketCodec` and muxed onto the live `media.control` stream.
+/// GOP-end flags let the receiver abort a stale group. Keyframe interval
+/// is pinned at 2 s for fast recovery on stalled streams.
 /// Seam over the VideoToolbox-backed encoder so session-orchestration tests
 /// can run on hosts without a hardware encoder (virtualized CI Macs report
 /// kVTCouldNotFindVideoEncoderErr, -12908, from VTCompressionSessionCreate).
-@MainActor
-protocol VideoEncoding: AnyObject {
+protocol VideoEncoding: AnyObject, Sendable {
     func start() throws
     func setTargetBitsPerSecond(_ bps: Int) throws
     func encode(sampleBuffer: CMSampleBuffer) async throws
@@ -36,8 +39,10 @@ protocol VideoEncoding: AnyObject {
     func stop()
 }
 
-@MainActor
-final class VideoEncoder: VideoEncoding {
+// AUDIT(@unchecked Sendable): VideoToolbox session + GOP/LTR counters are
+// guarded by `stateLock`. Capture callbacks hop off MainActor on purpose.
+// sendable-allowlist: videotoolbox-encoder-lock
+final class VideoEncoder: VideoEncoding, @unchecked Sendable {
     enum Codec: String, Equatable, Sendable {
         case hevc
         case h264
@@ -84,7 +89,18 @@ final class VideoEncoder: VideoEncoding {
     private var resolvedCodec: Codec
     private var currentGopID: UInt32 = 0
     private var currentFrameIndex: UInt32 = 0
+    private var gopEndStamper = MediaGOPEndStamper()
+    private var heldLongTermReferenceToken: MercuryLTRToken?
     private var ltrState = MercuryLTRRecoveryState()
+    private let stateLock = NSLock()
+    // AUDIT(nonisolated unsafe): filled once in init; VT callbacks only call submit.
+    nonisolated(unsafe) private let encodedMailbox: LatestFrameMailbox<SendableVideoSampleBuffer>
+
+    nonisolated private func withStateLock<T>(_ body: () -> T) -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return body()
+    }
 
     init(
         configuration: Configuration,
@@ -95,9 +111,22 @@ final class VideoEncoder: VideoEncoding {
         self.codec = codec
         self.onEncoded = onEncoded
         self.resolvedCodec = configuration.preferredCodec
+        let consumeBox = EncodedConsumeBox()
+        self.encodedMailbox = LatestFrameMailbox { snapshot in
+            await consumeBox.handler?(snapshot)
+        }
+        consumeBox.handler = { [weak self] snapshot in
+            await self?.handleEncodedSampleBuffer(snapshot.sampleBuffer)
+        }
     }
 
     func start() throws {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        try startLocked()
+    }
+
+    private func startLocked() throws {
         let codecType = resolvedCodec == .hevc
             ? CMVideoCodecType(kCMVideoCodecType_HEVC)
             : CMVideoCodecType(kCMVideoCodecType_H264)
@@ -119,7 +148,7 @@ final class VideoEncoder: VideoEncoding {
             // HEVC may not be available — fall back to H.264 once.
             if resolvedCodec == .hevc {
                 resolvedCodec = .h264
-                try start()
+                try startLocked()
                 return
             }
             throw Failure.sessionCreate(status)
@@ -150,15 +179,21 @@ final class VideoEncoder: VideoEncoding {
     }
 
     func setTargetBitsPerSecond(_ bps: Int) throws {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         guard let session else { return }
         try setProperty(session, key: kVTCompressionPropertyKey_AverageBitRate, value: NSNumber(value: bps))
     }
 
     func encode(sampleBuffer: CMSampleBuffer) async throws {
+        let session: VTCompressionSession?
+        let frameProperties: CFDictionary?
+        (session, frameProperties) = withStateLock {
+            (self.session, framePropertiesForNextFrame())
+        }
         guard let session, let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         let duration = CMSampleBufferGetDuration(sampleBuffer)
-        let frameProperties = framePropertiesForNextFrame()
 
         var infoFlags: VTEncodeInfoFlags = []
         let status = VTCompressionSessionEncodeFrame(
@@ -171,13 +206,7 @@ final class VideoEncoder: VideoEncoding {
         ) { [weak self] (status: OSStatus, _: VTEncodeInfoFlags, sampleBuffer: CMSampleBuffer?) in
             guard let self, status == noErr, let sampleBuffer else { return }
             let snapshot = SendableVideoSampleBuffer(sampleBuffer)
-            // Fires from VideoToolbox's (nonisolated) callback thread, which has
-            // no enclosing async scope to bind to. A plain `Task` inherits the
-            // callback's priority/task-locals (an unstructured detached task
-            // would discard them) and hops to `handleEncodedSampleBuffer`'s actor.
-            Task { [weak self, snapshot] in
-                await self?.handleEncodedSampleBuffer(snapshot.sampleBuffer)
-            }
+            self.encodedMailbox.submit(snapshot)
         }
         if status != noErr {
             throw Failure.encodeSubmit(status)
@@ -185,18 +214,26 @@ final class VideoEncoder: VideoEncoding {
     }
 
     func requestLongTermReferenceRefresh() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         ltrState.requestRefresh()
     }
 
     func acknowledgeLongTermReferenceToken(_ tokenValue: UInt64) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         ltrState.acknowledgeDecodedToken(MercuryLTRToken(value: tokenValue))
     }
 
     func stop() {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         if let session {
             VTCompressionSessionInvalidate(session)
         }
         session = nil
+        _ = gopEndStamper.flush()
+        heldLongTermReferenceToken = nil
     }
 
     nonisolated private func handleEncodedSampleBuffer(_ sampleBuffer: CMSampleBuffer) async {
@@ -228,11 +265,15 @@ final class VideoEncoder: VideoEncoding {
             presentationTimestampMillis: ptsMillis,
             payload: payload
         )
-        await Self.recordLongTermReferenceToken(ltrTokenValue, on: self)
-        await onEncoded(EncodedFrame(
-            frame: frame,
-            longTermReferenceToken: ltrTokenValue.map(MercuryLTRToken.init(value:))
-        ))
+        if let released = await Self.stampFrameAndRotateLTRToken(
+            frame,
+            tokenValue: ltrTokenValue,
+            on: self
+        ) {
+            await onEncoded(
+                EncodedFrame(frame: released.frame, longTermReferenceToken: released.heldToken)
+            )
+        }
     }
 
     nonisolated private func payloadForWire(
@@ -353,7 +394,7 @@ final class VideoEncoder: VideoEncoding {
         forKeyframe isKeyframe: Bool,
         on encoder: VideoEncoder
     ) async -> (gopID: UInt32, frameIndex: UInt32) {
-        await MainActor.run {
+        return encoder.withStateLock {
             if isKeyframe {
                 encoder.currentGopID = encoder.currentGopID &+ 1
                 encoder.currentFrameIndex = 0
@@ -364,16 +405,28 @@ final class VideoEncoder: VideoEncoding {
         }
     }
 
-    private static func recordLongTermReferenceToken(
-        _ tokenValue: UInt64?,
+    /// Records this frame's LTR refresh token, stamps the GOP-end flag, and
+    /// rotates the held token so the frame the stamper releases carries the one
+    /// minted alongside it.
+    ///
+    /// All three touch only `MainActor` encoder state and nothing reads that
+    /// state in between, so they share a single hop — this runs once per
+    /// encoded frame at 30–60 fps for the whole screen share.
+    private static func stampFrameAndRotateLTRToken(
+        _ frame: MediaFrame,
+        tokenValue: UInt64?,
         on encoder: VideoEncoder
-    ) async {
-        await MainActor.run {
-            guard encoder.configuration.enableLongTermReference,
-                  tokenValue != nil || encoder.ltrState.refreshRequested else {
-                return
+    ) async -> (frame: MediaFrame, heldToken: MercuryLTRToken?)? {
+        return encoder.withStateLock {
+            if encoder.configuration.enableLongTermReference,
+               tokenValue != nil || encoder.ltrState.refreshRequested {
+                _ = encoder.ltrState.recordEncodedRefreshToken(tokenValue)
             }
-            _ = encoder.ltrState.recordEncodedRefreshToken(tokenValue)
+            let released = encoder.gopEndStamper.push(frame)
+            let heldToken = released == nil ? nil : encoder.heldLongTermReferenceToken
+            encoder.heldLongTermReferenceToken = tokenValue.map(MercuryLTRToken.init(value:))
+            guard let released else { return nil }
+            return (released, heldToken)
         }
     }
 

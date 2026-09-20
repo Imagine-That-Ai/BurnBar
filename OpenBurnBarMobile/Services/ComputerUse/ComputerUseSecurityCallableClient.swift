@@ -1162,6 +1162,36 @@ enum ComputerUseSecurityCallableClient {
         ]
     }
 
+    /// Narrows an untyped JSON object to a provably `Sendable` one.
+    ///
+    /// Mission payloads arrive from Firestore as `[String: Any]`, but
+    /// `callHighRiskOwnerAction` requires `Sendable`. `as? any Sendable` cannot
+    /// express that — `Sendable` is a marker protocol — so recognise the JSON
+    /// value types instead. Unrecognised values are dropped rather than
+    /// force-cast: a payload reaching the wire while carrying a non-Sendable
+    /// reference is exactly the race the requirement exists to prevent.
+    static func sendableJSONPayload(_ object: [String: Any]) -> [String: any Sendable] {
+        object.reduce(into: [String: any Sendable]()) { result, entry in
+            if let value = sendableJSONValue(entry.value) {
+                result[entry.key] = value
+            }
+        }
+    }
+
+    private static func sendableJSONValue(_ value: Any) -> (any Sendable)? {
+        switch value {
+        case let value as String: return value
+        case let value as Bool: return value
+        case let value as Int: return value
+        case let value as Double: return value
+        case let value as NSNumber: return value.doubleValue
+        case is NSNull: return nil
+        case let value as [Any]: return value.compactMap(sendableJSONValue)
+        case let value as [String: Any]: return sendableJSONPayload(value)
+        default: return nil
+        }
+    }
+
     @discardableResult
     static func callHighRiskOwnerAction(
         _ callableName: String,
@@ -1273,7 +1303,7 @@ enum ComputerUseSecurityCallableClient {
             payload: [
                 "requestId": requestId,
                 "deviceId": deviceId,
-                "canonical": canonical,
+                "canonical": sendableJSONPayload(canonical),
                 "ceilingDigest": ceilingDigest,
                 "signature": signature
             ]
@@ -1284,7 +1314,7 @@ enum ComputerUseSecurityCallableClient {
         requestId: String,
         deviceId: String,
         ceilingDigest: String,
-        requestedGrant: [String: Any]
+        requestedGrant: [String: any Sendable]
     ) async throws {
         _ = try await callHighRiskOwnerAction(
             "redeemMissionApprovalAnswer",
@@ -1300,14 +1330,17 @@ enum ComputerUseSecurityCallableClient {
         )
     }
 
-    static func createCliAgentMission(payload: [String: Any], deviceId: String) async throws -> String {
+    // `any Sendable` for the same reason as redeem/cancel: the caller's
+    // mission payload crosses into this async call under Swift 6 region
+    // isolation; require provably-Sendable values at the boundary.
+    static func createCliAgentMission(payload: [String: any Sendable], deviceId: String) async throws -> String {
         let requestId = payload["requestId"] as? String ?? ""
         let result = try await callHighRiskOwnerAction(
             "createCliAgentMission",
             deviceId: deviceId,
             actionKind: "cli_agent_mission_create",
             subjectId: requestId,
-            payload: payload.merging(["deviceId": deviceId]) { _, new in new }
+            payload: sendableJSONPayload(payload.merging(["deviceId": deviceId]) { _, new in new })
         )
         guard let dict = result.data as? [String: Any],
               dict["ok"] as? Bool == true,
@@ -1318,10 +1351,28 @@ enum ComputerUseSecurityCallableClient {
         return id
     }
 
+    static func createCliAgentMissionGroup(payload: [String: any Sendable], deviceId: String) async throws -> String {
+        let groupId = payload["groupId"] as? String ?? payload["id"] as? String ?? ""
+        let result = try await callHighRiskOwnerAction(
+            "createCliAgentMissionGroup",
+            deviceId: deviceId,
+            actionKind: "cli_agent_mission_group_create",
+            subjectId: groupId,
+            payload: sendableJSONPayload(payload.merging(["deviceId": deviceId, "groupId": groupId]) { _, new in new })
+        )
+        guard let dict = result.data as? [String: Any],
+              dict["ok"] as? Bool == true,
+              let id = dict["groupId"] as? String
+        else {
+            throw ClientError.invalidResponse("Mission group create failed.")
+        }
+        return id
+    }
+
     static func cancelCliAgentMission(
         requestId: String,
         deviceId: String,
-        sealedStatePayload: [String: Any]
+        sealedStatePayload: [String: any Sendable]
     ) async throws {
         let result = try await callHighRiskOwnerAction(
             "cancelCliAgentMission",

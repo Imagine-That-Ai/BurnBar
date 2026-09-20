@@ -37,19 +37,28 @@ final class DirectDownloadReleaseMetadataTests: XCTestCase {
 
     func testHigherNumericBuildIsNewer() {
         let release = makeRelease(version: "1.0.0", build: "201")
-        XCTAssertTrue(release.isNewer(thanBuild: "200", currentVersion: "1.0.0"))
-        XCTAssertFalse(release.isNewer(thanBuild: "202", currentVersion: "1.0.0"))
+        XCTAssertTrue(release.isNewer(thanBuild: "200"))
+        XCTAssertFalse(release.isNewer(thanBuild: "202"))
     }
 
-    func testEqualBuildFallsBackToNumericVersionComparison() {
-        XCTAssertTrue(makeRelease(version: "1.10.0", build: "200").isNewer(thanBuild: "200", currentVersion: "1.9.0"))
-        XCTAssertFalse(makeRelease(version: "1.9.0", build: "200").isNewer(thanBuild: "200", currentVersion: "1.10.0"))
-        XCTAssertFalse(makeRelease(version: "1.9.0", build: "200").isNewer(thanBuild: "200", currentVersion: "1.9.0"))
+    func testEqualNumericBuildIsNotNewerEvenWhenFeedVersionLooksNewer() {
+        XCTAssertFalse(makeRelease(version: "1.10.0", build: "200").isNewer(thanBuild: "200"))
+        XCTAssertFalse(makeRelease(version: "1.9.0", build: "200").isNewer(thanBuild: "200"))
+        // Live 2026-08-30 feed: tag 1.0.40+repair.36 / build 82 vs installed
+        // Apple marketing 1.0.40 / build 82. Offering this pair downloads a
+        // ~470MB DMG and then refuses the swap.
+        XCTAssertFalse(
+            makeRelease(version: "1.0.40+repair.36", build: "82").isNewer(thanBuild: "82")
+        )
+        XCTAssertTrue(
+            makeRelease(version: "1.0.40+repair.36", build: "82").isNewer(thanBuild: "81")
+        )
     }
 
-    func testNonNumericBuildFallsBackToVersionComparison() {
+    func testNonNumericBuildIsNotNewer() {
         let release = makeRelease(version: "2.0.0", build: "2.0.0.42")
-        XCTAssertTrue(release.isNewer(thanBuild: "1.9.9.1", currentVersion: "1.9.9"))
+        XCTAssertFalse(release.isNewer(thanBuild: "1.9.9.1"))
+        XCTAssertFalse(release.isNewer(thanBuild: "2.0.0.42"))
     }
 
     // MARK: - Decoding latest-macos.json

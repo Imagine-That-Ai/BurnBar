@@ -112,13 +112,13 @@ export function Sparkline({
 }
 
 /** Small horizontal proportion bar (0..1). */
-export function ProportionBar({ value }: { value: number }) {
+export function ProportionBar({ value, color }: { value: number; color?: string }) {
   const pct = Math.min(100, Math.max(0, value * 100));
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-pill bg-mercury-wash">
       <div
-        className="h-full rounded-pill"
-        style={{ width: pct + "%", background: "var(--accent)" }}
+        className="h-full rounded-pill transition-[width] duration-500 ease-out motion-reduce:transition-none"
+        style={{ width: pct + "%", background: color ?? "var(--accent)" }}
       />
     </div>
   );

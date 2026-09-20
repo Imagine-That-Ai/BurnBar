@@ -99,6 +99,15 @@ public final class AssistantPendingThread {
         set { slots[.pi] = newValue }
     }
 
+    /// Non-consuming snapshot so Agents can `.task(id:)` every pending
+    /// runtime slot, not just Hermes / Pi.
+    public var routingToken: String {
+        AssistantRuntimeID.allCases
+            .compactMap { runtime in slots[runtime].map { "\(runtime.rawValue):\($0)" } }
+            .sorted()
+            .joined(separator: "|")
+    }
+
     private init() {}
 
     /// Stash an existing thread target for the named assistant. Empty /

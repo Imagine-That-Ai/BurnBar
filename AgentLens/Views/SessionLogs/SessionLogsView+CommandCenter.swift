@@ -504,7 +504,7 @@ extension SessionLogsView {
         let limit = sectionDisplayLimits[group.id] ?? defaultDisplayLimit
         let showing = Array(group.logs.prefix(limit))
 
-        VStack(spacing: DesignSystem.Spacing.xxs) {
+        LazyVStack(spacing: DesignSystem.Spacing.xxs) {
             ForEach(showing) { record in
                 CompactSessionRow(
                     record: record,

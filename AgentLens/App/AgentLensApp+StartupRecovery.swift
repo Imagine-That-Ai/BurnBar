@@ -26,13 +26,11 @@ extension OpenBurnBarApp {
         guard !isRetryingStartup && !isArchivingReset else { return }
         isRetryingStartup = true
         startupRecoveryActionError = nil
-        startupState = Self.makeStartupState()
-        isRetryingStartup = false
-        if startupState.runtimeContext != nil {
-            hasPresentedStartupRecoveryWindow = false
-            windowManager.closeStartupRecovery()
-        } else {
-            openStartupRecoveryWindow()
+        openStartupRecoveryWindow()
+        Task { @MainActor in
+            startupState = await Self.makeStartupState()
+            isRetryingStartup = false
+            await finishStartup(isRecoveryAttempt: true)
         }
     }
 
@@ -41,25 +39,45 @@ extension OpenBurnBarApp {
         guard !isRetryingStartup && !isArchivingReset else { return }
         isArchivingReset = true
         startupRecoveryActionError = nil
-        do {
-            let archiveResult = try OpenBurnBarStartupRecovery.archiveDatabaseSidecars()
-            startupState = Self.makeStartupState(archiveURL: archiveResult.archiveDirectory)
-            isArchivingReset = false
-            if startupState.runtimeContext != nil {
-                hasPresentedStartupRecoveryWindow = false
-                windowManager.closeStartupRecovery()
-            } else {
-                startupRecoveryActionError = "The database was archived, but OpenBurnBar still could not create a clean database."
+        openStartupRecoveryWindow()
+        Task { @MainActor in
+            do {
+                let archiveResult = try await Task.detached(priority: .userInitiated) {
+                    try OpenBurnBarStartupRecovery.archiveDatabaseSidecars()
+                }.value
+                startupState = await Self.makeStartupState(archiveURL: archiveResult.archiveDirectory)
+                isArchivingReset = false
+                if startupState.runtimeContext == nil {
+                    startupRecoveryActionError = "The database was archived, but OpenBurnBar still could not create a clean database."
+                }
+                await finishStartup(isRecoveryAttempt: true)
+            } catch {
+                isArchivingReset = false
+                startupRecoveryActionError = error.localizedDescription
+                AppLogger.dataStore.error(
+                    "startup_datastore_archive_reset_failed",
+                    metadata: ["error": String(describing: error)]
+                )
                 openStartupRecoveryWindow()
             }
-        } catch {
-            isArchivingReset = false
-            startupRecoveryActionError = error.localizedDescription
-            AppLogger.dataStore.error(
-                "startup_datastore_archive_reset_failed",
-                metadata: ["error": String(describing: error)]
-            )
+        }
+    }
+
+    @MainActor
+    func finishStartup(isRecoveryAttempt: Bool = false) async {
+        installCommandRouter()
+        await Task.yield()
+        if let context = startupState.runtimeContext {
+            guard context.aggregator != nil else { return }
+            hasPresentedStartupRecoveryWindow = false
+            windowManager.closeStartupRecovery()
+            let action = pendingStartupAction
+            pendingStartupAction = nil
+            action?()
+        } else if isRecoveryAttempt {
             openStartupRecoveryWindow()
+        } else {
+            presentStartupRecoveryIfNeeded()
         }
     }
 

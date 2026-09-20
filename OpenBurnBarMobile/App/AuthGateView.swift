@@ -53,6 +53,9 @@ struct AuthGateView: View {
         .overlay { EasterEggOverlay(controller: .shared) }
         .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
         .environment(\.mobileAuthStore, authStore)
+        .background {
+            IPadDeskSceneProbe(role: .desk)
+        }
         .task(id: authStore.currentIdentity?.uid) {
             #if DEBUG
             guard !MobileE2ERoute.isRemoteUnlockRoute else { return }

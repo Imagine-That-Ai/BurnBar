@@ -355,14 +355,21 @@ check("App aggregate emits its exact required context once and binds both prereq
       .length,
     1,
   );
-  assert.deepEqual(jobNeeds(appGate), ["classify", "app-build-test", "mobile-build-gate"]);
-  assert.equal(jobField(appGate, "if"), "always() && github.event_name != 'merge_group'");
+  assert.deepEqual(jobNeeds(appGate), [
+    "classify",
+    "merge-group-product-lanes",
+    "app-build-test",
+    "mobile-build-gate",
+  ]);
+  assert.equal(jobField(appGate, "if"), "always()");
   assert.deepEqual(stepEnvironment(appStep), {
     AGENTLENS_RESULT: "${{ needs.app-build-test.result }}",
     MOBILE_RESULT: "${{ needs.mobile-build-gate.result }}",
     CLASSIFIER_RESULT: "${{ needs.classify.result }}",
+    MERGE_GROUP_LANES: "${{ needs.merge-group-product-lanes.result }}",
     MACOS_REQUIRED: "${{ needs.classify.outputs.macos }}",
     MOBILE_REQUIRED: "${{ needs.classify.outputs.mobile }}",
+    EVENT_NAME: "${{ github.event_name }}",
   });
 });
 
@@ -370,9 +377,11 @@ expectShell(
   "App aggregate passes only successful AgentLens and mobile prerequisites",
   appScript,
   {
+    EVENT_NAME: "push",
     AGENTLENS_RESULT: "success",
     MOBILE_RESULT: "success",
     CLASSIFIER_RESULT: "success",
+    MERGE_GROUP_LANES: "skipped",
     MACOS_REQUIRED: "true",
     MOBILE_REQUIRED: "true",
   },
@@ -383,13 +392,45 @@ expectShell(
   "App aggregate accepts classifier-proven product skips",
   appScript,
   {
+    EVENT_NAME: "push",
     AGENTLENS_RESULT: "skipped",
     MOBILE_RESULT: "skipped",
     CLASSIFIER_RESULT: "success",
+    MERGE_GROUP_LANES: "skipped",
     MACOS_REQUIRED: "false",
     MOBILE_REQUIRED: "false",
   },
   0,
+);
+
+expectShell(
+  "App aggregate requires AgentLens and mobile success on merge_group",
+  appScript,
+  {
+    EVENT_NAME: "merge_group",
+    AGENTLENS_RESULT: "success",
+    MOBILE_RESULT: "success",
+    CLASSIFIER_RESULT: "skipped",
+    MERGE_GROUP_LANES: "success",
+    MACOS_REQUIRED: "",
+    MOBILE_REQUIRED: "",
+  },
+  0,
+);
+
+expectShell(
+  "App aggregate rejects skipped AgentLens on merge_group",
+  appScript,
+  {
+    EVENT_NAME: "merge_group",
+    AGENTLENS_RESULT: "skipped",
+    MOBILE_RESULT: "success",
+    CLASSIFIER_RESULT: "skipped",
+    MERGE_GROUP_LANES: "success",
+    MACOS_REQUIRED: "",
+    MOBILE_REQUIRED: "",
+  },
+  1,
 );
 
 for (const prerequisite of ["AGENTLENS_RESULT", "MOBILE_RESULT"]) {
@@ -403,9 +444,11 @@ for (const prerequisite of ["AGENTLENS_RESULT", "MOBILE_RESULT"]) {
       `App aggregate rejects ${resultName} ${prerequisite}`,
       appScript,
       {
+        EVENT_NAME: "push",
         AGENTLENS_RESULT: "success",
         MOBILE_RESULT: "success",
         CLASSIFIER_RESULT: "success",
+        MERGE_GROUP_LANES: "skipped",
         MACOS_REQUIRED: "true",
         MOBILE_REQUIRED: "true",
         [prerequisite]: result,
@@ -421,6 +464,7 @@ const rafStep = appBuildSteps.get("macOS rAF pause prerequisite (P-PERF-3)");
 const buildStep = appBuildSteps.get("Build AgentLens app for real-process CPU gate");
 const realGateStep = appBuildSteps.get("Enforce real macOS idle/occluded CPU budget (P-PERF-3)");
 const evidenceStep = appBuildSteps.get("Upload macOS idle/occlusion CPU evidence");
+const verdictStep = appBuildSteps.get("Fail on CPU budget regression (not VirtualMac helper infra)");
 const appTestStep = appBuildSteps.get("Build + run bounded AgentLens app smoke tests");
 
 check("P-PERF-3 runs the deterministic rAF test before building the real OpenBurnBar app", () => {
@@ -442,9 +486,20 @@ check("P-PERF-3 invokes only the real-process gate output sink and cannot contin
     stepRun(realGateStep).trim().replace(/\s+/gu, " "),
     'node scripts/ci/macos-idle-occlusion-gate.mjs --output "$RUNNER_TEMP/macos-idle-occlusion-evidence/result.json"',
   );
-  for (const step of [rafStep, buildStep, realGateStep]) {
+  assert.equal(optionalStepField(realGateStep, "continue-on-error"), "true");
+  assert.ok(verdictStep, "missing P-PERF-3 CI verdict step");
+  assert.match(
+    stepRun(verdictStep),
+    /macos-idle-occlusion-gate-ci-verdict\.mjs/u,
+  );
+  assert.equal(optionalStepField(verdictStep, "continue-on-error"), undefined);
+  for (const step of [rafStep, buildStep]) {
     assert.equal(optionalStepField(step, "continue-on-error"), undefined);
   }
+  assert.ok(
+    appBuildJob.indexOf("Fail on CPU budget regression (not VirtualMac helper infra)")
+      < appBuildJob.indexOf("Build + run bounded AgentLens app smoke tests"),
+  );
 });
 
 check("P-PERF-3 always uploads required evidence and fails when evidence is absent", () => {
@@ -712,12 +767,12 @@ check("desired main branch protection keeps immutable security checks beside the
   assert.equal(protection.required_pull_request_reviews.dismiss_stale_reviews, true);
   assert.equal(protection.required_pull_request_reviews.require_last_push_approval, true);
   assert.ok(
-    !gate.required_contexts.includes("App build + test (AgentLens)"),
-    "merge_group full set must not wait on post-merge AgentLens",
+    gate.required_contexts.includes("App build + test (AgentLens)"),
+    "merge_group full set must wait on Mac/iOS product compile-or-test",
   );
   assert.ok(
     !gate.required_contexts.includes("Mobile build + unit test"),
-    "merge_group full set must not wait on post-merge mobile",
+    "mobile compile-or-test is aggregated into App build + test (AgentLens)",
   );
   assert.ok(
     gate.required_contexts.includes("Domain Core PR Gate"),
@@ -731,7 +786,6 @@ check("desired main branch protection keeps immutable security checks beside the
   // wall when rust=true (~60m with Apple app spool); keep it on merge_group /
   // classic BP, not the 45m PR umbrella.
   for (const slowWall of [
-    "App build + test (AgentLens)",
     "Mobile build + unit test",
     "Daemon PR Gate",
     "Android PR Gate",
@@ -743,6 +797,10 @@ check("desired main branch protection keeps immutable security checks beside the
       `fast gate must not require slow wall: ${slowWall}`,
     );
   }
+  assert.ok(
+    !fastGate.required_contexts.includes("App build + test (AgentLens)"),
+    "fast PR eligibility must not wait on AgentLens macos-26 compile",
+  );
   assert.ok(
     fastGate.required_contexts.includes("Domain Core Trusted Deletion Guard"),
     "fast gate must keep the always-on trusted deletion guard",
@@ -782,9 +840,20 @@ check("App and Headless AgentLens builds are post-merge/nightly, not PR walls", 
   const classify = workflowJob(appWorkflow, "classify");
   const appBuild = workflowJob(appWorkflow, "app-build-test");
   const mobile = workflowJob(appWorkflow, "mobile-build-gate");
+  const mergeGroupLanes = workflowJob(appWorkflow, "merge-group-product-lanes");
+  assert.match(appOn, /^  merge_group:\s*$/mu);
   assert.match(jobField(classify, "if"), /github\.event_name != 'merge_group'/u);
-  assert.match(jobField(appBuild, "if"), /github\.event_name != 'merge_group'/u);
-  assert.match(jobField(mobile, "if"), /github\.event_name != 'merge_group'/u);
+  assert.match(jobField(mergeGroupLanes, "if"), /github\.event_name == 'merge_group'/u);
+  assert.match(jobField(appBuild, "if"), /github\.event_name == 'merge_group'/u);
+  assert.match(jobField(mobile, "if"), /github\.event_name == 'merge_group'/u);
+  assert.match(
+    jobField(appBuild, "if"),
+    /needs\.merge-group-product-lanes\.result == 'success'/u,
+  );
+  assert.match(
+    jobField(mobile, "if"),
+    /needs\.merge-group-product-lanes\.result == 'success'/u,
+  );
 
   assert.match(
     appWorkflow,

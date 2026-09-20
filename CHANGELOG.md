@@ -8,6 +8,158 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Muse Charts (this morning missing)** — `~/.local/share/muse/sessions` on
+  Alberto's machine is ~4k `session.jsonl` / ~11GB. The parser walked
+  oldest-first and charged the shared 256MB refresh budget *before* the
+  idle cache, so today's 13MB never got admitted (August/early-September
+  ate the pass). Discovery now skips `tool-outputs`, reads newest
+  YYYY/MM/DD first, and serves cache hits without consuming the budget.
+  Framed `children[].record_json` envelopes unwrap; Spark 1.3 / 1.3
+  contributor are catalog-priced like 1.2.
+- **Antigravity Charts (68B / dual model)** — the usage parser no longer
+  multiplies growing turn context (and then folds cache reads back into
+  `inputTokens`, so `billedTotalTokens` counted them twice). Unique user /
+  system / tool / assistant text is counted once; conversation-history
+  is the largest snapshot once; CHECKPOINT and VIEW_FILE of the session's
+  own `transcript.jsonl` are skipped. Model identity now takes the last
+  `Model Selection` change or `agy --model` id, defaults to Gemini 3.8
+  Flash (High) instead of hardcoded Opus, and parsed session IDs are
+  deleted before insert so a fallback→Gemini flip cannot leave a ghost
+  Opus row next to the real Flash row. Cache schema bumped so idle
+  totals cannot keep the inflated identity.
+- **Console profile sync** — `rebuildUsageRollups` no longer inherits the
+  gen2 60s / 256MiB defaults. Production at 2026-09-19 10:10 UTC killed
+  Alberto's first-sync with "Memory limit of 256 MiB exceeded with 258 MiB
+  used" (and an earlier 60s Cloud Run timeout), which is why Profile sat on
+  "Syncing" with dashed lifetime stats while the heatmap still had days.
+  The callable and the `rollupUserRebuild` Cloud Task now share a 540s / 1GiB
+  envelope; the console client waits the same 540s instead of the SDK's 70s
+  default; the profile paints any existing rollup *before* that wait and
+  surfaces circuit / in-flight / cooldown / OOM instead of swallowing them.
+- **Console profile sync (providers)** — the usage-event parser required a
+  13-provider lowercase allowlist, but uploaders write display names
+  ("Claude Code") plus the canonical `providerID`, across a 37-provider
+  catalog. The rescan silently parsed 0 of 91,682 docs and a "successful"
+  rebuild wiped the account's counters to zero. The parser now resolves
+  `providerID`-first with display-name normalization over the full catalog,
+  and the rebuild refuses to wipe when history exists but nothing parses
+  (`rollup.rescan_zero_parsed`, counters left intact, breaker advances).
+  Also created the documented `rollup-user-rebuilds` Cloud Tasks queue —
+  only a camelCase lookalike existed, so every 5-minute scheduler tick
+  failed with `5 NOT_FOUND` and the background worker path was dead.
+- **Console profile glow-up** — the heatmap hover card portals out of the
+  scroll container (it used to clip on every side) with viewport-aware
+  placement; breakdowns render in fixed per-provider brand hues mirrored
+  from native with display names ("GPT 5.6 Sol", "Claude Code") instead of
+  raw slugs; wide screens get a centered 12-column composition with a
+  weekday burn-rhythm strip and an all-time records band (busiest provider,
+  loyal model, biggest day, longest streak, first burn, burn rate).
+- **Home spend curve** — the 24h chart (and the burn-rail sparkline) no longer
+  dump a session's lifetime total onto `endTime` / `startTime`. Long-running
+  Antigravity and Claude Code rows are prorated to the overlap with the window
+  and spread across the buckets they actually cover, so a quiet day no longer
+  grows two mountains at the moments BurnBar last read the log.
+- **AI Inbox analyst** — a dead model pin (missing credentials, unknown
+  provider, disabled row, egress-blocked route) is skipped before the
+  router scores the catalog, then the tick walks every other live route
+  including local CLI providers such as Codex. "Analyst could not run"
+  is reserved for when nothing configured can go.
+
+### Changed
+- **Quiet iPhone chrome** — compact OpenBurnBar uses a grouped/paper canvas
+  (Aurora mesh is a Settings opt-in). Inbox is one title + ranked list;
+  Agents shows the runtime rail, Ask to Mirror, pinned My Mac, then threads;
+  Quota is the tightest remaining figure plus provider rings; You is an inset
+  grouped Settings list.
+- **Optical Liquid Glass** — iPhone chrome uses system `glassEffect` /
+  `GlassEffectContainer` / `.glass` · `.glassProminent` (iOS 26). Material
+  plates, white strokes, and sheen fills no longer sit under glass. The tray
+  is one volumetric interactive capsule; consent is a system glass sheet;
+  iPhone skips the cube launch splash so first-run can sample the real canvas.
+  Halt stays opaque error; the Agents composer stays glass (not interactive,
+  so the text field can take taps).
+- **No kernel on the mobile shell** — Inbox, Agents, Quota, You, and the
+  iPad desk never mount the WebGL kernel or provider swarm. First-launch
+  no longer seeds Website Background on. Existing installs migrate off
+  once. Kernels remain in Living Themes and wallpaper export.
+- **ChatGPT-quiet Liquid Glass** — the compact tray is one `LiquidGlassGroup`
+  capsule with monochrome SF Symbols. You is an inset grouped list. iPad
+  columns use hairline fills, not wells. Watch chrome is clear glass over
+  a black letterbox; HEVC stays unglassed. Live Activity uses system
+  materials and a red Halt. Halt is always opaque `MobileTheme.error`.
+
+### Removed
+- **Mission floating action orb** — the dashboard-corner mission gauge FAB
+  (macOS `MissionFAB` + shared `MissionFABGauge`) and the Android
+  `MissionActivityOverlay` / `SkillRunPiPActivity` floating orb are gone.
+  Mission Console still opens from the Missions lane "File New Mission"
+  button; Android mission detail stays in Insights and the
+  `burnbar://mission/{id}` deep link. ⌘⇧M is free again.
+
+### Added
+- **Agent Watch Live Activity push token path** — start requests ActivityKit
+  `pushType: .token` when the running binary has `aps-environment`, then
+  observes `pushTokenUpdates`. The probe reads the public
+  `embedded.mobileprovision` (or a bundled entitlements plist). It does not
+  call `SecTaskCreateFromSelf` (absent from the public iPhoneOS 27 SDK).
+  Named fallback `APSEnvironmentEntitlementOutcome.undetectable` (missing
+  profile, unreadable CMS, or unresolved `$(APS_ENVIRONMENT)`) keeps
+  `pushType` nil and the lock-screen copy “Updates while OpenBurnBar is
+  open”. Approve / Deny require device unlock; Halt stays always-allowed.
+  iOS 26 intents declare `supportedModes: .background` (replacing
+  deprecated `openAppWhenRun`) and stay out of Shortcuts. Approve/Deny
+  bind to the pending `approvalId`: they wait for iroh and that request
+  frame after a kill, and drop if a different approval arrives. Halt
+  still waits for the iroh receiver. All three still hit
+  `AgentWatchOverlaySingleton` `approve` / `reject` / `panicHalt`.
+  Cloud Functions now fan out ActivityKit `liveactivity` APNs from Computer
+  Use session/action headers to devices that stored
+  `liveActivityPushToken` / `liveActivitySessionId`. Payload is status
+  copy only (no pixels, secrets, or iroh `approvalId`). Delivery still
+  needs the existing APNs `.p8` secrets plus
+  `APNS_LIVEACTIVITY_TOPIC`; see `docs/runbooks/live-activity-apns.md`.
+  VAL-MOB stays open.
+
+- **Watch unify** — Agent Watch overlay now shows the Mac desktop. Computer
+  Use starts `AgentWatchHUDSession` (`control.surface.frame`) unless Mercury
+  is already encoding; iOS admits both desktop classes on `media.control` and
+  fans pixels into the overlay. Trust downgrade is a signed `set_trust_mode`
+  frame (elevation still dropped). Three-finger panic works on Mercury too.
+  Phone files use iroh-blobs (flag defaults on). Freeze-frame shares into
+  Hermes. Remote Unlock stays human-only.
+
+- **iPhone Agents column** (`docs/mobile-parity/iphone-hero-ia.md`) — compact
+  Hermes Square is identity + thread + switcher over the existing Hermes
+  relay and Firestore missions. Hermes / Pi stay on-device; Mac-backed
+  CLIs ride the relay (Mac must be awake). Overflow reaches The Wand,
+  missions, resume/handoff, capability grants, and rollback without a
+  second Agents root. `burnbar://hermes` / `chat` / `assistants` / `pi`
+  / `mission/{id}` select Agents. Grokd / Local D box stays Mac-only
+  until sealed `HermesRelayOperation.grokdLocalBox` (Developer ID).
+
+- iPad Watch inspector two-pointer contract: iPadOS hover/magnetism stays on
+  Halt, approvals, and Ask to Mirror; `.hoverEffectDisabled` applies only to a
+  live HEVC pane. The Mac arrow draws on that canvas only when a cursor sample
+  exists. Space / double-click enter drive mode, Esc leaves (does not Halt).
+  Inspector Mercury uses an honest field instead of a teaser wallpaper.
+
+- iPad command desk in `OpenBurnBarMobile`: Inbox-first `NavigationSplitView`
+  (Inbox / Agents / Quota / You each keep a destination sidebar, decision rail,
+  and canvas), app-wide `.searchable` on the split, pointer Inbox actions
+  (Approve / Open thread / Archive / Snooze / Copy link), hardware-keyboard
+  View menu (⌘1–⌘4), Halt (⌘.) / Panic Halt (⌃⌥⌘.), a persistent Watch
+  inspector plus Stage Manager `WindowGroup(id: "agent-watch")`, and a desk-scene
+  gate so extra windows cannot clone a second Inbox. `ShowInsightsTab` selects
+  Insights. You stays labeled You, not Store.
+
+### Fixed
+- Direct-download macOS updates no longer offer a same-build repair tag as an
+  upgrade. The live feed advertises `1.0.40+repair.36` at build 82 while the
+  installed app reports Apple marketing `1.0.40` at build 82; the checker used
+  to treat the `+repair.N` string as newer, download the DMG, then refuse the
+  swap. Offer and install now both require a strictly greater
+  `CFBundleVersion`. `openburnbar app update` matches that rule and accepts a
+  `+repair.N` feed tag when the mounted marketing version is the prefix.
 - Prime Agent gateway proxy resolves the auth token headlessly
   (`scripts/prime-agent-openburnbar-proxy.mjs`) — non-interactive shells (SSH,
   CI, subagents) fell through to the `openburnbar-local` placeholder and got 401s
@@ -47,6 +199,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parses SQLite timestamps without a shared `DateFormatter`.
 
 ### Added
+- **Mercury cellular ladder + stale-GOP abort** (`docs/HERMES_MEDIA_TRANSPORT.md`)
+  — screen-share bitrate rungs are now 250 kbps / 500 kbps / 1 / 2 / 4 / 8 Mbps.
+  Phone cellular or expensive paths fast-drop to 500 kbps; RTT ≥ 200 ms or
+  loss ≥ 4% can walk to 250 kbps. Receivers drop frames from an older GOP
+  once a newer GOP's keyframe arrives; senders stamp `endOfGroup` on the last
+  frame of the previous group. Live video stays on the muxed `media.control`
+  stream (HEVC with H.264 fallback). A true per-GOP QUIC split is not live —
+  it would break the phone-dialed control stream and MediaFrame v1/v2
+  dual-stack. Remaining HOL: stale GOP bytes already on the ordered stream
+  still delay later frames; abort only skips decode.
+
+- **Keep-awake + pairing liveness** — while a live Mercury mirror, Computer
+  Use session, or iroh `media.control` stream is up, the Mac takes
+  `IOPMAssertionTypePreventUserIdleSystemSleep` (display may sleep) and
+  releases it when those sessions end. A signed phone toggle rides the
+  existing iroh presence heartbeat (trusted-device Ed25519), not daemon
+  Unix-socket RPC. Idle pairing stays on the 3-minute freshness bound;
+  a live remote session extends verify to 30 minutes so sleep cannot
+  expire pairing mid-session. Lid-close `pmset disablesleep` is not
+  enabled. You (iPhone) and the iPad You rail expose a signed sticky
+  toggle that rides the next `media.control` presence heartbeat
+  (trusted-device Ed25519, flushed immediately when the stream is
+  live). Mac presence now distinguishes `openburnbar.keep_awake.held`
+  from `openburnbar.keep_awake.phone_toggle` so a live session does
+  not look like the sticky switch. Docs: `docs/HERMES_MEDIA_TRANSPORT.md`.
+
+- **iPhone Inbox-first shell** (`docs/mobile-parity/iphone-hero-ia.md`) — compact
+  tray is Inbox (launch) · Agents · Quota · You. AI Inbox is the launch tab
+  (`burnbar://inbox` / `burnbar://inbox/{id}`). Quota reuses the Burn stores
+  (`burnbar://burn`, `burnbar://quota`). Watch stays the
+  `AgentWatchOverlaySingleton` overlay. Insights deep links now select the
+  Insights destination from You overflow. Plan copy:
+  `plans/2026-08-20-iphone-remote-continuation-master-plan.md`.
+
 - **Monthly Recap** (`docs/RECAP.md`) — a new destination that reads a calendar
   month of AI usage back as an editorial deck of cards: favourite model and
   model+harness pairing, weekday and late-night habits, streaks, project focus,

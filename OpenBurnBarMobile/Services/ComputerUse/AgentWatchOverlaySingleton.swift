@@ -53,8 +53,13 @@ final class AgentWatchOverlaySingleton: ObservableObject {
     /// Last error surfaced to the user (e.g. signed-out / no relay).
     @Published private(set) var connectionMessage: String?
 
+    /// Frozen Watch/Mercury frames waiting to go into the Hermes composer.
+    @Published private(set) var pendingHermesAttachments: [HermesAttachment] = []
+
     private var currentUID: String?
     private var currentConnectionID: String?
+    private var pendingLiveActivityCommands: [AgentWatchLiveActivityCommand] = []
+    private var isFlushingLiveActivityCommands = false
     private var cancellables: Set<AnyCancellable> = []
     private var pairingKeyProvider: any IrohPairingPublicKeyProviding
     private var dialTask: Task<Void, Never>?
@@ -122,6 +127,34 @@ final class AgentWatchOverlaySingleton: ObservableObject {
         }
     }
 
+    /// Fan-in from Mercury `media.screen.video` and Watch HUD
+    /// `control.surface.frame`. One decode path into the overlay.
+    func ingestDecodedDesktopFrame(_ frame: MediaFrame) {
+        if let receiver = coordinator.receiver {
+            receiver.ingestSurfaceFrame(frame)
+        } else {
+            state.ingestSurfaceFrame(frame)
+        }
+    }
+
+    @discardableResult
+    func freezeCurrentFrameForHermes() -> Bool {
+        guard let image = videoCoordinator.freezeFrameImage() else { return false }
+        do {
+            let attachment = try HermesAttachmentLoader.importImage(image)
+            pendingHermesAttachments.append(attachment)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func takePendingHermesAttachments() -> [HermesAttachment] {
+        let attachments = pendingHermesAttachments
+        pendingHermesAttachments = []
+        return attachments
+    }
+
     /// Phase 14 — returns the live `PhoneControlSender` if the
     /// Computer Use control stream is paired and signed in. Used by the
     /// System Permission grant sheet to dispatch signed
@@ -160,6 +193,7 @@ final class AgentWatchOverlaySingleton: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] phase in
                 self?.phase = phase
+                Task { await self?.flushPendingLiveActivityCommands() }
             }
             .store(in: &cancellables)
     }
@@ -183,6 +217,7 @@ final class AgentWatchOverlaySingleton: ObservableObject {
                 if sessionId == nil {
                     self.audioSession.deactivate()
                     self.pipController.stop()
+                    self.pendingLiveActivityCommands.removeAll()
                     if #available(iOS 16.1, *) {
                         AgentWatchLiveActivityManager.shared.end()
                     }
@@ -205,7 +240,10 @@ final class AgentWatchOverlaySingleton: ObservableObject {
 
         state.$pendingApproval
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.refreshLiveActivity() }
+            .sink { [weak self] _ in
+                self?.refreshLiveActivity()
+                Task { await self?.flushPendingLiveActivityCommands() }
+            }
             .store(in: &cancellables)
     }
 
@@ -232,7 +270,8 @@ final class AgentWatchOverlaySingleton: ObservableObject {
                 lastAction: lastAction,
                 actionsCount: state.actionsExecuted,
                 approvalPending: state.pendingApproval != nil,
-                elapsed: Date().timeIntervalSince(startedAt)
+                elapsed: Date().timeIntervalSince(startedAt),
+                pendingApprovalId: state.pendingApproval?.approvalId
             )
         }
     }
@@ -244,16 +283,66 @@ final class AgentWatchOverlaySingleton: ObservableObject {
     }
 
     private func handleLiveActivityCommand(_ command: AgentWatchLiveActivityCommand) async {
-        guard let receiver = coordinator.receiver else { return }
+        pendingLiveActivityCommands.append(command)
+        await flushPendingLiveActivityCommands()
+    }
+
+    /// Halt waits for iroh. Approve/Deny wait for the same `approvalId`;
+    /// a different request is dropped so it cannot attach later.
+    private func flushPendingLiveActivityCommands() async {
+        guard !isFlushingLiveActivityCommands else { return }
+        isFlushingLiveActivityCommands = true
+        defer { isFlushingLiveActivityCommands = false }
+
+        var remaining: [AgentWatchLiveActivityCommand] = []
+        for command in pendingLiveActivityCommands {
+            let effect = AgentWatchLiveActivityCommandRouting.effect(
+                for: command,
+                hasReceiver: coordinator.receiver != nil,
+                pendingApprovalId: state.pendingApproval?.approvalId
+            )
+            switch effect {
+            case .approve, .reject:
+                // Re-check against the live receiver + request: `effect` was
+                // resolved from a snapshot, and the decision must not fire
+                // against an approval that moved on since.
+                if let receiver = coordinator.receiver,
+                   let request = state.pendingApproval,
+                   matchesIssuedApproval(command, requestId: request.approvalId)
+                {
+                    if effect == .approve {
+                        try? await receiver.approve(request)
+                    } else {
+                        try? await receiver.reject(request, halt: false)
+                    }
+                } else {
+                    remaining.append(command)
+                }
+            case .halt:
+                if let receiver = coordinator.receiver {
+                    try? await receiver.panicHalt()
+                    pendingLiveActivityCommands = []
+                    return
+                }
+                remaining.append(command)
+            case .dropMissingReceiver, .waitingForApproval, .dropMismatchedApproval, .dropMissingApproval:
+                if AgentWatchLiveActivityCommandRouting.retainsQueuedCommand(effect) {
+                    remaining.append(command)
+                }
+            }
+        }
+        pendingLiveActivityCommands = remaining
+    }
+
+    private func matchesIssuedApproval(
+        _ command: AgentWatchLiveActivityCommand,
+        requestId: String
+    ) -> Bool {
         switch command {
-        case .approve:
-            guard let request = state.pendingApproval else { return }
-            try? await receiver.approve(request)
-        case .reject:
-            guard let request = state.pendingApproval else { return }
-            try? await receiver.reject(request, halt: false)
+        case .approve(let approvalId), .reject(let approvalId):
+            return approvalId == requestId
         case .halt:
-            try? await receiver.panicHalt()
+            return false
         }
     }
 }

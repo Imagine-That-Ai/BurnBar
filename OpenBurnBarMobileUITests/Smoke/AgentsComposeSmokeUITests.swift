@@ -15,8 +15,19 @@ final class AgentsComposeSmokeUITests: SmokeUITestCase {
         let app = launchSeededApp()
 
         XCTAssertTrue(
-            screenMarker("pulse", in: app).waitForExistence(timeout: 30),
-            "Pulse dashboard did not render.\n\(app.debugDescription)"
+            screenMarker("inbox", in: app).waitForExistence(timeout: 30),
+            "Inbox did not render.\n\(app.debugDescription)"
+        )
+        selectAuroraTab("you", in: app)
+        let pulseRow = app.buttons["you.pulseRow"].firstMatch
+        XCTAssertTrue(
+            pulseRow.waitForExistence(timeout: 20),
+            "Pulse overflow row not found on You.\n\(app.debugDescription)"
+        )
+        pulseRow.tap()
+        XCTAssertTrue(
+            screenMarker("pulse", in: app).waitForExistence(timeout: 15),
+            "Pulse dashboard did not render from You overflow.\n\(app.debugDescription)"
         )
 
         let input = app.textFields["hermes.quickAsk.input"].firstMatch

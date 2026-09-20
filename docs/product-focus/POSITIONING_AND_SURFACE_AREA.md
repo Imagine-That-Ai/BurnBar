@@ -112,7 +112,7 @@ Plus: `ControlKind` (`AgentLens/Models/ControlDeck/ControlKind.swift:76-88`) —
 |---|---|---|
 | Multi-backend chat workspace | `AgentLens/Views/Chat/` (12 backends, 4 presentations) | Load-bearing for other surfaces, but it is a second product; one presentation, not four, and never in first run. |
 | Insights canvases | `AgentLens/Views/Insights/InsightsWorkspaceView.swift` + 9 siblings | Fifth "AI explains your usage" surface; collapses into one deterministic strip on Spend. |
-| Missions lane + console + FAB | `MissionsLaneView.swift`, `MissionConsoleWindowController.swift`, `MissionFAB.swift` | Mission Control's own source comment calls it "experimental infrastructure built ahead of user validation." |
+| Missions lane + console | `MissionsLaneView.swift`, `MissionConsoleWindowController.swift` | Mission Control's own source comment calls it "experimental infrastructure built ahead of user validation." |
 | Projects + project memory | `ProjectsView.swift`, `ProjectsView+Memory.swift`, `ProjectMemory*Primitives.swift` | A sixth AI-explains-your-usage surface wearing an editorial hat. |
 | Memory review inbox | `AgentLens/Views/Memory/MemoryReviewInboxView.swift` | Owns ⌘8 today for a governance queue that only matters once chat is used. |
 | Database workspace (story / system modes) | `DatabaseWorkspaceView.swift` + 5 extensions | A SQL browser inside a menu-bar meter is the clearest example of off-mission surface area; keep atlas retrieval inside Sessions. |

@@ -49,6 +49,17 @@ Live screen-share transport is dual-stack and intentionally conservative:
 - Video datagrams, temporal layers, FEC, and ROI hints stay behind the evidence
   gates in
   `docs/runbooks/mercury-streaming-evidence-gates.md`.
+- Screen-share bitrate rungs are 250 kbps / 500 kbps / 1 / 2 / 4 / 8 Mbps.
+  Phone NWPath or ConnectivityManager cellular/expensive/constrained paths
+  fast-drop to 500 kbps; RTT ≥ 200 ms or loss ≥ 4% walks the rest of the
+  ladder, including the 250 kbps floor. HEVC stays first with H.264 fallback.
+- Live video does **not** leave `media.control`. Docs previously claimed
+  stream-per-GOP QUIC. Productized instead: GOP-end flags on the sender and
+  stale-GOP abort on the receiver when a newer GOP's keyframe arrives. A true
+  per-GOP/per-frame QUIC split would break the existing phone-dialed control
+  stream plus MediaFrame v1/v2 dual-stack without a new accept path on iOS and
+  Android. Remaining HOL risk: stale GOP bytes already on the ordered stream
+  still delay later frames; abort only skips decode.
 
 Live status tracked in `docs/runbooks/media-rollout-status.md`.
 
@@ -84,6 +95,29 @@ entry. The lock-screen backend and credential lane are documented in
 [`REMOTE_UNLOCK.md`](REMOTE_UNLOCK.md). Agents still halt at
 lock/loginwindow/SecurityAgent and never receive remote-unlock frames.
 
+## Keep-awake and pairing liveness
+
+Far-from-desk hosting needs the Mac to stay a host. While a live Mercury
+mirror, Computer Use session, or iroh `media.control` stream is up,
+`MacKeepAwakeController` takes `IOPMAssertionTypePreventUserIdleSystemSleep`
+(display may sleep). The assertion is released when every session reason
+drops. A phone can also send a signed keep-awake toggle on the existing
+presence heartbeat (`openburnbar.keep_awake.toggle.v1:…`, trusted-device
+Ed25519) — that path is iroh/HPKE v3 control, not daemon Unix-socket RPC.
+
+Idle pairing freshness stays **3 minutes**
+(`IrohPairingFreshness.maximumAgeSeconds`). While a remote session is
+already live, verify uses a 30-minute reconnect window so a stalled
+republish cannot expire pairing mid-session. Lid-close `pmset disablesleep`
+is an explicit admin-gated advanced option and is **not** the default.
+The phone reads honest reachability from Mac presence capabilities
+(`openburnbar.keep_awake.held` vs `asleep`, plus
+`openburnbar.keep_awake.phone_toggle` when the sticky You switch is
+on) via `HostReachabilityClient`. The You / iPad You control signs
+the toggle with the existing phone-control Ed25519 key and flushes
+the live `media.control` heartbeat so it does not wait 60 seconds.
+Lock, loginwindow, and panic-on-sleep still win.
+
 ## Stream classes
 
 All media rides the same iroh QUIC mesh and the same `openburnbar/1` ALPN as Hermes chat + Pi telemetry. Stream classes are negotiated **in band** via the first frame on each new bi-stream rather than via a new ALPN, so existing peers stay interoperable.
@@ -92,8 +126,8 @@ All media rides the same iroh QUIC mesh and the same `openburnbar/1` ALPN as Her
 |---|---|---|---|---|
 | `media.blob.advertise` | 1 per attachment, on existing Hermes control stream | Sender → receiver | Reliable, ordered (JSON envelope) | 1 |
 | `media.blob.fetch` | 1 per attachment, dedicated stream | Receiver dials sender | Reliable, ordered (iroh-blobs) | 1 |
-| `media.screen.video` | 1 per GOP (~60 frames at 30 fps) | Mac → iOS | Reliable, ordered, stream-per-GOP for head-of-line isolation | 3 |
-| `media.video.{out,in}` | 1 per direction per GOP | Bidirectional | Reliable, ordered, stream-per-GOP | 5 |
+| `media.screen.video` | Logical class, muxed on `media.control` | Mac → iOS/Android | Reliable, ordered GOP-tagged frames on the single control stream. Receiver aborts stale GOPs. Remaining HOL: a large in-flight GOP still occupies the ordered QUIC stream until its bytes arrive. | 3 |
+| `media.video.{out,in}` | Logical class, muxed on `media.control` | Bidirectional | Same mux + GOP-abort as screen video. Per-GOP QUIC split is not live — it would need Mac-initiated accept loops on both phones and a dual-path for v1 peers. | 5 |
 | `media.audio.{out,in}` | none — datagrams | Bidirectional | QUIC datagrams (RTP-style) | 4 |
 | `media.control` | 1 per session | Bidirectional | Reliable — RTCP-style sender reports, BWE, mute, terminate, mirror request/ack, presence heartbeat | 3 |
 | `media.mirror.request` | 1 per request | iOS/Android → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |

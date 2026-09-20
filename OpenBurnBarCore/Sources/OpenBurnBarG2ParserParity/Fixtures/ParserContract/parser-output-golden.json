@@ -8,20 +8,20 @@
       "usageCount" : 1,
       "usages" : [
         {
-          "cacheCreationTokens" : 21,
+          "cacheCreationTokens" : 0,
           "cacheReadTokens" : 0,
-          "costNanoUSD" : 686250,
+          "costNanoUSD" : 76500,
           "estimatorVersion" : "char-ratio-v1",
-          "inputTokens" : 36,
-          "model" : "Claude Opus 4.6 (Thinking)",
-          "outputTokens" : 15,
+          "inputTokens" : 21,
+          "model" : "Gemini 3.8 Flash (High)",
+          "outputTokens" : 22,
           "projectName" : "Antigravity",
           "provenanceConfidence" : "high_confidence_estimate",
           "provenanceMethod" : "heuristic_estimate",
           "provider" : "Antigravity",
           "reasoningTokens" : 0,
           "sessionId" : "antigravity-contract-1",
-          "totalTokens" : 72,
+          "totalTokens" : 43,
           "usageSource" : "provider_log"
         }
       ]

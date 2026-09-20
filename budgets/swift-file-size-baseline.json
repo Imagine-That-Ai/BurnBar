@@ -1,5 +1,142 @@
 {
-  "target": 2000,
-  "total": 0,
-  "files": []
+  "target": 1500,
+  "total": 34,
+  "files": [
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/LinuxComputerUseInputAdapter.swift",
+      "lines": 1930
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift",
+      "lines": 1914
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarProviderContracts.swift",
+      "lines": 1899
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift",
+      "lines": 1840
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/MissionControl/MissionControlStore.swift",
+      "lines": 1834
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore.swift",
+      "lines": 1834
+    },
+    {
+      "path": "AgentLens/Views/Popover/MenuBarPopoverView.swift",
+      "lines": 1831
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift",
+      "lines": 1825
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/InsightAnalysisEngine.swift",
+      "lines": 1775
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarAnthropicProviderExecutor.swift",
+      "lines": 1734
+    },
+    {
+      "path": "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonSocketClient.swift",
+      "lines": 1723
+    },
+    {
+      "path": "AgentLens/Views/Inbox/InboxView.swift",
+      "lines": 1718
+    },
+    {
+      "path": "AgentLens/Services/SettingsManager.swift",
+      "lines": 1707
+    },
+    {
+      "path": "AgentLens/Views/Dashboard/DashboardView.swift",
+      "lines": 1690
+    },
+    {
+      "path": "OpenBurnBarMobile/Models/ActivityStore.swift",
+      "lines": 1680
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift",
+      "lines": 1670
+    },
+    {
+      "path": "AgentLens/Services/SmartHub/PixelClockController.swift",
+      "lines": 1667
+    },
+    {
+      "path": "AgentLens/Views/Settings/ConnectionsSettingsView.swift",
+      "lines": 1660
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Store/CloudStoreView.swift",
+      "lines": 1641
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarHTTPGatewayServerLinux.swift",
+      "lines": 1627
+    },
+    {
+      "path": "AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift",
+      "lines": 1599
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Aurora/WallpaperGeneratorView.swift",
+      "lines": 1598
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/MercuryLinuxMediaSessionController.swift",
+      "lines": 1592
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarIndexedSearchService.swift",
+      "lines": 1586
+    },
+    {
+      "path": "AgentLens/Views/Dashboard/Components/BurnBarTopRail.swift",
+      "lines": 1569
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarConfigStore.swift",
+      "lines": 1566
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/BurnBarLinuxTextExpansionAdapter.swift",
+      "lines": 1556
+    },
+    {
+      "path": "AgentLens/Views/Dashboard/Components/DashboardQuickSwitchView.swift",
+      "lines": 1549
+    },
+    {
+      "path": "OpenBurnBarMobile/Services/PiService.swift",
+      "lines": 1538
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/OpenBurnBarMissionControlMissionsContracts.swift",
+      "lines": 1532
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/ComputerUseRunCoordinator.swift",
+      "lines": 1521
+    },
+    {
+      "path": "AgentLens/Views/Settings/CloudStoreSettingsView.swift",
+      "lines": 1509
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxDaemonCloudCredentialAuthority.swift",
+      "lines": 1509
+    },
+    {
+      "path": "AgentLens/Services/SmartHub/SmartHubBridgeController.swift",
+      "lines": 1501
+    }
+  ]
 }

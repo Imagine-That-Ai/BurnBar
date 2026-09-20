@@ -215,13 +215,3 @@ struct HermesCheeksShape: Shape {
         return path
     }
 }
-
-/// Combined silhouette (head + earcups + heart) for halo glow when on.
-struct HermesGlyphShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = HermesHeadShape().path(in: rect)
-        path.addPath(HermesEarcupsShape().path(in: rect))
-        path.addPath(HermesAntennaHeartShape(pulse: 0).path(in: rect))
-        return path
-    }
-}

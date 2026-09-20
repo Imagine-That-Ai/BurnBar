@@ -784,11 +784,4 @@ private fun BurnBarSignedInOverlays(state: BurnBarSignedInShellState, navigateTo
 
     val hermesService = rememberAccountScopedHermesService()
     com.openburnbar.ui.chartstudio.ChartStudioOverlay(hermes = hermesService)
-
-    com.openburnbar.ui.insights.MissionActivityOverlay(
-        modifier =
-        Modifier
-            .fillMaxSize()
-            .padding(bottom = overlayBottomInset),
-    )
 }

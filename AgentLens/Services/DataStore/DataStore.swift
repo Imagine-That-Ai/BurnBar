@@ -99,6 +99,10 @@ actor DataStoreActor {
         try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
     }
 
+    func fetchQuickTodayUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
+        try await usageStore.fetchQuickTodayUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
+    }
+
     func fetchUsageTotals(in dateRange: ClosedRange<Date>?) async throws -> UsageTotals {
         try await usageStore.fetchUsageTotals(in: dateRange)
     }

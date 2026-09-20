@@ -203,6 +203,7 @@ export function buildPopupViewModel(state: PopupLocalState): PopupViewModel {
   const permissionSheetNeedsCloudDisclosure =
     Boolean(selectedAgent?.cloud) && !snapshot?.trust.cloudScreenshotAcknowledged;
   const showPermissionSheet =
+    !state.permissionSheetDismissed &&
     Boolean(snapshot?.page) &&
     snapshot?.page?.permission !== 'unsupported' &&
     (permissionSheetNeedsSafari || permissionSheetNeedsSiteTrust || permissionSheetNeedsCloudDisclosure);

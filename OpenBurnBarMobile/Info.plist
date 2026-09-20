@@ -93,6 +93,8 @@
 	<string>OpenBurnBar uses speech recognition only while you hold the voice command control to turn your spoken command into text.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import XCTest
+import OpenBurnBarUI
 @testable import OpenBurnBar
 
 /// Covers the `LiquidGlassTransparency` preference mapping that every glass

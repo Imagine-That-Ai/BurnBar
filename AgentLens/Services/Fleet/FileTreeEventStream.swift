@@ -36,7 +36,9 @@ import CoreServices
 // Single fixed files (Claude's statusline snapshot) correctly stay on
 // `DispatchSource` — see `ClaudeStatuslineWatcher`.
 
-final class FileTreeEventStream {
+// reason: Lifecycle mutations are serialized by lifecycleLock. The callback reads only
+// immutable, Sendable properties, so owners can also stop the stream from deinit.
+final class FileTreeEventStream: @unchecked Sendable {
 
     /// Delivered with the changed paths, coalesced by the kernel.
     typealias Handler = @Sendable ([String]) -> Void
@@ -45,6 +47,7 @@ final class FileTreeEventStream {
     private let queue: DispatchQueue
     private let latency: CFTimeInterval
     private let handler: Handler
+    private let lifecycleLock = NSLock()
 
 #if canImport(CoreServices)
     private var stream: FSEventStreamRef?
@@ -72,6 +75,8 @@ final class FileTreeEventStream {
     /// rendering an agent as quiet.
     @discardableResult
     func start() -> Bool {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
 #if canImport(CoreServices)
         guard stream == nil else { return true }
         guard FileManager.default.fileExists(atPath: root.path) else { return false }
@@ -115,7 +120,11 @@ final class FileTreeEventStream {
         }
 
         FSEventStreamSetDispatchQueue(created, queue)
-        FSEventStreamStart(created)
+        guard FSEventStreamStart(created) else {
+            FSEventStreamInvalidate(created)
+            FSEventStreamRelease(created)
+            return false
+        }
         stream = created
         return true
 #else
@@ -131,6 +140,8 @@ final class FileTreeEventStream {
     func stop() { stopStream() }
 
     private func stopStream() {
+        lifecycleLock.lock()
+        defer { lifecycleLock.unlock() }
 #if canImport(CoreServices)
         guard let stream else { return }
         self.stream = nil

@@ -62,8 +62,8 @@ public final class WindsurfParser: LogParser, Sendable {
         )
     }
 
-    var lastSessionScanCount: Int { sessionScanCount.read() }
-    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    public var lastSessionScanCount: Int { sessionScanCount.read() }
+    public var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public let provider: AgentProvider = .windsurf
 

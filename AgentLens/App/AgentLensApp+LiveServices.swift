@@ -10,14 +10,34 @@ import SwiftUI
 extension OpenBurnBarApp {
     @MainActor
     func installCommandRouter() {
+        switch startupState {
+        case .loading:
+            installStartupCommandRouter()
+            return
+        case .ready(let context) where context.aggregator == nil:
+            // Buffer commands until the minimal UI dependency graph is complete.
+            // A Task.yield() cannot guarantee that another task has reached it.
+            installStartupCommandRouter()
+            startLiveServicesIfNeeded(context: context)
+            return
+        default:
+            break
+        }
         let router = AppCommandRouter.shared
         guard let context = startupState.runtimeContext else {
             router.openDashboard = { openStartupRecoveryWindow() }
+            router.openCharts = { openStartupRecoveryWindow() }
             router.openConversationSearch = { openStartupRecoveryWindow() }
             router.openChatPanel = { openStartupRecoveryWindow() }
             router.openSettings = { openStartupRecoveryWindow() }
+            router.routeDashboardDeepLink = { url in
+                guard navigationCoordinator.handleDeepLink(url) else { return false }
+                pendingStartupAction = { router.openDashboard?() }
+                openStartupRecoveryWindow()
+                return true
+            }
             router.makeMenuBarPopoverContent = { _ in
-                AnyView(EmptyView())
+                AnyView(StartupPopoverContent(state: $startupState))
             }
             return
         }
@@ -112,6 +132,24 @@ extension OpenBurnBarApp {
     }
 
     @MainActor
+    private func installStartupCommandRouter() {
+        let router = AppCommandRouter.shared
+        router.openDashboard = { pendingStartupAction = { router.openDashboard?() } }
+        router.openCharts = { pendingStartupAction = { router.openCharts?() } }
+        router.openConversationSearch = { pendingStartupAction = { router.openConversationSearch?() } }
+        router.openChatPanel = { pendingStartupAction = { router.openChatPanel?() } }
+        router.openSettings = { pendingStartupAction = { router.openSettings?() } }
+        router.routeDashboardDeepLink = { url in
+            guard navigationCoordinator.handleDeepLink(url) else { return false }
+            pendingStartupAction = { router.openDashboard?() }
+            return true
+        }
+        router.makeMenuBarPopoverContent = { _ in
+            AnyView(StartupPopoverContent(state: $startupState))
+        }
+    }
+
+    @MainActor
     private func startLiveServicesIfNeeded(context: OpenBurnBarRuntimeContext) {
         guard !OpenBurnBarApp.didStartLiveServices else { return }
         OpenBurnBarApp.didStartLiveServices = true
@@ -132,9 +170,6 @@ extension OpenBurnBarApp {
                     isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch
                 )
             StartupProfiler.event("live_services_start")
-            if shouldStartBackgroundServices {
-                startMemoryExtractionIfNeeded(context: context)
-            }
 
             let sync: CloudSyncService
             sync = StartupProfiler.interval("cloud_sync_init") {
@@ -154,23 +189,6 @@ extension OpenBurnBarApp {
             appDelegate.daemonManager = context.daemonManager
             AppCommandRouter.shared.linkCliUserIDProvider = { [weak accountManager = context.accountManager] in
                 accountManager?.userID
-            }
-
-            if shouldStartBackgroundServices {
-                StartupProfiler.interval("relay_services_start") {
-                    context.startRelayServices()
-                }
-                StartupProfiler.interval("smart_display_services_start") {
-                    context.startSmartDisplayServices()
-                }
-                StartupProfiler.interval("mercury_services_start") {
-                    context.startMercuryServices()
-                }
-                #if canImport(AppKit) && !DISTRIBUTION_MAS
-                StartupProfiler.interval("text_expansion_start") {
-                    context.textExpansionRuntimeController?.start()
-                }
-                #endif
             }
 
             let mirror: ICloudSessionMirrorService
@@ -200,7 +218,38 @@ extension OpenBurnBarApp {
             context.operatingLayer.aggregator = aggregator
             appDelegate.usageAggregator = aggregator
             context.operatingLayer.chatController = context.chatController
+            // Mount the first dashboard before optional service attachment.
+            // Yield between groups so AppKit can paint and accept input.
+            if !hasShownInitialDashboard {
+                hasShownInitialDashboard = true
+                StartupProfiler.interval("first_dashboard_open") {
+                    openDashboard(context: context)
+                }
+            }
+            // Publish the fully wired graph, then honor explicit navigation after
+            // the automatic first window so it cannot steal the requested focus.
+            await finishStartup()
+            StartupProfiler.event("first_ui_ready")
+            await Task.yield()
             if shouldStartBackgroundServices {
+                aggregator.startBackgroundMaintenance()
+                startMemoryExtractionIfNeeded(context: context)
+                StartupProfiler.interval("relay_services_start") {
+                    context.startRelayServices()
+                }
+                await Task.yield()
+                StartupProfiler.interval("smart_display_services_start") {
+                    context.startSmartDisplayServices()
+                }
+                StartupProfiler.interval("mercury_services_start") {
+                    context.startMercuryServices()
+                }
+                #if canImport(AppKit) && !DISTRIBUTION_MAS
+                StartupProfiler.interval("text_expansion_start") {
+                    context.textExpansionRuntimeController?.start()
+                }
+                #endif
+                await Task.yield()
                 StartupProfiler.interval("memory_watchdog_start") {
                     context.memoryFootprintWatchdog.start(aggregator: aggregator)
                 }
@@ -253,25 +302,6 @@ extension OpenBurnBarApp {
                     )
                 }
             }
-
-            if !hasShownInitialDashboard {
-                hasShownInitialDashboard = true
-                StartupProfiler.interval("first_dashboard_open") {
-                    windowManager.openDashboard(
-                        dataStore: context.dataStore,
-                        aggregator: aggregator,
-                        accountManager: context.accountManager,
-                        cloudSyncService: sync,
-                        iCloudSessionMirrorService: mirror,
-                        chatController: context.chatController,
-                        operatingLayer: context.operatingLayer,
-                        navigationCoordinator: navigationCoordinator,
-                        settingsManager: context.settingsManager,
-                        runtimeContext: context
-                    )
-                }
-            }
-            StartupProfiler.event("first_ui_ready")
 
             // The performance harness now has the real dashboard and backdrop
             // it came to measure. Do not contaminate that process-level sample
@@ -426,5 +456,31 @@ extension OpenBurnBarApp {
             settingsManager: context.settingsManager,
             runtimeContext: context
         )
+    }
+}
+
+private struct StartupPopoverContent: View {
+    @Binding var state: OpenBurnBarStartupState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text("OpenBurnBar")
+                .font(DesignSystem.Typography.headline)
+            switch state {
+            case .loading:
+                ProgressView("Opening your local library…")
+                    .controlSize(.small)
+                Text("You can keep working while it opens.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(.secondary)
+            case .ready:
+                Button("Open Dashboard") { AppCommandRouter.shared.openDashboard?() }
+            case .failed:
+                Text("Your library needs attention.")
+                Button("Review Recovery Options") { AppCommandRouter.shared.openDashboard?() }
+            }
+        }
+        .padding(DesignSystem.Spacing.xl)
+        .frame(width: 340, alignment: .leading)
     }
 }

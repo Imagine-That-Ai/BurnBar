@@ -1,17 +1,29 @@
 "use client";
 
 /**
- * /profile — the member's usage profile, modeled on the Codex/Cursor public
- * activity pages: identity header, lifetime stat row, a contribution heatmap
- * of daily token activity (Daily / Weekly / Cumulative), a token trend, and
- * honest "most used" breakdowns.
+ * /profile — the mineable usage explorer.
  *
- * Every number comes from users/{uid}/usage_rollups/all_time — the page
- * inherits the console's standing invariant: real data or an elegant zero,
- * never a mock.
+ * Was a static lifetime poster reading only `users/{uid}/usage_rollups/all_time`.
+ * Now every number, bar, day, and record is a drill-in: a sticky filter rail
+ * (window + custom dates + provider/model/harness/account/device facets +
+ * Tokens/Runs/Spend metric) drives the instant rollup path, and anything the
+ * rollup cannot answer comes from the owner-readable `usage` collection iOS
+ * already pages.
+ *
+ * URL is the source of truth — a cell, record, or combo row is shareable, and
+ * a hard reload restores the same mine. Rollup answers the scoreboard; events
+ * answer the inspector, the ledger, and bounded-range cross-filters. The 91k
+ * guard: event facets on an unbounded All window snap to 90d, once.
+ *
+ * Composition (each section owns its render; the page owns filter state):
+ * ProfileFilterRail / ProfileHeatmapSection / ProfileHourGrid /
+ * ProfileMixPanel / ProfileBreakdowns / ProfileRecords / ProfileSessionLedger
+ * / ProfileInspector + HeroStats / Rhythm / Trend / ProviderMix+Insights.
+ * Real data or an elegant zero, never a mock.
  */
 
 import * as React from "react";
+import { RefreshCw } from "lucide-react";
 
 import { useAuth } from "@/lib/useAuth";
 import { useProfileUsage } from "@/lib/profile/useProfileUsage";
@@ -23,33 +35,51 @@ import {
   peakDay,
   sumTokens,
   toDayKey,
+  weekdayRhythm,
 } from "@/lib/profile/activityStats";
 import {
-  ContributionHeatmap,
-  type HeatmapMode,
-} from "@/components/profile/ContributionHeatmap";
+  clearMineFilters,
+  effectiveRange,
+  emptyFilters,
+  needsEventPath,
+  parseProfileFilters,
+  serializeProfileFilters,
+  sliceDailyPoints,
+  snapWindowForEventFacets,
+  toggleFacetValue,
+  type ProfileFilters,
+} from "@/lib/profile/profileFilters";
 import {
-  ProportionBar,
-  Sparkline,
-  formatCompact,
-  formatUsd,
-} from "@/components/dashboard/cards/primitives";
-import { BrandLogo } from "@/components/BrandLogo";
+  hourWeekdayGrid,
+  rankShares,
+  tokenMix,
+} from "@/lib/profile/profileAggregates";
+import { useProfileEvents } from "@/lib/profile/useProfileEvents";
+import { ProfileFilterRail } from "@/components/profile/ProfileFilterRail";
+import { ProfileHeatmapSection } from "@/components/profile/ProfileHeatmapSection";
+import { ProfileHeroStats } from "@/components/profile/ProfileHeroStats";
+import { ProfileHourGrid } from "@/components/profile/ProfileHourGrid";
+import {
+  ProfileInsightsPanel,
+  ProfileProviderMix,
+} from "@/components/profile/ProfileInsights";
+import { ProfileMixPanel } from "@/components/profile/ProfileMixPanel";
+import { ProfileRhythmSection } from "@/components/profile/ProfileRhythmSection";
+import {
+  ProfileBreakdowns,
+  type BreakdownFacet,
+} from "@/components/profile/ProfileBreakdowns";
+import { ProfileRecords } from "@/components/profile/ProfileRecords";
+import { ProfileSessionLedger } from "@/components/profile/ProfileSessionLedger";
+import {
+  ProfileInspector,
+  type InspectorSelection,
+} from "@/components/profile/ProfileInspector";
+import { ProfileTrendSection } from "@/components/profile/ProfileTrendSection";
+import { formatCompact, formatUsd } from "@/components/dashboard/cards/primitives";
+import { providerDisplayName } from "@/lib/providerBrand";
+import type { ProfileUsageEvent } from "@/lib/profile/profileEvents";
 import { cn } from "@/lib/utils";
-
-const HEATMAP_MODES: { key: HeatmapMode; label: string }[] = [
-  { key: "daily", label: "Daily" },
-  { key: "weekly", label: "Weekly" },
-  { key: "cumulative", label: "Cumulative" },
-];
-
-/** The rail's breakdown metric — Tokens / Runs / Spend, all from the rollup. */
-type Metric = "tokens" | "runs" | "spend";
-const METRICS: { key: Metric; label: string }[] = [
-  { key: "tokens", label: "Tokens" },
-  { key: "runs", label: "Runs" },
-  { key: "spend", label: "Spend" },
-];
 
 /** Days between an ISO timestamp and a "YYYY-MM-DD" day key (UTC, floor). */
 function daysSince(iso: string, today: string): number {
@@ -60,112 +90,34 @@ function daysSince(iso: string, today: string): number {
 }
 
 /** Staggered entrance delays for the reveal kit (globals.css .reveal). */
-const REVEAL: Record<"header" | "stats" | "heatmap" | "trend" | "insights" | "footer", React.CSSProperties> = {
+const REVEAL: Record<
+  | "header"
+  | "filters"
+  | "stats"
+  | "heatmap"
+  | "rhythm"
+  | "trend"
+  | "insights"
+  | "records"
+  | "ledger"
+  | "footer",
+  React.CSSProperties
+> = {
   header: { "--d": "0ms" } as React.CSSProperties,
+  filters: { "--d": "60ms" } as React.CSSProperties,
   stats: { "--d": "90ms" } as React.CSSProperties,
   heatmap: { "--d": "180ms" } as React.CSSProperties,
-  trend: { "--d": "270ms" } as React.CSSProperties,
+  rhythm: { "--d": "240ms" } as React.CSSProperties,
+  trend: { "--d": "300ms" } as React.CSSProperties,
   insights: { "--d": "360ms" } as React.CSSProperties,
-  footer: { "--d": "450ms" } as React.CSSProperties,
+  records: { "--d": "420ms" } as React.CSSProperties,
+  ledger: { "--d": "480ms" } as React.CSSProperties,
+  footer: { "--d": "540ms" } as React.CSSProperties,
 };
-
-function HeaderStat({
-  value,
-  label,
-  sub,
-  className,
-}: {
-  value: React.ReactNode;
-  label: string;
-  sub?: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-col items-center gap-1 px-token-4 py-token-4 text-center",
-        className,
-      )}
-    >
-      <span className="font-display text-2xl leading-none text-content-bright tabular-nums">
-        {value}
-      </span>
-      <span className="eyebrow">{label}</span>
-      {sub != null && <span className="text-xs text-content-dim">{sub}</span>}
-    </div>
-  );
-}
-
-function InsightRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-token-4 py-token-2">
-      <span className="text-sm text-content-mute">{label}</span>
-      <span className="text-right text-sm text-content-bright tabular-nums">{value}</span>
-    </div>
-  );
-}
-
-/** Accent-fill opacity steps for the provider-mix bar — one hue, quiet ramp. */
-const MIX_OPACITY = [1, 0.66, 0.46, 0.32, 0.22] as const;
-
-/**
- * Honest empty state: the SHAPE of what's coming (logo tile + share bar),
- * dimmed — a preview of the layout, never invented numbers.
- */
-function GhostRows({ rows = 3 }: { rows?: number }) {
-  return (
-    <div aria-hidden className="space-y-token-3 opacity-40">
-      {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="size-[18px] shrink-0 rounded-[5px] border border-glass-line bg-mercury-wash" />
-          <span
-            className="h-1.5 rounded-pill bg-mercury-wash"
-            style={{ width: `${86 - i * 18}%` }}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** Segmented pill toggle — same idiom as the heatmap's mode switch. */
-function MetricToggle({
-  metric,
-  onChange,
-}: {
-  metric: Metric;
-  onChange: (m: Metric) => void;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label="Breakdown metric"
-      className="flex items-center gap-token-1 rounded-pill border border-glass-line p-0.5"
-    >
-      {METRICS.map((m) => (
-        <button
-          key={m.key}
-          type="button"
-          aria-pressed={metric === m.key}
-          onClick={() => onChange(m.key)}
-          className={cn(
-            "rounded-pill px-token-2 py-0.5 text-[0.68rem] transition-colors duration-150",
-            metric === m.key ? "text-content-bright" : "text-content-dim hover:text-content-mute",
-          )}
-          style={metric === m.key ? { background: "var(--accent-wash)" } : undefined}
-        >
-          {m.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export default function ProfilePage() {
   const { user } = useAuth();
   const { rollup, source, loading, syncing, error, reload } = useProfileUsage();
-  const [mode, setMode] = React.useState<HeatmapMode>("daily");
-  const [metric, setMetric] = React.useState<Metric>("tokens");
   // If the IdP avatar fails to load (expired URL, CSP, offline), fall back to
   // the initial tile instead of a broken image.
   const [avatarFailed, setAvatarFailed] = React.useState(false);
@@ -175,100 +127,247 @@ export default function ProfilePage() {
   const [today, setToday] = React.useState<string | null>(null);
   React.useEffect(() => setToday(toDayKey(new Date())), []);
 
+  // URL is the source of truth. Read once after mount (prerender has no
+  // window), then replaceState on every change — shareable, reload-stable,
+  // and Suspense-free for the static export.
+  const [filters, setFilters] = React.useState<ProfileFilters>(() => emptyFilters());
+  const [snapNotice, setSnapNotice] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    try {
+      setFilters(parseProfileFilters(window.location.search));
+    } catch {
+      /* malformed query — stay on defaults */
+    }
+  }, []);
+  const applyFilters = React.useCallback((next: ProfileFilters) => {
+    // The 91k-event guard: event facets on unbounded All snap to 90d, once.
+    const snapped = snapWindowForEventFacets(next);
+    if (snapped) {
+      setSnapNotice("Model / harness / account filters need a bounded range — snapped to 90d.");
+      next = snapped;
+    }
+    setFilters(next);
+    try {
+      const qs = serializeProfileFilters(next);
+      window.history.replaceState(null, "", qs ? `/profile?${qs}` : "/profile");
+    } catch {
+      /* history unavailable (tests) — filters still apply in-memory */
+    }
+  }, []);
+
+  const toggleFacet = React.useCallback(
+    (f: BreakdownFacet) => {
+      const map = {
+        provider: "providers",
+        model: "models",
+        harness: "harnesses",
+        account: "accounts",
+        device: "devices",
+      } as const;
+      const group = map[f.kind];
+      applyFilters({
+        ...filters,
+        facets: { ...filters.facets, [group]: toggleFacetValue(filters.facets[group], f.id) },
+      });
+    },
+    [applyFilters, filters],
+  );
+
+  // Inspector: a pinned day (heatmap cell / record tile) or a focused entity
+  // (ledger row). Day prev/next steps within the active range.
+  const inspector: InspectorSelection | null = filters.day
+    ? { kind: "day", day: filters.day }
+    : filters.entity
+      ? { kind: "entity", entity: filters.entity }
+      : null;
+  const stepDay = React.useCallback(
+    (delta: -1 | 1) => {
+      if (!today || !filters.day) return;
+      const next = addDays(filters.day, delta);
+      if (next > today) return;
+      applyFilters({ ...filters, day: next });
+    },
+    [applyFilters, filters, today],
+  );
+
+  // Instant path: slice the all_time daily series to the active range.
+  // Provider-only filters recolor the heatmap through dailyProviderTokens;
+  // model/harness/account/device facets need the event path below.
+  const slicedPoints = React.useMemo(() => {
+    if (!today) return rollup.dailyPoints;
+    return sliceDailyPoints(rollup.dailyPoints, filters, today);
+  }, [rollup.dailyPoints, filters, today]);
+
   const stats = React.useMemo(() => {
     if (!today) return null;
-    const points = rollup.dailyPoints;
+    const points = slicedPoints;
     const active = new Set(points.filter((p) => p.tokens > 0).map((p) => p.day));
     const streaks = computeStreaks(active, today);
     const peak = peakDay(points);
     const activeDays = activeDayCount(points);
-    const totalTokens = rollup.totals.tokens || sumTokens(points);
-    // Full lists, deliberately unsliced: "top five" depends on the ACTIVE metric,
-    // and the normalizer's fixed order (providers/models by cost, harnesses/combos
-    // by tokens) is only correct for one of the three toggles. Ranking happens in
-    // the metric-aware `rail` memo below.
-    const allProviders = rollup.providerSummaries;
-    const allModels = rollup.modelSummaries;
-    const allHarnesses = rollup.executionSourceSummaries;
-    const allCombos = rollup.comboSummaries;
-    // Trend: the trailing 90 days inclusive of today.
-    const cutoff = addDays(today, -89);
-    const trend = points.filter((p) => p.day >= cutoff);
+    const totalTokens = sumTokens(points);
+    const trend = points.filter((p) => p.day >= addDays(today, -89));
+    const sortedActive = [...active].sort();
+    const firstBurn = sortedActive.length > 0 ? (sortedActive[0] ?? null) : null;
+    const rhythm = weekdayRhythm(points, firstBurn ?? today, today);
+    const rhythmMax = Math.max(...rhythm.map((r) => r.avg), 0);
+    const spanDays = firstBurn ? daysSince(`${firstBurn}T00:00:00Z`, today) + 1 : 0;
     return {
       streaks,
       peak,
       activeDays,
       totalTokens,
       avgPerActiveDay: activeDays > 0 ? Math.round(totalTokens / activeDays) : 0,
-      allProviders,
-      allModels,
-      allHarnesses,
-      allCombos,
       trend,
+      firstBurn,
+      rhythm,
+      rhythmMax,
+      spanDays,
     };
-  }, [rollup, today]);
+  }, [slicedPoints, today]);
+
+  // Facet options come from the rollup lists so the pickers are instant.
+  const facetOptions = React.useMemo(() => {
+    const providers = [...new Set(rollup.providerSummaries.map((p) => p.provider))].sort();
+    const models = [...new Set(rollup.modelSummaries.map((m) => m.model))].sort();
+    const harnesses = [...rollup.executionSourceSummaries]
+      .sort((a, b) => b.totalTokens - a.totalTokens)
+      .map((h) => ({ id: h.sourceId, name: h.sourceName }));
+    const accounts = [...rollup.accountSummaries]
+      .sort((a, b) => b.totalTokens - a.totalTokens)
+      .map((a) => ({ id: a.id, label: a.accountLabel }));
+    const devices = [...new Set(rollup.deviceSummaries.map((d) => d.deviceId))].sort();
+    return { providers, models, harnesses, accounts, devices };
+  }, [rollup]);
+
+  // Provider-filtered daily series: recolor the heatmap from the sparse
+  // per-day provider split (all_time rollup, counter schema v3+). Days with
+  // no split data fall back to the unfiltered value rather than zero — a
+  // provider filter on a legacy doc must not blank the grid.
+  const providerFilteredPoints = React.useMemo(() => {
+    if (filters.facets.providers.length === 0) return slicedPoints;
+    const wanted = new Set(filters.facets.providers);
+    return slicedPoints.map((p) => {
+      const split = rollup.dailyProviderTokens[p.day];
+      if (!split) return p;
+      let tokens = 0;
+      for (const [provider, n] of Object.entries(split)) {
+        if (wanted.has(provider)) tokens += n;
+      }
+      return { ...p, tokens };
+    });
+  }, [slicedPoints, filters.facets.providers, rollup.dailyProviderTokens]);
+
+  // Event path: bounded range + active facets → paginated usage reads.
+  // The inspector's day/entity pins force the path on so a pinned day always
+  // has events to show; provider-only heatmap recoloring stays rollup-side.
+  const range = React.useMemo(() => {
+    if (!today) return { fromDay: null as string | null, toDay: null as string | null };
+    if (filters.day) return { fromDay: filters.day, toDay: filters.day };
+    return effectiveRange(filters, today);
+  }, [filters, today]);
+  const eventFacets = React.useMemo(
+    () => ({
+      providers: filters.facets.providers,
+      models: filters.facets.models,
+      devices: filters.facets.devices,
+      harnesses: filters.facets.harnesses,
+      accounts: filters.facets.accounts,
+    }),
+    [filters.facets],
+  );
+  const boundedRange = range.fromDay != null || range.toDay != null;
+  const eventsEnabled =
+    !!today && (needsEventPath(filters) || boundedRange) && range.toDay != null;
+  const eventRange = React.useMemo(
+    () => ({ fromDay: range.fromDay, toDay: range.toDay }),
+    // range is already memoed on [filters, today]; its fields are the deps.
+    [range.fromDay, range.toDay],
+  );
+  const profileEvents = useProfileEvents(eventFacets, eventRange, eventsEnabled);
+  const grid = React.useMemo(
+    () => (eventsEnabled && !profileEvents.error ? hourWeekdayGrid(profileEvents.events) : null),
+    [eventsEnabled, profileEvents.events, profileEvents.error],
+  );
+  const mix = React.useMemo(
+    () => (eventsEnabled && !profileEvents.error ? tokenMix(profileEvents.events) : null),
+    [eventsEnabled, profileEvents.events, profileEvents.error],
+  );
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Member";
   const handle = user?.email ? `@${user.email.split("@")[0]}` : null;
 
-  // Metric-aware accessors for the rail's breakdown sections (Tokens / Runs /
-  // Spend) — every summary carries all three, so the toggle is pure render.
-  const rail = React.useMemo(() => {
-    if (!stats) return null;
-    const pv = (p: (typeof stats.allProviders)[number]) =>
-      metric === "tokens" ? p.totalTokens : metric === "runs" ? p.totalRequests : p.totalCost;
-    const mv = (m: (typeof stats.allModels)[number]) =>
-      metric === "tokens" ? m.tokens : metric === "runs" ? m.requests : m.cost;
-    const hv = (h: (typeof stats.allHarnesses)[number]) =>
-      metric === "tokens" ? h.totalTokens : metric === "runs" ? h.totalRequests : h.totalCost;
-    const cv = (c: (typeof stats.allCombos)[number]) =>
-      metric === "tokens" ? c.tokens : metric === "runs" ? c.requests : c.cost;
-    // Rank by the metric the user is actually looking at, THEN take five.
-    const byDesc = <T,>(items: readonly T[], value: (item: T) => number): T[] =>
-      [...items].sort((a, b) => value(b) - value(a));
-    const topProviders = byDesc(stats.allProviders, pv).slice(0, 5);
-    const topModels = byDesc(stats.allModels, mv).slice(0, 5);
-    const topHarnesses = byDesc(stats.allHarnesses, hv).slice(0, 5);
-    const topCombos = byDesc(stats.allCombos, cv).slice(0, 5);
-
-    // The denominator counts EVERY provider, so with more than five the rendered
-    // segments would sum to under 100% and the remainder would read as
-    // unexplained blank space. Carry the omitted aggregate so the bar and the
-    // legend can both account for it.
-    const providerTotal = stats.allProviders.reduce((n, p) => n + pv(p), 0);
-    const shownProviderTotal = topProviders.reduce((n, p) => n + pv(p), 0);
-    return {
-      pv,
-      mv,
-      hv,
-      cv,
-      topProviders,
-      topModels,
-      topHarnesses,
-      topCombos,
-      providerTotal,
-      otherProviderValue: Math.max(0, providerTotal - shownProviderTotal),
-      modelMax: topModels.length ? Math.max(...topModels.map(mv)) : 0,
-      harnessMax: topHarnesses.length ? Math.max(...topHarnesses.map(hv)) : 0,
-      comboMax: topCombos.length ? Math.max(...topCombos.map(cv)) : 0,
-    };
-  }, [stats, metric]);
-
-  /** Value + unit under the active metric ("211 runs" / "5.2M tok" / "$12.40"). */
-  const fmtMetric = (v: number): string =>
-    metric === "spend" ? formatUsd(v) : `${formatCompact(v)}${metric === "runs" ? " runs" : " tok"}`;
+  const metric = filters.metric;
+  /** Full "12.7B tok · 9,178 runs · $309,479" for hover titles. */
+  const fmtFull = (tokens: number, runs: number, cost: number): string =>
+    `${formatCompact(tokens)} tok · ${formatCompact(runs)} runs · ${formatUsd(cost)}`;
   const joinedDays =
     today && user?.metadata.creationTime ? daysSince(user.metadata.creationTime, today) : null;
   const initial = displayName.trim().charAt(0).toUpperCase() || "B";
 
-  // Numbers stay as quiet dashes until the rollup has actually landed — a
-  // flash of zeros reads as "you have no usage", which is a lie while loading.
-  const pending = loading || !today;
+  // Numbers stay as quiet dashes until a rollup has actually landed — a flash
+  // of zeros reads as "you have no usage". Once a live doc is on screen, keep
+  // showing it through a background rebuild instead of collapsing to dashes.
+  const pending = !today || loading || (syncing && source === "empty");
   const num = (v: number) => (pending ? "—" : formatCompact(v));
+  const sharePct = (part: number, whole: number): string =>
+    whole > 0 ? `${Math.round((part / whole) * 100)}%` : "—";
+
+  // Metric-aware top-model insight (Tokens / Runs / Spend re-rank).
+  const topModelInsight = React.useMemo(() => {
+    const v = (m: (typeof rollup.modelSummaries)[number]) =>
+      metric === "tokens" ? m.tokens : metric === "runs" ? m.requests : m.cost;
+    return [...rollup.modelSummaries].sort((a, b) => v(b) - v(a))[0] ?? null;
+  }, [rollup.modelSummaries, metric]);
+
+  // Hour-cell → pin the most active day of that weekday in range: the honest
+  // client-side resolution without a server hour field.
+  const pickHourCell = React.useCallback(
+    (weekday: number, hour: number) => {
+      const counts = new Map<string, number>();
+      for (const e of profileEvents.events) {
+        if (!e.startedAt || e.hourUtc !== hour) continue;
+        const day = e.startedAt.slice(0, 10);
+        const [y, m, d] = day.split("-").map(Number);
+        if (new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).getUTCDay() !== weekday) continue;
+        counts.set(day, (counts.get(day) ?? 0) + e.totalTokens);
+      }
+      let best: string | null = null;
+      let bestTokens = 0;
+      for (const [day, tokens] of counts) {
+        if (tokens > bestTokens) {
+          bestTokens = tokens;
+          best = day;
+        }
+      }
+      if (best) applyFilters({ ...filters, day: best });
+    },
+    [applyFilters, filters, profileEvents.events],
+  );
+
+  const focusLedgerEvent = React.useCallback(
+    (e: ProfileUsageEvent) => {
+      if (e.startedAt) {
+        applyFilters({ ...filters, day: e.startedAt.slice(0, 10) });
+      } else if (e.sessionId) {
+        applyFilters({ ...filters, entity: { kind: "session", id: e.sessionId } });
+      }
+    },
+    [applyFilters, filters],
+  );
+
+  const topProviderByTokens = [...rollup.providerSummaries].sort(
+    (a, b) => b.totalTokens - a.totalTokens,
+  )[0];
+  const topModelByTokens = [...rollup.modelSummaries].sort((a, b) => b.tokens - a.tokens)[0];
+  const ledgerHint =
+    !eventsEnabled && !loading
+      ? "Pick a window under All (or a custom range) to page the runs behind this mine."
+      : null;
+  const isAll = filters.window === "all" && !filters.from && !filters.to;
 
   return (
-    <div className="mx-auto max-w-3xl xl:mx-0 xl:grid xl:max-w-none xl:grid-cols-[minmax(0,42rem)_minmax(15rem,19rem)] xl:gap-token-12">
-      <div className="min-w-0">
+    <div className="mx-auto w-full max-w-6xl">
       {/* Identity header */}
       <header className="reveal flex flex-col items-center gap-token-3 text-center" style={REVEAL.header}>
         {user?.photoURL && !avatarFailed ? (
@@ -292,15 +391,37 @@ export default function ProfilePage() {
           <h1 className="font-display text-3xl text-content-bright">{displayName}</h1>
           {handle && <p className="mt-1 text-sm text-content-mute">{handle}</p>}
         </div>
-        {joinedDays != null && (
-          <span className="folio text-content-dim">Joined {joinedDays} days ago</span>
-        )}
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+          {joinedDays != null && (
+            <span className="folio text-content-dim">Joined {joinedDays} days ago</span>
+          )}
+          {!pending && (
+            <span className="folio text-content-dim">
+              {rollup.providerSummaries.length} providers · {rollup.modelSummaries.length} models ·{" "}
+              {rollup.executionSourceSummaries.length} harnesses
+              {rollup.accountSummaries.length > 0 &&
+                ` · ${rollup.accountSummaries.length} accounts`}
+              {rollup.deviceSummaries.length > 0 &&
+                ` · ${rollup.deviceSummaries.length} devices`}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => reload(true)}
+            disabled={syncing || loading}
+            className="inline-flex items-center gap-1.5 rounded-full border border-glass-line px-3 py-1 text-xs text-content-dim transition-colors hover:border-accent hover:text-content-bright disabled:opacity-50"
+            title="Re-read and compute usage rollups from cloud usage events"
+          >
+            <RefreshCw className={cn("size-3", syncing && "animate-spin text-[color:var(--accent-deep)]")} />
+            <span>{syncing ? "Syncing…" : "Sync Usage"}</span>
+          </button>
+        </div>
       </header>
 
       {error && (
         <div
           role="alert"
-          className="mt-token-6 text-sm"
+          className="mt-token-6 text-center text-sm"
           style={{ color: "var(--color-seal-crimson)" }}
         >
           {error}
@@ -309,7 +430,7 @@ export default function ProfilePage() {
       {syncing && (
         <p role="status" className="reveal mt-token-6 text-center text-sm text-content-mute">
           <span className="animate-pulse">Syncing your usage history…</span>{" "}
-          <span className="text-content-dim">first sync counts every historical event.</span>
+          <span className="text-content-dim">aggregating tokens, runs, and streaks across all models.</span>
         </p>
       )}
       {!error && !loading && !syncing && source === "empty" && (
@@ -326,300 +447,229 @@ export default function ProfilePage() {
         </p>
       )}
 
-      {/* Lifetime stat row — a divided bar on sm+, individual tiles on mobile. */}
-      <section
-        aria-label="Lifetime statistics"
-        className="reveal mt-token-8 grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-0 sm:divide-x sm:divide-glass-line sm:rounded-lg sm:border sm:border-glass-line"
-        style={REVEAL.stats}
-      >
-        <HeaderStat
-          value={num(rollup.totals.tokens)}
-          label="Lifetime tokens"
-          className="rounded-lg border border-glass-line sm:rounded-none sm:border-0"
+      {/* Filter rail — sticky under the identity header. */}
+      <div className="reveal mt-token-6" style={REVEAL.filters}>
+        <ProfileFilterRail
+          filters={filters}
+          options={facetOptions}
+          computedAt={rollup.computedAt}
+          snapNotice={snapNotice}
+          onChange={applyFilters}
+          onClear={() => applyFilters(clearMineFilters(filters))}
         />
-        <HeaderStat
-          value={num(stats?.peak?.tokens ?? 0)}
-          label="Peak tokens"
-          sub={!pending && stats?.peak ? formatDayLabel(stats.peak.day) : undefined}
-          className="rounded-lg border border-glass-line sm:rounded-none sm:border-0"
-        />
-        <HeaderStat
-          value={num(rollup.totals.requests)}
-          label="Total requests"
-          className="rounded-lg border border-glass-line sm:rounded-none sm:border-0"
-        />
-        <HeaderStat
-          value={pending ? "—" : `${stats?.streaks.current ?? 0}d`}
-          label="Current streak"
-          className="rounded-lg border border-glass-line sm:rounded-none sm:border-0"
-        />
-        <HeaderStat
-          value={pending ? "—" : `${stats?.streaks.longest ?? 0}d`}
-          label="Longest streak"
-          className="col-span-2 rounded-lg border border-glass-line sm:col-span-1 sm:rounded-none sm:border-0"
-        />
-      </section>
-
-      {/* Token activity heatmap */}
-      <section aria-label="Token activity" className="reveal mt-token-12" style={REVEAL.heatmap}>
-        <div className="mb-token-4 flex items-center justify-between gap-token-4">
-          <h2 className="eyebrow">Token activity</h2>
-          <div
-            role="group"
-            aria-label="Heatmap mode"
-            className="flex items-center gap-token-1 rounded-pill border border-glass-line p-0.5"
-          >
-            {HEATMAP_MODES.map((m) => (
-              <button
-                key={m.key}
-                type="button"
-                aria-pressed={mode === m.key}
-                onClick={() => setMode(m.key)}
-                className={cn(
-                  "rounded-pill px-token-3 py-1 text-xs transition-colors duration-150",
-                  mode === m.key
-                    ? "text-content-bright"
-                    : "text-content-dim hover:text-content-mute",
-                )}
-                style={mode === m.key ? { background: "var(--accent-wash)" } : undefined}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {today ? (
-          <ContributionHeatmap
-            points={rollup.dailyPoints}
-            mode={mode}
-            today={today}
-            dailyProviderTokens={rollup.dailyProviderTokens}
-          />
-        ) : (
-          <div className="h-40 rounded-lg border border-glass-line" aria-hidden />
-        )}
-      </section>
-
-      {/* Token trend */}
-      <section aria-label="Token trend" className="reveal mt-token-12" style={REVEAL.trend}>
-        <h2 className="eyebrow mb-token-1">Tokens</h2>
-        <p className="font-display text-2xl text-content-bright tabular-nums">
-          {pending ? "—" : `${formatCompact(sumTokens(stats?.trend ?? []))} tokens`}
-          <span className="ml-2 text-sm font-normal text-content-dim">last 90 days</span>
-        </p>
-        <div className="mt-token-3 h-36">
-          <Sparkline values={(stats?.trend ?? []).map((p) => p.tokens)} className="h-full" />
-        </div>
-        <div className="mt-token-2 flex justify-between text-xs text-content-dim">
-          <span>{stats?.trend[0] ? formatDayLabel(stats.trend[0].day) : "—"}</span>
-          <span>Today</span>
-        </div>
-      </section>
       </div>
 
-      {/* Insights — a right rail on wide screens, stacked below on narrow ones.
-          The harness and combo blocks only appear from md up (they are the
-          "when there is space" detail) and only once the rollup actually
-          carries execution-source data. */}
-      <aside
-        aria-label="Activity insights"
-        className="reveal mt-token-12 grid content-start gap-token-8 sm:grid-cols-2 xl:mt-0 xl:grid-cols-1"
-        style={REVEAL.insights}
-      >
-        <div className="flex items-center justify-between">
-          <span className="eyebrow">Break down by</span>
-          <MetricToggle metric={metric} onChange={setMetric} />
+      {/* Stat row — totals follow the active window slice (All = lifetime). */}
+      <div className="reveal mt-token-8" style={REVEAL.stats}>
+        <ProfileHeroStats
+          pending={pending}
+          lifetime={num(stats?.totalTokens ?? 0)}
+          lifetimeLabel={isAll ? "Lifetime tokens" : "Tokens in view"}
+          peak={num(stats?.peak?.tokens ?? 0)}
+          peakLabel={stats?.peak ? formatDayLabel(stats.peak.day) : undefined}
+          activeDays={pending ? "—" : String(stats?.activeDays ?? 0)}
+          avgPerDay={
+            stats ? `${formatCompact(stats.avgPerActiveDay)} avg/day` : undefined
+          }
+          currentStreak={pending ? "—" : `${stats?.streaks.current ?? 0}d`}
+          longestStreak={pending ? "—" : `${stats?.streaks.longest ?? 0}d`}
+        />
+      </div>
+
+      <div className="mt-token-12 grid min-w-0 gap-token-12 xl:grid-cols-12 xl:gap-token-10">
+        <div className="grid min-w-0 content-start gap-token-12 xl:col-span-7">
+          {/* Token activity heatmap — click a day to pin the inspector. */}
+          <div className="reveal" style={REVEAL.heatmap}>
+            {today ? (
+              <ProfileHeatmapSection
+                points={providerFilteredPoints}
+                today={today}
+                dailyProviderTokens={rollup.dailyProviderTokens}
+                pinnedDay={filters.day}
+                onPinDay={(day) => applyFilters({ ...filters, day })}
+              />
+            ) : (
+              <div className="h-40 rounded-lg border border-glass-line" aria-hidden />
+            )}
+          </div>
+
+          {/* Burn by hour — bounded event aggregates. */}
+          <div className="reveal" style={REVEAL.rhythm}>
+            <ProfileHourGrid
+              grid={grid}
+              loading={profileEvents.loading}
+              error={profileEvents.error}
+              capped={profileEvents.capped}
+              eventCount={profileEvents.events.length}
+              onPickCell={pickHourCell}
+            />
+          </div>
+
+          {/* Burn rhythm — mean tokens by weekday, in view. */}
+          <div className="reveal" style={REVEAL.rhythm}>
+            {today && stats ? (
+              <ProfileRhythmSection
+                rhythm={stats.rhythm}
+                rhythmMax={stats.rhythmMax}
+                pending={pending}
+              />
+            ) : (
+              <div className="h-36 rounded-lg border border-glass-line" aria-hidden />
+            )}
+          </div>
+
+          {/* Token trend */}
+          <div className="reveal" style={REVEAL.trend}>
+            <ProfileTrendSection trend={stats?.trend ?? []} pending={pending} />
+          </div>
+
+          {/* Token mix — bounded event aggregates. */}
+          <div className="reveal" style={REVEAL.trend}>
+            <ProfileMixPanel
+              mix={mix}
+              loading={profileEvents.loading}
+              error={profileEvents.error}
+            />
+          </div>
         </div>
 
-        {/* Provider mix — the graphic anchor of the rail: one accent-led share
-            bar, then legend rows carried by the providers' own brand marks. */}
-        <div>
-          <h2 className="eyebrow mb-token-3">Provider mix</h2>
-          {!pending && stats && rail && rail.topProviders.length > 0 && rail.providerTotal > 0 ? (
-            <>
-              <div
-                role="img"
-                aria-label={[
-                  ...rail.topProviders.map(
-                    (p) => `${p.provider} ${Math.round((rail.pv(p) / rail.providerTotal) * 100)}%`,
+        {/* Insights rail — full ranked lists, every row a filter control. */}
+        <aside
+          aria-label="Activity insights"
+          className="reveal grid min-w-0 content-start gap-token-8 xl:col-span-5"
+          style={REVEAL.insights}
+        >
+          <ProfileProviderMix
+            providers={rollup.providerSummaries}
+            metric={metric}
+            pending={pending}
+            activeProviders={filters.facets.providers}
+            onToggleProvider={(id) => toggleFacet({ kind: "provider", id })}
+          />
+
+          <ProfileInsightsPanel
+            pending={pending}
+            activeDays={stats?.activeDays ?? 0}
+            avgPerActiveDay={stats?.avgPerActiveDay ?? 0}
+            topModel={topModelInsight}
+            spendInView={rollup.providerSummaries.reduce((n, p) => n + p.totalCost, 0)}
+            freshness={rollup.computedAt ? rollup.computedAt.slice(0, 10) : pending ? "—" : "unknown"}
+            onToggleModel={(id) => toggleFacet({ kind: "model", id })}
+          />
+
+          {!pending && (
+            <ProfileBreakdowns
+              data={{
+                providers: [],
+                models: rollup.modelSummaries,
+                harnesses: rollup.executionSourceSummaries,
+                combos: rollup.comboSummaries,
+                devices: rollup.deviceSummaries,
+                accounts: rollup.accountSummaries,
+              }}
+              metric={metric}
+              activeFacets={filters.facets}
+              onToggle={toggleFacet}
+            />
+          )}
+          {!pending &&
+            rankShares(profileEvents.events, "provider").length > 0 &&
+            (filters.facets.models.length > 0 ||
+              filters.facets.harnesses.length > 0 ||
+              filters.facets.accounts.length > 0) && (
+              <div>
+                <h2 className="eyebrow mb-token-3">In this filtered view</h2>
+                <ul className="space-y-token-2">
+                  {rankShares(profileEvents.events, "provider")
+                    .slice(0, 5)
+                    .map((r) => (
+                      <li
+                        key={r.key}
+                        className="flex items-center gap-2 text-sm"
+                        title={`${formatCompact(r.tokens)} tok · ${r.events} runs · ${formatUsd(r.cost)} (bounded events)`}
+                      >
+                        <span className="truncate text-content-bright">
+                          {providerDisplayName(r.label)}
+                        </span>
+                        <span className="ml-auto shrink-0 text-content-mute tabular-nums">
+                          {formatCompact(r.tokens)}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+        </aside>
+      </div>
+
+      {/* Records — clickable hall of fame. */}
+      <div className="reveal mt-token-12" style={REVEAL.records}>
+        <ProfileRecords
+          records={{
+            busiestProvider: topProviderByTokens
+              ? {
+                  id: topProviderByTokens.provider,
+                  label: providerDisplayName(topProviderByTokens.provider),
+                  share: sharePct(topProviderByTokens.totalTokens, rollup.totals.tokens),
+                  title: fmtFull(
+                    topProviderByTokens.totalTokens,
+                    topProviderByTokens.totalRequests,
+                    topProviderByTokens.totalCost,
                   ),
-                  ...(rail.otherProviderValue > 0
-                    ? [`Other ${Math.round((rail.otherProviderValue / rail.providerTotal) * 100)}%`]
-                    : []),
-                ].join(", ")}
-                className="flex h-2 gap-px overflow-hidden rounded-pill"
-              >
-                {rail.topProviders.map((p, i) => (
-                  <span
-                    key={p.provider}
-                    className="h-full"
-                    style={{
-                      width: `${(rail.pv(p) / rail.providerTotal) * 100}%`,
-                      background: "var(--accent)",
-                      opacity: MIX_OPACITY[i] ?? MIX_OPACITY[MIX_OPACITY.length - 1],
-                    }}
-                  />
-                ))}
-                {rail.otherProviderValue > 0 ? (
-                  <span
-                    key="__other"
-                    className="h-full"
-                    style={{
-                      width: `${(rail.otherProviderValue / rail.providerTotal) * 100}%`,
-                      background: "var(--content-dim)",
-                      opacity: 0.35,
-                    }}
-                  />
-                ) : null}
-              </div>
-              <ul className="mt-token-3 space-y-token-2">
-                {rail.topProviders.map((p) => (
-                  <li key={p.provider} className="flex items-center gap-2 text-sm">
-                    <BrandLogo id={p.provider} label={p.provider} size={18} />
-                    <span className="truncate text-content-bright">{p.provider}</span>
-                    <span className="ml-auto shrink-0 text-content-mute tabular-nums">
-                      {fmtMetric(rail.pv(p))}
-                    </span>
-                  </li>
-                ))}
-                {rail.otherProviderValue > 0 ? (
-                  <li className="flex items-center gap-2 text-sm">
-                    <span
-                      aria-hidden
-                      className="h-[18px] w-[18px] rounded-pill"
-                      style={{ background: "var(--content-dim)", opacity: 0.35 }}
-                    />
-                    <span className="truncate text-content-mute">Other</span>
-                    <span className="ml-auto shrink-0 text-content-mute tabular-nums">
-                      {fmtMetric(rail.otherProviderValue)}
-                    </span>
-                  </li>
-                ) : null}
-              </ul>
-            </>
-          ) : (
-            <>
-              <div aria-hidden className="h-2 rounded-pill bg-mercury-wash opacity-40" />
-              <div className="mt-token-3">
-                <GhostRows rows={3} />
-              </div>
-              {!pending && (
-                <p className="mt-token-3 text-sm text-content-dim">
-                  Your provider mix lands here after the first synced runs.
-                </p>
-              )}
-            </>
-          )}
-        </div>
+                }
+              : null,
+            loyalModel: topModelByTokens
+              ? {
+                  id: topModelByTokens.model,
+                  label: topModelByTokens.model,
+                  share: sharePct(topModelByTokens.tokens, rollup.totals.tokens),
+                  title: topModelByTokens.model,
+                }
+              : null,
+            biggestDay: stats?.peak ? { day: stats.peak.day, tokens: stats.peak.tokens } : null,
+            longestStreak: stats?.streaks.longest ?? 0,
+            activeDays: stats?.activeDays ?? 0,
+            firstBurn: stats?.firstBurn ?? null,
+            spanDays: stats?.spanDays ?? 0,
+            burnRate:
+              stats && stats.spanDays > 0
+                ? `${Math.round((stats.activeDays / stats.spanDays) * 100)}%`
+                : null,
+            pending,
+          }}
+          onPinDay={(day) => applyFilters({ ...filters, day })}
+          onToggleProvider={(id) => toggleFacet({ kind: "provider", id })}
+          onToggleModel={(id) => toggleFacet({ kind: "model", id })}
+        />
+      </div>
 
-        <div>
-          <h2 className="eyebrow mb-token-3">Activity insights</h2>
-          <div className="divide-y divide-glass-line border-y border-glass-line">
-            <InsightRow label="Active days" value={pending ? "—" : (stats?.activeDays ?? 0)} />
-            <InsightRow label="Avg tokens per active day" value={num(stats?.avgPerActiveDay ?? 0)} />
-            <InsightRow
-              label="Most used model"
-              value={
-                !pending && rail?.topModels[0] ? (
-                  <span className="inline-flex items-center gap-2">
-                    <BrandLogo
-                      id={rail.topModels[0].provider}
-                      label={rail.topModels[0].provider}
-                      size={18}
-                    />
-                    {rail.topModels[0].model}
-                  </span>
-                ) : (
-                  "—"
-                )
-              }
-            />
-            <InsightRow
-              label="Lifetime spend"
-              value={pending ? "—" : `$${rollup.totals.costUsd.toFixed(2)}`}
-            />
-          </div>
-        </div>
+      {/* Session ledger — bounded event pages. */}
+      <div className="reveal mt-token-12" style={REVEAL.ledger}>
+        <ProfileSessionLedger
+          events={profileEvents.events}
+          loading={profileEvents.loading}
+          error={profileEvents.error}
+          hasMore={profileEvents.hasMore}
+          capped={profileEvents.capped}
+          enabledHint={ledgerHint}
+          onLoadMore={profileEvents.loadMore}
+          onFocusEvent={focusLedgerEvent}
+        />
+      </div>
 
-        <div>
-          <h2 className="eyebrow mb-token-3">Most used models</h2>
-          {!pending && stats && rail && rail.topModels.length > 0 ? (
-            <ul className="space-y-token-3">
-              {rail.topModels.map((m) => (
-                <li key={`${m.provider}/${m.model}`}>
-                  <div className="mb-1 flex items-baseline justify-between gap-token-4">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <BrandLogo id={m.provider} label={m.provider} size={18} />
-                      <span className="truncate text-sm text-content-bright">{m.model}</span>
-                    </span>
-                    <span className="shrink-0 text-sm text-content-mute tabular-nums">
-                      {fmtMetric(rail.mv(m))}
-                    </span>
-                  </div>
-                  <ProportionBar value={rail.modelMax > 0 ? rail.mv(m) / rail.modelMax : 0} />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <>
-              <GhostRows rows={4} />
-              {!pending && (
-                <p className="mt-token-3 text-sm text-content-dim">Nothing in this window yet.</p>
-              )}
-            </>
-          )}
-        </div>
+      {/* Inspector slide-over — day or entity. */}
+      <ProfileInspector
+        selection={inspector}
+        events={profileEvents.events}
+        loading={profileEvents.loading}
+        onClose={() => applyFilters({ ...filters, day: null, entity: null })}
+        onPinDay={(day) => applyFilters({ ...filters, day })}
+        onPrevDay={() => stepDay(-1)}
+        onNextDay={() => stepDay(1)}
+      />
 
-        {!pending && stats && rail && rail.topHarnesses.length > 0 && (
-          <div className="hidden md:block">
-            <h2 className="eyebrow mb-token-3">Agent harnesses</h2>
-            <ul className="space-y-token-3">
-              {rail.topHarnesses.map((h) => (
-                <li key={h.sourceId}>
-                  <div className="mb-1 flex items-baseline justify-between gap-token-4">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <BrandLogo id={h.sourceId} label={h.sourceName} />
-                      <span className="truncate text-sm text-content-bright">{h.sourceName}</span>
-                    </span>
-                    <span className="shrink-0 text-sm text-content-mute tabular-nums">
-                      {fmtMetric(rail.hv(h))}
-                    </span>
-                  </div>
-                  <ProportionBar value={rail.harnessMax > 0 ? rail.hv(h) / rail.harnessMax : 0} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {!pending && stats && rail && rail.topCombos.length > 0 && (
-          <div className="hidden md:block">
-            <h2 className="eyebrow mb-token-3">Combos</h2>
-            <ul className="space-y-token-3">
-              {rail.topCombos.map((c) => (
-                <li key={`${c.sourceId}/${c.provider}/${c.model}`}>
-                  <div className="mb-1 flex items-baseline justify-between gap-token-4">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <BrandLogo id={c.sourceId} label={c.sourceName} />
-                      <span className="truncate text-sm text-content-bright">
-                        {c.sourceName} <span className="text-content-dim">×</span> {c.model}
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-sm text-content-mute tabular-nums">
-                      {fmtMetric(rail.cv(c))}
-                    </span>
-                  </div>
-                  <ProportionBar value={rail.comboMax > 0 ? rail.cv(c) / rail.comboMax : 0} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </aside>
-
-      <p className="reveal folio mt-token-12 text-center text-content-dim xl:col-span-2" style={REVEAL.footer}>
-        Only what BurnBar really records — fast mode, reasoning mix, and skill
-        usage aren&apos;t tracked yet.
+      <p className="reveal folio mt-token-12 text-center text-content-dim" style={REVEAL.footer}>
+        Only what BurnBar really records — fast mode and skill usage aren&apos;t tracked yet.
       </p>
     </div>
   );

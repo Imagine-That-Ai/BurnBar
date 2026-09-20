@@ -1,12 +1,9 @@
 /**
  * Firestore rules tests for The Wand fan-out cap.
  *
- * The mobile clients dispatch a fan-out as one atomic batch:
- *   users/{uid}/mission_groups/{groupID}
- *   users/{uid}/cli_agent_mission_requests/{childID}...
- *
- * The rules cap fan-out by tier, keep CloudVault payloads path-bound, and reject
- * malformed parent/request shapes before the Mac listener sees them.
+ * Mission group CREATE is Admin-SDK-only (`createCliAgentMissionGroup`).
+ * These tests assert client create is denied, keep CloudVault payloads
+ * path-bound, and still reject malformed parent/request shapes on update.
  */
 import {
   initializeTestEnvironment,
@@ -213,9 +210,9 @@ async function main() {
 
   const aliceDB = testEnv.authenticatedContext(aliceUid).firestore();
 
-  await step("free tier allows the real 1-child batch shape", async () => {
+  await step("mission group client create is denied", async () => {
     await seed(testEnv, aliceUid, "free");
-    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "free-allow-1", 1));
+    await assertFails(commitFanOut(aliceDB, aliceUid, "free-allow-1", 1));
   });
 
   await step("free tier denies a 2-child batch", async () => {
@@ -345,34 +342,40 @@ async function main() {
     await seed(testEnv, aliceUid, "free");
     const groupID = "immutable-group";
     const groupRef = doc(aliceDB, `users/${aliceUid}/mission_groups/${groupID}`);
-    await assertSucceeds(setDoc(groupRef, missionGroup(groupID, [`${groupID}-child-1`])));
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), `users/${aliceUid}/mission_groups/${groupID}`),
+        missionGroup(groupID, [`${groupID}-child-1`]),
+      );
+    });
     await assertFails(setDoc(groupRef, missionGroup(groupID, [`${groupID}-child-2`])));
+    await assertSucceeds(updateDoc(groupRef, { phase: "fanning_out" }));
   });
 
-  await step("cloud tier allows 3 and denies 4", async () => {
+  await step("cloud tier client create is denied even within the Wand cap", async () => {
     await seed(testEnv, aliceUid, "cloud");
-    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "cloud-allow-3", 3));
+    await assertFails(commitFanOut(aliceDB, aliceUid, "cloud-allow-3", 3));
     await seed(testEnv, aliceUid, "cloud");
     await assertFails(commitFanOut(aliceDB, aliceUid, "cloud-deny-4", 4));
   });
 
-  await step("legacy cloud entitlement doc maps only to the Cloud cap", async () => {
+  await step("legacy cloud entitlement still cannot client-create mission groups", async () => {
     await seed(testEnv, aliceUid, "legacyCloud");
-    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "legacy-cloud-allow-3", 3));
+    await assertFails(commitFanOut(aliceDB, aliceUid, "legacy-cloud-allow-3", 3));
     await seed(testEnv, aliceUid, "legacyCloud");
     await assertFails(commitFanOut(aliceDB, aliceUid, "legacy-cloud-deny-4", 4));
   });
 
-  await step("cloud pro tier allows 8 and denies 9", async () => {
+  await step("cloud pro tier client create is denied", async () => {
     await seed(testEnv, aliceUid, "proMax");
-    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "pro-allow-8", 8));
+    await assertFails(commitFanOut(aliceDB, aliceUid, "pro-allow-8", 8));
     await seed(testEnv, aliceUid, "proMax");
     await assertFails(commitFanOut(aliceDB, aliceUid, "pro-deny-9", 9));
   });
 
-  await step("ultra tier allows 16", async () => {
+  await step("ultra tier client create is denied", async () => {
     await seed(testEnv, aliceUid, "ultra");
-    await assertSucceeds(commitFanOut(aliceDB, aliceUid, "ultra-allow-16", 16));
+    await assertFails(commitFanOut(aliceDB, aliceUid, "ultra-allow-16", 16));
   });
 
   await step("Mac Wand dispatcher cannot client-write mission documents", async () => {

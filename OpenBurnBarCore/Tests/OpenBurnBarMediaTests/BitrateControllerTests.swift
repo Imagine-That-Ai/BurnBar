@@ -5,6 +5,10 @@ final class BitrateControllerTests: XCTestCase {
     func testStartsAtCeiling() {
         let controller = BitrateController(steps: .screenShare)
         XCTAssertEqual(controller.currentBitsPerSecond, 8_000_000)
+        XCTAssertEqual(
+            BitrateController.Steps.screenShare.values,
+            [250_000, 500_000, 1_000_000, 2_000_000, 4_000_000, 8_000_000]
+        )
     }
 
     func testRttSpikeStepsDownOnce() {
@@ -75,5 +79,73 @@ final class BitrateControllerTests: XCTestCase {
             ))
         }
         XCTAssertEqual(controller.currentBitsPerSecond, 300_000)
+    }
+
+    func testScreenShareImpairmentWalksBelowOneMegabit() {
+        var controller = BitrateController(steps: .screenShare)
+        // 8 → 4 → 2 → 1 → 0.5 → 0.25
+        for expected in [4_000_000, 2_000_000, 1_000_000, 500_000, 250_000] {
+            let next = controller.apply(sample: BitrateController.Sample(
+                roundTripMillis: 200,
+                packetLossRate: 0.04,
+                observedBitsPerSecond: controller.currentBitsPerSecond
+            ))
+            XCTAssertEqual(next, expected)
+        }
+        _ = controller.apply(sample: BitrateController.Sample(
+            roundTripMillis: 800, packetLossRate: 0.5, observedBitsPerSecond: 0
+        ))
+        XCTAssertEqual(controller.currentBitsPerSecond, 250_000)
+    }
+
+    func testConstrainedPathFastDropsToFiveHundredKbps() {
+        var controller = BitrateController(steps: .screenShare)
+        let next = controller.apply(sample: BitrateController.Sample(
+            roundTripMillis: 40,
+            packetLossRate: 0.0,
+            observedBitsPerSecond: 8_000_000,
+            pathConstrained: true
+        ))
+        XCTAssertEqual(next, 500_000)
+    }
+
+    func testConstrainedPathCanStepToCellularFloorOnLoss() {
+        var controller = BitrateController(steps: .screenShare)
+        _ = controller.apply(sample: BitrateController.Sample(
+            roundTripMillis: 40,
+            packetLossRate: 0.0,
+            observedBitsPerSecond: 0,
+            pathConstrained: true
+        ))
+        XCTAssertEqual(controller.currentBitsPerSecond, 500_000)
+
+        let next = controller.apply(sample: BitrateController.Sample(
+            roundTripMillis: 40,
+            packetLossRate: 0.04,
+            observedBitsPerSecond: 0,
+            pathConstrained: true
+        ))
+        XCTAssertEqual(next, 250_000)
+    }
+
+    func testConstrainedPathRecoveryDoesNotExceedCellularCeiling() {
+        var controller = BitrateController(steps: .screenShare)
+        _ = controller.apply(sample: BitrateController.Sample(
+            roundTripMillis: 40,
+            packetLossRate: 0.10,
+            observedBitsPerSecond: 0,
+            pathConstrained: true
+        ))
+        XCTAssertEqual(controller.currentBitsPerSecond, 250_000)
+
+        for _ in 0..<9 {
+            _ = controller.apply(sample: BitrateController.Sample(
+                roundTripMillis: 20,
+                packetLossRate: 0.0,
+                observedBitsPerSecond: 2_000_000,
+                pathConstrained: true
+            ))
+        }
+        XCTAssertEqual(controller.currentBitsPerSecond, 500_000)
     }
 }

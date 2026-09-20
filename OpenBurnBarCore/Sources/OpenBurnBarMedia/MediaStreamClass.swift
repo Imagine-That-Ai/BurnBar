@@ -98,6 +98,12 @@ extension MediaStreamClass {
         case computerUse
     }
 
+    /// Desktop pixels that Watch and Mercury may decode on `media.control`.
+    /// `control.surface.frame` is the Agent Watch HUD alias of `media.screen.video`.
+    public static func admitsDesktopVideoFrames(_ streamClass: String?) -> Bool {
+        streamClass == screenVideo.rawValue || streamClass == controlSurfaceFrame.rawValue
+    }
+
     public var feature: Feature? {
         switch rawValue {
         case Self.blobAdvertise.rawValue,

@@ -130,12 +130,14 @@ final class CLIAgentMissionDispatcher {
             vaultKeyID: resolvedKey.vaultKeyID
         )
         let created = try await ComputerUseSecurityCallableClient.createCliAgentMission(
-            payload: CLIAgentMissionRequestPayloadFactory.createLeafPayload(
-                requestId: id,
-                remoteCommandID: id,
-                deviceId: deviceId,
-                payload: payload,
-                initialEvent: initialEvent
+            payload: ComputerUseSecurityCallableClient.sendableJSONPayload(
+                CLIAgentMissionRequestPayloadFactory.createLeafPayload(
+                    requestId: id,
+                    remoteCommandID: id,
+                    deviceId: deviceId,
+                    payload: payload,
+                    initialEvent: initialEvent
+                )
             ),
             deviceId: deviceId
         )

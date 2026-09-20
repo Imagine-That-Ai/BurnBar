@@ -935,7 +935,8 @@ final class CLIAgentMissionDispatcherSealTests: XCTestCase {
             prompt: "Investigate the spike.",
             targetProject: "BurnBar",
             vaultKey: vaultKey,
-            vaultKeyID: vaultKeyID
+            vaultKeyID: vaultKeyID,
+            uid: "uid-1"
         )
     }
 

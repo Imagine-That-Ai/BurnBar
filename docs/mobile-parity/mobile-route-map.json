@@ -85,9 +85,11 @@
       },
       {
         "canonicalId": "inbox",
-        "iosDestinationId": null,
-        "ipadDestinationId": null,
+        "iosDestinationId": "inbox",
+        "ipadDestinationId": "inbox",
         "androidDestinationId": "inbox",
+        "iosEnum": "AuroraNavDestination.inbox",
+        "ipadEnum": "AppDestination.inbox",
         "androidEnum": "BurnBarTab.INBOX",
         "acceptedDivergenceId": "divergence.inbox-primary-android"
       },
@@ -162,40 +164,38 @@
     "ios": {
       "formFactor": "iphone",
       "primary": [
-        "pulse",
-        "burn",
-        "insights",
-        "streams",
+        "inbox",
         "hermes",
+        "burn",
         "you"
       ],
       "secondary": [
+        "pulse",
+        "insights",
+        "streams",
         "settings",
         "devices",
         "providers",
-        "inbox",
         "computer-use",
         "store",
         "control-center"
       ],
-      "notes": "AuroraNavDestination.allCases. Inbox is reached from Streams, not a primary tab."
+      "notes": "AuroraNavDestination.compactTrayDestinations. Inbox is launch. Burn is the Quota tab. You tray label matches the You screen."
     },
     "ipados": {
       "formFactor": "ipad",
       "primary": [
-        "pulse",
+        "inbox",
+        "agents",
         "burn",
-        "insights",
-        "streams",
-        "agents"
+        "you"
       ],
       "secondary": [
-        "you",
         "providers",
         "devices",
         "settings"
       ],
-      "notes": "AppDestination defaults. agents maps to hermes."
+      "notes": "IPadAwayDeskNavigation defaults. Inbox launches. agents maps to hermes. Burn is Quota. Insights/Pulse/Streams are reachable overflow. Watch is inspector plus WindowGroup(id: agent-watch)."
     },
     "android": {
       "formFactor": "phone-or-tablet",
@@ -313,8 +313,8 @@
       "ipadDestinationId": "burn",
       "androidDestinationId": "burn",
       "labels": {
-        "ios": "Burn",
-        "ipados": "Burn",
+        "ios": "Quota",
+        "ipados": "Quota",
         "android": "Burn"
       },
       "deepLinks": {
@@ -461,16 +461,16 @@
       "routeId": "route.shell.inbox",
       "capabilityId": "inbox.list",
       "canonicalDestinationId": "inbox",
-      "kind": "platform-primary",
+      "kind": "primary-shell",
       "authGate": "signed-in",
       "coldLaunch": true,
       "warmLaunch": true,
-      "iosDestinationId": null,
-      "ipadDestinationId": null,
+      "iosDestinationId": "inbox",
+      "ipadDestinationId": "inbox",
       "androidDestinationId": "inbox",
       "labels": {
-        "ios": "Inbox (inside Streams)",
-        "ipados": "Inbox (inside Streams)",
+        "ios": "Inbox",
+        "ipados": "Inbox",
         "android": "Inbox"
       },
       "deepLinks": {
@@ -898,13 +898,13 @@
     {
       "id": "divergence.inbox-primary-android",
       "capabilityId": "divergence.inbox-primary-android",
-      "summary": "Android Inbox is a primary tab; iOS/iPadOS Inbox is secondary inside Streams.",
+      "summary": "iOS compact tray and iPad desk both treat Inbox as a primary launch destination, matching Android. Pulse/Insights/Streams remain reachable overflow, not compact-tray tabs.",
       "owner": "mobile-apps"
     },
     {
       "id": "divergence.you-store-label",
       "capabilityId": "divergence.you-store-label",
-      "summary": "You destination tray label is Store on both platforms; Android tab label is Store.",
+      "summary": "iOS You tray label matches the You screen. Android tab label remains Store.",
       "owner": "mobile-apps"
     },
     {

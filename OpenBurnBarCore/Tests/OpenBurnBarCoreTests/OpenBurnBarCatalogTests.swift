@@ -28,6 +28,21 @@ final class BurnBarCatalogTests: XCTestCase {
     func test_catalogPricingLookup_usesMatcherRules() throws {
         let catalog = BurnBarCatalogLoader.bundledCatalog
 
+        let gemini38 = try XCTUnwrap(catalog.pricing(forModelName: "Gemini 3.8 Flash (High)"))
+        XCTAssertEqual(gemini38.inputPerMToken, 0.5, accuracy: 0.001)
+        XCTAssertEqual(gemini38.outputPerMToken, 3, accuracy: 0.001)
+        let gemini38Id = try XCTUnwrap(catalog.pricing(forModelName: "gemini-3.8-flash-high"))
+        XCTAssertEqual(gemini38Id.inputPerMToken, 0.5, accuracy: 0.001)
+        let gemini37 = try XCTUnwrap(catalog.pricing(forModelName: "Gemini 3.7 Flash (Medium)"))
+        XCTAssertEqual(gemini37.inputPerMToken, 0.5, accuracy: 0.001)
+        XCTAssertEqual(gemini37.outputPerMToken, 3, accuracy: 0.001)
+        let gemini35 = try XCTUnwrap(catalog.pricing(forModelName: "Gemini 3.5 Flash (High)"))
+        XCTAssertEqual(gemini35.inputPerMToken, 0.5, accuracy: 0.001)
+        XCTAssertEqual(gemini35.outputPerMToken, 3, accuracy: 0.001)
+        let muse13 = try XCTUnwrap(catalog.pricing(forModelName: "muse-spark-1.3-contributor", providerID: "meta"))
+        XCTAssertEqual(muse13.inputPerMToken, 0.1, accuracy: 0.001)
+        XCTAssertEqual(muse13.outputPerMToken, 0.2, accuracy: 0.001)
+
         let sonnet = try XCTUnwrap(catalog.pricing(forModelName: "claude-3-5-sonnet-20241022"))
         let factorySonnext = try XCTUnwrap(catalog.pricing(forModelName: "Sonnext-4.6-9"))
         let gpt56Sol = try XCTUnwrap(catalog.pricing(forModelName: "gpt-5.6-sol"))

@@ -198,6 +198,22 @@ jobs:
       - name: Enforce known vulnerability floors
         run: node scripts/security/check-known-vulnerability-floors.mjs
 
+  osv-scanner:
+    name: OSV Scanner (open source vulnerabilities)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Run OSV-Scanner
+        uses: google/osv-scanner-action/osv-scanner-action@v2.2.2
+        with:
+          scan-args: |-
+            --config=osv-scanner.toml
+            --recursive
+            ./
+
   remote-installer-policy:
     name: Remote Installer Policy
     runs-on: ubuntu-latest

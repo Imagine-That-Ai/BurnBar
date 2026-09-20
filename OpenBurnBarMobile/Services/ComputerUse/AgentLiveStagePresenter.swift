@@ -267,10 +267,6 @@ final class AgentLiveStagePresenter: ObservableObject {
     }
 }
 
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
 @MainActor
 enum CLIAgentControlSession {
     static weak var presenter: AgentLiveStagePresenter?

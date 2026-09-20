@@ -2,6 +2,7 @@ name: Ops plane verify (production)
 
 permissions:
   contents: read
+  issues: write
 
 on:
   schedule:
@@ -193,3 +194,24 @@ jobs:
             exit 1
           fi
           echo "::notice::GCP_SA_KEY not set — ops plane verify skipped (manual dispatch dry-run)."
+
+  standing-failure:
+    name: Standing failure issue
+    needs: [verify, skipped-no-gcp-key]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: ${{ needs.verify.result == 'success' && 'close' || 'open' }}
+          lane: ops-plane-verify
+          title-prefix: "Ops plane verify standing failure"
+          summary: "Scheduled ops-plane-verify ended verify=${{ needs.verify.result }} skipped-no-gcp=${{ needs.skipped-no-gcp-key.result }}."
+          paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}

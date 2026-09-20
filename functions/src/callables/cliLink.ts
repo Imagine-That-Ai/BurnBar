@@ -8,7 +8,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { createCipheriv, createECDH, createHash, randomBytes } from "node:crypto";
 import { db } from "../adminRuntime.js";
 import { assertCloudFeatureNotSuspended } from "../cloudFeatureSuspensions.js";
-import { logError, wrapCallableHandler } from "../logging.js";
+import { logError, wrapCallableHandler, wrapRequestHandler } from "../logging.js";
 import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestation.js";
 import {
   assertActiveBurnBarProEntitlement,
@@ -202,7 +202,7 @@ export const startCliLink = onRequest(
     cors: true,
     ...HOT_PATH_OPTIONS,
   },
-  async (req, res) => {
+  wrapRequestHandler("startCliLink", async (req, res) => {
     setPublicJsonNoStoreHeaders(res);
     if (req.method !== "POST") {
       res.status(405).json({ error: "method_not_allowed" });
@@ -261,7 +261,7 @@ export const startCliLink = onRequest(
       logError({ event: "cli_link.start_failed", error: String(err) });
       res.status(500).json({ error: "internal" });
     }
-  },
+  }),
 );
 
 /**
@@ -273,7 +273,7 @@ export const pollCliLink = onRequest(
     region: FUNCTIONS_REGION,
     cors: true,
   },
-  async (req, res) => {
+  wrapRequestHandler("pollCliLink", async (req, res) => {
     setPublicJsonNoStoreHeaders(res);
     if (req.method !== "POST") {
       res.status(405).json({ error: "method_not_allowed" });
@@ -362,7 +362,7 @@ export const pollCliLink = onRequest(
       logError({ event: "cli_link.poll_failed", error: String(err) });
       res.status(500).json({ error: "internal" });
     }
-  },
+  }),
 );
 
 /**

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import FirebaseCore
 import GoogleSignIn
 import OpenBurnBarCore
@@ -173,7 +174,7 @@ struct OpenBurnBarMobileApp: App {
                 // First-run, opt-in analytics consent prompt. Shows once while
                 // consent is `.unset`; never reappears after a decision.
                 .analyticsConsentPrompt()
-                .burnBarLaunchSplash(onHaptic: HapticBus.logoFormation)
+                .modifier(PhoneSkipsLaunchSplash())
                 .fullScreenCover(isPresented: $showThemeScreenshotPage) {
                     NavigationStack {
                         ThemeSettingsView()
@@ -197,6 +198,20 @@ struct OpenBurnBarMobileApp: App {
                     )
                 }
         }
+        .commands {
+            IPadAwayDeskCommands()
+        }
+
+        WindowGroup(id: IPadAwayDeskNavigation.watchWindowID) {
+            IPadAgentWatchWindowRoot()
+                .environment(\.appServices, appServices)
+                .tint(resolvedTint)
+                .preferredColorScheme(appearanceOverride)
+        }
+        .defaultSize(width: 480, height: 720)
+        .commands {
+            IPadAwayDeskCommands()
+        }
     }
 
     private func handleDeepLink(_ url: URL) {
@@ -214,5 +229,17 @@ struct OpenBurnBarMobileApp: App {
         }
         guard url.scheme?.lowercased() == "burnbar" else { return }
         MobileOsDeepLinkApplier.apply(MobileOsIntegrationPolicy.route(url: url))
+    }
+}
+
+/// iPhone first-run must not put the cube splash under the consent sheet.
+/// iPad keeps the existing launch splash.
+private struct PhoneSkipsLaunchSplash: ViewModifier {
+    func body(content: Content) -> some View {
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            content
+        } else {
+            content.burnBarLaunchSplash(onHaptic: HapticBus.logoFormation)
+        }
     }
 }

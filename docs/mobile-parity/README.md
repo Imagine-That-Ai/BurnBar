@@ -27,6 +27,10 @@ captures, and store publication stay blocked.
 | File | Role |
 |---|---|
 | `mobile-capability-registry.json` | One row per accepted capability, divergence, and non-goal |
+| `iphone-hero-ia.md` | iPhone compact tray (Inbox · Agents · Quota · You), Watch overlay, deep links, Mac-feature address table |
+| `ipad-visual-north-star.md` | iPad visual contract: eight rules (type, density, columns, pointer, halt, no fake video, chrome, two pointers). Research only; no UI claimed |
+| `ipad-swiftui-api-notes.md` | Current iPad SwiftUI APIs (`NavigationSplitView`, inspector, Commands, hover) with `#available` gates — research only |
+| `ipad-away-desk-ia.md` | iPad command desk (Inbox-first columns + Watch inspector), keyboard/pointer, Stage Manager window, deep links |
 | `mobile-route-map.json` | Primary/secondary/gated destinations, deep links, push, widgets |
 | `mobile-ownership-map.json` | Source → iOS / iPadOS / Android ownership |
 | `mobile-sync-ownership.json` | Mac publishes; mobile mirrors (read-only) |

@@ -156,8 +156,12 @@ extension MercuryRouter {
         publishActiveMirrorViewerCount()
     }
 
+    /// Single place the mirror viewer set is published. Keep-awake rides here
+    /// too — every mutation of `activeMirrorViewers` already funnels through
+    /// this, including the clear-all teardown that must release the assertion.
     func publishActiveMirrorViewerCount() {
         MacMediaActiveSessionRegistry.shared.setCount(activeMirrorViewers.count, for: .screenShare)
+        MacKeepAwakeController.shared.set(.mercuryMirror, held: !activeMirrorViewers.isEmpty)
     }
 
     func broadcastMirrorAck(

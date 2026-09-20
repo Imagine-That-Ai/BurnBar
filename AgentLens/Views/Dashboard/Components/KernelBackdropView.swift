@@ -6,6 +6,18 @@ import WebKit
 /// visibility. The DEBUG performance harness may supply an explicit visibility
 /// override because virtual CI sessions do not reliably update
 /// `NSWindow.occlusionState` even after CGWindow reports an on-screen window.
+/// The P-PERF-3 helper talks to `KernelBackdropView`'s WKWebView JS bridge.
+/// Native Metal glass fields skip that bridge, so performance-gate launches
+/// must keep the WebGL kernel even when the user/default prefers Metal.
+enum PerformanceGateBackdropSurface {
+    static func usesWebGLKernel(
+        isPerformanceGateLaunch: Bool,
+        nativeFieldEnabled: Bool
+    ) -> Bool {
+        isPerformanceGateLaunch || !nativeFieldEnabled
+    }
+}
+
 enum OcclusionVisibilityPolicy {
     /// Returns `true` (active) when the performance harness explicitly shows
     /// the dashboard, or when the ordinary AppKit window state is visible.

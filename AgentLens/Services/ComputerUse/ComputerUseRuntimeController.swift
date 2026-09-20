@@ -4,6 +4,7 @@ import Combine
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+import OpenBurnBarMedia
 
 /// Production app owner for the Mac-side Computer Use coordinator.
 ///
@@ -79,6 +80,44 @@ final class ComputerUseRuntimeController: ObservableObject {
     func attach(relayHostService: HermesRelayHostService) {
         self.relayHostService = relayHostService
         relayHostService.setComputerUseControlDispatcher(coordinator.controlDispatcher)
+    }
+
+    func attachWatchHUD(
+        mediaSessionCoordinator: MediaSessionCoordinator,
+        registryProvider: @escaping () -> MediaControlStreamRegistry?
+    ) {
+        coordinator.watchHUDFactory = { [weak self, weak mediaSessionCoordinator] in
+            guard let self, let media = mediaSessionCoordinator else { return nil }
+            // Path B: Mercury is already encoding desktop pixels. Do not
+            // start a second encoder; iOS fans those frames into the overlay.
+            if media.isScreenShareActive { return nil }
+            guard let uid = self.coordinator.latestControlUID ?? self.accountManager.userID,
+                  !uid.isEmpty,
+                  let connectionID = self.coordinator.latestControlConnectionID,
+                  !connectionID.isEmpty,
+                  let registry = registryProvider() else {
+                return nil
+            }
+            guard let sink = try? await MercuryControlStreamMediaSink.make(
+                registry: registry,
+                uid: uid,
+                connectionID: connectionID,
+                streamClass: .controlSurfaceFrame
+            ) else {
+                return nil
+            }
+            return AgentWatchHUDSession(
+                mediaCoordinator: media,
+                surfaceSink: sink,
+                actionSink: { [weak coordinator = self.coordinator] frame in
+                    try await coordinator?.latestReplySender?(frame)
+                },
+                peerDeviceID: connectionID,
+                uid: uid,
+                connectionId: connectionID,
+                sessionId: self.coordinator.activeSessionId?.rawValue ?? UUID().uuidString
+            )
+        }
     }
 
     func attachFocusFollow(mediaSessionCoordinator: MediaSessionCoordinator) {
@@ -242,7 +281,7 @@ final class ComputerUseRuntimeController: ObservableObject {
         guard let uid = accountManager.userID, !uid.isEmpty else {
             throw ComputerUseAuditExportSignerPublisherError.missingUserId
         }
-        try await ComputerUseAuditExportSignerPublisher.shared.publish(
+        try await ComputerUseAuditExportSignerPublisher().publish(
             uid: uid,
             deviceId: accountManager.deviceId,
             response: response
@@ -472,8 +511,6 @@ private enum ComputerUseAuditExportSignerPublisherError: LocalizedError {
 
 private final class ComputerUseAuditExportSignerPublisher: Sendable {
     // cov:ignore-start -- audit-export readback writes live Firestore documents; payload schema is covered by capability-state and audit-export contract tests.
-    static let shared = ComputerUseAuditExportSignerPublisher()
-
     private let firestoreGateway: any ComputerUseFirestoreGateway
 
     init(firestoreGateway: any ComputerUseFirestoreGateway = ComputerUseFirestoreLiveGateway()) {

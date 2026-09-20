@@ -194,4 +194,48 @@ final class ChatPanelComponentTests: XCTestCase {
         XCTAssertEqual(ChatTranscriptLayout.tailScrollTriggerKey(for: nil), 0)
     }
 
+    func test_showsPreparingIndicator_whileSendIsInFlightBeforeStreaming() {
+        XCTAssertTrue(
+            ChatTranscriptLayout.showsPreparingIndicator(
+                sendInFlight: true,
+                isStreaming: false,
+                lastRole: .user
+            )
+        )
+    }
+
+    func test_showsPreparingIndicator_hidesOnceStreamingPlaceholderExists() {
+        XCTAssertFalse(
+            ChatTranscriptLayout.showsPreparingIndicator(
+                sendInFlight: true,
+                isStreaming: true,
+                lastRole: .user
+            )
+        )
+    }
+
+    func test_showsPreparingIndicator_hidesOnIdleTranscript() {
+        XCTAssertFalse(
+            ChatTranscriptLayout.showsPreparingIndicator(
+                sendInFlight: false,
+                isStreaming: false,
+                lastRole: .user
+            )
+        )
+        XCTAssertFalse(
+            ChatTranscriptLayout.showsPreparingIndicator(
+                sendInFlight: true,
+                isStreaming: false,
+                lastRole: .assistant
+            )
+        )
+        XCTAssertFalse(
+            ChatTranscriptLayout.showsPreparingIndicator(
+                sendInFlight: true,
+                isStreaming: false,
+                lastRole: nil
+            )
+        )
+    }
+
 }

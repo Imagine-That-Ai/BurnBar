@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "note": "Owner+expiry registry for Remote Config / rollout flags. A flag with zero runtime consumers must be removed or given an owner before the expiry date.",
+  "flags": [
+    {
+      "id": "computer_use_kill_switch",
+      "owner": "computer-use",
+      "surface": "firebase-remote-config",
+      "expiry": null,
+      "consumers": ["AgentLens", "OpenBurnBarMobile", "android"]
+    },
+    {
+      "id": "hermes_iroh_default_enabled",
+      "owner": "hermes",
+      "surface": "scripts/rollout.mjs",
+      "expiry": "2026-12-31",
+      "consumers": []
+    },
+    {
+      "id": "mercury_media_enabled",
+      "owner": "media",
+      "surface": "scripts/rollout.mjs",
+      "expiry": "2026-12-31",
+      "consumers": []
+    }
+  ]
+}

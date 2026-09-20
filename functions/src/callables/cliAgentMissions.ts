@@ -30,11 +30,13 @@ import {
   mintHostWriteNonce,
   missionRef,
   parseCreateLeaf,
+  parseGroupCreate,
   requireAuth,
   requireMacProof,
   requirePhoneProof,
   requireRuntimeToken,
   requireSealed,
+  writeGroupInTransaction,
   writePendingMissionInTransaction,
 } from "./cliAgentMissionsSupport.js";
 
@@ -107,6 +109,45 @@ export const createCliAgentMission = onCallProduction<Record<string, unknown>, {
       sibling_count: siblings.length,
     });
     return { ok: true, requestId: written.requestId, idempotent: written.idempotent };
+  },
+);
+
+export const createCliAgentMissionGroup = onCallProduction<
+  Record<string, unknown>,
+  { ok: true; groupId: string; idempotent?: boolean }
+>(
+  "createCliAgentMissionGroup",
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (request) => {
+    const uid = await requireAuth(request);
+    const nonce = boundedTrimmedString(request.data.nonce, "nonce", 256, true);
+    const deviceId = boundedFirestoreDocumentId(request.data.deviceId, "deviceId", 160);
+    const parsed = await parseGroupCreate(recordOrUndefined(request.data) ?? {}, uid);
+    await enforceHighRiskComputerUseCallableWithNonce(request, uid, nonce);
+    await requireTrustedDeviceActionProof({
+      uid,
+      deviceId,
+      actionKind: "cli_agent_mission_group_create",
+      subjectId: parsed.groupId,
+      approve: true,
+      nonce,
+      proofRaw: request.data.actionProof,
+      allowedPlatforms: CREATE_PLATFORMS,
+    });
+    await checkMissionCreateRateLimit(uid);
+    const written = await db.runTransaction(async (tx) => writeGroupInTransaction(tx, uid, parsed));
+    logInfo({
+      event: "callable_info",
+      message: "cli_agent_mission_group_created",
+      group_id: written.groupId,
+      child_count: parsed.childMissionIDs.length,
+      idempotent: written.idempotent === true,
+    });
+    return { ok: true, groupId: written.groupId, idempotent: written.idempotent };
   },
 );
 

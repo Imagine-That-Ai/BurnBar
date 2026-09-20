@@ -31,7 +31,6 @@ function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<stri
     clientId: "bob-client",
     attachmentId: "bob-att",
     connectionId: "bob-conn",
-    eventId: "bob-event",
     code: "ABCDEFGHJKMN",
     transferId: `ct_${"b".repeat(24)}`,
     docID: "bob-doc",
@@ -46,10 +45,41 @@ function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<stri
     pairingId: "bob-pair",
     notificationId: "bob-notif",
     requestId: "bob-request",
+    groupId: "bob-group",
     callId: "call-00000001",
     displayName: "Bob",
     deviceName: "Bob Device",
-    platform: "macos",
+    platform: "macOS",
+    sealedReplyPayload: {
+      schemaVersion: 2,
+      keyVersion: 1,
+      algorithm: "AES-256-GCM",
+      vaultKeyID: "vk_bola",
+      sealedBoxBase64: "YQ==",
+    },
+    sealedStatePayload: {
+      schemaVersion: 2,
+      keyVersion: 1,
+      algorithm: "AES-256-GCM",
+      vaultKeyID: "vk_bola",
+      sealedBoxBase64: "YQ==",
+    },
+    contentBlake3: "b".repeat(64),
+    partIndex: 0,
+    publicFields: {},
+    eventId: "00000001",
+    status: "pending",
+    actionProof: { nonce: "bola-action-proof", signature: "YQ==" },
+    byteCount: 1024,
+    id: "bob-doc",
+    remoteCommandID: "bob-remote-cmd",
+    nextStatus: "accepted",
+    hostWriteNonce: "bola-host-write-nonce",
+    trustChain: { version: 1, signatures: [] },
+    capabilities: ["screen", "pointer"],
+    approve: false,
+    ceilingDigest: "a".repeat(64),
+    credential: "bola-test-credential",
     nonce: "bola-test-nonce",
     runtime: "pi",
     threadId: "bob-thread",
@@ -66,7 +96,18 @@ function bolaCrossUserData(overrides: Record<string, unknown> = {}): Record<stri
     sourceDeviceId: "bob-device",
     clientIntentId: "bob-intent",
     missionId: "bob-mission",
+    missionID: "bob-mission",
     approvalId: "bob-approval",
+    recoveryId: "rec_bobrecovery01",
+    recoveryID: "rec_bobrecovery01",
+    attachmentID: "bob-att",
+    notificationID: "bob-notif",
+    requestID: "bob-request",
+    grantId: "bob-grant",
+    grantID: "bob-grant",
+    ceilingId: "bob-ceiling",
+    answerId: "bob-answer",
+    eventID: "bob-event",
     ...overrides,
   };
 }
@@ -112,26 +153,30 @@ const DENIAL_MESSAGE_PATTERNS: Record<
   unauthenticated: /unauthenticated|sign[- ]in required/i,
 };
 
-const DENIAL_HTTPS_CODES: Record<
-  "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated",
-  Set<string>
-> = {
-  "permission-denied": new Set(["permission-denied", "invalid-argument"]),
-  "not-found": new Set(["not-found", "invalid-argument"]),
-  "failed-precondition": new Set(["failed-precondition", "invalid-argument"]),
-  unauthenticated: new Set(["unauthenticated", "invalid-argument"]),
-};
-
-const ANY_CALLABLE_DENIAL_CODE = new Set([
+const AUTHZ_DENIAL_CODES = new Set([
   "permission-denied",
   "not-found",
   "failed-precondition",
   "unauthenticated",
+]);
+
+/** Validation/contention codes that must never count as a cross-user BOLA pass. */
+const FORGED_BOLA_DENIAL_CODES = new Set([
   "invalid-argument",
-  "resource-exhausted",
   "already-exists",
   "aborted",
+  "resource-exhausted",
 ]);
+
+const DENIAL_HTTPS_CODES: Record<
+  "permission-denied" | "not-found" | "failed-precondition" | "unauthenticated",
+  Set<string>
+> = {
+  "permission-denied": new Set(["permission-denied"]),
+  "not-found": new Set(["not-found"]),
+  "failed-precondition": new Set(["failed-precondition"]),
+  unauthenticated: new Set(["unauthenticated"]),
+};
 
 function isHarnessAssertionFailure(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -157,27 +202,20 @@ export async function expectCallableDenial(
     }
     const rawCode = error && typeof error === "object" ? Reflect.get(error, "code") : undefined;
     const code = typeof rawCode === "string" ? rawCode : undefined;
+    if (code && FORGED_BOLA_DENIAL_CODES.has(code)) {
+      throw error;
+    }
     if (strictCode) {
       if (code === expectedCode || (code && DENIAL_HTTPS_CODES[expectedCode].has(code))) {
         return;
       }
-      const message = error instanceof Error ? error.message : String(error);
-      if (DENIAL_MESSAGE_PATTERNS[expectedCode].test(message)) {
-        return;
-      }
       throw error;
     }
-    if (code && ANY_CALLABLE_DENIAL_CODE.has(code)) {
-      return;
-    }
-    if (code && (code.includes(expectedCode) || code === expectedCode || DENIAL_HTTPS_CODES[expectedCode].has(code))) {
+    if (code === expectedCode || (code && AUTHZ_DENIAL_CODES.has(code))) {
       return;
     }
     const message = error instanceof Error ? error.message : String(error);
     if (DENIAL_MESSAGE_PATTERNS[expectedCode].test(message)) {
-      return;
-    }
-    if (code && code.toLowerCase().includes(expectedCode)) {
       return;
     }
     throw error;

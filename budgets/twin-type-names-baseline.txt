@@ -1,0 +1,4 @@
+BudgetLedger
+SettingsManifest
+SettingsSearchEngine
+SettingsSearchResultsView

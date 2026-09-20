@@ -1,37 +1,6 @@
 import SwiftUI
 import OpenBurnBarRecap
 
-// MARK: - Transparency preference
-//
-// Mirrors the semantics of the two per-app `Theme/LiquidGlass.swift` files,
-// reading the same UserDefaults key so a preference set anywhere in the app
-// applies here too. The shared UI module has no glass vocabulary of its own,
-// so the recap brings one rather than reaching into a platform target.
-
-enum RecapGlassTransparency {
-    static let storageKey = "liquidGlassTransparency"
-    static let range: ClosedRange<Double> = -1.0...1.0
-
-    /// Reduce Transparency always wins over "clearer": the accessibility flag
-    /// only ever asks for more opacity, so positive values collapse to neutral
-    /// while negative (frostier) values still apply.
-    static func effective(_ raw: Double, reduceTransparency: Bool) -> Double {
-        guard raw.isFinite else { return 0 }
-        let clamped = min(max(raw, range.lowerBound), range.upperBound)
-        return (reduceTransparency && clamped > 0) ? 0 : clamped
-    }
-
-    static func usesClearGlass(_ value: Double) -> Bool { value > 0.001 }
-
-    static func frostScrimOpacity(_ value: Double) -> Double {
-        value < 0 ? 0.9 * -value : 0
-    }
-
-    static var stored: Double {
-        UserDefaults.standard.object(forKey: storageKey) as? Double ?? 0
-    }
-}
-
 // MARK: - Surface
 
 /// The card plate: Liquid Glass where the OS has it, a material stack where it
@@ -49,7 +18,7 @@ public struct RecapSurface: ViewModifier {
     public let isProminent: Bool
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @AppStorage(RecapGlassTransparency.storageKey) private var rawTransparency: Double = 0
+    @AppStorage(LiquidGlassTransparency.storageKey) private var rawTransparency: Double = 0
 
     public init(accent: Color, cornerRadius: CGFloat, isProminent: Bool = false) {
         self.accent = accent
@@ -58,7 +27,7 @@ public struct RecapSurface: ViewModifier {
     }
 
     private var transparency: Double {
-        RecapGlassTransparency.effective(rawTransparency, reduceTransparency: reduceTransparency)
+        LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: reduceTransparency)
     }
 
     public func body(content: Content) -> some View {
@@ -70,7 +39,7 @@ public struct RecapSurface: ViewModifier {
                     // The card's own accent, kept faint — colour should say
                     // "this card is about Claude", not "look at me".
                     shape.fill(RecapTheme.wash(accent))
-                    let frost = RecapGlassTransparency.frostScrimOpacity(transparency)
+                    let frost = LiquidGlassTransparency.frostScrimOpacity(transparency)
                     if frost > 0 {
                         shape.fill(.thickMaterial).opacity(frost)
                     }
@@ -91,7 +60,7 @@ public struct RecapSurface: ViewModifier {
             shape
                 .fill(UnifiedDesignSystem.Colors.surface.opacity(0.28))
                 .glassEffect(
-                    RecapGlassTransparency.usesClearGlass(transparency) ? .clear : .regular,
+                    LiquidGlassTransparency.usesClearGlass(transparency) ? .clear : .regular,
                     in: shape
                 )
         } else {

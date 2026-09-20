@@ -9,7 +9,13 @@ import OpenBurnBarMedia
 /// video stream as `control.surface.frame`, while the sibling action-log
 /// stream carries compact journal events for the phone overlay.
 @MainActor
-public final class AgentWatchHUDSession {
+protocol AgentWatchHUDControlling: AnyObject {
+    func start() async throws
+    func stop() async
+}
+
+@MainActor
+public final class AgentWatchHUDSession: AgentWatchHUDControlling {
     public typealias FrameSink = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
 
     private let mediaCoordinator: MediaSessionCoordinator
@@ -75,7 +81,9 @@ public final class AgentWatchHUDSession {
     }
 
     public func stop() async {
-        await mediaCoordinator.stop(reason: .completedUserCancel)
+        // Detach only this HUD sink. A live Mercury Ask-to-Mirror share
+        // may be using the same encoder; do not tear that down.
+        await mediaCoordinator.detachScreenShareViewer(viewerID: peerDeviceID)
         // try?-ok(fire-and-forget stop notice)
         try? await actionSink(HermesRealtimeRelayFrame(
             type: .controlActionLogEntry,

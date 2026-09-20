@@ -38,4 +38,18 @@ describe("push resilience wiring", () => {
     expect(pushWithResilience).toHaveBeenCalledWith("apns.voip", expect.any(Function));
     expect(result.status).toBe("retry");
   });
+
+  it("pushToAPNs labels Live Activity sends separately from VoIP", async () => {
+    const { pushToAPNs } = await import("../apnsSender.js");
+    const result = await pushToAPNs({
+      deviceTokenHex: "a".repeat(64),
+      documentId: "doc-1",
+      payload: { aps: { event: "update" } },
+      hostOverride: "https://127.0.0.1:9",
+      topicOverride: "com.openburnbar.app.push-type.liveactivity",
+      pushType: "liveactivity",
+    });
+    expect(pushWithResilience).toHaveBeenCalledWith("apns.liveactivity", expect.any(Function));
+    expect(result.status).toBe("retry");
+  });
 });

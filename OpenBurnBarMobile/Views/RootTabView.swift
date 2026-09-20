@@ -8,7 +8,9 @@ import OSLog
 
 // MARK: - Root Tab View (iPhone)
 //
-// Aurora navigation shape: Pulse / Burn / Streams / Hermes / You.
+// Compact Aurora tray: Inbox (launch) / Agents / Quota / You.
+// Pulse, Insights, Streams, and Recap stay reachable via deep link or You
+// overflow. Agent Watch is an overlay singleton, not a tab.
 // All tabs share a single MotionStore via the environment so the parallax
 // backdrop and hero cards drift in unison.
 
@@ -24,7 +26,7 @@ struct RootTabView: View {
     let devicesStore: DevicesStore
     let transferStore: CredentialTransferStore
 
-    @State private var selection: AuroraNavDestination = .pulse
+    @State private var selection: AuroraNavDestination = .inbox
     /// Live preview destination during a nav-tray scrub. When non-nil, the
     /// content area shows this tab so the user sees what they're about to
     /// commit. Cleared on commit (selection binding updates) or cancel.
@@ -72,19 +74,24 @@ struct RootTabView: View {
     @State private var showRecap = false
 
     // Per-tab navigation paths
+    @State private var inboxPath = NavigationPath()
     @State private var pulsePath = NavigationPath()
     @State private var burnPath = NavigationPath()
     @State private var streamsPath = NavigationPath()
     @State private var hermesPath = NavigationPath()
     @State private var youPath = NavigationPath()
 
-    /// Recap joins the tray only where there is room for a seventh
-    /// destination; on iPhone it is reached from the Insights banner.
+    /// Recap joins the regular-width tray; on compact iPhone it is reached
+    /// from You overflow or the Insights banner.
     private var destinations: [AuroraNavDestination] {
         AuroraNavDestination.trayDestinations(compact: horizontalSizeClass == .compact)
     }
 
     var body: some View {
+        rootWithPresentation
+    }
+
+    private var rootChrome: some View {
         ZStack {
             if selection == .hermes {
                 contentForSelection
@@ -159,6 +166,10 @@ struct RootTabView: View {
             )
             .zIndex(19)
         }
+    }
+
+    private var rootWithLifecycle: some View {
+        rootChrome
         .environment(\.motionStore, motionStore)
         // This root is the one that actually draws the floating tray, so it is
         // the one that says how much room it takes. The sidebar root never sets
@@ -193,6 +204,7 @@ struct RootTabView: View {
         // has no subscriber yet and the stash is the only surviving record of
         // it. Same shape as `applyPendingGatewayPairingDeepLink`.
         .task { claimPendingAIInboxDeepLink() }
+        .task { claimPendingInsightsDeepLink() }
         .task {
             liveStageSingleton.configurePictureInPicture(
                 onDidStart: { liveStagePresenter.setPiPActive(true) },
@@ -227,14 +239,16 @@ struct RootTabView: View {
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
         }
+    }
+
+    private var rootWithNotifications: some View {
+        rootWithLifecycle
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowHermesChat"))) { _ in
             selection = .hermes
         }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowAssistantsTab"))) { notification in
-            let runtime = notification.userInfo?["runtime"] as? String
-            if runtime == nil || runtime == AssistantRuntimeID.hermes.rawValue {
-                selection = .hermes
-            }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowAssistantsTab")), perform: handleShowAssistantsTab)
+        .onReceive(NotificationCenter.default.publisher(for: IPadAwayDeskNotifications.askToMirror)) { _ in
+            selection = .hermes
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
             openAgentWatchRoute()
@@ -251,29 +265,25 @@ struct RootTabView: View {
         // Both of these drain the stash on the live path too: the tap has been
         // served here, so leaving it parked would let `claimPendingOsRouteIfNeeded`
         // re-raise the same surface later.
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
-            guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
-            presentMercuryCall(connectionId: notification.userInfo?["connectionId"] as? String)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole"))) { notification in
-            guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
-            presentMissionConsole(missionId: notification.userInfo?["missionId"] as? String)
-        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall")), perform: handleShowMercuryCall)
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole")), perform: handleShowMissionConsole)
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
             selection = .streams
         }
-        .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
-            openHermesGatewayPairingRoute(notification)
+        .onReceive(NotificationCenter.default.publisher(for: InsightsDeepLink.notificationName)) { _ in
+            selection = .insights
         }
-        .onReceive(NotificationCenter.default.publisher(for: AIInboxDeepLink.notificationName)) { notification in
-            openAIInboxRoute(itemID: AIInboxDeepLink.itemID(from: notification))
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowRecap"))) { _ in
+            showRecap = true
         }
-        .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
-            isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
-            isCloudStoreChromeHidden = notification.object as? Bool ?? false
-        }
+        .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName), perform: openHermesGatewayPairingRoute)
+        .onReceive(NotificationCenter.default.publisher(for: AIInboxDeepLink.notificationName), perform: handleShowAIInbox)
+        .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged), perform: handleHermesKeyboardFocusChanged)
+        .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged), perform: handleCloudStoreChromeVisibilityChanged)
+    }
+
+    private var rootWithPresentation: some View {
+        rootWithNotifications
         .sheet(isPresented: $showMissionConsole) {
             MobileMissionConsoleSheet(host: missionConsoleHost) {
                 showMissionConsole = false
@@ -284,12 +294,16 @@ struct RootTabView: View {
                 showMercuryCall = false
             }
         }
+        .fullScreenCover(isPresented: $showRecap) {
+            MobileRecapScreen(accountID: authStore.currentIdentity?.uid, onDismiss: { showRecap = false })
+        }
     }
 
     @ViewBuilder
     private var contentForSelection: some View {
         let active = scrubPreview ?? selection
         switch active {
+        case .inbox:    inboxStack
         case .pulse:    pulseStack
         case .burn:     burnStack
         case .insights: insightsStack
@@ -386,7 +400,7 @@ struct RootTabView: View {
     /// Hoisted for the same reason as the Pulse/Burn stores: Streams remounts on
     /// every tab return, and a per-view inbox store would tear down and re-open
     /// two Firestore listeners each time.
-    @State private var streamsInboxStore = AIInboxStore()
+    @State private var inboxStore = AIInboxStore()
 
     private var insightsStack: some View {
         VStack(spacing: 0) {
@@ -403,12 +417,15 @@ struct RootTabView: View {
                 hermesService: hermesService
             )
         }
-        .fullScreenCover(isPresented: $showRecap) {
-            MobileRecapScreen(accountID: authStore.currentIdentity?.uid, onDismiss: { showRecap = false })
-        }
     }
 
     // MARK: - Stacks
+
+    private var inboxStack: some View {
+        NavigationStack(path: $inboxPath) {
+            InboxHomeView(store: inboxStore)
+        }
+    }
 
     private var pulseStack: some View {
         NavigationStack(path: $pulsePath) {
@@ -437,7 +454,7 @@ struct RootTabView: View {
 
     private var streamsStack: some View {
         NavigationStack(path: $streamsPath) {
-            StreamsView(inbox: streamsInboxStore)
+            StreamsView(inbox: inboxStore)
                 .navigationDestination(for: TokenUsage.self) { SessionDetailView(usage: $0) }
         }
     }
@@ -525,21 +542,28 @@ struct RootTabView: View {
     /// Lands a `burnbar://inbox[/{itemId}]` deep link — the tap target of an AI
     /// Inbox P1 push.
     ///
-    /// The Inbox lives inside the Streams stack, so this selects that tab, resets
-    /// its path (the user may have been deep inside a session), and pushes the
-    /// item route. `AIInboxDetailRoute` resolves the row from the live store, so
-    /// an item the Mac resolved between the push and the tap shows the
-    /// "this item is gone" pane rather than a blank screen.
+    /// Inbox is the compact launch tab. This selects it, resets its path, and
+    /// pushes the item route. `AIInboxDetailRoute` resolves the row from the
+    /// live store, so an item the Mac resolved between the push and the tap
+    /// shows the "this item is gone" pane rather than a blank screen.
     private func openAIInboxRoute(itemID: String?) {
         // Drain the stash on the live path too. The tap has been served here, so
         // leaving it parked would let a later `.task` re-navigate the user back
         // to this item after they had moved on.
         _ = AIInboxDeepLink.consumePendingItemID()
-        selection = .streams
-        streamsPath = NavigationPath()
-        streamsInboxStore.focus(itemID: itemID)
+        selection = .inbox
+        inboxPath = NavigationPath()
+        inboxStore.focus(itemID: itemID)
         guard let itemID else { return }
-        streamsPath.append(AIInboxDetailRoute(itemID: itemID))
+        inboxPath.append(AIInboxDetailRoute(itemID: itemID))
+    }
+
+    /// Cold-launch counterpart for Insights. The tab is no longer in the
+    /// compact tray, so a `ShowInsightsTab` post that nobody heard must still
+    /// select the reachable Insights destination.
+    private func claimPendingInsightsDeepLink() {
+        guard InsightsDeepLink.hasPending else { return }
+        selection = .insights
     }
 
     /// Cold-launch counterpart to the `onReceive` above.
@@ -571,6 +595,38 @@ struct RootTabView: View {
         }
     }
 
+    private func handleShowAIInbox(_ notification: Notification) {
+        openAIInboxRoute(itemID: AIInboxDeepLink.itemID(from: notification))
+    }
+
+    private func handleHermesKeyboardFocusChanged(_ notification: Notification) {
+        let focused = notification.userInfo?["focused"] as? Bool
+        isHermesKeyboardVisible = focused ?? false
+    }
+
+    private func handleCloudStoreChromeVisibilityChanged(_ notification: Notification) {
+        isCloudStoreChromeHidden = notification.object as? Bool ?? false
+    }
+
+    private func handleShowAssistantsTab(_ notification: Notification) {
+        let runtime = notification.userInfo?["runtime"] as? String
+        if HermesSquareAgentsColumnRouting.selectsAgentsTab(notificationRuntime: runtime) {
+            selection = .hermes
+        }
+    }
+
+    private func handleShowMercuryCall(_ notification: Notification) {
+        guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
+        let connectionId = notification.userInfo?["connectionId"] as? String
+        presentMercuryCall(connectionId: connectionId)
+    }
+
+    private func handleShowMissionConsole(_ notification: Notification) {
+        guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
+        let missionId = notification.userInfo?["missionId"] as? String
+        presentMissionConsole(missionId: missionId)
+    }
+
     private func presentMercuryCall(connectionId: String?) {
         pendingMercuryConnectionId = connectionId
         showMercuryCall = true
@@ -596,16 +652,22 @@ struct RootTabView: View {
         guard AppStoreScreenshotMode.isEnabled, !didApplyScreenshotRoute else { return }
         didApplyScreenshotRoute = true
         switch AppStoreScreenshotMode.route {
+        case "inbox":
+            selection = .inbox
         case "burn", "quota":
             selection = .burn
         case "streams", "activity":
             selection = .streams
+        case "pulse", "dashboard":
+            selection = .pulse
+        case "insights":
+            selection = .insights
         case "hermes", "chat":
             selection = .hermes
         case "you", "account":
             selection = .you
         default:
-            selection = .pulse
+            selection = .inbox
         }
     }
 
@@ -697,6 +759,7 @@ struct RootTabView: View {
     /// raw enum description that could drift; an explicit closed mapping.
     private static func routeLabel(_ destination: AuroraNavDestination) -> AnalyticsValue {
         switch destination {
+        case .inbox:    return "inbox"
         case .pulse:    return "pulse"
         case .burn:     return "burn"
         case .insights: return "insights"
@@ -710,6 +773,7 @@ struct RootTabView: View {
     /// The canonical cross-platform `surface` value for a tab (taxonomy enum).
     private static func surface(for destination: AuroraNavDestination) -> AnalyticsValue {
         switch destination {
+        case .inbox:    return "dashboard_activity"
         case .pulse:    return "dashboard"
         case .burn:     return "dashboard"
         case .insights: return "insights"
@@ -722,22 +786,6 @@ struct RootTabView: View {
         }
     }
 
-    // MARK: - Destination Mapping (for external router compatibility)
-
-    enum TabSelection: Hashable, Equatable, Identifiable {
-        case pulse, burn, streams, hermes, you
-
-        var id: String { String(describing: self) }
-        var label: String {
-            switch self {
-            case .pulse:   return "Pulse"
-            case .burn:    return "Burn"
-            case .streams: return "Streams"
-            case .hermes:  return "Hermes"
-            case .you:     return "You"
-            }
-        }
-    }
 }
 
 #Preview {

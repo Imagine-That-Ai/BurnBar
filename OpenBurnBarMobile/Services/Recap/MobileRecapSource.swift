@@ -96,33 +96,42 @@ struct MobileRecapSource: RecapSource {
         pageSize: Int,
         pageBudget: Int
     ) async throws -> (rows: [TokenUsage], isPartial: Bool) {
-        try await paginate(interval: interval, pageSize: pageSize, pageBudget: pageBudget)
+        try await paginate(interval: interval, pageSize: pageSize, pageBudget: pageBudget) { cursor in
+            try await FirestoreRepository.shared.fetchUsagePage(
+                pageSize: pageSize,
+                after: cursor,
+                provider: nil,
+                model: nil,
+                device: nil,
+                startDate: interval.start,
+                // Firestore's range filter is inclusive; the month's
+                // exclusive upper bound sits a hair below it.
+                endDate: interval.end.addingTimeInterval(-0.001)
+            )
+        }
     }
 
-    /// The cursor is a Firestore reference type, so the whole walk stays on the
-    /// main actor and it never crosses an isolation boundary.
+    /// Walks pages until the source runs out or the budget does, reporting
+    /// whether what came back is the whole span.
+    ///
+    /// `fetchPage` is injected and the cursor generic so the paging contract
+    /// can be tested without Firestore. In production `Cursor` is
+    /// `DocumentSnapshot`, a Firestore reference type, so the walk stays on the
+    /// main actor and never crosses an isolation boundary. `interval` is bound
+    /// into `fetchPage` by the caller.
     @MainActor
-    private static func paginate(
-        interval: DateInterval,
+    static func paginate<Cursor>(
+        interval _: DateInterval,
         pageSize: Int,
-        pageBudget: Int
+        pageBudget: Int,
+        fetchPage: @MainActor @Sendable (Cursor?) async throws -> ([TokenUsage], Cursor?)
     ) async throws -> (rows: [TokenUsage], isPartial: Bool) {
         var collected: [TokenUsage] = []
-        var cursor: DocumentSnapshot?
+        var cursor: Cursor?
 
         for _ in 0..<pageBudget {
             do {
-                let (page, next) = try await FirestoreRepository.shared.fetchUsagePage(
-                    pageSize: pageSize,
-                    after: cursor,
-                    provider: nil,
-                    model: nil,
-                    device: nil,
-                    startDate: interval.start,
-                    // Firestore's range filter is inclusive; the month's
-                    // exclusive upper bound sits a hair below it.
-                    endDate: interval.end.addingTimeInterval(-0.001)
-                )
+                let (page, next) = try await fetchPage(cursor)
                 collected.append(contentsOf: page)
                 guard let next, page.count >= pageSize else {
                     return (collected, false)

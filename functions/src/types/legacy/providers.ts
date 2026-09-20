@@ -13,7 +13,18 @@
 /** Stable lowercase catalog/provider key used by provider accounts. */
 export type ProviderID = string;
 
-/** Supported provider kinds. */
+/**
+ * Supported provider kinds.
+ *
+ * These are the canonical lowercase provider IDs (`providerID` on the usage
+ * event) — the full `AgentProvider` catalog the Mac/iOS uploaders can emit
+ * (see `AgentProvider.providerID` in OpenBurnBarKernel). The rollup parser
+ * (`parseUsageEventDoc`) normalizes uploader display names ("Claude Code",
+ * "Pi Agent", …) onto these IDs. Every ID an uploader can emit MUST be listed
+ * here: on 2026-09-19 the list covered 13 of 37 catalog providers, so the
+ * rescan parsed 0 of 91,682 raw usage docs and a "successful" force rebuild
+ * wiped the account's counters to zero.
+ */
 export const SUPPORTED_PROVIDERS = [
   "openai",
   "minimax",
@@ -28,6 +39,30 @@ export const SUPPORTED_PROVIDERS = [
   "xai",
   "mimo",
   "openburnbar",
+  "aider",
+  "augment",
+  "cline",
+  "copilot",
+  "cursor-agent",
+  "deepseek",
+  "devin",
+  "forge",
+  "fx",
+  "geminicli",
+  "goose",
+  "hermes",
+  "junie",
+  "kilocode",
+  "muse",
+  "ollama",
+  "omp",
+  "openclaw",
+  "openclaude",
+  "piagent",
+  "prime-agent",
+  "roocode",
+  "warp",
+  "windsurf",
 ] as const;
 
 export type Provider = (typeof SUPPORTED_PROVIDERS)[number];

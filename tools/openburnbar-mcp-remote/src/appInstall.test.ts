@@ -13,7 +13,9 @@ import {
   DEFAULT_MACOS_FEED_URL,
   HOMEBREW_CASK_RECEIPT_DIRS,
   SU_PUBLIC_ED_KEY_BASE64,
+  appleMarketingVersion,
   compareNumericVersion,
+  feedVersionMatchesMountedApp,
   isAllowedDownloadUrl,
   isAllowedFeedUrl,
   isAllowedFeedResponseUrl,
@@ -352,9 +354,22 @@ test("parseMacOSReleaseFeed accepts generator JSON and refuses a missing signatu
 test("version comparison matches the desktop updater", () => {
   assert.equal(compareNumericVersion("1.10.0", "1.9.0"), 1);
   assert.equal(compareNumericVersion("1.0.35", "1.0.20"), 1);
+  assert.equal(appleMarketingVersion("1.0.40+repair.36"), "1.0.40");
+  assert.equal(appleMarketingVersion("1.0.40"), "1.0.40");
+  assert.equal(feedVersionMatchesMountedApp("1.0.40+repair.36", "1.0.40"), true);
+  assert.equal(feedVersionMatchesMountedApp("1.0.40", "1.0.40"), true);
+  assert.equal(feedVersionMatchesMountedApp("1.0.41", "1.0.40"), false);
   assert.equal(isNewerRelease({ version: "1.0.0", build: "201" }, { version: "1.0.0", build: "200" }), true);
   assert.equal(isNewerRelease({ version: "1.0.0", build: "200" }, { version: "1.0.0", build: "201" }), false);
-  assert.equal(isNewerRelease({ version: "1.10.0", build: "200" }, { version: "1.9.0", build: "200" }), true);
+  assert.equal(isNewerRelease({ version: "1.10.0", build: "200" }, { version: "1.9.0", build: "200" }), false);
+  assert.equal(
+    isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "82" }),
+    false
+  );
+  assert.equal(
+    isNewerRelease({ version: "1.0.40+repair.36", build: "82" }, { version: "1.0.40", build: "81" }),
+    true
+  );
 });
 
 test("mount-point and Info.plist parsers prefer the volume root", () => {
@@ -619,6 +634,48 @@ test("app update is a no-op when the installed build is current", async () => {
     assert.equal(code, 0);
     assert.equal(env.downloads(), 0);
     assert.match(env.logs.join(""), /already installed/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app update is a no-op when the feed tag is +repair.N of the installed Apple version at the same build", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("same-build-repair-dmg");
+  const release = makeRelease(bytes, key, {
+    version: "1.0.40+repair.36",
+    build: "82"
+  });
+  const env = harness(bytes, release, key, { version: "1.0.40", build: "82" });
+  try {
+    const code = await runAppCommand("update", { dryRun: false }, env.deps);
+    assert.equal(code, 0);
+    assert.equal(env.downloads(), 0);
+    assert.match(env.logs.join(""), /already installed/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app install accepts a +repair.N feed tag when the mounted Apple marketing version matches", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("repair-tag-dmg");
+  const release = makeRelease(bytes, key, {
+    version: "1.0.40+repair.36",
+    build: "82"
+  });
+  const env = harness(
+    bytes,
+    release,
+    key,
+    { version: "1.0.40", build: "81" },
+    { version: "1.0.40", build: "82", bundleId: APP_BUNDLE_ID }
+  );
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 0);
+    assert.equal(env.downloads(), 1);
+    assert.match(env.logs.join(""), /Installed OpenBurnBar 1\.0\.40\+repair\.36/);
   } finally {
     env.cleanup();
   }

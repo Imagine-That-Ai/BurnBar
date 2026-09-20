@@ -156,9 +156,20 @@ public enum ComputerUseSafetyInvariantHarness: Sendable {
             inputAllowed = false
 
         case .trustEscalateWithoutApproval:
-            if next.liveTrust == .manual || next.liveTrust == .step {
+            // This stimulus is never a Mac-UI new-session elevation. Treat as live.
+            let resolved = ComputerUseTrustModePolicy.resolve(
+                requested: .trusted,
+                current: next.liveTrust,
+                sessionIsLive: true
+            )
+            if ComputerUseTrustModePolicy.rejectsElevation(
+                requested: .trusted,
+                current: next.liveTrust,
+                sessionIsLive: true
+            ) {
                 audit.append(.trustEscalationRejected)
             }
+            next.liveTrust = resolved
 
         case .trustDowngrade:
             switch next.liveTrust {

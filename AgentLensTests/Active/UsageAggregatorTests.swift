@@ -2208,7 +2208,7 @@ final class OpenClawParserTests: XCTestCase {
         """
         try fixture.data(using: .utf8)?.write(to: tempRoot.appendingPathComponent("session-1.json"))
 
-        let parser = OpenClawParser(fileManager: fileManager, sessionsDirectory: tempRoot)
+        let parser = OpenClawParser(sessionsOverride: tempRoot, fileManager: fileManager)
         let result = try await parser.parse()
 
         XCTAssertEqual(result.conversations.count, 1)

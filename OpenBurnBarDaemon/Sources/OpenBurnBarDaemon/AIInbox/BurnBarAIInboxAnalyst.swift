@@ -77,23 +77,17 @@ struct BurnBarAIInboxAnalyst: Sendable {
         now: Date,
         standingCommitments: [BurnBarFounderLens.StandingCommitment] = []
     ) async throws -> BurnBarAIInboxAnalystResult {
-        let route = try await router.route(
-            modelName: config.analystModel,
-            // Pinning the provider is load-bearing: the router's cost dimension
-            // would otherwise happily pick a $0-priced local route for the same
-            // model name and silently change both behavior and accounting.
-            preferredProviderID: config.analystProviderID
+        // Pin first, then any other enabled+credentialed provider that
+        // satisfies egress. A dead DeepSeek pin used to file "Analyst could
+        // not run" even when another configured model could have written the
+        // brief. Egress is still enforced inside the resolver, before any
+        // byte is sent.
+        let route = try await BurnBarAIInboxRouteResolver.firstRoutable(
+            router: router,
+            config: config,
+            logger: logger,
+            role: "analyst"
         )
-
-        // The user's egress choice is enforced HERE, after the destination is
-        // known and before any byte is sent. `.local` promises the transcript
-        // stays on this machine or LAN; without this check that promise is copy,
-        // not code.
-        let decision = BurnBarAIInboxEgressGuard.evaluate(baseURL: route.baseURL, mode: config.egressMode)
-        if case .refused(let reason) = decision {
-            logger.warning("ai_inbox_analyst_egress_refused", metadata: ["reason": reason])
-            throw BurnBarAIInboxAnalystError.egressRefused(reason)
-        }
 
         let userPrompt = BurnBarAIInboxPromptBuilder.analystUserPrompt(
             pack: pack,

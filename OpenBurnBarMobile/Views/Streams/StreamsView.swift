@@ -21,7 +21,7 @@ struct StreamsView: View {
     @State private var activity = ActivityStore()
     @State private var projects = ProjectsStore()
     @State private var cockpit = ConversationCockpitStore()
-    @State private var segment: Segment = .inbox
+    @State private var segment: Segment = .cockpit
     @State private var searchText = ""
     @State private var showFilters = false
     @State private var selectedCloudConversation: CloudConversationSearchRow?
@@ -41,9 +41,8 @@ struct StreamsView: View {
     private var isCloudEntitled: Bool { cloudStore?.isActive ?? false }
 
     enum Segment: String, CaseIterable, Identifiable, Hashable {
-        /// First on purpose: the AI Inbox is the only segment that tells you
-        /// something you did not already know to look for, so it is what Streams
-        /// opens on.
+        /// Inbox remains a Streams chip for people who land here, but launch
+        /// is the dedicated Inbox tab. Streams opens on the conversation cockpit.
         case inbox
         case cockpit, sessions, projects, activity
         var id: String { rawValue }
@@ -105,9 +104,9 @@ struct StreamsView: View {
         .navigationDestination(for: AIInboxDetailRoute.self) { route in
             inboxDetail(for: route)
         }
-        // A `burnbar://inbox` deep link lands on Streams, which may be sitting on
-        // any segment. Without this the push would open the tab and leave the
-        // user on Cockpit, one tap short of the thing they were notified about.
+        // A `burnbar://inbox` deep link now selects the Inbox tab. If someone
+        // is already inside Streams when a focus token arrives, jump back to
+        // the inbox chip so the same store highlight is visible.
         .onChange(of: inbox.focusRequestToken) { _, _ in
             segment = .inbox
         }

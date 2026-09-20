@@ -65,12 +65,12 @@ test("umbrella timeout outlives the longest required component", () => {
 
   assert.ok(Number.isSafeInteger(longestRemaining) && longestRemaining > 0);
   assert.ok(
-    !config.required_contexts.includes("App build + test (AgentLens)"),
-    "merge-queue inventory must not wait on post-merge AgentLens",
+    config.required_contexts.includes("App build + test (AgentLens)"),
+    "merge-queue inventory must wait on Mac/iOS product compile-or-test",
   );
   assert.ok(
     !config.required_contexts.includes("Mobile build + unit test"),
-    "merge-queue inventory must not wait on post-merge mobile",
+    "mobile compile-or-test is aggregated into App build + test (AgentLens)",
   );
   assert.ok(
     config.timeout_minutes >= longestRemaining + 15,

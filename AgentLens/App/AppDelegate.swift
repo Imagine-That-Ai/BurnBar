@@ -144,6 +144,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             andEventID: AEEventID(kAEGetURL)
         )
 
+        if OpenBurnBarRuntime.isPerformanceGateLaunch {
+            if NSApp.activationPolicy() != .regular {
+                NSApp.setActivationPolicy(.regular)
+            }
+            NSApp.activate(ignoringOtherApps: true)
+        }
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
         installStatusItem()
         installPopoverPrewarming()

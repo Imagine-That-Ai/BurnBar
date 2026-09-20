@@ -77,6 +77,8 @@ export const PLATFORM_TRIGGER_ENDPOINTS = [
   "meterComputerUseAction",
   "meterComputerUseSessionStart",
   "meterComputerUseSessionCompletion",
+  "onComputerUseActionLiveActivity",
+  "onComputerUseSessionLiveActivity",
   "retryStuckVoIPPushes",
   "retryStuckFcmPushes",
   "retryStuckAgentReplyEvents",

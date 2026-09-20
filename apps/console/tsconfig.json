@@ -16,7 +16,9 @@
     "plugins": [{ "name": "next" }],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@openburnbar/gl-engine/*": ["../../packages/gl-engine/src/engine/*"],
+      "@openburnbar/gl-engine": ["../../packages/gl-engine/src/engine/BackdropEngine.ts"]
     }
   },
   "include": [

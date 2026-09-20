@@ -90,21 +90,9 @@ struct HermesConversationListView: View {
         authStore?.currentIdentity?.displayName?.nilIfBlank ?? "OpenBurnBar iPhone"
     }
 
-    private var conversationListBackgroundVisibility: MobileBackgroundVisibility {
-        if showConnectionSheet
-            || showRuntimeSheet
-            || showModelPicker
-            || selectedLibrarySession != nil
-            || presentedChatRoute != nil
-            || showSetupWizard {
-            return .obscured
-        }
-        return .prominent
-    }
-
     var body: some View {
         ZStack {
-            AuroraBackdrop(visibility: conversationListBackgroundVisibility)
+            Color(uiColor: .systemGroupedBackground)
 
             VStack(spacing: 0) {
                 brandHeader

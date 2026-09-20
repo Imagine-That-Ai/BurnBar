@@ -268,9 +268,8 @@ struct ChatMessageView: View {
                 }
             }
 
-            // Hermes thinking state: show mercury droplets when streaming with no content yet
-            if isHermes && isStreaming && transcript.isEmpty {
-                HermesThinkingView()
+            if isStreaming && transcript.isEmpty {
+                ChatPreparingReplyView(isHermes: isHermes)
             }
 
             ForEach(groupedTranscript) { group in

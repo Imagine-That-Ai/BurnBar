@@ -43,6 +43,7 @@ const PROBE = {
   sessionId: "bob-session",
   pairingId: "bob-pair",
   requestId: "bob-request",
+  groupId: "bob-group",
   approvalId: "bob-approval",
   provider: "openai",
   roleId: "host",

@@ -217,23 +217,33 @@ final class AIInboxSchemaParityTests: XCTestCase {
             uniqueIndex.1.contains("WHERE state IN ('new', 'updated')"),
             "The index must be PARTIAL so resolved history is retained"
         )
+    }
 
-        let tables = Set(
-            try store.queryRows(
-                "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'ai_inbox%'",
-                []
-            ).map { $0.string(0) }
-        )
-        XCTAssertEqual(
-            tables,
-            [
-                // v58
-                "ai_inbox_items", "ai_inbox_runs", "ai_inbox_state", "ai_inbox_item_state",
-                // v59 Founder Lens
-                "ai_inbox_threads", "ai_inbox_thread_messages",
-                "ai_inbox_plans", "ai_inbox_plan_steps", "ai_inbox_plan_events",
-                "ai_inbox_memory_export"
-            ]
+    func testCanonicalSharedDatabaseDoesNotSelfHealSchema() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar.sqlite")
+        try? FileManager.default.removeItem(at: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+
+        XCTAssertThrowsError(
+            try BurnBarAIInboxStore(
+                databasePath: url.path,
+                logger: BurnBarDaemonLogger(category: "test")
+            )
+        ) { error in
+            let text = String(describing: error)
+            XCTAssertTrue(
+                text.contains("app migrator") || text.contains("missing") || text.contains("Failed to open"),
+                "canonical openburnbar.sqlite must not CREATE inbox tables; got \(text)"
+            )
+        }
+
+        let bytes = (try? Data(contentsOf: url)) ?? Data()
+        let ascii = String(data: bytes, encoding: .ascii) ?? ""
+        XCTAssertFalse(
+            ascii.contains("ai_inbox_items"),
+            "fail-closed open must not write inbox DDL into canonical openburnbar.sqlite"
         )
     }
 }

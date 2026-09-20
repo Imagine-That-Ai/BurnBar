@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarUI
 
 // MARK: - Liquid Glass (iOS 26+) adapters
 //
@@ -47,89 +48,23 @@ import SwiftUI
 /// flag is on, positive values resolve to 0 so glass never becomes *more*
 /// transparent than the system allows. Frostier values still apply — they
 /// only ever add opacity, which is the direction the flag asks for.
-enum LiquidGlassTransparency {
-    static let storageKey = "liquidGlassTransparency"
-    static let range: ClosedRange<Double> = -1.0 ... 1.0
+/// Preference math lives in OpenBurnBarUI.LiquidGlassTransparency.
+/// This file keeps the platform view adapters only.
 
-    /// Resolve the raw stored value against the accessibility state.
-    static func effective(_ raw: Double, reduceTransparency: Bool) -> Double {
-        guard raw.isFinite else { return 0 }
-        let t = min(max(raw, range.lowerBound), range.upperBound)
-        return (reduceTransparency && t > 0) ? 0 : t
-    }
-
-    /// The key the kernel backdrop stores its on/off state under.
-    ///
-    /// A literal rather than an import: this type is a pure preference model and must
-    /// not depend on the view layer that owns the backdrop.
-    static let mediaRichBackdropKey = "useKernelBackdrop"
-
-    /// Whether a plate may use the `.clear` glass variant.
-    ///
-    /// WWDC25 s219 permits `.clear` only when **all three** hold: the element sits over
-    /// media-rich content, the content layer tolerates a dimming layer, and the content
-    /// above it is bold and bright. `.clear` has no adaptive behaviour — no light/dark
-    /// flip, no shadow adaptation — so using it outside those conditions is what
-    /// produces washed, low-contrast chrome.
-    ///
-    /// The previous mapping was `t > 0.001`: any nudge of the slider chose `.clear`
-    /// over an ordinary opaque background, meeting none of the three.
-    static func usesClearGlass(_ t: Double, overMediaRichContent: Bool) -> Bool {
-        guard overMediaRichContent else { return false }
-        return t > 0.55
-    }
-
-    static func isOverMediaRichContent(defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: mediaRichBackdropKey)
-    }
-
-    static func usesClearGlass(_ t: Double) -> Bool {
-        usesClearGlass(t, overMediaRichContent: isOverMediaRichContent())
-    }
-
-    /// Opacity of the thick-material frost scrim between plate and content.
-    static func frostScrimOpacity(_ t: Double) -> Double { t < 0 ? 0.9 * -t : 0 }
-
-    /// The dimming layer that makes `.clear` legitimate.
-    ///
-    /// Takes the media condition explicitly rather than reading `UserDefaults`, so the
-    /// value is a pure function of its inputs and a test cannot be silently steered by
-    /// whatever the developer happens to have switched on.
-    ///
-    /// Zero unless `.clear` is actually selected — below the threshold the plate is
-    /// `.regular`, which is adaptive and needs no help.
-    static func clearBridgeScrimOpacity(_ t: Double, overMediaRichContent: Bool) -> Double {
-        guard usesClearGlass(t, overMediaRichContent: overMediaRichContent) else { return 0 }
-        // `.clear` is only sanctioned *with* a dimming layer, so this is load-bearing
-        // rather than cosmetic. Two changes from the old `max(0.06, 0.14 * (1 - t))`:
-        // the floor is thick enough to actually carry legibility, and the ramp is
-        // additive so it still varies across the valid range. The old form floored out
-        // immediately once the threshold moved, leaving a constant — a dead gradient.
-        return 0.12 + 0.10 * (1 - t)
-    }
-
-    /// Convenience for view code, which always evaluates against the live backdrop.
-    static func clearBridgeScrimOpacity(_ t: Double) -> Double {
-        clearBridgeScrimOpacity(t, overMediaRichContent: isOverMediaRichContent())
-    }
-
-    /// Opacity of the fallback material plate on iOS 17–25.
-    static func fallbackPlateOpacity(_ t: Double) -> Double {
-        t > 0 ? 1 - 0.78 * t : 1
-    }
-}
-
-/// The frost/bridge scrim layered between the plate (glass or material) and
-/// the content. Renders nothing at `t == 0`, so the default look is exactly
-/// the unadjusted system render.
+/// Optical dimming behind system glass. Renders nothing at `t == 0`.
+///
+/// Never a `Material`. Material under `glassEffect` is sampled instead of
+/// the live canvas, which collapses Liquid Glass into a blur panel.
+/// Frost and the WWDC `.clear` bridge are `Color` dimming only — the same
+/// pattern as Apple's `.glassEffect(.clear).background(.black.opacity(0.3))`.
 @ViewBuilder
 private func liquidGlassScrim(for t: Double, in shape: some Shape) -> some View {
     let frost = LiquidGlassTransparency.frostScrimOpacity(t)
     let bridge = LiquidGlassTransparency.clearBridgeScrimOpacity(t)
     if frost > 0 {
-        shape.fill(.thickMaterial).opacity(frost)
+        shape.fill(Color.black.opacity(min(LiquidGlassTransparency.maximumUnderGlassScrimOpacity, frost)))
     } else if bridge > 0 {
-        shape.fill(.ultraThinMaterial).opacity(bridge)
+        shape.fill(Color.black.opacity(bridge))
     }
 }
 
@@ -147,8 +82,8 @@ private struct LiquidGlassSurfaceModifier<S: Shape>: ViewModifier {
             let base: Glass = LiquidGlassTransparency.usesClearGlass(t) ? .clear : .regular
             let glass = tint.map { base.tint($0) } ?? base
             content
-                .background { liquidGlassScrim(for: t, in: shape) }
                 .glassEffect(glass, in: shape)
+                .background { liquidGlassScrim(for: t, in: shape) }
         } else {
             content
                 .background { liquidGlassScrim(for: t, in: shape) }
@@ -172,8 +107,8 @@ private struct LiquidGlassInteractiveModifier<S: Shape>: ViewModifier {
             let base: Glass = LiquidGlassTransparency.usesClearGlass(t) ? .clear : .regular
             let glass = (tint.map { base.tint($0) } ?? base).interactive()
             content
-                .background { liquidGlassScrim(for: t, in: shape) }
                 .glassEffect(glass, in: shape)
+                .background { liquidGlassScrim(for: t, in: shape) }
         } else {
             content
                 .background { liquidGlassScrim(for: t, in: shape) }
@@ -263,8 +198,8 @@ private struct LiquidGlassEffectModifier<S: Shape>: ViewModifier {
     func body(content: Content) -> some View {
         let t = LiquidGlassTransparency.effective(rawTransparency, reduceTransparency: reduceTransparency)
         content
-            .background { liquidGlassScrim(for: t, in: shape) }
             .glassEffect(style.resolvedGlass(at: t), in: shape)
+            .background { liquidGlassScrim(for: t, in: shape) }
     }
 }
 

@@ -76,7 +76,7 @@ class VideoReceivePipeline(
     private val mutex = Mutex()
     private var decoder: MediaCodec? = null
     private var resolvedCodec: Codec = codec
-    private var currentGopID: UInt = UInt.MAX_VALUE
+    private var gopWindow = MediaGOPReceiveWindow()
     private var renderJob: Job? = null
     private var outputSurface: Surface? = null
     private var outputWidthPx: Int = 0
@@ -164,9 +164,14 @@ class VideoReceivePipeline(
         if (frame.kind != MediaFrame.Kind.VIDEO_NAL) return false
         val codec = mutex.withLock { decoder } ?: return false
         val isKeyframe = MediaFrame.Flags.KEYFRAME in frame.flags
-        if (!isKeyframe && frame.gopID != currentGopID) {
-            onKeyframeRequest()
-            return false
+        val isEndOfGroup = MediaFrame.Flags.END_OF_GROUP in frame.flags
+        when (gopWindow.admit(gopID = frame.gopID, isKeyframe = isKeyframe, isEndOfGroup = isEndOfGroup)) {
+            MediaGOPReceiveWindow.Decision.DROP_STALE -> return false
+            MediaGOPReceiveWindow.Decision.DROP_UNANCHORED -> {
+                onKeyframeRequest()
+                return false
+            }
+            MediaGOPReceiveWindow.Decision.DECODE -> Unit
         }
         return queueVideoFrame(codec, frame, wireByteCount, isKeyframe)
     }
@@ -198,7 +203,6 @@ class VideoReceivePipeline(
                 (frame.presentationTimestampMillis * 1_000uL).toLong(),
                 if (isKeyframe) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0,
             )
-            if (isKeyframe) currentGopID = frame.gopID
             noteAcceptedFrame(wireByteCount = wireByteCount)
             true
         } catch (error: IllegalStateException) {
@@ -280,7 +284,7 @@ class VideoReceivePipeline(
             release()
         }
         decoder = null
-        currentGopID = UInt.MAX_VALUE
+        gopWindow.reset()
         resetStatsWindow()
     }
 
@@ -316,7 +320,7 @@ class VideoReceivePipeline(
             decoder = null
             renderJob = null
             failedDecoder.runCatching { release() }
-            currentGopID = UInt.MAX_VALUE
+            gopWindow.reset()
             resetStatsWindow()
             val reason =
                 when (error) {

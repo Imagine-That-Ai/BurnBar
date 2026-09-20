@@ -15,6 +15,7 @@ import java.time.Instant
 import java.util.Base64
 import java.util.UUID
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /** Inbound Mercury control bi-stream read loop and frame dispatch (extracted for detekt size limits). */
 internal suspend fun MediaControlStreamCoordinator.runMercuryInboundReadLoop(stream: IrohRelayStream, uid: String, connectionID: String) {
@@ -133,6 +134,39 @@ private fun MediaControlStreamCoordinator.applyMercuryPresenceHeartbeat(frame: H
         inboundPendingHeartbeatSentAtMillis = null
     }
     inboundLastPeerCapabilities.value = frame.media?.presence?.capabilities.orEmpty().toSet()
+    inboundScope.launch {
+        runCatching { sendMercuryBweFeedback(uid = frame.uid, connectionID = frame.connectionId) }
+    }
+}
+
+internal suspend fun MediaControlStreamCoordinator.sendMercuryBweFeedback(uid: String, connectionID: String) {
+    if (phase.value !is MediaControlStreamCoordinator.Phase.Live) return
+    val payload =
+        MediaBweFeedbackPayload(
+            roundTripMillis = inboundLastRoundTripMillis.value ?: 0,
+            packetLossRate = 0.0,
+            observedBitsPerSecond = 0,
+            pathConstrained = inboundPathConstrainedProvider(),
+        )
+    val encoded =
+        inboundMediaPacketCodec.encode(
+            MediaFrame(
+                kind = MediaFrame.Kind.BWE_FEEDBACK,
+                payload = payload.encoded(),
+            ),
+        )
+    send(
+        HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.MEDIA_STREAM_FRAME,
+            uid = uid,
+            connectionId = connectionID,
+            media =
+            HermesRealtimeRelayMediaPayload(
+                streamClass = MediaStreamClass.CONTROL.raw,
+                encodedFrameBase64 = Base64.getEncoder().encodeToString(encoded),
+            ),
+        ),
+    )
 }
 
 internal suspend fun MediaControlStreamCoordinator.runMercuryPresenceHeartbeatLoop(stream: IrohRelayStream, uid: String, connectionID: String) {

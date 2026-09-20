@@ -5,6 +5,38 @@ import XCTest
 
 @MainActor
 final class UsageRefreshPipelineTests: XCTestCase {
+    func testLocalPublicationCallbackSeesCommittedReplacementBeforeRefreshCompletes() async throws {
+        let store = try makeInMemoryDataStore()
+        let replacement = ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent#day-fresh")
+        try await store.insert(ViewTestFixtures.makeUsage(provider: .codex, sessionId: "parent"))
+        var publishedIDs: [String]?
+        var callbackFinished = false
+        let result = try await RefreshBackgroundWork.runFullRefresh(
+            parsers: [.codex: RepairParser(replacement: replacement)],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: []),
+            onUsagePublished: {
+                do {
+                    publishedIDs = try await store.fetchAllUsage().map(\.sessionId)
+                    let health = try await store.fetchRetrievalHealth()
+                    XCTAssertFalse(
+                        health.contains { $0.subsystem == .parserImport },
+                        "Local publication must precede health and remote reconciliation."
+                    )
+                    callbackFinished = true
+                } catch {
+                    XCTFail("Committed local usage was not readable: \(error)")
+                }
+            }
+        )
+        XCTAssertNil(result.persistenceErrorMessage)
+        XCTAssertTrue(callbackFinished)
+        XCTAssertEqual(publishedIDs, ["parent#day-fresh"])
+        let health = try await store.fetchRetrievalHealth()
+        XCTAssertEqual(health.first { $0.subsystem == .parserImport }?.status, .healthy)
+    }
+
     func test_discoverSortsProvidersDeterministically() throws {
         let store = try makeInMemoryDataStore()
         let pipeline = UsageRefreshPipeline(

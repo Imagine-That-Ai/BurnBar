@@ -1,24 +1,18 @@
 name: App PR Gate (Swift)
 
-# Post-merge / nightly AgentLens + mobile compile proof. This is intentionally
-# not a pull_request wall: hosted macos-26 App builds were 53–69 minutes and
-# made Alberto's 5–10 minute merge door impossible. Fast Feedback plus the
-# ten required security/quality contexts remain the PR merge door.
+# AgentLens + mobile compile-or-test proof.
 #
-# Real work (macos-26 AgentLens CPU gate + bounded smoke, plus the mobile
-# compile/unit-test gate) runs on:
-#   - push to main (every merge; classifier still selects macos/mobile)
-#   - nightly cron (forced full lanes so a quiet day cannot hide a red app)
-#   - workflow_dispatch (on-demand SHA proof)
+# pull_request: Fast Feedback remains the cheap door. This workflow is NOT a
+# PR wall (hosted macos-26 App builds are 53–69 minutes).
 #
-# merge_group stays only so a stale base-SHA BurnBar CI Gate inventory that
-# still lists `App build + test (AgentLens)` / `Mobile build + unit test`
-# observes skipped receipts instead of hanging the queue. Every job below
-# skips on merge_group. Fake-green success without a build is not emitted.
+# merge_group + push to main + nightly + workflow_dispatch: the Mac/iOS
+# product compile-or-test jobs RUN. merge_group must not skip them — the
+# merge path requires a non-skipped App/Mobile compile-or-test check.
 # The full Swift XCTest corpus stays in openburnbar-pr-harness.yml.
 
 permissions:
   contents: read
+  issues: write
 
 on:
   push:
@@ -47,6 +41,15 @@ jobs:
     if: github.event_name != 'merge_group'
     uses: ./.github/workflows/ci-impact.yml
 
+  merge-group-product-lanes:
+    name: Merge-group product lanes
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Force Mac + iOS compile-or-test on the merge path
+        run: echo "merge_group runs AgentLens and Mobile compile-or-test unconditionally."
+
   app-build-test:
     name: AgentLens Rust + Swift build/test prerequisites
     # Routing (cost + security): post-merge main is trusted, but this lane still
@@ -60,8 +63,8 @@ jobs:
     # not cancel mid-smoke. The full XCTest corpus belongs to the
     # post-merge/nightly harness, not this lane.
     timeout-minutes: 90
-    needs: classify
-    if: github.event_name != 'merge_group' && needs.classify.outputs.macos == 'true'
+    needs: [classify, merge-group-product-lanes]
+    if: ${{ always() && ((github.event_name == 'merge_group' && needs.merge-group-product-lanes.result == 'success') || (github.event_name != 'merge_group' && needs.classify.result == 'success' && needs.classify.outputs.macos == 'true')) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -138,6 +141,8 @@ jobs:
             CODE_SIGNING_REQUIRED=NO
 
       - name: Enforce real macOS idle/occluded CPU budget (P-PERF-3)
+        id: cpu-gate
+        continue-on-error: true
         run: >-
           node scripts/ci/macos-idle-occlusion-gate.mjs
           --output "$RUNNER_TEMP/macos-idle-occlusion-evidence/result.json"
@@ -149,6 +154,9 @@ jobs:
           name: macos-idle-occlusion-cpu-evidence
           path: ${{ runner.temp }}/macos-idle-occlusion-evidence/result.json
           if-no-files-found: error
+
+      - name: Fail on CPU budget regression (not VirtualMac helper infra)
+        run: node scripts/ci/macos-idle-occlusion-gate-ci-verdict.mjs "$RUNNER_TEMP/macos-idle-occlusion-evidence/result.json"
 
       - name: Validate app test classifier
         run: bash scripts/test-openburnbar-app-classifier.sh
@@ -198,7 +206,11 @@ jobs:
     # uses the isolated hosted macOS pools so MACOS_GATE_POOL / CI_POOL policy
     # stays unchanged. Set repo var MACOS_GATE_POOL=paid to force the capped
     # hosted pool for a billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # Hosted macos-26 (or the paid pool). Do not send this lane to
+    # burnbar-swift: that self-hosted fleet is missing cmake/protobuf on
+    # some machines, which is why scheduled App PR Gate went red. cmake
+    # is still ensured below for any runner that needs libsignal FFI.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     # Compile + unit test execution: Signal FFI + full mobile app-and-tests
     # compile, THEN run the unit-test bundle on a booted simulator.
     # Observing-first: build-for-testing first (fail fast on compile errors),
@@ -209,8 +221,8 @@ jobs:
     # mobile suite) so test execution is fast after the build completes.
     # The 120-min cap covers a cold SPM cache + FFI build + focused tests.
     timeout-minutes: 120
-    needs: classify
-    if: github.event_name != 'merge_group' && needs.classify.outputs.mobile == 'true'
+    needs: [classify, merge-group-product-lanes]
+    if: ${{ always() && ((github.event_name == 'merge_group' && needs.merge-group-product-lanes.result == 'success') || (github.event_name != 'merge_group' && needs.classify.result == 'success' && needs.classify.outputs.mobile == 'true')) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -325,21 +337,30 @@ jobs:
     name: App build + test (AgentLens)
     needs:
       - classify
+      - merge-group-product-lanes
       - app-build-test
       - mobile-build-gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: always() && github.event_name != 'merge_group'
+    if: always()
     steps:
       - name: Require every Rust and Swift prerequisite job
         env:
           AGENTLENS_RESULT: ${{ needs.app-build-test.result }}
           MOBILE_RESULT: ${{ needs.mobile-build-gate.result }}
           CLASSIFIER_RESULT: ${{ needs.classify.result }}
+          MERGE_GROUP_LANES: ${{ needs.merge-group-product-lanes.result }}
           MACOS_REQUIRED: ${{ needs.classify.outputs.macos }}
           MOBILE_REQUIRED: ${{ needs.classify.outputs.mobile }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          if [[ "$EVENT_NAME" == "merge_group" ]]; then
+            [[ "$MERGE_GROUP_LANES" == "success" ]] || { echo "::error::merge-group product lanes failed."; exit 1; }
+            [[ "$AGENTLENS_RESULT" == "success" ]] || { echo "::error::macOS compile-or-test was required on merge_group but ended $AGENTLENS_RESULT."; exit 1; }
+            [[ "$MOBILE_RESULT" == "success" ]] || { echo "::error::iOS compile-or-test was required on merge_group but ended $MOBILE_RESULT."; exit 1; }
+            exit 0
+          fi
           [[ "$CLASSIFIER_RESULT" == "success" ]] || { echo "::error::Impact classifier failed."; exit 1; }
           require_or_skip() {
             local required="$1" result="$2" lane="$3"
@@ -352,3 +373,24 @@ jobs:
           }
           require_or_skip "$MACOS_REQUIRED" "$AGENTLENS_RESULT" macOS
           require_or_skip "$MOBILE_REQUIRED" "$MOBILE_RESULT" mobile
+
+  standing-failure:
+    name: Standing failure issue
+    needs: [app-pr-gate]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/ops-failure-issue
+        with:
+          mode: ${{ needs.app-pr-gate.result == 'success' && 'close' || 'open' }}
+          lane: app-pr-gate
+          title-prefix: "App PR Gate standing failure"
+          summary: "Scheduled App PR Gate (AgentLens compile/test) ended ${{ needs.app-pr-gate.result }}."
+          paging-slack-webhook: ${{ secrets.OPS_PAGING_SLACK_WEBHOOK }}

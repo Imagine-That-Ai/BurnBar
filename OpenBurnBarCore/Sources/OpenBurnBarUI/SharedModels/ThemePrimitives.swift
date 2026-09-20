@@ -40,6 +40,21 @@ public enum AppSkin: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// Compact iPhone canvas. Aurora mesh stays an explicit opt-in; the default
+/// is a quiet system grouped background so Inbox / Agents / Quota / You
+/// read like ChatGPT, not a poster. The WebGL kernel never paints the shell.
+public enum CompactIPhoneCanvas {
+    public static let auroraMeshStorageKey = "compactAuroraMeshEnabled"
+
+    public static func usesQuietCanvas(
+        compactAuroraMeshEnabled: Bool,
+        isCompact: Bool,
+        isEditorial: Bool
+    ) -> Bool {
+        isEditorial || !(compactAuroraMeshEnabled && isCompact)
+    }
+}
+
 /// The dashboard *layout* the macOS overview renders.
 ///
 /// Each case is a different answer to "how do you want to read your spend",
@@ -452,5 +467,92 @@ extension DesignSystemColors {
             hash = ((hash << 5) &+ hash) &+ UInt64(byte)
         }
         return palette[Int(hash % UInt64(palette.count))]
+    }
+}
+
+/// User-adjustable glass transparency, shared across macOS, iOS, and Recap
+/// through the same UserDefaults key. Platform `Theme/LiquidGlass.swift`
+/// files keep the view adapters; this type is the single preference model.
+///
+/// Semantics of the stored value `t` (Double, clamped to -1…1):
+///   • `t == 0` — system default.
+///   • `t > 0`  — clearer.
+///   • `t < 0`  — frostier.
+public enum LiquidGlassTransparency {
+    public static let storageKey = "liquidGlassTransparency"
+    public static let contentSurfacesEnabledKey = "liquidGlassContentSurfacesEnabled"
+    public static let range: ClosedRange<Double> = -1.0 ... 1.0
+
+    public static let liquidityKey = "liquidGlassLiquidity"
+    public static let liquidityRange: ClosedRange<Double> = 0.0 ... 1.0
+    public static let liquidityDefault = 0.5
+
+    public static let mediaRichBackdropKey = "useKernelBackdrop"
+    public static let maximumUnderGlassScrimOpacity = 0.5
+
+    public static func liquidityMultiplier(_ raw: Double, reduceTransparency: Bool) -> Double {
+        guard raw.isFinite else { return 1 }
+        let clamped = min(max(raw, liquidityRange.lowerBound), liquidityRange.upperBound)
+        let resolved = reduceTransparency ? min(clamped, liquidityDefault) : clamped
+        return resolved * 2
+    }
+
+    public static func scrimScale(_ t: Double, base: Double) -> Double {
+        guard t.isFinite else { return base }
+        let clamped = min(max(t, range.lowerBound), range.upperBound)
+        if clamped >= 0 { return base * (1 - 0.85 * clamped) }
+        return base + (1 - base) * -clamped
+    }
+
+    public static func effective(_ raw: Double, reduceTransparency: Bool) -> Double {
+        guard raw.isFinite else { return 0 }
+        let t = min(max(raw, range.lowerBound), range.upperBound)
+        return (reduceTransparency && t > 0) ? 0 : t
+    }
+
+    public static func usesClearGlass(_ t: Double, overMediaRichContent: Bool) -> Bool {
+        guard overMediaRichContent else { return false }
+        return t > 0.55
+    }
+
+    public static func isOverMediaRichContent(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: mediaRichBackdropKey)
+    }
+
+    public static func usesClearGlass(_ t: Double) -> Bool {
+        usesClearGlass(t, overMediaRichContent: isOverMediaRichContent())
+    }
+
+    public static func frostScrimOpacity(_ t: Double) -> Double { t < 0 ? 0.9 * -t : 0 }
+
+    public static func clearBridgeScrimOpacity(_ t: Double, overMediaRichContent: Bool) -> Double {
+        guard usesClearGlass(t, overMediaRichContent: overMediaRichContent) else { return 0 }
+        return 0.12 + 0.10 * (1 - t)
+    }
+
+    public static func clearBridgeScrimOpacity(_ t: Double) -> Double {
+        clearBridgeScrimOpacity(t, overMediaRichContent: isOverMediaRichContent())
+    }
+
+    public static func fallbackPlateOpacity(_ t: Double) -> Double {
+        t > 0 ? 1 - 0.78 * t : 1
+    }
+
+    public static var defaultContentSurfacesEnabled: Bool {
+        #if os(macOS)
+        if #available(macOS 26, *) { return true }
+        return false
+        #elseif os(iOS)
+        if #available(iOS 26, *) { return true }
+        return false
+        #else
+        return false
+        #endif
+    }
+
+    public static func contentSurfacesEnabled() -> Bool {
+        let raw = UserDefaults.standard.object(forKey: contentSurfacesEnabledKey) as? Bool
+        if let raw { return raw }
+        return defaultContentSurfacesEnabled
     }
 }

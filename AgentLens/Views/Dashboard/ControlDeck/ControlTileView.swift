@@ -1,5 +1,6 @@
 import AppKit
 import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Control Tile View

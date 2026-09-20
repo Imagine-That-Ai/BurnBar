@@ -8,13 +8,13 @@ import {
   ROLE_CRESCENT,
   ROLE_FLAME,
   ROLE_TIP,
-} from "../../lib/gl/engine/kernels/swarmEmberLogoData";
+} from "@openburnbar/gl-engine/kernels/swarmEmberLogoData";
 import {
   buildDashboardCycle,
   burnBarLogoPoints,
   createSwarmEmberKernel,
   logoHeroCycle,
-} from "../../lib/gl/engine/kernels/swarmEmberKernel";
+} from "@openburnbar/gl-engine/kernels/swarmEmberKernel";
 
 describe("Swarm Ember logo cloud", () => {
   it("packs a dense, centered sampling of the official mark", () => {

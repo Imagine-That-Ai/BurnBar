@@ -1,5 +1,7 @@
+import CoreGraphics
 import XCTest
 import OpenBurnBarCore
+import OpenBurnBarKernel
 @testable import OpenBurnBarMobile
 
 /// UI Tests for iPad navigation flows.
@@ -75,6 +77,329 @@ final class iPadNavigationUITests: XCTestCase {
 
     func testYouRouteIncludesEveryAccountCardDestination() {
         XCTAssertEqual(Set(YouRoute.allCases), [.settings, .dataVault, .sync, .providers, .devices, .computerUse, .memory])
+    }
+
+    // MARK: - iPad command desk IA
+
+    func testiPadDesk_launchesInboxNotPulse() {
+        XCTAssertEqual(IPadAwayDeskNavigation.launchDestination, .inbox)
+        XCTAssertEqual(AppDestination.inbox.label, "Inbox")
+        XCTAssertNotEqual(IPadAwayDeskNavigation.launchDestination, .pulse)
+    }
+
+    func testiPadDesk_primaryDestinationsAreInboxAgentsQuotaYou() {
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.defaultPrimaryDestinations,
+            [.inbox, .agents, .burn, .you]
+        )
+        XCTAssertFalse(IPadAwayDeskNavigation.defaultPrimaryDestinations.contains(.pulse))
+        XCTAssertEqual(IPadAwayDeskNavigation.defaultPrimaryDestinations.count, 4)
+        XCTAssertEqual(AppDestination.you.label, IPadAwayDeskNavigation.youLabel)
+        XCTAssertEqual(AppDestination.you.label, "You")
+        XCTAssertNotEqual(AppDestination.you.label, "Store")
+        XCTAssertEqual(AppDestination.burn.label, "Quota")
+        XCTAssertEqual(AppDestination.agents.label, "Agents")
+    }
+
+    func testiPadDesk_watchWindowIsNamedAgentWatch() {
+        XCTAssertEqual(IPadAwayDeskNavigation.watchWindowID, "agent-watch")
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.hardwareChord(
+                key: "w", command: true, control: false, option: true, shift: false
+            ),
+            .openWatchWindow
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.hardwareChord(
+                key: ".", command: true, control: false, option: false, shift: false
+            ),
+            .halt
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.hardwareChord(
+                key: ".", command: true, control: true, option: true, shift: false
+            ),
+            .panic
+        )
+        XCTAssertNil(
+            IPadAwayDeskNavigation.hardwareChord(
+                key: "5", command: true, control: false, option: false, shift: false
+            )
+        )
+    }
+
+    func testiPadDesk_migratesLegacyPulseFirstSidebar() {
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.resolvedPrimaryDestinations(nil),
+            IPadAwayDeskNavigation.defaultPrimaryDestinations
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.resolvedPrimaryDestinations(
+                IPadAwayDeskNavigation.legacyPrimaryDestinations
+            ),
+            IPadAwayDeskNavigation.defaultPrimaryDestinations
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.resolvedPrimaryDestinations([.inbox, .you]),
+            [.inbox, .you]
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.resolvedSecondaryDestinations(
+                [.you, .providers, .devices, .settings],
+                primary: [.inbox, .agents, .burn, .you]
+            ),
+            [.providers, .devices, .settings]
+        )
+    }
+
+    func testiPadDesk_youIsNotRepeatedInSecondary() {
+        XCTAssertFalse(IPadAwayDeskNavigation.defaultSecondaryDestinations.contains(.you))
+        XCTAssertFalse(IPadAwayDeskNavigation.defaultSecondaryDestinations.contains(.inbox))
+    }
+
+    func testiPadDesk_showInsightsTabSelectsInsights() {
+        InsightsDeepLink.reset()
+        InsightsDeepLink.open(slug: "today")
+        XCTAssertTrue(InsightsDeepLink.hasPending)
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.destinationAfterInsightsDeepLink(),
+            .insights
+        )
+        XCTAssertEqual(AppDestination.insights.label, "Insights")
+        _ = InsightsDeepLink.consume()
+        InsightsDeepLink.reset()
+    }
+
+    func testiPadDesk_keyboardShortcutsMapToDeskDestinations() {
+        XCTAssertEqual(IPadAwayDeskNavigation.destination(forCommandNumber: 1), .inbox)
+        XCTAssertEqual(IPadAwayDeskNavigation.destination(forCommandNumber: 2), .agents)
+        XCTAssertEqual(IPadAwayDeskNavigation.destination(forCommandNumber: 3), .burn)
+        XCTAssertEqual(IPadAwayDeskNavigation.destination(forCommandNumber: 4), .you)
+        XCTAssertNil(IPadAwayDeskNavigation.destination(forCommandNumber: 5))
+        XCTAssertEqual(AppDestination.inbox.iPadCommandNumber, 1)
+        XCTAssertEqual(AppDestination.insights.iPadCommandNumber, nil)
+    }
+
+    func testiPadDesk_agentsKeepsSidebarAndInboxUsesThreeColumns() {
+        XCTAssertEqual(IPadAwayDeskNavigation.columnMode(for: .inbox), .threeColumn)
+        XCTAssertEqual(IPadAwayDeskNavigation.columnMode(for: .agents), .threeColumn)
+        XCTAssertEqual(IPadAwayDeskNavigation.columnMode(for: .burn), .threeColumn)
+        XCTAssertEqual(IPadAwayDeskNavigation.columnMode(for: .you), .threeColumn)
+        XCTAssertEqual(IPadAwayDeskNavigation.columnMode(for: .insights), .twoColumn)
+        XCTAssertFalse(IPadAwayDeskNavigation.hidesDestinationSidebar(for: .agents))
+        XCTAssertFalse(IPadAwayDeskNavigation.hidesDestinationSidebar(for: .inbox))
+        XCTAssertTrue(AppDestination.you.isPrimary)
+        XCTAssertTrue(AppDestination.inbox.isPrimary)
+    }
+
+    func testiPadDesk_appWideSearchCoversInboxAndAgents() {
+        XCTAssertTrue(IPadAwayDeskNavigation.usesAppWideSearch(for: .inbox))
+        XCTAssertTrue(IPadAwayDeskNavigation.usesAppWideSearch(for: .agents))
+        XCTAssertTrue(IPadAwayDeskNavigation.usesAppWideSearch(for: .burn))
+        XCTAssertTrue(IPadAwayDeskNavigation.usesAppWideSearch(for: .you))
+        XCTAssertFalse(IPadAwayDeskNavigation.usesAppWideSearch(for: .insights))
+        XCTAssertEqual(IPadAwayDeskNavigation.searchPrompt(for: .inbox), "Search inbox")
+        XCTAssertEqual(IPadAwayDeskNavigation.searchPrompt(for: .agents), "Search agents")
+    }
+
+    func testiPadDesk_youRailGroupsAreDeskSettingsNotStore() {
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.YouGroup.allCases.map(\.title),
+            ["Pairing", "Keep Mac awake", "Devices", "Cloud", "Appearance", "Data Vault", "Labs"]
+        )
+        XCTAssertFalse(IPadAwayDeskNavigation.YouGroup.allCases.map(\.title).contains("Store"))
+        XCTAssertFalse(IPadAwayDeskNavigation.YouGroup.allCases.map(\.title).contains("Grokd"))
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.filteredYouGroups("vault").map(\.self),
+            [.dataVault]
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.filteredYouGroups("awake").map(\.self),
+            [.keepAwake]
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.filteredYouGroups("").count,
+            IPadAwayDeskNavigation.YouGroup.allCases.count
+        )
+    }
+
+    func testiPadDesk_quotaRailFiltersProviderKeys() {
+        let keys = ["anthropic", "openai", "cursor"]
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.filteredProviderKeys(keys, query: "open"),
+            ["openai"]
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.filteredProviderKeys(keys, query: ""),
+            keys
+        )
+    }
+
+    func testiPadDesk_inboxPointerActionsMatchIA() {
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.inboxPointerActions().map(\.title),
+            ["Approve", "Open thread", "Archive", "Snooze", "Copy link"]
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.inboxItemLink(itemID: "item-1")?.absoluteString,
+            "burnbar://inbox/item-1"
+        )
+        let resume = BurnBarInboxItemPayload(
+            actions: [
+                BurnBarInboxAction(
+                    id: "a1",
+                    kind: .resumeConversation,
+                    title: "Open thread",
+                    value: "hermes:abc"
+                )
+            ]
+        )
+        XCTAssertEqual(IPadAwayDeskNavigation.inboxOpenThreadValue(payload: resume), "hermes:abc")
+        XCTAssertEqual(IPadAwayDeskNavigation.inboxPrimaryAction(payload: resume)?.kind, .resumeConversation)
+        XCTAssertNil(IPadAwayDeskNavigation.inboxOpenThreadValue(payload: BurnBarInboxItemPayload()))
+    }
+
+    func testiPadDesk_clonedDeskSceneIsDestroyedWatchIsKept() {
+        XCTAssertTrue(IPadAwayDeskNavigation.extraWindowIsWatchOnly)
+        XCTAssertEqual(IPadAwayDeskNavigation.deskWindowID, "desk")
+        XCTAssertEqual(IPadAwayDeskNavigation.watchWindowID, "agent-watch")
+        XCTAssertTrue(
+            IPadDeskSceneRegistry.shouldDestroyClonedDesk(
+                incomingID: "desk-2",
+                retainedDeskID: "desk-1",
+                watchIDs: ["agent-watch-1"]
+            )
+        )
+        XCTAssertFalse(
+            IPadDeskSceneRegistry.shouldDestroyClonedDesk(
+                incomingID: "desk-1",
+                retainedDeskID: "desk-1",
+                watchIDs: []
+            )
+        )
+        XCTAssertFalse(
+            IPadDeskSceneRegistry.shouldDestroyClonedDesk(
+                incomingID: "agent-watch-1",
+                retainedDeskID: "desk-1",
+                watchIDs: ["agent-watch-1"]
+            )
+        )
+    }
+
+    func testiPadDesk_watchTwoPointerContract() {
+        XCTAssertTrue(IPadAwayDeskNavigation.haltAlwaysVisible)
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.pixelPresentation(hasLiveFrame: true, isLabeledStill: false),
+            .live
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.pixelPresentation(hasLiveFrame: false, isLabeledStill: false),
+            .honestEmpty
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.pixelPresentation(hasLiveFrame: false, isLabeledStill: true),
+            .labeledStill
+        )
+        XCTAssertTrue(
+            IPadAwayDeskNavigation.disablesHover(.hostPixels, presentation: .live)
+        )
+        XCTAssertFalse(
+            IPadAwayDeskNavigation.disablesHover(.localChrome, presentation: .live)
+        )
+        XCTAssertFalse(
+            IPadAwayDeskNavigation.disablesHover(.hostPixels, presentation: .honestEmpty)
+        )
+        XCTAssertTrue(IPadAwayDeskNavigation.usesMagnetism(.localChrome))
+        XCTAssertFalse(IPadAwayDeskNavigation.usesMagnetism(.hostPixels))
+        XCTAssertTrue(
+            IPadAwayDeskNavigation.shouldDrawHostCursor(presentation: .live, hasCursorSample: true)
+        )
+        XCTAssertFalse(
+            IPadAwayDeskNavigation.shouldDrawHostCursor(presentation: .live, hasCursorSample: false)
+        )
+        XCTAssertFalse(
+            IPadAwayDeskNavigation.shouldDrawHostCursor(presentation: .honestEmpty, hasCursorSample: true)
+        )
+        XCTAssertEqual(IPadAwayDeskNavigation.haltAccessibilityID, "ipad.watch.halt")
+        XCTAssertEqual(IPadAwayDeskNavigation.pixelsAccessibilityID, "ipad.watch.pixels")
+        XCTAssertEqual(IPadAwayDeskNavigation.askToMirrorAccessibilityID, "ipad.watch.askToMirror")
+        XCTAssertEqual(IPadAwayDeskNavigation.hostCursorAccessibilityID, "ipad.watch.hostCursor")
+    }
+
+    func testiPadDesk_driveModeStaysOnLivePixelsAndEscDoesNotHalt() {
+        XCTAssertTrue(IPadAwayDeskNavigation.canEnterDriveMode(hasLiveFrame: true))
+        XCTAssertFalse(IPadAwayDeskNavigation.canEnterDriveMode(hasLiveFrame: false))
+        XCTAssertTrue(
+            IPadAwayDeskNavigation.driveMode(current: false, chord: .space, hasLiveFrame: true)
+        )
+        XCTAssertTrue(
+            IPadAwayDeskNavigation.driveMode(current: false, chord: .doubleClick, hasLiveFrame: true)
+        )
+        XCTAssertFalse(
+            IPadAwayDeskNavigation.driveMode(current: false, chord: .space, hasLiveFrame: false)
+        )
+        XCTAssertFalse(
+            IPadAwayDeskNavigation.driveMode(current: true, chord: .escape, hasLiveFrame: true)
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.mouseLockedCopy(isDriving: true),
+            "Mouse on Mac · Esc releases"
+        )
+        XCTAssertNil(IPadAwayDeskNavigation.mouseLockedCopy(isDriving: false))
+
+        let now = Date()
+        XCTAssertTrue(
+            IPadAwayDeskNavigation.isDrivingPillVisible(isDriving: true, lastInputAt: nil, now: now)
+        )
+        XCTAssertTrue(
+            IPadAwayDeskNavigation.isDrivingPillVisible(
+                isDriving: true,
+                lastInputAt: now.addingTimeInterval(-0.4),
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            IPadAwayDeskNavigation.isDrivingPillVisible(
+                isDriving: true,
+                lastInputAt: now.addingTimeInterval(-2.5),
+                now: now
+            )
+        )
+        XCTAssertTrue(
+            IPadAwayDeskNavigation.isDrivingPillVisible(
+                isDriving: true,
+                lastInputAt: now.addingTimeInterval(-5),
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            IPadAwayDeskNavigation.isDrivingPillVisible(isDriving: false, lastInputAt: nil, now: now)
+        )
+
+        let point = IPadAwayDeskNavigation.hostCursorPoint(
+            x: 960,
+            y: 540,
+            in: CGSize(width: 400, height: 200)
+        )
+        XCTAssertEqual(point.x, 200, accuracy: 0.01)
+        XCTAssertEqual(point.y, 100, accuracy: 0.01)
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.hostCursorPoint(x: -10, y: 10_000, in: .zero),
+            .zero
+        )
+        XCTAssertEqual(MercuryLiveEmbedStyle.deskInspector, .deskInspector)
+        XCTAssertNotEqual(MercuryLiveEmbedStyle.deskInspector, .square)
+    }
+
+    func testiPadDesk_pinningWatchDoesNotStealSelection() {
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.destinationAfterPinningWatch(current: .inbox),
+            .inbox
+        )
+        XCTAssertEqual(
+            IPadAwayDeskNavigation.destinationAfterPinningWatch(current: .agents),
+            .agents
+        )
     }
 
     func testCloudSyncHealthPresentationCopyIsActionable() {

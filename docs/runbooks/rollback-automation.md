@@ -102,12 +102,12 @@ If the script fails, follow these manual steps:
    ```bash
    npm ci --prefix functions
    npm run build --prefix functions
-   firebase deploy --only functions --project openburnbar
+   firebase deploy --only functions --project burnbar
    ```
 
 4. **Verify health:**
    ```bash
-   curl https://us-central1-openburnbar.cloudfunctions.net/healthCheck
+   curl https://us-central1-burnbar.cloudfunctions.net/healthCheck
    # Expected: { "status": "ok", ... }
    ```
 

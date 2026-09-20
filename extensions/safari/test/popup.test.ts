@@ -404,13 +404,38 @@ describe('popup rendering', () => {
     expect(sheet?.textContent).toMatch(/Safari.*access/is);
     expect(sheet?.textContent).toMatch(/allow.*website/is);
     expect(sheet?.textContent).toMatch(/cloud.*screenshot/is);
-    expect(sheet?.querySelectorAll('button')).toHaveLength(1);
+    expect(sheet?.querySelectorAll('button')).toHaveLength(2);
+    expect(sheet?.querySelector('[data-action="dismiss-permission-sheet"]')).not.toBeNull();
     expect(sheet?.querySelector('[data-action="complete-permission-setup"]')).not.toBeNull();
     expect(
       sheet?.querySelector('[data-action="complete-permission-setup"]')?.getAttribute('aria-label') ??
         sheet?.querySelector('[data-action="complete-permission-setup"]')?.textContent
     ).toMatch(/allow|continue|set up/iu);
     expect(root.querySelector<HTMLButtonElement>('.composer-submit')?.disabled).toBe(true);
+  });
+
+  it('allows dismissing the permission sheet to access controls and inspect settings', () => {
+    const root = document.createElement('div');
+    const local = {
+      ...createInitialPopupState(),
+      initialized: true,
+      draft: 'Summarize this page'
+    };
+    const blockedSnapshot = snapshot({
+      page: { ...snapshotPage(), permission: 'prompt' },
+      trust: { ...snapshot().trust, siteAllowed: false, cloudScreenshotAcknowledged: false }
+    });
+
+    renderPopup(root, buildPopupViewModel({ ...local, snapshot: blockedSnapshot }));
+    expect(root.querySelector('.permission-sheet[role="dialog"]')).not.toBeNull();
+
+    // Dismissing the sheet allows seeing the popup cockpit and settings
+    const dismissedState = reducePopupState(
+      { ...local, snapshot: blockedSnapshot },
+      { type: 'dismissPermissionSheet' }
+    );
+    renderPopup(root, buildPopupViewModel(dismissedState));
+    expect(root.querySelector('.permission-sheet[role="dialog"]')).toBeNull();
   });
 
   it('keeps the permission sheet until Safari access, durable origin trust, and cloud disclosure are all ready', () => {

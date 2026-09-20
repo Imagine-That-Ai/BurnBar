@@ -86,6 +86,22 @@ final class DashboardLayoutSettingsTests: XCTestCase {
         XCTAssertNoThrow(try ConceptMoreDrawer { Text("details") }.inspect())
     }
 
+    func test_layoutSwitcherCollapsedNameDoesNotWrap() throws {
+        for layout in DashboardLayout.allCases {
+            var selection = layout
+            let switcher = DashboardLayoutSwitcher(selection: Binding(
+                get: { selection },
+                set: { selection = $0 }
+            ))
+            let text = try switcher.inspect().find(text: layout.displayName)
+            XCTAssertEqual(
+                try text.lineLimit(),
+                1,
+                "\(layout.displayName) must stay on one line in the collapsed pill"
+            )
+        }
+    }
+
     func test_layoutSwitcher_renders_andBindingMutates() throws {
         var selection: DashboardLayout = .atelier
         let switcher = DashboardLayoutSwitcher(selection: Binding(

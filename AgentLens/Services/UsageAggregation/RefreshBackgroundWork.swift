@@ -4,9 +4,9 @@ import OpenBurnBarCore
 
 // MARK: - Refresh Result Types
 
-/// Value type returned by the off-main refresh work.  Carries all the data
-/// the `@MainActor UsageAggregator` needs to update its observable state in
-/// one atomic step — no incremental main-actor mutations during the heavy work.
+/// Final metadata returned by the off-main refresh work. Committed local usage
+/// may be published earlier through `onUsagePublished`; the aggregator applies
+/// these remaining results after remote reconciliation completes.
 struct FullRefreshResult: Sendable {
     var parserHealth: [AgentProvider: ParserHealth] = [:]
     var errors: [AgentProvider: String] = [:]
@@ -77,7 +77,8 @@ enum RefreshBackgroundWork {
         parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
         dataStore: DataStore,
         orchestrator: RefreshOrchestrator,
-        settings: RefreshSettingsSnapshot
+        settings: RefreshSettingsSnapshot,
+        onUsagePublished: @MainActor @Sendable () async -> Void = {}
     ) async throws -> FullRefreshResult {
         var result = FullRefreshResult(
             postPersistence: PostPersistenceResult()
@@ -132,6 +133,11 @@ enum RefreshBackgroundWork {
         result.persistenceErrorMessage = persisted.persistenceErrorMessage
         result.typedPersistenceError = persisted.typedPersistenceError
         result.persistencePhaseDuration = persisted.duration
+        if persisted.persistenceErrorMessage == nil {
+            // Local truth reaches the UI before any billing/quota/cloud work.
+            // The final reload still incorporates supplemental billing rows.
+            await onUsagePublished()
+        }
 
         do {
             try await pipeline.writeParserHealth(parsed: parsed, persist: persisted)

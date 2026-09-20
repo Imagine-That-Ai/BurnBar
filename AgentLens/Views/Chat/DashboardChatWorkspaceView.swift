@@ -54,6 +54,7 @@ struct DashboardChatWorkspaceView: View {
     /// from the persisted layout (or a single primary pane bound to `controller`).
     @State private var workspace: PaneWorkspaceModel?
     @State private var alertCenter = ChatPaneAlertCenter()
+    @State private var usagesRefreshTask: Task<Void, Never>?
 
     private let railWidth: CGFloat = 260
 
@@ -130,8 +131,26 @@ struct DashboardChatWorkspaceView: View {
             controller.refreshHistory()
         }
         .onChange(of: dataStore.usagesVersion) { _, _ in
-            forEachController { $0.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable) }
-            controller.refreshHistory()
+            // Mining ticks usagesVersion continuously. Refreshing retrieval and
+            // history on every bump contends with the send path on the same
+            // encrypted database. Coalesce to one catch-up after the burst.
+            usagesRefreshTask?.cancel()
+            let controllers: [ChatSessionController]
+            if let workspace {
+                controllers = workspace.allLeaves.map(\.controller)
+            } else {
+                controllers = [controller]
+            }
+            let primary = controller
+            let sharedAvailable = sharedFeaturesAvailable
+            usagesRefreshTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(750))
+                guard !Task.isCancelled else { return }
+                for item in controllers {
+                    item.refreshRetrievalHealth(sharedFeaturesAvailable: sharedAvailable)
+                }
+                primary.refreshHistory()
+            }
         }
         .onChange(of: sharedFeaturesAvailable) { _, available in
             forEachController { $0.refreshRetrievalHealth(sharedFeaturesAvailable: available) }

@@ -3,9 +3,13 @@ import OpenBurnBarRecap
 
 // MARK: - Aurora Navigation Icons
 //
-// Five bespoke vector glyphs for the OpenBurnBar floating tab tray. Each
-// icon is composed from primitive Path shapes (no SF Symbols) so we have
-// full control over selection morph, gradient fills, and animation curves.
+// Tray glyphs for the OpenBurnBar floating tab tray. Compact iPhone is four
+// destinations: Inbox (launch), Agents, Quota, You. Pulse / Insights / Streams /
+// Recap stay reachable via deep link or You overflow. Watch is an overlay,
+// not a tab.
+//
+// The live tray and iPad sidebar use monochrome SF Symbols. `AuroraNavIcon`
+// remains for the signed-in You avatar and previews.
 //
 // Design rules per icon:
 //   • A clean, evocative silhouette readable at 22pt and 28pt
@@ -15,8 +19,9 @@ import OpenBurnBarRecap
 //     selection spring IS the click animation (no extra timers)
 //
 // Selection animations per icon:
+//   • Inbox:   tray fill brightens on the launch accent
 //   • Pulse:   area under the curve fades in with a 3-stop ember gradient
-//   • Burn:    inner hot core grows from the wick and glows
+//   • Quota:   inner hot core grows from the wick and glows
 //   • Streams: three aurora ribbons phase-shift along their path
 //   • Hermes:  twin wings spread outward and lift; orb radiates
 //   • You:     a halo arc expands above the head
@@ -24,6 +29,7 @@ import OpenBurnBarRecap
 // MARK: - Destinations
 
 enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
+    case inbox
     case pulse
     case burn
     case insights
@@ -34,47 +40,58 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
 
     var id: String { String(describing: self) }
 
+    /// Compact iPhone tray: Inbox (launch) · Agents · Quota · You.
+    /// Watch is `AgentWatchOverlaySingleton`, not a fifth tab.
+    static let compactTrayDestinations: [AuroraNavDestination] = [
+        .inbox, .hermes, .burn, .you
+    ]
+
     /// Destinations the navigation tray shows.
     ///
-    /// Recap is a first-class destination on iPad, where there is room for a
-    /// seventh. On iPhone the tray is already six deep and a surface that
-    /// matters once a month does not earn a permanent slot there — it is
-    /// reached from the pinned banner at the top of Insights instead
-    /// (`RecapEntryBanner`), which is louder in the month it lands and quieter
-    /// the rest of the time.
+    /// Compact (iPhone) is the four-tab remote-continuation shell. Regular
+    /// width keeps Pulse, Insights, Streams, and Recap in the tray because
+    /// there is room. Recap on compact is reached from You overflow or the
+    /// Insights banner, not a permanent slot.
     static func trayDestinations(compact: Bool) -> [AuroraNavDestination] {
-        compact ? allCases.filter { $0 != .recap } : allCases
+        compact ? compactTrayDestinations : allCases
     }
 
     var label: String {
         switch self {
+        case .inbox:    return "Inbox"
         case .pulse:    return "Pulse"
-        case .burn:     return "Burn"
+        // Enum stays `.burn` so `burnbar://burn`, `burnbar://quota`, and
+        // persisted selection values keep working. The screen title is Quota.
+        case .burn:     return "Quota"
         case .insights: return "Insights"
         case .streams:  return "Streams"
-        // Plan 2: tab label flips to "Agents" but the enum case stays
-        // `.hermes` so existing route strings, deep links, and persisted
-        // selection values keep working.
+        // Tab label is "Agents" but the enum case stays `.hermes` so existing
+        // route strings, deep links, and persisted selection values keep working.
         case .hermes:   return "Agents"
         case .you:      return "You"
         case .recap:    return "Recap"
         }
     }
 
-    var trayLabel: String {
+    var trayLabel: String { label }
+
+    /// Compact tray and quiet sidebar glyphs. Ink, not destination gradients.
+    var traySystemImage: String {
         switch self {
-        case .pulse:    return "Pulse"
-        case .burn:     return "Burn"
-        case .insights: return "Insights"
-        case .streams:  return "Streams"
-        case .hermes:   return "Agents"
-        case .you:      return "Store"
-        case .recap:    return "Recap"
+        case .inbox:    return "tray.fill"
+        case .pulse:    return "waveform.path.ecg"
+        case .burn:     return "gauge.with.needle"
+        case .insights: return "chart.bar.fill"
+        case .streams:  return "play.rectangle.fill"
+        case .hermes:   return "bubble.left.and.bubble.right.fill"
+        case .you:      return "person.crop.circle.fill"
+        case .recap:    return "calendar.badge.clock"
         }
     }
 
     var accent: Color {
         switch self {
+        case .inbox:    return MobileTheme.ember
         case .pulse:    return MobileTheme.ember
         case .burn:     return MobileTheme.amber
         case .insights: return MobileTheme.whimsy
@@ -87,7 +104,7 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
 
     var gradient: LinearGradient {
         switch self {
-        case .pulse:
+        case .inbox, .pulse:
             return LinearGradient(
                 colors: [MobileTheme.ember, MobileTheme.amber],
                 startPoint: .leading,
@@ -144,7 +161,6 @@ struct AuroraNavIcon: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var youHaloRotation: Double = 0
 
     /// Animation driver — 0 at rest, 1 when selected. Drives the
     /// `animatableData` of every shape so the spring on isSelected
@@ -157,66 +173,29 @@ struct AuroraNavIcon: View {
     /// don't drive view re-renders elsewhere.
 
     var body: some View {
-        ZStack {
-            if isSelected {
-                iconGlow
-                    .blur(radius: size * 0.22)
-                    .opacity(0.55)
-                    .scaleEffect(1.18)
-            }
-
-            iconContent
-                .scaleEffect(isPressed ? 0.88 : (isSelected ? 1.06 : 1.0))
-                .animation(
-                    reduceMotion
-                        ? .easeInOut(duration: 0.18)
-                        : .spring(response: 0.36, dampingFraction: 0.70),
-                    value: isSelected
-                )
-                .animation(.spring(response: 0.18, dampingFraction: 0.65), value: isPressed)
-        }
-        .frame(width: size, height: size)
-        .accessibilityLabel(destination.label)
-        .accessibilityHidden(true)
+        iconContent
+            .scaleEffect(isPressed ? 0.88 : (isSelected ? 1.04 : 1.0))
+            .animation(
+                reduceMotion
+                    ? .easeInOut(duration: 0.18)
+                    : .spring(response: 0.36, dampingFraction: 0.70),
+                value: isSelected
+            )
+            .animation(.spring(response: 0.18, dampingFraction: 0.65), value: isPressed)
+            .frame(width: size, height: size)
+            .accessibilityLabel(destination.label)
+            .accessibilityHidden(true)
     }
 
-    // MARK: Glow halo behind the selected icon
-
-    @ViewBuilder
-    private var iconGlow: some View {
-        switch destination {
-        case .pulse:
-            VitalisLineShape()
-                .stroke(
-                    destination.accent.opacity(0.45),
-                    style: StrokeStyle(lineWidth: size * 0.16, lineCap: .round, lineJoin: .round)
-                )
-        case .burn:
-            IgnisOutlineShape()
-                .fill(destination.accent.opacity(0.45))
-        case .insights:
-            Circle()
-                .fill(destination.accent.opacity(0.45))
-        case .streams:
-            StreamsGlyphShape()
-                .fill(destination.accent.opacity(0.45))
-        case .hermes:
-            HermesGlyphShape()
-                .fill(destination.accent.opacity(0.45))
-        case .you:
-            YouGlyphShape()
-                .fill(destination.accent.opacity(0.45))
-        case .recap:
-            Circle()
-                .fill(destination.accent.opacity(0.45))
-        }
-    }
+    private var selectedInk: AnyShapeStyle { AnyShapeStyle(Color.primary) }
+    private var restInk: AnyShapeStyle { AnyShapeStyle(Color.secondary) }
 
     // MARK: Per-icon foreground rendering
 
     @ViewBuilder
     private var iconContent: some View {
         switch destination {
+        case .inbox:    inboxIcon
         case .pulse:    pulseIcon
         case .burn:     burnIcon
         case .insights: insightsIcon
@@ -227,109 +206,46 @@ struct AuroraNavIcon: View {
         }
     }
 
+    private var inboxIcon: some View {
+        Image(systemName: "tray.full.fill")
+            .font(.system(size: size * 0.55, weight: isSelected ? .semibold : .regular))
+            .foregroundStyle(isSelected ? selectedInk : restInk)
+    }
+
     /// Recap only appears in the iPad tray, where the system glyph reads
     /// correctly beside the hand-drawn ones.
     private var recapIcon: some View {
         Image(systemName: "calendar.badge.clock")
             .font(.system(size: size * 0.62, weight: isSelected ? .semibold : .regular))
-            .foregroundStyle(isSelected ? AnyShapeStyle(destination.gradient) : AnyShapeStyle(Color.secondary))
+            .foregroundStyle(isSelected ? selectedInk : restInk)
     }
 
     private var insightsIcon: some View {
         Image(systemName: "sparkles.tv.fill")
             .font(.system(size: size * 0.55, weight: .semibold))
-            .foregroundStyle(
-                isSelected ? destination.gradient : LinearGradient(
-                    colors: [Color.secondary, Color.secondary.opacity(0.7)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+            .foregroundStyle(isSelected ? selectedInk : restInk)
     }
 
     // MARK: 1. Pulse — heartbeat curve with a premium brand-gradient fill
 
     private var pulseIcon: some View {
-        ZStack {
-            // Area-under-curve fades in with a rich 4-stop ember→amber gradient
-            // and a soft peak highlight. The transition combines opacity, a
-            // slight upward scale (anchor: .bottom) so it appears to "fill in"
-            // from the baseline, and a clipping mask handled implicitly by
-            // the shape itself. A subtle white rim at the very top sells the
-            // glassy specular finish.
-            if isSelected {
-                ZStack {
-                    VitalisAreaShape()
-                        .fill(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: MobileTheme.ember.opacity(0.85), location: 0.00),
-                                    .init(color: MobileTheme.ember.opacity(0.55), location: 0.35),
-                                    .init(color: MobileTheme.amber.opacity(0.32), location: 0.70),
-                                    .init(color: Color.clear, location: 1.00)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-
-                    // Specular highlight that hugs the upper rim of the curve
-                    // so the area reads as a translucent ribbon, not a wash.
-                    VitalisAreaShape()
-                        .fill(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color.white.opacity(0.42), location: 0.00),
-                                    .init(color: Color.white.opacity(0.00), location: 0.18)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .blendMode(.plusLighter)
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
-            }
-            VitalisLineShape()
-                .stroke(
-                    isSelected
-                        ? AnyShapeStyle(destination.gradient)
-                        : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.78)),
-                    style: StrokeStyle(lineWidth: size * 0.085, lineCap: .round, lineJoin: .round)
-                )
-        }
+        VitalisLineShape()
+            .stroke(
+                isSelected ? selectedInk : restInk,
+                style: StrokeStyle(lineWidth: size * 0.085, lineCap: .round, lineJoin: .round)
+            )
     }
-
-    // MARK: 2. Burn — Canvas-driven real fire (lit) + warm dormant ember
 
     @ViewBuilder
     private var burnIcon: some View {
-        if isSelected {
-            ZStack {
-                // Wick anchors the flame at the base.
-                IgnisWickShape()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(hex: "3A2A1E"), Color(hex: "1A1410")],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-
-                // Real fire — Canvas particle simulation.
-                LivingFireCanvas(size: size, reduceMotion: reduceMotion)
-            }
-        } else {
-            DormantEmberFlame(size: size, reduceMotion: reduceMotion)
-        }
+        IgnisOutlineShape()
+            .fill(isSelected ? Color.primary : Color.secondary)
     }
 
     // MARK: 3. Streams — vintage antenna TV with vibrant RGB color bars
 
     private var streamsIcon: some View {
-        let strokeStyle: AnyShapeStyle = isSelected
-            ? AnyShapeStyle(destination.gradient)
-            : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.85))
+        let strokeStyle: AnyShapeStyle = isSelected ? selectedInk : restInk
         let bodyStroke = size * 0.075
         let detailStroke = size * 0.06
 
@@ -500,9 +416,7 @@ struct AuroraNavIcon: View {
                 .stroke(strokeStyle,
                         style: StrokeStyle(lineWidth: detailStroke, lineCap: .round))
             StreamsTVAntennaTipsShape(lift: progress)
-                .fill(isSelected
-                      ? AnyShapeStyle(destination.gradient)
-                      : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.85)))
+                .fill(isSelected ? selectedInk : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.85)))
         }
     }
 
@@ -512,9 +426,7 @@ struct AuroraNavIcon: View {
         // Outline color tracks selection. Mercury gradient when on, calm
         // muted gray when off. Stroke width is tuned so the icon reads
         // crisp at 22pt (tray) and 28pt (sidebar).
-        let outlineStyle: AnyShapeStyle = isSelected
-            ? AnyShapeStyle(MobileTheme.mercuryGradient)
-            : AnyShapeStyle(MobileTheme.Colors.textMuted.opacity(0.88))
+        let outlineStyle: AnyShapeStyle = isSelected ? selectedInk : restInk
         let bodyStroke = size * 0.07
         let detailStroke = size * 0.05
 
@@ -630,7 +542,7 @@ struct AuroraNavIcon: View {
         }
     }
 
-    // MARK: 5. You — actual user avatar with a rotating brand halo
+    // MARK: 5. You — signed-in photo or initials, hairline ring
 
     private var youIcon: some View {
         let avatarDiameter = size * 0.84
@@ -638,41 +550,12 @@ struct AuroraNavIcon: View {
         let ringDiameter = avatarDiameter + ringInset * 2
 
         return ZStack {
-            // Outer rotating brand halo — rendered only when selected. Uses
-            // an angular ember→amber→blaze gradient that spins gently. We
-            // animate `youHaloRotation` with a `repeatForever` linear spin
-            // started in `.onAppear`, gated by reduceMotion.
-            if isSelected {
-                Circle()
-                    .stroke(
-                        AngularGradient(
-                            colors: [
-                                MobileTheme.ember,
-                                MobileTheme.amber,
-                                MobileTheme.blaze,
-                                MobileTheme.ember.opacity(0.0),
-                                MobileTheme.ember
-                            ],
-                            center: .center
-                        ),
-                        lineWidth: max(1.4, size * 0.06)
-                    )
-                    .frame(width: ringDiameter, height: ringDiameter)
-                    .rotationEffect(.degrees(youHaloRotation))
-                    .shadow(color: MobileTheme.ember.opacity(0.5), radius: size * 0.18)
-                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
-                    .onAppear { startYouHalo() }
-                    .onDisappear { youHaloRotation = 0 }
-            } else {
-                // Idle: a simple muted ring so the avatar still reads as
-                // "you" without competing visual noise.
-                Circle()
-                    .stroke(
-                        MobileTheme.Colors.border.opacity(0.45),
-                        lineWidth: max(0.8, size * 0.04)
-                    )
-                    .frame(width: ringDiameter, height: ringDiameter)
-            }
+            Circle()
+                .stroke(
+                    isSelected ? Color.primary.opacity(0.35) : MobileTheme.Colors.border.opacity(0.45),
+                    lineWidth: isSelected ? max(1.2, size * 0.05) : max(0.8, size * 0.04)
+                )
+                .frame(width: ringDiameter, height: ringDiameter)
 
             // Avatar core. Photo if available, gradient + initials otherwise.
             Group {
@@ -702,10 +585,10 @@ struct AuroraNavIcon: View {
 
     private var initialsAvatar: some View {
         ZStack {
-            Circle().fill(MobileTheme.primaryGradient)
+            Circle().fill(Color.primary.opacity(0.12))
             Text(userInitials)
-                .font(.system(size: size * 0.40, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .font(.system(size: size * 0.40, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.primary)
                 .minimumScaleFactor(0.5)
         }
     }
@@ -721,14 +604,6 @@ struct AuroraNavIcon: View {
             .prefix(2)
         let chars = parts.compactMap { $0.first }.map { String($0).uppercased() }
         return chars.isEmpty ? String(trimmed.prefix(1)).uppercased() : chars.joined()
-    }
-
-    private func startYouHalo() {
-        guard !reduceMotion else { return }
-        // Continuous slow spin — implicit, no value-driven animation needed.
-        withAnimation(.linear(duration: 16).repeatForever(autoreverses: false)) {
-            youHaloRotation = 360
-        }
     }
 }
 

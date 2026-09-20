@@ -76,6 +76,19 @@ suspend fun ComputerUseSecurityCallableClient.createCliAgentMission(payload: Map
     return (result["requestId"] as? String)?.takeIf { it.isNotBlank() } ?: requestId
 }
 
+suspend fun ComputerUseSecurityCallableClient.createCliAgentMissionGroup(payload: Map<String, Any>, deviceId: String): String {
+    val groupId = payload["groupId"] as? String ?: payload["id"] as? String ?: error("createCliAgentMissionGroup requires groupId.")
+    val result =
+        callHighRiskOwnerAction(
+            callableName = "createCliAgentMissionGroup",
+            deviceId = deviceId,
+            actionKind = "cli_agent_mission_group_create",
+            subjectId = groupId,
+            payload = payload + mapOf("deviceId" to deviceId, "groupId" to groupId),
+        )
+    return (result["groupId"] as? String)?.takeIf { it.isNotBlank() } ?: groupId
+}
+
 suspend fun ComputerUseSecurityCallableClient.cancelCliAgentMission(requestId: String, deviceId: String, sealedStatePayload: Map<String, Any>) {
     callHighRiskOwnerAction(
         callableName = "cancelCliAgentMission",

@@ -3,7 +3,7 @@ import XCTest
 /// Flow 4 — Create a budget rule through the UI and assert it appears in the
 /// list.
 ///
-/// Path: Insights tab → "Budgets" segment → Budget Center → "Add" menu →
+/// Path: You → Insights overflow → "Budgets" segment → Budget Center → "Add" menu →
 /// "Global Rule" → editor sheet (label filled, default $50 amount) → Save.
 /// The rule is persisted by the local `BudgetRulesStore` (device-local, **not**
 /// Firestore), and the created rule's label is asserted to render on a card.
@@ -13,7 +13,13 @@ final class BudgetRuleCreationSmokeUITests: SmokeUITestCase {
     func testCreateGlobalBudgetRuleAppearsInList() {
         let app = launchSeededApp()
 
-        selectAuroraTab("insights", in: app)
+        selectAuroraTab("you", in: app)
+        let insightsRow = app.buttons["you.insightsRow"].firstMatch
+        XCTAssertTrue(
+            insightsRow.waitForExistence(timeout: 20),
+            "Insights overflow row not found on You.\n\(app.debugDescription)"
+        )
+        insightsRow.tap()
 
         // Switch to the Budgets section of the Insights tab.
         let budgetsSegment = buttonByIdentifierOrLabel(

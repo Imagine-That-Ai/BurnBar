@@ -247,7 +247,12 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         }
 
         let fileSize = signature?.sizeBytes ?? 0
-        let resumableState = (!includeConversation && fileSize >= Self.incrementalScanThresholdBytes)
+        // Bodies may resume the token accumulator from byteOffset. Conversation
+        // text is still accumulated only from the resumed tail when
+        // `resumeConversationBodies` is on (default), so appends do not
+        // re-decode the prefix. Privacy: conversation text is not written to
+        // the parser cache (ClaudeCodeCacheEntry).
+        let resumableState = (fileSize >= Self.incrementalScanThresholdBytes)
             ? cached?.scanState
             : nil
         let estimatedNewBytes: Int64 = includeConversation
@@ -353,7 +358,6 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         let headDigestLength: Int
 
         if let previous = previousState,
-           !includeConversation,
            previous.byteOffset <= fileSize,
            previous.headDigestLength > 0,
            ParserScanDigest.headDigestHex(handle: handle, length: previous.headDigestLength) == previous.headDigest {

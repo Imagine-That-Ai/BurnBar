@@ -40,6 +40,7 @@ import {
   BENCH_CHART_METRICS,
   BENCH_CHART_TYPES,
   benchAssistant,
+  executeBenchAssistant,
   sanitizeBenchChartSpec,
 } from "../benchAssistant.js";
 import { checkBenchAssistantRateLimit, isPublicRateLimitExceeded } from "../callables/publicRateLimit.js";
@@ -57,9 +58,13 @@ function validPayload(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
-/** Public callable: no auth context, only the raw HTTP request carrying the client IP. */
-function benchRequest(data: Record<string, unknown>, ip?: string): unknown {
+function benchRequest(
+  data: Record<string, unknown>,
+  ip?: string,
+  uid: string | null = "bench-user",
+): unknown {
   return {
+    ...(uid === null ? {} : { auth: { uid } }),
     rawRequest: { headers: {}, ...(ip === undefined ? {} : { ip }) },
     data,
   };
@@ -139,6 +144,16 @@ describe("checkBenchAssistantRateLimit", () => {
 });
 
 describe("benchAssistant request validation", () => {
+  it("rejects unauthenticated invocation before any provider HTTP", async () => {
+    await expect(
+      executeBenchAssistant(benchRequest(validPayload(), TEST_IP, null) as never),
+    ).rejects.toMatchObject({
+      code: "unauthenticated",
+    });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    expect(rateLimitDocPaths()).toEqual([]);
+  });
+
   it("rejects a question over 2000 chars before any upstream call or quota spend", async () => {
     await expect(run(benchRequest(validPayload({ question: "x".repeat(2001) }), TEST_IP))).rejects.toMatchObject({
       code: "invalid-argument",
@@ -398,7 +413,7 @@ describe("benchAssistant happy path", () => {
     expect(tokenUsage.estimatedCostUSD).toBeCloseTo(0.00004, 10);
   });
 
-  it("public benchmark assistant answers only from the supplied digest and exposes no tenant objects", async () => {
+  it("authenticated benchmark assistant answers only from the supplied digest and exposes no tenant objects", async () => {
     mocks.fetch.mockResolvedValue(openRouterCompletion(VALID_MODEL_OUTPUT));
 
     await run(benchRequest(validPayload(), TEST_IP));

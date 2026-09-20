@@ -193,16 +193,32 @@ enum HomeSpendSeries {
         var model: [String: [Double]] = [:]
         var modelLabels: [String: String] = [:]
 
-        for usage in usages where usage.endTime >= start && usage.endTime <= now {
-            let progress = usage.endTime.timeIntervalSince(start) / window
-            let index = min(buckets - 1, max(0, Int(progress * Double(buckets))))
+        // Session-level rows carry lifetime totals. Attribute only the overlap
+        // with this window, spread across the buckets that overlap actually
+        // covers — never dump the whole session onto endTime (that is how a
+        // long Antigravity / Claude Code conversation became two $10k+ spikes
+        // at the moments BurnBar last read the log).
+        for usage in usages {
+            let slice = UsageWindowAttribution.allocate(
+                amount: usage.cost,
+                start: usage.startTime,
+                end: usage.endTime,
+                windowStart: start,
+                windowEnd: now,
+                bucketCount: buckets
+            )
+            guard slice.contains(where: { $0 > 0 }) else { continue }
 
-            harness[usage.provider, default: zeros][index] += usage.cost
+            var harnessValues = harness[usage.provider, default: zeros]
+            for index in slice.indices { harnessValues[index] += slice[index] }
+            harness[usage.provider] = harnessValues
 
             let raw = usage.model.trimmingCharacters(in: .whitespacesAndNewlines)
             let key = raw.isEmpty ? "unknown" : raw.lowercased()
             modelLabels[key] = raw.isEmpty ? "Unknown model" : raw
-            model[key, default: zeros][index] += usage.cost
+            var modelValues = model[key, default: zeros]
+            for index in slice.indices { modelValues[index] += slice[index] }
+            model[key] = modelValues
         }
 
         return HomeSpendCube(

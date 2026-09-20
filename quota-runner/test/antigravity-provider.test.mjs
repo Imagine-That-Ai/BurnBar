@@ -48,7 +48,7 @@ test("fetchAntigravityQuota calculates rolling 5h requests and reset timestamp",
   const result = await fetchAntigravityQuota({ credential: "", accountID: "hosted" });
   assert.equal(result.provider, "antigravity");
   assert.equal(result.confidence, "estimated");
-  assert.equal(result.buckets.length, 7, "Should have 7 per-model buckets");
+  assert.equal(result.buckets.length, 9, "Should have 9 per-model buckets");
   assert.match(result.statusMessage, /Claude Opus 4.6/);
 
   // Find the active bucket
@@ -75,12 +75,12 @@ test("fetchAntigravityQuota calculates rolling 5h requests and reset timestamp",
   assert.equal(flashBucket.remaining, 600);
   assert.equal(flashBucket.meta.resetsAt, undefined, "Inactive model should have no resetsAt");
 
-  // 3. When settings.json is missing, defaults to Claude Opus 4.6 (Thinking)
+  // 3. When settings.json is missing, defaults to Gemini 3.8 Flash (High)
   await rm(settingsPath, { force: true });
   const defaultResult = await fetchAntigravityQuota({ credential: "", accountID: "hosted" });
   const defaultActive = defaultResult.buckets.find((b) => b.name.includes("(Active)"));
   assert.ok(defaultActive, "Should default to an active bucket");
-  assert.match(defaultActive.name, /Claude Opus 4.6 \(Thinking\) \(Active\)/);
+  assert.match(defaultActive.name, /Gemini 3\.8 Flash \(High\) \(Active\)/);
   assert.equal(defaultActive.used, 1);
-  assert.equal(defaultActive.limit, 60);
+  assert.equal(defaultActive.limit, 600);
 });

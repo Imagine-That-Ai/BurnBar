@@ -188,7 +188,7 @@ enum ContextBuilder {
 
         lines.append("## Recent work (last 7 days)")
 
-        let conversations = (try? await dataStore.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
+        let conversations = (try? await dataStore.fetchSessionLogSummaries(limit: 80)) ?? [] // try?-ok(optional context fetch; summaries omit fullText)
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         for usage in recentUsages.prefix(24) {
@@ -337,7 +337,10 @@ enum ContextBuilder {
             limit: 5
         )
 
-        let conversations = (try? await dataStore.fetchConversations(limit: 80)) ?? [] // try?-ok(optional context fetch)
+        // Session-log summaries keep inferred titles and key files without
+        // decrypting `fullText` overflow pages. `SELECT *` here used to stall
+        // every in-app send on a multi-gigabyte corpus.
+        let conversations = (try? await dataStore.fetchSessionLogSummaries(limit: 80)) ?? [] // try?-ok(optional context fetch; summaries omit fullText)
         let convBySession = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
 
         rollupLines.append("")

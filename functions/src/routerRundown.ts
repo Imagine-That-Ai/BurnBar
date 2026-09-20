@@ -30,7 +30,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { onRequest } from "firebase-functions/v2/https";
 import type { ModelBenchmarkSnapshotDoc, ModelBenchmarkSourceStatusDoc } from "./types.js";
 import { isRecord, parseModelBenchmarkSnapshotDoc, parseModelBenchmarkSourceStatusDoc } from "./guards.js";
-import { logError, logWarn } from "./logging.js";
+import { logError, logWarn, wrapRequestHandler } from "./logging.js";
 import { setPublicJsonSecurityHeaders } from "./publicHttpSecurityHeaders.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 import {
@@ -223,7 +223,7 @@ export const latestRouterRundown = onRequest(
     // invocation spend if someone hammers the raw function URL.
     maxInstances: 10,
   },
-  async (req, res) => {
+  wrapRequestHandler("latestRouterRundown", async (req, res) => {
     setPublicJsonSecurityHeaders(res);
     if (req.method !== "GET") {
       res.status(405).json({ error: "method_not_allowed" });
@@ -276,5 +276,5 @@ export const latestRouterRundown = onRequest(
       logError({ event: "router_rundown.latest_failed", error: String(err) });
       res.status(500).json({ error: "internal" });
     }
-  },
+  }),
 );

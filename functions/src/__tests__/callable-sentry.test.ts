@@ -30,4 +30,42 @@ describe("callable Sentry capture", () => {
       }),
     );
   });
+
+  it("wrapRequestHandler captures exceptions with request context", async () => {
+    const { wrapRequestHandler } = await import("../logging.js");
+    const wrapped = wrapRequestHandler("stripeBurnBarProWebhook", async () => {
+      throw new Error("webhook blew up");
+    });
+    const req = { headers: {}, header: () => undefined };
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn(), send: vi.fn() };
+    await expect(wrapped(req as never, res as never)).rejects.toThrow("webhook blew up");
+    expect(captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        callable: "stripeBurnBarProWebhook",
+      }),
+    );
+  });
+
+  it("wrapRequestHandler logs success when the handler returns", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { wrapRequestHandler } = await import("../logging.js");
+    const wrapped = wrapRequestHandler("healthLive", async (_req, res) => {
+      res.status(200).json({ status: "alive" });
+    });
+    const req = { headers: {}, header: () => undefined };
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn(), send: vi.fn() };
+    await wrapped(req as never, res as never);
+    const events = logSpy.mock.calls.map((call) => {
+      const parsed: unknown = JSON.parse(String(call[0]));
+      return parsed as { event?: string; callable?: string };
+    });
+    expect(events.some((payload) => payload.event === "callable_start" && payload.callable === "healthLive")).toBe(
+      true,
+    );
+    expect(events.some((payload) => payload.event === "callable_success" && payload.callable === "healthLive")).toBe(
+      true,
+    );
+    logSpy.mockRestore();
+  });
 });

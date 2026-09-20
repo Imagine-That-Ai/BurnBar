@@ -1232,7 +1232,7 @@ function sealedMissionGroup(ownerUid, id, width, overrides = {}) {
 async function assertMissionGroupCap(uid, allowedWidth, deniedWidth) {
   await seedCloudVaultState(uid);
   const db = authedDb(uid);
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(db, `users/${uid}/mission_groups/${uid}-ok`), sealedMissionGroup(uid, `${uid}-ok`, allowedWidth))
   );
   await assertFails(
@@ -1321,7 +1321,7 @@ test("Wand dispatch accepts established presentation modes and platform group so
 
   for (const source of ["ios-hermes-square", "android-hermes-square", "mac-wand"]) {
     const id = `group-${source}`;
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(db, `users/${uid}/mission_groups/${id}`), sealedMissionGroup(uid, id, 1, { source }))
     );
   }

@@ -10,14 +10,19 @@ import XCTest
 @MainActor
 final class AuroraNavigationTrayTests: XCTestCase {
 
-    private let allDestinations = AuroraNavDestination.allCases
+    override func tearDown() {
+        InsightsDeepLink.reset()
+        super.tearDown()
+    }
+
+    private let compactTray = AuroraNavDestination.trayDestinations(compact: true)
     // tabWidth = 56 matches AuroraNavigationTray's constant.
     private let tabWidth: CGFloat = 56
 
     // MARK: - Destination index resolution
 
     func test_destinationIndex_centerOfFirstTab_resolvesToIndex0() {
-        let count = allDestinations.count
+        let count = compactTray.count
         let trayWidth = CGFloat(count) * tabWidth
         // Center of the first segment
         let x = tabWidth * 0.5
@@ -26,7 +31,7 @@ final class AuroraNavigationTrayTests: XCTestCase {
     }
 
     func test_destinationIndex_centerOfLastTab_resolvesToLastIndex() {
-        let count = allDestinations.count
+        let count = compactTray.count
         let trayWidth = CGFloat(count) * tabWidth
         let lastIndex = count - 1
         // Center of the last segment
@@ -36,7 +41,7 @@ final class AuroraNavigationTrayTests: XCTestCase {
     }
 
     func test_destinationIndex_sweepThroughAllSegments() {
-        let count = allDestinations.count
+        let count = compactTray.count
         let trayWidth = CGFloat(count) * tabWidth
         for i in 0..<count {
             let x = CGFloat(i) * tabWidth + tabWidth * 0.5
@@ -48,7 +53,7 @@ final class AuroraNavigationTrayTests: XCTestCase {
     // MARK: - Edge clamping
 
     func test_destinationIndex_farLeft_clampsToZero() {
-        let count = allDestinations.count
+        let count = compactTray.count
         let trayWidth = CGFloat(count) * tabWidth
         let x: CGFloat = -200
         let index = AuroraNavGestureModel.destinationIndex(x: x, trayWidth: trayWidth, count: count)
@@ -56,7 +61,7 @@ final class AuroraNavigationTrayTests: XCTestCase {
     }
 
     func test_destinationIndex_farRight_clampsToLastIndex() {
-        let count = allDestinations.count
+        let count = compactTray.count
         let trayWidth = CGFloat(count) * tabWidth
         let lastIndex = count - 1
         let x = trayWidth + 500
@@ -91,46 +96,46 @@ final class AuroraNavigationTrayTests: XCTestCase {
     // MARK: - Destination resolution convenience
 
     func test_destination_resolvesCorrectDestination() {
-        let count = allDestinations.count
+        let count = compactTray.count
         let trayWidth = CGFloat(count) * tabWidth
-        // First tab center → .pulse
-        let first = AuroraNavGestureModel.destination(x: tabWidth * 0.5, trayWidth: trayWidth, destinations: allDestinations)
-        XCTAssertEqual(first, .pulse)
+        // First tab center → .inbox
+        let first = AuroraNavGestureModel.destination(x: tabWidth * 0.5, trayWidth: trayWidth, destinations: compactTray)
+        XCTAssertEqual(first, .inbox)
         // Last tab center → .you
         let lastX = CGFloat(count - 1) * tabWidth + tabWidth * 0.5
-        let last = AuroraNavGestureModel.destination(x: lastX, trayWidth: trayWidth, destinations: allDestinations)
+        let last = AuroraNavGestureModel.destination(x: lastX, trayWidth: trayWidth, destinations: compactTray)
         XCTAssertEqual(last, .you)
     }
 
     // MARK: - Root swipe adjacency
 
-    func test_adjacent_leadingFromPulse_returnsBurn() {
-        let next = AuroraNavGestureModel.adjacent(current: .pulse, direction: .leading, destinations: allDestinations)
-        XCTAssertEqual(next, .burn)
+    func test_adjacent_leadingFromInbox_returnsAgents() {
+        let next = AuroraNavGestureModel.adjacent(current: .inbox, direction: .leading, destinations: compactTray)
+        XCTAssertEqual(next, .hermes)
     }
 
-    func test_adjacent_trailingFromBurn_returnsPulse() {
-        let prev = AuroraNavGestureModel.adjacent(current: .burn, direction: .trailing, destinations: allDestinations)
-        XCTAssertEqual(prev, .pulse)
+    func test_adjacent_trailingFromAgents_returnsInbox() {
+        let prev = AuroraNavGestureModel.adjacent(current: .hermes, direction: .trailing, destinations: compactTray)
+        XCTAssertEqual(prev, .inbox)
     }
 
     func test_adjacent_leadingFromYou_returnsNil() {
         // .you is the last tab; can't go further forward.
-        let next = AuroraNavGestureModel.adjacent(current: .you, direction: .leading, destinations: allDestinations)
+        let next = AuroraNavGestureModel.adjacent(current: .you, direction: .leading, destinations: compactTray)
         XCTAssertNil(next)
     }
 
-    func test_adjacent_trailingFromPulse_returnsNil() {
-        // .pulse is the first tab; can't go further back.
-        let prev = AuroraNavGestureModel.adjacent(current: .pulse, direction: .trailing, destinations: allDestinations)
+    func test_adjacent_trailingFromInbox_returnsNil() {
+        // .inbox is the first tab; can't go further back.
+        let prev = AuroraNavGestureModel.adjacent(current: .inbox, direction: .trailing, destinations: compactTray)
         XCTAssertNil(prev)
     }
 
     func test_adjacent_sweepForwardThroughEntireOrder() {
-        var current = AuroraNavDestination.pulse
-        let expected = AuroraNavDestination.allCases
+        var current = AuroraNavDestination.inbox
+        let expected = compactTray
         for expectedDest in expected.dropFirst() {
-            let next = AuroraNavGestureModel.adjacent(current: current, direction: .leading, destinations: allDestinations)
+            let next = AuroraNavGestureModel.adjacent(current: current, direction: .leading, destinations: compactTray)
             XCTAssertEqual(next, expectedDest)
             current = next!
         }
@@ -166,7 +171,7 @@ final class AuroraNavigationTrayTests: XCTestCase {
     // MARK: - Viewfinder geometry
 
     func test_viewfinderCenterX_firstTab_isHalfSegment() {
-        let count = allDestinations.count
+        let count = compactTray.count
         let trayWidth = CGFloat(count) * tabWidth
         let segmentWidth = trayWidth / CGFloat(count)
         let x = AuroraNavGestureModel.viewfinderCenterX(index: 0, count: count, trayWidth: trayWidth)
@@ -174,7 +179,7 @@ final class AuroraNavigationTrayTests: XCTestCase {
     }
 
     func test_viewfinderCenterX_lastTab_isCenterOfLastSegment() {
-        let count = allDestinations.count
+        let count = compactTray.count
         let trayWidth = CGFloat(count) * tabWidth
         let segmentWidth = trayWidth / CGFloat(count)
         let lastIndex = count - 1
@@ -201,8 +206,14 @@ final class AuroraNavigationTrayTests: XCTestCase {
     // MARK: - Destination order invariant
 
     func test_destinationOrder_matchesSpec() {
-        // The single source of truth: pulse → burn → insights → streams → hermes → you
-        XCTAssertEqual(AuroraNavDestination.allCases, [.pulse, .burn, .insights, .streams, .hermes, .you])
+        XCTAssertEqual(compactTray, [.inbox, .hermes, .burn, .you])
+        XCTAssertEqual(AuroraNavDestination.inbox.trayLabel, "Inbox")
+        XCTAssertEqual(AuroraNavDestination.hermes.trayLabel, "Agents")
+        XCTAssertEqual(AuroraNavDestination.burn.trayLabel, "Quota")
+        XCTAssertEqual(AuroraNavDestination.you.trayLabel, "You")
+        XCTAssertEqual(AuroraNavDestination.you.label, "You")
+        XCTAssertFalse(compactTray.contains(.insights))
+        XCTAssertTrue(AuroraNavDestination.allCases.contains(.insights))
     }
 
     // MARK: - Scrub phase semantics
@@ -240,26 +251,26 @@ final class AuroraNavigationTrayTests: XCTestCase {
     func test_previewDoesNotCommit_untilRelease() {
         // Simulate the gesture model behavior: scrubbing resolves a preview
         // but does not change the committed selection.
-        let committed: AuroraNavDestination = .pulse
+        let committed: AuroraNavDestination = .inbox
         var preview: AuroraNavDestination?
 
-        // Finger moves to insights territory
-        let count = allDestinations.count
+        // Finger moves to Quota territory
+        let count = compactTray.count
         let trayWidth = CGFloat(count) * tabWidth
-        let insightsIndex = allDestinations.firstIndex(of: .insights)!
-        let x = CGFloat(insightsIndex) * tabWidth + tabWidth * 0.5
-        preview = AuroraNavGestureModel.destination(x: x, trayWidth: trayWidth, destinations: allDestinations)
+        let quotaIndex = compactTray.firstIndex(of: .burn)!
+        let x = CGFloat(quotaIndex) * tabWidth + tabWidth * 0.5
+        preview = AuroraNavGestureModel.destination(x: x, trayWidth: trayWidth, destinations: compactTray)
 
         // Preview follows the finger...
-        XCTAssertEqual(preview, .insights)
+        XCTAssertEqual(preview, .burn)
         // ...but the committed selection hasn't changed yet.
-        XCTAssertEqual(committed, .pulse)
+        XCTAssertEqual(committed, .inbox)
     }
 
     func test_commitOnRelease_updatesSelection() {
         // On release, the previewed destination becomes the committed selection.
-        var selection: AuroraNavDestination = .pulse
-        var preview: AuroraNavDestination? = .streams
+        var selection: AuroraNavDestination = .inbox
+        var preview: AuroraNavDestination? = .hermes
 
         // Simulate commit
         if let dest = preview {
@@ -267,7 +278,7 @@ final class AuroraNavigationTrayTests: XCTestCase {
             preview = nil
         }
 
-        XCTAssertEqual(selection, .streams)
+        XCTAssertEqual(selection, .hermes)
         XCTAssertNil(preview)
     }
 
@@ -292,13 +303,13 @@ final class AuroraNavigationTrayTests: XCTestCase {
         var lastHaptic: AuroraNavDestination?
         var hapticCount = 0
 
-        let sequence: [AuroraNavDestination] = [.pulse, .burn, .burn, .insights, .insights, .streams]
+        let sequence: [AuroraNavDestination] = [.inbox, .hermes, .hermes, .burn, .burn, .you]
         for dest in sequence where lastHaptic != dest {
             lastHaptic = dest
             hapticCount += 1
         }
 
-        // 4 distinct destinations crossed (pulse→burn→insights→streams)
+        // 4 distinct destinations crossed (inbox→hermes→burn→you)
         XCTAssertEqual(hapticCount, 4)
     }
 
@@ -315,5 +326,36 @@ final class AuroraNavigationTrayTests: XCTestCase {
         // should be shorter (opacity/position only, no spring bounce).
         let reducedAnim = AuroraNavGestureModel.viewfinderAnimation(reduceMotion: true)
         XCTAssertNotNil(reducedAnim)
+    }
+
+    // MARK: - Insights deep-link stash
+
+    func test_insightsDeepLink_stashesUntilConsumed() {
+        InsightsDeepLink.reset()
+        InsightsDeepLink.open(slug: "today", section: nil)
+        XCTAssertTrue(InsightsDeepLink.hasPending)
+        let pending = InsightsDeepLink.consume()
+        XCTAssertEqual(pending?.slug, "today")
+        XCTAssertNil(InsightsDeepLink.consume())
+        InsightsDeepLink.reset()
+    }
+
+    func test_insightsDeepLink_budgetSectionStashes() {
+        InsightsDeepLink.reset()
+        InsightsDeepLink.open(section: "budgets")
+        let pending = InsightsDeepLink.consume()
+        XCTAssertEqual(pending?.section, "budgets")
+        InsightsDeepLink.reset()
+    }
+
+    func test_compactTray_usesMonochromeSystemImages() {
+        XCTAssertEqual(AuroraNavDestination.inbox.traySystemImage, "tray.fill")
+        XCTAssertEqual(AuroraNavDestination.hermes.traySystemImage, "bubble.left.and.bubble.right.fill")
+        XCTAssertEqual(AuroraNavDestination.burn.traySystemImage, "gauge.with.needle")
+        XCTAssertEqual(AuroraNavDestination.you.traySystemImage, "person.crop.circle.fill")
+        XCTAssertEqual(
+            AuroraNavDestination.compactTrayDestinations.map(\.traySystemImage).count,
+            4
+        )
     }
 }

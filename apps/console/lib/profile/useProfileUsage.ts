@@ -7,6 +7,10 @@ import { db } from "@/lib/firebaseClient";
 import { useAuth } from "@/lib/useAuth";
 import { rebuildUsageRollups } from "@/lib/api";
 import { emptyRollup, normalizeRollup, type UsageRollup } from "@/lib/usage";
+import {
+  profileRollupNeedsFullRebuild,
+  rebuildUsageErrorMessage,
+} from "@/lib/profile/rollupHealth";
 
 export type ProfileSource = "live" | "empty";
 
@@ -33,6 +37,11 @@ export interface ProfileUsageResult {
  * session automatically fires the deployed `rebuildUsageRollups` callable and
  * re-reads once — the page fills itself in instead of sitting at a lying zero.
  * Guarded by a sessionStorage marker so a failed/slow recompute never loops.
+ *
+ * The first Firestore read is applied *before* waiting on that callable. A
+ * full rebuild can take minutes (and used to OOM/timeout on the default
+ * 60s/256MiB envelope); blanking the lifetime stats for the whole wait made
+ * a working heatmap look like sync was broken.
  *
  * Same fail-soft discipline as useDashboardUsage: a denied or missing doc
  * degrades to a zeroed "empty" state, never throws, never mocks.
@@ -75,49 +84,7 @@ export function useProfileUsage(): ProfileUsageResult {
       return snap.exists() ? normalizeRollup(snap.data(), "all_time") : null;
     };
 
-    // A pre-v3 `all_time` document normalizes fine, so a "does it exist" check
-    // reports it as healthy — but it has no execution-source/combo counters, and
-    // the scheduled cheap path only recomputes FROM those counters. Left alone,
-    // an existing account's lifetime harness/model breakdown would stay empty
-    // (or show only post-upgrade activity) forever. Treat "has lifetime activity
-    // but no v3 breakdown" as incomplete and give it the same one-time forced
-    // rebuild a missing document gets.
-    const isPreV3 = (candidate: UsageRollup | null): boolean => {
-      if (!candidate) return false;
-      const hasActivity =
-        candidate.dailyPoints.length > 0 || candidate.totals.tokens > 0;
-      const hasV3Breakdown =
-        Object.keys(candidate.dailyProviderTokens).length > 0 ||
-        candidate.comboSummaries.length > 0 ||
-        candidate.executionSourceSummaries.length > 0;
-      return hasActivity && !hasV3Breakdown;
-    };
-
-    const run = async () => {
-      if (shouldRebuild) {
-        setSyncing(true);
-        try {
-          await rebuildUsageRollups(true);
-        } catch {
-          // Recompute is best-effort; fall through to read whatever exists.
-        }
-      }
-      let result = await readRollup();
-
-      // Auto first-sync, once per session per account. Also covers the pre-v3
-      // upgrade case, not just a missing document.
-      if ((!result || isPreV3(result)) && !shouldRebuild && !autoSyncDone(uid)) {
-        markAutoSync(uid);
-        if (!cancelled) setSyncing(true);
-        try {
-          await rebuildUsageRollups(true);
-        } catch {
-          // Best-effort; re-read regardless — a partial recompute still counts.
-        }
-        result = await readRollup();
-      }
-
-      if (cancelled) return;
+    const apply = (result: UsageRollup | null) => {
       if (result) {
         setRollup(result);
         setSource("live");
@@ -125,6 +92,31 @@ export function useProfileUsage(): ProfileUsageResult {
         setRollup(emptyRollup("all_time"));
         setSource("empty");
       }
+    };
+
+    const run = async () => {
+      // Show whatever already exists *before* a possibly-minutes-long repair
+      // so lifetime numbers don't collapse to dashes for the whole wait.
+      let result = await readRollup();
+      if (cancelled) return;
+      apply(result);
+      setLoading(false);
+
+      const needsForce =
+        shouldRebuild ||
+        (profileRollupNeedsFullRebuild(result) && !autoSyncDone(uid));
+      if (!needsForce) return;
+
+      if (!shouldRebuild) markAutoSync(uid);
+      if (!cancelled) setSyncing(true);
+      try {
+        await rebuildUsageRollups(true);
+      } catch (err) {
+        if (!cancelled) setError(rebuildUsageErrorMessage(err));
+      }
+      result = await readRollup();
+      if (cancelled) return;
+      apply(result);
     };
 
     run()

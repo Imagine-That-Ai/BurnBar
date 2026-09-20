@@ -7,7 +7,8 @@
     "./BackdropEngine": "./src/engine/BackdropEngine.ts",
     "./registry": "./src/engine/registry.ts",
     "./types": "./src/engine/types.ts",
-    "./palette": "./src/engine/palette.ts"
+    "./palette": "./src/engine/palette.ts",
+    "./*": "./src/engine/*"
   },
   "license": "AGPL-3.0-only"
 }

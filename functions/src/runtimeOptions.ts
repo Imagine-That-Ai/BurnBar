@@ -55,3 +55,20 @@ export const HOT_PATH_OPTIONS = {
   minInstances: HOT_MIN_INSTANCES,
   concurrency: 40,
 } as const;
+
+/**
+ * Envelope for a full usage-counter rebuild (recursiveDelete of the counter
+ * collections + a raw-usage rescan held in memory).
+ *
+ * The profile/dashboard `rebuildUsageRollups` callable used to inherit the
+ * gen2 defaults (60s / 256MiB). On 2026-09-19 that killed Alberto's first-sync
+ * mid-flight: Cloud Run hit the 60s request timeout, then OOM'd at
+ * "256 MiB exceeded with 258 MiB used", left the in-flight marker behind, and
+ * the console sat on "Syncing" with dashed lifetime stats. The Cloud Task
+ * worker (`rollupUserRebuild`) already used 540s / 512MiB; give both repair
+ * entry points 1GiB so a 170-day history cannot trip the same ceiling.
+ */
+export const FULL_USAGE_REBUILD_RUNTIME = {
+  timeoutSeconds: 540,
+  memory: "1GiB",
+} as const;

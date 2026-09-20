@@ -198,10 +198,13 @@ extension MercuryRouter {
             frame: viewer.frame,
             controlStreamID: viewer.controlStreamID
         )
+        let streamClass = sessionCoordinator.isScreenShareActive
+            ? sessionCoordinator.currentStreamClass
+            : .screenVideo
         try await startScreenShare(
             viewer.frame.connectionId,
             sink,
-            .screenVideo,
+            streamClass,
             activeSelectedDisplayID,
             viewer.viewerID,
             capabilities.local,

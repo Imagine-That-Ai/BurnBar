@@ -447,8 +447,8 @@ final class BurnBarFleetContractsTests: XCTestCase {
         XCTAssertEqual(decodedRecord.params.directive, directive)
     }
 
-    func test_protocolVersion_currentRemainsOne() {
-        XCTAssertEqual(BurnBarProtocolVersion.current, 1)
-        XCTAssertEqual(BurnBarProtocolVersion.supported, [1])
+    func test_protocolVersion_currentIsTwoWithNMinusOne() {
+        XCTAssertEqual(BurnBarProtocolVersion.current, 2)
+        XCTAssertEqual(BurnBarProtocolVersion.supported, [1, 2])
     }
 }

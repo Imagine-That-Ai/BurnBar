@@ -318,12 +318,26 @@ jobs:
   # Single required status. Passes when the native jobs succeed OR when they
   # were skipped because the PR touched no native surface. Fails if any native
   # job failed or was cancelled. Mirrors fast-feedback-gate semantics.
+  product-lane-freshness:
+    name: Product compile-or-test freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 1
+      - name: Fail if App PR Gate / full harness has been red >24h
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/require-product-lane-freshness.sh
+
   pr-native-gate:
     name: PR Native Gate
     needs:
       - detect-native-changes
       - swiftpm-native
       - xcodegen-drift
+      - product-lane-freshness
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -332,11 +346,13 @@ jobs:
           DETECT_RESULT: ${{ needs.detect-native-changes.result }}
           SWIFTPM_RESULT: ${{ needs.swiftpm-native.result }}
           XCODEGEN_RESULT: ${{ needs.xcodegen-drift.result }}
+          FRESHNESS_RESULT: ${{ needs.product-lane-freshness.result }}
         run: |
           set -euo pipefail
           echo "detect-native-changes: ${DETECT_RESULT}"
           echo "swiftpm-native: ${SWIFTPM_RESULT}"
           echo "xcodegen-drift: ${XCODEGEN_RESULT}"
+          echo "product-lane-freshness: ${FRESHNESS_RESULT}"
 
           # The detector itself must have succeeded; a 'skipped' here would mean
           # the path-filter never ran, so we cannot trust the downstream skips.
@@ -355,4 +371,9 @@ jobs:
             fi
           done
 
-          echo "### PR Native Gate: native compile/test + pbxproj drift checks passed" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${FRESHNESS_RESULT}" != "success" ]]; then
+            echo "::error::product-lane-freshness did not succeed (${FRESHNESS_RESULT})."
+            exit 1
+          fi
+
+          echo "### PR Native Gate: native compile/test + pbxproj drift + 24h product-lane freshness passed" >> "$GITHUB_STEP_SUMMARY"

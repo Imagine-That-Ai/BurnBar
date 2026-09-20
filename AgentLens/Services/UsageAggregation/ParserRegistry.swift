@@ -71,7 +71,7 @@ enum ParserRegistry {
         parsers[.aider] = RegisteredLogParser(AiderParser())
         parsers[.cursor] = RegisteredLogParser(CursorParser())
         parsers[.cursorAgent] = RegisteredLogParser(CursorAgentParser())
-        parsers[.codex] = RegisteredLogParser(LiftedCodexParser())
+        parsers[.codex] = RegisteredLogParser(CodexParser())
         parsers[.openCode] = RegisteredLogParser(OpenCodeParser())
         parsers[.piAgent] = RegisteredLogParser(PiAgentParser())
         parsers[.omp] = RegisteredLogParser(OMPParser())

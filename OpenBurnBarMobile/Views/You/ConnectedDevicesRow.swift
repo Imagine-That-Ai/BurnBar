@@ -10,27 +10,21 @@ struct ConnectedDevicesRow: View {
     let devices: [DeviceRecord]
 
     var body: some View {
-        AuroraGlassCard(variant: .standard, cornerRadius: 16) {
-            HStack(spacing: 12) {
-                YouRowIcon(imageName: "SettingsIconConnections")
-                    .symbolEffect(.bounce, value: devices.count)
+        HStack(spacing: 12) {
+            YouRowIcon(imageName: "SettingsIconConnections")
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Connected devices")
-                        .font(MobileTheme.Typography.headline)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text(devicesSubtitle)
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-                Spacer()
-                deviceChips
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Connected devices")
+                    .font(MobileTheme.Typography.body)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                Text(devicesSubtitle)
+                    .font(MobileTheme.Typography.tiny)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
             }
-            .contentShape(Rectangle())
+            Spacer()
+            deviceChips
         }
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Connected devices")
         .accessibilityValue(devicesSubtitle)

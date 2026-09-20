@@ -16,11 +16,20 @@ final class MobilePendingOsRouteStore {
     static let shared = MobilePendingOsRouteStore()
 
     private var pending: MobilePendingOsRoute?
+    /// See `AIInboxDeepLink` isolated stash: XCTest shares the live host, so
+    /// `apply` parks here while isolation is active and production `consume()`
+    /// keeps reading `pending` only.
+    private var isolatedPending: MobilePendingOsRoute?
+    private var isolationDepth = 0
 
     private init() {}
 
     func stash(_ route: MobilePendingOsRoute) {
-        pending = route
+        if isolationDepth > 0 {
+            isolatedPending = route
+        } else {
+            pending = route
+        }
     }
 
     /// Read and clear so one tap opens one surface once.
@@ -32,6 +41,22 @@ final class MobilePendingOsRouteStore {
 
     func clear() {
         pending = nil
+        isolatedPending = nil
+    }
+
+    func withIsolatedPendingRouteForTests<T>(_ body: () throws -> T) rethrows -> T {
+        isolationDepth += 1
+        defer {
+            isolationDepth -= 1
+            isolatedPending = nil
+        }
+        return try body()
+    }
+
+    func consumeIsolatedPendingRouteForTests() -> MobilePendingOsRoute? {
+        let value = isolatedPending
+        isolatedPending = nil
+        return value
     }
 }
 
@@ -67,11 +92,7 @@ enum MobileOsDeepLinkApplier {
             AssistantPendingThread.shared.stash(assistant: runtime, threadID: threadID)
             postAssistantsTab(runtime: runtime, threadID: threadID)
         case .insights:
-            NotificationCenter.default.post(
-                name: .init("ShowInsightsTab"),
-                object: nil,
-                userInfo: ["slug": routed.slug ?? ""]
-            )
+            InsightsDeepLink.open(slug: routed.slug)
         case .inbox:
             AIInboxDeepLink.open(itemID: routed.itemId)
         case .mercuryCall:
@@ -117,5 +138,37 @@ enum MobileOsDeepLinkApplier {
             apply(routed)
         }
         return envelope.eventId.isEmpty ? nil : envelope.eventId
+    }
+}
+
+/// Insights is no longer a compact-tray tab. Deep links and Settings must
+/// still select a reachable destination (Insights itself), so the request is
+/// stashed the same way as `AIInboxDeepLink`: post + claim.
+@MainActor
+enum InsightsDeepLink {
+    static let notificationName = Notification.Name("ShowInsightsTab")
+    static let slugKey = "slug"
+    static let sectionKey = "section"
+
+    private static var pending: (slug: String?, section: String?)?
+
+    static var hasPending: Bool { pending != nil }
+
+    static func open(slug: String? = nil, section: String? = nil) {
+        pending = (slug, section)
+        var userInfo: [AnyHashable: Any] = [:]
+        if let slug { userInfo[slugKey] = slug }
+        if let section { userInfo[sectionKey] = section }
+        NotificationCenter.default.post(name: notificationName, object: nil, userInfo: userInfo)
+    }
+
+    static func consume() -> (slug: String?, section: String?)? {
+        let value = pending
+        pending = nil
+        return value
+    }
+
+    static func reset() {
+        pending = nil
     }
 }

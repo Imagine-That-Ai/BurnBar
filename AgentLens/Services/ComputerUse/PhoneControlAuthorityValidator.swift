@@ -292,6 +292,17 @@ public final class PhoneControlAuthorityValidator: Sendable {
         stateBox.withLock { $0.peerPublicKeys[nodeId] != nil }
     }
 
+    /// Keep-awake toggles verify Ed25519 only. SE-P256 controller keys
+    /// are not a keep-awake signing identity.
+    public func ed25519PublicKeyRepresentation(for peerNodeId: String) -> Data? {
+        stateBox.withLock { state in
+            guard let key = state.peerPublicKeys[peerNodeId], key.kind == .ed25519 else {
+                return nil
+            }
+            return key.publicKeyRepresentation
+        }
+    }
+
     public func isPeerRevoked(nodeId: String) -> Bool {
         stateBox.withLock { $0.revokedPeerNodeIds.contains(nodeId) }
     }

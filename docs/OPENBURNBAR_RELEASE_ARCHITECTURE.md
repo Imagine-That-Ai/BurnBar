@@ -232,6 +232,17 @@ rollback, strips quarantine, normalizes LaunchServices so Spotlight/Finder prefe
 the canonical bundle, and relaunches that exact path. If `/Applications` isn't
 writable it falls back to opening the DMG.
 
+**Offer and install share one identity: numeric `CFBundleVersion`.** The public
+feed keeps the git tag in `version` (`1.0.40+repair.36`) while the notarized
+bundle's `CFBundleShortVersionString` is the Apple marketing prefix (`1.0.40`)
+because Apple forbids `+`. `DirectDownloadRelease.isNewer` and
+`DirectDownloadUpdateInstaller.validateNotDowngrade` therefore compare only
+strictly greater numeric `CFBundleVersion` / feed `build`. A same-build repair
+tag must not be offered — offering it downloads the DMG and then refuses the
+swap with "Refusing to install build N over a newer or equal build N". Every
+direct-download cut that should replace a live install must bump
+`CURRENT_PROJECT_VERSION` above the live feed's `build`.
+
 **Source install/update parity.** `scripts/source-update-install.sh` is the
 source-channel counterpart to the DMG trampoline. It pulls the tracked branch,
 runs the signed Release build, quits and kills any older GUI process, atomically

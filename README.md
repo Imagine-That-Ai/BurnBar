@@ -5,7 +5,7 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Commercial launch candidate — macOS `1.0.40` is prepared for Mac App Store review and ships as a Developer ID notarized direct download; Windows `1.0.40` is the parity release line; iOS `1.0.2` build `82` and the Hosted Quota Sync subscription are in Apple review with manual release enabled.
+  **Status:** Core shipped line is macOS **direct-download `1.0.29`** (see `website/public/downloads/release-metadata.json`). In-tree marketing version is `1.0.40` and is **not** a commercial launch. Windows, iOS, and Android are **Experimental** — not a parity release line. A commercial launch claim requires a validating `launch-evidence/final-launch-evidence.json` GO packet.
 
 </div>
 
@@ -35,7 +35,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 | Tier | Surfaces | Notes |
 |------|----------|--------|
 | **Core** | macOS app (`AgentLens/`), `OpenBurnBarCore`, local daemon (`OpenBurnBarDaemon/`), Cursor/VS Code extension (`extensions/openburnbar/`), `OpenBurnBarCLI` | Built and exercised in CI where configured; local-first + daemon RPC are the product spine. |
-| **Experimental** | Optional Firestore sync, sealed cloud collaboration, Cursor connector + tunnel, future sealed iCloud archive support | Best-effort; opt-in; not canonical vs local SQLite/daemon state. Raw iCloud session-file mirroring is disabled in this tree. |
+| **Experimental** | Optional Firestore sync, sealed cloud collaboration, Cursor connector + tunnel, Computer Use / Mercury / missions, iOS / Android / Windows / Linux ports, future sealed iCloud archive support | Best-effort; opt-in; not canonical vs local SQLite/daemon state. Not a parity or commercial-launch claim. Raw iCloud session-file mirroring is disabled in this tree. |
 | **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper, BurnBar Resume, plus opt-in hosted encrypted semantic search), [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/) (BurnBar Pro hosted Remote MCP stdio shim, published to npm as **`openburnbar`**), [`plugins/openburnbar/`](plugins/openburnbar/README.md) (Cursor Marketplace plugin: hosted HTTP MCP + bearer variable) | Developer convenience; not required to run OpenBurnBar. The marketplace plugin is a **distinct Cursor surface** from the editor extension — see [docs/OPENBURNBAR_CURSOR_PLUGIN.md](docs/OPENBURNBAR_CURSOR_PLUGIN.md). |
 | **Quarantined tests** | `AgentLensTests/Quarantine/` | Stale suites kept as migration reference only; **not compiled** in the active `OpenBurnBarTests` bundle until fixed and moved back to `Active/` — see [AgentLensTests/README.md](AgentLensTests/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md). |
 

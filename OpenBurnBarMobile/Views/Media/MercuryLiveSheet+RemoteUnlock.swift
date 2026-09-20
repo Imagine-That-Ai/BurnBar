@@ -911,9 +911,10 @@ extension MercuryLiveSheet {
         text: String? = nil,
         key: String? = nil,
         modifiers: [String]? = nil,
-        mouseButton: Int? = nil
+        mouseButton: Int? = nil,
+        requiresControllerRole: Bool = true
     ) async {
-        guard activeMirrorViewerRole == "controller" else {
+        if requiresControllerRole, activeMirrorViewerRole != "controller" {
             phoneControlError = "Watching only. Take control from this device to click or type."
             return
         }

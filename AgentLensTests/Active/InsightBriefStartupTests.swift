@@ -153,6 +153,64 @@ final class InsightBriefStartupTests: XCTestCase {
         XCTAssertEqual(summaries[0].fullText, "")
     }
 
+    func test_databaseAnalystPrompt_doesNotSelectConversationFullText() async throws {
+        var config = Configuration()
+        OpenBurnBarQueryTracer.shared.configure(in: &config)
+        let queue = try DatabaseQueue(path: ":memory:", configuration: config)
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let sessionId = "session-prompt"
+        let now = Date()
+        try await store.upsertConversation(
+            makeConversation(
+                id: ConversationRecord.stableId(provider: .factory, sessionId: sessionId),
+                sessionId: sessionId,
+                projectName: "OpenBurnBar",
+                startTime: now.addingTimeInterval(-120),
+                endTime: now.addingTimeInterval(-60),
+                title: "Auth refactor",
+                lastAssistantMessage: "Ship the auth patch after QA.",
+                fullText: "UNIQUE-FULLTEXT-MARKER-SHOULD-NOT-REACH-CHAT-PROMPT"
+                    + String(repeating: " Large transcript block.", count: 2_000)
+            )
+        )
+        try await store.insert([
+            TokenUsage(
+                provider: .factory,
+                sessionId: sessionId,
+                projectName: "OpenBurnBar",
+                model: "factory-model",
+                inputTokens: 10,
+                outputTokens: 4,
+                costUSD: 1.25,
+                startTime: now.addingTimeInterval(-120),
+                endTime: now.addingTimeInterval(-60)
+            )
+        ])
+
+        OpenBurnBarQueryTracer.shared.resetLog()
+        let prompt = await ContextBuilder.buildDatabaseAnalystSystemPrompt(
+            from: store,
+            intelligenceService: nil,
+            indexingEnabled: true,
+            health: .empty
+        )
+        let conversationSQL = OpenBurnBarQueryTracer.shared.queryLog
+            .map(\.sql)
+            .filter { $0.localizedCaseInsensitiveContains("from conversations") }
+            .joined(separator: "\n")
+        OpenBurnBarQueryTracer.shared.resetLog()
+
+        XCTAssertFalse(
+            conversationSQL.contains("SELECT * FROM conversations"),
+            "chat prompt assembly must not decrypt conversation fullText: \(conversationSQL)"
+        )
+        XCTAssertTrue(
+            conversationSQL.contains("'' AS fullText"),
+            "chat prompt assembly must use session-log summaries: \(conversationSQL)"
+        )
+        XCTAssertFalse(prompt.contains("UNIQUE-FULLTEXT-MARKER-SHOULD-NOT-REACH-CHAT-PROMPT"))
+    }
+
     func test_build_usesConversationSummaryMetadataForBrief() async throws {
         let store = try makeInMemoryStore()
         let now = Date()

@@ -15,11 +15,11 @@ import os
 extension CLIAgentMissionDispatcher {
     // MARK: - Fan-out dispatch (Hermes Square §6.4)
     //
-    // Writes one MissionGroupDocument parent + N child cli_agent_mission_requests
-    // linked by groupID. The Mac listener claims children independently
-    // but respects `parallelismLimit` so a single Mac doesn't spawn 5
-    // simultaneous Codex sessions. Per-child personaScopeJSON is propagated
-    // when present.
+    // Creates one MissionGroupDocument parent via createCliAgentMissionGroup
+    // plus N child cli_agent_mission_requests linked by groupID. The Mac
+    // listener claims children independently but respects `parallelismLimit`
+    // so a single Mac doesn't spawn 5 simultaneous Codex sessions.
+    // Per-child personaScopeJSON is propagated when present.
     //
     // Returns the groupID so the caller can subscribe to the group + every
     // child mission for the side-by-side UI in `MissionFanOutGroup`.
@@ -111,7 +111,7 @@ extension CLIAgentMissionDispatcher {
         let groupRef = db
             .collection("users").document(uid)
             .collection("mission_groups").document(groupID)
-        let batch = db.batch()
+        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
 
         let legacyGroupPayload = MissionGroupPayloadFactory.buildGroupPayload(
             id: groupID,
@@ -131,12 +131,16 @@ extension CLIAgentMissionDispatcher {
             prompt: trimmedPrompt,
             targetProject: targetProject,
             vaultKey: resolvedKey.keyData,
-            vaultKeyID: resolvedKey.vaultKeyID
+            vaultKeyID: resolvedKey.vaultKeyID,
+            uid: uid
         )
-        batch.setData(groupPayload, forDocument: groupRef, merge: false)
-        try await batch.commit()
-
-        let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
+        var groupRequest = groupPayload
+        groupRequest["groupId"] = groupID
+        groupRequest["deviceId"] = deviceId
+        _ = try await ComputerUseSecurityCallableClient.createCliAgentMissionGroup(
+            payload: ComputerUseSecurityCallableClient.sendableJSONPayload(groupRequest),
+            deviceId: deviceId
+        )
         var leaves: [[String: Any]] = []
         for (index, runtimeToken) in runtimeTokens.enumerated() {
             let missionID = childMissionIDs[index]
@@ -226,7 +230,7 @@ extension CLIAgentMissionDispatcher {
                     parent["siblings"] = Array(slice.dropFirst())
                 }
                 _ = try await ComputerUseSecurityCallableClient.createCliAgentMission(
-                    payload: parent,
+                    payload: ComputerUseSecurityCallableClient.sendableJSONPayload(parent),
                     deviceId: deviceId
                 )
             }

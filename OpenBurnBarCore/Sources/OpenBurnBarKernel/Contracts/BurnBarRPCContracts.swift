@@ -1,11 +1,11 @@
 import Foundation
 
 public enum BurnBarProtocolVersion {
-    public static let current = 1
-    public static let supported = [1]
+    public static let current = 2
+    public static let supported = [1, 2]
 
     public static func negotiate(with clientSupportedVersions: [Int]) -> Int? {
-        supported.first(where: clientSupportedVersions.contains)
+        supported.reversed().first(where: clientSupportedVersions.contains)
     }
 }
 

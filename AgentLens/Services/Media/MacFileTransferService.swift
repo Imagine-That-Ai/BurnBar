@@ -311,6 +311,7 @@ final class MacFileTransferService: ObservableObject {
             return
         }
         let lease = await registry.register(stream: stream, uid: uid, connectionID: connectionID)
+        MacKeepAwakeController.shared.set(.irohControl, held: true)
         Self.log.info("mac_control_stream_mounted connectionID=\(connectionID, privacy: .public)")
         Self.debugTrace("mac_control_stream_mounted connectionID=\(connectionID)")
         let sendGate = MercuryControlStreamSendGate(stream: stream)
@@ -399,6 +400,8 @@ final class MacFileTransferService: ObservableObject {
             lastError = .publishFailed("control stream read: \(error.localizedDescription)")
         }
         let invalidation = await registry.invalidateWithResult(lease)
+        let remaining = await registry.activeStreamCount()
+        MacKeepAwakeController.shared.set(.irohControl, held: remaining > 0)
         if let mercuryControlStreamCloseHandler {
             await mercuryControlStreamCloseHandler(
                 uid,

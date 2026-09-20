@@ -136,6 +136,10 @@ public actor BurnBarHTTPGatewayServer {
     private let modelCatalogCacheTTL: TimeInterval
     private var modelCatalogCache: LinuxModelCatalogCache?
 
+    private var routePipeline: BurnBarLinuxGatewayRoutePipeline {
+        BurnBarLinuxGatewayRoutePipeline(catalog: configStore.catalogSupport.catalog)
+    }
+
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
 
@@ -487,7 +491,10 @@ public actor BurnBarHTTPGatewayServer {
             routingEventStore: BurnBarProviderRoutingDecisionEventStore(),
             allowDynamicOpenAICompatibleModels: true
         )
-        let formatFamilies = preferredGatewayFormatFamilies(for: modelID, endpoint: endpoint)
+        let formatFamilies = routePipeline.preferredFormatFamilies(
+            modelID: modelID,
+            prefersAnthropicFirst: endpoint == .anthropicMessages
+        )
         var lastFailedRoute: BurnBarProviderRoute?
         var attempts: [BurnBarProxyRouteAttempt] = []
         let streamCommit = LinuxGatewayStreamCommit()
@@ -500,10 +507,14 @@ public actor BurnBarHTTPGatewayServer {
                     requestedFormatFamily: formatFamily
                 )
                 await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
-                let routes = ranking.rankedRoutes.map(\.route)
-                guard !routes.isEmpty else { continue }
+                let choices = routePipeline.choices(
+                    rankedRoutes: ranking.rankedRoutes.map(\.route),
+                    formatFamily: formatFamily
+                )
+                guard !choices.isEmpty else { continue }
 
-                for (index, route) in routes.enumerated() {
+                for choice in choices {
+                    let route = choice.route
                     let attemptStartedAt = Date()
                     do {
                         if decoded.stream == true,
@@ -541,7 +552,7 @@ public actor BurnBarHTTPGatewayServer {
                                 let streamStatus = BurnBarProxyRouteFinalStatus.streamRelayOutcome(
                                     interrupted: relay.interrupted
                                 )
-                                attempts.append(routeAttempt(
+                                attempts.append(routePipeline.routeAttempt(
                                     sequence: attempts.count + 1,
                                     startedAt: attemptStartedAt,
                                     completedAt: Date(),
@@ -591,10 +602,13 @@ public actor BurnBarHTTPGatewayServer {
                         await recordUsageIfAvailable(
                             response.usage,
                             route: route,
-                            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route),
+                            idempotencyKey: routePipeline.usageIdempotencyKey(
+                                accountingRequestID: accountingRequestID,
+                                route: route
+                            ),
                             executionSource: executionSource
                         )
-                        attempts.append(routeAttempt(
+                        attempts.append(routePipeline.routeAttempt(
                             sequence: attempts.count + 1,
                             startedAt: attemptStartedAt,
                             completedAt: Date(),
@@ -627,7 +641,7 @@ public actor BurnBarHTTPGatewayServer {
                                 route: route,
                                 requestPath: endpoint.requestPath,
                                 endpoint: endpoint.displayName,
-                                httpStatus: Self.httpStatus(from: error),
+                                httpStatus: routePipeline.httpStatus(from: error),
                                 streamed: streamCommit.responseStarted
                             )
                         }
@@ -648,14 +662,14 @@ public actor BurnBarHTTPGatewayServer {
                             let interruptedStatus = BurnBarProxyRouteFinalStatus.streamRelayOutcome(
                                 interrupted: true
                             )
-                            attempts.append(routeAttempt(
+                            attempts.append(routePipeline.routeAttempt(
                                 sequence: attempts.count + 1,
                                 startedAt: attemptStartedAt,
                                 completedAt: Date(),
                                 route: route,
                                 status: interruptedStatus,
-                                httpStatus: Self.httpStatus(from: error),
-                                failureMessage: Self.routeLogFailureMessage(from: error)
+                                httpStatus: routePipeline.httpStatus(from: error),
+                                failureMessage: routePipeline.routeLogFailureMessage(from: error)
                             ))
                             await recordProxyRouteLogEntry(
                                 startedAt: startedAt,
@@ -664,22 +678,22 @@ public actor BurnBarHTTPGatewayServer {
                                 route: route,
                                 finalStatus: interruptedStatus,
                                 streamed: true,
-                                httpStatus: Self.httpStatus(from: error) ?? 502,
+                                httpStatus: routePipeline.httpStatus(from: error) ?? 502,
                                 attempts: attempts,
                                 usage: nil,
                                 streamInterrupted: true,
-                                failureMessage: Self.routeLogFailureMessage(from: error)
+                                failureMessage: routePipeline.routeLogFailureMessage(from: error)
                             )
                             return .streamed
                         }
-                        attempts.append(routeAttempt(
+                        attempts.append(routePipeline.routeAttempt(
                             sequence: attempts.count + 1,
                             startedAt: attemptStartedAt,
                             completedAt: Date(),
                             route: route,
                             status: .failed,
-                            httpStatus: Self.httpStatus(from: error),
-                            failureMessage: Self.routeLogFailureMessage(from: error)
+                            httpStatus: routePipeline.httpStatus(from: error),
+                            failureMessage: routePipeline.routeLogFailureMessage(from: error)
                         ))
                         await modelHealthStore.recordFailure(
                             modelID: modelID,
@@ -688,7 +702,7 @@ public actor BurnBarHTTPGatewayServer {
                             error: error
                         )
                         await router.markRouteFailure(route, error: error)
-                        if index < routes.count - 1, shouldFailOverProviderError(error) {
+                        if routePipeline.shouldTryNextCandidate(choice, after: error) {
                             continue
                         }
                         throw error
@@ -733,16 +747,16 @@ public actor BurnBarHTTPGatewayServer {
                 route: lastFailedRoute,
                 finalStatus: .failed,
                 streamed: false,
-                httpStatus: Self.httpStatus(from: error) ?? 502,
+                httpStatus: routePipeline.httpStatus(from: error) ?? 502,
                 attempts: attempts,
                 usage: nil,
-                failureMessage: Self.routeLogFailureMessage(from: error)
+                failureMessage: routePipeline.routeLogFailureMessage(from: error)
             )
             return .buffered(typedDegradedResponse(
                 BurnBarHTTPGatewayDegradedError.upstreamUnavailable(
                     modelID: modelID,
                     providerID: lastFailedRoute?.providerID,
-                    statusCode: Self.httpStatus(from: error)
+                    statusCode: routePipeline.httpStatus(from: error)
                 )
             ))
         }
@@ -848,10 +862,11 @@ public actor BurnBarHTTPGatewayServer {
         for configuration in configurations {
             let settings = configuration.settings
             let providerID = settings.providerID
-            let accountIDs = routeAccountIDs(for: configuration)
+            let catalogFacts = routePipeline.catalogFacts(for: configuration)
+            let accountIDs = catalogFacts.accountIDs
             let formatFamily = configuration.provider.formatFamily
             let providerName = configuration.provider.displayName
-            let routeEligible = hasEligibleRoute(for: configuration)
+            let routeEligible = catalogFacts.isEligible
             let baseModels = configuration.preferredModels
             let hiddenBaseIDs = Set(settings.modelAliases.filter { alias in
                 alias.hidesBaseModel && settings.isModelAdvertisementEnabled(alias.aliasID)
@@ -941,53 +956,6 @@ public actor BurnBarHTTPGatewayServer {
         return models
     }
 
-    private func routeAccountIDs(
-        for configuration: BurnBarResolvedProviderConfiguration
-    ) -> [String] {
-        if !configuration.credentialSlots.isEmpty {
-            return configuration.credentialSlots.compactMap { resolved in
-                let slot = resolved.slot
-                // Keep configured accounts in the diagnostic catalog even
-                // while cooling/exhausted; route eligibility is calculated
-                // separately so health remains visible during failover.
-                guard slot.isEnabled else { return nil }
-                if configuration.provider.local {
-                    return slot.slotID
-                }
-                guard let apiKey = resolved.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !apiKey.isEmpty else { return nil }
-                return slot.slotID
-            }
-        }
-        if configuration.provider.local || configuration.hasCredential {
-            return ["legacy"]
-        }
-        return []
-    }
-
-    private func hasEligibleRoute(
-        for configuration: BurnBarResolvedProviderConfiguration
-    ) -> Bool {
-        guard configuration.provider.capabilities.contains(.routing),
-              configuration.settings.isEnabled else {
-            return false
-        }
-        if !configuration.credentialSlots.isEmpty {
-            return configuration.credentialSlots.contains { resolved in
-                let hasCredential = configuration.provider.local
-                    || (resolved.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-                guard hasCredential else { return false }
-                return BurnBarProviderCredentialSlotRoutingPolicy.canAttemptRoute(
-                    slot: resolved.slot,
-                    providerID: configuration.provider.id,
-                    hasCredential: hasCredential,
-                    providerEnabled: configuration.settings.isEnabled
-                )
-            }
-        }
-        return configuration.provider.local || configuration.hasCredential
-    }
-
     private func modelHealth(
         for model: LinuxGatewayCatalogModel
     ) async -> BurnBarGatewayModelHealthRecord? {
@@ -1013,7 +981,7 @@ public actor BurnBarHTTPGatewayServer {
             return LinuxGatewayResolvedModel(modelID: trimmed, variant: nil, preferredProviderID: nil)
         }
 
-        let (providerHint, modelID) = splitProviderQualifiedModelID(trimmed)
+        let (providerHint, modelID) = routePipeline.splitProviderQualifiedModelID(trimmed)
         let candidates = configurations.filter { configuration in
             guard let providerHint else { return true }
             return configuration.provider.id.caseInsensitiveCompare(providerHint) == .orderedSame
@@ -1058,29 +1026,6 @@ public actor BurnBarHTTPGatewayServer {
             }
         }
         return LinuxGatewayResolvedModel(modelID: modelID, variant: nil, preferredProviderID: providerHint)
-    }
-
-    private func splitProviderQualifiedModelID(_ raw: String) -> (String?, String) {
-        let parts = raw.split(separator: "/", maxSplits: 1).map(String.init)
-        guard parts.count == 2,
-              configStore.catalogSupport.provider(id: parts[0]) != nil,
-              !parts[1].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return (nil, raw)
-        }
-        return (parts[0], parts[1])
-    }
-
-    private func preferredGatewayFormatFamilies(
-        for modelID: String,
-        endpoint: LinuxGatewayEndpoint
-    ) -> [BurnBarProviderFormatFamily] {
-        if endpoint == .anthropicMessages {
-            return [.anthropic, .openaiCompat]
-        }
-        let normalized = modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized.contains("claude") || normalized.contains("anthropic")
-            ? [.anthropic, .openaiCompat]
-            : [.openaiCompat, .anthropic]
     }
 
     private func proxyEndpoint(
@@ -1194,60 +1139,13 @@ public actor BurnBarHTTPGatewayServer {
         await recordUsageIfAvailable(
             usage,
             route: route,
-            idempotencyKey: usageIdempotencyKey(accountingRequestID: accountingRequestID, route: route),
+            idempotencyKey: routePipeline.usageIdempotencyKey(
+                accountingRequestID: accountingRequestID,
+                route: route
+            ),
             executionSource: executionSource
         )
         return LinuxGatewayStreamRelay(usage: usage, interrupted: interrupted)
-    }
-
-    private func shouldFailOverProviderError(_ error: Error) -> Bool {
-        if let providerError = error as? BurnBarProviderExecutorError,
-           let statusAndBody = providerError.upstreamStatusAndBody {
-            let statusCode = statusAndBody.statusCode
-            let body = statusAndBody.body
-            if BurnBarProviderExecutorError.isTransientCapacityFailure(statusCode: statusCode, body: body) {
-                return true
-            }
-            if statusCode == 429 || statusCode == 401 || statusCode == 403 || statusCode == 402 {
-                return true
-            }
-            let normalizedBody = body.lowercased()
-            return normalizedBody.contains("quota")
-                || normalizedBody.contains("rate limit")
-                || normalizedBody.contains("rate_limit")
-                || normalizedBody.contains("insufficient_quota")
-                || normalizedBody.contains("insufficient funds")
-                || normalizedBody.contains("insufficient balance")
-                || normalizedBody.contains("exhaust")
-        } else if error is BurnBarProviderExecutorError {
-            return false
-        }
-
-        if Self.isRetryableProviderTransportError(error) {
-            return true
-        }
-
-        let description = error.localizedDescription.lowercased()
-        return description.contains("quota")
-            || description.contains("rate limit")
-            || description.contains("429")
-    }
-
-    private static func isRetryableProviderTransportError(_ error: Error) -> Bool {
-        guard let urlError = error as? URLError else { return false }
-        switch urlError.code {
-        case .cannotConnectToHost,
-             .cannotFindHost,
-             .dnsLookupFailed,
-             .networkConnectionLost,
-             .notConnectedToInternet,
-             .timedOut,
-             .secureConnectionFailed,
-             .badServerResponse:
-            return true
-        default:
-            return false
-        }
     }
 
     private func recordUsageIfAvailable(
@@ -1326,7 +1224,7 @@ public actor BurnBarHTTPGatewayServer {
         let entry = BurnBarProxyRouteLogEntry(
             occurredAt: startedAt,
             completedAt: completedAt,
-            durationMilliseconds: Self.elapsedMilliseconds(from: startedAt, to: completedAt),
+            durationMilliseconds: routePipeline.elapsedMilliseconds(from: startedAt, to: completedAt),
             requestPath: endpoint.requestPath,
             endpoint: endpoint.displayName,
             clientModelSlug: modelID,
@@ -1339,14 +1237,14 @@ public actor BurnBarHTTPGatewayServer {
             upstreamModelDisplayName: route?.resolvedModelID,
             providerID: route?.providerID,
             providerName: route?.providerDisplayName,
-            providerLogoKey: route.map { providerLogoKey(for: $0) },
+            providerLogoKey: route.map { routePipeline.providerLogoKey(for: $0) },
             accountID: route?.credentialSlotID,
             accountLabel: route?.credentialSlotLabel,
             requestedCanonicalModelID: route?.canonicalModelID,
             servedCanonicalModelID: route?.canonicalModelID,
             formatFamily: route?.formatFamily.rawValue,
             endpointProfileID: route?.endpointProfileID,
-            transportKind: route.map(transportKind(for:)),
+            transportKind: route.map { routePipeline.transportKind(for: $0) },
             rewriteKind: .none,
             exactModelInvariant: route?.canonicalModelID == nil ? .unavailable : .passed,
             finalStatus: finalStatus,
@@ -1355,41 +1253,10 @@ public actor BurnBarHTTPGatewayServer {
             httpStatus: httpStatus,
             attempts: attempts,
             usage: route.flatMap { proxyRouteUsage(from: usage, route: $0) },
-            failureMessage: Self.sanitizedFailureMessage(failureMessage),
+            failureMessage: routePipeline.sanitizedFailureMessage(failureMessage),
             parentRequestID: nil
         )
         await proxyRouteLogStore.append(entry)
-    }
-
-    private func routeAttempt(
-        sequence: Int,
-        startedAt: Date,
-        completedAt: Date,
-        route: BurnBarProviderRoute,
-        status: BurnBarProxyRouteFinalStatus,
-        httpStatus: Int?,
-        failureMessage: String? = nil
-    ) -> BurnBarProxyRouteAttempt {
-        BurnBarProxyRouteAttempt(
-            sequence: sequence,
-            startedAt: startedAt,
-            completedAt: completedAt,
-            durationMilliseconds: Self.elapsedMilliseconds(from: startedAt, to: completedAt),
-            providerID: route.providerID,
-            providerName: route.providerDisplayName,
-            providerLogoKey: providerLogoKey(for: route),
-            accountID: route.credentialSlotID,
-            accountLabel: route.credentialSlotLabel,
-            routingModelSlug: route.requestedModel,
-            upstreamModelSlug: route.resolvedModelID,
-            canonicalModelID: route.canonicalModelID,
-            formatFamily: route.formatFamily.rawValue,
-            endpointProfileID: route.endpointProfileID,
-            transportKind: transportKind(for: route),
-            status: status,
-            httpStatus: httpStatus,
-            failureMessage: Self.sanitizedFailureMessage(failureMessage)
-        )
     }
 
     private func proxyRouteUsage(
@@ -1411,21 +1278,6 @@ public actor BurnBarHTTPGatewayServer {
             ),
             confidence: usage.confidence
         )
-    }
-
-    private func providerLogoKey(for route: BurnBarProviderRoute) -> String {
-        configStore.catalogSupport.catalog.provider(id: route.providerID)?.bundledLogoName
-            ?? BurnBarCatalogProvider.bundledLogoName(forProviderID: route.providerID)
-            ?? "\(route.providerID.capitalized)Logo"
-    }
-
-    private func transportKind(for route: BurnBarProviderRoute) -> BurnBarProxyTransportKind {
-        route.providerID.caseInsensitiveCompare("factory") == .orderedSame ? .factoryDroid : .http
-    }
-
-    private func usageIdempotencyKey(accountingRequestID: String, route: BurnBarProviderRoute) -> String {
-        let routePart = "\(route.providerID)#\(route.credentialSlotID ?? "legacy")#\(route.resolvedModelID)"
-        return "gateway:\(Self.stableDigest("\(accountingRequestID)|\(routePart)"))"
     }
 
     private func noEligibleRouteResponse(modelID: String, endpoint: LinuxGatewayEndpoint) -> Data {
@@ -1476,45 +1328,6 @@ public actor BurnBarHTTPGatewayServer {
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
         return #"{"error":"\#(escaped)"}"#
-    }
-
-    private nonisolated static func httpStatus(from error: Error) -> Int? {
-        if let providerError = error as? BurnBarProviderExecutorError,
-           let statusAndBody = providerError.upstreamStatusAndBody {
-            return statusAndBody.statusCode
-        }
-        return nil
-    }
-
-    private nonisolated static func routeLogFailureMessage(from error: Error) -> String {
-        if let providerError = error as? BurnBarProviderExecutorError,
-           let statusAndBody = providerError.upstreamStatusAndBody {
-            return "OpenBurnBar provider request failed with status \(statusAndBody.statusCode)."
-        }
-        return sanitizedFailureMessage(error.localizedDescription) ?? "OpenBurnBar provider request failed."
-    }
-
-    private nonisolated static func sanitizedFailureMessage(_ message: String?) -> String? {
-        guard let message else { return nil }
-        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let oneLine = trimmed
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
-        return String(oneLine.prefix(260))
-    }
-
-    private nonisolated static func elapsedMilliseconds(from start: Date, to end: Date) -> Int {
-        max(0, Int((end.timeIntervalSince1970 - start.timeIntervalSince1970) * 1_000))
-    }
-
-    private nonisolated static func stableDigest(_ input: String) -> String {
-        var hash: UInt64 = 0xcbf29ce484222325
-        for byte in input.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= 0x100000001b3
-        }
-        return String(format: "%016llx", hash)
     }
 
     private nonisolated func loopbackAddress(for host: String) -> in_addr {

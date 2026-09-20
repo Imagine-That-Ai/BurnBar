@@ -88,6 +88,32 @@ final class MissionRemoteAuthorizationShadowTests: XCTestCase {
     }
 
     @MainActor
+    func testAuthorizeFailsClosedWhenDaemonIsNotHealthy() async {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mission-auth-unhealthy-\(UUID().uuidString)", isDirectory: true)
+        let daemonDirectory = root.appendingPathComponent("daemon", isDirectory: true)
+        let paths = OpenBurnBarDaemonRuntimePaths(
+            supportDirectory: root,
+            daemonDirectory: daemonDirectory,
+            frameworksDirectory: root.appendingPathComponent("Frameworks", isDirectory: true),
+            installedBinaryURL: daemonDirectory.appendingPathComponent("OpenBurnBarDaemon"),
+            socketURL: daemonDirectory.appendingPathComponent("openburnbar-daemon.sock"),
+            logURL: daemonDirectory.appendingPathComponent("daemon.log"),
+            launchAgentPlistURL: root.appendingPathComponent("launch-agent.plist")
+        )
+        let manager = OpenBurnBarDaemonManager(paths: paths, dependencies: .live())
+        let outcome = await MissionRemoteAuthorizationShadow.authorize(
+            ctx: context(),
+            executorTrustState: "trusted",
+            manager: manager
+        )
+        guard case .daemonUnreachable = outcome else {
+            XCTFail("An unhealthy daemon must not authorize execution; got \(outcome)")
+            return
+        }
+    }
+
+    @MainActor
     func testEnforcePreservesTheCompleteAuthorizedResponseAndExactGrantCeiling() async throws {
         let expected = authorizedResponse(commandsAllowed: false, fileEditsAllowed: true)
         let daemon = try MissionAuthorizationFakeDaemon(reply: .response(expected))

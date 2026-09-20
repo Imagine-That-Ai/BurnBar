@@ -54,6 +54,10 @@ struct MercuryLiveSheet: View {
     /// display. `nil` keeps the standard full-display Mercury Live mirror.
     var terminalRuntime: String?
 
+    /// Watch inspector embed: solid field, not a blurred login wallpaper
+    /// pretending to be the live Mac.
+    var preferHonestBackground: Bool = false
+
     @State var lastAck: HermesRealtimeRelayMirrorAck?
 
     @State var lastAckReceivedAt: Date?
@@ -427,7 +431,8 @@ struct MercuryLiveSheet: View {
                 onTrustControlDevice: handleTrustControlDevice,
                 onForceReconnect: handleForceReconnect,
                 onRetryRequest: handleRetryRequest,
-                onClose: handleClose
+                onClose: handleClose,
+                onPanicHalt: handlePanicHalt
             )
             .onDisappear {
                 // Disappearing is lifecycle noise on iOS: app switch, PiP,

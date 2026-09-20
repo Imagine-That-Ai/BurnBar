@@ -163,7 +163,11 @@ struct DashboardBackdrop: View {
             // background. Editorial used to short-circuit above this, which meant
             // picking a kernel theme on the paper skin rendered nothing at all —
             // the theme was chosen, stored, and then never consulted.
-            if shouldUseKernelBackdrop, useNativeGlassField {
+            if shouldUseKernelBackdrop,
+               !PerformanceGateBackdropSurface.usesWebGLKernel(
+                    isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch,
+                    nativeFieldEnabled: useNativeGlassField
+               ) {
                 // The living backdrop, drawn by Metal as ordinary SwiftUI content.
                 //
                 // The WebGL2 path below still works and still owns the 32 named kernels,

@@ -145,12 +145,8 @@ const HOSTED_INSIGHTS_LIMITS: Record<HostedInsightsRateLimitAction, { windowSeco
   insights_hosted_answer_daily: { windowSeconds: 86_400, maxAttempts: 200 },
 };
 
-// Public BurnBench assistant (`benchAssistant` callable): unauthenticated
-// website traffic, and each answer bills input tokens to the owner's
-// OpenRouter budget. There is no uid to key on, so the limit follows the
-// client IP; a short burst window plus a daily ceiling keeps a single source
-// from looping answers to drain that budget while leaving normal browsing
-// unthrottled. Mirrors the hosted-Insights burst + daily pair shape.
+// BurnBench assistant (`benchAssistant` callable) now requires Firebase Auth.
+// IP burst + daily limits remain as a second bound on OpenRouter spend.
 type BenchAssistantRateLimitAction = "bench_assistant_burst" | "bench_assistant_daily";
 
 const BENCH_ASSISTANT_LIMITS: Record<BenchAssistantRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {

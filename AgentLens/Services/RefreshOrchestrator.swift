@@ -15,6 +15,8 @@ struct PostPersistenceResult {
 }
 
 actor RefreshOrchestrator {
+    private var retentionInFlight = false
+    private var lastRetentionCompletedAt: Date?
     let dataStore: DataStore
     let settingsManager: SettingsManager
     let cloudSyncCoordinator: CloudSyncCoordinator?
@@ -91,19 +93,29 @@ actor RefreshOrchestrator {
         return try await ConversationIndexer.shared.index(conversations, in: dataStore)
     }
 
-    func runRetentionPurgeIfNeeded() async {
+    func runRetentionPurgeIfNeeded(now: Date = Date()) async {
+        guard !retentionInFlight,
+              lastRetentionCompletedAt.map({ now.timeIntervalSince($0) >= 60 * 60 }) ?? true else { return }
+        retentionInFlight = true
+        defer { retentionInFlight = false }
         // No user-facing retention window is configured in SettingsManager yet, so we apply a
         // conservative built-in policy: reap terminal projection jobs (completed/canceled) that
         // the work queue will never re-read. Without this the table grows unbounded — the data
         // lifecycle audit measured 176,247 of 176,386 rows (99.9%) dead.
         // config TODO: when SettingsManager gains a retention window, also bound usage/conversation
         // history here and let the window override `terminalJobRetention`.
-        let cutoff = Date().addingTimeInterval(-ProjectionWorkerPolicy.terminalJobRetention)
+        let usageCutoff = UsageRetentionPolicy.cutoff(now: now)
+        let terminalCutoff = now.addingTimeInterval(-ProjectionWorkerPolicy.terminalJobRetention)
         do {
-            let reaped = try await dataStore.reapTerminalProjectionJobs(olderThan: cutoff)
-            if reaped > 0 {
-                AppLogger.dataStore.info("Retention purge reaped \(reaped) terminal projection job(s).")
+            let reapedJobs = try await dataStore.reapTerminalProjectionJobs(olderThan: terminalCutoff)
+            let reapedUsage = try await dataStore.reapUsageOlderThan(usageCutoff)
+            if reapedJobs > 0 || reapedUsage > 0 {
+                AppLogger.dataStore.info(
+                    "Retention purge reaped \(reapedJobs) terminal projection job(s) and \(reapedUsage) usage row(s); usage cutoff=\(usageCutoff.timeIntervalSince1970)"
+                )
+                try await dataStore.incrementalVacuum()
             }
+            lastRetentionCompletedAt = now
         } catch {
             AppLogger.dataStore.silentFailure("Retention purge of terminal projection jobs failed", error: error)
         }
@@ -258,6 +270,4 @@ actor RefreshOrchestrator {
             persistencePhaseDuration: 0
         )
     }
-
-    private static let retentionPurgeCacheKey = "data_retention_purge"
 }

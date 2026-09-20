@@ -195,7 +195,17 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
 
     var latestControlConnectionID: String?
 
+    typealias WatchHUDFactory = @MainActor () async -> (any AgentWatchHUDControlling)?
+
+    var watchHUDFactory: WatchHUDFactory?
+
+    var watchHUDSession: (any AgentWatchHUDControlling)?
+
     var phoneFirstActionConfirmedSessionKeys: Set<String> = []
+
+    var inputPipeline: ComputerUseInputPipeline!
+    var approvalPipeline: ComputerUseApprovalPipeline!
+    var auditPipeline: ComputerUseAuditPipeline!
 
     #if DEBUG
     var didStartE2EApprovalProbe = false
@@ -319,6 +329,9 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
                 self?.updatePhoneControlAttestationRequired(required)
             }
         }
+        self.inputPipeline = ComputerUseInputPipeline(session: self)
+        self.approvalPipeline = ComputerUseApprovalPipeline(session: self)
+        self.auditPipeline = ComputerUseAuditPipeline(session: self)
     }
 
     deinit {
@@ -389,12 +402,16 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
     ) -> Bool {
         // F1: scope the controller-key pin to this account so the Mac refuses a
         // relay/Firestore-swapped signing key for an already-paired controller.
-        phoneValidator.registerPeer(
+        let admitted = phoneValidator.registerPeer(
             nodeId: nodeId,
             verifyingKey: verifyingKey,
             uid: configuration.userId,
             requiredAttestationHashBlake3: requiredAttestationHashBlake3
         )
+        if admitted {
+            rememberKeepAwakeToggleKey(nodeId: nodeId, key: verifyingKey)
+        }
+        return admitted
     }
 
     func registerPhonePeerForControlClassify(
@@ -410,6 +427,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             requiredAttestationHashBlake3: requiredAttestationHashBlake3
         ) {
         case .admitted:
+            rememberKeepAwakeToggleKey(nodeId: nodeId, key: publicKey)
             return (true, nil)
         case .pendingConfirmation(let safetyCode):
             recordE2EProofEvent([
@@ -437,6 +455,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
                 requiredAttestationHashBlake3: requiredAttestationHashBlake3
             ) {
             case .admitted:
+                rememberKeepAwakeToggleKey(nodeId: nodeId, key: publicKey)
                 return (true, nil)
             case .pendingConfirmation:
                 return (false, "controller_confirmation_required")
@@ -446,6 +465,14 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         case .refused(let refusal):
             return (false, Self.controllerRegistrationDenialDetail(for: refusal))
         }
+    }
+
+    private func rememberKeepAwakeToggleKey(nodeId: String, key: PhoneControlVerifyingKey) {
+        guard key.kind == .ed25519 else { return }
+        MacKeepAwakeController.shared.rememberTogglePublicKey(
+            key.publicKeyRepresentation,
+            for: nodeId
+        )
     }
 
     func phoneFirstActionConfirmationKey(peerNodeId: String? = nil) -> String? {
@@ -471,6 +498,11 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
     public var activePhoneViewerNodeId: String? {
         guard activeSessionId != nil else { return nil }
         return state?.manifest.phoneViewerNodeId
+    }
+
+    var activeSessionIsDirectPhoneControl: Bool {
+        guard let manifest = state?.manifest else { return false }
+        return manifest.mode == .system && manifest.phoneViewerNodeId?.isEmpty == false
     }
 
     /// Revoke an escrow device mid-session. Populates the validator's
@@ -558,6 +590,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         configuration.quotaUsage = quotaReservation.usage
 
         activeSessionId = sessionId
+        MacKeepAwakeController.shared.set(.computerUse, held: true)
         auditLogger = logger
         state = ComputerUseSessionState(
             sessionId: sessionId,
@@ -654,7 +687,32 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
             actionCap: request.actionCap
         )
         enqueueCloudSessionStart(request: request, response: response)
+        await startWatchHUDIfNeeded()
         return response
+    }
+
+    func startWatchHUDIfNeeded() async {
+        guard watchHUDSession == nil, activeSessionId != nil else { return }
+        do {
+            guard let session = await watchHUDFactory?() else { return }
+            try await session.start()
+            watchHUDSession = session
+        } catch {
+            Self.log.error(
+                "computer_use_watch_hud_start_failed reason=\(String(describing: error), privacy: .public)"
+            )
+        }
+    }
+
+    /// Drops everything a Computer Use session holds on the machine: the
+    /// keep-awake assertion and the Watch HUD stream. Every teardown path
+    /// (normal end, panic halt, budget hard cap) funnels through here so the
+    /// two cannot drift apart.
+    func releaseSessionScopedHolds() async {
+        MacKeepAwakeController.shared.set(.computerUse, held: false)
+        let session = watchHUDSession
+        watchHUDSession = nil
+        await session?.stop()
     }
 
     private func enqueueCloudSessionStart(

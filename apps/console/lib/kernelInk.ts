@@ -32,7 +32,7 @@
  * invariant: add a kernel id and this file fails to type-check until it has ink.
  */
 
-import type { KernelId } from "@/lib/gl/engine/types";
+import type { KernelId } from "@openburnbar/gl-engine/types";
 
 /** Named entrance characters for the hero (per-word/glyph). */
 export type InkMotion =

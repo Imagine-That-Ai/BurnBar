@@ -158,8 +158,8 @@ The Mercury media rollout (`plans/2026-05-15-mercury-media-master-plan.md`) laye
 |---|---|---|---|---|
 | `media.blob.advertise` | 1 per attachment, on existing Hermes control stream | Sender → receiver | Reliable, ordered (JSON envelope) | 1 |
 | `media.blob.fetch` | 1 per attachment, dedicated stream | Receiver dials sender | Reliable, ordered (iroh-blobs) | 1 |
-| `media.screen.video` | 1 per GOP (~60 frames at 30 fps) | Mac → iOS | Reliable, ordered, stream-per-GOP for head-of-line isolation | 3 |
-| `media.video.{out,in}` | 1 per direction per GOP | Bidirectional | Reliable, ordered, stream-per-GOP | 5 |
+| `media.screen.video` | Logical class, muxed on `media.control` | Mac → iOS/Android | Reliable, ordered GOP-tagged frames on the single control stream. Receiver aborts stale GOPs. Remaining HOL documented in `docs/HERMES_MEDIA_TRANSPORT.md`. | 3 |
+| `media.video.{out,in}` | Logical class, muxed on `media.control` | Bidirectional | Same mux + GOP-abort as screen video. Per-GOP QUIC split is not live. | 5 |
 | `media.audio.{out,in}` | none — datagrams | Bidirectional | QUIC datagrams (RTP-style) | 4 |
 | `media.control` | 1 per session | Bidirectional | Reliable — RTCP-style sender reports, BWE, mute, terminate | 3 |
 

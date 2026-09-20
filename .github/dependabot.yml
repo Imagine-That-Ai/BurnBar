@@ -461,6 +461,134 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch", "major"]
 
+  - package-ecosystem: "cargo"
+    directory: "/crates/openburnbar-domain-core"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "cargo"
+    directory: "/crates/openburnbar-media"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "cargo"
+    directory: "/crates/burnbar-remote"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "cargo"
+    directory: "/crates/project-code-static-parser"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
+    directory: "/packages/gl-engine"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
+    directory: "/packages/data-domains"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
+    directory: "/packages/e2ee-backend-policy"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
+    directory: "/packages/hermes-wire-protocol"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      all-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
   # Security updates for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

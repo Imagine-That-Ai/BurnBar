@@ -15,17 +15,44 @@ import {
   MISSION_RUNTIME_CREATE_TOKENS,
   MISSION_RUNTIME_EVENT_TOKENS,
 } from "../generated/missionRuntimeCatalog.generated.js";
+import { WAND_PARALLEL_CAPS } from "@openburnbar/entitlements";
+
 import {
   PHONE_CONTROL_ESCROW_PLATFORMS,
   boundedFirestoreDocumentId,
+  boundedInteger,
 } from "./computerUseSecurityCodecs.js";
 import { requireTrustedDeviceActionProof } from "./computerUseSecurityFirestore.js";
 import {
+  BURNBAR_PRO_ENTITLEMENT_ID,
+  BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+  BURNBAR_ULTRA_ENTITLEMENT_ID,
   boundedTrimmedString,
+  isActiveBurnBarCloudProEntitlement,
+  isActiveBurnBarUltraEntitlement,
+  isActiveHostedQuotaEntitlement,
+  isActivePremiumEntitlement,
   requirePathBoundCloudVaultSealedPayload,
 } from "./shared.js";
 
 export const MISSION_COLLECTION = "cli_agent_mission_requests";
+export const GROUP_COLLECTION = "mission_groups";
+const HOSTED_QUOTA_SYNC_ENTITLEMENT_ID = "hosted_quota_sync";
+const METADATA_TOKEN = /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/u;
+const GROUP_SOURCES = new Set([
+  "ios",
+  "android",
+  "mac",
+  "ios-chat",
+  "android-chat",
+  "ios-insights",
+  "android-insights",
+  "mac-insights",
+  "ios-hermes-square",
+  "android-hermes-square",
+  "mac-wand",
+]);
+const GROUP_MERGE_STRATEGIES = new Set(["pick_one", "keep_all", "synthesize"]);
 export const LIVE_CANCEL_STATUSES = new Set([
   "pending",
   "accepted",
@@ -58,6 +85,10 @@ function commandLockRef(uid: string, remoteCommandID: string) {
 
 export function eventRef(uid: string, requestId: string, eventId: string) {
   return db.doc(`users/${uid}/${MISSION_COLLECTION}/${requestId}/events/${eventId}`);
+}
+
+export function groupRef(uid: string, groupId: string) {
+  return db.doc(`users/${uid}/${GROUP_COLLECTION}/${groupId}`);
 }
 
 export async function requireAuth(request: CallableRequest<Record<string, unknown>>): Promise<string> {
@@ -309,5 +340,184 @@ export async function writePendingMissionInTransaction(
     updatedAt: FieldValue.serverTimestamp(),
   });
   return { requestId: parsed.requestId, idempotent: false };
+}
+
+function requireMetadataToken(raw: unknown, field: string, maxSize: number): string {
+  const value = boundedTrimmedString(raw, field, maxSize, true);
+  if (!METADATA_TOKEN.test(value)) {
+    throw new HttpsError("invalid-argument", `${field} must be a metadata token.`);
+  }
+  return value;
+}
+
+function requireIdList(raw: unknown, field: string, cap: number): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new HttpsError("invalid-argument", `${field} must be a non-empty array.`);
+  }
+  if (raw.length > cap) {
+    throw new HttpsError("invalid-argument", `${field} can contain at most ${cap} items.`);
+  }
+  return raw.map((item, index) => boundedFirestoreDocumentId(item, `${field}[${index}]`, 160));
+}
+
+function requireTokenList(raw: unknown, field: string, size: number, cap: number): string[] {
+  if (!Array.isArray(raw)) {
+    throw new HttpsError("invalid-argument", `${field} must be an array.`);
+  }
+  if (raw.length !== size) {
+    throw new HttpsError("invalid-argument", `${field} size must match childMissionIDs.`);
+  }
+  if (raw.length > cap) {
+    throw new HttpsError("invalid-argument", `${field} can contain at most ${cap} items.`);
+  }
+  return raw.map((item, index) => requireMetadataToken(item, `${field}[${index}]`, 80));
+}
+
+function sameStringList(left: unknown, right: string[]): boolean {
+  if (!Array.isArray(left) || left.length !== right.length) return false;
+  return left.every((item, index) => item === right[index]);
+}
+
+function resolveTimestamp(raw: unknown, field: string): unknown {
+  if (raw === undefined || raw === null) return FieldValue.serverTimestamp();
+  if (typeof raw === "string") {
+    const parsed = Date.parse(raw);
+    if (!Number.isFinite(parsed)) {
+      throw new HttpsError("invalid-argument", `${field} must be a timestamp.`);
+    }
+    return raw;
+  }
+  if (typeof raw === "object") {
+    const method = Reflect.get(raw, "_methodName");
+    if (method === "serverTimestamp") return FieldValue.serverTimestamp();
+    if (typeof Reflect.get(raw, "toDate") === "function") return raw;
+  }
+  throw new HttpsError("invalid-argument", `${field} must be a timestamp.`);
+}
+
+function parseForecast(raw: unknown): Record<string, number> | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const rec = recordOrUndefined(raw);
+  if (!rec) throw new HttpsError("invalid-argument", "forecast must be an object.");
+  const out: Record<string, number> = {};
+  for (const key of ["tokensLow", "tokensHigh", "costLowUSD", "costHighUSD", "etaLow", "etaHigh"]) {
+    if (rec[key] === undefined) continue;
+    if (typeof rec[key] !== "number" || !Number.isFinite(rec[key])) {
+      throw new HttpsError("invalid-argument", `forecast.${key} must be a number.`);
+    }
+    out[key] = rec[key];
+  }
+  return out;
+}
+
+function entitlementRecord(raw: unknown): Record<string, unknown> | undefined {
+  return recordOrUndefined(raw);
+}
+
+export async function wandFanOutCapForUid(uid: string): Promise<number> {
+  const [ultra, proMax, cloud, legacyCloud] = await Promise.all([
+    db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${HOSTED_QUOTA_SYNC_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).get(),
+  ]);
+  if (isActiveBurnBarUltraEntitlement(entitlementRecord(ultra.data()))) return WAND_PARALLEL_CAPS.ultra;
+  if (isActiveBurnBarCloudProEntitlement(entitlementRecord(proMax.data()))) return WAND_PARALLEL_CAPS.pro;
+  if (
+    isActiveHostedQuotaEntitlement(entitlementRecord(cloud.data())) ||
+    isActivePremiumEntitlement(entitlementRecord(legacyCloud.data()))
+  ) {
+    return WAND_PARALLEL_CAPS.cloud;
+  }
+  return WAND_PARALLEL_CAPS.free;
+}
+
+export type ParsedGroupCreate = {
+  groupId: string;
+  childMissionIDs: string[];
+  document: Record<string, unknown>;
+};
+
+export async function parseGroupCreate(raw: Record<string, unknown>, uid: string): Promise<ParsedGroupCreate> {
+  const groupId = boundedFirestoreDocumentId(raw.groupId ?? raw.groupID ?? raw.id, "groupId", 160);
+  const cap = Math.min(WAND_PARALLEL_CAPS.ultra, await wandFanOutCapForUid(uid));
+  const childMissionIDs = requireIdList(raw.childMissionIDs, "childMissionIDs", cap);
+  const runtimeTokens = requireTokenList(raw.runtimeTokens, "runtimeTokens", childMissionIDs.length, cap);
+  const parallelismLimit =
+    boundedInteger(raw.parallelismLimit, "parallelismLimit", 1, childMissionIDs.length, false) ?? childMissionIDs.length;
+  if (parallelismLimit > cap) {
+    throw new HttpsError("invalid-argument", "parallelismLimit exceeds the Wand fan-out cap.");
+  }
+  if (raw.contentSealed !== true) {
+    throw new HttpsError("invalid-argument", "contentSealed must be true.");
+  }
+  if (raw.sealedSchemaVersion !== 2) {
+    throw new HttpsError("invalid-argument", "sealedSchemaVersion must be 2.");
+  }
+  const sealedPayload = requireSealed(raw.sealedPayload, uid, GROUP_COLLECTION, groupId, "sealedPayload");
+  const vaultKeyID = boundedTrimmedString(raw.vaultKeyID ?? sealedPayload.vaultKeyID, "vaultKeyID", 64, true);
+  if (sealedPayload.vaultKeyID !== vaultKeyID) {
+    throw new HttpsError("invalid-argument", "vaultKeyID must match sealedPayload.vaultKeyID.");
+  }
+  if (raw.id !== undefined && raw.id !== groupId) {
+    throw new HttpsError("invalid-argument", "id must match groupId.");
+  }
+  const missionKind = requireMetadataToken(raw.missionKind, "missionKind", 64);
+  const source = boundedTrimmedString(raw.source, "source", 64, true);
+  if (!GROUP_SOURCES.has(source)) {
+    throw new HttpsError("invalid-argument", "source is not a mission-group source.");
+  }
+  const mergeStrategy = boundedTrimmedString(raw.mergeStrategy, "mergeStrategy", 32, true);
+  if (!GROUP_MERGE_STRATEGIES.has(mergeStrategy)) {
+    throw new HttpsError("invalid-argument", "mergeStrategy is invalid.");
+  }
+  const phase = raw.phase === undefined ? "queued" : boundedTrimmedString(raw.phase, "phase", 40, true);
+  if (phase !== "queued") {
+    throw new HttpsError("invalid-argument", "phase must be queued on create.");
+  }
+  const schemaVersion = boundedInteger(raw.schemaVersion, "schemaVersion", 1, 16, false) ?? 1;
+  const forecast = parseForecast(raw.forecast);
+  const winnerMissionID =
+    raw.winnerMissionID === undefined || raw.winnerMissionID === ""
+      ? undefined
+      : boundedFirestoreDocumentId(raw.winnerMissionID, "winnerMissionID", 160);
+
+  const document: Record<string, unknown> = {
+    id: groupId,
+    missionKind,
+    childMissionIDs,
+    runtimeTokens,
+    parallelismLimit,
+    mergeStrategy,
+    phase,
+    schemaVersion,
+    source,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID,
+    sealedPayload,
+    createdAt: resolveTimestamp(raw.createdAt, "createdAt"),
+    updatedAt: resolveTimestamp(raw.updatedAt, "updatedAt"),
+  };
+  if (forecast) document.forecast = forecast;
+  if (winnerMissionID) document.winnerMissionID = winnerMissionID;
+  return { groupId, childMissionIDs, document };
+}
+
+export async function writeGroupInTransaction(
+  tx: Transaction,
+  uid: string,
+  parsed: ParsedGroupCreate,
+): Promise<{ groupId: string; idempotent: boolean }> {
+  const ref = groupRef(uid, parsed.groupId);
+  const snap = await tx.get(ref);
+  if (snap.exists) {
+    if (sameStringList(snap.get("childMissionIDs"), parsed.childMissionIDs)) {
+      return { groupId: parsed.groupId, idempotent: true };
+    }
+    throw new HttpsError("already-exists", "Mission group already exists.");
+  }
+  tx.set(ref, parsed.document);
+  return { groupId: parsed.groupId, idempotent: false };
 }
 

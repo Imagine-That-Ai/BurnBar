@@ -8,7 +8,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { getConfig } from "../config.js";
 import { enforceAuthAndAppCheck } from "../auth.js";
 import { db } from "../adminRuntime.js";
-import { logError, logWarn, wrapCallableHandler } from "../logging.js";
+import { logError, logWarn, wrapCallableHandler, wrapRequestHandler } from "../logging.js";
 import {
   externalApiWithResilience,
   googlePlayConsumeWithResilience,
@@ -637,7 +637,7 @@ export const stripeBurnBarProWebhook = onRequest(
     secrets: STRIPE_WEBHOOK_SECRETS,
     ...HOT_PATH_OPTIONS,
   },
-  async (req, res): Promise<void> => {
+  wrapRequestHandler("stripeBurnBarProWebhook", async (req, res): Promise<void> => {
     let stripe: Stripe;
     let webhookSecret: string;
     try {
@@ -680,5 +680,5 @@ export const stripeBurnBarProWebhook = onRequest(
       logError({ event: "callable_error", message: "Stripe webhook handling failed", detail: String(err) });
       res.status(500).send("Stripe webhook handling failed.");
     }
-  },
+  }),
 );

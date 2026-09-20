@@ -326,6 +326,10 @@ appRoot.addEventListener('click', (event) => {
     renderPopup(appRoot, buildPopupViewModel(state));
     return;
   }
+  if (action === 'dismiss-permission-sheet') {
+    dispatch({ type: 'dismissPermissionSheet' });
+    return;
+  }
   if (action === 'complete-permission-setup') {
     void completePermissionSetup();
     return;
@@ -364,6 +368,7 @@ appRoot.addEventListener('click', (event) => {
       void send({ type: 'popup.refresh' });
       break;
     case 'request-permission':
+      dispatch({ type: 'resetPermissionSheetDismissed' });
       void send({ type: 'popup.requestSitePermission' });
       break;
   }

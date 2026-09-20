@@ -69,6 +69,27 @@ CREATE INDEX token_usage_billing_kind_time_idx ON token_usage(billingKind, start
 CREATE INDEX token_usage_originator_time_idx ON token_usage(originatorKind, startTime);
 CREATE INDEX token_usage_start_time_idx ON token_usage(startTime);   -- War Room Command Board window scan (v64+)
 
+-- ── Conversations (v2+) ──────────────────────────────────────────────────────
+-- Session conversation bodies + FTS. Writer: app. See ADR-005 table matrix.
+
+CREATE TABLE conversations (
+  id                 TEXT NOT NULL PRIMARY KEY,
+  sessionId          TEXT NOT NULL,
+  provider           TEXT NOT NULL,
+  inferredTaskTitle  TEXT,
+  fullText           TEXT,
+  startedAt          REAL,
+  endedAt            REAL,
+  lastEventAt        REAL
+);
+
+CREATE VIRTUAL TABLE conversations_fts USING fts5(
+  inferredTaskTitle,
+  fullText,
+  content='conversations',
+  content_rowid='rowid'
+);
+
 -- ── Chat Messages (v10+) ─────────────────────────────────────────────────────
 -- Stores local chat history for the Hermes and Local Index chat surfaces.
 

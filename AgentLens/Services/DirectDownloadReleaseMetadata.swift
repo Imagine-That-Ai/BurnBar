@@ -53,22 +53,25 @@ extension DirectDownloadRelease: Decodable {
 }
 
 extension DirectDownloadRelease {
-    /// Numeric `CFBundleVersion` comparison first; falls back to a numeric
-    /// `CFBundleShortVersionString` comparison when builds are equal or
-    /// non-numeric (so `1.10.0` > `1.9.0`).
-    func isNewer(thanBuild currentBuild: String, currentVersion: String) -> Bool {
-        if let remote = Int(build), let local = Int(currentBuild), remote != local {
-            return remote > local
+    /// Strict `CFBundleVersion` comparison — the same rule
+    /// `DirectDownloadUpdateInstaller.validateNotDowngrade` enforces after the
+    /// DMG is mounted. Equal or unreadable numeric builds are not newer.
+    ///
+    /// Do not fall back to `CFBundleShortVersionString` / feed `version` when
+    /// builds match. Repair tags keep the git identity in the feed
+    /// (`1.0.40+repair.36`) while Apple forbids `+` in the installed
+    /// marketing string (`1.0.40`). A string compare would offer a same-build
+    /// "update" that the installer then refuses.
+    func isNewer(thanBuild currentBuild: String) -> Bool {
+        guard let remote = Int(build), let local = Int(currentBuild) else {
+            return false
         }
-        return version.compare(currentVersion, options: .numeric) == .orderedDescending
+        return remote > local
     }
 
     var isNewerThanCurrentBundle: Bool {
         let info = Bundle.main.infoDictionary ?? [:]
-        return isNewer(
-            thanBuild: info["CFBundleVersion"] as? String ?? "0",
-            currentVersion: info["CFBundleShortVersionString"] as? String ?? "0"
-        )
+        return isNewer(thanBuild: info["CFBundleVersion"] as? String ?? "0")
     }
 
     /// Shape-only sanity filter for feed metadata: HTTPS scheme, download host

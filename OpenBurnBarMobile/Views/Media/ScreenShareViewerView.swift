@@ -89,6 +89,7 @@ struct ScreenShareViewerView: View {
     let onSelectDisplay: (String) -> Void
     let onTrustControlDevice: () -> Void
     let onClose: () -> Void
+    let onPanicHalt: () -> Void
     let usePremiumSOTAUX: Bool
     @State var statsVisible: Bool = false
     @State var viewport = ScreenShareViewportState()
@@ -171,7 +172,8 @@ struct ScreenShareViewerView: View {
         requestRemoteUnlockSetup: @escaping () -> Void = {},
         onSelectDisplay: @escaping (String) -> Void = { _ in },
         onTrustControlDevice: @escaping () -> Void = {},
-        onClose: @escaping () -> Void = {}
+        onClose: @escaping () -> Void = {},
+        onPanicHalt: @escaping () -> Void = {}
     ) {
         let resolvedControlInputEnabled = controlInputEnabled ?? controlStatus.isLive
 
@@ -215,6 +217,7 @@ struct ScreenShareViewerView: View {
         self.onSelectDisplay = onSelectDisplay
         self.onTrustControlDevice = onTrustControlDevice
         self.onClose = onClose
+        self.onPanicHalt = onPanicHalt
     }
 
     var displayStats: ScreenShareViewerCoordinator.Stats {
@@ -566,6 +569,10 @@ struct ScreenShareViewerView: View {
         }
         .overlay(alignment: .topLeading) {
             remoteKeyboardCapture
+        }
+        .overlay {
+            ThreeFingerLongPressCapture(onRecognized: onPanicHalt)
+                .ignoresSafeArea()
         }
         .overlay(alignment: .bottom) {
             if smartTextCoachVisible {

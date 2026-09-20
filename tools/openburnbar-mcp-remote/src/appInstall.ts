@@ -264,16 +264,26 @@ export function compareNumericVersion(left: string, right: string): number {
   return 0;
 }
 
+export function appleMarketingVersion(version: string): string {
+  const plus = version.indexOf("+");
+  return plus === -1 ? version : version.slice(0, plus);
+}
+
+/** Feed tags keep SemVer build metadata (`1.0.40+repair.36`); Apple forbids `+` in CFBundleShortVersionString. */
+export function feedVersionMatchesMountedApp(feedVersion: string, mountedVersion: string): boolean {
+  return feedVersion === mountedVersion || appleMarketingVersion(feedVersion) === mountedVersion;
+}
+
 export function isNewerRelease(
   remote: Pick<MacOSReleaseFeed, "build" | "version">,
   local: Pick<InstalledBundle, "build" | "version">
 ): boolean {
   const remoteBuild = Number.parseInt(remote.build, 10);
   const localBuild = Number.parseInt(local.build, 10);
-  if (Number.isFinite(remoteBuild) && Number.isFinite(localBuild) && remoteBuild !== localBuild) {
+  if (Number.isFinite(remoteBuild) && Number.isFinite(localBuild)) {
     return remoteBuild > localBuild;
   }
-  return compareNumericVersion(remote.version, local.version) > 0;
+  return false;
 }
 
 export function parseMountPoint(plistText: string): string | undefined {
@@ -662,7 +672,7 @@ async function installVerifiedDmg(
         `The update has bundle identifier ${offered.bundleId}; expected ${APP_BUNDLE_ID}.`
       );
     }
-    if (offered.version !== release.version || offered.build !== release.build) {
+    if (offered.build !== release.build || !feedVersionMatchesMountedApp(release.version, offered.version)) {
       throw new AppInstallError(
         `The mounted app is ${offered.version} (build ${offered.build}) but the feed advertised ${release.version} (build ${release.build}).`
       );

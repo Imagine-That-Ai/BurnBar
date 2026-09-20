@@ -375,6 +375,9 @@ enum class HermesRealtimeRelayInputIntentKind {
 
     @SerialName("panic")
     PANIC,
+
+    @SerialName("set_trust_mode")
+    SET_TRUST_MODE,
 }
 
 /**

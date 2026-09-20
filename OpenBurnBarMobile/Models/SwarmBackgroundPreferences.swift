@@ -149,7 +149,7 @@ public struct SwarmBackgroundPreferences: Codable, Equatable {
     public var excludeBrandShapes: Bool
 
     public init(
-        location: SwarmBackgroundLocation = .agentsTab,
+        location: SwarmBackgroundLocation = .disabled,
         condition: SwarmBackgroundCondition = .always,
         selectedGlyphs: [AgentProvider] = AgentProvider.swarmGlyphProviders,
         isAvatarEnabled: Bool = true,
@@ -175,7 +175,7 @@ public struct SwarmBackgroundPreferences: Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.location = try container.decodeIfPresent(SwarmBackgroundLocation.self, forKey: .location) ?? .agentsTab
+        self.location = try container.decodeIfPresent(SwarmBackgroundLocation.self, forKey: .location) ?? .disabled
         self.condition = try container.decodeIfPresent(SwarmBackgroundCondition.self, forKey: .condition) ?? .always
         self.selectedGlyphs = try container.decodeIfPresent([AgentProvider].self, forKey: .selectedGlyphs) ?? AgentProvider.swarmGlyphProviders
         self.isAvatarEnabled = try container.decodeIfPresent(Bool.self, forKey: .isAvatarEnabled) ?? true

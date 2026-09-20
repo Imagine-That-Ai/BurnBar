@@ -3,6 +3,7 @@ package com.openburnbar
 import android.util.Log
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.media.MediaControlStreamCoordinator
+import com.openburnbar.data.media.MercuryPathConstraint
 import kotlinx.coroutines.sync.withLock
 
 internal fun durableAndroidPeerDeviceId(deviceId: String): String {
@@ -144,6 +145,9 @@ private fun BurnBarApplication.buildMediaControlCoordinator(): MediaControlStrea
                 viewerId = viewerId,
                 macCapabilities = macCapabilities,
             )
+        },
+        pathConstrainedProvider = {
+            MercuryPathConstraint.isConstrained(this@buildMediaControlCoordinator)
         },
     )
 }

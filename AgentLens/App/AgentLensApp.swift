@@ -155,6 +155,9 @@ enum OpenBurnBarRuntime {
         let processInfo = ProcessInfo.processInfo
         processInfo.disableSuddenTermination()
         processInfo.disableAutomaticTermination("OpenBurnBar background services are active")
+        // Process-lifetime activity only blocks termination. Session-scoped
+        // idle-sleep (`IOPMAssertionTypePreventUserIdleSystemSleep`) lives in
+        // `MacKeepAwakeController` and is taken while a remote session is live.
         applicationHostActivity = processInfo.beginActivity(
             options: [.automaticTerminationDisabled, .suddenTerminationDisabled],
             reason: "OpenBurnBar background services are active"
@@ -185,6 +188,14 @@ enum StartupProfiler {
         os_signpost(.begin, log: log, name: name, signpostID: id)
         defer { os_signpost(.end, log: log, name: name, signpostID: id) }
         return try body()
+    }
+
+    @MainActor
+    static func interval<T>(_ name: StaticString, _ body: @MainActor () async throws -> T) async rethrows -> T {
+        let id = OSSignpostID(log: log)
+        os_signpost(.begin, log: log, name: name, signpostID: id)
+        defer { os_signpost(.end, log: log, name: name, signpostID: id) }
+        return try await body()
     }
 }
 
@@ -230,6 +241,8 @@ struct OpenBurnBarApp: App {
     @State var periodicRefreshTask: Task<Void, Never>?
     @State var navigationCoordinator = NavigationCoordinator()
     @State var didOpenUITestDashboard = false
+    @State private var didBeginStartup = false
+    @State var pendingStartupAction: (() -> Void)?
 
     init() {
         Self.runDomainCoreReleaseIdentityModeIfRequested()
@@ -257,7 +270,30 @@ struct OpenBurnBarApp: App {
         }
 
         Self.seedUITestDefaultsIfNeeded()
+        _startupState = State(initialValue: .loading)
+        StartupProfiler.event("app_init_end")
+    }
 
+    @MainActor
+    private func beginStartupIfNeeded() {
+        guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
+        // The background scene closes immediately, so its .task is not a safe
+        // owner for bootstrap. Queue once after AppKit can install the status item.
+        DispatchQueue.main.async {
+            guard !didBeginStartup else { return }
+            didBeginStartup = true
+            Task { @MainActor in
+                Self.configureStartupServices()
+                startupState = await StartupProfiler.interval("make_startup_state") {
+                    await Self.makeStartupState()
+                }
+                await finishStartup()
+            }
+        }
+    }
+
+    @MainActor
+    private static func configureStartupServices() {
         StartupProfiler.interval("configure_firebase") {
             Self.configureFirebaseIfAvailable(accountManager: .shared)
         }
@@ -273,11 +309,6 @@ struct OpenBurnBarApp: App {
         StartupProfiler.interval("migrate_user_defaults") {
             OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
         }
-
-        _startupState = State(initialValue: StartupProfiler.interval("make_startup_state") {
-            Self.makeStartupState()
-        })
-        StartupProfiler.event("app_init_end")
     }
 
     private static func runDomainCoreReleaseIdentityModeIfRequested() {
@@ -312,9 +343,12 @@ struct OpenBurnBarApp: App {
     }
 
     @MainActor
-    static func makeStartupState(archiveURL: URL? = nil) -> OpenBurnBarStartupState {
+    static func makeStartupState(archiveURL: URL? = nil) async -> OpenBurnBarStartupState {
         do {
-            return .ready(try makeRuntimeContext())
+            let store = try await StartupProfiler.interval("datastore_open") {
+                try await DataStoreCoordinator.openForStartup()
+            }
+            return .ready(try makeRuntimeContext(dataStore: store))
         } catch {
             AppLogger.dataStore.error(
                 "startup_datastore_open_failed",
@@ -328,10 +362,7 @@ struct OpenBurnBarApp: App {
     }
 
     @MainActor
-    private static func makeRuntimeContext() throws -> OpenBurnBarRuntimeContext {
-        let initializedStore = try StartupProfiler.interval("datastore_open") {
-            try DataStoreCoordinator()
-        }
+    private static func makeRuntimeContext(dataStore initializedStore: DataStore) throws -> OpenBurnBarRuntimeContext {
         let settings = StartupProfiler.interval("settings_init") {
             SettingsManager.shared
         }
@@ -428,6 +459,7 @@ struct OpenBurnBarApp: App {
         // sequences statements freely, where `@SceneBuilder` would try to type
         // each one as a Scene component.
         installCommandRouter()
+        beginStartupIfNeeded()
         OpenBurnBarRuntime.beginApplicationHostActivityIfNeeded()
         openUITestDashboardIfNeeded()
         presentStartupRecoveryIfNeeded()
@@ -444,11 +476,10 @@ struct OpenBurnBarApp: App {
         .windowResizability(.contentSize)
     }
 
-    /// When the app fails to open the data store, the AppDelegate's status item
-    /// still mounts but renders an empty popover. Surface the recovery window
-    /// so the user has actionable UI.
+    /// Surface recovery immediately on failure; the status-item popover also
+    /// retains an entry point if the user dismisses the recovery window.
     @MainActor
-    private func presentStartupRecoveryIfNeeded() {
+    func presentStartupRecoveryIfNeeded() {
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
         guard !OpenBurnBarRuntime.isUITestLaunch else { return }
         guard case .failed = startupState else { return }

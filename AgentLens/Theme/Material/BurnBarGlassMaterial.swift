@@ -187,6 +187,7 @@ enum MaterialTier: Equatable, Sendable {
     case shader
     /// Reduce Transparency, or no Metal device. Opaque, still lit, never a blur.
     case flat
+    private static let hasMetalDevice = MTLCreateSystemDefaultDevice() != nil
 
     static var resolved: MaterialTier {
         switch ProcessInfo.processInfo.environment["OPENBURNBAR_FORCE_MATERIAL_TIER"] {
@@ -196,7 +197,7 @@ enum MaterialTier: Equatable, Sendable {
         default:       break
         }
         // No Metal device (a VM, a stripped CI box) is the only automatic downgrade.
-        if MTLCreateSystemDefaultDevice() == nil { return .flat }
+        if !hasMetalDevice { return .flat }
 
         // The shader is the material, on every OS version — NOT a fallback for old ones.
         //
@@ -266,7 +267,9 @@ private struct BurnBarGlassModifier<S: InsettableShape>: ViewModifier {
 
     func body(content: Content) -> some View {
         let spec = effective
-        let tier: MaterialTier = reduceTransparency ? .flat : MaterialTier.resolved
+        // Keep the same interior, rim and contrast while scrolling; defer the
+        // multi-tap refraction pass until the gesture (including momentum) ends.
+        let tier: MaterialTier = reduceTransparency || field.isScrolling ? .flat : MaterialTier.resolved
 
         // LAYER ORDER IS THE WHOLE DESIGN, and getting it wrong is what made this read
         // as frost for three rounds.

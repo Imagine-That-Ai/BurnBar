@@ -73,7 +73,7 @@ def count_oversized(repo_root: pathlib.Path, target: int) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="OpenBurnBar Swift file-size debt counter")
     parser.add_argument("--repo-root", type=pathlib.Path, default=pathlib.Path.cwd())
-    parser.add_argument("--target", type=int, default=2000, help="line-count threshold (exclusive)")
+    parser.add_argument("--target", type=int, default=1500, help="line-count threshold (exclusive)")
     parser.add_argument("--format", choices=("json", "text"), default="json")
     args = parser.parse_args()
 

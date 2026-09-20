@@ -1,13 +1,16 @@
 import SwiftUI
 import OpenBurnBarKernel
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - AI Inbox list (compact / iPhone)
 //
 // The list half of the surface: header, filter rail, ranked sections. Carries no
 // navigation chrome of its own — no title, no search field, no toolbar — because
-// it is embedded inside a host that already owns those (`StreamsView`'s chip
-// rail and search field), and a second `.searchable` in the same stack would
-// fight the first.
+// it is embedded inside a host that already owns those (`InboxHomeView` on
+// the launch tab, or `StreamsView`'s chip rail), and a second `.searchable`
+// in the same stack would fight the first.
 //
 // `AIInboxSplitLayout` is the only thing that decides between one column and
 // two, so iPhone and iPad share this exact list.
@@ -35,11 +38,20 @@ struct AIInboxView: View {
     }
 
     var selectionMode: SelectionMode = .push
+    /// InboxHomeView already owns the large title. Streams / iPad keep the
+    /// in-page headline so a nested list still says what it is.
+    var showsPageHeader: Bool = true
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            filterBar
+            if showsPageHeader {
+                header
+            }
+            if showsPageHeader || horizontalSizeClass != .compact {
+                filterBar
+            }
 
             if let lastError = store.lastError {
                 errorBanner(lastError)
@@ -173,15 +185,15 @@ struct AIInboxView: View {
                                 bottom: MobileTheme.Spacing.xxs,
                                 trailing: AuroraDesign.Layout.cardInset
                             ))
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color(.secondarySystemGroupedBackground))
+                            .listRowSeparator(.visible)
                     }
                 } header: {
                     sectionHeader(group.section, count: group.items.count)
                 }
             }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .trackEasterEggScroll(tag: "inbox")
     }
@@ -231,12 +243,38 @@ struct AIInboxView: View {
             .tint(MobileTheme.amber)
         }
         .contextMenu {
-            Button(item.isUnread ? "Mark as read" : "Mark as unread") {
-                Task { await store.toggleRead(item.id) }
+            inboxPointerMenu(for: item)
+        }
+    }
+
+    /// Pointer secondary-click (and long-press) verbs from the iPad desk IA:
+    /// Approve, Open thread, Archive, Snooze, Copy link.
+    @ViewBuilder
+    private func inboxPointerMenu(for item: AIInboxStore.Item) -> some View {
+        Button(IPadAwayDeskNavigation.InboxPointerAction.approve.title) {
+            Task { await store.select(item.id) }
+        }
+        Button(IPadAwayDeskNavigation.InboxPointerAction.openThread.title) {
+            Task { await store.select(item.id) }
+            if IPadAwayDeskNavigation.inboxOpenThreadValue(payload: item.record.payload) != nil {
+                NotificationCenter.default.post(name: .init("ShowHermesChat"), object: nil)
             }
+        }
+        Button(IPadAwayDeskNavigation.InboxPointerAction.archive.title, role: .destructive) {
+            Task { await store.archive(item.id) }
+        }
+        Menu(IPadAwayDeskNavigation.InboxPointerAction.snooze.title) {
             Button("Snooze for an hour") { Task { await store.snooze(item.id, for: 3_600) } }
             Button("Snooze until tomorrow") { Task { await store.snooze(item.id, for: 24 * 3_600) } }
-            Button("Archive", role: .destructive) { Task { await store.archive(item.id) } }
+        }
+        Button(IPadAwayDeskNavigation.InboxPointerAction.copyLink.title) {
+            if let url = IPadAwayDeskNavigation.inboxItemLink(itemID: item.id) {
+                UIPasteboard.general.string = url.absoluteString
+            }
+        }
+        Divider()
+        Button(item.isUnread ? "Mark as read" : "Mark as unread") {
+            Task { await store.toggleRead(item.id) }
         }
     }
 
@@ -313,5 +351,65 @@ struct AIInboxView: View {
         case .archived:
             return "Items you archive are kept here rather than deleted."
         }
+    }
+}
+
+/// Launch-tab chrome contract. One navigation title; the in-page headline
+/// stays off so Inbox is not titled twice.
+enum InboxHomeChromePolicy {
+    static let navigationTitle = "Inbox"
+    static let showsInPageHeadlineWhenHosted = false
+}
+
+/// Launch-tab host for AI Inbox. Owns the navigation chrome the list itself
+/// refuses to carry so Streams can keep embedding the same list.
+struct InboxHomeView: View {
+    @Bindable var store: AIInboxStore
+    @Environment(\.mobileTrayInset) private var trayInset
+    @State private var searchText = ""
+
+    var body: some View {
+        AIInboxSplitLayout(store: store, showsPageHeader: InboxHomeChromePolicy.showsInPageHeadlineWhenHosted)
+            .padding(.bottom, trayInset)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle(InboxHomeChromePolicy.navigationTitle)
+            .navigationBarTitleDisplayMode(.large)
+            .accessibilityIdentifier("screen.inbox")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if store.unreadCount > 0 {
+                        Button {
+                            HapticBus.toggle()
+                            Task { await store.markEverythingRead() }
+                        } label: {
+                            Text("Mark all read")
+                        }
+                        .accessibilityIdentifier("inbox.markAllRead")
+                    }
+                }
+            }
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .automatic),
+                prompt: "Search inbox"
+            )
+            .onChange(of: searchText) { _, query in
+                store.searchQuery = query
+            }
+            .task { store.loadIfNeeded() }
+            .navigationDestination(for: AIInboxDetailRoute.self) { route in
+                AIInboxDetailScreen(store: store, itemID: route.itemID)
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Picker("Inbox filter", selection: $store.filter) {
+                    ForEach(AIInboxStore.Filter.allCases) { filter in
+                        Text(filter.title).tag(filter)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+                .accessibilityIdentifier("inbox.filter")
+            }
     }
 }

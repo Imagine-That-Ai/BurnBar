@@ -253,29 +253,38 @@ final class MobileRecapSourcePagingTests: XCTestCase {
 
     private struct PageReadFailure: Error {}
 
+    /// Any month is fine: the walk never reads the interval itself.
+    private static let interval = DateInterval(
+        start: Date(timeIntervalSince1970: 0),
+        duration: 86400 * 31
+    )
+
     /// The regression: an empty `collected` was read as "nothing to report" and
     /// the month came back complete. A first-page failure means the month was
     /// never read at all, so a zero-usage month would get persisted as the
     /// user's real baseline — dragging every average down, manufacturing
     /// records, and making the next month of work look like a first ever.
-    func testAFirstPageFailureReportsThePartialMonth() async {
-        let result = await MobileRecapSource.paginate(
-            pageSize: 2,
-            pageBudget: 4
-        ) { (_: String?) -> ([TokenUsage], String?) in
-            throw PageReadFailure()
+    func testAFirstPageFailureThrowsRatherThanReportingAnEmptyMonth() async {
+        do {
+            _ = try await MobileRecapSource.paginate(
+                interval: Self.interval,
+                pageSize: 2,
+                pageBudget: 4
+            ) { (_: String?) -> ([TokenUsage], String?) in
+                throw PageReadFailure()
+            }
+            XCTFail("A month whose very first read failed must throw, not fold as empty.")
+        } catch is PageReadFailure {
+            // Unread, not empty — the composer must never persist this as a baseline.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
         }
-
-        XCTAssertTrue(result.rows.isEmpty)
-        XCTAssertTrue(
-            result.isPartial,
-            "A month whose very first read failed is unread, not empty."
-        )
     }
 
-    func testAFailureAfterSomeRowsAlsoReportsThePartialMonth() async {
+    func testAFailureAfterSomeRowsAlsoReportsThePartialMonth() async throws {
         let calls = Counter()
-        let result = await MobileRecapSource.paginate(
+        let result = try await MobileRecapSource.paginate(
+            interval: Self.interval,
             pageSize: 1,
             pageBudget: 4
         ) { (_: String?) -> ([TokenUsage], String?) in
@@ -290,8 +299,9 @@ final class MobileRecapSourcePagingTests: XCTestCase {
 
     /// The only way a month is allowed to claim completeness: the walk ran out
     /// of rows on its own terms, inside the page budget.
-    func testAShortPageEndsTheWalkAndReportsACompleteMonth() async {
-        let result = await MobileRecapSource.paginate(
+    func testAShortPageEndsTheWalkAndReportsACompleteMonth() async throws {
+        let result = try await MobileRecapSource.paginate(
+            interval: Self.interval,
             pageSize: 5,
             pageBudget: 4
         ) { (_: String?) -> ([TokenUsage], String?) in
@@ -302,9 +312,10 @@ final class MobileRecapSourcePagingTests: XCTestCase {
         XCTAssertFalse(result.isPartial)
     }
 
-    func testAnExhaustedPageBudgetReportsThePartialMonth() async {
+    func testAnExhaustedPageBudgetReportsThePartialMonth() async throws {
         let calls = Counter()
-        let result = await MobileRecapSource.paginate(
+        let result = try await MobileRecapSource.paginate(
+            interval: Self.interval,
             pageSize: 1,
             pageBudget: 3
         ) { (_: String?) -> ([TokenUsage], String?) in

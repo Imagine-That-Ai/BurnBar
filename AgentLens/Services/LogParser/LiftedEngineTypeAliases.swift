@@ -30,6 +30,15 @@ typealias ParserOptionsUnsupported = OpenBurnBarCore.ParserOptionsUnsupported
 
 typealias ClaudeCodeParser = OpenBurnBarCore.ClaudeCodeParser
 typealias LiftedCodexParser = OpenBurnBarCore.CodexParser
+typealias CodexParser = OpenBurnBarCore.CodexParser
+typealias CopilotParser = OpenBurnBarCore.CopilotParser
+typealias AiderParser = OpenBurnBarCore.AiderParser
+typealias CursorParser = OpenBurnBarCore.CursorParser
+typealias OpenCodeParser = OpenBurnBarCore.OpenCodeParser
+typealias PiAgentParser = OpenBurnBarCore.PiAgentParser
+typealias OpenClawParser = OpenBurnBarCore.OpenClawParser
+typealias JunieParser = OpenBurnBarCore.JunieParser
+typealias ModelFilterParser = OpenBurnBarCore.ModelFilterParser
 typealias FactoryDroidParser = OpenBurnBarCore.FactoryDroidParser
 typealias AntigravityParser = OpenBurnBarCore.AntigravityParser
 typealias AugmentParser = OpenBurnBarCore.AugmentParser

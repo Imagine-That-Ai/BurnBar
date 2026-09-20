@@ -85,6 +85,28 @@ enum MobileDeviceIdentity {
         defaults.set(resolved, forKey: deviceIDKey)
         return resolved
     }
+
+    /// Merges push-endpoint fields into this install's `users/{uid}/devices/{deviceId}`
+    /// doc. Every client writer of that doc goes through here so the shared
+    /// contract — `deviceId`, `platform`, `updated_at_millis` — is stamped once
+    /// instead of hand-copied per token type.
+    ///
+    /// Returns `false` when there is no signed-in Firebase user to write for.
+    @discardableResult
+    static func mergeDevicePushFields(_ fields: [String: Any]) async throws -> Bool {
+        guard FirebaseApp.app() != nil,
+              let uid = Auth.auth().currentUser?.uid else { return false }
+        let deviceId = loadOrCreateDeviceId()
+        var payload = fields
+        payload["deviceId"] = deviceId
+        payload["platform"] = "ios"
+        payload["updated_at_millis"] = Int64(Date().timeIntervalSince1970 * 1000)
+        try await Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("devices").document(deviceId)
+            .setData(payload, merge: true)
+        return true
+    }
 }
 
 enum CloudDeviceActivityDateResolver {

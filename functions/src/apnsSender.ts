@@ -30,17 +30,27 @@ import { logError, logInfo } from "./logging.js";
 import { pushWithResilience } from "./resilienceHelpers.js";
 import { FUNCTIONS_REGION } from "./runtimeOptions.js";
 
-const APNS_KEY_ID = defineSecret("APNS_KEY_ID");
-const APNS_TEAM_ID = defineSecret("APNS_TEAM_ID");
-const APNS_KEY_P8 = defineSecret("APNS_KEY_P8");
+export const APNS_KEY_ID = defineSecret("APNS_KEY_ID");
+export const APNS_TEAM_ID = defineSecret("APNS_TEAM_ID");
+export const APNS_KEY_P8 = defineSecret("APNS_KEY_P8");
 const APNS_VOIP_TOPIC = defineString("APNS_VOIP_TOPIC", {
   default: "com.openburnbar.mobile.voip",
   description: "APNs topic for VoIP pushes. Must match the bundle id + .voip suffix.",
+});
+/** iOS OpenBurnBarMobile `PRODUCT_BUNDLE_IDENTIFIER` + Apple's Live Activity topic suffix. */
+export const DEFAULT_LIVEACTIVITY_APNS_TOPIC = "com.openburnbar.app.push-type.liveactivity";
+
+const APNS_LIVEACTIVITY_TOPIC = defineString("APNS_LIVEACTIVITY_TOPIC", {
+  default: DEFAULT_LIVEACTIVITY_APNS_TOPIC,
+  description:
+    "APNs topic for ActivityKit Live Activity updates. Must be the iOS bundle id plus .push-type.liveactivity.",
 });
 const APNS_HOST = defineString("APNS_HOST", {
   default: "https://api.push.apple.com",
   description: "APNs HTTP/2 host. Override to https://api.sandbox.push.apple.com for the development environment.",
 });
+
+export type ApnsPushType = "voip" | "liveactivity";
 
 const JWT_LIFETIME_MS = 50 * 60 * 1000; // Apple recommends < 60 min
 
@@ -123,9 +133,12 @@ export async function pushToAPNs(args: {
   documentId: string;
   topicOverride?: string;
   hostOverride?: string;
+  pushType?: ApnsPushType;
 }): Promise<SendResult> {
+  const pushType = args.pushType ?? "voip";
+  const resilienceLabel = pushType === "liveactivity" ? "apns.liveactivity" : "apns.voip";
   try {
-    return await pushWithResilience("apns.voip", () => sendVoipPush(args));
+    return await pushWithResilience(resilienceLabel, () => sendApnsPush({ ...args, pushType }));
   } catch (err) {
     if (err instanceof ApnsRetryableError) {
       return {
@@ -138,16 +151,21 @@ export async function pushToAPNs(args: {
   }
 }
 
-async function sendVoipPush(args: {
+async function sendApnsPush(args: {
   deviceTokenHex: string;
   payload: Record<string, unknown>;
   documentId: string;
   topicOverride?: string;
   hostOverride?: string;
+  pushType: ApnsPushType;
 }): Promise<SendResult> {
   const url = new URL(args.hostOverride ?? APNS_HOST.value());
-  const topic = args.topicOverride ?? APNS_VOIP_TOPIC.value();
+  const topic =
+    args.topicOverride ??
+    (args.pushType === "liveactivity" ? APNS_LIVEACTIVITY_TOPIC.value() : APNS_VOIP_TOPIC.value());
   const jwt = mintJWT();
+  const expiration =
+    args.pushType === "liveactivity" ? String(Math.floor(Date.now() / 1000) + 3600) : "0";
 
   return new Promise<SendResult>((resolve, reject) => {
     let session: ClientHttp2Session | null = null;
@@ -174,10 +192,10 @@ async function sendVoipPush(args: {
       ":method": "POST",
       ":path": `/3/device/${args.deviceTokenHex}`,
       "apns-topic": topic,
-      "apns-push-type": "voip",
+      "apns-push-type": args.pushType,
       "apns-id": apnsId,
       "apns-priority": "10",
-      "apns-expiration": "0",
+      "apns-expiration": expiration,
       authorization: `bearer ${jwt}`,
       "content-type": "application/json",
     });

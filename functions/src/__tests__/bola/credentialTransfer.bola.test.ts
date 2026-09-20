@@ -125,10 +125,8 @@ describe("BOLA — credentialTransfer", () => {
 
     const mod = await import("../../callables/credentialTransfer.js");
     const run = callableRunner(mod.consumeCredentialTransfer);
-    await expectCallableDenial(
-      run,
-      callableRequest(ALICE_UID, { transferId: "ABCDEFGHJKMN" }),
-      "not-found",
-    );
+    await expect(run(callableRequest(ALICE_UID, { transferId: "ABCDEFGHJKMN" }))).rejects.toMatchObject({
+      code: "invalid-argument",
+    });
   });
 });

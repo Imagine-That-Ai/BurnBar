@@ -142,6 +142,16 @@ private func waitForBackdropState(
     )
 }
 
+private func activate(_ pid: pid_t) {
+    guard let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return }
+    app.unhide()
+    if #available(macOS 14.0, *) {
+        app.activate()
+    } else {
+        app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+    }
+}
+
 private func visibleWindowCount(for pid: pid_t) -> Int {
     let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
     guard let rows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
@@ -264,6 +274,7 @@ private func run() throws {
     case "status":
         try emit(state(for: pid))
     case "show":
+        activate(pid)
         _ = try state(for: pid)
         let backdrop = try waitForBackdropState(
             pid: pid,
@@ -277,6 +288,7 @@ private func run() throws {
         ) { $0.visibleWindowCount > 0 }
         try emit(try state(for: visible.pid, backdrop: backdrop))
     case "hide":
+        activate(pid)
         _ = try state(for: pid)
         let backdrop = try waitForBackdropState(
             pid: pid,
@@ -290,6 +302,7 @@ private func run() throws {
         ) { $0.visibleWindowCount == 0 }
         try emit(try state(for: hidden.pid, backdrop: backdrop))
     case "wait-visible":
+        activate(pid)
         let backdrop = try waitForBackdropState(
             pid: pid,
             visible: true,
@@ -302,6 +315,7 @@ private func run() throws {
         ) { $0.visibleWindowCount > 0 }
         try emit(try state(for: visible.pid, backdrop: backdrop))
     case "wait-hidden":
+        activate(pid)
         let backdrop = try waitForBackdropState(
             pid: pid,
             visible: false,

@@ -7,8 +7,6 @@ import OpenBurnBarCore
 import OpenBurnBarSignalCore
 import os
 
-private typealias UntypedJSONObject = [String: Any]
-
 // MARK: - CLI mission request payload factory
 //
 // Split out of `CLIAgentMissionDispatcher.swift` (audit wave 4, item 14
@@ -162,7 +160,8 @@ enum CLIAgentMissionRequestPayloadFactory {
         prompt: String,
         targetProject: String?,
         vaultKey: Data,
-        vaultKeyID: String
+        vaultKeyID: String,
+        uid: String
     ) throws -> UntypedJSONObject {
         let privatePayload = CLIAgentMissionPrivatePayload(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
@@ -176,7 +175,16 @@ enum CLIAgentMissionRequestPayloadFactory {
             personaScopeJSON: nil,
             synthesisSummary: nil
         )
-        return try applySealedPrivatePayload(privatePayload, to: payload, vaultKey: vaultKey, vaultKeyID: vaultKeyID)
+        let groupID = (payload["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? ""
+        let aadContext = try CLIAgentMissionCloudSealer.groupAADContext(uid: uid, groupID: groupID)
+        return try applySealedPrivatePayload(
+            privatePayload,
+            to: payload,
+            vaultKey: vaultKey,
+            vaultKeyID: vaultKeyID,
+            aadContext: aadContext
+        )
     }
 
     static func build(

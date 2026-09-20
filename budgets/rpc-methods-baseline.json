@@ -1,0 +1,748 @@
+{
+  "protocolVersion": 2,
+  "supported": [1, 2],
+  "totalMethods": 185,
+  "methods": [
+    {
+      "caseName": "approvalRespond",
+      "methodString": "approval.respond"
+    },
+    {
+      "caseName": "authBootstrap",
+      "methodString": "auth.bootstrap"
+    },
+    {
+      "caseName": "clientAttach",
+      "methodString": "client.attach"
+    },
+    {
+      "caseName": "clientClaimControl",
+      "methodString": "client.claimControl"
+    },
+    {
+      "caseName": "clientDetach",
+      "methodString": "client.detach"
+    },
+    {
+      "caseName": "linuxAccountCloudDataDelete",
+      "methodString": "daemon.account.cloud_data.delete"
+    },
+    {
+      "caseName": "linuxAccountCloudDataExport",
+      "methodString": "daemon.account.cloud_data.export"
+    },
+    {
+      "caseName": "linuxTrustedDeviceApprove",
+      "methodString": "daemon.account.trusted_device.approve"
+    },
+    {
+      "caseName": "linuxTrustedDeviceRevoke",
+      "methodString": "daemon.account.trusted_device.revoke"
+    },
+    {
+      "caseName": "linuxTrustedDeviceList",
+      "methodString": "daemon.account.trusted_devices.list"
+    },
+    {
+      "caseName": "linuxAuthBegin",
+      "methodString": "daemon.auth.begin"
+    },
+    {
+      "caseName": "linuxAuthCancel",
+      "methodString": "daemon.auth.cancel"
+    },
+    {
+      "caseName": "linuxAuthRotateIdentity",
+      "methodString": "daemon.auth.rotate_identity"
+    },
+    {
+      "caseName": "linuxAuthSignOut",
+      "methodString": "daemon.auth.sign_out"
+    },
+    {
+      "caseName": "linuxAuthStatus",
+      "methodString": "daemon.auth.status"
+    },
+    {
+      "caseName": "browserAction",
+      "methodString": "daemon.browser.action"
+    },
+    {
+      "caseName": "browserToolingGet",
+      "methodString": "daemon.browser.tooling.get"
+    },
+    {
+      "caseName": "browserToolingUpdate",
+      "methodString": "daemon.browser.tooling.update"
+    },
+    {
+      "caseName": "catalog",
+      "methodString": "daemon.catalog"
+    },
+    {
+      "caseName": "chatMessageAppend",
+      "methodString": "daemon.chat.message.append"
+    },
+    {
+      "caseName": "chatThreadGet",
+      "methodString": "daemon.chat.thread.get"
+    },
+    {
+      "caseName": "chatThreadList",
+      "methodString": "daemon.chat.thread.list"
+    },
+    {
+      "caseName": "linuxCloudSyncPolicyUpdate",
+      "methodString": "daemon.cloud_sync.policy.update"
+    },
+    {
+      "caseName": "linuxCloudSyncRun",
+      "methodString": "daemon.cloud_sync.run"
+    },
+    {
+      "caseName": "linuxCloudSyncStatus",
+      "methodString": "daemon.cloud_sync.status"
+    },
+    {
+      "caseName": "codeCallGraph",
+      "methodString": "daemon.code.call_graph"
+    },
+    {
+      "caseName": "codeContextPack",
+      "methodString": "daemon.code.context_pack"
+    },
+    {
+      "caseName": "codeDatabaseRestore",
+      "methodString": "daemon.code.database_restore"
+    },
+    {
+      "caseName": "codeDatabaseSnapshot",
+      "methodString": "daemon.code.database_snapshot"
+    },
+    {
+      "caseName": "codeDiagnostics",
+      "methodString": "daemon.code.diagnostics"
+    },
+    {
+      "caseName": "codeExplore",
+      "methodString": "daemon.code.explore"
+    },
+    {
+      "caseName": "codeFindReferences",
+      "methodString": "daemon.code.find_references"
+    },
+    {
+      "caseName": "codeGetSymbol",
+      "methodString": "daemon.code.get_symbol"
+    },
+    {
+      "caseName": "codeIndexProject",
+      "methodString": "daemon.code.index_project"
+    },
+    {
+      "caseName": "codeIndexStatus",
+      "methodString": "daemon.code.index_status"
+    },
+    {
+      "caseName": "codeOpsDiagnostics",
+      "methodString": "daemon.code.ops_diagnostics"
+    },
+    {
+      "caseName": "codeSearch",
+      "methodString": "daemon.code.search"
+    },
+    {
+      "caseName": "codeWatchProject",
+      "methodString": "daemon.code.watch_project"
+    },
+    {
+      "caseName": "computerUseApprovalPending",
+      "methodString": "daemon.computer_use.approval.pending"
+    },
+    {
+      "caseName": "computerUseApprovalRespond",
+      "methodString": "daemon.computer_use.approval.respond"
+    },
+    {
+      "caseName": "computerUseAuditExport",
+      "methodString": "daemon.computer_use.audit_export"
+    },
+    {
+      "caseName": "computerUseCapabilityStateUpdate",
+      "methodString": "daemon.computer_use.capability_state.update"
+    },
+    {
+      "caseName": "computerUseInvoke",
+      "methodString": "daemon.computer_use.invoke"
+    },
+    {
+      "caseName": "computerUsePanicHalt",
+      "methodString": "daemon.computer_use.panic_halt"
+    },
+    {
+      "caseName": "computerUseSessionStart",
+      "methodString": "daemon.computer_use.session.start"
+    },
+    {
+      "caseName": "computerUseSessionGrantAcquire",
+      "methodString": "daemon.computer_use.session_grant.acquire"
+    },
+    {
+      "caseName": "computerUseSessionGrantReadiness",
+      "methodString": "daemon.computer_use.session_grant.readiness"
+    },
+    {
+      "caseName": "computerUseSessionGrantStatus",
+      "methodString": "daemon.computer_use.session_grant.status"
+    },
+    {
+      "caseName": "configGet",
+      "methodString": "daemon.config.get"
+    },
+    {
+      "caseName": "configUpdate",
+      "methodString": "daemon.config.update"
+    },
+    {
+      "caseName": "connectorAction",
+      "methodString": "daemon.connector.action"
+    },
+    {
+      "caseName": "connectorConfigUpdate",
+      "methodString": "daemon.connector.config.update"
+    },
+    {
+      "caseName": "connectorPlaneGet",
+      "methodString": "daemon.connector.plane.get"
+    },
+    {
+      "caseName": "controllerProjectDelete",
+      "methodString": "daemon.controller.project.delete"
+    },
+    {
+      "caseName": "controllerProjectGet",
+      "methodString": "daemon.controller.project.get"
+    },
+    {
+      "caseName": "controllerProjectsList",
+      "methodString": "daemon.controller.project.list"
+    },
+    {
+      "caseName": "controllerProjectReassign",
+      "methodString": "daemon.controller.project.reassign"
+    },
+    {
+      "caseName": "controllerProjectUpsert",
+      "methodString": "daemon.controller.project.upsert"
+    },
+    {
+      "caseName": "reviewRunRecord",
+      "methodString": "daemon.controller.review.record"
+    },
+    {
+      "caseName": "controllerRuntimeSnapshot",
+      "methodString": "daemon.controller.runtime_snapshot"
+    },
+    {
+      "caseName": "controllerSummary",
+      "methodString": "daemon.controller.summary"
+    },
+    {
+      "caseName": "databaseRecoveryStatus",
+      "methodString": "daemon.database.recovery.status"
+    },
+    {
+      "caseName": "databaseRecoveryBundleExport",
+      "methodString": "daemon.database.recovery_bundle.export"
+    },
+    {
+      "caseName": "databaseRecoveryBundleImport",
+      "methodString": "daemon.database.recovery_bundle.import"
+    },
+    {
+      "caseName": "fleetDirectiveRecord",
+      "methodString": "daemon.fleet.directive.record"
+    },
+    {
+      "caseName": "fleetOrchestratorGet",
+      "methodString": "daemon.fleet.orchestrator.get"
+    },
+    {
+      "caseName": "fleetOrchestratorSet",
+      "methodString": "daemon.fleet.orchestrator.set"
+    },
+    {
+      "caseName": "fleetSnapshot",
+      "methodString": "daemon.fleet.snapshot"
+    },
+    {
+      "caseName": "followupCalendar",
+      "methodString": "daemon.followup.calendar"
+    },
+    {
+      "caseName": "followupCreate",
+      "methodString": "daemon.followup.create"
+    },
+    {
+      "caseName": "followupDone",
+      "methodString": "daemon.followup.done"
+    },
+    {
+      "caseName": "followupsList",
+      "methodString": "daemon.followup.list"
+    },
+    {
+      "caseName": "followupSnooze",
+      "methodString": "daemon.followup.snooze"
+    },
+    {
+      "caseName": "health",
+      "methodString": "daemon.health"
+    },
+    {
+      "caseName": "inboxConfigGet",
+      "methodString": "daemon.inbox.config.get"
+    },
+    {
+      "caseName": "inboxConfigUpdate",
+      "methodString": "daemon.inbox.config.update"
+    },
+    {
+      "caseName": "inboxGet",
+      "methodString": "daemon.inbox.get"
+    },
+    {
+      "caseName": "inboxList",
+      "methodString": "daemon.inbox.list"
+    },
+    {
+      "caseName": "inboxMemoryExport",
+      "methodString": "daemon.inbox.memory.export"
+    },
+    {
+      "caseName": "inboxPlansAccept",
+      "methodString": "daemon.inbox.plans.accept"
+    },
+    {
+      "caseName": "inboxPlansGet",
+      "methodString": "daemon.inbox.plans.get"
+    },
+    {
+      "caseName": "inboxPlansGrade",
+      "methodString": "daemon.inbox.plans.grade"
+    },
+    {
+      "caseName": "inboxPlansList",
+      "methodString": "daemon.inbox.plans.list"
+    },
+    {
+      "caseName": "inboxPlansUpdateStep",
+      "methodString": "daemon.inbox.plans.update_step"
+    },
+    {
+      "caseName": "inboxReply",
+      "methodString": "daemon.inbox.reply"
+    },
+    {
+      "caseName": "inboxRunNow",
+      "methodString": "daemon.inbox.run_now"
+    },
+    {
+      "caseName": "inboxRunsRecent",
+      "methodString": "daemon.inbox.runs.recent"
+    },
+    {
+      "caseName": "inboxThreadGet",
+      "methodString": "daemon.inbox.thread.get"
+    },
+    {
+      "caseName": "daemonMediaCallAccept",
+      "methodString": "daemon.media.call.accept"
+    },
+    {
+      "caseName": "daemonMediaCallDecline",
+      "methodString": "daemon.media.call.decline"
+    },
+    {
+      "caseName": "daemonMediaCallEnd",
+      "methodString": "daemon.media.call.end"
+    },
+    {
+      "caseName": "daemonMediaCapabilityGet",
+      "methodString": "daemon.media.capability.get"
+    },
+    {
+      "caseName": "daemonMediaFileAccept",
+      "methodString": "daemon.media.file.accept"
+    },
+    {
+      "caseName": "daemonMediaFileDecline",
+      "methodString": "daemon.media.file.decline"
+    },
+    {
+      "caseName": "daemonMediaFileOfferList",
+      "methodString": "daemon.media.file.offer.list"
+    },
+    {
+      "caseName": "daemonMediaFileSend",
+      "methodString": "daemon.media.file.send"
+    },
+    {
+      "caseName": "daemonMediaSessionState",
+      "methodString": "daemon.media.session.state"
+    },
+    {
+      "caseName": "daemonMediaStatus",
+      "methodString": "daemon.media.status"
+    },
+    {
+      "caseName": "membershipCheckoutURL",
+      "methodString": "daemon.membership.checkoutUrl"
+    },
+    {
+      "caseName": "membershipPortalURL",
+      "methodString": "daemon.membership.portalUrl"
+    },
+    {
+      "caseName": "membershipRestore",
+      "methodString": "daemon.membership.restore"
+    },
+    {
+      "caseName": "membershipStatus",
+      "methodString": "daemon.membership.status"
+    },
+    {
+      "caseName": "memoryAnalytics",
+      "methodString": "daemon.memory.analytics"
+    },
+    {
+      "caseName": "memoryAuditTrail",
+      "methodString": "daemon.memory.audit_trail"
+    },
+    {
+      "caseName": "memoryForget",
+      "methodString": "daemon.memory.forget"
+    },
+    {
+      "caseName": "memoryRecall",
+      "methodString": "daemon.memory.recall"
+    },
+    {
+      "caseName": "memoryRemember",
+      "methodString": "daemon.memory.remember"
+    },
+    {
+      "caseName": "memoryReviewStatus",
+      "methodString": "daemon.memory.review_status"
+    },
+    {
+      "caseName": "missionApprove",
+      "methodString": "daemon.mission.approve"
+    },
+    {
+      "caseName": "missionAuthorizeRemote",
+      "methodString": "daemon.mission.authorizeRemote"
+    },
+    {
+      "caseName": "missionCancel",
+      "methodString": "daemon.mission.cancel"
+    },
+    {
+      "caseName": "missionCreate",
+      "methodString": "daemon.mission.create"
+    },
+    {
+      "caseName": "missionGet",
+      "methodString": "daemon.mission.get"
+    },
+    {
+      "caseName": "missionHealth",
+      "methodString": "daemon.mission.health"
+    },
+    {
+      "caseName": "missionsList",
+      "methodString": "daemon.mission.list"
+    },
+    {
+      "caseName": "missionDispatchPacket",
+      "methodString": "daemon.mission.packet.dispatch"
+    },
+    {
+      "caseName": "missionRecordResult",
+      "methodString": "daemon.mission.result.record"
+    },
+    {
+      "caseName": "notificationCommand",
+      "methodString": "daemon.notification.command"
+    },
+    {
+      "caseName": "notificationConfigGet",
+      "methodString": "daemon.notification.config.get"
+    },
+    {
+      "caseName": "notificationConfigUpdate",
+      "methodString": "daemon.notification.config.update"
+    },
+    {
+      "caseName": "notificationHealth",
+      "methodString": "daemon.notification.health"
+    },
+    {
+      "caseName": "linuxOnboardingAction",
+      "methodString": "daemon.onboarding.action"
+    },
+    {
+      "caseName": "linuxOnboardingReset",
+      "methodString": "daemon.onboarding.reset"
+    },
+    {
+      "caseName": "linuxOnboardingSnapshot",
+      "methodString": "daemon.onboarding.snapshot"
+    },
+    {
+      "caseName": "phoneControlPinProvision",
+      "methodString": "daemon.phone_control.pin.provision"
+    },
+    {
+      "caseName": "linuxPrivacyDeletionExecute",
+      "methodString": "daemon.privacy.deletion.execute"
+    },
+    {
+      "caseName": "linuxPrivacyDeletionPreview",
+      "methodString": "daemon.privacy.deletion.preview"
+    },
+    {
+      "caseName": "linuxPrivacyExport",
+      "methodString": "daemon.privacy.export"
+    },
+    {
+      "caseName": "linuxPrivacyInventory",
+      "methodString": "daemon.privacy.inventory"
+    },
+    {
+      "caseName": "linuxPrivacyRetentionApply",
+      "methodString": "daemon.privacy.retention.apply"
+    },
+    {
+      "caseName": "linuxPrivacyRetentionStatus",
+      "methodString": "daemon.privacy.retention.status"
+    },
+    {
+      "caseName": "projectionRebuild",
+      "methodString": "daemon.projection.rebuild"
+    },
+    {
+      "caseName": "providerCredentialSlotRemove",
+      "methodString": "daemon.provider.credential_slot.remove"
+    },
+    {
+      "caseName": "providerCredentialSlotUpsert",
+      "methodString": "daemon.provider.credential_slot.upsert"
+    },
+    {
+      "caseName": "providerCustomModelRemove",
+      "methodString": "daemon.provider.custom_model.remove"
+    },
+    {
+      "caseName": "providerCustomModelUpsert",
+      "methodString": "daemon.provider.custom_model.upsert"
+    },
+    {
+      "caseName": "providerModelAliasRemove",
+      "methodString": "daemon.provider.model_alias.remove"
+    },
+    {
+      "caseName": "providerModelAliasUpsert",
+      "methodString": "daemon.provider.model_alias.upsert"
+    },
+    {
+      "caseName": "providerModelDisplayNameClear",
+      "methodString": "daemon.provider.model_display_name.clear"
+    },
+    {
+      "caseName": "providerModelDisplayNameSet",
+      "methodString": "daemon.provider.model_display_name.set"
+    },
+    {
+      "caseName": "providerModelVariantRemove",
+      "methodString": "daemon.provider.model_variant.remove"
+    },
+    {
+      "caseName": "providerModelVariantUpsert",
+      "methodString": "daemon.provider.model_variant.upsert"
+    },
+    {
+      "caseName": "proxyRouteLogClear",
+      "methodString": "daemon.proxy.route_log.clear"
+    },
+    {
+      "caseName": "proxyRouteLogRecent",
+      "methodString": "daemon.proxy.route_log.recent"
+    },
+    {
+      "caseName": "questionAnswer",
+      "methodString": "daemon.question.answer"
+    },
+    {
+      "caseName": "questionCreate",
+      "methodString": "daemon.question.create"
+    },
+    {
+      "caseName": "questionGet",
+      "methodString": "daemon.question.get"
+    },
+    {
+      "caseName": "questionsList",
+      "methodString": "daemon.question.list"
+    },
+    {
+      "caseName": "quotaSignalsClear",
+      "methodString": "daemon.quota.signals.clear"
+    },
+    {
+      "caseName": "quotaSignalsRecent",
+      "methodString": "daemon.quota.signals.recent"
+    },
+    {
+      "caseName": "searchQuery",
+      "methodString": "daemon.search.query"
+    },
+    {
+      "caseName": "searchSQL",
+      "methodString": "daemon.search.sql"
+    },
+    {
+      "caseName": "simulatorList",
+      "methodString": "daemon.simulator.list"
+    },
+    {
+      "caseName": "simulatorReplay",
+      "methodString": "daemon.simulator.replay"
+    },
+    {
+      "caseName": "simulatorRun",
+      "methodString": "daemon.simulator.run"
+    },
+    {
+      "caseName": "textExpansionConsentUpdate",
+      "methodString": "daemon.text_expansion.consent.update"
+    },
+    {
+      "caseName": "textExpansionDelete",
+      "methodString": "daemon.text_expansion.delete"
+    },
+    {
+      "caseName": "textExpansionEngineExpand",
+      "methodString": "daemon.text_expansion.engine.expand"
+    },
+    {
+      "caseName": "textExpansionEngineStart",
+      "methodString": "daemon.text_expansion.engine.start"
+    },
+    {
+      "caseName": "textExpansionEngineStatus",
+      "methodString": "daemon.text_expansion.engine.status"
+    },
+    {
+      "caseName": "textExpansionEngineStop",
+      "methodString": "daemon.text_expansion.engine.stop"
+    },
+    {
+      "caseName": "textExpansionGet",
+      "methodString": "daemon.text_expansion.get"
+    },
+    {
+      "caseName": "textExpansionUpsert",
+      "methodString": "daemon.text_expansion.upsert"
+    },
+    {
+      "caseName": "usageHistory",
+      "methodString": "daemon.usage.history"
+    },
+    {
+      "caseName": "usageInsights",
+      "methodString": "daemon.usage.insights"
+    },
+    {
+      "caseName": "usageProjection",
+      "methodString": "daemon.usage.projection"
+    },
+    {
+      "caseName": "usageRecent",
+      "methodString": "daemon.usage.recent"
+    },
+    {
+      "caseName": "usageRecord",
+      "methodString": "daemon.usage.record"
+    },
+    {
+      "caseName": "usageRecount",
+      "methodString": "daemon.usage.recount"
+    },
+    {
+      "caseName": "warFlameDistillList",
+      "methodString": "daemon.war.flame.distill.list"
+    },
+    {
+      "caseName": "warFlameDistillSettle",
+      "methodString": "daemon.war.flame.distill.settle"
+    },
+    {
+      "caseName": "warFlameRoute",
+      "methodString": "daemon.war.flame.route"
+    },
+    {
+      "caseName": "perfMeasure",
+      "methodString": "perf.measure"
+    },
+    {
+      "caseName": "runCancel",
+      "methodString": "run.cancel"
+    },
+    {
+      "caseName": "runCreate",
+      "methodString": "run.create"
+    },
+    {
+      "caseName": "runGet",
+      "methodString": "run.get"
+    },
+    {
+      "caseName": "runList",
+      "methodString": "run.list"
+    },
+    {
+      "caseName": "runPoll",
+      "methodString": "run.poll"
+    },
+    {
+      "caseName": "runResume",
+      "methodString": "run.resume"
+    },
+    {
+      "caseName": "runRetry",
+      "methodString": "run.retry"
+    },
+    {
+      "caseName": "subscriptionResume",
+      "methodString": "subscription.resume"
+    },
+    {
+      "caseName": "subscriptionStart",
+      "methodString": "subscription.start"
+    },
+    {
+      "caseName": "subscriptionStop",
+      "methodString": "subscription.stop"
+    },
+    {
+      "caseName": "workspaceExecuteTool",
+      "methodString": "workspace.executeTool"
+    },
+    {
+      "caseName": "workspaceToolResult",
+      "methodString": "workspace.toolResult"
+    }
+  ],
+  "note": "Baseline for scripts/debt/check-rpc-method-freeze.sh. Freezes the 185-case v1 Daemon RPC method catalog (BurnBarRPCMethod in BurnBarRPCContracts.swift) to prevent unversioned RPC drift and untyped method additions without schema-sync / TypeSpec contract generation."
+}

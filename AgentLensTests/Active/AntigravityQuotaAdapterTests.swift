@@ -171,8 +171,8 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(snapshot.sourceKind, .localCLI)
         XCTAssertEqual(snapshot.confidence, .estimated)
 
-        // One bucket per model tier (7 total)
-        XCTAssertEqual(snapshot.buckets.count, 7)
+        // One bucket per model tier (9 total)
+        XCTAssertEqual(snapshot.buckets.count, 9)
 
         // --- Active model bucket (Claude Opus 4.6) ---
         let activeBucket = snapshot.buckets.first(where: { $0.label.contains("(Active)") })
@@ -217,7 +217,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(snapshot.statusMessage?.contains("Claude Opus 4.6 (Thinking)"), true)
     }
 
-    func testFetch_whenSettingsMissing_defaultsToClaudeOpus() async throws {
+    func testFetch_whenSettingsMissing_defaultsToGemini38FlashHigh() async throws {
         let adapter = AntigravityQuotaAdapter()
 
         let nowMs = Self.referenceEpochMs
@@ -235,16 +235,16 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertEqual(snapshot.sourceKind, .localCLI)
-        XCTAssertEqual(snapshot.buckets.count, 7)
+        XCTAssertEqual(snapshot.buckets.count, 9)
 
-        // Active bucket should default to Claude Opus 4.6 (Thinking)
+        // Active bucket should default to Gemini 3.8 Flash (High)
         let activeBucket = snapshot.buckets.first(where: { $0.label.contains("(Active)") })
         XCTAssertNotNil(activeBucket)
         if let active = activeBucket {
-            XCTAssertTrue(active.label.contains("Claude Opus 4.6 (Thinking)"))
+            XCTAssertTrue(active.label.contains("Gemini 3.8 Flash (High)"))
             XCTAssertEqual(active.usedValue, 1.0)
-            XCTAssertEqual(active.limitValue, 60.0)
-            XCTAssertEqual(active.remainingValue, 59.0)
+            XCTAssertEqual(active.limitValue, 600.0)
+            XCTAssertEqual(active.remainingValue, 599.0)
         }
 
         // Verify a non-default model is inactive
@@ -257,7 +257,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             XCTAssertNil(sonnet.resetsAt)
         }
 
-        XCTAssertEqual(snapshot.statusMessage?.contains("Claude Opus 4.6 (Thinking)"), true)
+        XCTAssertEqual(snapshot.statusMessage?.contains("Gemini 3.8 Flash (High)"), true)
     }
 
     func testFetch_whenDifferentModelSelected_thatModelIsActive() async throws {
@@ -278,7 +278,7 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         let snapshot = try await adapter.fetch(context: context)
 
         XCTAssertEqual(snapshot.sourceKind, .localCLI, snapshot.statusMessage ?? "")
-        XCTAssertEqual(snapshot.buckets.count, 7)
+        XCTAssertEqual(snapshot.buckets.count, 9)
 
         let activeBucket = snapshot.buckets.first(where: { $0.label.contains("(Active)") })
         XCTAssertNotNil(activeBucket, "Expected active bucket; buckets=\(snapshot.buckets.map(\.label))")

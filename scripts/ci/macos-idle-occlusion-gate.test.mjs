@@ -43,6 +43,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   assertProcessIdentity,
+  classifyGateFailure,
   launchFreshProcess,
   measureMatchedPairs,
   median,
@@ -608,6 +609,41 @@ test("process identity requires acknowledged engine readiness and render-loop st
   );
 });
 
+test("P-PERF-3 infrastructure failures are red and use the distinct exit-3 contract", () => {
+  for (const reasonCode of ["helper-timeout", "no-backdrop-ack", "launch-failed"]) {
+    assert.deepEqual(classifyGateFailure({ reasonCode }), {
+      status: "infra-failed",
+      reasonCode,
+      exitCode: 3,
+    });
+  }
+
+  assert.deepEqual(classifyGateFailure(new Error("CPU budget breached")), {
+    status: "failed",
+    reasonCode: null,
+    exitCode: 1,
+  });
+});
+
+test("a missing backdrop acknowledgement is classified as infrastructure failure", () => {
+  const pid = 4242;
+  const buildIdentity = { executablePath: "/fake/OpenBurnBar" };
+  const state = {
+    running: true,
+    pid,
+    executablePath: buildIdentity.executablePath,
+    bundleIdentifier: realGateConfig.app.expectedBundleIdentifier,
+    hidden: false,
+    visibleWindowCount: 1,
+    backdropReady: false,
+  };
+
+  assert.throws(
+    () => assertProcessIdentity(state, pid, buildIdentity, realGateConfig, "visible"),
+    (error) => error.reasonCode === "no-backdrop-ack",
+  );
+});
+
 test("measureMatchedPairs batches visible samples before one hide and pairs occluded samples by index", async () => {
   const config = JSON.parse(JSON.stringify(realGateConfig));
   config.measurement.matchedPairCount = 3;
@@ -914,7 +950,9 @@ test("real gate rejects a built app with the wrong bundle identity", () => {
     bundleIdentifier: "com.example.not-openburnbar",
     ageSeconds: 0,
   });
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 3);
+  assert.equal(result.evidence.status, "infra-failed");
+  assert.equal(result.evidence.reasonCode, "launch-failed");
   assert.match(result.stderr, /bundle id com\.example\.not-openburnbar does not match com\.openburnbar\.app/);
   assert.equal(
     result.evidence.measurementMethod.pairing,
@@ -928,7 +966,9 @@ test("real gate rejects a stale OpenBurnBar executable", () => {
     bundleIdentifier: realGateConfig.app.expectedBundleIdentifier,
     ageSeconds: realGateConfig.app.maximumBuildAgeSeconds + 60,
   });
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 3);
+  assert.equal(result.evidence.status, "infra-failed");
+  assert.equal(result.evidence.reasonCode, "launch-failed");
   assert.match(result.stderr, /built app is .* old; maximum is/);
 });
 

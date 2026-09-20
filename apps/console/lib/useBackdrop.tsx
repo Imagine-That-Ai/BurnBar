@@ -3,8 +3,8 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 
-import { isKernelId } from "@/lib/gl/engine/registry";
-import type { KernelId } from "@/lib/gl/engine/types";
+import { isKernelId } from "@openburnbar/gl-engine/registry";
+import type { KernelId } from "@openburnbar/gl-engine/types";
 import { isThemeId } from "@/lib/useTheme";
 
 /**

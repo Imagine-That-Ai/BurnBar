@@ -10,12 +10,22 @@ import FirebaseAuth
 // Renders the selected content in the right pane. Threads open the
 // full conversation view; missions show the full tile + context;
 // brand zones, project memory, and cloud sessions all render natively.
+enum MercuryLiveEmbedStyle: Equatable {
+    /// Hermes Square detail — teaser veil is allowed behind the paywall.
+    case square
+    /// Watch inspector. Honest empty / solid field. No wallpaper desktop.
+    case deskInspector
+}
+
 struct MercuryLiveDetailView: View {
     let connectionID: String
     let peer: MercuryPeer?
     let bootError: String?
     let isBooting: Bool
     let ensureMercuryLive: (String) async -> Void
+    var embedStyle: MercuryLiveEmbedStyle = .square
+
+    private var usesHonestChrome: Bool { embedStyle == .deskInspector }
 
     @State private var coordinator: MediaControlStreamCoordinator?
     @State private var showCloudStore = false
@@ -37,7 +47,8 @@ struct MercuryLiveDetailView: View {
                     peer: peer ?? fallbackPeer(for: coordinator),
                     controlStreamCoordinator: coordinator,
                     fileTransferService: iOSFileTransferService.current,
-                    uidProvider: { Auth.auth().currentUser?.uid }
+                    uidProvider: { Auth.auth().currentUser?.uid },
+                    preferHonestBackground: usesHonestChrome
                 )
             } else {
                 bootState
@@ -73,7 +84,11 @@ struct MercuryLiveDetailView: View {
                 showCloudStore = true
             },
             background: {
-                FlooLiveTeaserBackground()
+                if usesHonestChrome {
+                    Color.black.opacity(0.92)
+                } else {
+                    FlooLiveTeaserBackground()
+                }
             }
         )
     }
@@ -81,7 +96,7 @@ struct MercuryLiveDetailView: View {
     @ViewBuilder
     private var bootState: some View {
         ZStack {
-            AuroraBackdrop().ignoresSafeArea()
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
             VStack(spacing: 14) {
                 Image(systemName: "display.and.arrow.down")
                     .font(.system(size: 38, weight: .semibold))
@@ -104,6 +119,7 @@ struct MercuryLiveDetailView: View {
                         Label("Reconnect", systemImage: "arrow.clockwise")
                     }
                     .buttonStyle(.borderedProminent)
+                    .hoverEffect(.highlight)
                 }
             }
             .padding(24)
@@ -381,7 +397,7 @@ struct HermesSquareDetailColumn: View {
             .padding(18)
         }
         .background {
-            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
         }
     }
 
@@ -479,7 +495,7 @@ struct HermesSquareDetailColumn: View {
             .padding(18)
         }
         .background {
-            WebsiteBackgroundView(accent: .purple, visibility: .subtle).ignoresSafeArea()
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
         }
         .navigationTitle("Cloud Session")
         .navigationBarTitleDisplayMode(.inline)

@@ -15,6 +15,7 @@ import OpenBurnBarKernel
 
 struct AIInboxSplitLayout: View {
     @Bindable var store: AIInboxStore
+    var showsPageHeader: Bool = true
 
     @AppStorage("ai_inbox_ipad_left_column_width") private var storedLeftColumnWidth: Double = 0
     @State private var resizeStartWidth: CGFloat?
@@ -24,7 +25,7 @@ struct AIInboxSplitLayout: View {
             if geometry.size.width >= 720 {
                 twoColumnLayout(width: geometry.size.width)
             } else {
-                AIInboxView(store: store, selectionMode: .push)
+                AIInboxView(store: store, selectionMode: .push, showsPageHeader: showsPageHeader)
             }
         }
     }

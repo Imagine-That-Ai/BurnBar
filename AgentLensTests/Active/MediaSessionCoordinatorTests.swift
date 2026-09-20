@@ -274,8 +274,7 @@ private final class RecordingScreenCaptureSession: ScreenCaptureSession {
     }
 }
 
-@MainActor
-private final class RecordingVideoEncoder: VideoEncoding {
+private final class RecordingVideoEncoder: VideoEncoding, @unchecked Sendable {
     private(set) var didStart = false
     private(set) var didStop = false
     private(set) var targetBitrates: [Int] = []

@@ -306,6 +306,16 @@ extension MercuryLiveSheet {
         Task { await stopActiveMirror(reason: "viewer_closed") }
     }
 
+    func handlePanicHalt() {
+        Task {
+            try? await WatchUnifyPanic.halt(
+                watchReceiver: AgentWatchOverlaySingleton.shared.coordinator.receiver
+            ) {
+                await sendPhoneControlIntent(kind: .panic, requiresControllerRole: false)
+            }
+        }
+    }
+
     func reinstallMirrorSurfaceAfterReturn() {
         installAckHandler()
         guard let uid = uidProvider(), !uid.isEmpty else { return }

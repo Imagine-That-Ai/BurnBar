@@ -82,6 +82,15 @@ extension DataStore {
         try await actor.usageStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
     }
 
+    @discardableResult
+    func reapUsageOlderThan(_ cutoff: Date) async throws -> Int {
+        try await actor.usageStore.reapUsageOlderThan(cutoff)
+    }
+
+    func incrementalVacuum(pages: Int = 256) async throws {
+        try await actor.usageStore.incrementalVacuum(pages: pages)
+    }
+
     /// Usage-table new-event marker (see `UsageTableWriteMarker`).
     func usageTableWriteMarker() async -> Int {
         await actor.usageTableWriteMarker

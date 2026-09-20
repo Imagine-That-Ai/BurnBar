@@ -14,6 +14,7 @@ import { boundedTrimmedString } from "./shared.js";
 
 const PUSH_TOKEN_MAX_LENGTH = 4096;
 const DEVICE_ID_MAX_LENGTH = 160;
+const SESSION_ID_MAX_LENGTH = 160;
 const PLATFORM_MAX_LENGTH = 80;
 const PUSH_TOKEN_HEX_RE = /^[A-Fa-f0-9]{32,512}$/u;
 const ALLOWED_PLATFORMS = new Set(["macOS", "macos", "iOS", "ios", "iPadOS", "android", "Android"]);
@@ -55,6 +56,8 @@ export const registerDevicePushEndpoint = onCall(
         apnsToken?: unknown;
         voipDeviceToken?: unknown;
         voip_token?: unknown;
+        liveActivityPushToken?: unknown;
+        liveActivitySessionId?: unknown;
         agentNotificationsEnabled?: unknown;
       }>,
     ) => {
@@ -70,12 +73,29 @@ export const registerDevicePushEndpoint = onCall(
         request.data.voipDeviceToken ?? request.data.voip_token,
         "voipDeviceToken",
       );
+      const liveActivityPushToken = optionalHexPushToken(
+        request.data.liveActivityPushToken,
+        "liveActivityPushToken",
+      );
+      const liveActivitySessionId = boundedTrimmedString(
+        request.data.liveActivitySessionId,
+        "liveActivitySessionId",
+        SESSION_ID_MAX_LENGTH,
+        false,
+      );
       const agentNotificationsEnabled =
         typeof request.data.agentNotificationsEnabled === "boolean"
           ? request.data.agentNotificationsEnabled
           : undefined;
 
-      if (!fcmToken && !apnsToken && !voipDeviceToken && agentNotificationsEnabled === undefined) {
+      if (
+        !fcmToken &&
+        !apnsToken &&
+        !voipDeviceToken &&
+        !liveActivityPushToken &&
+        liveActivitySessionId === undefined &&
+        agentNotificationsEnabled === undefined
+      ) {
         throw new HttpsError("invalid-argument", "At least one push endpoint field is required.");
       }
 
@@ -117,6 +137,8 @@ export const registerDevicePushEndpoint = onCall(
         update.voipDeviceToken = voipDeviceToken;
         update.voip_token = voipDeviceToken;
       }
+      if (liveActivityPushToken) update.liveActivityPushToken = liveActivityPushToken;
+      if (liveActivitySessionId) update.liveActivitySessionId = liveActivitySessionId;
       if (agentNotificationsEnabled !== undefined) update.agentNotificationsEnabled = agentNotificationsEnabled;
 
       await db.doc(`users/${uid}/devices/${deviceId}`).set(update, { merge: true });
@@ -126,6 +148,7 @@ export const registerDevicePushEndpoint = onCall(
         has_fcm: Boolean(fcmToken),
         has_apns: Boolean(apnsToken),
         has_voip: Boolean(voipDeviceToken),
+        has_live_activity: Boolean(liveActivityPushToken),
       });
       return {
         ok: true,
@@ -133,6 +156,7 @@ export const registerDevicePushEndpoint = onCall(
         fcmRegistered: Boolean(fcmToken),
         apnsRegistered: Boolean(apnsToken),
         voipRegistered: Boolean(voipDeviceToken),
+        liveActivityRegistered: Boolean(liveActivityPushToken),
       };
     },
   ),

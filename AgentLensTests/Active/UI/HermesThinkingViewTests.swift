@@ -17,4 +17,15 @@ final class HermesThinkingViewTests: XCTestCase {
         let view = HermesThinkingView()
         XCTAssertNoThrow(try view.inspect())
     }
+
+    func test_preparingReply_nonHermesShowsThinkingLabel() throws {
+        let view = ChatPreparingReplyView(isHermes: false)
+        let text = try view.inspect().find(text: "Thinking")
+        XCTAssertEqual(try text.string(), "Thinking")
+    }
+
+    func test_preparingReply_hermesUsesMercuryDroplets() throws {
+        let view = ChatPreparingReplyView(isHermes: true)
+        XCTAssertNoThrow(try view.inspect().find(HermesThinkingView.self))
+    }
 }

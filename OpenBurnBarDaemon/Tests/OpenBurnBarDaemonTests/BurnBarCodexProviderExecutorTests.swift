@@ -45,4 +45,29 @@ final class BurnBarCodexProviderExecutorTests: XCTestCase {
             )
         )
     }
+
+    func testStreamingResponsesBodyEmitsItemLifecycleBeforeTextDelta() throws {
+        let body = try BurnBarCodexProviderExecutor.responsesBody(
+            modelID: "gpt-5.6-sol",
+            output: "ping",
+            stream: true
+        )
+        let text = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(text.contains("event: response.created"), text)
+        XCTAssertTrue(text.contains("event: response.output_item.added"), text)
+        XCTAssertTrue(text.contains("event: response.content_part.added"), text)
+        XCTAssertTrue(text.contains("event: response.output_text.delta"), text)
+        XCTAssertTrue(text.contains(#""delta":"ping""#), text)
+        XCTAssertTrue(text.contains("\"item_id\""), text)
+        XCTAssertTrue(text.contains("event: response.output_text.done"), text)
+        XCTAssertTrue(text.contains("event: response.content_part.done"), text)
+        XCTAssertTrue(text.contains("event: response.output_item.done"), text)
+        XCTAssertTrue(text.contains("event: response.completed"), text)
+
+        let created = text.range(of: "event: response.created")!
+        let itemAdded = text.range(of: "event: response.output_item.added")!
+        let delta = text.range(of: "event: response.output_text.delta")!
+        XCTAssertLessThan(created.lowerBound, itemAdded.lowerBound)
+        XCTAssertLessThan(itemAdded.lowerBound, delta.lowerBound)
+    }
 }

@@ -5,11 +5,11 @@ import OpenBurnBarRecap
 import OSLog
 #endif
 
-// MARK: - Root Navigation View (iPad)
+// MARK: - Root Navigation View (iPad command desk)
 //
-// Aurora-shaped sidebar layout. Five primary destinations match the iPhone
-// tabs (Pulse / Burn / Streams / Hermes / You). The sidebar gains a brand
-// block, a permanent sync pill, and an inline Hermes shortcut.
+// Regular-width iPad is a desk, not a large phone. Inbox launches.
+// `NavigationSplitView` columns: destinations | decision rail | canvas.
+// Watch + Mercury Ask-to-Mirror live in `.inspector`, not a phone dock.
 
 struct RootNavigationView: View {
     #if DEBUG
@@ -23,8 +23,9 @@ struct RootNavigationView: View {
     let devicesStore: DevicesStore
     let transferStore: CredentialTransferStore
 
-    @State private var selection: AppDestination = .pulse
-    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var selection: AppDestination = IPadAwayDeskNavigation.launchDestination
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showWatchInspector = true
     @StateObject private var customization = AppCustomization.shared
     @State private var didApplyScreenshotRoute = false
     #if DEBUG
@@ -66,27 +67,32 @@ struct RootNavigationView: View {
     @ObservedObject private var liveStageSingleton = AgentWatchOverlaySingleton.shared
     @StateObject private var liveStagePresenter = AgentLiveStagePresenter()
     @StateObject private var skillRunPiPController = SkillRunTextPiPController()
+    @ObservedObject private var hostReachability = HostReachabilityClient.shared
+    @Environment(\.openWindow) private var openWindow
+    @StateObject private var agentsDesk = IPadAgentsDeskController()
+    @State private var deskSearchText = ""
+    @State private var quotaProvider: String?
+    @State private var youGroup: IPadAwayDeskNavigation.YouGroup = .pairing
 
     // Sidebar destinations have been moved to AppDestination in AppCustomization.swift
 
     var body: some View {
+        deskWithPresentation
+    }
+
+    private var deskChrome: some View {
         ZStack(alignment: .bottomTrailing) {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                sidebar
-                    .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
-            } detail: {
-                detail
+            deskSplit
+            .inspector(isPresented: $showWatchInspector) {
+                IPadWatchInspectorColumn(
+                    authUID: authStore.currentIdentity?.uid,
+                    hermesService: hermesService,
+                    singleton: liveStageSingleton,
+                    hostReachability: hostReachability
+                )
+                .inspectorColumnWidth(min: 320, ideal: 420, max: 560)
             }
             .environment(\.mobileBackgroundVisibility, rootBackgroundVisibility)
-
-            AgentLiveStage(
-                singleton: liveStageSingleton,
-                presenter: liveStagePresenter,
-                hermesService: hermesService,
-                onTapHermesTab: { selection = .agents }
-            )
-            .onAppear { CLIAgentControlSession.presenter = liveStagePresenter }
-            .zIndex(20)
 
             SkillRunLiveStage(
                 host: missionConsoleHost,
@@ -94,6 +100,11 @@ struct RootNavigationView: View {
             )
             .zIndex(19)
         }
+    }
+
+    private var deskWithLifecycle: some View {
+        deskChrome
+        .onAppear { CLIAgentControlSession.presenter = liveStagePresenter }
         .environment(\.motionStore, motionStore)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .environment(\.mobileAuthStore, authStore)
@@ -110,6 +121,11 @@ struct RootNavigationView: View {
             claimPendingOsRouteIfNeeded()
         }
         .task { liveStagePresenter.observe(liveStageSingleton.state) }
+        .onChange(of: liveStageSingleton.state.sessionId?.rawValue) { _, sessionId in
+            if sessionId != nil {
+                pinWatchInspector()
+            }
+        }
         .task { liveStageSingleton.installLiveActivityIntentRouter() }
         // Claims a push tap that landed BEFORE this view existed — a cold
         // launch from an AI Inbox notification posts `AIInboxDeepLink` while
@@ -117,6 +133,7 @@ struct RootNavigationView: View {
         // has no subscriber yet and the stash is the only surviving record of
         // it. Same shape as `applyPendingGatewayPairingDeepLink`.
         .task { claimPendingAIInboxDeepLink() }
+        .task { claimPendingInsightsDeepLink() }
         .task {
             liveStageSingleton.configurePictureInPicture(
                 onDidStart: { liveStagePresenter.setPiPActive(true) },
@@ -133,16 +150,48 @@ struct RootNavigationView: View {
             applyScreenshotRouteIfNeeded()
             applyHermesE2EPromptIfNeeded()
             applyComputerUseE2EProofIfNeeded()
-            updateColumnVisibility(for: selection, animated: false)
+            updateColumnVisibility(animated: false)
         }
         .onChange(of: selection) { _, destination in
-            updateColumnVisibility(for: destination)
+            updateColumnVisibility()
+            applyDeskSearch(deskSearchText)
+        }
+        .onChange(of: deskSearchText) { _, query in
+            applyDeskSearch(query)
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
         }
+    }
+
+    private var deskWithPrimaryNotifications: some View {
+        deskWithLifecycle
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAgentWatch"))) { _ in
-            openAgentWatchRoute()
+            openWatchWindow()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: IPadAwayDeskNotifications.selectInbox)) { _ in
+            selectDeskDestination(.inbox)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: IPadAwayDeskNotifications.selectAgents)) { _ in
+            selectDeskDestination(.agents)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowHermesChat"))) { _ in
+            selectDeskDestination(.agents)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowAssistantsTab"))) { _ in
+            selectDeskDestination(.agents)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: IPadAwayDeskNotifications.selectQuota)) { _ in
+            selectDeskDestination(.burn)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: IPadAwayDeskNotifications.selectYou)) { _ in
+            selectDeskDestination(.you)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: IPadAwayDeskNotifications.pinWatch)) { _ in
+            pinWatchInspector()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: IPadAwayDeskNotifications.openWatchWindow)) { _ in
+            openWatchWindow()
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowSettings"))) { _ in
             openSettingsRoute()
@@ -153,29 +202,31 @@ struct RootNavigationView: View {
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowBurnTab"))) { _ in
             selection = .burn
         }
+    }
+
+    private var deskWithNotifications: some View {
+        deskWithPrimaryNotifications
         // Both of these drain the stash on the live path too: the tap has been
         // served here, so leaving it parked would let `claimPendingOsRouteIfNeeded`
         // re-raise the same surface later.
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall"))) { notification in
-            guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
-            presentMercuryCall(connectionId: notification.userInfo?["connectionId"] as? String)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole"))) { notification in
-            guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
-            presentMissionConsole(missionId: notification.userInfo?["missionId"] as? String)
-        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMercuryCall")), perform: handleShowMercuryCall)
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowMissionConsole")), perform: handleShowMissionConsole)
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowStreamsTab"))) { _ in
             selection = .streams
         }
-        .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName)) { notification in
-            openHermesGatewayPairingRoute(notification)
+        .onReceive(NotificationCenter.default.publisher(for: InsightsDeepLink.notificationName)) { _ in
+            handleShowInsights()
         }
-        .onReceive(NotificationCenter.default.publisher(for: AIInboxDeepLink.notificationName)) { notification in
-            openAIInboxRoute(itemID: AIInboxDeepLink.itemID(from: notification))
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowRecap"))) { _ in
+            handleShowRecap()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged)) { notification in
-            isCloudStoreChromeHidden = notification.object as? Bool ?? false
-        }
+        .onReceive(NotificationCenter.default.publisher(for: HermesGatewayPairingDeepLink.notificationName), perform: openHermesGatewayPairingRoute)
+        .onReceive(NotificationCenter.default.publisher(for: AIInboxDeepLink.notificationName), perform: handleShowAIInbox)
+        .onReceive(NotificationCenter.default.publisher(for: .cloudStoreChromeVisibilityChanged), perform: handleCloudStoreChromeVisibilityChanged)
+    }
+
+    private var deskWithPresentation: some View {
+        deskWithNotifications
         .sheet(isPresented: $showMissionConsole) {
             MobileMissionConsoleSheet(host: missionConsoleHost) {
                 showMissionConsole = false
@@ -188,22 +239,48 @@ struct RootNavigationView: View {
         }
     }
 
-    // MARK: - Sidebar
+    /// Inbox is three columns (destinations | rail | canvas). Everything else
+    /// is two columns (destinations | canvas) so Agents keeps the destination
+    /// sidebar — `.doubleColumn` on a three-column split would hide it.
+    private var deskSplit: some View {
+        deskSplitColumns
+            .iPadDeskSearchable(
+                text: $deskSearchText,
+                prompt: IPadAwayDeskNavigation.searchPrompt(for: selection)
+            )
+    }
 
-    @AppStorage("useWebsiteBackground") private var useWebsiteBackground: Bool = false
+    @ViewBuilder
+    private var deskSplitColumns: some View {
+        switch IPadAwayDeskNavigation.columnMode(for: selection) {
+        case .threeColumn:
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                sidebarColumn
+            } content: {
+                rail
+                    .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+            } detail: {
+                canvas
+            }
+        case .twoColumn:
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                sidebarColumn
+            } detail: {
+                canvas
+            }
+        }
+    }
+
+    private var sidebarColumn: some View {
+        sidebar
+            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
+    }
+
+    // MARK: - Sidebar
 
     private var sidebar: some View {
         ZStack {
-            if useWebsiteBackground {
-                AuroraBackdrop(density: .subtle)
-            } else {
-                // Intentionally NOT Liquid Glass: this is the rearmost base
-                // fill of the sidebar column (the counterpart of the Aurora
-                // backdrop above), not floating chrome — glass here would
-                // have no content behind it to sample and would sit under
-                // the footer pill's glass.
-                Rectangle().fill(.clear).background(.regularMaterial)
-            }
+            Rectangle().fill(.clear).background(.regularMaterial)
             List {
                 Section {
                     sidebarLogoHeader
@@ -219,6 +296,17 @@ struct RootNavigationView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showWatchInspector.toggle()
+                    } label: {
+                        Label("Watch", systemImage: "macbook.and.ipad")
+                    }
+                    .accessibilityIdentifier("ipad.watch.toggle")
+                    .accessibilityLabel(showWatchInspector ? "Hide Watch" : "Show Watch")
+                }
+            }
         }
         .safeAreaInset(edge: .bottom) {
             sidebarFooter
@@ -243,81 +331,17 @@ struct RootNavigationView: View {
     }
 
     private func sidebarItem(_ destination: AppDestination) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                selection = destination
-            }
-            HapticBus.tabChange()
-        } label: {
-            HStack(spacing: 14) {
-                if let auroraDest = destination.asAuroraDestination {
-                    AuroraNavIcon(
-                        destination: auroraDest,
-                        size: 28,
-                        isSelected: selection == destination,
-                        isPressed: false,
-                        userPhotoURL: auroraDest == .you
-                            ? authStore.currentIdentity?.photoURL
-                            : nil,
-                        userDisplayName: auroraDest == .you
-                            ? (authStore.currentIdentity?.displayName
-                               ?? authStore.currentIdentity?.email)
-                            : nil
-                    )
-                    .frame(width: 32, height: 32)
-                } else {
-                    // Fallback SF Symbol for secondary items
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(destination.accent)
-                            .frame(width: 26, height: 26)
-                        Image(systemName: destination.fallbackIcon)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-
-                Text(destination.label)
-                    .font(MobileTheme.Typography.body)
-                    .fontWeight(selection == destination ? .semibold : .regular)
-                    .foregroundStyle(
-                        selection == destination
-                            ? destination.accent
-                            : MobileTheme.Colors.textPrimary
-                    )
-
-                Spacer()
-
-                if selection == destination {
-                    Circle()
-                        .fill(destination.accent)
-                        .frame(width: 7, height: 7)
-                        .transition(.scale(scale: 0.1).combined(with: .opacity))
-                }
-            }
-            .frame(height: 50)
-            .contentShape(Rectangle())
+        IPadSidebarDestinationRow(
+            destination: destination,
+            isSelected: selection == destination,
+            unreadCount: destination == .inbox ? streamsInboxStore.unreadCount : 0,
+            userPhotoURL: authStore.currentIdentity?.photoURL,
+            userDisplayName: authStore.currentIdentity?.displayName
+                ?? authStore.currentIdentity?.email
+        ) {
+            selectDeskDestination(destination)
         }
-        .buttonStyle(.plain)
-        .listRowBackground(
-            Group {
-                if selection == destination {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(destination.accent.opacity(0.10))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(destination.accent.opacity(0.18), lineWidth: 0.5)
-                        )
-                } else {
-                    Color.clear
-                }
-            }
-        )
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
         .animation(.spring(response: 0.30, dampingFraction: 0.78), value: selection)
-        .accessibilityIdentifier("sidebar.destination.\(destination.id)")
-        .accessibilityAddTraits(selection == destination ? .isSelected : [])
     }
 
     private var sidebarFooter: some View {
@@ -348,7 +372,7 @@ struct RootNavigationView: View {
     }
 
     private var sidebarFooterContent: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Circle()
                     .fill(syncDotColor)
@@ -364,27 +388,10 @@ struct RootNavigationView: View {
                         .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .auroraGlass(.compact, cornerRadius: 12)
-            .padding(.horizontal, 12)
-
-            Button {
-                showHermesSheet = true
-            } label: {
-                HStack(spacing: 6) {
-                    HermesLiveGlyph(size: 16, isLive: false)
-                    Text("Quick ask Hermes")
-                        .font(MobileTheme.Typography.tiny)
-                        .fontWeight(.semibold)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            }
-            .buttonStyle(.aurora(.hermes, fullWidth: true))
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
+            HostReachabilityStatusLine(status: hostReachability.status, opacity: 0.8)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     // MARK: - Detail
@@ -410,53 +417,101 @@ struct RootNavigationView: View {
     }
 
     @ViewBuilder
-    private var detail: some View {
-        if selection == .agents {
-            HermesSquareSplitLayout(
+    private var rail: some View {
+        NavigationStack {
+            switch selection {
+            case .inbox:
+                IPadInboxRail(store: streamsInboxStore)
+            case .agents:
+                IPadAgentsRail(
+                    hermesService: hermesService,
+                    missionHost: missionConsoleHost,
+                    controller: agentsDesk,
+                    searchQuery: deskSearchText
+                )
+            case .burn:
+                IPadQuotaRail(
+                    quotaStore: burnQuotaStore,
+                    selectedProvider: $quotaProvider,
+                    searchQuery: deskSearchText
+                )
+            case .you:
+                IPadYouRail(
+                    authStore: authStore,
+                    selectedGroup: $youGroup,
+                    searchQuery: deskSearchText
+                )
+            default:
+                ContentUnavailableView(
+                    selection.label,
+                    systemImage: selection.fallbackIcon,
+                    description: Text("The canvas on the right is the working surface.")
+                )
+                .navigationTitle(selection.label)
+                .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var canvas: some View {
+        switch selection {
+        case .inbox:
+            IPadInboxCanvas(store: streamsInboxStore)
+        case .agents:
+            IPadAgentsCanvas(
                 hermesService: hermesService,
-                missionHost: missionConsoleHost
+                missionHost: missionConsoleHost,
+                controller: agentsDesk
             )
-        } else {
+        case .burn:
+            IPadQuotaCanvas(
+                quotaStore: burnQuotaStore,
+                selectedProvider: quotaProvider
+            )
+        case .you:
+            IPadYouCanvas(
+                authStore: authStore,
+                syncStore: syncHealthStore,
+                devicesStore: devicesStore,
+                hermesService: hermesService,
+                selectedGroup: youGroup,
+                settingsRouter: settingsRouter
+            )
+        default:
             NavigationStack(path: $detailPath) {
                 Group {
                     switch selection {
-                    case .pulse:    PulseView(
-                        router: router,
-                        dashboard: pulseDashboardStore,
-                        quotaStore: pulseQuotaStore,
-                        sessionsStore: pulseSessionsStore,
-                        hermesService: pulseHermesService
-                    )
-                    case .burn:     BurnView(
-                        quotaStore: burnQuotaStore,
-                        dashboard: burnDashboardStore,
-                        activityStore: burnActivityStore
-                    )
-                    case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
-                    case .streams:  StreamsView(inbox: streamsInboxStore)
-                    case .agents:   EmptyView()
-                    case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
-                    case .settings: SettingsHubView(authStore: authStore)
-                        .environment(settingsRouter)
-                    case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
-                    case .providers: ProviderConnectionsView(showsDoneButton: false)
-                    case .recap:    MobileRecapScreen(accountID: authStore.currentIdentity?.uid)
+                    case .inbox, .agents, .burn, .you:
+                        EmptyView()
+                    case .pulse:
+                        PulseView(
+                            router: router,
+                            dashboard: pulseDashboardStore,
+                            quotaStore: pulseQuotaStore,
+                            sessionsStore: pulseSessionsStore,
+                            hermesService: pulseHermesService
+                        )
+                    case .insights:
+                        AgentInsightsTabScreen(
+                            dashboardStore: insightsDashboardStore,
+                            hermesService: hermesService
+                        )
+                    case .streams:
+                        StreamsView(inbox: streamsInboxStore)
+                    case .settings:
+                        SettingsHubView(authStore: authStore)
+                            .environment(settingsRouter)
+                    case .devices:
+                        iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
+                    case .providers:
+                        ProviderConnectionsView(showsDoneButton: false)
+                    case .recap:
+                        MobileRecapScreen(accountID: authStore.currentIdentity?.uid)
                     }
                 }
                 .navigationDestination(for: YouRoute.self) { route in
-                    switch route {
-                    case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
-                    case .settings: SettingsHubView(authStore: authStore)
-                        .environment(settingsRouter)
-                    case .devices:  iPadDevicesSettingsView(store: devicesStore, hermesService: hermesService)
-                    case .providers: ProviderConnectionsView(showsDoneButton: false)
-                    case .computerUse: AgentWatchScreen(
-                        authUID: authStore.currentIdentity?.uid,
-                        hermesService: hermesService
-                    )
-                    case .dataVault: DataVaultAdaptiveControlView()
-                    case .memory: PensieveMemorySearchView()
-                    }
+                    youRouteDestination(route)
                 }
                 .navigationDestination(for: SettingsPageRoute.self) { route in
                     SettingsHubView.destination(for: route, authStore: authStore)
@@ -465,8 +520,24 @@ struct RootNavigationView: View {
                 .navigationDestination(for: TokenUsage.self) { usage in
                     SessionDetailView(usage: usage)
                 }
+                .navigationDestination(for: AIInboxDetailRoute.self) { route in
+                    AIInboxDetailScreen(store: streamsInboxStore, itemID: route.itemID)
+                }
             }
         }
+    }
+
+    @ViewBuilder
+    private func youRouteDestination(_ route: YouRoute) -> some View {
+        youRouteView(
+            route,
+            authStore: authStore,
+            syncStore: syncHealthStore,
+            devicesStore: devicesStore,
+            hermesService: hermesService,
+            settingsRouter: settingsRouter,
+            onComputerUseAppear: pinWatchInspector
+        )
     }
 
     // MARK: - Router
@@ -484,17 +555,28 @@ struct RootNavigationView: View {
         router.clear()
     }
 
-    private func openAgentWatchRoute() {
-        selection = .you
-        detailPath = NavigationPath()
-        detailPath.append(YouRoute.computerUse)
-        updateColumnVisibility(for: .you, animated: false)
+    private func pinWatchInspector() {
+        selection = IPadAwayDeskNavigation.destinationAfterPinningWatch(current: selection)
+        showWatchInspector = true
+    }
+
+    private func openWatchWindow() {
+        pinWatchInspector()
+        openWindow(id: IPadAwayDeskNavigation.watchWindowID)
+    }
+
+    private func selectDeskDestination(_ destination: AppDestination) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+            selection = destination
+        }
+        HapticBus.tabChange()
+        updateColumnVisibility()
     }
 
     private func openSettingsRoute() {
         selection = .settings
         detailPath = NavigationPath()
-        updateColumnVisibility(for: .settings, animated: false)
+        updateColumnVisibility(animated: false)
     }
 
     private func openHermesGatewayPairingRoute(_: Notification) {
@@ -502,26 +584,27 @@ struct RootNavigationView: View {
         selection = .settings
         detailPath = NavigationPath()
         detailPath.append(SettingsPageRoute.hermes)
-        updateColumnVisibility(for: .settings, animated: false)
+        updateColumnVisibility(animated: false)
     }
 
     /// Lands a `burnbar://inbox[/{itemId}]` deep link from an AI Inbox P1 push.
     ///
-    /// The Inbox lives inside the Streams detail branch, so this selects it and
-    /// resets the detail path before pushing the item. On a wide iPad the split
-    /// layout may already show the item inline; pushing is still correct, since
-    /// the push destination resolves against the same live store.
+    /// Inbox is a primary desk destination. This selects it and focuses the
+    /// shared `AIInboxStore` so the rail + canvas show the item inline.
     private func openAIInboxRoute(itemID: String?) {
         // Drain the stash on the live path too. The tap has been served here, so
         // leaving it parked would let a later `.task` re-navigate the user back
         // to this item after they had moved on.
         _ = AIInboxDeepLink.consumePendingItemID()
-        selection = .streams
+        selection = .inbox
         detailPath = NavigationPath()
         streamsInboxStore.focus(itemID: itemID)
-        updateColumnVisibility(for: .streams, animated: false)
-        guard let itemID else { return }
-        detailPath.append(AIInboxDetailRoute(itemID: itemID))
+        updateColumnVisibility(animated: false)
+    }
+
+    private func claimPendingInsightsDeepLink() {
+        guard InsightsDeepLink.hasPending else { return }
+        selectDeskDestination(IPadAwayDeskNavigation.destinationAfterInsightsDeepLink())
     }
 
     /// Cold-launch counterpart to the `onReceive` above.
@@ -551,6 +634,35 @@ struct RootNavigationView: View {
         }
     }
 
+    private func handleShowMercuryCall(_ notification: Notification) {
+        guard case .mercuryCall = MobilePendingOsRouteStore.shared.consume() else { return }
+        let connectionId = notification.userInfo?["connectionId"] as? String
+        presentMercuryCall(connectionId: connectionId)
+    }
+
+    private func handleShowMissionConsole(_ notification: Notification) {
+        guard case .mission = MobilePendingOsRouteStore.shared.consume() else { return }
+        let missionId = notification.userInfo?["missionId"] as? String
+        presentMissionConsole(missionId: missionId)
+    }
+
+    private func handleShowInsights() {
+        selectDeskDestination(IPadAwayDeskNavigation.destinationAfterInsightsDeepLink())
+    }
+
+    private func handleShowRecap() {
+        selection = .recap
+        updateColumnVisibility(animated: false)
+    }
+
+    private func handleShowAIInbox(_ notification: Notification) {
+        openAIInboxRoute(itemID: AIInboxDeepLink.itemID(from: notification))
+    }
+
+    private func handleCloudStoreChromeVisibilityChanged(_ notification: Notification) {
+        isCloudStoreChromeHidden = notification.object as? Bool ?? false
+    }
+
     private func presentMercuryCall(connectionId: String?) {
         pendingMercuryConnectionId = connectionId
         showMercuryCall = true
@@ -564,8 +676,15 @@ struct RootNavigationView: View {
         showMissionConsole = true
     }
 
-    private func updateColumnVisibility(for destination: AppDestination, animated: Bool = true) {
-        let nextVisibility: NavigationSplitViewVisibility = destination == .agents ? .detailOnly : .automatic
+    private func applyDeskSearch(_ query: String) {
+        if selection == .inbox {
+            streamsInboxStore.searchQuery = query
+        }
+    }
+
+    private func updateColumnVisibility(animated: Bool = true) {
+        // Always keep the destination sidebar. Never `.detailOnly` (old Agents habit).
+        let nextVisibility = NavigationSplitViewVisibility.all
         guard columnVisibility != nextVisibility else { return }
         if animated {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -580,10 +699,16 @@ struct RootNavigationView: View {
         guard AppStoreScreenshotMode.isEnabled, !didApplyScreenshotRoute else { return }
         didApplyScreenshotRoute = true
         switch AppStoreScreenshotMode.route {
+        case "inbox":
+            selection = .inbox
         case "burn", "quota":
             selection = .burn
         case "streams", "activity":
             selection = .streams
+        case "pulse", "dashboard":
+            selection = .pulse
+        case "insights":
+            selection = .insights
         case "hermes", "chat":
             selection = .agents
         case "you", "account":
@@ -595,7 +720,7 @@ struct RootNavigationView: View {
         case "providers", "connections":
             selection = .providers
         default:
-            selection = .pulse
+            selection = IPadAwayDeskNavigation.launchDestination
         }
     }
 
@@ -683,7 +808,7 @@ struct RootNavigationView: View {
             selection = .you
             detailPath = NavigationPath()
             detailPath.append(YouRoute.computerUse)
-            updateColumnVisibility(for: .you, animated: false)
+            updateColumnVisibility(animated: false)
             Self.computerUseE2ELogger.info("OpenBurnBarMobile ComputerUseE2E iPad opened Agent Watch")
         }
         #endif

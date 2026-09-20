@@ -20,7 +20,7 @@ struct ChartsReorderableGrid: View {
 
     var body: some View {
         let rows = Self.rows(for: layout.visibleConfigs)
-        VStack(spacing: DesignSystem.Spacing.md) {
+        LazyVStack(spacing: DesignSystem.Spacing.md) {
             ForEach(rows, id: \.id) { row in
                 HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
                     ForEach(row.configs) { config in

@@ -42,6 +42,8 @@ mode = sys.argv[3] if len(sys.argv) > 3 else ""
 scopes = {
     "agentLensStringAny": repo_root / "AgentLens",
     "mobileStringAny": repo_root / "OpenBurnBarMobile",
+    "coreStringAny": repo_root / "OpenBurnBarCore" / "Sources",
+    "daemonStringAny": repo_root / "OpenBurnBarDaemon" / "Sources",
 }
 
 # Valid Swift spellings of the same untyped boundary. Keep this lexical and
@@ -122,7 +124,7 @@ if not baseline_path.exists():
     sys.exit(1)
 
 baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-metric_names = ("agentLensStringAny", "mobileStringAny", "total")
+metric_names = ("agentLensStringAny", "mobileStringAny", "coreStringAny", "daemonStringAny", "total")
 
 print(
     "String-any boundary budget: "

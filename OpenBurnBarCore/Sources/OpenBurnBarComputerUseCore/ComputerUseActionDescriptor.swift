@@ -281,6 +281,7 @@ public struct PhoneControlIntent: Codable, Hashable, Sendable {
         case shortcut
         case scroll
         case panic
+        case setTrustMode = "set_trust_mode"
         case contextTarget = "context_target"
     }
 
@@ -333,6 +334,8 @@ public struct PhoneControlIntent: Codable, Hashable, Sendable {
             return "Phone scroll on \(app)"
         case .panic:
             return "Phone panic halt"
+        case .setTrustMode:
+            return "Phone trust downgrade to \(text ?? "<mode>")"
         case .contextTarget:
             return "Phone context handoff for instruction \(quoted(text ?? "")) on \(app)"
         }

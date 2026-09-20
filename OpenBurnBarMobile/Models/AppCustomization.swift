@@ -5,14 +5,15 @@ import OpenBurnBarRecap
 
 /// Defines cross-platform layout destinations for the primary tabs and sidebar.
 enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
-    case pulse, burn, insights, streams, agents, you, settings, devices, providers, recap
+    case inbox, pulse, burn, insights, streams, agents, you, settings, devices, providers, recap
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .inbox:    return "Inbox"
         case .pulse:    return "Pulse"
-        case .burn:     return "Burn"
+        case .burn:     return "Quota"
         case .insights: return "Insights"
         case .streams:  return "Streams"
         case .agents:   return "Agents"
@@ -26,6 +27,7 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
 
     var fallbackIcon: String {
         switch self {
+        case .inbox:     return "tray.full.fill"
         case .insights:  return "sparkles.tv.fill"
         case .settings:  return "gearshape.fill"
         case .devices:   return "macbook.and.iphone"
@@ -41,13 +43,14 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
 
     var isPrimary: Bool {
         switch self {
-        case .pulse, .burn, .insights, .streams, .agents: return true
+        case .inbox, .agents, .burn, .you, .pulse, .insights, .streams: return true
         default: return false
         }
     }
 
     var accent: Color {
         switch self {
+        case .inbox:    return MobileTheme.ember
         case .pulse:    return MobileTheme.ember
         case .burn:     return MobileTheme.amber
         case .insights: return MobileTheme.whimsy
@@ -63,6 +66,7 @@ enum AppDestination: String, Hashable, Identifiable, Codable, CaseIterable {
 
     var asAuroraDestination: AuroraNavDestination? {
         switch self {
+        case .inbox:    return .inbox
         case .recap:    return .recap
         case .pulse:    return .pulse
         case .burn:     return .burn
@@ -160,12 +164,7 @@ final class AppCustomization: ObservableObject {
 
     var primaryDestinations: [AppDestination] {
         get {
-            if primaryTabsRaw.isEmpty { return [.pulse, .burn, .insights, .streams, .agents] }
-            guard let data = primaryTabsRaw.data(using: .utf8),
-                  let decoded = try? JSONDecoder().decode([AppDestination].self, from: data) else {
-                return [.pulse, .burn, .insights, .streams, .agents]
-            }
-            return decoded
+            IPadAwayDeskNavigation.resolvedPrimaryDestinations(decodeDestinations(primaryTabsRaw))
         }
         set {
             if let data = try? JSONEncoder().encode(newValue),
@@ -178,12 +177,10 @@ final class AppCustomization: ObservableObject {
 
     var secondaryDestinations: [AppDestination] {
         get {
-            if secondaryTabsRaw.isEmpty { return [.you, .providers, .devices, .settings] }
-            guard let data = secondaryTabsRaw.data(using: .utf8),
-                  let decoded = try? JSONDecoder().decode([AppDestination].self, from: data) else {
-                return [.you, .providers, .devices, .settings]
-            }
-            return decoded
+            IPadAwayDeskNavigation.resolvedSecondaryDestinations(
+                decodeDestinations(secondaryTabsRaw),
+                primary: primaryDestinations
+            )
         }
         set {
             if let data = try? JSONEncoder().encode(newValue),
@@ -192,5 +189,14 @@ final class AppCustomization: ObservableObject {
                 objectWillChange.send()
             }
         }
+    }
+
+    private func decodeDestinations(_ raw: String) -> [AppDestination]? {
+        guard !raw.isEmpty,
+              let data = raw.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([AppDestination].self, from: data) else {
+            return nil
+        }
+        return decoded
     }
 }

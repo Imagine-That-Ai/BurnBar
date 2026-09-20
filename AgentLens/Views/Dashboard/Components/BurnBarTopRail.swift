@@ -1490,16 +1490,20 @@ enum BurnRailSparklineBuilder {
             // oldest work at the left, the present at the right.
             upper = now
         }
-        let span = max(upper.timeIntervalSince(lower), 1)
         var buckets = Array(repeating: 0.0, count: bucketCount)
-        for u in usages {
-            let t = u.startTime
-            guard t >= lower, t <= upper else { continue }
-            let frac = t.timeIntervalSince(lower) / span
-            var idx = Int(frac * Double(bucketCount))
-            if idx >= bucketCount { idx = bucketCount - 1 }
-            if idx < 0 { idx = 0 }
-            buckets[idx] += displayMode == .currency ? u.cost : Double(u.totalTokens)
+        for usage in usages {
+            let amount = displayMode == .currency ? usage.cost : Double(usage.totalTokens)
+            let slice = UsageWindowAttribution.allocate(
+                amount: amount,
+                start: usage.startTime,
+                end: usage.endTime,
+                windowStart: lower,
+                windowEnd: upper,
+                bucketCount: bucketCount
+            )
+            for index in buckets.indices where slice.indices.contains(index) {
+                buckets[index] += slice[index]
+            }
         }
         let maxVal = buckets.max() ?? 0
         guard maxVal > 0 else { return buckets.map { _ in 0 } }

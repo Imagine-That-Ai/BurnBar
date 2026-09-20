@@ -44,7 +44,7 @@ struct AuroraGlassCard<Content: View>: View {
         content()
             .padding(padding)
             .background(specularBackground)
-            .auroraGlass(variant, cornerRadius: cornerRadius)
+            .auroraGlass(variant, cornerRadius: cornerRadius, interactive: interactive)
             .scaleEffect(isPressed ? 0.985 : (isHovered ? 1.012 : 1.0))
             .brightness(isPressed ? 0.04 : 0.0)
             .animation(AuroraDesign.Motion.cardPress, value: isPressed)
