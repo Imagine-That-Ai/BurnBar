@@ -447,7 +447,7 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
             (.omp, "omp-live-1", "OMP"),
             (.copilot, "copilot-live-1", "Copilot"),
             (.primeAgent, "prime-live-1", "Prime Agent"),
-            (.antigravity, "antigravity-live-1", "Antigravity"),
+            (.antigravity, "antigravity-live-1", "Antigravity")
         ]
         for (provider, sessionId, harness) in cases {
             let dbQueue = try makeDatabaseQueue()

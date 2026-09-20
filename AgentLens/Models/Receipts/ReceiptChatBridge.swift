@@ -94,7 +94,7 @@ enum ReceiptChatBridge: Sendable {
             transcript?.summaryTitle,
             transcript?.inferredTaskTitle,
             receipt.promptSummary,
-            receipt.actualAccomplishments.first(where: { !isGenericAccomplishment($0) }),
+            receipt.actualAccomplishments.first(where: { !isGenericAccomplishment($0) })
         ].compactMap { $0 }
 
         if let hit = candidates.first(where: { !isGenericTitle($0, projectName: project) }) {

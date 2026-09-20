@@ -32,7 +32,14 @@ struct ReceiptSettingsView: View {
             } header: {
                 Label("Session Completion Popups", systemImage: "bell.badge.fill")
             } footer: {
-                Text("A quiet minute is enough to print the slip. The flyout, thermal-printer sound, and banner wait until the CLI process, terminal job, or dedicated agent app is actually gone — Cursor.app staying open does not count, but cursor-agent does, even inside the Cursor.app bundle. The banner is silent; the thermal printer is the only close ping. The first banner asks for notification permission.")
+                Text(
+                    "A quiet minute is enough to print the slip. The flyout, thermal-printer " +
+                    "sound, and banner wait until the CLI process, terminal job, or dedicated " +
+                    "agent app is actually gone — Cursor.app staying open does not count, but " +
+                    "cursor-agent does, even inside the Cursor.app bundle. The banner is silent; " +
+                    "the thermal printer is the only close ping. The first banner asks for " +
+                    "notification permission."
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

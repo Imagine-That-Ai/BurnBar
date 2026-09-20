@@ -8,7 +8,7 @@ import OpenBurnBarKernel
 /// when an external CLI session completes.
 public struct ReceiptMiniFlyoutView: View {
     public let receipt: ReceiptRecord
-    var overlay: ReceiptConversationOverlay? = nil
+    var overlay: ReceiptConversationOverlay?
     public var onViewReceipt: () -> Void
     public var onDismiss: () -> Void
 
