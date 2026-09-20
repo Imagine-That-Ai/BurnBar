@@ -15,6 +15,11 @@ private final class SendableVideoSampleBuffer: @unchecked Sendable {
     }
 }
 
+// AUDIT(@unchecked Sendable): two-phase-init consume box. The mailbox's
+// `@Sendable` consume closure may not capture the non-Sendable encoder, so it
+// captures this box instead; `handler` is written exactly once, in the
+// encoder's init, before the encoder escapes to any other isolation domain.
+// sendable-allowlist: encoder-consume-handler-box
 private final class EncodedConsumeBox: @unchecked Sendable {
     var handler: (@Sendable (SendableVideoSampleBuffer) async -> Void)?
 }

@@ -30,6 +30,8 @@ actor, a real `Sendable` payload, or a lock-guarded owned value whenever that is
 | `nslock-protected-storage` | NSLock-protected generic mutable storage | All reads and writes run through the lock; no unsynchronized access path. |
 | `serial-queue-confined-watcher` | File-system watcher state confined to one serial DispatchQueue | Every read/write of the watch maps and cancellation flag executes on the owning serial queue (event handler, cancel handler, and rebuild all dispatch there); a lock would misleadingly suggest a sanctioned cross-queue access path. First user: `BurnBarProjectCodeMemoryStore.LinuxFileSystemEventStream` (Linux inotify). |
 | `swift-crypto-key-material` | Swift Crypto / CryptoKit key-material value wrappers | The values are immutable key-material handles passed across module/actor boundaries; OpenBurnBar exposes no shared mutable mutation path and uses them only through deterministic crypto operations. |
+| `videotoolbox-encoder-lock` | VideoToolbox encoder session + GOP/LTR counters (`VideoEncoder`) | The VT compression session and every mutable counter are guarded by the encoder's own `stateLock`; capture callbacks hop off MainActor on purpose and only touch locked state. |
+| `encoder-consume-handler-box` | Two-phase-init consume boxes in the media encoder pipeline | The box's `handler` is written exactly once, during the encoder's init, before the encoder (and its mailbox consumer) escapes to any other isolation domain; reads happen only from the `@Sendable` consume closure. The box exists because the consume closure cannot capture the non-Sendable encoder directly. |
 
 ## Current Handoff 2 Additions
 

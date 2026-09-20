@@ -36,8 +36,11 @@ import CoreServices
 // Single fixed files (Claude's statusline snapshot) correctly stay on
 // `DispatchSource` — see `ClaudeStatuslineWatcher`.
 
-// reason: Lifecycle mutations are serialized by lifecycleLock. The callback reads only
-// immutable, Sendable properties, so owners can also stop the stream from deinit.
+// AUDIT(@unchecked Sendable): FSEventStreamRef is an opaque CoreServices
+// C-API object. Lifecycle mutations (create/invalidate/release) are serialized
+// by lifecycleLock; the callback reads only immutable, Sendable properties, so
+// owners can also stop the stream from deinit.
+// sendable-allowlist: foundation-sdk-shim
 final class FileTreeEventStream: @unchecked Sendable {
 
     /// Delivered with the changed paths, coalesced by the kernel.

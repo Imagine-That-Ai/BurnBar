@@ -3,6 +3,11 @@ import Foundation
 /// Single-slot coalescing mailbox: concurrent producers replace the pending
 /// value; one pump Task drains it. Capture/encode callbacks must not spawn
 /// an unbounded `Task` per frame.
+///
+/// AUDIT(@unchecked Sendable): the mailbox is the lock-guarded storage itself.
+/// `pending` and `pumping` are only ever read or written while holding `lock`,
+/// and the generic `Value: Sendable` bound keeps every stored payload safe to
+/// ferry across isolation domains. sendable-allowlist: nslock-protected-storage
 public final class LatestFrameMailbox<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var pending: Value?

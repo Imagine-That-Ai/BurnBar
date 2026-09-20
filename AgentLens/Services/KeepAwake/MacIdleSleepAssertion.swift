@@ -14,7 +14,7 @@ protocol IdleSleepAsserting: AnyObject, Sendable {
 /// `OpenBurnBarRemoteAccessAgentMain` (`IOPMAssertionCreateWithName` /
 /// `IOPMAssertionRelease`) but uses PreventUserIdleSystemSleep so the
 /// lid/display can dim while the host stays a remote endpoint.
-final class IOPMIdleSleepAssertion: IdleSleepAsserting, @unchecked Sendable {
+final class IOPMIdleSleepAssertion: IdleSleepAsserting, Sendable {
     func acquire(reason: String) -> UInt32? {
         #if os(macOS)
         var assertionID = IOPMAssertionID(0)
