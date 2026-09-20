@@ -118,7 +118,6 @@ import {
   cancelCliAgentMission,
   claimCliAgentMission,
   createCliAgentMission,
-  createCliAgentMissionGroup,
   isLegalHostStatusTransition,
   updateCliAgentMissionStatus,
 } from "../callables/cliAgentMissions.js";
@@ -156,44 +155,11 @@ function requireHostWriteNonce(value: unknown): string {
 }
 
 const runCreate = callableRunner(createCliAgentMission);
-const runCreateGroup = callableRunner(createCliAgentMissionGroup);
 const runClaim = callableRunner(claimCliAgentMission);
 const runStatus = callableRunner(updateCliAgentMissionStatus);
 const runCancel = callableRunner(cancelCliAgentMission);
 const runAppend = callableRunner(appendCliAgentMissionEvent);
 const runSignal = callableRunner(writeSignalAtRestDocument);
-
-function groupPayload(groupId: string, overrides: Record<string, unknown> = {}) {
-  return {
-    groupId,
-    deviceId: "iphone-1",
-    nonce: "nonce-group",
-    actionProof: { ok: true },
-    contentSealed: true,
-    sealedSchemaVersion: 2,
-    vaultKeyID: VAULT,
-    sealedPayload: sealed(ALICE_UID, "mission_groups", groupId, "sealedPayload"),
-    childMissionIDs: ["child-1"],
-    runtimeTokens: ["codex"],
-    parallelismLimit: 1,
-    missionKind: "diligence",
-    mergeStrategy: "pick_one",
-    phase: "queued",
-    schemaVersion: 1,
-    source: "ios-hermes-square",
-    forecast: {
-      tokensLow: 1,
-      tokensHigh: 2,
-      costLowUSD: 0,
-      costHighUSD: 0,
-      etaLow: 0,
-      etaHigh: 0,
-    },
-    createdAt: "2026-09-13T00:00:00.000Z",
-    updatedAt: "2026-09-13T00:00:00.000Z",
-    ...overrides,
-  };
-}
 
 function createPayload(requestId: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -221,75 +187,6 @@ function createPayload(requestId: string, overrides: Record<string, unknown> = {
 
 afterEach(() => {
   vi.useRealTimers();
-});
-
-describe("createCliAgentMissionGroup", () => {
-  beforeEach(() => {
-    store.clear();
-  });
-
-  it("writes a sealed group doc via admin and does not require client rules", async () => {
-    await expect(runCreateGroup(authed(groupPayload("grp-1")))).resolves.toMatchObject({
-      ok: true,
-      groupId: "grp-1",
-      idempotent: false,
-    });
-    const doc = store.get(`users/${ALICE_UID}/mission_groups/grp-1`);
-    expect(doc?.contentSealed).toBe(true);
-    expect(doc?.sealedSchemaVersion).toBe(2);
-    expect(doc?.childMissionIDs).toEqual(["child-1"]);
-    expect(doc?.runtimeTokens).toEqual(["codex"]);
-    expect(doc?.title).toBeUndefined();
-    expect(doc?.prompt).toBeUndefined();
-    expect(doc?.phase).toBe("queued");
-  });
-
-  it("is idempotent when the same children already exist", async () => {
-    await runCreateGroup(authed(groupPayload("grp-dup")));
-    await expect(runCreateGroup(authed(groupPayload("grp-dup")))).resolves.toMatchObject({
-      ok: true,
-      groupId: "grp-dup",
-      idempotent: true,
-    });
-    await expect(
-      runCreateGroup(
-        authed(
-          groupPayload("grp-dup", {
-            childMissionIDs: ["other-child"],
-            runtimeTokens: ["claude"],
-          }),
-        ),
-      ),
-    ).rejects.toMatchObject({ code: "already-exists" });
-  });
-
-  it("rejects a sealed payload bound to the wrong collection", async () => {
-    await expect(
-      runCreateGroup(
-        authed(
-          groupPayload("grp-aad", {
-            sealedPayload: sealed(ALICE_UID, "cli_agent_mission_requests", "grp-aad", "sealedPayload"),
-          }),
-        ),
-      ),
-    ).rejects.toMatchObject({ code: "invalid-argument" });
-    expect(store.get(`users/${ALICE_UID}/mission_groups/grp-aad`)).toBeUndefined();
-  });
-
-  it("rejects a free-tier group wider than the Wand cap", async () => {
-    await expect(
-      runCreateGroup(
-        authed(
-          groupPayload("grp-wide", {
-            childMissionIDs: ["child-1", "child-2"],
-            runtimeTokens: ["codex", "claude"],
-            parallelismLimit: 2,
-          }),
-        ),
-      ),
-    ).rejects.toMatchObject({ code: "invalid-argument" });
-    expect(store.get(`users/${ALICE_UID}/mission_groups/grp-wide`)).toBeUndefined();
-  });
 });
 
 describe("createCliAgentMission", () => {
@@ -654,13 +551,6 @@ describe("requireTrustedDeviceActionProof platforms", () => {
   it("create uses phone platforms and claim uses macOS", async () => {
     store.clear();
     const mocked = vi.mocked(requireTrustedDeviceActionProof);
-    mocked.mockClear();
-    await runCreateGroup(authed(groupPayload("plat-group")));
-    const groupCall = mocked.mock.calls[0]?.[0];
-    expect(groupCall?.actionKind).toBe("cli_agent_mission_group_create");
-    expect(groupCall?.subjectId).toBe("plat-group");
-    expect([...(groupCall?.allowedPlatforms ?? [])]).toEqual(expect.arrayContaining(["iOS", "Android", "macOS"]));
-
     mocked.mockClear();
     await runCreate(authed(createPayload("plat")));
     const createCall = mocked.mock.calls[0]?.[0];

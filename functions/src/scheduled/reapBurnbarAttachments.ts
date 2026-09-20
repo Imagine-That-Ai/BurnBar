@@ -30,52 +30,65 @@ interface ReaperResult {
   hasMore?: boolean;
 }
 
-export async function reapExpiredBurnbarAttachments(
-  optionsOrNowMs?: number | ReaperOptions,
-): Promise<ReaperResult> {
-  const options: ReaperOptions =
-    typeof optionsOrNowMs === "number"
-      ? { nowMs: optionsOrNowMs }
-      : optionsOrNowMs ?? {};
+interface LoopBudget {
+  batchSize: number;
+  maxBatches: number;
+  timeoutMs: number;
+  startTime: number;
+}
 
-  const nowMs = options.nowMs ?? Date.now();
-  const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
-  const maxBatches = options.maxBatches ?? DEFAULT_MAX_BATCHES;
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const startTime = Date.now();
-  const cutoff = nowMs - DAY_MS;
+interface LoopOutcome {
+  count: number;
+  hasMore: boolean;
+}
 
-  let reaped = 0;
-  let gatewayReaped = 0;
-  let hasMore = false;
+/** Reads one batch page of burnbar_attachments with the indexed state predicate. */
+async function fetchBurnbarPage(
+  lastDoc: QueryDocumentSnapshot<DocumentData> | undefined,
+  budget: LoopBudget,
+): Promise<QueryDocumentSnapshot<DocumentData>[]> {
+  let query: Query<DocumentData> = db
+    .collectionGroup("burnbar_attachments")
+    .where("state", "in", ["pending_upload", "composing"]);
+  if (lastDoc) {
+    query = query.startAfter(lastDoc);
+  }
+  query = query.limit(budget.batchSize);
+  const snapshot = await query.get();
+  return (snapshot.docs ?? []) as QueryDocumentSnapshot<DocumentData>[];
+}
 
-  // 1. Process burnbar_attachments with indexed state predicate and cursor pagination
-  let lastBurnbarDoc: QueryDocumentSnapshot<DocumentData> | undefined;
-  for (let batchIdx = 0; batchIdx < maxBatches; batchIdx++) {
-    if (Date.now() - startTime >= timeoutMs) {
-      logWarn({ event: "callable_warning", message: "reaper_timeout_burnbar_attachments", batchIdx, reaped });
-      hasMore = true;
-      break;
+/** Reads one batch page of hermes_gateway_attachments. */
+async function fetchGatewayPage(
+  lastDoc: QueryDocumentSnapshot<DocumentData> | undefined,
+  budget: LoopBudget,
+): Promise<QueryDocumentSnapshot<DocumentData>[]> {
+  let query: Query<DocumentData> = db.collectionGroup("hermes_gateway_attachments");
+  if (lastDoc) {
+    query = query.startAfter(lastDoc);
+  }
+  query = query.limit(budget.batchSize);
+  const snapshot = await query.get();
+  return (snapshot.docs ?? []) as QueryDocumentSnapshot<DocumentData>[];
+}
+
+/** Expires stale burnbar_attachments in bounded batches; leaves partial uploads revoked. */
+async function reapBurnbarCollection(cutoff: number, budget: LoopBudget): Promise<LoopOutcome> {
+  let count = 0;
+  let lastDoc: QueryDocumentSnapshot<DocumentData> | undefined;
+  let exhausted = false;
+  for (let batchIdx = 0; batchIdx < budget.maxBatches; batchIdx++) {
+    if (Date.now() - budget.startTime >= budget.timeoutMs) {
+      logWarn({ event: "callable_warning", message: "reaper_timeout_burnbar_attachments", batchIdx, count });
+      return { count, hasMore: true };
     }
-
-    let query = db
-      .collectionGroup("burnbar_attachments")
-      .where("state", "in", ["pending_upload", "composing"]);
-
-    if (lastBurnbarDoc) {
-      query = query.startAfter(lastBurnbarDoc);
-    }
-    query = query.limit(batchSize);
-
-    const snapshot = await query.get();
-    const docs = (snapshot.docs ?? []) as QueryDocumentSnapshot<DocumentData>[];
+    const docs = await fetchBurnbarPage(lastDoc, budget);
     if (docs.length === 0) {
+      exhausted = true;
       break;
     }
 
     for (const doc of docs) {
-      const state = doc.get("state");
-      if (state !== "pending_upload" && state !== "composing") continue;
       const updated = doc.get("updatedAt");
       const millis = typeof updated?.toMillis === "function" ? updated.toMillis() : 0;
       if (millis && millis < cutoff) {
@@ -87,37 +100,32 @@ export async function reapExpiredBurnbarAttachments(
           await reaperPort.revokePuts(`${prefix}/mid/`);
         }
         await doc.ref.set({ state: "expired" }, { merge: true });
-        reaped += 1;
+        count += 1;
       }
     }
 
-    lastBurnbarDoc = docs[docs.length - 1];
-    if (docs.length < batchSize) {
+    lastDoc = docs[docs.length - 1];
+    if (docs.length < budget.batchSize) {
+      exhausted = true;
       break;
-    }
-    if (batchIdx === maxBatches - 1) {
-      hasMore = true;
     }
   }
+  return { count, hasMore: !exhausted };
+}
 
-  // 2. Process hermes_gateway_attachments with cursor pagination
-  let lastGatewayDoc: QueryDocumentSnapshot<DocumentData> | undefined;
-  for (let batchIdx = 0; batchIdx < maxBatches; batchIdx++) {
-    if (Date.now() - startTime >= timeoutMs) {
-      logWarn({ event: "callable_warning", message: "reaper_timeout_gateway_attachments", batchIdx, gatewayReaped });
-      hasMore = true;
-      break;
+/** Deletes expired hermes_gateway_attachments in bounded batches. */
+async function reapGatewayCollection(nowMs: number, budget: LoopBudget): Promise<LoopOutcome> {
+  let count = 0;
+  let lastDoc: QueryDocumentSnapshot<DocumentData> | undefined;
+  let exhausted = false;
+  for (let batchIdx = 0; batchIdx < budget.maxBatches; batchIdx++) {
+    if (Date.now() - budget.startTime >= budget.timeoutMs) {
+      logWarn({ event: "callable_warning", message: "reaper_timeout_gateway_attachments", batchIdx, count });
+      return { count, hasMore: true };
     }
-
-    let query: Query<DocumentData> = db.collectionGroup("hermes_gateway_attachments");
-    if (lastGatewayDoc) {
-      query = query.startAfter(lastGatewayDoc);
-    }
-    query = query.limit(batchSize);
-
-    const snapshot = await query.get();
-    const docs = (snapshot.docs ?? []) as QueryDocumentSnapshot<DocumentData>[];
+    const docs = await fetchGatewayPage(lastDoc, budget);
     if (docs.length === 0) {
+      exhausted = true;
       break;
     }
 
@@ -131,21 +139,41 @@ export async function reapExpiredBurnbarAttachments(
         const path = doc.get("storagePath");
         if (typeof path === "string") await reaperPort.delete(path);
         await doc.ref.delete();
-        gatewayReaped += 1;
+        count += 1;
       }
     }
 
-    lastGatewayDoc = docs[docs.length - 1];
-    if (docs.length < batchSize) {
+    lastDoc = docs[docs.length - 1];
+    if (docs.length < budget.batchSize) {
+      exhausted = true;
       break;
     }
-    if (batchIdx === maxBatches - 1) {
-      hasMore = true;
-    }
   }
+  return { count, hasMore: !exhausted };
+}
 
-  logInfo({ event: "callable_info", message: "burnbar_attachments_reaped", reaped, gatewayReaped, hasMore });
-  return { reaped, gatewayReaped, hasMore };
+export async function reapExpiredBurnbarAttachments(
+  optionsOrNowMs?: number | ReaperOptions,
+): Promise<ReaperResult> {
+  const options: ReaperOptions =
+    typeof optionsOrNowMs === "number"
+      ? { nowMs: optionsOrNowMs }
+      : optionsOrNowMs ?? {};
+
+  const nowMs = options.nowMs ?? Date.now();
+  const budget: LoopBudget = {
+    batchSize: options.batchSize ?? DEFAULT_BATCH_SIZE,
+    maxBatches: options.maxBatches ?? DEFAULT_MAX_BATCHES,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    startTime: Date.now(),
+  };
+
+  const burnbar = await reapBurnbarCollection(nowMs - DAY_MS, budget);
+  const gateway = await reapGatewayCollection(nowMs, budget);
+  const hasMore = burnbar.hasMore || gateway.hasMore;
+
+  logInfo({ event: "callable_info", message: "burnbar_attachments_reaped", reaped: burnbar.count, gatewayReaped: gateway.count, hasMore });
+  return { reaped: burnbar.count, gatewayReaped: gateway.count, hasMore };
 }
 
 export const reapBurnbarAttachments = onSchedule(

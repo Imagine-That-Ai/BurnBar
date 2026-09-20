@@ -169,7 +169,7 @@ extension MercuryRouter {
         guard frame.media?.streamClass == MediaStreamClass.control.rawValue,
               let encoded = frame.media?.encodedFrameBase64,
               let data = Data(base64Encoded: encoded),
-              let decoded = try? MediaPacketCodec().decode(data).frame,
+              let decoded = try? MediaPacketCodec().decode(data).frame, // try?-ok(bwe feedback decode is best-effort telemetry; a malformed frame is skipped, not an error)
               let payload = MediaBweFeedbackPayload.decodeIfPresent(from: decoded) else {
             return
         }

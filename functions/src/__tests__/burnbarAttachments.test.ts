@@ -107,6 +107,22 @@ function authed(data: Record<string, unknown>) {
   };
 }
 
+type MockCollectionGroupQuery = {
+  where: (field: string, op: string, val: unknown) => MockCollectionGroupQuery;
+  limit: (n: number) => MockCollectionGroupQuery;
+  startAfter: (doc: { id: string }) => MockCollectionGroupQuery;
+  get: () => Promise<{
+    docs: Array<{
+      id: string;
+      get: (field: string) => unknown;
+      ref: {
+        set: (next: Record<string, unknown>, options?: { merge?: boolean }) => Promise<void>;
+        delete: () => Promise<void>;
+      };
+    }>;
+  }>;
+};
+
 describe("burnbarAttachments", () => {
   beforeEach(() => {
     hoisted.store.clear();
@@ -230,7 +246,7 @@ describe("burnbarAttachments", () => {
       storagePath: "users/alice-bola-uid/hermes_gateway_attachments/gw1/obj",
     });
     const original = hoisted.db.collectionGroup;
-    function makeQuery(name: string, filterFn?: (data: Record<string, unknown>) => boolean, skipAfterId?: string, limitCount?: number): any {
+    function makeQuery(name: string, filterFn?: (data: Record<string, unknown>) => boolean, skipAfterId?: string, limitCount?: number): MockCollectionGroupQuery {
       return {
         where(field: string, op: string, val: unknown) {
           const nextFilter = (data: Record<string, unknown>) => {
@@ -277,7 +293,7 @@ describe("burnbarAttachments", () => {
         },
       };
     }
-    hoisted.db.collectionGroup = ((name: string) => makeQuery(name)) as any;
+    hoisted.db.collectionGroup = ((name: string) => makeQuery(name)) as unknown as typeof hoisted.db.collectionGroup;
     const result = await reapExpiredBurnbarAttachments(Date.now());
     expect(result.reaped).toBe(1);
     expect(result.gatewayReaped).toBe(1);
@@ -297,7 +313,7 @@ describe("burnbarAttachments", () => {
     }
 
     const original = hoisted.db.collectionGroup;
-    function makeQuery(name: string, filterFn?: (data: Record<string, unknown>) => boolean, skipAfterId?: string, limitCount?: number): any {
+    function makeQuery(name: string, filterFn?: (data: Record<string, unknown>) => boolean, skipAfterId?: string, limitCount?: number): MockCollectionGroupQuery {
       return {
         where(field: string, op: string, val: unknown) {
           const nextFilter = (data: Record<string, unknown>) => {
@@ -344,7 +360,7 @@ describe("burnbarAttachments", () => {
         },
       };
     }
-    hoisted.db.collectionGroup = ((name: string) => makeQuery(name)) as any;
+    hoisted.db.collectionGroup = ((name: string) => makeQuery(name)) as unknown as typeof hoisted.db.collectionGroup;
 
     // Test with small batchSize=2, maxBatches=2 -> should reap 4 and indicate hasMore
     const firstRun = await reapExpiredBurnbarAttachments({

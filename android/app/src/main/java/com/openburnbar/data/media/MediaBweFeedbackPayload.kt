@@ -20,12 +20,12 @@ data class MediaBweFeedbackPayload(
     )
 
     fun encoded(): ByteArray = JSONObject()
-            .put("observedBitsPerSecond", observedBitsPerSecond)
-            .put("packetLossRate", packetLossRate)
-            .put("pathConstrained", pathConstrained)
-            .put("roundTripMillis", roundTripMillis)
-            .toString()
-            .toByteArray(Charsets.UTF_8)
+        .put("observedBitsPerSecond", observedBitsPerSecond)
+        .put("packetLossRate", packetLossRate)
+        .put("pathConstrained", pathConstrained)
+        .put("roundTripMillis", roundTripMillis)
+        .toString()
+        .toByteArray(Charsets.UTF_8)
 
     companion object {
         fun decode(data: ByteArray): MediaBweFeedbackPayload {

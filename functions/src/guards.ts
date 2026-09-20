@@ -45,41 +45,6 @@ export function parseProvider(value: unknown): Provider | undefined {
   return isProvider(value) ? value : undefined;
 }
 
-/**
- * Uploader display names whose canonical ID keeps a dash after the spaces are
- * stripped. Everything else in the `AgentProvider` catalog normalizes
- * directly: lowercase + strip spaces/underscores/dashes (Swift
- * `persistedToken`), e.g. "Pi Agent" → "piagent", "xAI" → "xai".
- */
-const DASHED_PROVIDER_ALIASES: Readonly<Record<string, Provider>> = {
-  claudecode: "claude-code",
-  cursoragent: "cursor-agent",
-  primeagent: "prime-agent",
-};
-
-/**
- * Normalizes a provider token the way Swift `ProviderID` does: trim,
- * lowercase, spaces/underscores/dashes collapsed so display names
- * ("Claude Code"), tokens ("claudecode"), and canonical IDs ("claude-code")
- * all resolve alike.
- */
-function normalizeProviderToken(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_\-]+/g, "");
-}
-
-/** Resolves one raw token (canonical ID or display name) onto the catalog. */
-function resolveProviderToken(value: unknown): Provider | undefined {
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  if (isProvider(value)) return value;
-  const normalized = normalizeProviderToken(value);
-  const aliased = DASHED_PROVIDER_ALIASES[normalized];
-  if (aliased) return aliased;
-  for (const candidate of SUPPORTED_PROVIDERS) {
-    if (normalizeProviderToken(candidate) === normalized) return candidate;
-  }
-  return undefined;
-}
-
 export function stringValue(raw: unknown): string | undefined {
   return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 }

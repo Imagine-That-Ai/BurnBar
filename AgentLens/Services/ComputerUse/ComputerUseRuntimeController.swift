@@ -98,6 +98,7 @@ final class ComputerUseRuntimeController: ObservableObject {
                   let registry = registryProvider() else {
                 return nil
             }
+            // try?-ok(sink creation probes the registry; failure yields no HUD session rather than an error)
             guard let sink = try? await MercuryControlStreamMediaSink.make(
                 registry: registry,
                 uid: uid,
