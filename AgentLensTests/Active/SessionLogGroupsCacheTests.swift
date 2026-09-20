@@ -216,4 +216,16 @@ final class SessionLogGroupsCacheTests: XCTestCase {
         let f2 = filtered(logs, sourceFilter: .provider)
         XCTAssertEqual(f1.map(\.id), f2.map(\.id))
     }
+
+    /// The session-log rail is 190–235pt. If these labels grow into phrases,
+    /// the chips compress and SwiftUI wraps each letter onto its own line.
+    func test_sourceFilterChipLabelsStaySingleTokens() {
+        let labels = SessionLogSourceFilter.allCases.map(\.rawValue)
+        XCTAssertEqual(labels, ["All", "Provider", "Assistant"])
+        XCTAssertEqual(labels.map(\.count).max(), 9)
+        for label in labels {
+            XCTAssertFalse(label.contains(" "))
+            XCTAssertFalse(label.contains("\n"))
+        }
+    }
 }
