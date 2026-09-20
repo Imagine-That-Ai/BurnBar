@@ -30,6 +30,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failed with `5 NOT_FOUND` and the background worker path was dead.
 
 ### Changed
+- **Receipts chat** — every slip now shows a summary of what the session
+  was actually about, a Chat lens with the indexed transcript, and
+  clickable links: `openburnbar://receipts/{id}` lands on that slip,
+  `openburnbar://sessions/{id}` opens the same conversation in Session
+  Logs, and the Chat / Proof lenses reveal the project folder and
+  touched files.
+  The register no longer leads with the generic "Session completed
+  successfully" line; backfill uses real conversation columns (the old
+  query selected `userPromptPreview` / `costUSD` which do not exist) and
+  hydrates empty summaries from conversation metadata without decrypting
+  transcript overflow pages.
+- **Receipt flyouts for every harness** — the close monitor no longer
+  polls only the newest 150 `token_usage` rows by `startTime` (Codex
+  mints a new session id per run, so it always won; Factory / Claude /
+  Grok reuse one file and fell out of the window). It now joins recent
+  conversations to their usage and treats a real chat as a candidate
+  even when usage is missing. Placeholder `endTime == startTime` no
+  longer counts as "already finished," so the flyout waits for quiet
+  instead of swallowing the session on the first poll.
+- **Receipt notify only on close** — quiet time still prints the slip
+  into the register, but the flyout / sound / notification wait until
+  the CLI process, terminal, or dedicated agent app is actually gone.
+  Codex stamping `endTime` from the last event no longer looks like a
+  close while the agent is still thinking. Cursor.app does not mute
+  announces; `cursor-agent` does, whether the session was stored as
+  `.cursor` or `.cursorAgent`. A later close still fires once even if
+  the slip was minted minutes earlier. Launch does not replay a slip
+  that is already in the register when the CLI is already gone.
+  Conversation ingest is last-6-hours, not newest-200-ever, so a
+  long-lived Factory session cannot be crowded out by a busy Codex day.
+  The `/bin/ps` matcher is now the house classifier Pixel Clock uses
+  (`cursor-agent` only, including the binary inside Cursor.app; Pixel
+  Clock no longer takes a second `comm=,args=` snapshot). It
+  matches the first real executable basename after wrappers, not
+  directory tokens, later argv words, or `--model` flags, so a
+  `~/.cursor` / `.../factory/...` / `aider --message grok` /
+  `git commit -m claude` cannot mute a harness. A later argv word
+  or worktree path that mentions `openburnbar` no longer hides a
+  live CLI (`prime-agent --provider openburnbar`). `ollama serve` is
+  treated as a daemon. Factory waits on `droid` / `factory-cli`;
+  Claude on `claude`; Gemini / Aider / Goose / Antigravity / Muse /
+  OpenClaude / Prime / Junie / Ollama / Forge / OMP / Copilot /
+  Cline / Augment on their own CLIs. Warp waits on Warp.app.
+  Harnesses with no observable
+  process (Windsurf, Devin) mint on quiet but announce only on a
+  real conversation end. Two Codex terminals no longer mute each
+  other when argv names different project paths. The banner title
+  is the chat summary, not just the project name. The close flyout hydrates the
+  conversation overlay so its headline, Chat tape, and Session Logs
+  link match the register; `?lens=chat` opens the Chat tape on that
+  slip. Chat tape reloads when the overlay join key arrives so it
+  does not stick on “NO TAPE.” Foreground banners do not request a second system sound —
+  the thermal-printer sample is the only close ping. Tapping the
+  receipt banner opens that slip (`openburnbar://receipts/{id}`). Banners
+  are on by default and ask for permission on the first print. A
+  preexisting slip whose CLI is still open still announces on the later
+  close, even if BurnBar relaunched mid-think. A first mint during a
+  long think also waits — the 20-minute live window no longer retires
+  a still-open CLI before pending announce is recorded. Inbox citations
+  to `openburnbar://receipts/{id}` open that slip (same door as the
+  banner tap); session and receipt hosts are case-insensitive. Empty
+  or whitespace `conversations.sessionId` keys the slip on
+  `conversations.id` so two chats cannot collide on `""`. Harness
+  stamps do not append a second "CLI" when the display name already
+  has one.
 - **Console profile glow-up** — the heatmap hover card portals out of the
   scroll container (it used to clip on every side) with viewport-aware
   placement; breakdowns render in fixed per-provider brand hues mirrored

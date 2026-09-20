@@ -218,6 +218,40 @@ final class AIInboxInspectionTests: XCTestCase {
         )
         XCTAssertEqual(
             InboxEvidenceInspector.target(
+                for: Self.conversation(id: "conv:spaced", url: "openburnbar://sessions/conv%20with%20space")
+            ),
+            .sessionLog(conversationID: "conv with space")
+        )
+        XCTAssertEqual(
+            InboxEvidenceInspector.target(
+                for: Self.conversation(id: "conv:case", url: "OpenBurnBar://Sessions/Abc")
+            ),
+            .sessionLog(conversationID: "Abc")
+        )
+        XCTAssertEqual(
+            InboxEvidenceInspector.target(
+                for: BurnBarInboxEvidence(
+                    id: "receipt:rcpt-1",
+                    kind: .conversation,
+                    label: "Receipt",
+                    url: "openburnbar://receipts/rcpt-1"
+                )
+            ),
+            .receipt(receiptID: "rcpt-1")
+        )
+        XCTAssertEqual(
+            InboxEvidenceInspector.target(
+                for: BurnBarInboxEvidence(
+                    id: "receipt:spaced",
+                    kind: .conversation,
+                    label: "Receipt",
+                    url: "OpenBurnBar://RECEIPTS/rcpt%20with%20space?lens=chat"
+                )
+            ),
+            .receipt(receiptID: "rcpt with space")
+        )
+        XCTAssertEqual(
+            InboxEvidenceInspector.target(
                 for: BurnBarInboxEvidence(id: "pr:o/r#1", kind: .pullRequest, label: "#1", url: "https://x.test/1")
             ),
             .web(url: "https://x.test/1")
@@ -261,7 +295,11 @@ final class AIInboxInspectionTests: XCTestCase {
 
     func testEveryReachableTargetNamesItsOutcomeBeforeTheClick() {
         let targets: [InboxDrillTarget] = [
-            .sessionLog(conversationID: "a"), .web(url: "https://x.test"), .reveal(path: "/tmp"), .charts
+            .sessionLog(conversationID: "a"),
+            .receipt(receiptID: "rcpt-1"),
+            .web(url: "https://x.test"),
+            .reveal(path: "/tmp"),
+            .charts
         ]
         for target in targets {
             XCTAssertNotNil(target.activationLabel, "\(target) must say what it does")
@@ -389,6 +427,22 @@ final class AIInboxInspectionTests: XCTestCase {
         let detached = InboxDrillNavigator(chartsAvailable: false)
         XCTAssertEqual(detached.resolve(.charts), .none)
         XCTAssertEqual(detached.resolve(.sessionLog(conversationID: "a")), .sessionLog(conversationID: "a"))
+        XCTAssertEqual(
+            detached.resolve(.receipt(receiptID: "rcpt-1")),
+            .receipt(receiptID: "rcpt-1"),
+            "Receipt citations keep a URL even without a dashboard router"
+        )
+
+        var openedReceipt: String?
+        var openedSession: String?
+        let navigator = InboxDrillNavigator(
+            openSessionLog: { openedSession = $0 },
+            openReceipt: { openedReceipt = $0 }
+        )
+        navigator.activate(.receipt(receiptID: "rcpt-1"))
+        navigator.activate(.sessionLog(conversationID: "conv-1"))
+        XCTAssertEqual(openedReceipt, "rcpt-1")
+        XCTAssertEqual(openedSession, "conv-1")
     }
 
     // MARK: - Layout

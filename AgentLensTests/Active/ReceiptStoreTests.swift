@@ -301,10 +301,173 @@ final class ReceiptStoreTests: XCTestCase {
         XCTAssertTrue(md.contains("$0.48"))
         XCTAssertTrue(md.contains("feature/receipts"))
         XCTAssertTrue(md.contains("Export.swift"))
+        XCTAssertTrue(md.contains("**Chat:** Export test receipt"))
+        XCTAssertTrue(md.contains("openburnbar://receipts/rcpt-export-1"))
+        XCTAssertTrue(md.contains("openburnbar://sessions/sess-999"))
 
         let json = ReceiptExportService.makeJSON(for: receipt)
         XCTAssertTrue(json.contains("\"sessionId\" : \"sess-999\""))
         XCTAssertTrue(json.contains("\"totalCostUSD\" : 0.48"))
+    }
+
+    // MARK: - Conversation backfill & hydrate
+
+    func test_receiptStore_backfillUsesRealConversationColumnsAndSessionId() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        try await insertConversation(
+            dbQueue,
+            id: "conv-receipt-1",
+            sessionId: "codex-1789853199",
+            projectName: "OpenBurnBar",
+            inferredTaskTitle: "OpenBurnBar",
+            summary: "Add transcript links and a chat summary to the receipts register."
+        )
+
+        let store = ReceiptStore(dbQueue: dbQueue)
+        let minted = try await store.backfillReceiptsFromConversations()
+        XCTAssertEqual(minted, 1)
+
+        let receipt = try await store.fetchReceiptForSession(sessionId: "codex-1789853199")
+        XCTAssertEqual(
+            receipt?.promptSummary,
+            "Add transcript links and a chat summary to the receipts register."
+        )
+        XCTAssertEqual(receipt?.projectName, "OpenBurnBar")
+    }
+
+    func test_receiptStore_hydrateReplacesGenericPromptSummaryFromConversation() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let store = ReceiptStore(dbQueue: dbQueue)
+        try await store.insert(
+            receipt: ReceiptRecord(
+                id: "rcpt_generic",
+                sessionId: "codex-1789853199",
+                projectName: "OpenBurnBar",
+                provider: .codex,
+                modelName: "gpt-5.6-sol",
+                promptSummary: "",
+                actualAccomplishments: ["Session completed successfully"]
+            )
+        )
+        try await insertConversation(
+            dbQueue,
+            id: "conv-receipt-1",
+            sessionId: "codex-1789853199",
+            projectName: "OpenBurnBar",
+            inferredTaskTitle: "OpenBurnBar",
+            summary: "Finish the receipts chat lens so Alberto can read the session."
+        )
+
+        let updated = try await store.hydrateReceiptChatSummaries()
+        XCTAssertEqual(updated, 1)
+        let receipt = try await store.fetchReceipt(id: "rcpt_generic")
+        XCTAssertEqual(
+            receipt?.promptSummary,
+            "Finish the receipts chat lens so Alberto can read the session."
+        )
+    }
+
+    func test_conversationStore_fetchForReceiptMatchesIdOrSessionId() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        try await insertConversation(
+            dbQueue,
+            id: "conv-receipt-1",
+            sessionId: "codex-1789853199",
+            projectName: "OpenBurnBar",
+            inferredTaskTitle: "OpenBurnBar",
+            summary: "Add transcript links and a chat summary to the receipts register."
+        )
+        let store = ConversationStore(dbQueue: dbQueue)
+
+        let bySession = try await store.fetchConversationForReceipt(
+            sessionId: "codex-1789853199",
+            includeTranscript: false
+        )
+        XCTAssertEqual(bySession?.id, "conv-receipt-1")
+        XCTAssertEqual(bySession?.fullText, "", "metadata fetch must not load transcript overflow")
+
+        let byID = try await store.fetchConversationForReceipt(
+            sessionId: "conv-receipt-1",
+            includeTranscript: false
+        )
+        XCTAssertEqual(byID?.sessionId, "codex-1789853199")
+
+        let overlays = try await store.fetchConversationOverlaysForReceipts(
+            sessionIDs: ["codex-1789853199"]
+        )
+        XCTAssertEqual(overlays["codex-1789853199"]?.conversationID, "conv-receipt-1")
+        XCTAssertEqual(overlays["conv-receipt-1"]?.summary, "Add transcript links and a chat summary to the receipts register.")
+    }
+
+    func test_receiptStore_hydratePrefersConversationIdMatchWhenBothJoin() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let store = ReceiptStore(dbQueue: dbQueue)
+        try await store.insert(
+            receipt: ReceiptRecord(
+                id: "rcpt_ambiguous",
+                sessionId: "conv-primary",
+                projectName: "OpenBurnBar",
+                provider: .codex,
+                modelName: "gpt-5.6-sol",
+                promptSummary: "",
+                actualAccomplishments: ["Session completed successfully"]
+            )
+        )
+        try await insertConversation(
+            dbQueue,
+            id: "conv-other",
+            sessionId: "conv-primary",
+            projectName: "OpenBurnBar",
+            inferredTaskTitle: "Wrong join",
+            summary: "This session-id join must lose to the id match."
+        )
+        try await insertConversation(
+            dbQueue,
+            id: "conv-primary",
+            sessionId: "sess-a",
+            projectName: "OpenBurnBar",
+            inferredTaskTitle: "Right join",
+            summary: "The receipts register should keep this id-matched summary."
+        )
+
+        let hydrated = try await store.hydrateReceiptChatSummaries()
+        XCTAssertEqual(hydrated, 1)
+        let receipt = try await store.fetchReceipt(id: "rcpt_ambiguous")
+        XCTAssertEqual(
+            receipt?.promptSummary,
+            "The receipts register should keep this id-matched summary."
+        )
+    }
+
+    private func insertConversation(
+        _ dbQueue: DatabaseQueue,
+        id: String,
+        sessionId: String,
+        projectName: String,
+        inferredTaskTitle: String,
+        summary: String
+    ) async throws {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO conversations (
+                    id, provider, sessionId, projectName, startTime, endTime,
+                    messageCount, userWordCount, assistantWordCount,
+                    keyFiles, keyCommands, keyTools,
+                    inferredTaskTitle, lastAssistantMessage, fullText, indexedAt,
+                    summary, summaryTitle, sourceType
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    id, "codex", sessionId, projectName,
+                    Date(), Date(),
+                    6, 40, 120, "[]", "[]", "[]",
+                    inferredTaskTitle, "", "",
+                    Date(),
+                    summary, "Receipt chat", "provider_log"
+                ]
+            )
+        }
     }
 }
 

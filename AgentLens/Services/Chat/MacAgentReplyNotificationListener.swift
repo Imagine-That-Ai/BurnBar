@@ -257,7 +257,7 @@ final class MacAgentReplyNotificationListener: NSObject {
         self.accountManager = accountManager
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        center.setNotificationCategories([Self.agentReplyCategory])
+        center.setNotificationCategories([Self.agentReplyCategory, ReceiptNotificationRouter.category])
         guard Self.hasConfiguredFirebaseApp else {
             listener?.remove()
             listener = nil
@@ -600,7 +600,11 @@ extension MacAgentReplyNotificationListener: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        let payload = MacAgentReplyNotificationPayload(userInfo: notification.request.content.userInfo)
+        let userInfo = notification.request.content.userInfo
+        if ReceiptNotificationRouter.payload(from: userInfo) != nil {
+            return ReceiptNotificationRouter.foregroundPresentationOptions
+        }
+        let payload = MacAgentReplyNotificationPayload(userInfo: userInfo)
         guard payload != nil else { return [.banner, .sound] }
         return []
     }
@@ -610,6 +614,15 @@ extension MacAgentReplyNotificationListener: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo
+        if ReceiptNotificationRouter.payload(from: userInfo) != nil {
+            await MainActor.run {
+                _ = ReceiptNotificationRouter.handleTap(userInfo: userInfo) { url in
+                    ReceiptDeepLink.open(url)
+                    return true
+                }
+            }
+            return
+        }
         if agentReplyNotificationString(userInfo["type"]) == "pane_completion",
            let paneRaw = agentReplyNotificationString(userInfo["pane_id"]),
            let tabRaw = agentReplyNotificationString(userInfo["tab_id"]),

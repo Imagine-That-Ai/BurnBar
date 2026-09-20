@@ -254,6 +254,24 @@ public final class ReceiptStore: Sendable {
         }
     }
 
+    /// Session ids that already have a printed slip. The close monitor uses
+    /// this to skip reminting without one query per candidate.
+    public func fetchReceiptSessionIDs(among sessionIDs: [String]) async throws -> Set<String> {
+        let ids = Array(Set(sessionIDs.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })).sorted()
+        guard !ids.isEmpty else { return [] }
+        return try await dbQueue.read { db in
+            let placeholders = OpenBurnBarDatabase.sqlPlaceholders(count: ids.count)
+            let rows = try String.fetchAll(
+                db,
+                sql: "SELECT sessionId FROM receipts WHERE sessionId IN (\(placeholders))",
+                arguments: StatementArguments(ids)
+            )
+            return Set(rows)
+        }
+    }
+
     // MARK: - Fetch Filtered Receipts
 
     public func fetchReceipts(filter: ReceiptFilter, limit: Int = 200, offset: Int = 0) async throws -> [ReceiptRecord] {
@@ -539,31 +557,81 @@ public final class ReceiptStore: Sendable {
     // MARK: - Backfill from Existing Sessions
 
     /// Scans conversations that don't yet have a receipt record and mints receipts for them.
+    ///
+    /// The previous query selected columns that do not exist on `conversations`
+    /// (`userPromptPreview`, `model`, `inputTokens`, `costUSD`, …) and joined
+    /// only `receipts.sessionId = conversations.id`. That threw, so backfill
+    /// never ran, and minted receipts had no chat summary to show. This path
+    /// uses columns that actually exist and matches receipts already keyed by
+    /// either conversation id or session id.
     public func backfillReceiptsFromConversations() async throws -> Int {
         try await dbQueue.write { db -> Int in
             guard try db.tableExists("conversations") else { return 0 }
 
-            // Find conversations with token usage that do not exist in receipts
+            let hasTokenUsage = try db.tableExists("token_usage")
+            let usageJoin: String
+            let usageSelect: String
+            if hasTokenUsage {
+                usageSelect = """
+                COALESCE(u.modelName, 'unknown') AS modelName,
+                COALESCE(u.inputTokens, 0) AS inputTokens,
+                COALESCE(u.outputTokens, 0) AS outputTokens,
+                COALESCE(u.cacheReadTokens, 0) AS cacheReadTokens,
+                COALESCE(u.cacheWriteTokens, 0) AS cacheWriteTokens,
+                COALESCE(u.totalCostUSD, 0.0) AS totalCostUSD
+                """
+                usageJoin = """
+                LEFT JOIN (
+                    SELECT
+                        sessionId,
+                        MAX(model) AS modelName,
+                        SUM(inputTokens) AS inputTokens,
+                        SUM(outputTokens) AS outputTokens,
+                        SUM(cacheReadTokens) AS cacheReadTokens,
+                        SUM(cacheCreationTokens) AS cacheWriteTokens,
+                        SUM(cost) AS totalCostUSD
+                    FROM token_usage
+                    GROUP BY sessionId
+                ) AS u ON u.sessionId = c.sessionId OR u.sessionId = c.id
+                """
+            } else {
+                usageSelect = """
+                'unknown' AS modelName,
+                0 AS inputTokens,
+                0 AS outputTokens,
+                0 AS cacheReadTokens,
+                0 AS cacheWriteTokens,
+                0.0 AS totalCostUSD
+                """
+                usageJoin = ""
+            }
+
             let sql = """
             SELECT
-                c.id AS sessionId,
-                COALESCE(c.projectName, 'Default') AS projectName,
+                COALESCE(NULLIF(c.sessionId, ''), c.id) AS sessionId,
+                COALESCE(NULLIF(c.projectName, ''), 'Default') AS projectName,
                 c.provider AS provider,
-                COALESCE(c.model, 'unknown') AS modelName,
-                c.startTime AS timestamp,
-                COALESCE(c.durationSeconds, 0.0) AS durationSeconds,
-                COALESCE(c.inputTokens, 0) AS inputTokens,
-                COALESCE(c.outputTokens, 0) AS outputTokens,
-                COALESCE(c.cacheReadTokens, 0) AS cacheReadTokens,
-                COALESCE(c.cacheWriteTokens, 0) AS cacheWriteTokens,
-                COALESCE(c.costUSD, 0.0) AS totalCostUSD,
-                COALESCE(c.inferredTaskTitle, c.userPromptPreview, '') AS promptSummary,
-                c.gitBranch AS gitBranch,
-                c.gitCommit AS gitCommit
+                COALESCE(c.startTime, c.indexedAt) AS timestamp,
+                CASE
+                    WHEN c.startTime IS NOT NULL AND c.endTime IS NOT NULL
+                    THEN (julianday(c.endTime) - julianday(c.startTime)) * 86400.0
+                    ELSE 0.0
+                END AS durationSeconds,
+                COALESCE(
+                    NULLIF(c.summary, ''),
+                    NULLIF(c.summaryTitle, ''),
+                    NULLIF(c.inferredTaskTitle, ''),
+                    ''
+                ) AS promptSummary,
+                c.keyFiles AS filesTouchedJSON,
+                c.keyTools AS toolsUsedJSON,
+                \(usageSelect)
             FROM conversations AS c
-            LEFT JOIN receipts AS r ON r.sessionId = c.id
+            LEFT JOIN receipts AS r
+                ON r.sessionId = c.sessionId OR r.sessionId = c.id
+            \(usageJoin)
             WHERE r.id IS NULL AND c.deletedAt IS NULL
-            ORDER BY c.startTime DESC
+            ORDER BY COALESCE(c.startTime, c.indexedAt) DESC
             LIMIT 500
             """
 
@@ -574,7 +642,7 @@ public final class ReceiptStore: Sendable {
                 let sessionId: String = row["sessionId"] ?? UUID().uuidString
                 let projectName: String = row["projectName"] ?? "Default"
                 let providerRaw: String = row["provider"] ?? AgentProvider.claudeCode.rawValue
-                let provider = AgentProvider(rawValue: providerRaw) ?? .claudeCode
+                let provider = AgentProvider.resolve(providerRaw) ?? .claudeCode
                 let modelName: String = row["modelName"] ?? "unknown"
                 let timestamp: Date = row["timestamp"] ?? Date()
                 let duration: Double = row["durationSeconds"] ?? 0.0
@@ -584,8 +652,8 @@ public final class ReceiptStore: Sendable {
                 let cacheWriteTokens: Int = row["cacheWriteTokens"] ?? 0
                 let totalCostUSD: Double = row["totalCostUSD"] ?? 0.0
                 let promptSummary: String = row["promptSummary"] ?? ""
-                let gitBranch: String? = row["gitBranch"]
-                let gitCommit: String? = row["gitCommit"]
+                let filesTouched = OpenBurnBarDatabase.decodeJSONStringArray(row["filesTouchedJSON"] as? String)
+                let toolsUsed = OpenBurnBarDatabase.decodeJSONStringArray(row["toolsUsedJSON"] as? String)
 
                 let totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens
                 let cacheHitPercentage = totalTokens > 0 ? (Double(cacheReadTokens) / Double(max(totalTokens, 1))) * 100.0 : 0.0
@@ -613,15 +681,19 @@ public final class ReceiptStore: Sendable {
                     cacheHitPercentage: cacheHitPercentage,
                     tokensPerSecond: tokensPerSec,
                     promptSummary: promptSummary,
-                    filesTouched: [],
-                    toolsUsed: [],
-                    gitBranch: gitBranch,
-                    gitCommit: gitCommit,
+                    filesTouched: filesTouched,
+                    toolsUsed: toolsUsed,
                     isStarred: false
                 )
 
-                let filesJSON = "[]"
-                let toolsJSON = "[]"
+                let filesJSON = (try? String(
+                    data: JSONEncoder().encode(filesTouched),
+                    encoding: .utf8
+                )) ?? "[]"
+                let toolsJSON = (try? String(
+                    data: JSONEncoder().encode(toolsUsed),
+                    encoding: .utf8
+                )) ?? "[]"
 
                 try db.execute(
                     sql: """
@@ -668,6 +740,84 @@ public final class ReceiptStore: Sendable {
             }
 
             return rows.count
+        }
+    }
+
+    /// Fill empty / generic `promptSummary` rows from conversation metadata.
+    /// Does not read `fullText` — that decrypts overflow pages.
+    @discardableResult
+    public func hydrateReceiptChatSummaries() async throws -> Int {
+        try await dbQueue.write { db -> Int in
+            guard try db.tableExists("conversations"), try db.tableExists("receipts") else {
+                return 0
+            }
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT
+                    r.id AS receiptId,
+                    r.sessionId AS sessionId,
+                    r.projectName AS projectName,
+                    r.promptSummary AS promptSummary,
+                    r.provider AS provider,
+                    r.modelName AS modelName,
+                    r.actualAccomplishmentsJSON AS actualAccomplishmentsJSON,
+                    c.id AS conversationID,
+                    c.sessionId AS conversationSessionId,
+                    c.inferredTaskTitle AS inferredTaskTitle,
+                    c.summary AS summary,
+                    c.summaryTitle AS summaryTitle,
+                    c.workingDirectory AS workingDirectory,
+                    c.messageCount AS messageCount,
+                    c.keyFiles AS keyFiles
+                FROM receipts AS r
+                JOIN conversations AS c
+                  ON c.deletedAt IS NULL
+                 AND (c.id = r.sessionId OR c.sessionId = r.sessionId)
+                ORDER BY CASE WHEN c.id = r.sessionId THEN 0 ELSE 1 END
+                """
+            )
+            var updated = 0
+            var seenReceiptIDs = Set<String>()
+            for row in rows {
+                let receiptId: String = row["receiptId"] ?? ""
+                guard seenReceiptIDs.insert(receiptId).inserted else { continue }
+                let sessionId: String = row["sessionId"] ?? ""
+                let projectName: String = row["projectName"] ?? ""
+                let current: String = row["promptSummary"] ?? ""
+                let providerRaw: String = row["provider"] ?? AgentProvider.claudeCode.rawValue
+                let provider = AgentProvider.resolve(providerRaw) ?? .claudeCode
+                let modelName: String = row["modelName"] ?? "unknown"
+                let accomplishments = OpenBurnBarDatabase.decodeJSONStringArray(
+                    row["actualAccomplishmentsJSON"] as? String
+                )
+                let overlay = ReceiptConversationOverlay(
+                    conversationID: row["conversationID"] ?? sessionId,
+                    sessionID: row["conversationSessionId"] ?? sessionId,
+                    inferredTaskTitle: row["inferredTaskTitle"] ?? "",
+                    summary: row["summary"],
+                    summaryTitle: row["summaryTitle"],
+                    workingDirectory: row["workingDirectory"],
+                    messageCount: row["messageCount"] ?? 0,
+                    keyFiles: OpenBurnBarDatabase.decodeJSONStringArray(row["keyFiles"] as? String)
+                )
+                let receipt = ReceiptRecord(
+                    sessionId: sessionId,
+                    projectName: projectName,
+                    provider: provider,
+                    modelName: modelName,
+                    promptSummary: current,
+                    actualAccomplishments: accomplishments
+                )
+                let next = ReceiptChatBridge.contentSummary(receipt: receipt, overlay: overlay)
+                guard !next.isEmpty, next != current else { continue }
+                try db.execute(
+                    sql: "UPDATE receipts SET promptSummary = ? WHERE id = ?",
+                    arguments: [next, receiptId]
+                )
+                updated += 1
+            }
+            return updated
         }
     }
 }

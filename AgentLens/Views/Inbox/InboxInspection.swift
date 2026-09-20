@@ -22,6 +22,7 @@ import OpenBurnBarKernel
 /// control that looks clickable.
 enum InboxDrillTarget: Hashable, Sendable {
     case sessionLog(conversationID: String)
+    case receipt(receiptID: String)
     case web(url: String)
     case reveal(path: String)
     case charts
@@ -31,6 +32,7 @@ enum InboxDrillTarget: Hashable, Sendable {
     var activationLabel: String? {
         switch self {
         case .sessionLog: return "Open session log"
+        case .receipt: return "Open receipt"
         case .web: return "Open in browser"
         case .reveal: return "Show in Finder"
         case .charts: return "Open Charts"
@@ -41,6 +43,7 @@ enum InboxDrillTarget: Hashable, Sendable {
     var symbol: String {
         switch self {
         case .sessionLog: return "text.bubble"
+        case .receipt: return "doc.text.below.ecg"
         case .web: return "arrow.up.forward.square"
         case .reveal: return "folder"
         case .charts: return "chart.bar"
@@ -585,8 +588,6 @@ enum InboxMetricInspector {
 
 enum InboxEvidenceInspector {
 
-    static let sessionURLPrefix = "openburnbar://sessions/"
-
     /// Resolves what a citation actually opens.
     ///
     /// Two categories were previously dead in the UI and are now reachable:
@@ -594,12 +595,16 @@ enum InboxEvidenceInspector {
     /// and usage citations (no url, but spend has a home on the Charts surface).
     static func target(for evidence: BurnBarInboxEvidence) -> InboxDrillTarget {
         if let raw = evidence.url?.trimmingCharacters(in: .whitespacesAndNewlines), raw.isEmpty == false {
-            if raw.hasPrefix(sessionURLPrefix) {
-                let conversationID = String(raw.dropFirst(sessionURLPrefix.count))
-                if conversationID.isEmpty == false { return .sessionLog(conversationID: conversationID) }
-            }
-            if let url = URL(string: raw), url.scheme == "https" || url.scheme == "http" {
-                return .web(url: raw)
+            if let url = URL(string: raw) {
+                if let conversationID = ReceiptChatBridge.sessionID(from: url) {
+                    return .sessionLog(conversationID: conversationID)
+                }
+                if let receiptID = ReceiptChatBridge.receiptID(from: url) {
+                    return .receipt(receiptID: receiptID)
+                }
+                if let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" {
+                    return .web(url: raw)
+                }
             }
         }
         if evidence.id.hasPrefix(InboxMetricInspector.workspacePrefix) {

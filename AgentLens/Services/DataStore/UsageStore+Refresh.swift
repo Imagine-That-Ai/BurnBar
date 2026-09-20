@@ -15,6 +15,33 @@ extension UsageStore {
         }
     }
 
+    /// Usage rows for specific session identities. `sessionId` is indexed, so
+    /// this is how the receipt close-monitor joins long-lived Factory / Claude
+    /// chats whose original `startTime` fell out of the newest-N usage window.
+    func fetchUsage(sessionIDs: [String], limit: Int = 800) async throws -> [TokenUsage] {
+        let ids = Array(Set(sessionIDs.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })).sorted()
+        guard !ids.isEmpty, limit > 0 else { return [] }
+        return try await dbQueue.read { db in
+            let placeholders = OpenBurnBarDatabase.sqlPlaceholders(count: ids.count)
+            var arguments = StatementArguments(ids)
+            arguments += [limit]
+            return try Self.compactMapCachedRows(
+                db: db,
+                sql: """
+                    SELECT \(Self.usageDecodeSelectColumns.joined(separator: ", "))
+                    FROM token_usage
+                    WHERE sessionId IN (\(placeholders))
+                    ORDER BY endTime DESC
+                    LIMIT ?
+                    """,
+                arguments: arguments,
+                transform: Self.decodeUsage
+            )
+        }
+    }
+
     func fetchUsage(in dateRange: ClosedRange<Date>, limit: Int) async throws -> [TokenUsage] {
         try await dbQueue.read { db -> [TokenUsage] in
             try Self.fetchUsageRows(db: db, dateRange: dateRange, limit: limit)

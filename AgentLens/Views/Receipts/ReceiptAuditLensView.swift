@@ -7,11 +7,13 @@ import SwiftUI
 
 struct ReceiptAuditLensView: View {
     let receipt: ReceiptRecord
+    var overlay: ReceiptConversationOverlay?
     @State private var copiedSignature = false
     @Environment(\.colorScheme) private var colorScheme
 
-    init(receipt: ReceiptRecord) {
+    init(receipt: ReceiptRecord, overlay: ReceiptConversationOverlay? = nil) {
         self.receipt = receipt
+        self.overlay = overlay
     }
 
     var body: some View {
@@ -21,6 +23,8 @@ struct ReceiptAuditLensView: View {
 
             // Session & Project Metadata
             metadataCard
+
+            chatLinksCard
 
             // Git Version Control Trace
             if receipt.gitBranch != nil || receipt.gitCommit != nil {
@@ -104,9 +108,65 @@ struct ReceiptAuditLensView: View {
         )
     }
 
+    private var chatLinksCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Links")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            if let url = ReceiptChatBridge.sessionURL(
+                conversationID: ReceiptChatBridge.conversationID(receipt: receipt, overlay: overlay)
+            ) {
+                ReceiptLinkButton(
+                    title: "Open chat in Session Logs",
+                    systemImage: "text.bubble",
+                    help: url.absoluteString
+                ) {
+                    ReceiptDeepLink.open(url)
+                }
+
+                ReceiptLinkButton(
+                    title: "Copy chat link",
+                    systemImage: "link",
+                    help: url.absoluteString
+                ) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                }
+            }
+
+            if let folder = ReceiptChatBridge.revealURL(workingDirectory: overlay?.workingDirectory) {
+                ReceiptLinkButton(
+                    title: "Reveal project folder",
+                    systemImage: "folder",
+                    help: folder.path
+                ) {
+                    NSWorkspace.shared.activateFileViewerSelecting([folder])
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.04))
+        .clipShape(.rect(cornerRadius: 10))
+    }
+
     private var metadataCard: some View {
         VStack(spacing: 8) {
-            auditRow(label: "Session ID", value: receipt.sessionId)
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(receipt.sessionId, forType: .string)
+                if let url = ReceiptChatBridge.sessionURL(
+                    conversationID: ReceiptChatBridge.conversationID(receipt: receipt, overlay: overlay)
+                ) {
+                    ReceiptDeepLink.open(url)
+                }
+            } label: {
+                auditRow(label: "Session ID", value: receipt.sessionId)
+            }
+            .buttonStyle(.plain)
+            .help("Open this chat in Session Logs")
+
             auditRow(label: "Project", value: receipt.projectName)
             auditRow(label: "Provider", value: receipt.provider.displayName)
             auditRow(label: "Model", value: receipt.modelName)
@@ -151,20 +211,35 @@ struct ReceiptAuditLensView: View {
                 Spacer()
             }
 
-            ForEach(receipt.filesTouched.prefix(5), id: \.self) { file in
-                HStack(spacing: 4) {
-                    Image(systemName: "doc")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                    Text(file)
-                        .font(.system(size: 10, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+            ForEach(receipt.filesTouched.prefix(8), id: \.self) { file in
+                Button {
+                    if let url = ReceiptChatBridge.revealURL(
+                        workingDirectory: overlay?.workingDirectory,
+                        relativePath: file
+                    ) {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    } else {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(file, forType: .string)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                        Text(file)
+                            .font(.system(size: 10, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .underline()
+                    }
                 }
+                .buttonStyle(.plain)
+                .help("Reveal \(file)")
             }
 
-            if receipt.filesTouched.count > 5 {
-                Text("+ \(receipt.filesTouched.count - 5) more files")
+            if receipt.filesTouched.count > 8 {
+                Text("+ \(receipt.filesTouched.count - 8) more files")
                     .font(.system(size: 9.5))
                     .foregroundStyle(.secondary)
             }

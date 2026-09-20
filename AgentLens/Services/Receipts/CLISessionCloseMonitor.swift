@@ -32,6 +32,7 @@ final class CLISessionCloseMonitor {
         var gitBranch: String?
         var gitCommit: String?
         var hasExplicitlyEnded: Bool
+        var messageCount: Int
 
         init(
             id: String,
@@ -53,7 +54,8 @@ final class CLISessionCloseMonitor {
             lastAssistantMessage: String? = nil,
             gitBranch: String? = nil,
             gitCommit: String? = nil,
-            hasExplicitlyEnded: Bool = false
+            hasExplicitlyEnded: Bool = false,
+            messageCount: Int = 0
         ) {
             self.id = id
             self.provider = provider
@@ -75,16 +77,42 @@ final class CLISessionCloseMonitor {
             self.gitBranch = gitBranch
             self.gitCommit = gitCommit
             self.hasExplicitlyEnded = hasExplicitlyEnded
+            self.messageCount = messageCount
         }
     }
 
+    /// Newest-N usage is ordered by `startTime`. Codex mints a fresh session
+    /// id per run, so those rows stay in the window. Factory / Claude / Grok
+    /// reuse one session file for hours; the original start falls out and
+    /// the flyout goes silent. Conversations plus a start-time horizon catch
+    /// both shapes without scanning `token_usage.endTime`.
+    private let ingestHorizonSeconds: TimeInterval = 6 * 60 * 60
+
+    /// Announce only sessions that actually just finished — not the rest of
+    /// today's register when the app launches.
+    private let liveAnnouncementWindow: TimeInterval = 20 * 60
+
     private let dataStore: DataStore
     private let settingsManager: SettingsManager
+    private let runtimeProbe: any ReceiptCLIRuntimeProbe
     private let synthesizer: ReceiptAccomplishmentSynthesizer
     private let auditor: ReceiptQualityAuditor
 
     private(set) var activeSessions: [String: ActiveCLISession] = [:]
-    private var closedSessionIDs: Set<String> = []
+    /// Slip is already in the register. Quiet time is enough to mint;
+    /// announcing waits for the CLI / terminal / app to actually close.
+    private var mintedSessionIDs: Set<String> = []
+    /// Flyout / sound / notification already fired.
+    private var announcedSessionIDs: Set<String> = []
+    /// Minted while the runtime was still open — keep probing until it dies,
+    /// even after the 20-minute live window. Do not replay historical slips.
+    private var pendingAnnounceSessionIDs: Set<String> = []
+    /// Historical or already-handled. Skip ingest so a 6-hour scan does not
+    /// keep resurrecting yesterday's register.
+    private var retiredSessionIDs: Set<String> = []
+    /// First-minted while we cannot see this harness's process. Quiet is
+    /// not a close — wait for a real conversation end, not the next tick.
+    private var awaitingExplicitEndSessionIDs: Set<String> = []
     private var checkTask: Task<Void, Never>?
     private let monitorStartedAt = Date()
 
@@ -98,15 +126,21 @@ final class CLISessionCloseMonitor {
         dataStore: DataStore,
         settingsManager: SettingsManager = .shared,
         llmClient: SummaryLLMClient = SummaryLLMClient(),
+        runtimeProbe: (any ReceiptCLIRuntimeProbe)? = nil,
         onReceiptPrinted: (@MainActor (ReceiptRecord) -> Void)? = nil
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
+        self.runtimeProbe = runtimeProbe ?? ProcessReceiptCLIRuntimeProbe()
         self.synthesizer = ReceiptAccomplishmentSynthesizer(llmClient: llmClient)
         self.auditor = ReceiptQualityAuditor(llmClient: llmClient)
         self.onReceiptPrinted = onReceiptPrinted
 
-        startPeriodicCheck()
+        // Tests drive `checkClosedSessions` directly. The 10s loop would
+        // leak one task per monitor (the harness matrix constructs many).
+        if !OpenBurnBarRuntime.isRunningTests {
+            startPeriodicCheck()
+        }
     }
 
     // MARK: - Activity Tracking
@@ -116,8 +150,8 @@ final class CLISessionCloseMonitor {
         usages: [TokenUsage] = [],
         hasExplicitEnd: Bool = false
     ) {
-        let sid = conversation.sessionId
-        guard !closedSessionIDs.contains(sid) else { return }
+        let sid = Self.canonicalSessionID(usages: usages, conversation: conversation)
+        guard !sid.isEmpty, !announcedSessionIDs.contains(sid), !retiredSessionIDs.contains(sid) else { return }
 
         let harness = Self.resolveHarnessName(for: conversation.provider)
         let now = Date()
@@ -144,7 +178,11 @@ final class CLISessionCloseMonitor {
             if !conversation.keyFiles.isEmpty { existing.filesTouched.formUnion(conversation.keyFiles) }
             if !conversation.keyTools.isEmpty { existing.toolsUsed.formUnion(conversation.keyTools) }
             if !conversation.lastAssistantMessage.isEmpty { existing.lastAssistantMessage = conversation.lastAssistantMessage }
-            if hasExplicitEnd || conversation.endTime != nil { existing.hasExplicitlyEnded = true }
+            existing.messageCount = max(existing.messageCount, conversation.messageCount)
+            if hasExplicitEnd || Self.conversationHasRealEnd(conversation) { existing.hasExplicitlyEnded = true }
+            if let activity = Self.conversationActivityDate(conversation), activity > existing.lastActiveAt {
+                existing.lastActiveAt = activity
+            }
             activeSessions[sid] = existing
         } else {
             let sessionTime = conversation.fileModifiedAt ?? conversation.startTime ?? now
@@ -168,12 +206,13 @@ final class CLISessionCloseMonitor {
                 lastAssistantMessage: conversation.lastAssistantMessage.isEmpty ? nil : conversation.lastAssistantMessage,
                 gitBranch: nil,
                 gitCommit: nil,
-                hasExplicitlyEnded: hasExplicitEnd || conversation.endTime != nil
+                hasExplicitlyEnded: hasExplicitEnd || Self.conversationHasRealEnd(conversation),
+                messageCount: conversation.messageCount
             )
         }
 
         // If explicit termination was flagged, check immediately
-        if hasExplicitEnd || conversation.endTime != nil {
+        if hasExplicitEnd || Self.conversationHasRealEnd(conversation) {
             Task { @MainActor [weak self] in
                 await self?.checkClosedSessions()
             }
@@ -200,79 +239,126 @@ final class CLISessionCloseMonitor {
         defer { checkInFlight = false }
         await ingestRecentSessionsFromDataStore(now: now)
 
-        var sessionsToClose: [ActiveCLISession] = []
-
         for (sid, session) in activeSessions {
             let elapsedSinceActive = now.timeIntervalSince(session.lastActiveAt)
-            let isCandidate = (session.costUSD > 0 || session.inputTokens > 0 || session.outputTokens > 0)
+            let isCandidate = session.costUSD > 0
+                || session.inputTokens > 0
+                || session.outputTokens > 0
+                || session.messageCount > 0
+            let shouldMint = isCandidate
+                && (session.hasExplicitlyEnded || elapsedSinceActive >= quietPeriodSeconds)
 
-            if session.hasExplicitlyEnded && isCandidate {
-                sessionsToClose.append(session)
-            } else if elapsedSinceActive >= quietPeriodSeconds && isCandidate {
-                sessionsToClose.append(session)
+            if shouldMint {
+                await mintAndMaybeAnnounce(session, closedAt: now)
             }
-        }
 
-        for session in sessionsToClose {
-            activeSessions.removeValue(forKey: session.id)
-            closedSessionIDs.insert(session.id)
-            await finalizeReceipt(for: session, closedAt: now)
+            if announcedSessionIDs.contains(sid) || retiredSessionIDs.contains(sid) {
+                activeSessions.removeValue(forKey: sid)
+                pendingAnnounceSessionIDs.remove(sid)
+                awaitingExplicitEndSessionIDs.remove(sid)
+            }
         }
     }
 
     private func ingestRecentSessionsFromDataStore(now: Date) async {
-        // Drive from `token_usage` (startTime index + LIMIT). A conversations
-        // ORDER BY still walks the transcript table even without fullText, and
-        // a 10s poll of that starves dashboard burn hydration after login.
-        _ = now
-        let recentUsages = (try? await dataStore.fetchRecentUsage(limit: 150)) ?? [] // try?-ok(background poll returns empty on error)
-        guard !recentUsages.isEmpty else { return }
-        let usagesBySession = Dictionary(grouping: recentUsages, by: \.sessionId)
+        let horizon = now.addingTimeInterval(-ingestHorizonSeconds)
+        let recentByStart = (try? await dataStore.fetchUsage(
+            startingIn: horizon..<now.addingTimeInterval(60),
+            limit: 400
+        )) ?? []
 
-        // Metadata-only conversation lookup for the discovered sessions: the
-        // scalar projection omits `fullText` / `lastAssistantMessage` (they
-        // live on encrypted overflow pages), so receipt evidence — task
-        // title, files, tools, project path, explicit end — arrives without
-        // decrypting transcript bodies.
-        let recentConversations = (try? await dataStore.fetchConversationsWithoutTranscripts(limit: 150)) ?? [] // try?-ok(background poll treats missing metadata as absent)
-        var conversationBySession: [String: ConversationRecord] = [:]
-        for conversation in recentConversations where !conversation.sessionId.isEmpty {
-            conversationBySession[conversation.sessionId] = conversation
+        let recentConversations = (try? await dataStore.fetchConversationsWithoutTranscripts(
+            limit: 400,
+            activeSince: horizon
+        )) ?? []
+
+        var conversationByKey: [String: ConversationRecord] = [:]
+        var conversationKeys: [String] = []
+        for conversation in recentConversations {
+            if let activity = Self.conversationActivityDate(conversation), activity < horizon {
+                continue
+            }
+            if !conversation.sessionId.isEmpty {
+                conversationByKey[conversation.sessionId] = conversation
+                conversationKeys.append(conversation.sessionId)
+            }
+            conversationByKey[conversation.id] = conversation
+            conversationKeys.append(conversation.id)
+        }
+
+        let usageForConversations: [TokenUsage]
+        if conversationKeys.isEmpty {
+            usageForConversations = []
+        } else {
+            usageForConversations = (try? await dataStore.fetchUsage(
+                sessionIDs: conversationKeys,
+                limit: 800
+            )) ?? []
+        }
+
+        var seenUsageIDs = Set<UUID>()
+        var usagesBySession: [String: [TokenUsage]] = [:]
+        for usage in recentByStart + usageForConversations {
+            guard seenUsageIDs.insert(usage.id).inserted else { continue }
+            guard !usage.sessionId.isEmpty else { continue }
+            usagesBySession[usage.sessionId, default: []].append(usage)
+        }
+
+        let receiptKeys = Array(usagesBySession.keys) + conversationKeys
+        let alreadyPrinted = (try? await dataStore.fetchReceiptSessionIDs(among: receiptKeys)) ?? []
+        for printed in alreadyPrinted {
+            mintedSessionIDs.insert(printed)
         }
 
         for (sessionId, usages) in usagesBySession {
-            guard !sessionId.isEmpty else { continue }
-            guard !closedSessionIDs.contains(sessionId) else { continue }
-            if activeSessions[sessionId] == nil,
-               (try? await dataStore.fetchReceiptForSession(sessionId: sessionId)) != nil { // try?-ok(receipt absence check)
-                closedSessionIDs.insert(sessionId)
-                continue
-            }
-            recordActivity(usages: usages, conversation: conversationBySession[sessionId])
+            guard !announcedSessionIDs.contains(sessionId), !retiredSessionIDs.contains(sessionId) else { continue }
+            recordActivity(
+                usages: usages,
+                conversation: conversationByKey[sessionId]
+            )
+        }
+
+        for conversation in recentConversations {
+            let key = Self.canonicalSessionID(conversation: conversation)
+            guard !key.isEmpty else { continue }
+            guard usagesBySession[key] == nil, usagesBySession[conversation.id] == nil else { continue }
+            guard !announcedSessionIDs.contains(key), !announcedSessionIDs.contains(conversation.id) else { continue }
+            guard !retiredSessionIDs.contains(key), !retiredSessionIDs.contains(conversation.id) else { continue }
+            recordActivity(usages: [], conversation: conversation)
         }
     }
 
     private func recordActivity(usages: [TokenUsage], conversation: ConversationRecord?) {
-        guard let seed = usages.max(by: { $0.endTime < $1.endTime }) else { return }
-        let sid = seed.sessionId
-        guard !closedSessionIDs.contains(sid) else { return }
+        let seed = usages.max(by: { $0.endTime < $1.endTime })
+        guard seed != nil || conversation != nil else { return }
 
-        let harness = Self.resolveHarnessName(for: seed.provider)
+        let sid = Self.canonicalSessionID(usages: usages, conversation: conversation)
+        guard !sid.isEmpty, !announcedSessionIDs.contains(sid), !retiredSessionIDs.contains(sid) else { return }
+
+        let provider = seed?.provider ?? conversation?.provider ?? .claudeCode
+        let harness = Self.resolveHarnessName(for: provider)
         let totalIn = usages.reduce(0) { $0 + $1.inputTokens }
         let totalOut = usages.reduce(0) { $0 + $1.outputTokens }
         let totalRead = usages.reduce(0) { $0 + $1.cacheReadTokens }
         let totalWrite = usages.reduce(0) { $0 + $1.cacheWriteTokens }
         let totalCost = usages.reduce(0.0) { $0 + $1.costUSD }
-        let modelFromUsage = usages.first(where: { !$0.model.isEmpty })?.model ?? "unknown"
-        let start = usages.map(\.startTime).min() ?? seed.startTime
+        let modelFromUsage = usages.first(where: { !$0.model.isEmpty })?.model
+            ?? conversation?.summaryModel
+            ?? "unknown"
+        let start = usages.map(\.startTime).min()
+            ?? conversation?.startTime
+            ?? seed?.startTime
+            ?? Date()
+        let activityFromUsage = seed?.endTime
+        let activityFromConversation = conversation.flatMap(Self.conversationActivityDate)
+        let lastActive = [activityFromUsage, activityFromConversation].compactMap { $0 }.max() ?? start
 
         if var existing = activeSessions[sid] {
-            // Advance activity only when a newer persisted row appeared. The
-            // poll re-reads the same newest-150 set every 10s; an idle poll
-            // over unchanged rows must not reset the quiet-period clock, or
-            // usage-only sessions can never finalize.
-            if seed.endTime > existing.lastActiveAt {
-                existing.lastActiveAt = seed.endTime
+            // Advance activity only when a newer persisted row or file mtime
+            // appeared. Re-reading the same usage set must not reset the
+            // quiet-period clock.
+            if lastActive > existing.lastActiveAt {
+                existing.lastActiveAt = lastActive
             }
             existing.inputTokens = max(existing.inputTokens, totalIn)
             existing.outputTokens = max(existing.outputTokens, totalOut)
@@ -285,13 +371,13 @@ final class CLISessionCloseMonitor {
         } else {
             activeSessions[sid] = ActiveCLISession(
                 id: sid,
-                provider: seed.provider,
+                provider: provider,
                 harness: harness,
                 projectName: Self.ingestedProjectName(seed: seed, conversation: conversation),
                 projectPath: conversation?.workingDirectory,
                 modelName: modelFromUsage,
                 startTime: start,
-                lastActiveAt: seed.endTime,
+                lastActiveAt: lastActive,
                 inputTokens: totalIn,
                 outputTokens: totalOut,
                 cacheReadTokens: totalRead,
@@ -300,13 +386,11 @@ final class CLISessionCloseMonitor {
                 promptSummary: Self.ingestedPromptSummary(conversation: conversation),
                 filesTouched: Set(conversation?.keyFiles ?? []),
                 toolsUsed: Set(conversation?.keyTools ?? []),
-                // `lastAssistantMessage` lives on encrypted overflow pages and
-                // is deliberately absent from the metadata-only fetch; the
-                // conversation-event path still supplies it.
                 lastAssistantMessage: nil,
                 gitBranch: nil,
                 gitCommit: nil,
-                hasExplicitlyEnded: conversation?.endTime != nil
+                hasExplicitlyEnded: conversation.map(Self.conversationHasRealEnd) ?? false,
+                messageCount: conversation?.messageCount ?? 0
             )
         }
     }
@@ -319,10 +403,9 @@ final class CLISessionCloseMonitor {
         into session: inout ActiveCLISession,
         conversation: ConversationRecord
     ) {
-        if !conversation.inferredTaskTitle.isEmpty {
-            session.promptSummary = conversation.inferredTaskTitle
-        } else if session.promptSummary.isEmpty, let summary = conversation.summary, !summary.isEmpty {
-            session.promptSummary = summary
+        let incoming = Self.ingestedPromptSummary(conversation: conversation)
+        if !incoming.isEmpty {
+            session.promptSummary = incoming
         }
         if !conversation.keyFiles.isEmpty { session.filesTouched.formUnion(conversation.keyFiles) }
         if !conversation.keyTools.isEmpty { session.toolsUsed.formUnion(conversation.keyTools) }
@@ -332,24 +415,137 @@ final class CLISessionCloseMonitor {
         if session.projectName == "Default", !conversation.projectName.isEmpty {
             session.projectName = conversation.projectName
         }
-        if conversation.endTime != nil { session.hasExplicitlyEnded = true }
+        session.messageCount = max(session.messageCount, conversation.messageCount)
+        if Self.conversationHasRealEnd(conversation) { session.hasExplicitlyEnded = true }
+        if let activity = Self.conversationActivityDate(conversation), activity > session.lastActiveAt {
+            session.lastActiveAt = activity
+        }
     }
 
-    private static func ingestedProjectName(seed: TokenUsage, conversation: ConversationRecord?) -> String {
-        if !seed.projectName.isEmpty { return seed.projectName }
+    private static func ingestedProjectName(seed: TokenUsage?, conversation: ConversationRecord?) -> String {
+        if let seed, !seed.projectName.isEmpty { return seed.projectName }
         if let conversation, !conversation.projectName.isEmpty { return conversation.projectName }
         return "Default"
     }
 
+    private static func canonicalSessionID(
+        usages: [TokenUsage] = [],
+        conversation: ConversationRecord?
+    ) -> String {
+        if let conversation {
+            let sid = conversation.sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sid.isEmpty { return sid }
+            return conversation.id
+        }
+        return usages.first?.sessionId ?? ""
+    }
+
+    /// File mtime / last turn — not `indexedAt`, which the parsers stamp
+    /// with `Date()` on every rescan and would never go quiet.
+    private static func conversationActivityDate(_ conversation: ConversationRecord) -> Date? {
+        [conversation.fileModifiedAt, conversation.endTime, conversation.startTime]
+            .compactMap { $0 }
+            .max()
+    }
+
+    /// Factory/Claude parsers often set `endTime = startTime` when the JSONL
+    /// has no close event. That is a placeholder, not an explicit end.
+    nonisolated static func conversationHasRealEnd(_ conversation: ConversationRecord) -> Bool {
+        guard let end = conversation.endTime else { return false }
+        guard let start = conversation.startTime else { return true }
+        return end.timeIntervalSince(start) > 2
+    }
+
     private static func ingestedPromptSummary(conversation: ConversationRecord?) -> String {
         guard let conversation else { return "" }
-        if !conversation.inferredTaskTitle.isEmpty { return conversation.inferredTaskTitle }
-        return conversation.summary ?? ""
+        let overlay = ReceiptConversationOverlay(
+            conversationID: conversation.id,
+            sessionID: conversation.sessionId,
+            inferredTaskTitle: conversation.inferredTaskTitle,
+            summary: conversation.summary,
+            summaryTitle: conversation.summaryTitle,
+            workingDirectory: conversation.workingDirectory,
+            messageCount: conversation.messageCount,
+            keyFiles: conversation.keyFiles
+        )
+        let stub = ReceiptRecord(
+            sessionId: conversation.sessionId,
+            projectName: conversation.projectName,
+            provider: conversation.provider,
+            modelName: conversation.summaryModel ?? ""
+        )
+        return ReceiptChatBridge.contentSummary(receipt: stub, overlay: overlay)
     }
 
     // MARK: - Receipt Finalization
 
-    private func finalizeReceipt(for session: ActiveCLISession, closedAt: Date) async {
+    private func mintAndMaybeAnnounce(_ session: ActiveCLISession, closedAt: Date) async {
+        let preexisting = mintedSessionIDs.contains(session.id)
+        let receipt: ReceiptRecord?
+        if preexisting {
+            receipt = try? await dataStore.fetchReceiptForSession(sessionId: session.id)
+        } else if let persisted = await persistReceipt(for: session, closedAt: closedAt) {
+            mintedSessionIDs.insert(session.id)
+            receipt = persisted
+        } else {
+            receipt = nil
+        }
+
+        let runtimeOpen = await runtimeProbe.isSessionRuntimeOpen(
+            provider: session.provider,
+            projectPath: session.projectPath
+        )
+        let live = isWithinLiveAnnouncementWindow(session, now: closedAt)
+        let alreadyWaiting = pendingAnnounceSessionIDs.contains(session.id)
+
+        // Open CLI / terminal / app: the slip may print, but announce
+        // waits for close. A 25-minute think (first mint or relaunch)
+        // must not be retired by the 20-minute live window.
+        if runtimeOpen {
+            pendingAnnounceSessionIDs.insert(session.id)
+            return
+        }
+
+        if alreadyWaiting {
+            guard let receipt else { return }
+            pendingAnnounceSessionIDs.remove(session.id)
+            await announce(receipt, session: session)
+            return
+        }
+
+        let canObserve = AgentCLIProcessClassifier.canObserveRuntime(for: session.provider)
+        if awaitingExplicitEndSessionIDs.contains(session.id) {
+            guard session.hasExplicitlyEnded, let receipt else { return }
+            awaitingExplicitEndSessionIDs.remove(session.id)
+            await announce(receipt, session: session)
+            return
+        }
+
+        if preexisting {
+            // Launch replay: already in the register, CLI already gone.
+            retiredSessionIDs.insert(session.id)
+            return
+        }
+
+        // First mint of a never-printed row whose CLI looks gone.
+        // If we cannot observe this harness at all, quiet time is not a
+        // close — hold for a real conversation end. Do not pending:
+        // pending + always-false open announces on the next tick.
+        if !canObserve && !session.hasExplicitlyEnded {
+            awaitingExplicitEndSessionIDs.insert(session.id)
+            return
+        }
+
+        // The live window blocks yesterday's register, not a later close.
+        guard live else {
+            retiredSessionIDs.insert(session.id)
+            return
+        }
+        guard let receipt else { return }
+        await announce(receipt, session: session)
+    }
+
+    private func persistReceipt(for session: ActiveCLISession, closedAt: Date) async -> ReceiptRecord? {
         let duration = max(1.0, closedAt.timeIntervalSince(session.startTime))
         let totalTokens = session.inputTokens + session.outputTokens + session.cacheReadTokens + session.cacheWriteTokens
         let cacheHit = totalTokens > 0 ? (Double(session.cacheReadTokens) / Double(totalTokens)) * 100.0 : 0.0
@@ -439,62 +635,146 @@ final class CLISessionCloseMonitor {
             )
         }
 
-        // 4. Persist to DataStore
+        // 4. Persist to DataStore before any flyout / notification.
         do {
             try await dataStore.insertReceipt(receipt)
+            return receipt
         } catch {
             AppLogger.dataStore.error("Failed to persist receipt: \(error)")
+            return try? await dataStore.fetchReceiptForSession(sessionId: session.id)
         }
+    }
 
-        // 5. Play thermal printer tactile audio sound and present notification if live session
-        let isLiveSession = session.lastActiveAt.timeIntervalSince(monitorStartedAt) >= -180.0
-        if isLiveSession {
-            ReceiptAudioPlayer.playReceiptPrintSound(enabled: settingsManager.receiptSoundEnabled)
+    private func announce(_ receipt: ReceiptRecord, session: ActiveCLISession) async {
+        guard !announcedSessionIDs.contains(session.id) else { return }
+        announcedSessionIDs.insert(session.id)
+        retiredSessionIDs.insert(session.id)
 
-            // 6. Notify observers (menu bar flyout popover)
-            onReceiptPrinted?(receipt)
+        ReceiptAudioPlayer.playReceiptPrintSound(enabled: settingsManager.receiptSoundEnabled)
+        onReceiptPrinted?(receipt)
 
-            // 7. System notification banner if enabled
-            if settingsManager.receiptSystemNotificationsEnabled {
-                dispatchSystemNotification(for: receipt)
-            }
+        if settingsManager.receiptSystemNotificationsEnabled {
+            dispatchSystemNotification(for: receipt)
         }
     }
 
     private func dispatchSystemNotification(for receipt: ReceiptRecord) {
-        let content = UNMutableNotificationContent()
-        content.title = "🧾 New Receipt: \(receipt.projectName)"
-        let accomplishment = receipt.actualAccomplishments.first ?? receipt.promptSummary
-        content.body = "\(receipt.formattedCost) • \(receipt.formattedDuration) • \(accomplishment)"
-        content.sound = .default
+        guard !OpenBurnBarRuntime.isRunningTests else { return }
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let status = await center.notificationSettings().authorizationStatus
+            switch status {
+            case .denied:
+                return
+            case .notDetermined:
+                let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+                guard granted else { return }
+            case .authorized, .provisional, .ephemeral:
+                break
+            @unknown default:
+                return
+            }
 
-        let request = UNNotificationRequest(
-            identifier: "openburnbar.receipt.\(receipt.id)",
-            content: content,
-            trigger: nil // immediate delivery
-        )
+            let content = UNMutableNotificationContent()
+            let copy = ReceiptNotificationRouter.bannerCopy(for: receipt)
+            content.title = copy.title
+            content.body = copy.body
+            // The thermal-printer sample is the product sound. A second
+            // system ping on the same close is noise, not confirmation.
+            content.sound = nil
+            content.categoryIdentifier = ReceiptNotificationRouter.categoryID
+            content.userInfo = ReceiptNotificationRouter.userInfo(for: receipt)
 
-        UNUserNotificationCenter.current().add(request) { _ in }
+            let request = UNNotificationRequest(
+                identifier: "openburnbar.receipt.\(receipt.id)",
+                content: content,
+                trigger: nil
+            )
+            center.add(request) { _ in }
+        }
+    }
+
+    /// Launch-replay guard: only *start* caring about a session whose last
+    /// activity is recent and after (or shortly before) the monitor started.
+    /// Once a slip is pending announce, the runtime probe is the gate —
+    /// a 25-minute Codex think must still notify when the terminal closes.
+    private func isWithinLiveAnnouncementWindow(_ session: ActiveCLISession, now: Date) -> Bool {
+        let last = session.lastActiveAt
+        guard now.timeIntervalSince(last) <= liveAnnouncementWindow else { return false }
+        return last.timeIntervalSince(monitorStartedAt) >= -180
     }
 
     // MARK: - Harness Resolution
 
-    static func resolveHarnessName(for provider: AgentProvider) -> String {
+    nonisolated static func resolveHarnessName(for provider: AgentProvider) -> String {
         switch provider {
         case .claudeCode:
             return "Claude Code"
         case .codex:
             return "Codex CLI"
+        case .factory:
+            return "Factory CLI"
         case .xAI:
             return "Grok CLI"
-        case .cursor:
+        case .cursor, .cursorAgent:
             return "Cursor"
         case .aider:
             return "Aider"
         case .openCode:
             return "OpenCode"
+        case .hermes:
+            return "Hermes"
+        case .kimi:
+            return "Kimi CLI"
+        case .minimax:
+            return "MiniMax CLI"
+        case .piAgent:
+            return "Pi"
+        case .geminiCLI:
+            return "Gemini CLI"
+        case .goose:
+            return "Goose"
+        case .antigravity:
+            return "Antigravity"
+        case .muse:
+            return "Muse"
+        case .openClaude:
+            return "OpenClaude"
+        case .primeAgent:
+            return "Prime Agent"
+        case .junie:
+            return "Junie"
+        case .ollama:
+            return "Ollama"
+        case .forgeDev:
+            return "Forge"
+        case .omp:
+            return "OMP"
+        case .openClaw:
+            return "OpenClaw"
+        case .zai:
+            return "Z.ai"
+        case .kiloCode:
+            return "Kilo Code"
+        case .rooCode:
+            return "Roo Code"
+        case .copilot:
+            return "Copilot"
+        case .cline:
+            return "Cline"
+        case .augment:
+            return "Augment"
+        case .fx:
+            return "fx"
+        case .warp:
+            return "Warp"
         default:
-            return "\(provider.displayName) CLI"
+            let name = provider.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return "CLI" }
+            if name.range(of: "CLI", options: .caseInsensitive) != nil {
+                return name
+            }
+            return "\(name) CLI"
         }
     }
 }

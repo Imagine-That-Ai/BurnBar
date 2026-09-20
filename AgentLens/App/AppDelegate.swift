@@ -448,10 +448,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         } else {
             receiptFlyoutController?.updateStatusItem(statusItem)
         }
-        receiptFlyoutController?.showFlyout(for: receipt)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var overlay: ReceiptConversationOverlay?
+            if let dataStore {
+                let keys = [receipt.sessionId, receipt.id]
+                if let map = try? await dataStore.fetchReceiptConversationOverlays(sessionIDs: keys) {
+                    overlay = ReceiptConversationOverlay.lookup(receipt.sessionId, in: map)
+                        ?? ReceiptConversationOverlay.lookup(receipt.id, in: map)
+                }
+            }
+            self.receiptFlyoutController?.showFlyout(for: receipt, overlay: overlay)
+        }
     }
 
     func openReceiptDetail(_ receipt: ReceiptRecord) {
+        if let url = ReceiptChatBridge.receiptURL(receiptID: receipt.id),
+           AppCommandRouter.shared.handle(url) {
+            return
+        }
         if let dataStore {
             WindowManager.shared.openReceiptsWindow(dataStore: dataStore, initialReceiptId: receipt.id)
         }

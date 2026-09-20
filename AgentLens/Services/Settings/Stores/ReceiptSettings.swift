@@ -11,7 +11,7 @@ final class ReceiptSettings {
         didSet { persistence.set(receiptFlyoutEnabled, forKey: "receiptFlyoutEnabled") }
     }
 
-    var receiptSystemNotificationsEnabled: Bool = false {
+    var receiptSystemNotificationsEnabled: Bool = true {
         didSet { persistence.set(receiptSystemNotificationsEnabled, forKey: "receiptSystemNotificationsEnabled") }
     }
 
@@ -30,7 +30,7 @@ final class ReceiptSettings {
     init(persistence: SettingsPersistenceCoordinator) {
         self.persistence = persistence
         self.receiptFlyoutEnabled = persistence.bool(forKey: "receiptFlyoutEnabled", defaultValue: true)
-        self.receiptSystemNotificationsEnabled = persistence.bool(forKey: "receiptSystemNotificationsEnabled", defaultValue: false)
+        self.receiptSystemNotificationsEnabled = persistence.bool(forKey: "receiptSystemNotificationsEnabled", defaultValue: true)
         self.receiptAutoQualityReviewEnabled = persistence.bool(forKey: "receiptAutoQualityReviewEnabled", defaultValue: false)
         self.receiptSoundEnabled = persistence.bool(forKey: "receiptSoundEnabled", defaultValue: true)
         self.receiptReviewModel = persistence.string(forKey: "receiptReviewModel") ?? "anthropic/claude-3.5-haiku"

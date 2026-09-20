@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OpenBurnBarKernel
 
@@ -7,6 +8,7 @@ import OpenBurnBarKernel
 /// when an external CLI session completes.
 public struct ReceiptMiniFlyoutView: View {
     public let receipt: ReceiptRecord
+    var overlay: ReceiptConversationOverlay? = nil
     public var onViewReceipt: () -> Void
     public var onDismiss: () -> Void
 
@@ -19,7 +21,22 @@ public struct ReceiptMiniFlyoutView: View {
         onViewReceipt: @escaping () -> Void,
         onDismiss: @escaping () -> Void
     ) {
+        self.init(
+            receipt: receipt,
+            overlay: nil,
+            onViewReceipt: onViewReceipt,
+            onDismiss: onDismiss
+        )
+    }
+
+    init(
+        receipt: ReceiptRecord,
+        overlay: ReceiptConversationOverlay?,
+        onViewReceipt: @escaping () -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
         self.receipt = receipt
+        self.overlay = overlay
         self.onViewReceipt = onViewReceipt
         self.onDismiss = onDismiss
     }
@@ -31,13 +48,11 @@ public struct ReceiptMiniFlyoutView: View {
     }
 
     private var headlineText: String {
-        if let first = receipt.actualAccomplishments.first, !first.isEmpty {
-            return first
-        }
-        if !receipt.promptSummary.isEmpty {
-            return receipt.promptSummary
-        }
-        return "Session completed in \(receipt.projectName)"
+        ReceiptChatBridge.listPreview(receipt: receipt, overlay: overlay)
+    }
+
+    private var conversationID: String {
+        ReceiptChatBridge.conversationID(receipt: receipt, overlay: overlay)
     }
 
     public var body: some View {
@@ -83,12 +98,52 @@ public struct ReceiptMiniFlyoutView: View {
                 .accessibilityLabel("Dismiss flyout")
             }
 
-            // Accomplishment Headline
+            // Chat summary + session link
             Text(headlineText)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                Button {
+                    if let url = ReceiptChatBridge.receiptURL(
+                        receiptID: receipt.id,
+                        lens: .transcript
+                    ) {
+                        ReceiptDeepLink.open(url)
+                    }
+                } label: {
+                    Label("Open Chat tape", systemImage: "scroll")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(ReceiptHarnessInk.color(for: receipt.provider))
+                .help(
+                    ReceiptChatBridge.receiptURL(
+                        receiptID: receipt.id,
+                        lens: .transcript
+                    )?.absoluteString ?? "Open Chat tape"
+                )
+
+                Button {
+                    if let url = ReceiptChatBridge.sessionURL(
+                        conversationID: conversationID
+                    ) {
+                        ReceiptDeepLink.open(url)
+                    }
+                } label: {
+                    Label("Session Logs", systemImage: "text.bubble")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.orange)
+                .help(
+                    ReceiptChatBridge.sessionURL(
+                        conversationID: conversationID
+                    )?.absoluteString ?? "Open Session Logs"
+                )
+            }
 
             // Metrics Bar
             HStack(spacing: 8) {
@@ -134,7 +189,7 @@ public struct ReceiptMiniFlyoutView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    ReceiptExportService.copyMarkdownToClipboard(receipt: receipt)
+                    ReceiptExportService.copyMarkdownToClipboard(receipt: receipt, overlay: overlay)
                     hasCopied = true
                     Task {
                         try? await Task.sleep(nanoseconds: 1_500_000_000)
