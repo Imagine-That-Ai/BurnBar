@@ -9,7 +9,6 @@ import OpenBurnBarCore
 // chart of cost by provider for the selected window.
 
 struct BurnView: View {
-    @Environment(\.mobileTrayInset) private var trayInset
     var initialFocus: String?
 
     // Stores are owned by the tab root and injected so they survive tab

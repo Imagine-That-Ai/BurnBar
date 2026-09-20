@@ -56,12 +56,11 @@ struct AuroraNavigationTray: View {
     // screen title without relying on icon interpretation.
     private let pillHeight: CGFloat = MobileTrayMetrics.pillHeight
     private let iconSize: CGFloat = 24
-    private let tabWidth: CGFloat = 56
-    private let pillSidePadding: CGFloat = 6
+    private let pillSidePadding: CGFloat = MobileTrayMetrics.pillSidePadding
     private let pillBottomInset: CGFloat = MobileTrayMetrics.pillBottomInset
 
-    /// Effective pill content width (sum of all tab widths + side padding).
-    private var trayContentWidth: CGFloat {
+    /// Effective pill width (sum of all tab slots + side padding).
+    private func trayWidth(tabWidth: CGFloat) -> CGFloat {
         CGFloat(destinations.count) * tabWidth + pillSidePadding * 2
     }
 
@@ -76,10 +75,19 @@ struct AuroraNavigationTray: View {
         // (`pillHeight + bottomInset`); the parent decides where it sits.
         // Avoids an inner Spacer that would expand the tray to fill the
         // screen and visually swallow the underlying content.
-        pill
-            .padding(.bottom, pillBottomInset)
-            .padding(.horizontal, 32)
-            .accessibilityElement(children: .contain)
+        GeometryReader { geometry in
+            let tabWidth = MobileTrayMetrics.tabWidth(
+                containerWidth: geometry.size.width,
+                destinationCount: destinations.count
+            )
+
+            pill(tabWidth: tabWidth)
+                .frame(width: MobileTrayMetrics.pillWidth(containerWidth: geometry.size.width))
+                .padding(.horizontal, MobileTrayMetrics.minimumEdgeMargin)
+                .padding(.bottom, pillBottomInset)
+                .accessibilityElement(children: .contain)
+        }
+        .frame(height: MobileTrayMetrics.occupiedHeight)
     }
 
     /// The floating pill. One `LiquidGlassGroup` capsule so the four tabs
@@ -104,7 +112,7 @@ struct AuroraNavigationTray: View {
         }
     }
 
-    private var tabRow: some View {
+    private func tabRow(tabWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
             ForEach(destinations) { dest in
                 AuroraTabItem(
@@ -127,7 +135,7 @@ struct AuroraNavigationTray: View {
 
     // MARK: - Scrub gesture
 
-    private var scrubGesture: some Gesture {
+    private func scrubGesture(tabWidth: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
                 if !isScrubbing {
@@ -156,7 +164,7 @@ struct AuroraNavigationTray: View {
             }
             .onEnded { value in
                 // Determine if the finger ended inside the pill bounds.
-                let insideX = value.location.x >= 0 && value.location.x <= trayContentWidth + pillSidePadding * 2
+                let insideX = value.location.x >= 0 && value.location.x <= trayWidth(tabWidth: tabWidth)
                 if insideX, let committed = previewDestination {
                     // Commit: write the binding (fires analytics via .onChange
                     // in the host) and notify the host.

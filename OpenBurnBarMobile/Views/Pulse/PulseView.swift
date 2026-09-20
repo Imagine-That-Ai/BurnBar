@@ -80,10 +80,8 @@ struct PulseView: View {
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
 
-                        PulseFeedLayout(spans: feedCards.map(\.span)) { index in
-                            feedCard(feedCards[index], index: index)
-                        }
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        pulseFeed
+                            .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     }
                     .padding(.top, MobileTheme.Spacing.sm)
                     .padding(.bottom, MobileTheme.Spacing.xxl)
@@ -200,6 +198,17 @@ struct PulseView: View {
         if shouldShowForecastBand { cards.append(.membership) }
         cards.append(contentsOf: [.quota, .atlas, .hermes, .recents])
         return cards
+    }
+
+    /// One immutable card plan per SwiftUI render. The membership band can
+    /// appear or disappear as entitlement state arrives; recomputing
+    /// `feedCards` inside the layout's deferred card closure could therefore
+    /// index a shorter array with rows produced from the previous, longer one.
+    private var pulseFeed: some View {
+        let cards = feedCards
+        return PulseFeedLayout(items: cards, span: \.span) { card, index in
+            feedCard(card, index: index)
+        }
     }
 
     @ViewBuilder

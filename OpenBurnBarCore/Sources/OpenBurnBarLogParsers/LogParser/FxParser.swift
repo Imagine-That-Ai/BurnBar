@@ -78,7 +78,9 @@ public final class FxParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            // v2 preserves every exact `models[]` row instead of caching one
+            // session-wide aggregate under the dominant model.
+            schemaVersion: 2,
             logLabel: "FxParser"
         )
     }
@@ -152,15 +154,13 @@ public final class FxParser: LogParser, Sendable {
                 sessionDir: sessionDir,
                 options: options
             ) {
-                if let usage = pair.usage {
-                    usages.append(usage)
-                    if let signature {
-                        parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
-                            signature: signature,
-                            usages: [usage]
-                        )
-                        cacheMutated = true
-                    }
+                usages.append(contentsOf: pair.usages)
+                if !pair.usages.isEmpty, let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                        signature: signature,
+                        usages: pair.usages
+                    )
+                    cacheMutated = true
                 }
                 if let conversation = pair.conversation {
                     conversations.append(conversation)
@@ -195,7 +195,7 @@ public final class FxParser: LogParser, Sendable {
         sessionId: String,
         sessionDir: URL,
         options: LogParseOptions
-    ) -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    ) -> (usages: [TokenUsage], conversation: ConversationRecord?)? {
         let manifestURL = sessionDir.appendingPathComponent("session.json")
         let sidecarURL = sessionDir.appendingPathComponent("usage-v2.json")
         let eventsURL = sessionDir.appendingPathComponent("events.jsonl")
@@ -219,7 +219,8 @@ public final class FxParser: LogParser, Sendable {
         var totalReasoning = 0
         var totalCost: Double = 0
         var costWasExplicit = false
-        var model: String?
+        var sidecarModelUsages: [FxModelUsage] = []
+        var fallbackModel: String?
         var confidence: UsageProvenanceConfidence = .lowConfidenceEstimate
 
         if let sidecar {
@@ -232,7 +233,7 @@ public final class FxParser: LogParser, Sendable {
                 totalReasoning = max(Self.intVal(sidecar["reasoning_tokens"]), 0)
                 totalCost = Self.doubleVal(sidecar["total_cost"])
                 costWasExplicit = true
-                model = Self.dominantModel(in: sidecar["models"])
+                sidecarModelUsages = Self.modelUsages(in: sidecar["models"])
                 // A sidecar whose billing projection is incomplete still carries
                 // in-flight generations; grade it as a high-confidence estimate
                 // until the session settles.
@@ -249,14 +250,16 @@ public final class FxParser: LogParser, Sendable {
             confidence = .lowConfidenceEstimate
         }
 
-        if model == nil, let manifest {
+        if let manifest {
             if let preferences = manifest["preferences"] as? [String: Any],
                let preferred = preferences["model"] as? String, !preferred.isEmpty {
-                model = Self.normalizeModelName(preferred)
+                fallbackModel = Self.normalizeModelName(preferred)
             }
         }
 
-        let hasUsage = totalInput > 0 || totalOutput > 0 || totalCacheRead > 0 || totalCacheWrite > 0
+        let hasAggregateUsage = totalInput > 0 || totalOutput > 0
+            || totalCacheRead > 0 || totalCacheWrite > 0 || totalReasoning > 0
+            || totalCost > 0
 
         // Transcript from events.jsonl (top-level `kind` frames). Turns are kept
         // in event-log order (U1, A1, U2, A2) so each answer stays attached to
@@ -335,41 +338,62 @@ public final class FxParser: LogParser, Sendable {
 
         // Cost: prefer the explicit sidecar total; fall back to catalog pricing
         // when only manifest totals exist.
-        let resolvedModel = model ?? "unknown"
-        let cost: Double
-        if costWasExplicit {
-            cost = totalCost
-        } else if hasUsage {
-            let pricing = ModelPricing.lookup(model: resolvedModel, providerID: "fx")
-            cost = (try? pricing.cost(
-                inputTokens: totalInput,
-                outputTokens: totalOutput,
-                cacheCreationTokens: totalCacheWrite,
-                cacheReadTokens: totalCacheRead
-            )) ?? 0
+        let usages: [TokenUsage]
+        if !sidecarModelUsages.isEmpty {
+            usages = sidecarModelUsages.map { modelUsage in
+                TokenUsage(
+                    provider: .fx,
+                    sessionId: sessionId,
+                    projectName: projectName,
+                    model: modelUsage.model,
+                    inputTokens: modelUsage.inputTokens,
+                    outputTokens: modelUsage.outputTokens,
+                    cacheCreationTokens: modelUsage.cacheWriteTokens,
+                    cacheReadTokens: modelUsage.cacheReadTokens,
+                    reasoningTokens: modelUsage.reasoningTokens,
+                    costUSD: modelUsage.costUSD,
+                    startTime: start,
+                    endTime: end,
+                    provenanceMethod: .providerLog,
+                    provenanceConfidence: confidence,
+                    estimatorVersion: ""
+                )
+            }
+        } else if hasAggregateUsage {
+            let resolvedModel = fallbackModel ?? "unknown"
+            let cost: Double
+            if costWasExplicit {
+                cost = totalCost
+            } else {
+                let pricing = ModelPricing.lookup(model: resolvedModel, providerID: "fx")
+                cost = (try? pricing.cost(
+                    inputTokens: totalInput,
+                    outputTokens: totalOutput,
+                    cacheCreationTokens: totalCacheWrite,
+                    cacheReadTokens: totalCacheRead
+                )) ?? 0
+            }
+            usages = [
+                TokenUsage(
+                    provider: .fx,
+                    sessionId: sessionId,
+                    projectName: projectName,
+                    model: resolvedModel,
+                    inputTokens: totalInput,
+                    outputTokens: totalOutput,
+                    cacheCreationTokens: totalCacheWrite,
+                    cacheReadTokens: totalCacheRead,
+                    reasoningTokens: totalReasoning,
+                    costUSD: cost,
+                    startTime: start,
+                    endTime: end,
+                    provenanceMethod: .providerLog,
+                    provenanceConfidence: confidence,
+                    estimatorVersion: ""
+                )
+            ]
         } else {
-            cost = 0
-        }
-
-        var usage: TokenUsage?
-        if hasUsage {
-            usage = TokenUsage(
-                provider: .fx,
-                sessionId: sessionId,
-                projectName: projectName,
-                model: resolvedModel,
-                inputTokens: totalInput,
-                outputTokens: totalOutput,
-                cacheCreationTokens: totalCacheWrite,
-                cacheReadTokens: totalCacheRead,
-                reasoningTokens: totalReasoning,
-                costUSD: cost,
-                startTime: start,
-                endTime: end,
-                provenanceMethod: .providerLog,
-                provenanceConfidence: confidence,
-                estimatorVersion: ""
-            )
+            usages = []
         }
 
         var conversation: ConversationRecord?
@@ -406,8 +430,8 @@ public final class FxParser: LogParser, Sendable {
             )
         }
 
-        if usage == nil && conversation == nil { return nil }
-        return (usage, conversation)
+        if usages.isEmpty && conversation == nil { return nil }
+        return (usages, conversation)
     }
 
     // MARK: - Helpers
@@ -423,24 +447,39 @@ public final class FxParser: LogParser, Sendable {
         return trimmed
     }
 
-    /// The model with the highest billed cost in the sidecar's `models[]`
-    /// array; ties break on input tokens. Returns `nil` for an empty array.
-    private static func dominantModel(in modelsValue: Any?) -> String? {
-        guard let models = modelsValue as? [[String: Any]], !models.isEmpty else { return nil }
-        var best: [String: Any]?
-        var bestCost = -Double.greatestFiniteMagnitude
-        var bestInput = 0
-        for entry in models {
-            let cost = Self.doubleVal(entry["total_cost"])
-            let input = Self.intVal(entry["input_tokens"])
-            if cost > bestCost || (cost == bestCost && input > bestInput) {
-                best = entry
-                bestCost = cost
-                bestInput = input
-            }
+    private struct FxModelUsage {
+        let model: String
+        let inputTokens: Int
+        let outputTokens: Int
+        let cacheReadTokens: Int
+        let cacheWriteTokens: Int
+        let reasoningTokens: Int
+        let costUSD: Double
+    }
+
+    /// Exact per-model rows from `usage-v2.json`. Invalid or empty entries are
+    /// ignored; a supported sidecar with no usable rows falls back to its
+    /// session aggregate rather than inventing a model split.
+    private static func modelUsages(in modelsValue: Any?) -> [FxModelUsage] {
+        guard let models = modelsValue as? [[String: Any]] else { return [] }
+        return models.compactMap { entry in
+            guard let raw = entry["model"] as? String else { return nil }
+            let model = normalizeModelName(raw)
+            guard !model.isEmpty else { return nil }
+            let usage = FxModelUsage(
+                model: model,
+                inputTokens: max(intVal(entry["input_tokens"]), 0),
+                outputTokens: max(intVal(entry["output_tokens"]), 0),
+                cacheReadTokens: max(intVal(entry["cache_read_tokens"]), 0),
+                cacheWriteTokens: max(intVal(entry["cache_write_tokens"]), 0),
+                reasoningTokens: max(intVal(entry["reasoning_tokens"]), 0),
+                costUSD: max(doubleVal(entry["total_cost"]), 0)
+            )
+            let hasUsage = usage.inputTokens > 0 || usage.outputTokens > 0
+                || usage.cacheReadTokens > 0 || usage.cacheWriteTokens > 0
+                || usage.reasoningTokens > 0 || usage.costUSD > 0
+            return hasUsage ? usage : nil
         }
-        guard let best, let raw = best["model"] as? String, !raw.isEmpty else { return nil }
-        return normalizeModelName(raw)
     }
 
     /// Words spoken by one side of an ordered transcript.

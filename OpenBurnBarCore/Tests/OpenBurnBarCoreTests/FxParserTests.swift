@@ -251,7 +251,7 @@ final class FxParserTests: XCTestCase {
         XCTAssertEqual(usage.model, "claude-sonnet-4-6")
     }
 
-    func testDominantModelIsHighestCostEntry() async throws {
+    func testSidecarPreservesExactPerModelRows() async throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         try writeSession(
@@ -268,8 +268,22 @@ final class FxParserTests: XCTestCase {
             )
         )
         let result = try await FxParser(logDirectoryOverride: dir.path).parse()
-        let usage = try XCTUnwrap(result.usages.first)
-        XCTAssertEqual(usage.model, "claude-opus-4-8")
+        XCTAssertEqual(result.usages.count, 2)
+        let byModel = Dictionary(uniqueKeysWithValues: result.usages.map { ($0.model, $0) })
+
+        let gpt = try XCTUnwrap(byModel["gpt-5.6-luna"])
+        XCTAssertEqual(gpt.inputTokens, 400)
+        XCTAssertEqual(gpt.outputTokens, 100)
+        XCTAssertEqual(gpt.costUSD, 0.02, accuracy: 0.0001)
+
+        let claude = try XCTUnwrap(byModel["claude-opus-4-8"])
+        XCTAssertEqual(claude.inputTokens, 1600)
+        XCTAssertEqual(claude.outputTokens, 400)
+        XCTAssertEqual(claude.costUSD, 0.08, accuracy: 0.0001)
+
+        XCTAssertEqual(result.usages.reduce(0) { $0 + $1.inputTokens }, 2000)
+        XCTAssertEqual(result.usages.reduce(0) { $0 + $1.outputTokens }, 500)
+        XCTAssertEqual(result.usages.reduce(0) { $0 + $1.costUSD }, 0.10, accuracy: 0.0001)
     }
 
     func testIncompleteBillingGradesAsHighConfidenceEstimate() async throws {
@@ -510,6 +524,33 @@ final class FxParserTests: XCTestCase {
         XCTAssertEqual(parser.lastSessionCacheHitCount, 0)
         let second = try await parser.parse(options: usageOnly)
         XCTAssertEqual(second.usages.count, 1)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+    }
+
+    func testCachePreservesMultipleModelRows() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try writeSession(
+            dir: dir,
+            manifest: manifest(),
+            sidecar: sidecar(
+                input: 30,
+                output: 15,
+                cost: 0.03,
+                models: [
+                    modelEntry(name: "openai/gpt-5.6-luna", cost: 0.01, input: 10, output: 5),
+                    modelEntry(name: "anthropic/claude-opus-4-8", cost: 0.02, input: 20, output: 10)
+                ]
+            )
+        )
+        let parser = FxParser(logDirectoryOverride: dir.path)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let firstPass = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(firstPass.usages.count, 2)
+
+        let cached = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(Set(cached.usages.map(\.model)), ["gpt-5.6-luna", "claude-opus-4-8"])
         XCTAssertEqual(parser.lastSessionScanCount, 0)
         XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
     }

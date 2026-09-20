@@ -376,6 +376,24 @@ final class AgentSecurityPolicyTests: XCTestCase {
         XCTAssertFalse(fullArgs.contains("--yolo"), "--yolo must never be passed")
         XCTAssertEqual(fullArgs.last, "Ship it")
 
+        let manualFull = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .fx,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .manual,
+            now: Date(),
+            duration: 60
+        )
+        let manualFullArgs = CLIArgumentBuilder.fxArguments(
+            prompt: "Ship it",
+            capabilityGrant: manualFull
+        )
+        XCTAssertFalse(
+            manualFullArgs.contains("--auto"),
+            "a manual full-capability grant must keep fx approval prompts enabled"
+        )
+        XCTAssertFalse(manualFullArgs.contains("--yolo"), "--yolo must never be passed")
+
         let readOnly = AgentCapabilityGrant.sessionGrant(
             runtimeID: .fx,
             threadID: "t",
@@ -421,6 +439,20 @@ final class AgentSecurityPolicyTests: XCTestCase {
         )
         XCTAssertTrue(CLIAgentFxMissionPolicy.autoReviewPermitted(full, now: now))
         XCTAssertTrue(CLIAgentFxMissionPolicy.hasFullDesktopCapabilities(full))
+
+        let manualFull = AgentCapabilityGrant.sessionGrant(
+            runtimeID: .fx,
+            threadID: "t",
+            capabilities: Set(AgentDesktopCapability.allCases),
+            trustMode: .manual,
+            now: now,
+            duration: 60
+        )
+        XCTAssertTrue(CLIAgentFxMissionPolicy.hasFullDesktopCapabilities(manualFull))
+        XCTAssertFalse(
+            CLIAgentFxMissionPolicy.autoReviewPermitted(manualFull, now: now),
+            "full capabilities do not override a manual approval policy"
+        )
 
         let readOnly = AgentCapabilityGrant.sessionGrant(
             runtimeID: .fx,

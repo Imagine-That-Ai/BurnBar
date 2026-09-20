@@ -1,6 +1,5 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
-import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 // `HermesAttachment` only. Kernel rather than the OpenBurnBarCore umbrella
 // because the umbrella is ratchet-only for OpenBurnBarMobile — and it is
