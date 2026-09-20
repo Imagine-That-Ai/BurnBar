@@ -686,11 +686,11 @@ public final class ReceiptStore: Sendable {
                     isStarred: false
                 )
 
-                let filesJSON = (try? String(
+                let filesJSON = (try? String( // try?-ok(encode failure defaults to empty array)
                     data: JSONEncoder().encode(filesTouched),
                     encoding: .utf8
                 )) ?? "[]"
-                let toolsJSON = (try? String(
+                let toolsJSON = (try? String( // try?-ok(encode failure defaults to empty array)
                     data: JSONEncoder().encode(toolsUsed),
                     encoding: .utf8
                 )) ?? "[]"

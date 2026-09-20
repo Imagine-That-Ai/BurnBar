@@ -262,12 +262,12 @@ final class CLISessionCloseMonitor {
 
     private func ingestRecentSessionsFromDataStore(now: Date) async {
         let horizon = now.addingTimeInterval(-ingestHorizonSeconds)
-        let recentByStart = (try? await dataStore.fetchUsage(
+        let recentByStart = (try? await dataStore.fetchUsage( // try?-ok(ingest skip if usage scan fails)
             startingIn: horizon..<now.addingTimeInterval(60),
             limit: 400
         )) ?? []
 
-        let recentConversations = (try? await dataStore.fetchConversationsWithoutTranscripts(
+        let recentConversations = (try? await dataStore.fetchConversationsWithoutTranscripts( // try?-ok(ingest skip if conversation scan fails)
             limit: 400,
             activeSince: horizon
         )) ?? []
@@ -290,7 +290,7 @@ final class CLISessionCloseMonitor {
         if conversationKeys.isEmpty {
             usageForConversations = []
         } else {
-            usageForConversations = (try? await dataStore.fetchUsage(
+            usageForConversations = (try? await dataStore.fetchUsage( // try?-ok(ingest skip if usage join fails)
                 sessionIDs: conversationKeys,
                 limit: 800
             )) ?? []
@@ -305,7 +305,7 @@ final class CLISessionCloseMonitor {
         }
 
         let receiptKeys = Array(usagesBySession.keys) + conversationKeys
-        let alreadyPrinted = (try? await dataStore.fetchReceiptSessionIDs(among: receiptKeys)) ?? []
+        let alreadyPrinted = (try? await dataStore.fetchReceiptSessionIDs(among: receiptKeys)) ?? [] // try?-ok(treat unknown rows as unprinted)
         for printed in alreadyPrinted {
             mintedSessionIDs.insert(printed)
         }
@@ -483,7 +483,7 @@ final class CLISessionCloseMonitor {
         let preexisting = mintedSessionIDs.contains(session.id)
         let receipt: ReceiptRecord?
         if preexisting {
-            receipt = try? await dataStore.fetchReceiptForSession(sessionId: session.id)
+            receipt = try? await dataStore.fetchReceiptForSession(sessionId: session.id) // try?-ok(preexisting slip missing is not announce)
         } else if let persisted = await persistReceipt(for: session, closedAt: closedAt) {
             mintedSessionIDs.insert(session.id)
             receipt = persisted
@@ -641,7 +641,7 @@ final class CLISessionCloseMonitor {
             return receipt
         } catch {
             AppLogger.dataStore.error("Failed to persist receipt: \(error)")
-            return try? await dataStore.fetchReceiptForSession(sessionId: session.id)
+            return try? await dataStore.fetchReceiptForSession(sessionId: session.id) // try?-ok(reuse already-printed slip after insert race)
         }
     }
 
@@ -667,7 +667,7 @@ final class CLISessionCloseMonitor {
             case .denied:
                 return
             case .notDetermined:
-                let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+                let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false // try?-ok(optional permission prompt)
                 guard granted else { return }
             case .authorized, .provisional, .ephemeral:
                 break
