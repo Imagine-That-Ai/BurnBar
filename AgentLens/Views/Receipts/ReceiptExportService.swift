@@ -10,7 +10,7 @@ enum ReceiptExportService {
 
     // MARK: - Markdown Table Export
 
-    static func makeMarkdown(for receipt: ReceiptRecord) -> String {
+    static func makeMarkdown(for receipt: ReceiptRecord, overlay: ReceiptConversationOverlay? = nil) -> String {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         let dateStr = dateFormatter.string(from: receipt.timestamp)
@@ -22,6 +22,19 @@ enum ReceiptExportService {
         **Session:** `\(receipt.sessionId)`  
         **Timestamp:** \(dateStr) (\(receipt.formattedDuration))  
         **Audit Signature:** `\(receipt.contentSignature)`  
+
+        **Chat:** \(ReceiptChatBridge.listPreview(receipt: receipt, overlay: overlay))
+        """
+        if let slip = ReceiptChatBridge.receiptURL(receiptID: receipt.id) {
+            md += "\n**Slip:** \(slip.absoluteString)"
+        }
+        if let session = ReceiptChatBridge.sessionURL(
+            conversationID: ReceiptChatBridge.conversationID(receipt: receipt, overlay: overlay)
+        ) {
+            md += "\n**Session Logs:** \(session.absoluteString)"
+        }
+        md += """
+
 
         | Item | Quantity / Metric | Cost / Value |
         | :--- | :--- | :--- |
@@ -47,9 +60,12 @@ enum ReceiptExportService {
             md += "\n"
         }
 
-        if !receipt.actualAccomplishments.isEmpty {
+        let accomplishments = receipt.actualAccomplishments.filter {
+            !ReceiptChatBridge.isGenericAccomplishment($0)
+        }
+        if !accomplishments.isEmpty {
             md += "\n#### ✅ Actually Accomplished:\n"
-            for acc in receipt.actualAccomplishments {
+            for acc in accomplishments {
                 md += "- \(acc)\n"
             }
         }
@@ -124,8 +140,8 @@ enum ReceiptExportService {
 
     // MARK: - Clipboard Copy Helpers
 
-    static func copyMarkdownToClipboard(receipt: ReceiptRecord) {
-        let md = makeMarkdown(for: receipt)
+    static func copyMarkdownToClipboard(receipt: ReceiptRecord, overlay: ReceiptConversationOverlay? = nil) {
+        let md = makeMarkdown(for: receipt, overlay: overlay)
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(md, forType: .string)

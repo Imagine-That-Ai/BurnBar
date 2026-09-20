@@ -55,8 +55,21 @@ extension DataStore {
         try await actor.usageStore.fetchUsage(startingIn: dateRange, limit: limit)
     }
 
+    func fetchUsage(endingIn dateRange: Range<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await actor.usageStore.fetchUsage(endingIn: dateRange, limit: limit)
+    }
+
     func fetchRecentUsage(limit: Int) async throws -> [TokenUsage] {
         try await actor.usageStore.fetchRecentUsage(limit: limit)
+    }
+
+    /// `limit` is per session, not a global newest-N cap.
+    func fetchUsage(sessionIDs: [String], limit: Int = 800) async throws -> [TokenUsage] {
+        try await actor.usageStore.fetchUsage(sessionIDs: sessionIDs, limit: limit)
+    }
+
+    func fetchAllUsage(sessionIDs: [String]) async throws -> [TokenUsage] {
+        try await actor.usageStore.fetchAllUsage(sessionIDs: sessionIDs)
     }
 
     func fetchChartFactRows(in dateRange: ClosedRange<Date>?) async throws -> [ChartFactRow] {

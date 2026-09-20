@@ -11,11 +11,11 @@ struct ReceiptSettingsView: View {
         Form {
             Section {
                 Toggle("Show Menu Bar Popup on CLI Close", isOn: $settingsManager.receiptFlyoutEnabled)
-                    .help("Presents a transient mini-flyout below the menu bar icon when an agent finishes")
+                    .help("Presents a transient mini-flyout below the menu bar icon when the CLI, terminal, or agent app actually closes")
                     .settingsAnchor(SettingsAnchor.receiptsOverview)
 
                 Toggle("Send macOS Notification Banner", isOn: $settingsManager.receiptSystemNotificationsEnabled)
-                    .help("Sends a native notification banner via UNUserNotificationCenter")
+                    .help("Sends a native notification banner only after the conversation / terminal / app is closed — not after a quiet pause while the agent is still running")
 
                 HStack {
                     Toggle("Play Thermal Printer Sound Effect", isOn: $settingsManager.receiptSoundEnabled)
@@ -32,7 +32,14 @@ struct ReceiptSettingsView: View {
             } header: {
                 Label("Session Completion Popups", systemImage: "bell.badge.fill")
             } footer: {
-                Text("When Claude Code, Codex, Grok, or Cursor sessions finish, OpenBurnBar alerts you with real costs and deliverables.")
+                Text(
+                    "A quiet minute is enough to print the slip. The flyout, thermal-printer " +
+                    "sound, and banner wait until the CLI process, terminal job, or dedicated " +
+                    "agent app is actually gone — Cursor.app staying open does not count, but " +
+                    "cursor-agent does, even inside the Cursor.app bundle. The banner is silent; " +
+                    "the thermal printer is the only close ping. The first banner asks for " +
+                    "notification permission."
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

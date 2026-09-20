@@ -44,7 +44,7 @@ enum DatabaseByteCompatVector {
     /// The last registered migration identifier the fixture is migrated to.
     /// Kept in one place so a future migration bump fails the test loudly and
     /// forces a conscious fixture/vector refresh.
-    static let expectedSchemaEndpoint = "v68_agent_memories_review_default_repair"
+    static let expectedSchemaEndpoint = "v69_token_usage_end_time_index"
 
     // MARK: - Pinned SQLCipher parameters (SQLCipher.swift 4.16.0 defaults)
 

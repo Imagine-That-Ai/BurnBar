@@ -81,6 +81,9 @@ public sealed partial class WindowsSqlCipherProvisioner
         // v64_token_usage_start_time_index — mirrors
         // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
         "CREATE INDEX IF NOT EXISTS token_usage_start_time_idx ON token_usage(startTime)",
+        // v69_token_usage_end_time_index — mirrors
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
+        "CREATE INDEX IF NOT EXISTS token_usage_end_time_idx ON token_usage(endTime)",
         // v63_standing_orders — mirrors OpenBurnBarDatabase+StandingOrderMigrations.swift.
         // GRDB's .boolean and .datetime map to SQLite BOOLEAN / DATETIME, which are
         // NUMERIC affinity; spelling them the same way keeps the two schemas

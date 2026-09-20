@@ -145,6 +145,16 @@ public sealed partial class WindowsSqlCipherProvisioner
         new WindowsSchemaUpgradeStep(
             "v68_agent_memories_review_default_repair",
             Array.Empty<WindowsSchemaUpgradeStatement>()),
+
+        // v69_token_usage_end_time_index — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift.
+        new WindowsSchemaUpgradeStep(
+            "v69_token_usage_end_time_index",
+            new[]
+            {
+                WindowsSchemaUpgradeStatement.Always(
+                    "CREATE INDEX IF NOT EXISTS token_usage_end_time_idx ON token_usage(endTime)"),
+            }),
     };
 
     internal const string AgentMemoryInboxTableSql =

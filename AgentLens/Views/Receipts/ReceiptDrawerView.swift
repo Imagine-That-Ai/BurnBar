@@ -7,26 +7,48 @@ import SwiftUI
 
 struct ReceiptDrawerView: View {
     @Bindable var dataStore: DataStore
+    var focusedReceiptID: String?
+    var focusedLens: ReceiptLens?
+    var focusToken: UUID
     var onClose: (() -> Void)?
+    var onFocusedReceiptConsumed: (() -> Void)?
 
     @State private var filter = ReceiptFilter()
     @State private var receipts: [ReceiptRecord] = []
     @State private var summary = ReceiptAggregateSummary()
     @State private var selectedReceiptID: String?
+    @State private var pinnedReceiptID: String?
     @State private var isLoading = false
     @State private var searchTask: Task<Void, Never>?
     @State private var quickFilterSelection: QuickFilterFacet = .all
+    @State private var conversationOverlays: [String: ReceiptConversationOverlay] = [:]
+    @State private var didHydrateChat = false
+    @State private var inspectorLensOverride: ReceiptLens?
     @Environment(\.colorScheme) private var colorScheme
 
-    init(dataStore: DataStore, initialReceiptId: String? = nil, onClose: (() -> Void)? = nil) {
+    init(
+        dataStore: DataStore,
+        initialReceiptId: String? = nil,
+        initialLens: ReceiptLens? = nil,
+        focusToken: UUID = UUID(),
+        onClose: (() -> Void)? = nil,
+        onFocusedReceiptConsumed: (() -> Void)? = nil
+    ) {
         self.dataStore = dataStore
-        self._selectedReceiptID = State(initialValue: initialReceiptId)
+        self.focusedReceiptID = initialReceiptId
+        self.focusedLens = initialLens
+        self.focusToken = focusToken
         self.onClose = onClose
+        self.onFocusedReceiptConsumed = onFocusedReceiptConsumed
+        self._selectedReceiptID = State(initialValue: initialReceiptId)
+        self._pinnedReceiptID = State(initialValue: initialReceiptId)
+        self._inspectorLensOverride = State(initialValue: initialLens)
     }
 
     private var selectedReceipt: ReceiptRecord? {
-        if let id = selectedReceiptID {
-            return receipts.first(where: { $0.id == id })
+        if let id = selectedReceiptID,
+           let match = receipts.first(where: { $0.id == id }) {
+            return match
         }
         return receipts.first
     }
@@ -69,7 +91,19 @@ struct ReceiptDrawerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(drawerBackground)
         .task {
+            if !didHydrateChat {
+                _ = try? await dataStore.hydrateReceiptChatSummaries()
+                didHydrateChat = true
+            }
+            await applyFocusedReceipt(focusedReceiptID)
             await reloadReceipts()
+        }
+        .onChange(of: focusedReceiptID) { _, newID in
+            Task { await applyFocusedReceipt(newID) }
+        }
+        .onChange(of: focusToken) { _, _ in
+            inspectorLensOverride = focusedLens
+            Task { await applyFocusedReceipt(focusedReceiptID) }
         }
     }
 
@@ -192,30 +226,39 @@ struct ReceiptDrawerView: View {
     }
 
     private var receiptsListView: some View {
-        ScrollView {
-            LazyVStack(spacing: 6) {
-                ForEach(groupedReceiptSections, id: \.title) { section in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 6) {
-                            Text(section.title.uppercased())
-                                .font(.system(size: 9.5, weight: .black, design: .monospaced))
-                                .tracking(0.8)
-                                .foregroundStyle(.secondary)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(groupedReceiptSections, id: \.title) { section in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Text(section.title.uppercased())
+                                    .font(.system(size: 9.5, weight: .black, design: .monospaced))
+                                    .tracking(0.8)
+                                    .foregroundStyle(.secondary)
 
-                            Text("(\(section.receipts.count))")
-                                .font(.system(size: 9.5, design: .monospaced))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 8)
+                                Text("(\(section.receipts.count))")
+                                    .font(.system(size: 9.5, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.top, 8)
 
-                        ForEach(section.receipts) { r in
-                            receiptRowItem(r)
+                            ForEach(section.receipts) { r in
+                                receiptRowItem(r)
+                                    .id(r.id)
+                            }
                         }
                     }
                 }
+                .padding(10)
             }
-            .padding(10)
+            .onChange(of: selectedReceiptID) { _, id in
+                guard let id else { return }
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    proxy.scrollTo(id, anchor: .center)
+                }
+            }
         }
     }
 
@@ -226,6 +269,10 @@ struct ReceiptDrawerView: View {
         let brandColor = brandColorFor(r.provider)
 
         return Button {
+            pinnedReceiptID = ReceiptRegisterFocus.pinAfterManualSelection(
+                selectedID: r.id,
+                currentPin: pinnedReceiptID
+            )
             selectedReceiptID = r.id
         } label: {
             HStack(spacing: 0) {
@@ -283,7 +330,7 @@ struct ReceiptDrawerView: View {
                     }
 
                     // Line 2: Accomplishment Punchline or Prompt Goal
-                    Text(accomplishmentPreview(for: r))
+                    Text(ReceiptChatBridge.listPreview(receipt: r, overlay: overlay(for: r)))
                         .font(.system(size: 10.5, design: .rounded))
                         .foregroundStyle(.primary.opacity(0.9))
                         .lineLimit(2)
@@ -319,6 +366,7 @@ struct ReceiptDrawerView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func chip(icon: String, text: String) -> some View {
@@ -335,33 +383,8 @@ struct ReceiptDrawerView: View {
         .clipShape(RoundedRectangle(cornerRadius: 3))
     }
 
-    private func accomplishmentPreview(for r: ReceiptRecord) -> String {
-        if let first = r.actualAccomplishments.first, !first.isEmpty {
-            return "☑ \(first)"
-        }
-        if !r.promptSummary.isEmpty {
-            return r.promptSummary
-        }
-        return "Session completed in \(r.projectName)"
-    }
-
     private func brandColorFor(_ provider: AgentProvider) -> Color {
-        switch provider {
-        case .claudeCode:
-            return Color(red: 0.85, green: 0.45, blue: 0.25) // Anthropic Terracotta
-        case .codex:
-            return Color(red: 0.15, green: 0.68, blue: 0.55) // OpenAI Emerald
-        case .cursor:
-            return Color(red: 0.25, green: 0.55, blue: 0.95) // Cursor Blue
-        case .xAI:
-            return Color(red: 0.92, green: 0.32, blue: 0.32) // Grok Blaze
-        case .muse:
-            return Color(red: 0.02, green: 0.41, blue: 0.88) // Meta blue
-        case .aider:
-            return Color(red: 0.45, green: 0.75, blue: 0.35) // Mint
-        default:
-            return Color.orange
-        }
+        ReceiptHarnessInk.color(for: provider)
     }
 
     // MARK: - Right Column Inspector
@@ -372,6 +395,10 @@ struct ReceiptDrawerView: View {
                 if let receipt = selectedReceipt {
                     ReceiptDetailCardView(
                         receipt: receipt,
+                        overlay: overlay(for: receipt),
+                        dataStore: dataStore,
+                        requestedLens: inspectorLensOverride,
+                        lensRequestToken: focusToken,
                         onToggleStar: { newStarred in
                             Task {
                                 try? await dataStore.setReceiptStarred(receiptId: receipt.id, isStarred: newStarred)
@@ -424,7 +451,7 @@ struct ReceiptDrawerView: View {
             Text("No Receipts in Register")
                 .font(.system(size: 14, weight: .bold, design: .rounded))
 
-            Text("As your coding agents finish CLI sessions, itemized receipts with real accomplishments, costs, and quality reviews will print here.")
+            Text("As your coding agents finish CLI sessions, itemized receipts with the chat summary, transcript, cost, and git proof will print here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -573,7 +600,13 @@ struct ReceiptDrawerView: View {
             }
 
             summary = stats
-            if selectedReceiptID == nil || !receipts.contains(where: { $0.id == selectedReceiptID }) {
+            conversationOverlays = (try? await dataStore.fetchReceiptConversationOverlays(
+                sessionIDs: receipts.map(\.sessionId)
+            )) ?? [:]
+            if let pinned = pinnedReceiptID {
+                await ensureReceiptVisible(pinned)
+                selectedReceiptID = pinned
+            } else if selectedReceiptID == nil || !receipts.contains(where: { $0.id == selectedReceiptID }) {
                 selectedReceiptID = receipts.first?.id
             }
         } catch {
@@ -581,9 +614,68 @@ struct ReceiptDrawerView: View {
         }
     }
 
+    private func overlay(for receipt: ReceiptRecord) -> ReceiptConversationOverlay? {
+        ReceiptConversationOverlay.lookup(receipt.sessionId, in: conversationOverlays)
+    }
+
+    private func applyFocusedReceipt(_ id: String?) async {
+        let token = focusToken
+        guard let id, !id.isEmpty else { return }
+        await ensureReceiptVisible(id)
+        guard token == focusToken else { return }
+        let focus = ReceiptRegisterFocus.focusAfterLookup(requestedID: id, receipts: receipts)
+        pinnedReceiptID = focus.pinned
+        selectedReceiptID = focus.selected
+        onFocusedReceiptConsumed?()
+    }
+
+    private func ensureReceiptVisible(_ id: String) async {
+        if receipts.contains(where: { $0.id == id }) { return }
+        guard let extra = try? await dataStore.fetchReceipt(id: id) else { return }
+        receipts = ReceiptRegisterFocus.inserting(extra, into: receipts)
+        if conversationOverlays[extra.sessionId] == nil,
+           let extraOverlays = try? await dataStore.fetchReceiptConversationOverlays(
+            sessionIDs: [extra.sessionId]
+           ) {
+            conversationOverlays.merge(extraOverlays) { _, new in new }
+        }
+    }
+
     private func resetAllFilters() {
         filter.reset()
         quickFilterSelection = .all
         scheduleSearch()
+    }
+}
+
+/// Pure merge so a notification-tapped slip stays selected even when the
+/// current filter or 250-row window would have dropped it.
+enum ReceiptRegisterFocus: Sendable {
+    static func inserting(_ receipt: ReceiptRecord, into receipts: [ReceiptRecord]) -> [ReceiptRecord] {
+        if receipts.contains(where: { $0.id == receipt.id }) { return receipts }
+        return [receipt] + receipts
+    }
+
+    /// A deleted / unknown deep-link must not keep a stale pin that makes
+    /// the register look like it opened a different slip.
+    static func focusAfterLookup(
+        requestedID: String,
+        receipts: [ReceiptRecord]
+    ) -> (pinned: String?, selected: String?) {
+        if receipts.contains(where: { $0.id == requestedID }) {
+            return (requestedID, requestedID)
+        }
+        return (nil, receipts.first?.id)
+    }
+
+    /// A later row tap releases the deep-link pin so a search or facet
+    /// reload cannot snap the register back to the banner slip.
+    static func pinAfterManualSelection(
+        selectedID: String?,
+        currentPin: String?
+    ) -> String? {
+        guard let currentPin else { return nil }
+        guard let selectedID, selectedID != currentPin else { return currentPin }
+        return nil
     }
 }

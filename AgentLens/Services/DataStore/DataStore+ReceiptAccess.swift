@@ -15,6 +15,10 @@ extension DataStore {
         try await actor.receiptStore.fetchReceiptForSession(sessionId: sessionId)
     }
 
+    public func fetchReceiptSessionIDs(among sessionIDs: [String]) async throws -> Set<String> {
+        try await actor.receiptStore.fetchReceiptSessionIDs(among: sessionIDs)
+    }
+
     public func insertReceipt(_ receipt: ReceiptRecord) async throws {
         try await actor.receiptStore.insert(receipt: receipt)
     }
@@ -34,5 +38,10 @@ extension DataStore {
     @discardableResult
     public func backfillReceiptsFromConversations() async throws -> Int {
         try await actor.receiptStore.backfillReceiptsFromConversations()
+    }
+
+    @discardableResult
+    public func hydrateReceiptChatSummaries() async throws -> Int {
+        try await actor.receiptStore.hydrateReceiptChatSummaries()
     }
 }

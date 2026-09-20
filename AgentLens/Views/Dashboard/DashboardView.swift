@@ -66,6 +66,8 @@ struct DashboardView: View {
     @State private var showCLIConsentSheet = false
     @State private var showSessionLogCloudConsent = false
     @State var sessionLogJumpTarget: ConversationJumpTarget?
+    @State private var sessionLogJumpRequestID = UUID()
+    @State private var sessionLogJumpTask: Task<Void, Never>?
     @State var dashboardCanvasSize: CGSize = .zero
     @State private var overviewViewportHeight: CGFloat = 0
     @State var burnRailDelta: Double?
@@ -129,6 +131,14 @@ struct DashboardView: View {
     /// Item id from a tapped notification deep link, consumed once by the Inbox
     /// surface so it opens on that item instead of the newest one.
     @State var pendingInboxItemID: String?
+    /// Receipt id from a tapped banner / `openburnbar://receipts/{id}`, consumed
+    /// once by the register so it opens on that slip.
+    @State var pendingReceiptID: String?
+    /// Optional lens from `openburnbar://receipts/{id}?lens=chat`.
+    @State var pendingReceiptLens: ReceiptLens?
+    /// Bumped on every receipts deep link so a tap while already on the
+    /// register still re-focuses the named slip (`navigate` no-ops).
+    @State var pendingReceiptFocusToken = UUID()
     @State var showCommandPalette = false
     @State var showHeroPopover = false
     @State private var dashboardSplitVisibility: NavigationSplitViewVisibility = .all
@@ -353,10 +363,19 @@ struct DashboardView: View {
         case .recap: route = .recap
         case .database: route = .database
         case .projects: route = .projects
-        case .sessionLogs: route = .sessionLogs
+        case .sessionLogs(let conversationID):
+            route = .sessionLogs
+            if let conversationID, conversationID.isEmpty == false {
+                requestSessionLogJump(conversationID: conversationID)
+            }
         case .chat: route = .chat
         case .quota: route = .quota
-        case .receipts: route = .receipts
+        case .receipts(let receiptID):
+            route = .receipts
+            pendingReceiptID = receiptID
+            pendingReceiptLens = navigationCoordinator.pendingReceiptLens
+            navigationCoordinator.pendingReceiptLens = nil
+            pendingReceiptFocusToken = UUID()
         case .inbox(let itemID):
             route = .inbox
             // Carried through so a tapped notification opens the exact item.
@@ -906,13 +925,8 @@ struct DashboardView: View {
                         chatController: chatController,
                         selectedTimeRange: $selectedTimeRange,
                         onOpenSessionLog: { conversationID in
-                            // Same landing the inbox uses: resolve a jump target
-                            // so the click opens the session, then navigate.
-                            Task { @MainActor in
-                                let resolver = InboxConversationJumpResolver(dataStore: dataStore)
-                                sessionLogJumpTarget = await resolver.jumpTarget(conversationID: conversationID)
-                                navigate(to: .sessionLogs)
-                            }
+                            requestSessionLogJump(conversationID: conversationID)
+                            navigate(to: .sessionLogs)
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1013,7 +1027,16 @@ struct DashboardView: View {
                     )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .receipts:
-                    ReceiptDrawerView(dataStore: dataStore)
+                    ReceiptDrawerView(
+                        dataStore: dataStore,
+                        initialReceiptId: pendingReceiptID,
+                        initialLens: pendingReceiptLens,
+                        focusToken: pendingReceiptFocusToken,
+                        onFocusedReceiptConsumed: {
+                            pendingReceiptID = nil
+                            pendingReceiptLens = nil
+                        }
+                    )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .provider(let provider):
                     ProviderDashboardView(
@@ -1190,10 +1213,35 @@ struct DashboardView: View {
     /// no longer indexed we still navigate — going nowhere reads as a broken
     /// link.
     func openInboxSessionLog(conversationID: String) {
-        Task { @MainActor in
-            let resolver = InboxConversationJumpResolver(dataStore: dataStore)
-            sessionLogJumpTarget = await resolver.jumpTarget(conversationID: conversationID)
-            navigate(to: .sessionLogs)
+        requestSessionLogJump(conversationID: conversationID)
+        navigate(to: .sessionLogs)
+    }
+
+    /// Cancels an in-flight lookup so a later `openburnbar://sessions/…`
+    /// link cannot be overwritten by the earlier one finishing last.
+    func requestSessionLogJump(conversationID: String) {
+        sessionLogJumpTask?.cancel()
+        let requestID = UUID()
+        sessionLogJumpRequestID = requestID
+        sessionLogJumpTarget = nil
+        sessionLogJumpTask = Task { @MainActor in
+            await resolveSessionLogJump(conversationID: conversationID, requestID: requestID)
+        }
+    }
+
+    /// Resolves a Session Logs jump from either a conversation row id or a
+    /// receipt `sessionId`. Receipts have been minted against both.
+    func resolveSessionLogJump(conversationID: String, requestID: UUID) async {
+        let resolver = InboxConversationJumpResolver(dataStore: dataStore)
+        if let target = await resolver.jumpTarget(conversationID: conversationID) {
+            guard !Task.isCancelled, requestID == sessionLogJumpRequestID else { return }
+            sessionLogJumpTarget = target
+            return
+        }
+        if let record = try? await dataStore.fetchConversationForReceipt(sessionId: conversationID),
+           let target = await resolver.jumpTarget(conversationID: record.id) {
+            guard !Task.isCancelled, requestID == sessionLogJumpRequestID else { return }
+            sessionLogJumpTarget = target
         }
     }
 

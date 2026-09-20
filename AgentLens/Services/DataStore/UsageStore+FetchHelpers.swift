@@ -222,6 +222,37 @@ extension UsageStore {
 
     static let startTimeRangeWhereSQL = "WHERE startTime >= ? AND startTime < ?"
 
+    /// Fetches rows whose session end falls inside a half-open time window.
+    /// Usage-only providers (Aider) have no conversation row to rescue a
+    /// long session whose `startTime` aged out of the start horizon.
+    static func fetchUsageRows(
+        db: Database,
+        endingIn dateRange: Range<Date>,
+        limit: Int
+    ) throws -> [TokenUsage] {
+        guard limit > 0, dateRange.lowerBound < dateRange.upperBound else {
+            return []
+        }
+        return try compactMapCachedRows(
+            db: db,
+            sql: """
+                SELECT \(usageDecodeSelectColumns.joined(separator: ", "))
+                FROM token_usage
+                \(endTimeRangeWhereSQL)
+                ORDER BY endTime DESC
+                LIMIT ?
+                """,
+            arguments: [
+                OpenBurnBarDatabase.sqliteDateString(dateRange.lowerBound),
+                OpenBurnBarDatabase.sqliteDateString(dateRange.upperBound),
+                limit
+            ],
+            transform: Self.decodeUsage
+        )
+    }
+
+    static let endTimeRangeWhereSQL = "WHERE endTime >= ? AND endTime < ?"
+
     /// Index-backed GROUP BY for sessions that *started* in a window.
     ///
     /// Dashboard overlap (`dateRangePredicate`) cannot use `startTime` alone

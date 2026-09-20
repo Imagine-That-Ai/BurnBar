@@ -29,6 +29,10 @@ public final class ReceiptFlyoutController: NSObject {
     }
 
     public func showFlyout(for receipt: ReceiptRecord) {
+        showFlyout(for: receipt, overlay: nil)
+    }
+
+    func showFlyout(for receipt: ReceiptRecord, overlay: ReceiptConversationOverlay?) {
         dismissTask?.cancel()
         dismissTask = nil
 
@@ -36,6 +40,7 @@ public final class ReceiptFlyoutController: NSObject {
 
         let flyoutView = ReceiptMiniFlyoutView(
             receipt: receipt,
+            overlay: overlay,
             onViewReceipt: { [weak self] in
                 self?.dismiss()
                 self?.onOpenReceiptDetail(receipt)
@@ -46,7 +51,7 @@ public final class ReceiptFlyoutController: NSObject {
         )
 
         let hostingController = NSHostingController(rootView: flyoutView)
-        hostingController.view.setFrameSize(NSSize(width: 330, height: 160))
+        hostingController.view.setFrameSize(NSSize(width: 330, height: 268))
         panel.contentViewController = hostingController
 
         positionPanel(panel)
@@ -86,7 +91,7 @@ public final class ReceiptFlyoutController: NSObject {
         }
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 330, height: 160),
+            contentRect: NSRect(x: 0, y: 0, width: 330, height: 268),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -113,7 +118,7 @@ public final class ReceiptFlyoutController: NSObject {
         let buttonFrameOnScreen = button.window?.convertToScreen(buttonFrameInWindow) ?? buttonFrameInWindow
 
         let panelWidth: CGFloat = 330
-        let panelHeight: CGFloat = 160
+        let panelHeight: CGFloat = 268
 
         // Center horizontally below status item button
         var x = buttonFrameOnScreen.midX - (panelWidth / 2.0)

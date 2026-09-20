@@ -215,25 +215,55 @@ extension ConversationStore {
             }
         }
 
+        /// Newest of file mtime / end / start. `COALESCE` would keep a stale
+        /// `fileModifiedAt` and drop a later `endTime`. Aggregate `MAX`
+        /// ignores NULLs; scalar `max()` does not.
+        static let conversationLatestActivitySQL = """
+        (SELECT MAX(v) FROM (
+            SELECT conversations.fileModifiedAt AS v
+            UNION ALL SELECT conversations.endTime
+            UNION ALL SELECT conversations.startTime
+        ))
+        """
+
         /// Recent sessions without transcript bodies.
         ///
         /// `fullText` and `lastAssistantMessage` live on encrypted overflow
         /// pages. A 10s close-monitor poll that `SELECT *` those columns
         /// decrypts the corpus and starves dashboard usage hydration.
-        func fetchConversationsWithoutTranscripts(limit: Int) async throws -> [OpenBurnBarCore.ConversationRecord] {
+        func fetchConversationsWithoutTranscripts(
+            limit: Int,
+            activeSince: Date? = nil
+        ) async throws -> [OpenBurnBarCore.ConversationRecord] {
             guard limit > 0 else { return [] }
             return try await dbQueue.read { db in
-                let rows = try Row.fetchAll(
-                    db,
-                    sql: """
-                    SELECT \(Self.conversationMetadataSelectSQL)
-                    FROM conversations
-                    WHERE deletedAt IS NULL
-                    ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
-                    LIMIT ?
-                    """,
-                    arguments: [limit]
-                )
+                let rows: [Row]
+                if let activeSince {
+                    rows = try Row.fetchAll(
+                        db,
+                        sql: """
+                        SELECT \(Self.conversationMetadataSelectSQL)
+                        FROM conversations
+                        WHERE deletedAt IS NULL
+                          AND \(Self.conversationLatestActivitySQL) >= ?
+                        ORDER BY \(Self.conversationLatestActivitySQL) DESC
+                        LIMIT ?
+                        """,
+                        arguments: [activeSince, limit]
+                    )
+                } else {
+                    rows = try Row.fetchAll(
+                        db,
+                        sql: """
+                        SELECT \(Self.conversationMetadataSelectSQL)
+                        FROM conversations
+                        WHERE deletedAt IS NULL
+                        ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
+                        LIMIT ?
+                        """,
+                        arguments: [limit]
+                    )
+                }
                 return rows.compactMap { Self.conversation(from: $0) }
             }
         }
@@ -792,6 +822,98 @@ extension ConversationStore {
                     limits: limits
                 )
             }
+        }
+
+        /// Receipts have been minted against either `conversations.id` or
+        /// `conversations.sessionId`. Resolve both, preferring an exact id hit.
+        ///
+        /// Pass `includeTranscript: false` for list/summary work — `fullText`
+        /// and `lastAssistantMessage` live on encrypted overflow pages.
+        func fetchConversationForReceipt(
+            sessionId: String,
+            includeTranscript: Bool
+        ) async throws -> OpenBurnBarCore.ConversationRecord? {
+            let trimmed = sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            let columns = includeTranscript ? "*" : Self.conversationMetadataSelectSQL
+            return try await dbQueue.read { db in
+                guard let row = try Row.fetchOne(
+                    db,
+                    sql: """
+                    SELECT \(columns)
+                    FROM conversations
+                    WHERE deletedAt IS NULL
+                      AND (id = ? OR sessionId = ?)
+                    ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END
+                    LIMIT 1
+                    """,
+                    arguments: [trimmed, trimmed, trimmed]
+                ) else { return nil }
+                return Self.conversation(from: row)
+            }
+        }
+
+        func fetchConversationOverlaysForReceipts(
+            sessionIDs: [String]
+        ) async throws -> [String: ReceiptConversationOverlay] {
+            let ids = Array(Set(sessionIDs.map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            }.filter { !$0.isEmpty })).sorted()
+            guard !ids.isEmpty else { return [:] }
+            return try await dbQueue.read { db in
+                let placeholders = OpenBurnBarDatabase.sqlPlaceholders(count: ids.count)
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT
+                        id,
+                        sessionId,
+                        inferredTaskTitle,
+                        summary,
+                        summaryTitle,
+                        workingDirectory,
+                        messageCount,
+                        keyFiles
+                    FROM conversations
+                    WHERE deletedAt IS NULL
+                      AND (id IN (\(placeholders)) OR sessionId IN (\(placeholders)))
+                    """,
+                    arguments: StatementArguments(ids + ids)
+                )
+                var overlays: [ReceiptConversationOverlay] = []
+                overlays.reserveCapacity(rows.count)
+                for row in rows {
+                    if let overlay = Self.receiptOverlay(from: row) {
+                        overlays.append(overlay)
+                    }
+                }
+                var map: [String: ReceiptConversationOverlay] = [:]
+                for overlay in overlays {
+                    map[overlay.conversationID] = overlay
+                }
+                // Session-id aliases must not overwrite an exact conversation-id
+                // match when one row's `sessionId` equals another row's `id`.
+                for overlay in overlays where !overlay.sessionID.isEmpty {
+                    if map[overlay.sessionID] == nil {
+                        map[overlay.sessionID] = overlay
+                    }
+                }
+                return map
+            }
+        }
+
+        static func receiptOverlay(from row: Row) -> ReceiptConversationOverlay? {
+            guard let id = row["id"] as? String else { return nil }
+            return ReceiptConversationOverlay(
+                conversationID: id,
+                sessionID: (row["sessionId"] as? String) ?? "",
+                inferredTaskTitle: (row["inferredTaskTitle"] as? String) ?? "",
+                summary: row["summary"] as? String,
+                summaryTitle: row["summaryTitle"] as? String,
+                workingDirectory: row["workingDirectory"] as? String,
+                messageCount: row["messageCount"] ?? 0,
+                keyFiles: OpenBurnBarDatabase.decodeJSONStringArray(row["keyFiles"] as? String)
+            )
         }
 
         func updateConversationFullText(id: String, fullText: String) async throws {

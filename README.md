@@ -48,6 +48,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - [OpenBurnBar Mission](docs/MISSION.md)
 - [OpenBurnBar Direction](docs/DIRECTION.md)
 - [BurnBar Resume](docs/BURNBAR_RESUME.md)
+- [Receipts register](docs/RECEIPTS.md)
 - [OpenBurnBar Roadmap](docs/ROADMAP.md)
 - [OpenBurnBar + Cursor Agent Onboarding](docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md)
 - [OpenBurnBar Cursor Marketplace Plugin](docs/OPENBURNBAR_CURSOR_PLUGIN.md)

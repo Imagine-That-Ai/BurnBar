@@ -178,5 +178,15 @@ extension OpenBurnBarDatabase {
                 )
             }
         }
+        // Receipt close-monitor polls `WHERE endTime … ORDER BY endTime`
+        // every 10s. Without this index a large ledger full-scans.
+        migrator.registerMigration("v69_token_usage_end_time_index") { db in
+            try db.create(
+                index: "token_usage_end_time_idx",
+                on: "token_usage",
+                columns: ["endTime"],
+                ifNotExists: true
+            )
+        }
     }
 }

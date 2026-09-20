@@ -20,6 +20,7 @@ import OpenBurnBarKernel
 /// resolved here so the views stay previewable and testable.
 struct InboxDrillNavigator {
     var openSessionLog: (String) -> Void = { _ in }
+    var openReceipt: (String) -> Void = { _ in }
     var openWeb: (String) -> Void = { _ in }
     var reveal: (String) -> Void = { _ in }
     var openCharts: () -> Void = {}
@@ -38,6 +39,7 @@ struct InboxDrillNavigator {
     func activate(_ target: InboxDrillTarget) {
         switch target {
         case .sessionLog(let id): openSessionLog(id)
+        case .receipt(let id): openReceipt(id)
         case .web(let url): openWeb(url)
         case .reveal(let path): reveal(path)
         case .charts: openCharts()

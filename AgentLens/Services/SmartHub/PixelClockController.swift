@@ -89,61 +89,31 @@ private enum PixelClockExternalAgentActivityScanner {
     /// running so the pixel clock can flash their lane indicators.
     ///
     /// IMPORTANT: must NEVER be called from the main thread synchronously.
-    /// `processLines()` spawns `/bin/ps` and `waitUntilExit()`s, which
-    /// blocks for tens of milliseconds. When that block lands on the
-    /// MainActor (e.g. via a `PixelClockController` heartbeat tick), it
-    /// halts *every* other `@MainActor` Task — including the SmartHub
-    /// bridge listener's `.ready` callback and incoming HTTP connection
-    /// handlers — and the Nest Hub silently fails to render.
+    /// `AgentCLIProcessClassifier.liveProcessLines()` spawns `/bin/ps`
+    /// and `waitUntilExit()`s, which blocks for tens of milliseconds.
+    /// When that block lands on the MainActor (e.g. via a
+    /// `PixelClockController` heartbeat tick), it halts *every* other
+    /// `@MainActor` Task — including the SmartHub bridge listener's
+    /// `.ready` callback and incoming HTTP connection handlers — and
+    /// the Nest Hub silently fails to render.
     static func runningStatuses() async -> [String: PixelClockAgentStatus] {
         await cache.runningStatuses()
     }
 
-    fileprivate static func scanRunningStatuses() async -> [String: PixelClockAgentStatus] {
-        // `processLines()` (blocking `/bin/ps`) runs off the main actor here:
+    fileprivate static func scanRunningStatuses() async -> [String: PixelClockAgentStatus]? {
+        // House `/bin/ps` (blocking) runs off the main actor here:
         // `scanRunningStatuses` is `nonisolated` `async`, so awaiting it leaves
         // the caller's actor onto the generic executor (SE-0338). See the
         // off-main warning on `runningStatuses()` above.
-        let lines = processLines()
-        return PixelClockAgentProcessDetector.statuses(fromProcessLines: lines)
-    }
-
-    private static func processLines() -> [String] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-axo", "comm=,args="]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            let deadline = Date().addingTimeInterval(1.0)
-            while process.isRunning, Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.02)
-            }
-            if process.isRunning {
-                process.terminate()
-                process.waitUntilExit()
-                return []
-            }
-            process.waitUntilExit()
-        } catch {
-            AppLogger.network.error("pixel_clock_mdns_browse_failed", metadata: ["error": error.localizedDescription])
-            return []
-        }
-        guard process.terminationStatus == 0 else { return [] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return [] }
-        return output
-            .split(separator: "\n")
-            .map(String.init)
+        let lines = AgentCLIProcessClassifier.liveProcessLines()
+        return PixelClockAgentProcessDetector.statusesOrUnknown(fromProcessLines: lines)
     }
 }
 
 private actor PixelClockExternalAgentActivityScanCache {
     private var lastScanAt: Date = .distantPast
     private var lastStatuses: [String: PixelClockAgentStatus] = [:]
-    private var inFlight: Task<[String: PixelClockAgentStatus], Never>?
+    private var inFlight: Task<[String: PixelClockAgentStatus]?, Never>?
     private let minimumScanInterval: TimeInterval = 3
 
     func runningStatuses(now: Date = Date()) async -> [String: PixelClockAgentStatus] {
@@ -151,108 +121,42 @@ private actor PixelClockExternalAgentActivityScanCache {
             return lastStatuses
         }
         if let inFlight {
-            return await inFlight.value
+            return await inFlight.value ?? lastStatuses
         }
         let task = Task { await PixelClockExternalAgentActivityScanner.scanRunningStatuses() }
         inFlight = task
         let statuses = await task.value
-        lastStatuses = statuses
+        if let statuses {
+            lastStatuses = statuses
+        }
         lastScanAt = now
         inFlight = nil
-        return statuses
+        return lastStatuses
     }
 }
 
 enum PixelClockAgentProcessDetector {
     /// Blocking `/bin/ps` work runs off the main actor (`nonisolated` `async`, SE-0338).
     static func runningStatuses() async -> [String: PixelClockAgentStatus] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-axo", "comm,args"]
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            AppLogger.network.error("pixel_clock_mdns_resolve_failed", metadata: ["error": error.localizedDescription])
-            return [:]
-        }
-
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return [:] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return [:] }
-        return statuses(fromPSOutput: output)
+        statuses(fromProcessLines: AgentCLIProcessClassifier.liveProcessLines())
     }
 
     static func statuses(fromPSOutput output: String) -> [String: PixelClockAgentStatus] {
-        statuses(fromProcessLines: output.split(separator: "\n").dropFirst().map(String.init))
+        statuses(fromProcessLines: AgentCLIProcessClassifier.processLines(fromPSOutput: output))
     }
 
     static func statuses(fromProcessLines lines: [String]) -> [String: PixelClockAgentStatus] {
         lines.reduce(into: [:]) { statuses, line in
-            guard let provider = provider(forProcessLine: line) else { return }
+            guard let provider = AgentCLIProcessClassifier.provider(forProcessLine: line) else { return }
             statuses[provider.persistedToken] = .running
         }
     }
 
-    private static func provider(forProcessLine line: String) -> AgentProvider? {
-        let lower = line.lowercased()
-        if lower.contains("openburnbar") || lower.contains("/bin/ps") {
-            return nil
-        }
-        if lower.contains("pixelclockexternalagentactivityscanner") {
-            return nil
-        }
-        if lower.contains("chrome-native-host") || lower.contains("native-host") {
-            return nil
-        }
-
-        let tokens = lower
-            .split { !$0.isLetter && !$0.isNumber && $0 != "." }
-            .map(String.init)
-
-        let serviceTokens: Set<String> = [
-            "daemon",
-            "proxy",
-            "bridge",
-            "mcp",
-            "server",
-            "language-server",
-            "tsserver",
-            "typingsinstaller",
-            "native-host",
-            "helper",
-            "helpers"
-        ]
-        if tokens.contains(where: { serviceTokens.contains($0) }) {
-            return nil
-        }
-        if lower.contains(".app/contents/") {
-            return nil
-        }
-
-        func has(_ candidates: Set<String>) -> Bool {
-            tokens.contains { candidates.contains($0) }
-        }
-
-        if has(["codex"]) { return .codex }
-        if has(["claude", "claude-code", "claudecode"]) { return .claudeCode }
-        if has(["droid", "factory", "factory-cli"]) { return .factory }
-        if has(["opencode"]) || lower.contains("open-code") { return .openCode }
-        if has(["openclaw"]) || lower.contains("open-claw") { return .openClaw }
-        if has(["cursor"]) { return .cursor }
-        if has(["minimax"]) || lower.contains("mini-max") { return .minimax }
-        // Tokenizer splits hyphens, so keep the raw-string fallback used for
-        // open-code / mini-max / x-ai — otherwise `z-ai` becomes ["z","ai"].
-        if has(["zai", "z.ai"]) || lower.contains("z-ai") { return .zai }
-        if has(["kimi", "moonshot"]) { return .kimi }
-        if has(["xai", "x.ai", "grok", "supergrok"]) || lower.contains("x-ai") { return .xAI }
-
-        return nil
+    /// `nil` means `/bin/ps` failed or timed out — keep the last
+    /// Pixel Clock snapshot instead of painting every lane idle.
+    static func statusesOrUnknown(fromProcessLines lines: [String]) -> [String: PixelClockAgentStatus]? {
+        if AgentCLIProcessClassifier.isUnknownProcessSnapshot(lines) { return nil }
+        return statuses(fromProcessLines: lines)
     }
 }
 
