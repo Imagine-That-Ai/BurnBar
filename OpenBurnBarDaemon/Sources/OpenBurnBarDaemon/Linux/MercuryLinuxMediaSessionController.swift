@@ -77,7 +77,6 @@ public actor MercuryLinuxMediaSessionController {
     private var outboundGOPID: UInt32 = 0
     private var outboundFrameIndex: UInt32 = 0
     private var outboundAudioFrameIndex: UInt32 = 0
-    private var gopEndStamper = MediaGOPEndStamper()
     private var captureFrameQueue: MercuryLinuxCaptureFrameQueue?
     private var captureFrameConsumerTask: Task<Void, Never>?
     private var audioCaptureFrameQueue: MercuryLinuxCaptureFrameQueue?
@@ -525,11 +524,6 @@ public actor MercuryLinuxMediaSessionController {
             outbound.gopID = outboundGOPID
             outbound.frameIndex = outboundFrameIndex
             outboundFrameIndex &+= 1
-            if let released = gopEndStamper.push(outbound) {
-                outbound = released
-            } else {
-                return
-            }
         }
 
         // Fail closed: never egress a captured frame unsealed. If the media

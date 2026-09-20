@@ -271,7 +271,10 @@ struct BurnBarLinuxGatewayRoutePipeline: Sendable {
     }
 
     func elapsedMilliseconds(from start: Date, to end: Date) -> Int {
-        max(0, Int((end.timeIntervalSince1970 - start.timeIntervalSince1970) * 1_000))
+        // Round, don't truncate: Date subtraction carries sub-ULP error (e.g.
+        // a 10.0 -> 10.4 interval lands at 0.39999999...), which would shave
+        // a real 400 ms route duration down to 399 in the route log.
+        max(0, Int(((end.timeIntervalSince1970 - start.timeIntervalSince1970) * 1_000).rounded()))
     }
 
     private func stableDigest(_ input: String) -> String {
