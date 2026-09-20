@@ -210,6 +210,28 @@ final class ReceiptsRouteTests: XCTestCase {
         let hit = ReceiptRegisterFocus.focusAfterLookup(requestedID: "rcpt-old", receipts: [visible])
         XCTAssertEqual(hit.pinned, "rcpt-old")
         XCTAssertEqual(hit.selected, "rcpt-old")
+
+        XCTAssertNil(
+            ReceiptRegisterFocus.pinAfterManualSelection(
+                selectedID: "rcpt-new",
+                currentPin: "rcpt-old"
+            ),
+            "Clicking another slip must release the deep-link pin"
+        )
+        XCTAssertEqual(
+            ReceiptRegisterFocus.pinAfterManualSelection(
+                selectedID: "rcpt-old",
+                currentPin: "rcpt-old"
+            ),
+            "rcpt-old",
+            "Reselecting the linked slip keeps the pin"
+        )
+        XCTAssertNil(
+            ReceiptRegisterFocus.pinAfterManualSelection(
+                selectedID: "rcpt-new",
+                currentPin: nil
+            )
+        )
     }
 
     func test_sessionsDeepLink_passesTheAppCommandRouterGate() {

@@ -51,7 +51,9 @@ does — scheme and host are case-insensitive, `%20` in the id is
 decoded, and a slash inside a subagent id is one path identity
 (`parentSession/agentId`), not a truncated first segment. A missing or
 deleted receipt id clears the pin instead of leaving the previous slip
-selected. Session Logs jumps cancel the previous lookup and ignore a
+selected. Clicking another slip in the register releases that pin so a
+later search or facet reload cannot snap back to the banner target.
+Session Logs jumps cancel the previous lookup and ignore a
 stale result so two `openburnbar://sessions/…` taps cannot land on the
 first conversation. Chat tape ignores a canceled load's failure so a
 slow error cannot paint TAPE JAM on the newer slip.
@@ -112,11 +114,15 @@ attribute a process to another workspace. `ps` repeats the executable in
 `ARGS` (`droid /path/to/droid daemon`); the first real subcommand
 after that copy is what decides daemon vs session. A flag value is
 not a subcommand — `aider --message server` is still Aider, not a
-daemon. A timed-out or failed `/bin/ps` is an unknown snapshot:
+daemon. A timed-out or failed `/bin/ps` (timeout or nonzero exit) is an unknown snapshot:
 receipts stay open, and Pixel Clock keeps its last running lanes
-instead of going idle. If the printed-receipt lookup throws, or the
-complete usage join for conversation keys throws, that poll aborts
-instead of reminting or printing a zero-token slip.
+instead of going idle. The close monitor snapshots processes after the
+datastore ingest — not before it — and takes a fresh snapshot immediately
+before the flyout, so a CLI relaunched during those reads cannot look
+closed. If the printed-receipt lookup throws, or the
+complete usage join throws, that poll aborts instead of reminting or
+printing a zero-token slip. `python -m aider` and pip/pyenv launchers
+still count as a live Aider process.
 
 Harnesses we cannot see on `/bin/ps` (Windsurf, Devin, IDE-only Composer)
 still **print** a slip on quiet, but they **announce** only when the
@@ -149,9 +155,11 @@ the newest of file mtime / end / start — never `indexedAt` and never the
 first non-null timestamp — so a stale file mtime cannot hide a later
 end, and a parser restamp cannot resurrect a session with no real
 activity. Usage-only harnesses (Aider) also enter through a matching
-end-time window, so a long session that just closed is not lost because
-its original start aged out. Usage joined by session id loads **every**
-row for those sessions, so a Warp chat with hundreds of events keeps
+end-time window (indexed on `token_usage.endTime` so the 10s poll does
+not scan the ledger), so a long session that just closed is not lost
+because its original start aged out. Usage joined by session id loads
+**every** row for those sessions — including usage-only IDs from the
+horizon scans — so a Warp or Aider chat with hundreds of events keeps
 its full totals. A legacy slip stored under the conversation row id is
 refreshed in place when the canonical key is the `sessionId`, so a
 relaunch does not print a second unstarred copy.

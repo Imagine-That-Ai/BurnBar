@@ -118,7 +118,7 @@ public final class ReceiptFlyoutController: NSObject {
         let buttonFrameOnScreen = button.window?.convertToScreen(buttonFrameInWindow) ?? buttonFrameInWindow
 
         let panelWidth: CGFloat = 330
-        let panelHeight: CGFloat = 240
+        let panelHeight: CGFloat = 268
 
         // Center horizontally below status item button
         var x = buttonFrameOnScreen.midX - (panelWidth / 2.0)

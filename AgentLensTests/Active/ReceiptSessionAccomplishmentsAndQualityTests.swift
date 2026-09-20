@@ -363,6 +363,44 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
     }
 
     @MainActor
+    func test_cliSessionCloseMonitor_usageOnlyJoinLoadsEveryRowForTheSession() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: dbQueue)
+        let usageStore = UsageStore(dbQueue: dbQueue)
+        let now = Date()
+        try await usageStore.insert(TokenUsage(
+            provider: .aider,
+            sessionId: "aider-many-rows",
+            projectName: "BurnBar",
+            model: "gpt-4o",
+            inputTokens: 10,
+            outputTokens: 2,
+            costUSD: 0.02,
+            startTime: now.addingTimeInterval(-8 * 60 * 60),
+            endTime: now.addingTimeInterval(-8 * 60 * 60 + 30)
+        ))
+        try await usageStore.insert(TokenUsage(
+            provider: .aider,
+            sessionId: "aider-many-rows",
+            projectName: "BurnBar",
+            model: "gpt-4o-mini",
+            inputTokens: 40,
+            outputTokens: 12,
+            costUSD: 0.08,
+            startTime: now.addingTimeInterval(-8 * 60 * 60),
+            endTime: now.addingTimeInterval(-20)
+        ))
+
+        let monitor = CLISessionCloseMonitor(dataStore: dataStore)
+        monitor.quietPeriodSeconds = 60
+        await monitor.checkClosedSessions(now: now)
+
+        let ingested = try XCTUnwrap(monitor.activeSessions["aider-many-rows"])
+        XCTAssertEqual(try XCTUnwrap(ingested.costUSD), 0.10, accuracy: 0.001)
+        XCTAssertEqual(ingested.inputTokens, 50)
+    }
+
+    @MainActor
     func test_cliSessionCloseMonitor_refreshesLegacyReceiptIdentityInsteadOfDuplicating() async throws {
         let dbQueue = try makeDatabaseQueue()
         let dataStore = try DataStore(databaseQueue: dbQueue)
@@ -798,6 +836,42 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
         XCTAssertEqual(monitor.activeSessions.count, 1, "Keep watching until the terminal actually closes")
         let saved = try await dataStore.fetchReceiptForSession(sessionId: "factory-runtime-open-1")
         XCTAssertNotNil(saved, "Quiet time still prints the slip so the register stays complete")
+    }
+
+    @MainActor
+    func test_cliSessionCloseMonitor_doesNotAnnounceIfRuntimeReopensBeforeFlyout() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: dbQueue)
+        let now = Date()
+        try await dataStore.upsertConversation(
+            factoryConversation(
+                sessionId: "factory-reopen-1",
+                start: now.addingTimeInterval(-90),
+                fileModifiedAt: now.addingTimeInterval(-30),
+                title: "Relaunched while the slip was printing"
+            )
+        )
+
+        var printedReceipt: ReceiptRecord?
+        // First snapshot (after ingest) looks closed. Persist / git
+        // probes then take time; the pre-announce snapshot sees the
+        // relaunched CLI and must hold the flyout.
+        let probe = SequenceSnapshotReceiptCLIRuntimeProbe(snapshots: [false, true])
+        let monitor = CLISessionCloseMonitor(
+            dataStore: dataStore,
+            settingsManager: .shared,
+            runtimeProbe: probe,
+            onReceiptPrinted: { receipt in
+                printedReceipt = receipt
+            }
+        )
+        monitor.quietPeriodSeconds = 60
+        await monitor.checkClosedSessions(now: now)
+
+        XCTAssertNil(printedReceipt, "A relaunched CLI must not get a flyout from a stale snapshot")
+        XCTAssertEqual(monitor.activeSessions.count, 1)
+        let saved = try await dataStore.fetchReceiptForSession(sessionId: "factory-reopen-1")
+        XCTAssertNotNil(saved, "The slip still prints; only announce waits")
     }
 
     @MainActor
@@ -1722,6 +1796,29 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
             fileModifiedAt: fileModifiedAt,
             summary: title
         )
+    }
+}
+
+/// Each `snapshotForPoll` freezes the next answer. A live
+/// `isSessionRuntimeOpen` without a snapshot fails open so tests have
+/// to go through the poll snapshot.
+private final class SequenceSnapshotReceiptCLIRuntimeProbe: ReceiptCLIRuntimeProbe, Sendable {
+    private let snapshots: OSAllocatedUnfairLock<[Bool]>
+
+    init(snapshots: [Bool]) {
+        self.snapshots = OSAllocatedUnfairLock(initialState: snapshots)
+    }
+
+    func isSessionRuntimeOpen(provider _: AgentProvider, projectPath _: String?) async -> Bool {
+        true
+    }
+
+    func snapshotForPoll() async -> any ReceiptCLIRuntimeProbe {
+        let frozen = snapshots.withLock { queue -> Bool in
+            guard !queue.isEmpty else { return true }
+            return queue.removeFirst()
+        }
+        return FixedReceiptCLIRuntimeProbe(isOpen: frozen)
     }
 }
 

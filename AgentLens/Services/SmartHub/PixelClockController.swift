@@ -113,7 +113,7 @@ private enum PixelClockExternalAgentActivityScanner {
 private actor PixelClockExternalAgentActivityScanCache {
     private var lastScanAt: Date = .distantPast
     private var lastStatuses: [String: PixelClockAgentStatus] = [:]
-    private var inFlight: Task<[String: PixelClockAgentStatus], Never>?
+    private var inFlight: Task<[String: PixelClockAgentStatus]?, Never>?
     private let minimumScanInterval: TimeInterval = 3
 
     func runningStatuses(now: Date = Date()) async -> [String: PixelClockAgentStatus] {
@@ -121,7 +121,7 @@ private actor PixelClockExternalAgentActivityScanCache {
             return lastStatuses
         }
         if let inFlight {
-            return await inFlight.value
+            return await inFlight.value ?? lastStatuses
         }
         let task = Task { await PixelClockExternalAgentActivityScanner.scanRunningStatuses() }
         inFlight = task

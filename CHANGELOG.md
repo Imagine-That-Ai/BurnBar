@@ -32,8 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refreshed in place; stale transcript errors cannot paint TAPE JAM on
   the newer receipt; Session Logs deep links cancel the previous
   lookup; Chat tape / Session Logs flyout buttons dismiss the panel
-  first; the Session ID row opens Session Logs without clobbering the
-  clipboard.
+  first; a nonzero `/bin/ps` is unknown; pip/`python -m` Aider is
+  still Aider; usage-only sessions load every row in the join; the
+  flyout positions at its full 268pt height; `token_usage.endTime`
+  is indexed for the 10s poll; the process snapshot is taken after
+  ingest and again immediately before the flyout; a manual register
+  click releases the deep-link pin; the Session ID row opens Session
+  Logs without clobbering the clipboard.
 - **Console profile sync** — `rebuildUsageRollups` no longer inherits the
   gen2 60s / 256MiB defaults. Production at 2026-09-19 10:10 UTC killed
   Alberto's first-sync with "Memory limit of 256 MiB exceeded with 258 MiB

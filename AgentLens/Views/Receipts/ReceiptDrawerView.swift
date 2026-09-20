@@ -269,6 +269,10 @@ struct ReceiptDrawerView: View {
         let brandColor = brandColorFor(r.provider)
 
         return Button {
+            pinnedReceiptID = ReceiptRegisterFocus.pinAfterManualSelection(
+                selectedID: r.id,
+                currentPin: pinnedReceiptID
+            )
             selectedReceiptID = r.id
         } label: {
             HStack(spacing: 0) {
@@ -662,5 +666,16 @@ enum ReceiptRegisterFocus: Sendable {
             return (requestedID, requestedID)
         }
         return (nil, receipts.first?.id)
+    }
+
+    /// A later row tap releases the deep-link pin so a search or facet
+    /// reload cannot snap the register back to the banner slip.
+    static func pinAfterManualSelection(
+        selectedID: String?,
+        currentPin: String?
+    ) -> String? {
+        guard let currentPin else { return nil }
+        guard let selectedID, selectedID != currentPin else { return currentPin }
+        return nil
     }
 }

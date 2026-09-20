@@ -146,6 +146,29 @@ final class ReceiptNotificationRouterTests: XCTestCase {
             .aider
         )
         XCTAssertEqual(
+            AgentCLIProcessClassifier.provider(
+                forProcessLine: "python /Users/x/.local/bin/aider --message ship"
+            ),
+            .aider,
+            "pip-installed Aider is still Aider"
+        )
+        XCTAssertEqual(
+            AgentCLIProcessClassifier.provider(forProcessLine: "python3.12 -m aider"),
+            .aider,
+            "python -m aider is still Aider"
+        )
+        XCTAssertEqual(
+            AgentCLIProcessClassifier.provider(forProcessLine: "pyenv-exec aider"),
+            .aider
+        )
+        XCTAssertTrue(
+            AgentCLIProcessClassifier.processSnapshotIsUnknown(timedOut: false, status: 1),
+            "A failed ps is unknown, not an empty process list"
+        )
+        XCTAssertFalse(
+            AgentCLIProcessClassifier.processSnapshotIsUnknown(timedOut: false, status: 0)
+        )
+        XCTAssertEqual(
             AgentCLIProcessClassifier.provider(forProcessLine: "/opt/homebrew/bin/grok --model grok"),
             .xAI
         )

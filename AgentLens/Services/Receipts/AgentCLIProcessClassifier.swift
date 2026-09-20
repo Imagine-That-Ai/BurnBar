@@ -202,15 +202,20 @@ enum AgentCLIProcessClassifier: Sendable {
         handle.readabilityHandler = nil
         var data = chunks.withLock { $0 }
         data.append(handle.readDataToEndOfFile())
-        // A timeout with partial bytes is still unknown — the missing
-        // tail of `ps` can hide a live CLI and look like a close.
-        if timedOut {
+        // A timeout or nonzero exit with partial bytes is still unknown —
+        // the missing tail of `ps` can hide a live CLI and look like a close.
+        if processSnapshotIsUnknown(timedOut: timedOut, status: process.terminationStatus) {
             return [unknownProcessSnapshotSentinel]
         }
         guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else {
             return [unknownProcessSnapshotSentinel]
         }
         return processLines(fromPSOutput: output)
+    }
+
+    /// Timeout or a failed `ps` is "still open," not "every CLI closed."
+    static func processSnapshotIsUnknown(timedOut: Bool, status: Int32) -> Bool {
+        timedOut || status != 0
     }
 
     /// `/bin/ps` timed out or failed. Receipts must treat this as
@@ -223,7 +228,8 @@ enum AgentCLIProcessClassifier: Sendable {
 
     private static let wrappers: Set<String> = [
         "node", "nodejs", "env", "nice", "nohup", "sudo", "arch",
-        "command", "npx", "bun", "deno", "sh", "bash", "zsh", "time"
+        "command", "npx", "bun", "deno", "sh", "bash", "zsh", "time",
+        "pyenv", "pyenv-exec", "pipx"
     ]
 
     private static let serviceTokens: Set<String> = [
@@ -244,20 +250,28 @@ enum AgentCLIProcessClassifier: Sendable {
         var base: String?
         var argumentBases: [String] = []
         var skipNextValue = false
+        var takeNextAsExecutable = false
         for raw in line.split(whereSeparator: \.isWhitespace).map(String.init) {
             if skipNextValue {
                 skipNextValue = false
                 continue
             }
             guard !raw.isEmpty else { continue }
-            if raw.hasPrefix("-") {
+            if raw.hasPrefix("-"), !takeNextAsExecutable {
+                // `python -m aider`: the module is the executable.
+                // After a CLI is found, `-m` is a flag value (`aider -m server`).
+                if raw == "-m" || raw == "--module", base == nil {
+                    takeNextAsExecutable = true
+                    continue
+                }
                 if flagTakesSeparateValue(raw) { skipNextValue = true }
                 continue
             }
+            takeNextAsExecutable = false
             if raw.contains("="), !raw.contains("/") { continue }
             let token = raw.split(separator: "/").last.map(String.init) ?? raw
             guard !token.isEmpty else { continue }
-            if wrappers.contains(token) { continue }
+            if isWrapper(token) { continue }
             if base == nil {
                 base = token
             } else if token != base {
@@ -269,6 +283,15 @@ enum AgentCLIProcessClassifier: Sendable {
         }
         guard let base else { return nil }
         return ParsedCommand(base: base, argumentBases: argumentBases)
+    }
+
+    /// Interpreters and versioned CPython binaries are launchers, not the CLI.
+    private static func isWrapper(_ token: String) -> Bool {
+        if wrappers.contains(token) { return true }
+        if token == "python" || token.hasPrefix("python2") || token.hasPrefix("python3") {
+            return true
+        }
+        return false
     }
 
     /// `--cwd=/tmp` already carries its value. `--message server` must

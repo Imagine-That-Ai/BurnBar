@@ -68,6 +68,7 @@ CREATE INDEX token_usage_timestamp_idx ON token_usage(timestamp DESC);
 CREATE INDEX token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime);
 CREATE INDEX token_usage_originator_time_idx ON token_usage(originatorKind, startTime);
 CREATE INDEX token_usage_start_time_idx ON token_usage(startTime);   -- War Room Command Board window scan (v64+)
+CREATE INDEX token_usage_end_time_idx ON token_usage(endTime);       -- Receipt close-monitor end-time window (v69+)
 
 -- ── Chat Messages (v10+) ─────────────────────────────────────────────────────
 -- Stores local chat history for the Hermes and Local Index chat surfaces.

@@ -251,8 +251,11 @@ final class CLISessionCloseMonitor {
             checkInFlight = false
             pollRuntimeProbe = nil
         }
-        pollRuntimeProbe = await runtimeProbe.snapshotForPoll()
+        // Ingest can take seconds. Freeze `/bin/ps` only after that
+        // work, immediately before close decisions — an early snapshot
+        // can look closed after the user has already relaunched the CLI.
         await ingestRecentSessionsFromDataStore(now: now)
+        pollRuntimeProbe = await runtimeProbe.snapshotForPoll()
 
         for (sid, session) in activeSessions {
             let elapsedSinceActive = now.timeIntervalSince(session.lastActiveAt)
@@ -306,13 +309,19 @@ final class CLISessionCloseMonitor {
             conversationKeys.append(conversation.id)
         }
 
-        let usageForConversations: [TokenUsage]
-        if conversationKeys.isEmpty {
-            usageForConversations = []
+        var joinKeys = conversationKeys
+        for usage in recentByStart + recentByEnd {
+            let sid = usage.sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sid.isEmpty { joinKeys.append(sid) }
+        }
+
+        let completeUsage: [TokenUsage]
+        if joinKeys.isEmpty {
+            completeUsage = []
         } else {
             do {
-                usageForConversations = try await dataStore.fetchAllUsage(
-                    sessionIDs: conversationKeys
+                completeUsage = try await dataStore.fetchAllUsage(
+                    sessionIDs: joinKeys
                 )
             } catch {
                 // Unknown join must not look like "no usage" — that prints
@@ -323,7 +332,7 @@ final class CLISessionCloseMonitor {
 
         var seenUsageIDs = Set<UUID>()
         var usagesBySession: [String: [TokenUsage]] = [:]
-        for usage in recentByStart + recentByEnd + usageForConversations {
+        for usage in recentByStart + recentByEnd + completeUsage {
             guard seenUsageIDs.insert(usage.id).inserted else { continue }
             guard !usage.sessionId.isEmpty else { continue }
             usagesBySession[usage.sessionId, default: []].append(usage)
@@ -588,10 +597,7 @@ final class CLISessionCloseMonitor {
             receipt = nil
         }
 
-        let runtimeOpen = await (pollRuntimeProbe ?? runtimeProbe).isSessionRuntimeOpen(
-            provider: session.provider,
-            projectPath: session.projectPath
-        )
+        let runtimeOpen = await isRuntimeOpen(for: session)
         let live = isWithinLiveAnnouncementWindow(session, now: closedAt)
         let alreadyWaiting = pendingAnnounceSessionIDs.contains(session.id)
 
@@ -615,8 +621,7 @@ final class CLISessionCloseMonitor {
             let latest = await persistReceipt(for: session, closedAt: closedAt, preserving: receipt)
                 ?? receipt
             guard let latest else { return }
-            pendingAnnounceSessionIDs.remove(session.id)
-            await announce(latest, session: session)
+            await announceIfStillClosed(latest, session: session)
             return
         }
 
@@ -626,8 +631,7 @@ final class CLISessionCloseMonitor {
             let latest = await persistReceipt(for: session, closedAt: closedAt, preserving: receipt)
                 ?? receipt
             guard let latest else { return }
-            awaitingExplicitEndSessionIDs.remove(session.id)
-            await announce(latest, session: session)
+            await announceIfStillClosed(latest, session: session)
             return
         }
 
@@ -652,6 +656,26 @@ final class CLISessionCloseMonitor {
             return
         }
         guard let receipt else { return }
+        await announceIfStillClosed(receipt, session: session)
+    }
+
+    private func isRuntimeOpen(for session: ActiveCLISession) async -> Bool {
+        await (pollRuntimeProbe ?? runtimeProbe).isSessionRuntimeOpen(
+            provider: session.provider,
+            projectPath: session.projectPath
+        )
+    }
+
+    /// Persist can take seconds (git probes). Re-snapshot immediately
+    /// before the flyout so a relaunched CLI cannot look closed.
+    private func announceIfStillClosed(_ receipt: ReceiptRecord, session: ActiveCLISession) async {
+        pollRuntimeProbe = await runtimeProbe.snapshotForPoll()
+        if await isRuntimeOpen(for: session) {
+            pendingAnnounceSessionIDs.insert(session.id)
+            return
+        }
+        pendingAnnounceSessionIDs.remove(session.id)
+        awaitingExplicitEndSessionIDs.remove(session.id)
         await announce(receipt, session: session)
     }
 
