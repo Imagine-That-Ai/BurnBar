@@ -1225,6 +1225,7 @@ struct DashboardView: View {
     /// Resolves a Session Logs jump from either a conversation row id or a
     /// receipt `sessionId`. Receipts have been minted against both.
     func resolveSessionLogJump(conversationID: String) async {
+        sessionLogJumpTarget = nil
         let resolver = InboxConversationJumpResolver(dataStore: dataStore)
         if let target = await resolver.jumpTarget(conversationID: conversationID) {
             sessionLogJumpTarget = target

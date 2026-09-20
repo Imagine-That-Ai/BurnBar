@@ -47,8 +47,12 @@ URL never reaches `NavigationCoordinator`. Chat tape, the slip banner,
 Proof, the close flyout, and inbox citations all open those URLs through
 that router first so a tap stays in-app. Inbox evidence that cites
 `openburnbar://receipts/{id}` opens the slip the same way a banner tap
-does — scheme and host are case-insensitive, and `%20` in the id is
-decoded.
+does — scheme and host are case-insensitive, `%20` in the id is
+decoded, and a slash inside a subagent id is one path identity
+(`parentSession/agentId`), not a truncated first segment. A missing or
+deleted receipt id clears the pin instead of leaving the previous slip
+selected. Session Logs jumps clear a stale target when the new id does
+not resolve.
 
 ## Live flyout / notification
 
@@ -81,7 +85,9 @@ basename only, so `prime-agent --provider openburnbar` and a CLI living
 inside this worktree still count. A `~/.cursor` path, `.../factory/docs/...`,
 `.../claude/docs/...`, or `git commit -m claude` is not a live process.
 A directory named `server` on the Codex path does not hide a live `codex`
-binary. `ollama serve` is the local daemon, not a session.
+binary. Service detection uses the executable name and the first
+subcommand (`codex-daemon`, `droid daemon`, `ollama serve`) — a later
+prompt word such as `codex exec "fix server"` is still a live session.
 Factory waits on `droid` / `factory-cli`; Claude waits on `claude` /
 `claude-code`; Grok waits on `grok`; Gemini / Aider / Goose /
 Antigravity / Muse / OpenClaude / Prime / Junie / Ollama / Forge / OMP /
@@ -92,7 +98,8 @@ a `/Users` or `/Volumes` working directory, only that project holds
 its own slip — a sibling Codex in another repo does not mute this one.
 Harnesses we cannot see on `/bin/ps` (Windsurf, Devin, IDE-only Composer)
 still **print** a slip on quiet, but they **announce** only when the
-indexed conversation has a real end — not after a 60-second pause.
+indexed conversation has a provider-specific close — file mtime and
+session duration are not that signal.
 
 Codex is usage-first (new session id every run). Factory, Claude Code,
 Grok, and the other indexed harnesses are conversation-first — the
@@ -107,12 +114,18 @@ already in the register when BurnBar starts does not fire again if the
 CLI is already gone. If that slip was printed during a pause and the
 terminal is still open, the later close still notifies — even if the
 think ran longer than 20 minutes and BurnBar relaunched in the middle.
+Only the newest preexisting slip for that provider and project joins
+the close queue, so a new Codex in a busy repo does not replay the
+rest of the day's printed slips.
 
 Conversation ingest is horizon-filtered (last 6 hours, up to 400
 chats), not "newest 200 chats in the entire database," so a long-lived
 Factory / Claude session cannot be crowded out by a busy Codex day. The horizon uses
-file mtime / end / start — never `indexedAt` — so a parser restamp
-cannot resurrect a session with no real activity.
+the newest of file mtime / end / start — never `indexedAt` and never the
+first non-null timestamp — so a stale file mtime cannot hide a later
+end, and a parser restamp cannot resurrect a session with no real
+activity. Usage joined by session id is capped **per session**, so a
+busy day cannot mint an older chat with empty totals.
 
 Copied markdown includes the chat line plus the slip and Session Logs
 URLs so a shared receipt still has working deep links.

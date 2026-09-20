@@ -160,10 +160,15 @@ enum ReceiptChatBridge: Sendable {
         )
     }
 
-    /// First non-empty path segment, already percent-decoded by `URL`.
+    /// Path identity, already percent-decoded by `URL`.
+    ///
+    /// Subagent ids can contain a slash (`parentSession/agentId`). Join
+    /// every non-empty component so banner taps do not truncate them.
     /// `openburnbar://receipts/` must not become an empty-string id.
     static func pathIdentifier(from url: URL) -> String? {
-        url.pathComponents.first { $0 != "/" && !$0.isEmpty }
+        let parts = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: "/")
     }
 
     static func isOpenBurnBarURL(_ url: URL, host: String) -> Bool {
@@ -198,7 +203,10 @@ enum ReceiptChatBridge: Sendable {
         var components = URLComponents()
         components.scheme = "openburnbar"
         components.host = host
-        components.path = "/" + trimmed
+        var pathAllowed = CharacterSet.urlPathAllowed
+        pathAllowed.remove(charactersIn: "/")
+        let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: pathAllowed) ?? trimmed
+        components.percentEncodedPath = "/" + encoded
         if let query, !query.isEmpty {
             components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }

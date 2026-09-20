@@ -809,6 +809,9 @@ public final class ReceiptStore: Sendable {
                     promptSummary: current,
                     actualAccomplishments: accomplishments
                 )
+                guard ReceiptChatBridge.isGenericTitle(current, projectName: projectName) else {
+                    continue
+                }
                 let next = ReceiptChatBridge.contentSummary(receipt: receipt, overlay: overlay)
                 guard !next.isEmpty, next != current else { continue }
                 try db.execute(

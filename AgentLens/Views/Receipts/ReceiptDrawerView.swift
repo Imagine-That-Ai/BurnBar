@@ -619,6 +619,9 @@ struct ReceiptDrawerView: View {
         pinnedReceiptID = id
         selectedReceiptID = id
         await ensureReceiptVisible(id)
+        let focus = ReceiptRegisterFocus.focusAfterLookup(requestedID: id, receipts: receipts)
+        pinnedReceiptID = focus.pinned
+        selectedReceiptID = focus.selected
         onFocusedReceiptConsumed?()
     }
 
@@ -647,5 +650,17 @@ enum ReceiptRegisterFocus: Sendable {
     static func inserting(_ receipt: ReceiptRecord, into receipts: [ReceiptRecord]) -> [ReceiptRecord] {
         if receipts.contains(where: { $0.id == receipt.id }) { return receipts }
         return [receipt] + receipts
+    }
+
+    /// A deleted / unknown deep-link must not keep a stale pin that makes
+    /// the register look like it opened a different slip.
+    static func focusAfterLookup(
+        requestedID: String,
+        receipts: [ReceiptRecord]
+    ) -> (pinned: String?, selected: String?) {
+        if receipts.contains(where: { $0.id == requestedID }) {
+            return (requestedID, requestedID)
+        }
+        return (nil, receipts.first?.id)
     }
 }

@@ -226,6 +226,77 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
             restamped.contains(where: { $0.sessionId == "factory-indexed-only" }),
             "A rescan that only stamps indexedAt must not resurrect a session with no real activity"
         )
+
+        let staleFile = now.addingTimeInterval(-8 * 60 * 60)
+        let recentEnd = now.addingTimeInterval(-90)
+        try await store.upsertConversation(
+            ConversationRecord(
+                id: "conv-stale-file-recent-end",
+                provider: .factory,
+                sessionId: "factory-stale-file",
+                projectName: "BurnBar",
+                startTime: staleFile,
+                endTime: recentEnd,
+                messageCount: 4,
+                userWordCount: 8,
+                assistantWordCount: 16,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: "Ended just now",
+                lastAssistantMessage: "",
+                fullText: "",
+                fileModifiedAt: staleFile
+            )
+        )
+        let byLatestActivity = try await store.fetchConversationsWithoutTranscripts(
+            limit: 10,
+            activeSince: now.addingTimeInterval(-60 * 60)
+        )
+        XCTAssertTrue(
+            byLatestActivity.contains(where: { $0.sessionId == "factory-stale-file" }),
+            "A recent endTime must beat a stale fileModifiedAt in the ingest horizon"
+        )
+    }
+
+    func test_usageStore_fetchBySessionKeepsARowForEveryCandidate() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let store = UsageStore(dbQueue: dbQueue)
+        let now = Date()
+        for index in 0..<4 {
+            try await store.insert(TokenUsage(
+                provider: .factory,
+                sessionId: "factory-old",
+                projectName: "BurnBar",
+                model: "droid",
+                inputTokens: 10,
+                outputTokens: 4,
+                costUSD: 0.01,
+                startTime: now.addingTimeInterval(TimeInterval(-400 + index)),
+                endTime: now.addingTimeInterval(TimeInterval(-390 + index))
+            ))
+        }
+        try await store.insert(TokenUsage(
+            provider: .factory,
+            sessionId: "factory-quiet",
+            projectName: "BurnBar",
+            model: "droid",
+            inputTokens: 80,
+            outputTokens: 20,
+            costUSD: 0.40,
+            startTime: now.addingTimeInterval(-90),
+            endTime: now.addingTimeInterval(-30)
+        ))
+
+        let rows = try await store.fetchUsage(
+            sessionIDs: ["factory-old", "factory-quiet"],
+            limit: 2
+        )
+        let old = rows.filter { $0.sessionId == "factory-old" }
+        let quiet = rows.filter { $0.sessionId == "factory-quiet" }
+        XCTAssertEqual(old.count, 2, "Per-session cap must keep older chats, not drop them")
+        XCTAssertEqual(quiet.count, 1)
+        XCTAssertEqual(quiet.first?.inputTokens, 80)
     }
 
     @MainActor
@@ -377,6 +448,29 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
             fileModifiedAt: start.addingTimeInterval(30)
         )
         XCTAssertTrue(CLISessionCloseMonitor.conversationHasRealEnd(ended))
+
+        let windsurf = ConversationRecord(
+            id: "conv-windsurf",
+            provider: .windsurf,
+            sessionId: "windsurf-1",
+            projectName: "tmp",
+            startTime: start,
+            endTime: start.addingTimeInterval(3_600),
+            messageCount: 8,
+            userWordCount: 20,
+            assistantWordCount: 40,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: "Still in the IDE",
+            lastAssistantMessage: "",
+            fullText: "",
+            fileModifiedAt: start.addingTimeInterval(3_600)
+        )
+        XCTAssertFalse(
+            CLISessionCloseMonitor.conversationHasRealEnd(windsurf),
+            "Windsurf file mtime is not an explicit close"
+        )
     }
 
     @MainActor
@@ -724,6 +818,70 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
         await monitor.checkClosedSessions(now: now.addingTimeInterval(40))
         XCTAssertEqual(printedReceipt?.sessionId, "factory-preexisting-open")
         XCTAssertTrue(monitor.activeSessions.isEmpty)
+    }
+
+    @MainActor
+    func test_cliSessionCloseMonitor_historicalSiblingDoesNotReplayOnLaterClose() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let dataStore = try DataStore(databaseQueue: dbQueue)
+        let now = Date()
+        try await dataStore.upsertConversation(
+            factoryConversation(
+                sessionId: "factory-old-printed",
+                start: now.addingTimeInterval(-4 * 60 * 60),
+                fileModifiedAt: now.addingTimeInterval(-3 * 60 * 60),
+                title: "Yesterday's printed slip"
+            )
+        )
+        try await dataStore.insertReceipt(
+            ReceiptRecord(
+                id: "rcpt_factory-old-printed",
+                sessionId: "factory-old-printed",
+                projectName: "OpenBurnBar",
+                provider: .factory,
+                modelName: "unknown",
+                harness: "Factory CLI",
+                promptSummary: "Yesterday's printed slip"
+            )
+        )
+        try await dataStore.upsertConversation(
+            factoryConversation(
+                sessionId: "factory-live-printed",
+                start: now.addingTimeInterval(-90),
+                fileModifiedAt: now.addingTimeInterval(-30),
+                title: "The session still in the terminal"
+            )
+        )
+        try await dataStore.insertReceipt(
+            ReceiptRecord(
+                id: "rcpt_factory-live-printed",
+                sessionId: "factory-live-printed",
+                projectName: "OpenBurnBar",
+                provider: .factory,
+                modelName: "unknown",
+                harness: "Factory CLI",
+                promptSummary: "The session still in the terminal"
+            )
+        )
+
+        var printed: [String] = []
+        let probe = ToggleReceiptCLIRuntimeProbe(isOpen: true)
+        let monitor = CLISessionCloseMonitor(
+            dataStore: dataStore,
+            settingsManager: .shared,
+            runtimeProbe: probe,
+            onReceiptPrinted: { receipt in
+                printed.append(receipt.sessionId)
+            }
+        )
+        monitor.quietPeriodSeconds = 60
+
+        await monitor.checkClosedSessions(now: now.addingTimeInterval(35))
+        XCTAssertTrue(printed.isEmpty, "Still in the terminal — wait")
+
+        probe.isOpen = false
+        await monitor.checkClosedSessions(now: now.addingTimeInterval(40))
+        XCTAssertEqual(printed, ["factory-live-printed"])
     }
 
     func test_processReceiptCLIRuntimeProbe_ignoresCursorAppAndHelpers() async {

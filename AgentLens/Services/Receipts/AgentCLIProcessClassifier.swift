@@ -1,4 +1,5 @@
 import Foundation
+import os
 import OpenBurnBarKernel
 
 /// The house `/bin/ps` ownership rules shared by Pixel Clock and receipt
@@ -154,22 +155,33 @@ enum AgentCLIProcessClassifier: Sendable {
         process.standardError = Pipe()
         do {
             try process.run()
-            let deadline = Date().addingTimeInterval(1.0)
-            while process.isRunning, Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.02)
-            }
-            if process.isRunning {
-                process.terminate()
-                process.waitUntilExit()
-                return []
-            }
-            process.waitUntilExit()
         } catch {
             return []
         }
-        guard process.terminationStatus == 0 else { return [] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return [] }
+
+        // Drain stdout while `ps` is still running. Waiting for exit first
+        // deadlocks when the process list exceeds the pipe buffer, and an
+        // empty snapshot looks like "every CLI closed."
+        let handle = pipe.fileHandleForReading
+        let chunks = OSAllocatedUnfairLock(initialState: Data())
+        handle.readabilityHandler = { file in
+            let more = file.availableData
+            guard !more.isEmpty else { return }
+            chunks.withLock { $0.append(more) }
+        }
+
+        let deadline = Date().addingTimeInterval(1.0)
+        while process.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        if process.isRunning {
+            process.terminate()
+        }
+        process.waitUntilExit()
+        handle.readabilityHandler = nil
+        var data = chunks.withLock { $0 }
+        data.append(handle.readDataToEndOfFile())
+        guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return [] }
         return processLines(fromPSOutput: output)
     }
 
@@ -222,20 +234,20 @@ enum AgentCLIProcessClassifier: Sendable {
         return false
     }
 
-    /// `codex-daemon` and `droid … daemon` are services. A directory
-    /// named `server` on the executable path is not. `ollama serve` is
-    /// the local daemon, not an agent session.
+    /// `codex-daemon` and `droid daemon` are services. A later prompt word
+    /// (`codex exec "fix server"`) is not. `ollama serve` is the local
+    /// daemon, not an agent session. A directory named `server` on the
+    /// executable path is not a service either.
     private static func isServiceProcess(executable: String, argumentBases: [String]) -> Bool {
-        if executable == "ollama", argumentBases.contains(where: { $0 == "serve" || $0 == "runner" }) {
-            return true
-        }
         if hyphenTokens(executable).contains(where: { serviceTokens.contains($0) }) {
             return true
         }
-        return argumentBases.contains { argument in
-            serviceTokens.contains(argument)
-                || hyphenTokens(argument).contains(where: { serviceTokens.contains($0) })
+        guard let command = argumentBases.first else { return false }
+        if executable == "ollama", command == "serve" || command == "runner" {
+            return true
         }
+        return serviceTokens.contains(command)
+            || hyphenTokens(command).contains(where: { serviceTokens.contains($0) })
     }
 
     private static func hyphenTokens(_ value: String) -> [String] {

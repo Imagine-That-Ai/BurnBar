@@ -18,6 +18,10 @@ extension UsageStore {
     /// Usage rows for specific session identities. `sessionId` is indexed, so
     /// this is how the receipt close-monitor joins long-lived Factory / Claude
     /// chats whose original `startTime` fell out of the newest-N usage window.
+    ///
+    /// `limit` is per session. A single global `LIMIT` would keep only the
+    /// newest rows across every candidate and mint older chats with empty
+    /// totals.
     func fetchUsage(sessionIDs: [String], limit: Int = 800) async throws -> [TokenUsage] {
         let ids = Array(Set(sessionIDs.map {
             $0.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -27,14 +31,22 @@ extension UsageStore {
             let placeholders = OpenBurnBarDatabase.sqlPlaceholders(count: ids.count)
             var arguments = StatementArguments(ids)
             arguments += [limit]
+            let columns = Self.usageDecodeSelectColumns.joined(separator: ", ")
             return try Self.compactMapCachedRows(
                 db: db,
                 sql: """
-                    SELECT \(Self.usageDecodeSelectColumns.joined(separator: ", "))
-                    FROM token_usage
-                    WHERE sessionId IN (\(placeholders))
+                    SELECT \(columns)
+                    FROM (
+                        SELECT \(columns),
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY sessionId
+                                   ORDER BY endTime DESC
+                               ) AS usage_row_number
+                        FROM token_usage
+                        WHERE sessionId IN (\(placeholders))
+                    )
+                    WHERE usage_row_number <= ?
                     ORDER BY endTime DESC
-                    LIMIT ?
                     """,
                 arguments: arguments,
                 transform: Self.decodeUsage

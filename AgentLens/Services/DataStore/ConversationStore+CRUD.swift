@@ -215,6 +215,17 @@ extension ConversationStore {
             }
         }
 
+        /// Newest of file mtime / end / start. `COALESCE` would keep a stale
+        /// `fileModifiedAt` and drop a later `endTime`. Aggregate `MAX`
+        /// ignores NULLs; scalar `max()` does not.
+        static let conversationLatestActivitySQL = """
+        (SELECT MAX(v) FROM (
+            SELECT conversations.fileModifiedAt AS v
+            UNION ALL SELECT conversations.endTime
+            UNION ALL SELECT conversations.startTime
+        ))
+        """
+
         /// Recent sessions without transcript bodies.
         ///
         /// `fullText` and `lastAssistantMessage` live on encrypted overflow
@@ -234,8 +245,8 @@ extension ConversationStore {
                         SELECT \(Self.conversationMetadataSelectSQL)
                         FROM conversations
                         WHERE deletedAt IS NULL
-                          AND COALESCE(fileModifiedAt, endTime, startTime) >= ?
-                        ORDER BY COALESCE(fileModifiedAt, endTime, startTime) DESC
+                          AND \(Self.conversationLatestActivitySQL) >= ?
+                        ORDER BY \(Self.conversationLatestActivitySQL) DESC
                         LIMIT ?
                         """,
                         arguments: [activeSince, limit]
@@ -869,11 +880,21 @@ extension ConversationStore {
                     """,
                     arguments: StatementArguments(ids + ids)
                 )
-                var map: [String: ReceiptConversationOverlay] = [:]
+                var overlays: [ReceiptConversationOverlay] = []
+                overlays.reserveCapacity(rows.count)
                 for row in rows {
-                    guard let overlay = Self.receiptOverlay(from: row) else { continue }
+                    if let overlay = Self.receiptOverlay(from: row) {
+                        overlays.append(overlay)
+                    }
+                }
+                var map: [String: ReceiptConversationOverlay] = [:]
+                for overlay in overlays {
                     map[overlay.conversationID] = overlay
-                    if !overlay.sessionID.isEmpty {
+                }
+                // Session-id aliases must not overwrite an exact conversation-id
+                // match when one row's `sessionId` equals another row's `id`.
+                for overlay in overlays where !overlay.sessionID.isEmpty {
+                    if map[overlay.sessionID] == nil {
                         map[overlay.sessionID] = overlay
                     }
                 }

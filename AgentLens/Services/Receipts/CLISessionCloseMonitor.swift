@@ -292,7 +292,7 @@ final class CLISessionCloseMonitor {
         } else {
             usageForConversations = (try? await dataStore.fetchUsage( // try?-ok(ingest skip if usage join fails)
                 sessionIDs: conversationKeys,
-                limit: 800
+                limit: 64
             )) ?? []
         }
 
@@ -450,7 +450,12 @@ final class CLISessionCloseMonitor {
 
     /// Factory/Claude parsers often set `endTime = startTime` when the JSONL
     /// has no close event. That is a placeholder, not an explicit end.
+    /// Unobservable harnesses (Windsurf, Devin) stamp file mtime as
+    /// `endTime`; duration there is not a close.
     nonisolated static func conversationHasRealEnd(_ conversation: ConversationRecord) -> Bool {
+        guard AgentCLIProcessClassifier.canObserveRuntime(for: conversation.provider) else {
+            return false
+        }
         guard let end = conversation.endTime else { return false }
         guard let start = conversation.startTime else { return true }
         return end.timeIntervalSince(start) > 2
@@ -501,7 +506,15 @@ final class CLISessionCloseMonitor {
         // Open CLI / terminal / app: the slip may print, but announce
         // waits for close. A 25-minute think (first mint or relaunch)
         // must not be retired by the 20-minute live window.
+        //
+        // Preexisting slips only join that queue when they are the
+        // newest session for this provider + project. Otherwise a new
+        // Codex in a busy repo would replay every recent printed slip
+        // when that one process exits.
         if runtimeOpen {
+            if preexisting && !isNewestOpenSession(session) {
+                return
+            }
             pendingAnnounceSessionIDs.insert(session.id)
             return
         }
@@ -543,6 +556,33 @@ final class CLISessionCloseMonitor {
         }
         guard let receipt else { return }
         await announce(receipt, session: session)
+    }
+
+    /// Launch recovery: the printed-during-pause slip that is still the
+    /// live conversation can wait for close. Older siblings in the same
+    /// repo cannot.
+    private func isNewestOpenSession(_ session: ActiveCLISession) -> Bool {
+        let path = Self.normalizedProjectPath(session.projectPath)
+        let siblings = activeSessions.values.filter { other in
+            other.provider == session.provider
+                && Self.normalizedProjectPath(other.projectPath) == path
+        }
+        guard let newest = siblings.max(by: {
+            if $0.lastActiveAt != $1.lastActiveAt {
+                return $0.lastActiveAt < $1.lastActiveAt
+            }
+            return $0.id < $1.id
+        }) else {
+            return true
+        }
+        return newest.id == session.id
+    }
+
+    private static func normalizedProjectPath(_ path: String?) -> String {
+        guard let raw = path?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return ""
+        }
+        return URL(fileURLWithPath: raw).standardizedFileURL.path.lowercased()
     }
 
     private func persistReceipt(for session: ActiveCLISession, closedAt: Date) async -> ReceiptRecord? {

@@ -437,6 +437,44 @@ final class ReceiptStoreTests: XCTestCase {
             receipt?.promptSummary,
             "The receipts register should keep this id-matched summary."
         )
+
+        let overlays = try await ConversationStore(dbQueue: dbQueue)
+            .fetchConversationOverlaysForReceipts(sessionIDs: ["conv-primary", "sess-a"])
+        XCTAssertEqual(
+            overlays["conv-primary"]?.conversationID,
+            "conv-primary",
+            "An exact conversation-id match must beat a sibling session-id alias"
+        )
+        XCTAssertEqual(overlays["sess-a"]?.conversationID, "conv-primary")
+    }
+
+    func test_receiptStore_hydrateDoesNotOverwriteAMeaningfulSummary() async throws {
+        let dbQueue = try makeDatabaseQueue()
+        let store = ReceiptStore(dbQueue: dbQueue)
+        try await store.insert(
+            receipt: ReceiptRecord(
+                id: "rcpt_kept",
+                sessionId: "codex-kept",
+                projectName: "OpenBurnBar",
+                provider: .codex,
+                modelName: "gpt-5.6-sol",
+                promptSummary: "Keep this handwritten slip line.",
+                actualAccomplishments: ["Added the Chat lens"]
+            )
+        )
+        try await insertConversation(
+            dbQueue,
+            id: "conv-kept",
+            sessionId: "codex-kept",
+            projectName: "OpenBurnBar",
+            inferredTaskTitle: "OpenBurnBar",
+            summary: "A later conversation summary must not clobber a real prompt."
+        )
+
+        let updated = try await store.hydrateReceiptChatSummaries()
+        XCTAssertEqual(updated, 0)
+        let receipt = try await store.fetchReceipt(id: "rcpt_kept")
+        XCTAssertEqual(receipt?.promptSummary, "Keep this handwritten slip line.")
     }
 
     private func insertConversation(

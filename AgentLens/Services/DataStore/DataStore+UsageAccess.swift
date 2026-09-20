@@ -59,6 +59,7 @@ extension DataStore {
         try await actor.usageStore.fetchRecentUsage(limit: limit)
     }
 
+    /// `limit` is per session, not a global newest-N cap.
     func fetchUsage(sessionIDs: [String], limit: Int = 800) async throws -> [TokenUsage] {
         try await actor.usageStore.fetchUsage(sessionIDs: sessionIDs, limit: limit)
     }

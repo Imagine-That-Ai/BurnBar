@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Receipt close-only announce** — a later prompt word (`codex exec
+  "fix server"`) no longer classifies a live CLI as a daemon; `/bin/ps`
+  drains stdout while it runs so a full process list cannot look like
+  every agent closed; Windsurf file mtime is not an explicit end;
+  usage joined by session id is capped per session; only the newest
+  preexisting slip for a provider and project waits on a later close;
+  chat-summary hydration no longer overwrites a real prompt; slash-
+  containing subagent ids stay one deep-link identity; a missing
+  receipt or Session Logs id no longer keeps the previous target.
 - **Console profile sync** — `rebuildUsageRollups` no longer inherits the
   gen2 60s / 256MiB defaults. Production at 2026-09-19 10:10 UTC killed
   Alberto's first-sync with "Memory limit of 256 MiB exceeded with 258 MiB
@@ -86,7 +95,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receipt banner opens that slip (`openburnbar://receipts/{id}`). Banners
   are on by default and ask for permission on the first print. A
   preexisting slip whose CLI is still open still announces on the later
-  close, even if BurnBar relaunched mid-think. A first mint during a
+  close, even if BurnBar relaunched mid-think — only the newest
+  printed slip for that provider and project waits, so a sibling
+  Codex does not replay the rest of the register. A first mint during a
   long think also waits — the 20-minute live window no longer retires
   a still-open CLI before pending announce is recorded. Inbox citations
   to `openburnbar://receipts/{id}` open that slip (same door as the

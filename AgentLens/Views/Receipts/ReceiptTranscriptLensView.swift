@@ -275,8 +275,13 @@ struct ReceiptTranscriptLensView: View {
                     )
                 }
             } else {
-                let spoken = visibleSpokenBlocks(blocks)
-                let visible = showFullTape ? visibleFullTapeBlocks(blocks) : spoken
+                let spoken = ReceiptTranscriptTape.spokenBlocks(blocks)
+                let visible = showFullTape
+                    ? ReceiptTranscriptTape.fullTapeBlocks(blocks)
+                    : spoken
+                let clipped = showFullTape
+                    ? ReceiptTranscriptTape.omittedFullTapeCount(blocks)
+                    : 0
                 VStack(alignment: .leading, spacing: 8) {
                     if spoken.count > 12 && !showFullTape {
                         tapeTurns(Array(spoken.prefix(6)))
@@ -290,6 +295,9 @@ struct ReceiptTranscriptLensView: View {
                         .accessibilityLabel("Show the full transcript")
                     } else {
                         tapeTurns(visible)
+                        if clipped > 0 {
+                            omittedMarker(clipped)
+                        }
                         if spoken.count > 12 && showFullTape {
                             Button("Collapse tape") {
                                 showFullTape = false
@@ -333,17 +341,6 @@ struct ReceiptTranscriptLensView: View {
                 transcriptLine(block)
             }
         }
-    }
-
-    private func visibleSpokenBlocks(_ blocks: [TranscriptBlock]) -> [TranscriptBlock] {
-        let spoken = blocks.filter { $0.kind == .userMessage || $0.kind == .assistantMessage }
-        if spoken.isEmpty { return Array(blocks.prefix(16)) }
-        return spoken
-    }
-
-    private func visibleFullTapeBlocks(_ blocks: [TranscriptBlock]) -> [TranscriptBlock] {
-        let kept = blocks.filter { $0.kind != .separator }
-        return kept.isEmpty ? Array(blocks.prefix(16)) : kept
     }
 
     @ViewBuilder
@@ -600,5 +597,29 @@ enum ReceiptHarnessInk {
         case .deepSeek:
             return Color(red: 0.28, green: 0.42, blue: 0.88)
         }
+    }
+}
+
+/// Caps the Chat tape so a tool-heavy session cannot instantiate every
+/// parsed block into the register scroll view at once.
+enum ReceiptTranscriptTape: Sendable {
+    static let fullTapeBlockCap = 80
+
+    static func spokenBlocks(_ blocks: [TranscriptBlock]) -> [TranscriptBlock] {
+        let spoken = blocks.filter { $0.kind == .userMessage || $0.kind == .assistantMessage }
+        if spoken.isEmpty { return Array(blocks.prefix(16)) }
+        return spoken
+    }
+
+    static func fullTapeBlocks(_ blocks: [TranscriptBlock]) -> [TranscriptBlock] {
+        let kept = blocks.filter { $0.kind != .separator }
+        let source = kept.isEmpty ? Array(blocks.prefix(16)) : kept
+        return Array(source.prefix(fullTapeBlockCap))
+    }
+
+    static func omittedFullTapeCount(_ blocks: [TranscriptBlock]) -> Int {
+        let kept = blocks.filter { $0.kind != .separator }
+        let source = kept.isEmpty ? Array(blocks.prefix(16)) : kept
+        return max(0, source.count - fullTapeBlockCap)
     }
 }

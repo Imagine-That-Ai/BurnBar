@@ -103,6 +103,34 @@ final class ReceiptChatBridgeTests: XCTestCase {
         XCTAssertNil(ReceiptChatBridge.receiptID(from: URL(string: "openburnbar://sessions/conv-1")!))
         XCTAssertNil(ReceiptChatBridge.sessionID(from: URL(string: "openburnbar://receipts/rcpt-1")!))
         XCTAssertNil(ReceiptChatBridge.pathIdentifier(from: URL(string: "openburnbar://receipts/")!))
+
+        let slashed = "parentSession/agentId"
+        let slashedURL = ReceiptChatBridge.receiptURL(receiptID: slashed)
+        XCTAssertEqual(
+            slashedURL?.absoluteString,
+            "openburnbar://receipts/parentSession%2FagentId"
+        )
+        XCTAssertEqual(ReceiptChatBridge.receiptID(from: slashedURL!), slashed)
+        XCTAssertEqual(
+            ReceiptChatBridge.pathIdentifier(
+                from: URL(string: "openburnbar://sessions/parentSession/agentId")!
+            ),
+            slashed
+        )
+    }
+
+    func test_transcriptTape_capsTheFullTape() {
+        let blocks = (0..<120).map { index in
+            TranscriptBlock(kind: .toolUse, content: "tool \(index)", label: nil)
+        }
+        XCTAssertEqual(
+            ReceiptTranscriptTape.fullTapeBlocks(blocks).count,
+            ReceiptTranscriptTape.fullTapeBlockCap
+        )
+        XCTAssertEqual(
+            ReceiptTranscriptTape.omittedFullTapeCount(blocks),
+            120 - ReceiptTranscriptTape.fullTapeBlockCap
+        )
     }
 
     func test_overlayLookup_findsAReceiptMintedAgainstEitherConversationKey() {

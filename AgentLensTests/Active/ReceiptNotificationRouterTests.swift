@@ -189,6 +189,15 @@ final class ReceiptNotificationRouterTests: XCTestCase {
             "A directory named server must not hide a live Codex CLI"
         )
         XCTAssertEqual(
+            AgentCLIProcessClassifier.provider(forProcessLine: "codex exec fix the server"),
+            .codex,
+            "A later prompt word must not classify a live CLI as a daemon"
+        )
+        XCTAssertNil(
+            AgentCLIProcessClassifier.provider(forProcessLine: "droid daemon"),
+            "The first subcommand daemon is a service"
+        )
+        XCTAssertEqual(
             AgentCLIProcessClassifier.provider(
                 forProcessLine: "node node /Users/alberto/.nvm/versions/node/bin/codex"
             ),
