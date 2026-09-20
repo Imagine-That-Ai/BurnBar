@@ -20,10 +20,18 @@ public struct UnifiedQuotaSignalView: View {
 
     private var theme: UnifiedProviderTheme { UnifiedProviderTheme.theme(for: provider) }
     private var remainingFraction: Double {
-        bucket.displayRemainingFraction ?? 0
+        if bucket.isUsedOnlyMeter { return 1 }
+        return bucket.displayRemainingFraction ?? 0
     }
     private var signalStatus: QuotaSignalStatus {
-        QuotaSignalStatus.resolve(fraction: remainingFraction, theme: theme)
+        if bucket.isUsedOnlyMeter {
+            return QuotaSignalStatus(
+                label: "Used",
+                detail: "Remaining quota is not published for this lane.",
+                tint: theme.primaryColor
+            )
+        }
+        return QuotaSignalStatus.resolve(fraction: remainingFraction, theme: theme)
     }
 
     private var fillColor: Color {
@@ -133,31 +141,34 @@ public struct UnifiedQuotaSignalView: View {
                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary.opacity(0.82))
                 }
 
-                // Battery bar
-                HStack(spacing: 0) {
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
-                            .fill(negativeSpaceColor)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
-                                    .stroke(fillColor.opacity(0.22), lineWidth: 1.5)
-                            )
+                // Used-only meters have no remaining-quota API. Do not draw a
+                // full or empty battery that would look like unlimited or exhausted.
+                if !bucket.isUsedOnlyMeter {
+                    HStack(spacing: 0) {
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
+                                .fill(negativeSpaceColor)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
+                                        .stroke(fillColor.opacity(0.22), lineWidth: 1.5)
+                                )
 
-                        GeometryReader { geo in
-                            let fillWidth = max(geo.size.width - 4, 0) * remainingFraction
-                            RoundedRectangle(cornerRadius: batteryRadius - 1.5, style: .continuous)
-                                .fill(fillGradient)
-                                .frame(width: remainingFraction > 0 ? fillWidth : 0)
-                                .padding(2)
-                                .shadow(color: fillColor.opacity(0.35), radius: 6, y: 0)
+                            GeometryReader { geo in
+                                let fillWidth = max(geo.size.width - 4, 0) * remainingFraction
+                                RoundedRectangle(cornerRadius: batteryRadius - 1.5, style: .continuous)
+                                    .fill(fillGradient)
+                                    .frame(width: remainingFraction > 0 ? fillWidth : 0)
+                                    .padding(2)
+                                    .shadow(color: fillColor.opacity(0.35), radius: 6, y: 0)
+                            }
                         }
-                    }
-                    .frame(height: batteryHeight)
+                        .frame(height: batteryHeight)
 
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(fillColor.opacity(0.32))
-                        .frame(width: terminalWidth, height: terminalHeight)
-                        .padding(.leading, 2)
+                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                            .fill(fillColor.opacity(0.32))
+                            .frame(width: terminalWidth, height: terminalHeight)
+                            .padding(.leading, 2)
+                    }
                 }
 
                 if !compact {
@@ -208,7 +219,11 @@ public struct UnifiedQuotaSignalView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(provider.displayName) quota: \(fullRemainingText)")
+        .accessibilityLabel(
+            bucket.isUsedOnlyMeter
+                ? "\(provider.displayName) usage: \(fullRemainingText). Remaining quota unavailable."
+                : "\(provider.displayName) quota: \(fullRemainingText)"
+        )
     }
 
     /// What kind of value this bucket carries — drives label formatting.
@@ -237,6 +252,9 @@ public struct UnifiedQuotaSignalView: View {
     }
 
     private var remainingText: String {
+        if bucket.isUsedOnlyMeter {
+            return "\(formatValue(bucket.used)) used"
+        }
         if bucketUnit == .unlimited { return "Unlimited" }
         switch displayMode {
         case "usedPercent":
@@ -266,6 +284,9 @@ public struct UnifiedQuotaSignalView: View {
     }
 
     var fullRemainingText: String {
+        if bucket.isUsedOnlyMeter {
+            return "\(formatValue(bucket.used)) used"
+        }
         if bucketUnit == .unlimited { return "Unlimited" }
         switch displayMode {
         case "usedPercent":
@@ -295,6 +316,7 @@ public struct UnifiedQuotaSignalView: View {
     }
 
     private var usageText: String {
+        if bucket.isUsedOnlyMeter { return "Remaining unavailable" }
         if bucketUnit == .unlimited { return "No fixed cap" }
         let used = formatValue(bucket.used)
         let limit = formatValue(bucket.limit)
@@ -330,6 +352,7 @@ public struct UnifiedQuotaSignalView: View {
     }
 
     private var remainingPercentText: String {
+        if bucket.isUsedOnlyMeter { return "—" }
         if bucketUnit == .unlimited { return "∞" }
         guard let pct = bucket.displayRemainingPercent else { return "—" }
         if pct < 1 {

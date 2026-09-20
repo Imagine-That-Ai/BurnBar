@@ -297,7 +297,7 @@ public enum AgentProviderIngestionCatalog {
             filePattern: "*.json",
             ingestion: .localParser,
             coverageNote: "Local parser registered in ParserRegistry.",
-            quotaSignal: false
+            quotaSignal: true
         ),
         Entry(
             provider: .antigravity,

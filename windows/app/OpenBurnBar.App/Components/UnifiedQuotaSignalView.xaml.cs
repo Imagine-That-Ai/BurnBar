@@ -86,10 +86,13 @@ public sealed partial class UnifiedQuotaSignalView : UserControl
         Color primary = ProviderBrand.Primary(Provider);
         Color accent = ProviderBrand.Accent(Provider);
 
-        _fraction = bucket.DisplayRemainingFraction ?? 0;
+        bool usedOnly = bucket.IsUsedOnlyMeter;
+        _fraction = usedOnly ? 1 : bucket.DisplayRemainingFraction ?? 0;
         QuotaFillBand band = QuotaFill.Band(_fraction);
         Color fill = FillColor(band, primary);
-        QuotaSignalStatus status = QuotaSignalStatus.Resolve(_fraction);
+        QuotaSignalStatus status = usedOnly
+            ? new QuotaSignalStatus("Used", "Remaining quota is not published for this lane.", QuotaTintRole.ThemePrimary)
+            : QuotaSignalStatus.Resolve(_fraction);
         Color statusTint = TintFor(status.Tint, primary, accent);
 
         // Layout constants (Swift computed properties).
@@ -135,7 +138,9 @@ public sealed partial class UnifiedQuotaSignalView : UserControl
         StatusDetail.Text = status.Detail;
         StatusDetail.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
 
-        // Battery.
+        // Used-only meters have no remaining-quota API. Do not draw a
+        // full or empty battery that would look like unlimited or exhausted.
+        BatteryRow.Visibility = usedOnly ? Visibility.Collapsed : Visibility.Visible;
         BatteryTrackHost.Height = batteryHeight;
         BatteryTrack.CornerRadius = new CornerRadius(batteryRadius);
         BatteryTrack.Background = new SolidColorBrush(Color.FromArgb(0xBD, 0x00, 0x00, 0x00)); // black 0.74
@@ -153,7 +158,12 @@ public sealed partial class UnifiedQuotaSignalView : UserControl
         UsageText.Text = bucket.UsageText;
         FooterRow.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
 
-        AutomationProperties.SetName(this, $"{ProviderMetadata.DisplayName(Provider)} quota: {bucket.FullRemainingText(DisplayMode)}");
+        string remainingPhrase = bucket.FullRemainingText(DisplayMode);
+        AutomationProperties.SetName(
+            this,
+            usedOnly
+                ? $"{ProviderMetadata.DisplayName(Provider)} usage: {remainingPhrase}. Remaining quota unavailable."
+                : $"{ProviderMetadata.DisplayName(Provider)} quota: {remainingPhrase}");
     }
 
     private void OnTrackSizeChanged(object sender, SizeChangedEventArgs e) => UpdateFillWidth();

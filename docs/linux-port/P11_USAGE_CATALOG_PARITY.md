@@ -32,7 +32,7 @@ The catalog is checked against the committed macOS/core sources by
   aliases, coverage, and quota declaration.
 - `ParserRegistry.swift` must expose exactly the 29 local parser registrations
   represented by `local-parser` rows.
-- `AgentProvider.quotaSignalProviders` must match the 19 quota-capable rows.
+- `AgentProvider.quotaSignalProviders` must match the 20 quota-capable rows.
 - shared golden vectors pin provider identity, RFC3339 timestamps,
   deterministic dedup IDs, billed-token normalization, USD cost preservation,
   account partitioning, and quota capability.

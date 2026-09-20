@@ -137,6 +137,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loyal model, biggest day, longest streak, first burn, burn rate).
 
 ### Added
+- **Google Gemini used-token meters and Cloud remaining quotas.** The
+  Providers wizard treats Gemini as a meter connection, not a routing key:
+  Gemini CLI session logs on the Mac report tokens used in the last 24 hours
+  and 7 days. Remaining Gemini API / Vertex **project** rate-allocation quotas
+  (RPD / RPM / TPM) come from Google Cloud ADC or a service account JSON via
+  Service Usage + Cloud Monitoring. AI Studio `AIza…` keys, Firebase Google
+  sign-in, and Gemini app / Verizon Google AI Pro remaining stay explicitly
+  unavailable — Google does not publish those. Antigravity remains the
+  estimated 5-hour coding-window adapter.
 - **app.burnbar.ai is now reachable from every surface.** The member Data &
   Privacy Control Center existed only as a bare URL — nothing linked to it.
   The website's header More menu, mobile nav, footer trust column, and the

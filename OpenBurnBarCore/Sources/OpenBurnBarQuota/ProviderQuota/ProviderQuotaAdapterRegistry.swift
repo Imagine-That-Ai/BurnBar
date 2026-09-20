@@ -70,6 +70,7 @@ public struct ProviderQuotaAdapterRegistry: Sendable {
         live(.ollama, OllamaQuotaAdapter()),
         live(.kimi, KimiQuotaAdapter()),
         live(.antigravity, AntigravityQuotaAdapter()),
+        live(.geminiCLI, GeminiCLIQuotaAdapter()),
         live(.xAI, XAIQuotaAdapter()),
         live(.mimo, MimoQuotaAdapter()),
         unavailable(
