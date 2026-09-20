@@ -1,6 +1,6 @@
 {
   "note": "Per-consumer-root files importing the OpenBurnBarCore umbrella (docs/CORE_DECOMPOSITION_PROGRAM.md). Covers ALL Swift import-attribute forms including `@testable import OpenBurnBarCore` and `@_exported`/`@_spi(...)` prefixes (so no repoint can leave a hidden umbrella import). Shrink-only: no NEW file may import the umbrella in a tracked root. Privileged roots (OpenBurnBarDaemon, OpenBurnBarWidget, OpenBurnBarKeyboard) ratchet to zero after their repoint packets (S17/S18/S19); AgentLens/OpenBurnBarMobile keep the umbrella deliberately. Regenerate via scripts/debt/check-core-umbrella-imports-budget.sh --update.",
-  "total": 899,
+  "total": 911,
   "roots": {
     "OpenBurnBarDaemon": {
       "count": 0,
@@ -15,7 +15,7 @@
       "files": []
     },
     "AgentLens": {
-      "count": 527,
+      "count": 531,
       "files": [
         "AgentLens/App/AgentLensApp.swift",
         "AgentLens/App/AgentLensApp+Bootstrap.swift",
@@ -118,7 +118,10 @@
         "AgentLens/Services/ComputerUse/AgentContextTargetReceiver.swift",
         "AgentLens/Services/ComputerUse/AgentWatchActionPublisher.swift",
         "AgentLens/Services/ComputerUse/AgentWatchHUDSession.swift",
+        "AgentLens/Services/ComputerUse/ComputerUseApprovalPipeline.swift",
+        "AgentLens/Services/ComputerUse/ComputerUseAuditPipeline.swift",
         "AgentLens/Services/ComputerUse/ComputerUseCloudMeteringService.swift",
+        "AgentLens/Services/ComputerUse/ComputerUseInputPipeline.swift",
         "AgentLens/Services/ComputerUse/ComputerUseRuntimeController.swift",
         "AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
         "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator.swift",
@@ -269,6 +272,7 @@
         "AgentLens/Services/ProjectionPipeline/ProjectionPipelineService+Jobs.swift",
         "AgentLens/Services/ProjectionPipeline/ProjectionPipelineService+Projection.swift",
         "AgentLens/Services/Protocols/SettingsManagerProtocol.swift",
+        "AgentLens/Services/Protocols/SettingsManagerProtocol+Domains.swift",
         "AgentLens/Services/ProviderQuota/AnthropicCredentialProbe.swift",
         "AgentLens/Services/ProviderQuota/ClaudeOAuthProviderBootstrap.swift",
         "AgentLens/Services/ProviderQuota/ClaudeQuotaBridgeManager.swift",
@@ -547,7 +551,7 @@
       ]
     },
     "OpenBurnBarMobile": {
-      "count": 370,
+      "count": 378,
       "files": [
         "OpenBurnBarMobile/App/AppDelegate.swift",
         "OpenBurnBarMobile/App/AppServices.swift",
@@ -582,6 +586,7 @@
         "OpenBurnBarMobile/Models/InsightsMobileVerdictModel.swift",
         "OpenBurnBarMobile/Models/InsightsStore.swift",
         "OpenBurnBarMobile/Models/InsightsStore+Hermes.swift",
+        "OpenBurnBarMobile/Models/IPadAwayDeskNavigation.swift",
         "OpenBurnBarMobile/Models/LiveActivityManager.swift",
         "OpenBurnBarMobile/Models/MobileProviderWizardModel.swift",
         "OpenBurnBarMobile/Models/MobileProviderWizardProtocols.swift",
@@ -673,6 +678,7 @@
         "OpenBurnBarMobile/Services/IrohRelay/FirestoreIrohPairingDirectory.swift",
         "OpenBurnBarMobile/Services/IrohRelay/FirestoreIrohPairingPublicKeyProvider.swift",
         "OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift",
+        "OpenBurnBarMobile/Services/KeepAwake/HostReachabilityClient.swift",
         "OpenBurnBarMobile/Services/LiveCloudReader.swift",
         "OpenBurnBarMobile/Services/LiveUsageAccumulator.swift",
         "OpenBurnBarMobile/Services/Media/AttachmentSaver.swift",
@@ -822,6 +828,8 @@
         "OpenBurnBarMobile/Views/Hermes/Square/ComposerQueue.swift",
         "OpenBurnBarMobile/Views/Hermes/Square/FanOutComposerSheet.swift",
         "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareAgentAvatar.swift",
+        "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareAgentsColumnRouting.swift",
+        "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareAgentsOverflow.swift",
         "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareDiscoverDrawer.swift",
         "OpenBurnBarMobile/Views/Hermes/Square/HermesSquarePinnedGrid.swift",
         "OpenBurnBarMobile/Views/Hermes/Square/HermesSquareRoot.swift",
@@ -840,6 +848,10 @@
         "OpenBurnBarMobile/Views/Insights/FusionImpactView.swift",
         "OpenBurnBarMobile/Views/Insights/InsightsRootView.swift",
         "OpenBurnBarMobile/Views/Insights/MissionLiveDetailSharedViews.swift",
+        "OpenBurnBarMobile/Views/iPad/IPadAgentsDeskColumns.swift",
+        "OpenBurnBarMobile/Views/iPad/IPadQuotaDeskColumns.swift",
+        "OpenBurnBarMobile/Views/iPad/IPadWatchInspectorColumn.swift",
+        "OpenBurnBarMobile/Views/iPad/IPadYouDeskColumns.swift",
         "OpenBurnBarMobile/Views/iPadDevicesSettingsView.swift",
         "OpenBurnBarMobile/Views/Media/AttachmentBubble.swift",
         "OpenBurnBarMobile/Views/Media/MediaSettingsView.swift",
