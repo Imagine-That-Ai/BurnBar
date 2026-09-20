@@ -394,16 +394,7 @@ final class ConnectionsViewModel {
             gateway: gateway,
             advertisedModels: advertisedModels
         )
-        switch probe {
-        case .ok, .skipped:
-            appStates[target] = .connected
-        case .failed(let status, let message):
-            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-            let detail = trimmed.isEmpty
-                ? "Local gateway test failed with HTTP \(status)."
-                : "Local gateway returned HTTP \(status). \(trimmed)"
-            appStates[target] = .degraded(message: detail)
-        }
+        applyProbe(probe, to: target)
     }
 
     /// Re-probe a connected row. Used by the `Test` action.
@@ -420,16 +411,7 @@ final class ConnectionsViewModel {
             gateway: gateway,
             advertisedModels: advertisedModels
         )
-        switch probe {
-        case .ok, .skipped:
-            appStates[target] = .connected
-        case .failed(let status, let message):
-            let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-            let detail = trimmed.isEmpty
-                ? "Local gateway test failed with HTTP \(status)."
-                : "Local gateway returned HTTP \(status). \(trimmed)"
-            appStates[target] = .degraded(message: detail)
-        }
+        applyProbe(probe, to: target)
     }
 
     /// Remove the OpenBurnBar wiring from a CLI's config file. Intentionally
@@ -652,16 +634,7 @@ final class ConnectionsViewModel {
                 gateway: gateway,
                 advertisedModels: advertisedModels
             )
-            switch probe {
-            case .ok, .skipped:
-                appStates[target] = .connected
-            case .failed(let status, let message):
-                let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-                let detail = trimmed.isEmpty
-                    ? "Local gateway test failed with HTTP \(status)."
-                    : "Local gateway returned HTTP \(status). \(trimmed)"
-                appStates[target] = .degraded(message: detail)
-            }
+            applyProbe(probe, to: target)
         }
 
         await refreshWiringState(settings: settings)
@@ -681,6 +654,26 @@ final class ConnectionsViewModel {
             return nil
         } catch {
             return error.localizedDescription
+        }
+    }
+
+    private func applyProbe(
+        _ probe: RoutingClientWiringProbe,
+        to target: RoutingClientWiringTarget
+    ) {
+        switch probe {
+        case .ok, .skipped:
+            appStates[target] = .connected
+        case .failed(let status, let message, let modelID, let providerID):
+            appStates[target] = .degraded(
+                message: RoutingClientWiring.userVisibleProbeFailure(
+                    status: status,
+                    upstreamMessage: message,
+                    modelID: modelID,
+                    providerID: providerID,
+                    target: target
+                )
+            )
         }
     }
 
