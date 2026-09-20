@@ -295,9 +295,8 @@ final class CLISessionCloseMonitor {
         if conversationKeys.isEmpty {
             usageForConversations = []
         } else {
-            usageForConversations = (try? await dataStore.fetchUsage( // try?-ok(ingest skip if usage join fails)
-                sessionIDs: conversationKeys,
-                limit: 256
+            usageForConversations = (try? await dataStore.fetchAllUsage( // try?-ok(ingest skip if usage join fails)
+                sessionIDs: conversationKeys
             )) ?? []
         }
 
@@ -310,7 +309,14 @@ final class CLISessionCloseMonitor {
         }
 
         let receiptKeys = Array(usagesBySession.keys) + conversationKeys
-        let alreadyPrinted = (try? await dataStore.fetchReceiptSessionIDs(among: receiptKeys)) ?? [] // try?-ok(treat unknown rows as unprinted)
+        let lookup: Result<Set<String>, Error>
+        do {
+            lookup = .success(try await dataStore.fetchReceiptSessionIDs(among: receiptKeys))
+        } catch {
+            lookup = .failure(error)
+        }
+        // A failed existence check must not look like an empty register.
+        guard let alreadyPrinted = Self.printedSessionIDs(from: lookup) else { return }
         for printed in alreadyPrinted {
             mintedSessionIDs.insert(printed)
         }
@@ -478,6 +484,19 @@ final class CLISessionCloseMonitor {
             return false
         }
         return true
+    }
+
+    /// `nil` aborts this ingest. A thrown printed-receipt lookup must
+    /// not look like "nothing is minted."
+    nonisolated static func printedSessionIDs(
+        from lookup: Result<Set<String>, Error>
+    ) -> Set<String>? {
+        switch lookup {
+        case .success(let ids):
+            return ids
+        case .failure:
+            return nil
+        }
     }
 
     private static func ingestedPromptSummary(conversation: ConversationRecord?) -> String {
@@ -743,8 +762,15 @@ final class CLISessionCloseMonitor {
                 return
             }
 
+            var overlay: ReceiptConversationOverlay?
+            let keys = [receipt.sessionId, receipt.id]
+            if let map = try? await dataStore.fetchReceiptConversationOverlays(sessionIDs: keys) { // try?-ok(banner falls back to stored prompt)
+                overlay = ReceiptConversationOverlay.lookup(receipt.sessionId, in: map)
+                    ?? ReceiptConversationOverlay.lookup(receipt.id, in: map)
+            }
+
             let content = UNMutableNotificationContent()
-            let copy = ReceiptNotificationRouter.bannerCopy(for: receipt)
+            let copy = ReceiptNotificationRouter.bannerCopy(for: receipt, overlay: overlay)
             content.title = copy.title
             content.body = copy.body
             // The thermal-printer sample is the product sound. A second

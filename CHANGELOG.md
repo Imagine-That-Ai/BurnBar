@@ -20,7 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and project waits on a later close; chat-summary hydration no
   longer overwrites a real prompt; slash-containing subagent ids stay
   one deep-link identity; a missing receipt or Session Logs id no
-  longer keeps the previous target.
+  longer keeps the previous target; a timed-out `/bin/ps` (including
+  partial output) stays unknown instead of looking closed; prompt
+  paths are not another workspace; `pi` and `agy` count as live CLIs;
+  Pixel Clock keeps its last lanes when `ps` fails; a failed
+  printed-receipt lookup aborts the poll instead of reminting; the
+  Session ID row opens Session Logs without clobbering the clipboard.
 - **Console profile sync** — `rebuildUsageRollups` no longer inherits the
   gen2 60s / 256MiB defaults. Production at 2026-09-19 10:10 UTC killed
   Alberto's first-sync with "Memory limit of 256 MiB exceeded with 258 MiB

@@ -431,6 +431,8 @@ struct ReceiptTranscriptLensView: View {
 
     private func loadTranscript() async {
         let requested = tapeLoadKey
+        transcript = nil
+        showFullTape = false
         loadState = .loading
         guard let dataStore else {
             loadState = .missing

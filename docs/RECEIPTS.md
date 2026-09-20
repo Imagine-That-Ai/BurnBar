@@ -65,6 +65,10 @@ The banner itself is silent; the thermal-printer sample is the only
 close sound, including when BurnBar is already in the foreground.
 The flyout loads the conversation overlay before it appears so the
 headline and Session Logs link use the same join as the register.
+Concurrent close events cancel the previous overlay lookup so an older
+slip cannot replace a newer flyout. The banner uses that same overlay
+when the stored prompt is empty or generic. The Session ID row opens
+Session Logs; it does not overwrite the clipboard (Copy chat link does).
 Banners are on by default; the first one asks for notification permission
 the same way an agent-reply does. The banner title is the chat summary; the body is harness, project,
 cost, and duration. Tapping the banner (or its Open action)
@@ -93,13 +97,20 @@ Factory waits on `droid` / `factory-cli`; Claude waits on `claude` /
 Antigravity / Muse / OpenClaude / Prime / Junie / Ollama / Forge / OMP /
 Copilot / Cline / Kilo / Augment / fx wait on their own executables.
 Warp also waits on Warp.app (Stable, Nightly, and Preview). Claude Desktop
-does not hold a Claude Code slip — only `com.anthropic.claude-code` does. Two Codex terminals are treated
-conservatively when any argv has no workspace — a bare `codex exec`
-plus a sibling in another repo still holds this slip. When every
-process line names a `/Users` or `/Volumes` working directory, only
-that project holds its own slip. `ps` repeats the executable in
+does not hold a Claude Code slip — only `com.anthropic.claude-code` does.
+Pi waits on `pi` / `pi-agent`; Antigravity waits on `agy` /
+`antigravity` / `antigravity-cli`. Two Codex terminals are treated
+conservatively when any argv has no workspace flag — a bare `codex exec`,
+or a later prompt path such as `inspect /Users/a/other-app/file`,
+plus a sibling in another repo still holds this slip. Only recognized
+cwd flags (`-C`, `--cd`, `--cwd`, `--workspace`, `--add-dir`, …)
+attribute a process to another workspace. `ps` repeats the executable in
 `ARGS` (`droid /path/to/droid daemon`); the first real subcommand
-after that copy is what decides daemon vs session.
+after that copy is what decides daemon vs session. A timed-out or
+failed `/bin/ps` is an unknown snapshot: receipts stay open, and Pixel
+Clock keeps its last running lanes instead of going idle. If the
+printed-receipt lookup throws, that poll aborts instead of reminting
+every recent slip.
 
 Harnesses we cannot see on `/bin/ps` (Windsurf, Devin, IDE-only Composer)
 still **print** a slip on quiet, but they **announce** only when the
@@ -129,8 +140,8 @@ Factory / Claude session cannot be crowded out by a busy Codex day. The horizon 
 the newest of file mtime / end / start — never `indexedAt` and never the
 first non-null timestamp — so a stale file mtime cannot hide a later
 end, and a parser restamp cannot resurrect a session with no real
-activity. Usage joined by session id is capped **per session**, so a
-busy day cannot mint an older chat with empty totals.
+activity. Usage joined by session id loads **every** row for those
+sessions, so a Warp chat with hundreds of events keeps its full totals.
 
 Copied markdown includes the chat line plus the slip and Session Logs
 URLs so a shared receipt still has working deep links.

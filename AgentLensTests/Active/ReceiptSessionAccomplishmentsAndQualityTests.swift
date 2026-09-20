@@ -297,6 +297,24 @@ final class ReceiptSessionAccomplishmentsAndQualityTests: XCTestCase {
         XCTAssertEqual(old.count, 2, "Per-session cap must keep older chats, not drop them")
         XCTAssertEqual(quiet.count, 1)
         XCTAssertEqual(quiet.first?.inputTokens, 80)
+
+        let allRows = try await store.fetchAllUsage(
+            sessionIDs: ["factory-old", "factory-quiet"]
+        )
+        XCTAssertEqual(allRows.filter { $0.sessionId == "factory-old" }.count, 4)
+        XCTAssertEqual(allRows.filter { $0.sessionId == "factory-quiet" }.count, 1)
+    }
+
+    func test_printedSessionIDs_failClosedOnLookupError() {
+        struct LookupFailed: Error {}
+        XCTAssertEqual(
+            CLISessionCloseMonitor.printedSessionIDs(from: .success(["rcpt-1"])),
+            ["rcpt-1"]
+        )
+        XCTAssertNil(
+            CLISessionCloseMonitor.printedSessionIDs(from: .failure(LookupFailed())),
+            "A failed printed-receipt lookup must abort ingest, not remint"
+        )
     }
 
     @MainActor

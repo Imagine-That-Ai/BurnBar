@@ -516,6 +516,21 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(statuses.isEmpty)
     }
 
+    func test_agentProcessDetectorKeepsUnknownSnapshotsOutOfTheIdleMap() {
+        XCTAssertNil(
+            PixelClockAgentProcessDetector.statusesOrUnknown(
+                fromProcessLines: [AgentCLIProcessClassifier.unknownProcessSnapshotSentinel]
+            ),
+            "A timed-out ps must not wipe running Pixel Clock lanes"
+        )
+        XCTAssertEqual(
+            PixelClockAgentProcessDetector.statusesOrUnknown(
+                fromProcessLines: ["codex exec --cd /Users/a/burnbar"]
+            )?[AgentProvider.codex.persistedToken],
+            .running
+        )
+    }
+
     func test_swarmWallpaperColorDriver_fallsBackToHistoricalUsageWhenNoProviderIsRunning() {
         let summaries = [
             makeProviderSummary(provider: .codex, cost: 9, tokens: 900),

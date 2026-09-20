@@ -154,8 +154,6 @@ struct ReceiptAuditLensView: View {
     private var metadataCard: some View {
         VStack(spacing: 8) {
             Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(receipt.sessionId, forType: .string)
                 if let url = ReceiptChatBridge.sessionURL(
                     conversationID: ReceiptChatBridge.conversationID(receipt: receipt, overlay: overlay)
                 ) {

@@ -86,6 +86,28 @@ final class ReceiptNotificationRouterTests: XCTestCase {
         XCTAssertTrue(copy.body.contains("Factory CLI"))
         XCTAssertTrue(copy.body.contains("OpenBurnBar"))
         XCTAssertFalse(copy.title.contains("New Receipt"))
+
+        let untitled = ReceiptRecord(
+            sessionId: "session-2",
+            projectName: "OpenBurnBar",
+            provider: .factory,
+            modelName: "unknown",
+            harness: "Factory CLI"
+        )
+        let overlay = ReceiptConversationOverlay(
+            conversationID: "conv-2",
+            sessionID: "session-2",
+            inferredTaskTitle: "",
+            summary: "Hydrate the banner from the conversation overlay.",
+            summaryTitle: "",
+            workingDirectory: nil,
+            messageCount: 4,
+            keyFiles: []
+        )
+        XCTAssertEqual(
+            ReceiptNotificationRouter.bannerCopy(for: untitled, overlay: overlay).title,
+            "Hydrate the banner from the conversation overlay."
+        )
     }
 
     func test_category_registersAnOpenActionOnTheReceiptBanner() {
@@ -125,6 +147,16 @@ final class ReceiptNotificationRouterTests: XCTestCase {
         XCTAssertEqual(
             AgentCLIProcessClassifier.provider(forProcessLine: "pi-agent --workspace /tmp"),
             .piAgent
+        )
+        XCTAssertEqual(
+            AgentCLIProcessClassifier.provider(forProcessLine: "pi --workspace /tmp"),
+            .piAgent,
+            "The app-launched Pi executable is `pi`"
+        )
+        XCTAssertEqual(
+            AgentCLIProcessClassifier.provider(forProcessLine: "agy --add-dir /tmp"),
+            .antigravity,
+            "The app-launched Antigravity executable is `agy`"
         )
         XCTAssertNil(
             AgentCLIProcessClassifier.provider(
@@ -351,6 +383,13 @@ final class ReceiptNotificationRouterTests: XCTestCase {
                 familyLines: ["codex /Users/x/.local/bin/codex exec"]
             ),
             "An executable under /Users is not a different workspace"
+        )
+        XCTAssertTrue(
+            AgentCLIProcessClassifier.projectPathKeepsSessionOpen(
+                projectPath: "/Users/a/burnbar",
+                familyLines: [#"codex exec "inspect /Users/a/other-app/file""#]
+            ),
+            "A later prompt path is not a different workspace"
         )
         XCTAssertTrue(
             AgentCLIProcessClassifier.isUnknownProcessSnapshot(

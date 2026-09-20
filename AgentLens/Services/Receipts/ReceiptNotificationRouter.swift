@@ -38,8 +38,11 @@ enum ReceiptNotificationRouter: Sendable {
 
     /// Banner copy. Title is the chat summary so the notification is about
     /// the conversation, not just the repo folder.
-    static func bannerCopy(for receipt: ReceiptRecord) -> (title: String, body: String) {
-        let preview = ReceiptChatBridge.listPreview(receipt: receipt)
+    static func bannerCopy(
+        for receipt: ReceiptRecord,
+        overlay: ReceiptConversationOverlay? = nil
+    ) -> (title: String, body: String) {
+        let preview = ReceiptChatBridge.listPreview(receipt: receipt, overlay: overlay)
         return (
             preview,
             "\(receipt.harness) · \(receipt.projectName) · \(receipt.formattedCost) · \(receipt.formattedDuration)"

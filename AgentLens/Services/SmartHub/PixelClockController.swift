@@ -100,13 +100,13 @@ private enum PixelClockExternalAgentActivityScanner {
         await cache.runningStatuses()
     }
 
-    fileprivate static func scanRunningStatuses() async -> [String: PixelClockAgentStatus] {
+    fileprivate static func scanRunningStatuses() async -> [String: PixelClockAgentStatus]? {
         // House `/bin/ps` (blocking) runs off the main actor here:
         // `scanRunningStatuses` is `nonisolated` `async`, so awaiting it leaves
         // the caller's actor onto the generic executor (SE-0338). See the
         // off-main warning on `runningStatuses()` above.
         let lines = AgentCLIProcessClassifier.liveProcessLines()
-        return PixelClockAgentProcessDetector.statuses(fromProcessLines: lines)
+        return PixelClockAgentProcessDetector.statusesOrUnknown(fromProcessLines: lines)
     }
 }
 
@@ -126,10 +126,12 @@ private actor PixelClockExternalAgentActivityScanCache {
         let task = Task { await PixelClockExternalAgentActivityScanner.scanRunningStatuses() }
         inFlight = task
         let statuses = await task.value
-        lastStatuses = statuses
+        if let statuses {
+            lastStatuses = statuses
+        }
         lastScanAt = now
         inFlight = nil
-        return statuses
+        return lastStatuses
     }
 }
 
@@ -148,6 +150,13 @@ enum PixelClockAgentProcessDetector {
             guard let provider = AgentCLIProcessClassifier.provider(forProcessLine: line) else { return }
             statuses[provider.persistedToken] = .running
         }
+    }
+
+    /// `nil` means `/bin/ps` failed or timed out — keep the last
+    /// Pixel Clock snapshot instead of painting every lane idle.
+    static func statusesOrUnknown(fromProcessLines lines: [String]) -> [String: PixelClockAgentStatus]? {
+        if AgentCLIProcessClassifier.isUnknownProcessSnapshot(lines) { return nil }
+        return statuses(fromProcessLines: lines)
     }
 }
 

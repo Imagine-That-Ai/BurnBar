@@ -615,10 +615,10 @@ struct ReceiptDrawerView: View {
     }
 
     private func applyFocusedReceipt(_ id: String?) async {
+        let token = focusToken
         guard let id, !id.isEmpty else { return }
-        pinnedReceiptID = id
-        selectedReceiptID = id
         await ensureReceiptVisible(id)
+        guard token == focusToken else { return }
         let focus = ReceiptRegisterFocus.focusAfterLookup(requestedID: id, receipts: receipts)
         pinnedReceiptID = focus.pinned
         selectedReceiptID = focus.selected

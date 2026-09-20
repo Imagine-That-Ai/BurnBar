@@ -59,11 +59,15 @@ enum AgentCLIProcessClassifier: Sendable {
         if named("kimi", "moonshot", hyphenatedHost: false) { return .kimi }
         if named("xai", "x.ai", "grok", "supergrok") || named("x-ai") { return .xAI }
         if named("hermes", hyphenatedHost: false) { return .hermes }
-        if named("pi-agent", hyphenatedHost: false) { return .piAgent }
+        // InteractiveTerminalLauncher starts `pi` and `agy`, not only
+        // the longer catalog names.
+        if named("pi-agent", "pi", hyphenatedHost: false) { return .piAgent }
         if named("gemini", "gemini-cli", hyphenatedHost: false) { return .geminiCLI }
         if named("aider", hyphenatedHost: false) { return .aider }
         if named("goose", hyphenatedHost: false) { return .goose }
-        if named("antigravity", "antigravity-cli", hyphenatedHost: false) { return .antigravity }
+        if named("antigravity", "antigravity-cli", "agy", hyphenatedHost: false) {
+            return .antigravity
+        }
         if named("muse", hyphenatedHost: false) { return .muse }
         if named("openclaude") || named("open-claude") { return .openClaude }
         if named("prime-agent", hyphenatedHost: false) { return .primeAgent }
@@ -125,9 +129,9 @@ enum AgentCLIProcessClassifier: Sendable {
 
     /// When the project path is long enough to be distinctive and appears
     /// on a live process line, that session is still open. When other
-    /// family processes name a *different* `/Users` or `/Volumes`
-    /// workspace, this session is closed. Bare `codex exec` with no path
-    /// stays conservative (any matching process holds every slip).
+    /// family processes name a *different* workspace via a cwd flag
+    /// (`--cd`, `--cwd`, `-C`, …), this session is closed. Bare
+    /// `codex exec` and prompt paths stay conservative.
     static func projectPathKeepsSessionOpen(
         projectPath: String?,
         familyLines: [String]
@@ -188,7 +192,9 @@ enum AgentCLIProcessClassifier: Sendable {
         handle.readabilityHandler = nil
         var data = chunks.withLock { $0 }
         data.append(handle.readDataToEndOfFile())
-        if timedOut, data.isEmpty {
+        // A timeout with partial bytes is still unknown — the missing
+        // tail of `ps` can hide a live CLI and look like a close.
+        if timedOut {
             return [unknownProcessSnapshotSentinel]
         }
         guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else {
@@ -287,27 +293,41 @@ enum AgentCLIProcessClassifier: Sendable {
         return path
     }
 
-    /// Later argv only. The executable often lives under `/Users/.../bin`
-    /// and must not look like a different workspace.
+    /// Workspace flags only. A later prompt path
+    /// (`codex exec "inspect /Users/a/other-app/file"`) is not
+    /// attribution. The executable under `/Users/.../bin` is not either.
+    private static let workspaceFlags: Set<String> = [
+        "-c", "--cd", "--cwd", "--workdir", "--working-directory",
+        "--workspace", "--project-dir", "--project-directory", "--add-dir"
+    ]
+
     private static func mentionsWorkspaceRoot(_ line: String) -> Bool {
         let lower = line.lowercased()
-        guard let parsed = firstExecutable(in: lower) else {
-            return containsWorkspaceRoot(lower)
-        }
-        var seenExecutable = false
+        var expectWorkspaceValue = false
         for raw in lower.split(whereSeparator: \.isWhitespace).map(String.init) {
-            if raw.hasPrefix("-") { continue }
-            if raw.contains("="), !raw.contains("/") { continue }
-            let token = raw.split(separator: "/").last.map(String.init) ?? raw
-            if wrappers.contains(token) { continue }
-            if !seenExecutable {
-                if token == parsed.base { seenExecutable = true }
+            if expectWorkspaceValue {
+                expectWorkspaceValue = false
+                if containsWorkspaceRoot(raw) { return true }
                 continue
             }
-            if token == parsed.base { continue }
-            if containsWorkspaceRoot(raw) { return true }
+            let (isFlag, inline) = workspaceFlag(raw)
+            if isFlag {
+                if let inline, containsWorkspaceRoot(inline) { return true }
+                if inline == nil { expectWorkspaceValue = true }
+                continue
+            }
         }
         return false
+    }
+
+    private static func workspaceFlag(_ token: String) -> (isFlag: Bool, inline: String?) {
+        if let eq = token.firstIndex(of: "=") {
+            let name = String(token[..<eq])
+            let value = String(token[token.index(after: eq)...])
+            guard workspaceFlags.contains(name) else { return (false, nil) }
+            return (true, value)
+        }
+        return (workspaceFlags.contains(token), nil)
     }
 
     private static func containsWorkspaceRoot(_ value: String) -> Bool {

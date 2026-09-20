@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var lastHandledStatusItemEventKey: OpenBurnBarStatusItemClick.EventKey?
     var lastHandledStatusItemEventTime: TimeInterval = 0
     var receiptFlyoutController: ReceiptFlyoutController?
+    private var receiptFlyoutPresentationTask: Task<Void, Never>?
 
     // live wallpaper variables
     var settingsManager: SettingsManager? {
@@ -448,16 +449,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         } else {
             receiptFlyoutController?.updateStatusItem(statusItem)
         }
-        Task { @MainActor [weak self] in
+        receiptFlyoutPresentationTask?.cancel()
+        receiptFlyoutPresentationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             var overlay: ReceiptConversationOverlay?
             if let dataStore {
                 let keys = [receipt.sessionId, receipt.id]
-                if let map = try? await dataStore.fetchReceiptConversationOverlays(sessionIDs: keys) {
+                if let map = try? await dataStore.fetchReceiptConversationOverlays(sessionIDs: keys) { // try?-ok(flyout still prints without overlay)
                     overlay = ReceiptConversationOverlay.lookup(receipt.sessionId, in: map)
                         ?? ReceiptConversationOverlay.lookup(receipt.id, in: map)
                 }
             }
+            guard !Task.isCancelled else { return }
             self.receiptFlyoutController?.showFlyout(for: receipt, overlay: overlay)
         }
     }

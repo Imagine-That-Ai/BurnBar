@@ -54,6 +54,30 @@ extension UsageStore {
         }
     }
 
+    /// Every `token_usage` row for the given session identities.
+    /// Receipt mint must not truncate Warp / event-oriented sessions.
+    func fetchAllUsage(sessionIDs: [String]) async throws -> [TokenUsage] {
+        let ids = Array(Set(sessionIDs.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })).sorted()
+        guard !ids.isEmpty else { return [] }
+        return try await dbQueue.read { db in
+            let placeholders = OpenBurnBarDatabase.sqlPlaceholders(count: ids.count)
+            let columns = Self.usageDecodeSelectColumns.joined(separator: ", ")
+            return try Self.compactMapCachedRows(
+                db: db,
+                sql: """
+                    SELECT \(columns)
+                    FROM token_usage
+                    WHERE sessionId IN (\(placeholders))
+                    ORDER BY endTime DESC
+                    """,
+                arguments: StatementArguments(ids),
+                transform: Self.decodeUsage
+            )
+        }
+    }
+
     func fetchUsage(in dateRange: ClosedRange<Date>, limit: Int) async throws -> [TokenUsage] {
         try await dbQueue.read { db -> [TokenUsage] in
             try Self.fetchUsageRows(db: db, dateRange: dateRange, limit: limit)
