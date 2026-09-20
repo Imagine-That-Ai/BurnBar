@@ -114,6 +114,7 @@ function DayCard({
   otherSplit,
   modelSplit,
   modelOther,
+  modelTotal,
 }: {
   hover: Hover;
   value: number;
@@ -126,6 +127,9 @@ function DayCard({
   modelSplit?: [string, number][];
   /** Remainder past the shown models, so percentages always sum to 100. */
   modelOther?: number;
+  /** Full model total the percentages divide by (differs from the cell
+   *  value under facet filters and the aggregate cap). */
+  modelTotal?: number;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [size, setSize] = React.useState({ width: 192, height: 140 });
@@ -194,7 +198,7 @@ function DayCard({
               >
                 <span className="truncate text-content-base">{modelDisplayName(model)}</span>
                 <span className="ml-auto shrink-0 text-content-mute tabular-nums">
-                  {value > 0 ? Math.round((tokens / value) * 100) : 0}%
+                  {modelTotal != null && modelTotal > 0 ? Math.round((tokens / modelTotal) * 100) : 0}%
                 </span>
               </li>
             ))}
@@ -202,7 +206,7 @@ function DayCard({
               <li className="flex items-center gap-1.5 text-xs text-content-dim">
                 <span className="pl-[22px]">other</span>
                 <span className="ml-auto tabular-nums">
-                  {value > 0 ? Math.round((modelOther / value) * 100) : 0}%
+                  {modelTotal != null && modelTotal > 0 ? Math.round((modelOther / modelTotal) * 100) : 0}%
                 </span>
               </li>
             )}
@@ -402,22 +406,34 @@ export function ContributionHeatmap({
   // its weighted conglomerate kernel. Providers preferred per day, models
   // as fallback — same rule as the daily cells. Only days actually on
   // screen (the sliced point range) contribute, so edge weeks never borrow
-  // out-of-range usage.
+  // out-of-range usage. Model-sourced days aggregate under their STORED
+  // provider (dailyModelProviders) so gradient stops resolve to real brand
+  // hues instead of the generic accent.
   const weeklyBlend = React.useMemo(() => {
     if (mode !== "weekly") return new Map<string, Record<string, number>>();
     const byWeek = new Map<string, Record<string, number>>();
     for (const day of visibleDays) {
+      const providers = dailyProviderTokens?.[day];
+      const hasProviders =
+        providers != null && Object.values(providers).some((n) => n > 0);
       const effective = splitForDay(day, dailyProviderTokens, dailyModelTokens, visibleProviders);
       if (!effective) continue;
       const ws = weekStart(day);
       const acc = byWeek.get(ws) ?? {};
       for (const [key, tokens] of Object.entries(effective)) {
-        if (tokens > 0) acc[key] = (acc[key] ?? 0) + tokens;
+        if (tokens <= 0) continue;
+        // Model-sourced days re-key under the stored provider: weeks stay
+        // provider-grained (coarse surface, daily keeps model detail).
+        const aggregateKey =
+          hasProviders
+            ? key
+            : (dailyModelProviders?.[day]?.[key] ?? key);
+        acc[aggregateKey] = (acc[aggregateKey] ?? 0) + tokens;
       }
       byWeek.set(ws, acc);
     }
     return byWeek;
-  }, [mode, dailyProviderTokens, dailyModelTokens, visibleDays, visibleProviders]);
+  }, [mode, dailyProviderTokens, dailyModelTokens, dailyModelProviders, visibleDays, visibleProviders]);
 
   // Paint-server ids per week column (stable across renders for a grid).
   const gradientIdForWeek = (ws: string): string =>
@@ -638,6 +654,7 @@ export function ContributionHeatmap({
               otherSplit={otherSplit}
               modelSplit={hoverModelSplit}
               modelOther={hoverModelOther}
+              modelTotal={hoverModelTotal}
             />,
             document.body,
           )}

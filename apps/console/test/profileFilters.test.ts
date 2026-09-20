@@ -9,6 +9,7 @@ import {
   clearMineFilters,
   effectiveRange,
   emptyFilters,
+  ensureFacetValue,
   needsEventPath,
   parseProfileFilters,
   serializeProfileFilters,
@@ -188,10 +189,15 @@ describe("snapWindowForEventFacets (the 91k guard)", () => {
   });
 });
 
-describe("toggleFacetValue + clearMineFilters", () => {
+describe("toggleFacetValue + ensureFacetValue + clearMineFilters", () => {
   it("toggles add/remove", () => {
     expect(toggleFacetValue([], "a")).toEqual(["a"]);
     expect(toggleFacetValue(["a", "b"], "a")).toEqual(["b"]);
+  });
+
+  it("ensure keeps an active facet (Inspect never untoggles)", () => {
+    expect(ensureFacetValue(["a", "b"], "a")).toEqual(["a", "b"]);
+    expect(ensureFacetValue(["a"], "b")).toEqual(["a", "b"]);
   });
 
   it("clear keeps the metric", () => {

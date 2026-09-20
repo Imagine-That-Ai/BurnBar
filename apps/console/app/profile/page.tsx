@@ -41,6 +41,7 @@ import {
   clearMineFilters,
   effectiveRange,
   emptyFilters,
+  ensureFacetValue,
   parseProfileFilters,
   serializeProfileFilters,
   sliceDailyPoints,
@@ -93,6 +94,21 @@ function daysSince(iso: string, today: string): number {
   const end = Date.parse(today + "T00:00:00Z");
   if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
   return Math.max(0, Math.floor((end - start) / 86_400_000));
+}
+
+/**
+ * Entity-focus updates need a LOWER bound: the entity inspector reads the
+ * range event pass, which stays off on unbounded All. Force 90d when the
+ * merged filters would otherwise be unbounded (custom dates already bound).
+ * Also clears any pinned day — day pins take precedence in the inspector,
+ * so a day+entity combo would show the day and swallow the entity.
+ */
+function boundedEntityFilters(next: ProfileFilters): ProfileFilters {
+  const out = { ...next, day: null };
+  if (!out.from && !out.to && out.window === "all") {
+    out.window = "90d";
+  }
+  return out;
 }
 
 /**
@@ -236,11 +252,14 @@ export default function ProfilePage() {
         device: "devices",
       } as const;
       const group = map[f.kind];
-      applyFilters({
-        ...filters,
-        facets: { ...filters.facets, [group]: toggleFacetValue(filters.facets[group], f.id) },
-        entity: { kind: f.kind, id: f.id },
-      });
+      applyFilters(
+        boundedEntityFilters({
+          ...filters,
+          facets: { ...filters.facets, [group]: ensureFacetValue(filters.facets[group], f.id) },
+          day: null,
+          entity: { kind: f.kind, id: f.id },
+        }),
+      );
     },
     [applyFilters, filters],
   );
@@ -249,14 +268,17 @@ export default function ProfilePage() {
   const inspectRecord = React.useCallback(
     (kind: "provider" | "model", id: string) => {
       const group = kind === "provider" ? "providers" : "models";
-      applyFilters({
-        ...filters,
-        facets: {
-          ...filters.facets,
-          [group]: toggleFacetValue(filters.facets[group], id),
-        },
-        entity: { kind, id },
-      });
+      applyFilters(
+        boundedEntityFilters({
+          ...filters,
+          facets: {
+            ...filters.facets,
+            [group]: ensureFacetValue(filters.facets[group], id),
+          },
+          day: null,
+          entity: { kind, id },
+        }),
+      );
     },
     [applyFilters, filters],
   );

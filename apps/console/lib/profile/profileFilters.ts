@@ -254,6 +254,11 @@ export function toggleFacetValue(list: readonly string[], value: string): string
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
+/** Ensure one value is in a facet list (add when absent, keep when present). */
+export function ensureFacetValue(list: readonly string[], value: string): string[] {
+  return list.includes(value) ? [...list] : [...list, value];
+}
+
 /** Drop every filter except the metric (the rail's "clear" action). */
 export function clearMineFilters(f: ProfileFilters): ProfileFilters {
   return {

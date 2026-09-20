@@ -399,6 +399,36 @@ describe("ContributionHeatmap", () => {
     hoverDay(el, "Aug 14");
     const card = document.querySelector(".glass-pane--elevated")!;
     expect(card.textContent).toContain("other");
+    // Percentages divide by the MODEL total (1000), not the cell value.
+    expect(card.textContent).toContain("40%");
     expect(card.textContent).toContain("5%");
+  });
+
+  it("resolves weekly model blends to stored providers", () => {
+    // No provider split at all: the week aggregates models, but stops must
+    // still wear provider hues via dailyModelProviders.
+    const el = render(
+      pts(["2026-08-14", 600], ["2026-08-15", 400]),
+      "weekly",
+      TODAY,
+      {},
+      { "2026-08-14": { "gpt-5.3": 600 }, "2026-08-15": { "kimi-k2": 400 } },
+      { "2026-08-14": { "gpt-5.3": "openai" }, "2026-08-15": { "kimi-k2": "moonshot" } },
+    );
+    const cell = [...el.querySelectorAll("rect")].find((r) =>
+      r.getAttribute("aria-label")?.startsWith("Week of Aug 9"),
+    )!;
+    const fill = cell.getAttribute("fill") ?? "";
+    expect(fill.startsWith("url(#profile-week-")).toBe(true);
+    const gradId = fill.slice(5, -1);
+    const grad = [...el.querySelectorAll("linearGradient")].find(
+      (g) => g.getAttribute("id") === gradId,
+    )!;
+    const colors = [...grad.querySelectorAll("stop")].map((s) =>
+      s.getAttribute("stop-color"),
+    );
+    // OpenAI (#00A67E) + Moonshot (#6366F1) hues, never the generic accent.
+    expect(colors.some((c) => c?.includes("#00A67E"))).toBe(true);
+    expect(colors.some((c) => c?.includes("#6366F1"))).toBe(true);
   });
 });
