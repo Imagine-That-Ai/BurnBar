@@ -200,6 +200,68 @@ export function dailyModelTokenSplit(
 }
 
 /**
+ * Per-day per-model provider attribution ("day" → model → providerID) from
+ * the same pass. Raw model ids ("gpt-5.3") don't resolve in the provider
+ * brand table, so cells look up the stored providerID instead of guessing
+ * from the model prefix — no silent accent fallbacks for common models.
+ */
+export function dailyModelProviders(
+  events: readonly ProfileUsageEvent[],
+): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {};
+  for (const e of events) {
+    if (!e.startedAt || e.totalTokens <= 0) continue;
+    const day = dayKeyOf(e.startedAt);
+    const model = e.model ?? "unknown";
+    const provider = e.providerID ?? e.provider;
+    const split = out[day] ?? {};
+    // First writer wins per model/day — one model rarely spans providers
+    // in a day, and ties don't change the hue family.
+    split[model] ??= provider;
+    out[day] = split;
+  }
+  return out;
+}
+
+/** One hard-stop band of a weekly blend kernel. */
+export interface BlendStop {
+  color: string;
+  /** 0..1 fraction where the band starts. */
+  from: number;
+  /** 0..1 fraction where the band ends. */
+  to: number;
+}
+
+/**
+ * Weighted-blend stops for aggregate (weekly) cells: the top provider/model
+ * shares (up to 3 + remainder), each sized by its share — a kernel of the
+ * colors weighted by predominance. Rendered as SVG <linearGradient> hard
+ * stops (NOT a CSS gradient string — SVG fill can't paint those).
+ * Returns null when the split is empty (caller falls back to the accent).
+ */
+export function blendShareStops(
+  split: Record<string, number> | undefined,
+  colorFor: (key: string) => string,
+): BlendStop[] | null {
+  if (!split) return null;
+  const entries = Object.entries(split)
+    .filter(([, tokens]) => tokens > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((n, [, tokens]) => n + tokens, 0);
+  if (entries.length === 0 || total <= 0) return null;
+  const top = entries.slice(0, 3);
+  const rest = total - top.reduce((n, [, tokens]) => n + tokens, 0);
+  const shares: [string, number][] = top.map(([key, tokens]) => [colorFor(key), tokens / total]);
+  if (rest > 0) shares.push(["var(--accent)", rest / total]);
+  let cursor = 0;
+  return shares.map(([color, share]) => {
+    const from = cursor;
+    cursor += share;
+    return { color, from, to: cursor };
+  });
+}
+
+/**
  * Dominant-share color math for heatmap cells. Given a per-day (or per-week)
  * token split and the series max, returns the cell fill: the DOMINANT
  * provider/model's brand color at sqrt-scaled opacity (same perceptual trick
@@ -231,32 +293,19 @@ export function dominantShareFill(
 }
 
 /**
- * Weighted-blend fill for aggregate (weekly) cells: a linear-gradient across
- * the top provider/model shares (up to 3 + remainder), each stop sized by its
- * share — a kernel/conglomerate of the colors weighted by predominance.
- * Returns null when the split is empty (caller falls back to the accent).
+ * Dominant key of a split (most tokens), or null when empty. Shared by cell
+ * titles and weekly-leader labels so both name the same winner.
  */
-export function blendShareFill(
-  split: Record<string, number> | undefined,
-  colorFor: (key: string) => string,
-): string | null {
+export function dominantShareKey(split: Record<string, number> | undefined): string | null {
   if (!split) return null;
-  const entries = Object.entries(split)
-    .filter(([, tokens]) => tokens > 0)
-    .sort((a, b) => b[1] - a[1]);
-  const total = entries.reduce((n, [, tokens]) => n + tokens, 0);
-  if (entries.length === 0 || total <= 0) return null;
-  const top = entries.slice(0, 3);
-  const rest = total - top.reduce((n, [, tokens]) => n + tokens, 0);
-  const stops: [string, number][] = top.map(([key, tokens]) => [colorFor(key), tokens / total]);
-  if (rest > 0) stops.push(["var(--accent)", rest / total]);
-  if (stops.length === 1) return stops[0][0];
-  let cursor = 0;
-  const parts = stops.map(([color, share]) => {
-    const from = cursor * 100;
-    cursor += share;
-    // Hard stops (no interpolation) so each hue reads as its own band.
-    return `${color} ${from.toFixed(1)}% ${(cursor * 100).toFixed(1)}%`;
-  });
-  return `linear-gradient(135deg, ${parts.join(", ")})`;
+  let best: string | null = null;
+  let bestTokens = 0;
+  for (const [key, tokens] of Object.entries(split)) {
+    if (tokens > bestTokens) {
+      bestTokens = tokens;
+      best = key;
+    }
+  }
+  return bestTokens > 0 ? best : null;
 }
+

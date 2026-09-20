@@ -31,8 +31,9 @@ import {
   weeklyTotals,
 } from "@/lib/profile/activityStats";
 import {
-  blendShareFill,
+  blendShareStops,
   dominantShareFill,
+  dominantShareKey,
 } from "@/lib/profile/profileAggregates";
 import { placeTooltip, type TooltipAnchor } from "@/lib/profile/tooltipPlacement";
 import { modelDisplayName, providerBarFill, providerDisplayName } from "@/lib/providerBrand";
@@ -70,6 +71,35 @@ function hoverDateLabel(day: string): string {
 }
 
 /**
+ * Per-day effective split: the provider map WITH entries wins; an empty
+ * provider map falls through to the model map (legacy rollups normalize
+ * dailyProviderTokens to {}, which must not shadow real model data).
+ * Provider facets narrow the provider map to the visible subset first.
+ */
+function splitForDay(
+  day: string,
+  dailyProviderTokens: Record<string, Record<string, number>> | undefined,
+  dailyModelTokens: Record<string, Record<string, number>> | undefined,
+  visibleProviders: readonly string[] | undefined,
+): Record<string, number> | undefined {
+  const providers = dailyProviderTokens?.[day];
+  if (providers && Object.values(providers).some((n) => n > 0)) {
+    if (visibleProviders && visibleProviders.length > 0) {
+      const wanted = new Set(visibleProviders);
+      const narrowed: Record<string, number> = {};
+      for (const [key, tokens] of Object.entries(providers)) {
+        if (wanted.has(key) && tokens > 0) narrowed[key] = tokens;
+      }
+      return Object.keys(narrowed).length > 0 ? narrowed : undefined;
+    }
+    return providers;
+  }
+  const models = dailyModelTokens?.[day];
+  if (models && Object.values(models).some((n) => n > 0)) return models;
+  return undefined;
+}
+
+/**
  * The day card, portaled to `document.body` with fixed positioning: the grid
  * lives in a horizontal scroll container whose overflow would clip an
  * in-flow card on every side. Measures itself after mount so placement uses
@@ -83,6 +113,7 @@ function DayCard({
   splitTotal,
   otherSplit,
   modelSplit,
+  modelOther,
 }: {
   hover: Hover;
   value: number;
@@ -93,6 +124,8 @@ function DayCard({
   /** Top model shares for the day (model → tokens), when the event path
    *  has a per-model split and the provider split is absent. */
   modelSplit?: [string, number][];
+  /** Remainder past the shown models, so percentages always sum to 100. */
+  modelOther?: number;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [size, setSize] = React.useState({ width: 192, height: 140 });
@@ -165,6 +198,14 @@ function DayCard({
                 </span>
               </li>
             ))}
+            {modelOther != null && modelOther > 0 && (
+              <li className="flex items-center gap-1.5 text-xs text-content-dim">
+                <span className="pl-[22px]">other</span>
+                <span className="ml-auto tabular-nums">
+                  {value > 0 ? Math.round((modelOther / value) * 100) : 0}%
+                </span>
+              </li>
+            )}
           </ul>
         )
       )}
@@ -178,6 +219,8 @@ export function ContributionHeatmap({
   today,
   dailyProviderTokens,
   dailyModelTokens,
+  dailyModelProviders,
+  visibleProviders,
   onSelectDay,
 }: {
   points: readonly DailyPoint[];
@@ -193,6 +236,14 @@ export function ContributionHeatmap({
    *  Powers per-model cell coloring + the hover mix wherever the provider
    *  split is absent. Keys are raw model ids. */
   dailyModelTokens?: Record<string, Record<string, number>>;
+  /** Per-day per-model provider attribution ("day" → model → providerID).
+   *  Raw model ids don't resolve in the brand table, so model cells look
+   *  up the stored provider instead of guessing from the model prefix. */
+  dailyModelProviders?: Record<string, Record<string, string>>;
+  /** Active provider-facet selection: colors recompute from this subset so
+   *  a filtered day wears the filtered winner's hue, not the day's overall
+   *  winner. Absent/empty → the full split. */
+  visibleProviders?: readonly string[];
   /** Keyboard + click drill-in: called with the day key when an ACTIVE-day
    *  cell is activated. Active days only are focusable (quiet days pin empty
    *  inspectors, and 365 tab stops would be a trap). Absent → mouse-hover
@@ -314,49 +365,83 @@ export function ContributionHeatmap({
   const shownSplit = hoverSplit.slice(0, 3);
   const otherSplit = splitTotal - shownSplit.reduce((n, [, v]) => n + v, 0);
   // Model mix for the hover card when the provider split is absent.
-  const hoverModelSplit =
+  // Shows the top 3 + an `other` remainder so percentages always sum to 100.
+  const hoverModelEntries =
     hover && mode === "daily" && hoverSplit.length === 0 && dailyModelTokens
       ? Object.entries(dailyModelTokens[hover.day] ?? {})
           .filter(([, n]) => n > 0)
           .sort((a, b) => b[1] - a[1])
-          .slice(0, 4)
       : [];
+  const hoverModelTotal = hoverModelEntries.reduce((n, [, v]) => n + v, 0);
+  const hoverModelShown = hoverModelEntries.slice(0, 3);
+  const hoverModelSplit: [string, number][] = hoverModelShown;
+  const hoverModelOther: number =
+    hoverModelTotal - hoverModelShown.reduce((n, [, v]) => n + v, 0);
 
-  // Weekly-mode blend inputs: per-week merged provider/model splits so each
-  // column paints its weighted conglomerate kernel.
+  // Per-day effective split: the provider map WITH entries wins; an empty
+  // provider map falls through to the model map (legacy rollups normalize
+  // dailyProviderTokens to {}, which must not shadow real model data).
+  // Provider facets narrow the provider map to the visible subset first.
+  // (Module-level pure helper `splitForDay` below the card component.)
+  const splitForDayHere = (day: string): Record<string, number> | undefined =>
+    splitForDay(day, dailyProviderTokens, dailyModelTokens, visibleProviders);
+
+  // Model display color: stored providerID first, raw model id never —
+  // raw ids ("gpt-5.3") don't resolve in the brand table and would all
+  // collapse to the generic accent.
+  const modelColorFor = (day: string) => (model: string): string => {
+    const provider = dailyModelProviders?.[day]?.[model];
+    return providerBarFill(provider ?? model);
+  };
+
+  // Days actually on screen (the sliced point range): weekly blends only
+  // aggregate these, so edge weeks never borrow out-of-range usage.
+  const visibleDays = React.useMemo(() => new Set(points.map((p) => p.day)), [points]);
+
+  // Weekly-mode blend inputs: per-week merged splits so each column paints
+  // its weighted conglomerate kernel. Providers preferred per day, models
+  // as fallback — same rule as the daily cells. Only days actually on
+  // screen (the sliced point range) contribute, so edge weeks never borrow
+  // out-of-range usage.
   const weeklyBlend = React.useMemo(() => {
     if (mode !== "weekly") return new Map<string, Record<string, number>>();
     const byWeek = new Map<string, Record<string, number>>();
-    const source = dailyProviderTokens ?? dailyModelTokens;
-    if (!source) return byWeek;
-    for (const [day, split] of Object.entries(source)) {
+    for (const day of visibleDays) {
+      const effective = splitForDay(day, dailyProviderTokens, dailyModelTokens, visibleProviders);
+      if (!effective) continue;
       const ws = weekStart(day);
       const acc = byWeek.get(ws) ?? {};
-      for (const [key, tokens] of Object.entries(split)) {
+      for (const [key, tokens] of Object.entries(effective)) {
         if (tokens > 0) acc[key] = (acc[key] ?? 0) + tokens;
       }
       byWeek.set(ws, acc);
     }
     return byWeek;
-  }, [mode, dailyProviderTokens, dailyModelTokens]);
+  }, [mode, dailyProviderTokens, dailyModelTokens, visibleDays, visibleProviders]);
+
+  // Paint-server ids per week column (stable across renders for a grid).
+  const gradientIdForWeek = (ws: string): string =>
+    `profile-week-${ws.replace(/-/g, "")}`;
 
   // Dominant-share display name for a day's <title> ("Anthropic leads").
-  // Daily winner from the provider split, else the model split.
   const dominantLabel = (day: string): string => {
-    const split = dailyProviderTokens?.[day] ?? dailyModelTokens?.[day];
-    if (!split) return "mix";
-    let best = "";
-    let bestTokens = 0;
-    for (const [key, tokens] of Object.entries(split)) {
-      if (tokens > bestTokens) {
-        bestTokens = tokens;
-        best = key;
-      }
-    }
+    const split = splitForDayHere(day);
+    const best = dominantShareKey(split);
     if (!best) return "mix";
-    return dailyProviderTokens?.[day]?.[best] != null
+    return dailyProviderTokens?.[day]?.[best] != null &&
+      Object.values(dailyProviderTokens[day]).some((n) => n > 0)
       ? providerDisplayName(best)
       : modelDisplayName(best);
+  };
+
+  // Weekly leader from the WEEKLY aggregate (every row in a column names the
+  // same leader; quiet days never print "mix leads" for an active week).
+  const weeklyLeaderLabel = (day: string): string | null => {
+    const best = dominantShareKey(weeklyBlend.get(weekStart(day)));
+    if (!best) return null;
+    return /[\s()]/.test(best) || best.includes("/") || best.includes("-")
+      ? modelDisplayName(best)
+      : providerDisplayName(best);
   };
 
   return (
@@ -371,6 +456,40 @@ export function ContributionHeatmap({
           style={{ display: "block", maxWidth: "100%" }}
           onMouseLeave={() => setHover(null)}
         >
+          {/* Weekly paint servers: one <linearGradient> per week column with
+              share data, hard stops per band. Inside the SVG so cells can
+              reference them via fill="url(#…)". Opacity stays on the cell
+              (fillOpacity) so magnitude still encodes through the bucket. */}
+          <defs aria-hidden>
+            {mode === "weekly" &&
+              [...weeklyBlend.entries()].map(([ws, split]) => {
+                const stops = blendShareStops(split, (key) => providerBarFill(key));
+                if (!stops || stops.length < 2) return null;
+                return (
+                  <linearGradient
+                    key={ws}
+                    id={gradientIdForWeek(ws)}
+                    x1="0"
+                    y1="0"
+                    x2="1"
+                    y2="1"
+                  >
+                    {stops.flatMap((s, i) => [
+                      <stop
+                        key={`${i}-from`}
+                        offset={`${(s.from * 100).toFixed(1)}%`}
+                        stopColor={s.color}
+                      />,
+                      <stop
+                        key={`${i}-to`}
+                        offset={`${(s.to * 100).toFixed(1)}%`}
+                        stopColor={s.color}
+                      />,
+                    ])}
+                  </linearGradient>
+                );
+              })}
+          </defs>
           {monthLabels.map((m) => (
             <text
               key={`${m.x}-${m.label}`}
@@ -408,35 +527,52 @@ export function ContributionHeatmap({
             const focusable = onSelectDay != null && (dailyTokens.get(day) ?? 0) > 0;
             // Cell color: the dominant share's brand hue.
             // - daily: that day's winning provider (rollup split), else the
-            //   winning model (event split), else the accent at bucket steps.
-            // - weekly: a weighted-blend gradient kernel across the week's
+            //   winning model (event split, provider-attributed), else the
+            //   accent at bucket steps.
+            // - weekly: an SVG paint-server gradient kernel across the week's
             //   top shares (providers preferred, models as fallback).
             // - cumulative: the accent ramp (running totals have no split).
-            let fill: string | undefined;
-            let fillOpacity: number | undefined;
+            // Weekly cells keep the BUCKET opacity (magnitude still encodes),
+            // so the Less-to-More legend keeps describing weekly mode.
+            let paint: string | undefined;
+            let paintOpacity: number | undefined;
             if (bucket !== 0 && mode !== "cumulative") {
               if (mode === "weekly") {
-                const blend = blendShareFill(
-                  weeklyBlend.get(weekStart(day)),
+                const ws = weekStart(day);
+                const stops = blendShareStops(
+                  weeklyBlend.get(ws),
                   (key) => providerBarFill(key),
                 );
-                if (blend) {
-                  fill = blend;
-                  fillOpacity = 1;
+                if (stops && stops.length > 0) {
+                  // Single-share weeks are a solid dominant fill; multi-share
+                  // weeks get a real <linearGradient> paint server below.
+                  if (stops.length === 1) {
+                    paint = stops[0].color;
+                  } else {
+                    paint = `url(#${gradientIdForWeek(ws)})`;
+                  }
+                  paintOpacity = BUCKET_OPACITY[bucket];
                 }
               } else {
+                const split = splitForDayHere(day);
+                const providerSplit = dailyProviderTokens?.[day];
+                const hasProviders =
+                  providerSplit != null &&
+                  Object.values(providerSplit).some((n) => n > 0);
                 const winner = dominantShareFill(
-                  dailyProviderTokens?.[day] ?? dailyModelTokens?.[day],
+                  split,
                   max,
-                  (key) => providerBarFill(key),
+                  hasProviders
+                    ? (key) => providerBarFill(key)
+                    : modelColorFor(day),
                 );
                 if (winner) {
-                  fill = winner.fill;
-                  fillOpacity = winner.fillOpacity;
+                  paint = winner.fill;
+                  paintOpacity = winner.fillOpacity;
                 }
               }
             }
-            const accentFallback = fill == null;
+            const accentFallback = paint == null;
             return (
               <rect
                 key={day}
@@ -448,10 +584,10 @@ export function ContributionHeatmap({
                 fill={
                   bucket === 0
                     ? "var(--color-mercury-wash)"
-                    : (fill ?? "var(--accent)")
+                    : (paint ?? "var(--accent)")
                 }
                 fillOpacity={
-                  bucket === 0 ? 1 : (fillOpacity ?? BUCKET_OPACITY[bucket])
+                  bucket === 0 ? 1 : (paintOpacity ?? BUCKET_OPACITY[bucket])
                 }
                 stroke={hovered ? "var(--accent-deep)" : "transparent"}
                 strokeWidth={hovered ? 1.5 : 0}
@@ -479,7 +615,9 @@ export function ContributionHeatmap({
                 <title>
                   {accentFallback || bucket === 0
                     ? label
-                    : `${label} — ${dominantLabel(day)} leads`}
+                    : mode === "weekly"
+                      ? `${label} — ${weeklyLeaderLabel(day) ?? "mix"} leads`
+                      : `${label} — ${dominantLabel(day)} leads`}
                 </title>
               </rect>
             );
@@ -499,6 +637,7 @@ export function ContributionHeatmap({
               splitTotal={splitTotal}
               otherSplit={otherSplit}
               modelSplit={hoverModelSplit}
+              modelOther={hoverModelOther}
             />,
             document.body,
           )}

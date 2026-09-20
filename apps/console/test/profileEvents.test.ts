@@ -43,9 +43,11 @@ import {
   profileEventErrorCopy,
 } from "../lib/profile/profileEvents";
 import {
-  blendShareFill,
+  blendShareStops,
+  dailyModelProviders,
   dailyModelTokenSplit,
   dominantShareFill,
+  dominantShareKey,
   eventsOnDay,
   hourWeekdayGrid,
   rankShares,
@@ -378,15 +380,30 @@ describe("profileAggregates", () => {
     expect(dominantShareFill({ x: 0 }, 100, colorFor)).toBeNull();
   });
 
-  it("blendShareFill weights up to three shares as hard-stop bands", () => {
+  it("blendShareStops weights up to three shares as hard-stop bands", () => {
     const colorFor = (key: string) => `color:${key}`;
-    const blend = blendShareFill({ a: 600, b: 400 }, colorFor)!;
-    expect(blend.startsWith("linear-gradient")).toBe(true);
-    expect(blend).toContain("color:a 0.0% 60.0%");
-    expect(blend).toContain("color:b 60.0% 100.0%");
-    // A single share is a solid fill, not a gradient.
-    expect(blendShareFill({ a: 600 }, colorFor)).toBe("color:a");
-    expect(blendShareFill({}, colorFor)).toBeNull();
-    expect(blendShareFill(undefined, colorFor)).toBeNull();
+    const stops = blendShareStops({ a: 600, b: 400 }, colorFor)!;
+    expect(stops).toEqual([
+      { color: "color:a", from: 0, to: 0.6 },
+      { color: "color:b", from: 0.6, to: 1 },
+    ]);
+    // A single share is one full-range band (solid paint, no gradient).
+    expect(blendShareStops({ a: 600 }, colorFor)).toEqual([
+      { color: "color:a", from: 0, to: 1 },
+    ]);
+    expect(blendShareStops({}, colorFor)).toBeNull();
+    expect(blendShareStops(undefined, colorFor)).toBeNull();
+  });
+
+  it("dailyModelProviders attributes each model to its stored provider", () => {
+    const byDay = dailyModelProviders(events);
+    expect(byDay["2026-08-14"]).toEqual({ "m-1": "Claude Code" });
+    expect(byDay["2026-08-15"]).toEqual({ "m-2": "Claude Code" });
+  });
+
+  it("dominantShareKey names the winner, null when empty", () => {
+    expect(dominantShareKey({ a: 100, b: 300 })).toBe("b");
+    expect(dominantShareKey({})).toBeNull();
+    expect(dominantShareKey(undefined)).toBeNull();
   });
 });

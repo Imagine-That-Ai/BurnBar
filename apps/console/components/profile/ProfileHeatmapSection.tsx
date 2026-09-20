@@ -30,6 +30,8 @@ export function ProfileHeatmapSection({
   today,
   dailyProviderTokens,
   dailyModelTokens,
+  dailyModelProviders,
+  activeProviders,
   pinnedDay,
   onPinDay,
 }: {
@@ -40,6 +42,10 @@ export function ProfileHeatmapSection({
    *  client-side from bounded event aggregates when the rollup's provider
    *  split is absent. Drives per-model cell coloring + the hover mix. */
   dailyModelTokens?: Record<string, Record<string, number>>;
+  /** Per-day per-model provider attribution for brand-correct model hues. */
+  dailyModelProviders?: Record<string, Record<string, string>>;
+  /** Active provider-facet selection: cell colors recompute from this subset. */
+  activeProviders?: readonly string[];
   pinnedDay: string | null;
   onPinDay: (day: string | null) => void;
 }) {
@@ -107,6 +113,8 @@ export function ProfileHeatmapSection({
           today={today}
           dailyProviderTokens={dailyProviderTokens}
           dailyModelTokens={dailyModelTokens}
+          dailyModelProviders={dailyModelProviders}
+          visibleProviders={activeProviders}
           onSelectDay={pinDay}
         />
       </div>
