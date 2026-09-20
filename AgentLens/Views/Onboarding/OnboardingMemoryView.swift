@@ -60,6 +60,22 @@ enum OnboardingMemoryContent {
 
     /// The step is optional; say where everything on it lives afterwards.
     static let skipNote = "Skip this and nothing is lost \u{2014} the same installer lives in Settings \u{203A} Agents \u{203A} CLIs, and memory collection is switched on in Settings \u{203A} General \u{203A} Indexing."
+
+    // MARK: Learn more
+
+    /// The long form of exactly these four facts, on the web. `#duties` is the
+    /// "Four questions, before the config block" section of
+    /// `website/src/pages/memory.astro` — the same four questions this step
+    /// answers, with the per-surface detail a first run has no room for.
+    ///
+    /// Deliberately a link and not a step: it opens in the member's browser, it
+    /// is never the way forward, and the step works with no network at all —
+    /// nothing here is fetched, the copy above is compiled in.
+    static let learnMoreURL = URL(string: "https://burnbar.ai/memory#duties")!
+
+    static let learnMoreTitle = "Read the long version at burnbar.ai/memory"
+
+    static let learnMoreAccessibilityLabel = "Read the long version of how memory works at burnbar.ai/memory, opens in your browser"
 }
 
 // MARK: - First-run memory step
@@ -101,11 +117,31 @@ struct OnboardingMemoryView: View {
                 }
             }
 
-            Text(OnboardingMemoryContent.skipNote)
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                learnMoreLink
+
+                Text(OnboardingMemoryContent.skipNote)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    /// One quiet way out to the long form. Sits with the skip note rather than
+    /// with the wizard's buttons so it never reads as the next action, and
+    /// follows the same `Link` + arrow idiom the Settings memory walkthrough
+    /// uses for its own outbound page.
+    private var learnMoreLink: some View {
+        Link(destination: OnboardingMemoryContent.learnMoreURL) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Text(OnboardingMemoryContent.learnMoreTitle)
+                Image(systemName: "arrow.up.right.square.fill")
+            }
+            .font(DesignSystem.Typography.tiny)
+            .foregroundStyle(DesignSystem.Colors.ember)
+        }
+        .accessibilityLabel(OnboardingMemoryContent.learnMoreAccessibilityLabel)
     }
 
     @ViewBuilder
