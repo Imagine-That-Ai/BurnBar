@@ -137,6 +137,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loyal model, biggest day, longest streak, first burn, burn rate).
 
 ### Added
+- **Connect Cursor for usage meters.** Quotas can now attach a Cursor *product*
+  session (editor `state.vscdb`, cursor.com WorkOS login, or pasted
+  `WorkosCursorSessionToken`) so Included / Auto+Composer / API / On-demand
+  refresh from `usage-summary`. The cookie lands in
+  `ProviderAPIKeyStore` (`cursor_cookie`, plus `cursor_cookie.<seat>` when
+  Cursor and Cursor-2 are different accounts). Refresh never opens a login
+  window. Limits come from the JSON — Ultra is not hard-coded to $200/$400.
+  This is not Firebase / Sign in to BurnBar with Cursor.
 - **app.burnbar.ai is now reachable from every surface.** The member Data &
   Privacy Control Center existed only as a bare URL — nothing linked to it.
   The website's header More menu, mobile nav, footer trust column, and the

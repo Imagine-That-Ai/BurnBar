@@ -49,8 +49,9 @@ public static class WindowsQuotaAcquisitionPaths
         ClaudeStatuslineMetadataPath());
 
     /// <summary>
-    /// Cursor <c>state.vscdb</c> candidates, primary then Nightly (Swift
-    /// CursorCookieExtractor order). Windows: <c>%APPDATA%\Cursor\User\globalStorage</c>;
+    /// Cursor <c>state.vscdb</c> candidates: Cursor, Nightly, Cursor-2, Cursor 2
+    /// (Swift CursorCookieExtractor / CursorMeterSeatPlanning order). Windows:
+    /// <c>%APPDATA%\Cursor\User\globalStorage</c>;
     /// dev-host fallback: the macOS <c>~/Library/Application Support</c> layout so a
     /// real Cursor install feeds the dev host too.
     /// </summary>
@@ -68,6 +69,8 @@ public static class WindowsQuotaAcquisitionPaths
         {
             Path.Combine(root, "Cursor", "User", "globalStorage", "state.vscdb"),
             Path.Combine(root, "Cursor Nightly", "User", "globalStorage", "state.vscdb"),
+            Path.Combine(root, "Cursor-2", "User", "globalStorage", "state.vscdb"),
+            Path.Combine(root, "Cursor 2", "User", "globalStorage", "state.vscdb"),
         };
     }
 

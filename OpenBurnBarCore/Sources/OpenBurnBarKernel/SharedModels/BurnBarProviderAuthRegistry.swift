@@ -313,7 +313,8 @@ public enum BurnBarProviderAuthRegistry {
         cohereDescriptor,
         alibabaDescriptor,
         amazonDescriptor,
-        metaDescriptor
+        metaDescriptor,
+        cursorDescriptor
     ]
 
     public static func descriptor(forCatalogProviderID providerID: String) -> BurnBarProviderAuthDescriptor? {
@@ -889,5 +890,56 @@ public enum BurnBarProviderAuthRegistry {
         summary: "Meta Llama via Together — OpenAI-compatible routing.",
         proxyHint: "Routed via api.together.xyz (OpenAI-compatible).",
         quotaHint: nil
+    )
+
+    private static let cursorDescriptor = BurnBarProviderAuthDescriptor(
+        providerID: "cursor",
+        displayName: "Cursor",
+        aliasProviderIDs: ["cursor-desktop"],
+        methods: [
+            BurnBarProviderAuthMethod(
+                id: "cursor-cookie-paste",
+                kind: .cookie,
+                displayName: "Paste WorkosCursorSessionToken",
+                summary: "Stores the Cursor session cookie so usage-summary can refresh Included / Auto+Composer / API / On-demand meters.",
+                helperText: "Paste WorkosCursorSessionToken={userId}::{jwt} from cursor.com cookies. OpenBurnBar stores it in this Mac’s Keychain and uses it only to refresh the Cursor usage meter. This does not sign you into BurnBar.",
+                placeholder: "WorkosCursorSessionToken=user_…::eyJ…",
+                dashboardURL: "https://cursor.com/dashboard",
+                dashboardLabel: "Open Cursor dashboard",
+                storage: .appKeychain(account: "cursor_cookie"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "cursor-workos-session",
+                kind: .browserLogin,
+                displayName: "Sign in to Cursor",
+                summary: "Open Cursor’s own login so OpenBurnBar can capture WorkosCursorSessionToken and refresh the meter.",
+                helperText: "Sign in to Cursor in the OpenBurnBar window. The session cookie stays on this Mac and is used only to read usage-summary. This does not sign you into BurnBar.",
+                placeholder: "WorkosCursorSessionToken",
+                dashboardURL: "https://cursor.com",
+                dashboardLabel: "Open cursor.com",
+                storage: .appKeychain(account: "cursor_cookie"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "cursor-editor-vscdb",
+                kind: .localRuntime,
+                displayName: "Use this Mac’s Cursor app session",
+                summary: "Read the signed-in Cursor / Cursor-2 / Nightly editor session and confirm it before it becomes a meter seat.",
+                helperText: "OpenBurnBar reads the editor session already on this Mac. Confirm the install and email so a second Cursor app cannot overwrite the wrong Ultra pool.",
+                placeholder: "Editor session",
+                dashboardURL: "https://cursor.com/dashboard",
+                dashboardLabel: "Open Cursor dashboard",
+                storage: .appKeychain(account: "cursor_cookie"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            )
+        ],
+        primaryMethodID: "cursor-cookie-paste",
+        summary: "Connect a Cursor product session so OpenBurnBar can refresh usage meters. Not BurnBar sign-in.",
+        proxyHint: "Tracking only — Cursor Connector proxy routing is a separate feature.",
+        quotaHint: "Live Included / Auto+Composer / API / On-demand gauges come from Cursor usage-summary. Limits are the JSON values, not a hard-coded $200 or $400."
     )
 }

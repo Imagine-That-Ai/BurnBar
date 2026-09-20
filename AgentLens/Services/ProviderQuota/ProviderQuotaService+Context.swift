@@ -19,7 +19,9 @@ extension ProviderQuotaService {
                 resolvedKeys[identifier] = resolvedValue
             }
         }
-        resolvedKeys["cursor_cookie"] = keyStore.apiKey(for: "cursor_cookie")
+        for (account, value) in CursorMeterSeatPlanning.loadResolvedKeys({ keyStore.apiKey(for: $0) }) {
+            resolvedKeys[account] = value
+        }
         for identifier in ["factory_cookie_header", "factory_cookie", "ollama_cookie_header", "ollama_cookie", "kimi_auth_token"] {
             resolvedKeys[identifier] = keyStore.apiKey(for: identifier)
         }
@@ -176,9 +178,10 @@ extension ProviderQuotaService {
         for provider in Self.supportedProviders where quotaKeyIdentifiers(for: provider).contains(normalized) {
             return provider
         }
-        switch normalized {
-        case "cursor_cookie":
+        if normalized == "cursor_cookie" || normalized.hasPrefix("cursor_cookie.") {
             return .cursor
+        }
+        switch normalized {
         case "factory_cookie_header", "factory_cookie":
             return .factory
         case "ollama_cookie_header", "ollama_cookie":

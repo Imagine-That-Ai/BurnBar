@@ -143,7 +143,26 @@ extension ProviderPlanWizardView {
                     newSlotID = nil
                 }
 
-                if let mirrorAccount = method.storage.mirrorAccountIdentifier {
+                if providerID == "cursor" || method.id.hasPrefix("cursor-") {
+                    do {
+                        try await MainActor.run {
+                            switch try CursorLoginHelper.persistCookie(
+                                storageCredential,
+                                installLabel: label.isEmpty ? "Cursor" : label
+                            ) {
+                            case .persisted:
+                                break
+                            case .needsConfirmation(let plan):
+                                cursorPendingPlan = plan
+                                throw CursorLoginError.needsSeatConfirmation
+                            }
+                        }
+                    } catch {
+                        saveError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                        isSaving = false
+                        return
+                    }
+                } else if let mirrorAccount = method.storage.mirrorAccountIdentifier {
                     do {
                         try await MainActor.run {
                             try ProviderAPIKeyStore.shared.setAPIKey(storageCredential, for: mirrorAccount)
