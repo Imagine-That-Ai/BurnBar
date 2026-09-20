@@ -36,7 +36,7 @@ import {
 } from "./shared.js";
 
 export const MISSION_COLLECTION = "cli_agent_mission_requests";
-export const GROUP_COLLECTION = "mission_groups";
+const GROUP_COLLECTION = "mission_groups";
 const HOSTED_QUOTA_SYNC_ENTITLEMENT_ID = "hosted_quota_sync";
 const METADATA_TOKEN = /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/u;
 const GROUP_SOURCES = new Set([
@@ -87,7 +87,7 @@ export function eventRef(uid: string, requestId: string, eventId: string) {
   return db.doc(`users/${uid}/${MISSION_COLLECTION}/${requestId}/events/${eventId}`);
 }
 
-export function groupRef(uid: string, groupId: string) {
+function groupRef(uid: string, groupId: string) {
   return db.doc(`users/${uid}/${GROUP_COLLECTION}/${groupId}`);
 }
 
@@ -414,7 +414,7 @@ function entitlementRecord(raw: unknown): Record<string, unknown> | undefined {
   return recordOrUndefined(raw);
 }
 
-export async function wandFanOutCapForUid(uid: string): Promise<number> {
+async function wandFanOutCapForUid(uid: string): Promise<number> {
   const [ultra, proMax, cloud, legacyCloud] = await Promise.all([
     db.doc(`users/${uid}/entitlements/${BURNBAR_ULTRA_ENTITLEMENT_ID}`).get(),
     db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_MAX_ENTITLEMENT_ID}`).get(),
@@ -432,7 +432,7 @@ export async function wandFanOutCapForUid(uid: string): Promise<number> {
   return WAND_PARALLEL_CAPS.free;
 }
 
-export type ParsedGroupCreate = {
+type ParsedGroupCreate = {
   groupId: string;
   childMissionIDs: string[];
   document: Record<string, unknown>;

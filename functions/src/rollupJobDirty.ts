@@ -12,7 +12,7 @@ import type { Firestore } from "firebase-admin/firestore";
 
 export const ROLLUP_DIRTY_COALESCE_MS = 5_000;
 
-export type RollupDirtyMarkResult = "written" | "coalesced";
+type RollupDirtyMarkResult = "written" | "coalesced";
 
 function dirtiedAtMillis(value: unknown): number | undefined {
   if (typeof value !== "string" || value.length === 0) return undefined;

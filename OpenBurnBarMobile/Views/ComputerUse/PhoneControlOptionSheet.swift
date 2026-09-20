@@ -10,8 +10,8 @@ struct PhoneControlOptionSheet: View {
     let onType: (String) -> Void
     let onShortcut: (String, [String]) -> Void
     let onPanic: () -> Void
-    var onSendWorkspaceFile: ((URL) -> Void)? = nil
-    var onFreezeFrame: (() -> Void)? = nil
+    var onSendWorkspaceFile: ((URL) -> Void)?
+    var onFreezeFrame: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var textToType = ""

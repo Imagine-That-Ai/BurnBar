@@ -80,19 +80,6 @@ function resolveProviderToken(value: unknown): Provider | undefined {
   return undefined;
 }
 
-/**
- * Resolves the canonical provider for a raw usage event.
- *
- * Uploaders write BOTH `provider` (display name, e.g. "Claude Code") and
- * `providerID` (canonical ID, e.g. "claude-code"). The canonical ID wins when
- * present; otherwise the display name is normalized onto the catalog. Returns
- * undefined only for values outside the catalog — with the full catalog in
- * `SUPPORTED_PROVIDERS`, no real uploader output is ever dropped.
- */
-export function resolveUsageEventProvider(raw: Record<string, unknown>): Provider | undefined {
-  return resolveProviderToken(raw.providerID) ?? resolveProviderToken(raw.provider);
-}
-
 export function stringValue(raw: unknown): string | undefined {
   return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 }

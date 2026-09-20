@@ -1475,7 +1475,6 @@ for (const name of [
 
 for (const [name, ids] of [
   ["createCliAgentMission", ["requestId", "remoteCommandID"]],
-  ["createCliAgentMissionGroup", ["groupId"]],
   ["cancelCliAgentMission", ["requestId"]],
   ["claimCliAgentMission", ["requestId"]],
   ["appendCliAgentMissionEvent", ["requestId", "eventId"]],
@@ -1488,6 +1487,31 @@ for (const [name, ids] of [
     { objectIdsFromClient: ids, handlerModule: "callables/cliAgentMissions.ts" },
   );
 }
+
+// The mission group creator takes a client-supplied groupId, but it is a
+// caller-namespaced CREATE: `writeGroupInTransaction` writes only under
+// request.auth.uid, so a cross-user probe resolves creating under the caller
+// and never rejects — the runtime proof therefore claims no victim-side
+// effect instead of a measured denial code.
+CATALOG_OVERRIDES.createCliAgentMissionGroup = {
+  authMethod: "Firebase Auth with callable-level ownership checks",
+  appCheck: "required",
+  tenantSource: "request.auth.uid",
+  ownershipCheck:
+    "handler derives uid from request.auth.uid and writes only caller-namespaced mission_groups/{groupId} documents; a client-supplied groupId can never address another user's group",
+  bolaCoverage: [
+    {
+      file: "functions/src/__tests__/bola/cliAgentMissions.bola.test.ts",
+      test: "createCliAgentMissionGroup rejects cross-user object access",
+      kind: "runtime-cross-user",
+      covers: ["createCliAgentMissionGroup"],
+      expectedOutcome: "no-side-effect",
+    },
+  ],
+  highRiskComputerUse: true,
+  objectIdsFromClient: ["groupId"],
+  handlerModule: "callables/cliAgentMissions.ts",
+};
 
 CATALOG_OVERRIDES.publishMissionApprovalCeiling = runtimeOwned(
   "publishMissionApprovalCeiling",
@@ -1659,10 +1683,13 @@ const objectExpectedCodes = Object.fromEntries(
 // take a teamId / member uid from the client (D16 / P21) — the sixth,
 // `abandonTeamKeyGeneration`, landed with PR 2's rotation escape hatch — plus
 // the rotation completion marker (D16 / P22, PR 4) and the founding
-// slug-key fingerprint recorder (D16, this PR).
-if (Object.keys(objectExpectedCodes).length !== 103) {
+// slug-key fingerprint recorder (D16, this PR), plus the mission group
+// creator `createCliAgentMissionGroup` (its groupId is a caller-namespaced
+// CREATE: a cross-user probe resolves writing only under the caller, so its
+// runtime-cross-user ref proves no victim-side effect).
+if (Object.keys(objectExpectedCodes).length !== 104) {
   throw new Error(
-    `Expected exactly 103 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
+    `Expected exactly 104 object-id endpoint codes, found ${Object.keys(objectExpectedCodes).length}`,
   );
 }
 

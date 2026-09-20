@@ -89,10 +89,6 @@ function fixtureRollup(): UsageRollup {
       { id: "codex:personal", providerID: "codex", accountID: "personal", accountLabel: "personal", totalRequests: 1_500, totalTokens: Math.round(totalTokens * 0.2), totalCost: 240.1 },
       { id: "anthropic:unattributed", providerID: "anthropic", accountLabel: "Usage not linked to an account yet", totalRequests: 3_812, totalTokens: Math.round(totalTokens * 0.58), totalCost: 812.4 },
     ],
-    accountSummaries: [
-      { id: "codex:personal", providerID: "codex", accountID: "personal", accountLabel: "personal", totalRequests: 1_500, totalTokens: Math.round(totalTokens * 0.2), totalCost: 240.1 },
-      { id: "anthropic:unattributed", providerID: "anthropic", accountLabel: "Usage not linked to an account yet", totalRequests: 3_812, totalTokens: Math.round(totalTokens * 0.58), totalCost: 812.4 },
-    ],
     executionSourceSummaries: [
       { sourceId: "claude-code", sourceName: "Claude Code", label: "Claude Code", totalRequests: 3_204, totalTokens: Math.round(totalTokens * 0.52), totalCost: 701.3 },
       { sourceId: "codex", sourceName: "Codex", label: "Codex", totalRequests: 2_106, totalTokens: Math.round(totalTokens * 0.27), totalCost: 342.6 },

@@ -38,18 +38,15 @@ vi.mock("../../callables/publicRateLimit.js", () => ({
 
 const VAULT = `v1_${"ab".repeat(16)}`;
 
-function sealed(collection: string, docId: string, field = "sealedPayload") {
-  return {
+function createGroupProbe(): Record<string, unknown> {
+  const sealedPayload = {
     schemaVersion: 2,
     algorithm: "AES-256-GCM",
     keyVersion: 1,
     vaultKeyID: VAULT,
     sealedBoxBase64: Buffer.from("sealed-box").toString("base64"),
-    aad: cloudVaultAADContext(ALICE_UID, collection, docId, field),
+    aad: cloudVaultAADContext(ALICE_UID, "mission_groups", "bob-group", "sealedPayload"),
   };
-}
-
-function createGroupProbe(): Record<string, unknown> {
   return {
     groupId: "bob-group",
     deviceId: "bob-device",
@@ -58,7 +55,7 @@ function createGroupProbe(): Record<string, unknown> {
     contentSealed: true,
     sealedSchemaVersion: 2,
     vaultKeyID: VAULT,
-    sealedPayload: sealed("mission_groups", "bob-group"),
+    sealedPayload,
     childMissionIDs: ["child-1"],
     runtimeTokens: ["codex"],
     parallelismLimit: 1,

@@ -1026,7 +1026,8 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     appCheck: "required",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["groupId"],
-    ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
+    ownershipCheck:
+      "handler derives uid from request.auth.uid and writes only caller-namespaced mission_groups/{groupId} documents; a client-supplied groupId can never address another user's group",
     handlerModule: "callables/cliAgentMissions.ts",
     bolaCoverage: [
       {

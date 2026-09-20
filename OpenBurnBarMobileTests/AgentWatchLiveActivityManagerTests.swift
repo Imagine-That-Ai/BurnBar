@@ -70,9 +70,9 @@ final class AgentWatchLiveActivityManagerTests: XCTestCase {
         XCTAssertFalse(manager.hasPushToken)
     }
 
-    func test_apsProbeTreatsResolvedProfileAsTokenCapable() {
+    func test_apsProbeTreatsResolvedProfileAsTokenCapable() throws {
         let outcome = APSEnvironmentEntitlementProbe.inspect(
-            profileData: Self.mobileProvisionFixture(apsEnvironment: "development"),
+            profileData: try Self.mobileProvisionFixture(apsEnvironment: "development"),
             entitlementsPlistData: nil
         )
         XCTAssertEqual(outcome, .present("development"))
@@ -83,19 +83,19 @@ final class AgentWatchLiveActivityManagerTests: XCTestCase {
         )
     }
 
-    func test_apsProbeTreatsMissingKeyAsAbsent() {
+    func test_apsProbeTreatsMissingKeyAsAbsent() throws {
         let outcome = APSEnvironmentEntitlementProbe.inspect(
-            profileData: Self.mobileProvisionFixture(apsEnvironment: nil),
+            profileData: try Self.mobileProvisionFixture(apsEnvironment: nil),
             entitlementsPlistData: nil
         )
         XCTAssertEqual(outcome, .absent)
         XCTAssertFalse(outcome.canRequestTokenPush)
     }
 
-    func test_apsProbeNamesUnresolvedPlaceholderFallback() {
+    func test_apsProbeNamesUnresolvedPlaceholderFallback() throws {
         let outcome = APSEnvironmentEntitlementProbe.inspect(
             profileData: nil,
-            entitlementsPlistData: Self.entitlementsPlist(apsEnvironment: "$(APS_ENVIRONMENT)")
+            entitlementsPlistData: try Self.entitlementsPlist(apsEnvironment: "$(APS_ENVIRONMENT)")
         )
         XCTAssertEqual(outcome, .undetectable(.unresolvedBuildPlaceholder))
         XCTAssertFalse(outcome.canRequestTokenPush)
@@ -362,17 +362,17 @@ final class AgentWatchLiveActivityManagerTests: XCTestCase {
         XCTAssertFalse(AgentWatchLiveActivityCommandRouting.retainsQueuedCommand(.halt))
     }
 
-    private static func entitlementsPlist(apsEnvironment: String?) -> Data {
+    private static func entitlementsPlist(apsEnvironment: String?) throws -> Data {
         var dict: [String: Any] = [
             "com.apple.security.application-groups": ["group.com.openburnbar.app"]
         ]
         if let apsEnvironment {
             dict["aps-environment"] = apsEnvironment
         }
-        return try! PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
+        return try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
     }
 
-    private static func mobileProvisionFixture(apsEnvironment: String?) -> Data {
+    private static func mobileProvisionFixture(apsEnvironment: String?) throws -> Data {
         var entitlements: [String: Any] = [
             "application-identifier": "TEAM.com.openburnbar.app"
         ]
@@ -383,7 +383,7 @@ final class AgentWatchLiveActivityManagerTests: XCTestCase {
             "Name": "fixture",
             "Entitlements": entitlements
         ]
-        let plist = try! PropertyListSerialization.data(fromPropertyList: profile, format: .xml, options: 0)
+        let plist = try PropertyListSerialization.data(fromPropertyList: profile, format: .xml, options: 0)
         var cms = Data("fake-cms-prefix".utf8)
         cms.append(plist)
         cms.append(Data("fake-cms-suffix".utf8))

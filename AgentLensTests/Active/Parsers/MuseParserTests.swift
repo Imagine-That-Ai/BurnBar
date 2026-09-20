@@ -535,7 +535,8 @@ final class MuseParserTests: XCTestCase {
         ]
         let data = try JSONSerialization.data(withJSONObject: frame)
         guard let line = String(data: data, encoding: .utf8) else {
-            return XCTFail("framed envelope")
+            XCTFail("framed envelope")
+            return
         }
         _ = try writeSession(dir: dir, sessionId: "framed", content: line)
         let result = try await MuseParser(logDirectoryOverride: dir.path).parse()

@@ -12,16 +12,14 @@ data class MediaBweFeedbackPayload(
     val observedBitsPerSecond: Int,
     val pathConstrained: Boolean,
 ) {
-    fun toSample(): BweEstimator.Sample =
-        BweEstimator.Sample(
-            roundTripMillis = roundTripMillis,
-            packetLossRate = packetLossRate,
-            observedBitsPerSecond = observedBitsPerSecond,
-            pathConstrained = pathConstrained,
-        )
+    fun toSample(): BweEstimator.Sample = BweEstimator.Sample(
+        roundTripMillis = roundTripMillis,
+        packetLossRate = packetLossRate,
+        observedBitsPerSecond = observedBitsPerSecond,
+        pathConstrained = pathConstrained,
+    )
 
-    fun encoded(): ByteArray =
-        JSONObject()
+    fun encoded(): ByteArray = JSONObject()
             .put("observedBitsPerSecond", observedBitsPerSecond)
             .put("packetLossRate", packetLossRate)
             .put("pathConstrained", pathConstrained)
@@ -45,7 +43,6 @@ data class MediaBweFeedbackPayload(
             return runCatching { decode(frame.payload) }.getOrNull()
         }
 
-        fun isConstrainedPath(usesCellular: Boolean, isExpensive: Boolean, isConstrained: Boolean): Boolean =
-            usesCellular || isExpensive || isConstrained
+        fun isConstrainedPath(usesCellular: Boolean, isExpensive: Boolean, isConstrained: Boolean): Boolean = usesCellular || isExpensive || isConstrained
     }
 }

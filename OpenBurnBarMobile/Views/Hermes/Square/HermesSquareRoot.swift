@@ -1597,7 +1597,7 @@ struct HermesSquareRoot: View {
         case .missions:
             isShowingFanOut = true
         case .resumeHandoff:
-            if let session = cliReader.sessions.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
+            if let session = cliReader.sessions.max(by: { $0.updatedAt > $1.updatedAt }) {
                 resumeSheetSession = session
             } else {
                 let fallback: AssistantRuntimeID = CLIAgentRuntime(assistant: selectedRuntime) == nil

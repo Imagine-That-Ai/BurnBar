@@ -22,6 +22,8 @@ import {
   selectLiveActivityDevices,
 } from "../liveActivityPush.js";
 
+type LiveActivityPushArgs = Parameters<NonNullable<Parameters<typeof fanoutLiveActivityUpdate>[0]["push"]>>[0];
+
 const NOW = Date.parse("2026-08-21T18:00:00.000Z");
 const STARTED = Timestamp.fromMillis(NOW - 90_000);
 const TOKEN = "ab".repeat(32);
@@ -284,7 +286,11 @@ describe("fanoutLiveActivityUpdate", () => {
         data: { platform: "ios", liveActivityPushToken: TOKEN, liveActivitySessionId: "other" },
       },
     ]);
-    const push = vi.fn(async () => ({ status: "rejected" as const, apnsStatusCode: 410, reason: "Unregistered" }));
+    const push = vi.fn(async (_args: LiveActivityPushArgs) => ({
+      status: "rejected" as const,
+      apnsStatusCode: 410,
+      reason: "Unregistered",
+    }));
 
     const tally = await fanoutLiveActivityUpdate({
       uid: "user-1",
@@ -339,7 +345,7 @@ describe("fanoutLiveActivityUpdate", () => {
         data: { platform: "ios", liveActivityPushToken: TOKEN, liveActivitySessionId: "sess-1" },
       },
     ]);
-    const push = vi.fn(async () => ({ status: "sent" as const, apnsStatusCode: 200 }));
+    const push = vi.fn(async (_args: LiveActivityPushArgs) => ({ status: "sent" as const, apnsStatusCode: 200 }));
     const tally = await fanoutLiveActivityUpdate({
       uid: "user-1",
       change: {

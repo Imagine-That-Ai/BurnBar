@@ -308,8 +308,7 @@ final class AgentWatchOverlaySingleton: ObservableObject {
                 // against an approval that moved on since.
                 if let receiver = coordinator.receiver,
                    let request = state.pendingApproval,
-                   matchesIssuedApproval(command, requestId: request.approvalId)
-                {
+                   matchesIssuedApproval(command, requestId: request.approvalId) {
                     if effect == .approve {
                         try? await receiver.approve(request)
                     } else {

@@ -60,7 +60,8 @@ final class BurnBarAIInboxRouteResolverTests: XCTestCase {
 
         guard let routed = error as? BurnBarProviderRouterError,
               case .unsupportedProvider(let providerID) = routed else {
-            return XCTFail("Expected unsupportedProvider, got \(String(describing: error))")
+            XCTFail("Expected unsupportedProvider, got \(String(describing: error))")
+            return
         }
         XCTAssertEqual(providerID, "deepseek")
     }
@@ -97,7 +98,8 @@ final class BurnBarAIInboxRouteResolverTests: XCTestCase {
         )
         guard let routed = error as? BurnBarProviderRouterError,
               case .missingCredential(let providerID) = routed else {
-            return XCTFail("Expected missingCredential, got \(String(describing: error))")
+            XCTFail("Expected missingCredential, got \(String(describing: error))")
+            return
         }
         XCTAssertEqual(providerID, "deepseek")
     }

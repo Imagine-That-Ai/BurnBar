@@ -32,6 +32,7 @@ export const BOLA_EXPECTED_CODES: Record<string, BolaLedgerCode> = {
   connectSelfHostedQuotaAccount: "invalid-argument",
   consumeCredentialTransfer: "permission-denied",
   createCliAgentMission: "invalid-argument",
+  createCliAgentMissionGroup: "no-side-effect",
   createCredentialTransfer: "already-exists",
   createHermesPairing: "permission-denied",
   createPiAgentPairing: "permission-denied",

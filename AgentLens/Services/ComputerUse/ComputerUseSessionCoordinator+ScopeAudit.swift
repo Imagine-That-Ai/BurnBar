@@ -79,7 +79,17 @@ extension ComputerUseSessionCoordinator {
         beforeScreenshotHashHex: String? = nil,
         afterScreenshotHashHex: String? = nil
     ) -> ComputerUseAuditEntry? {
-        return auditPipeline.appendAuditEntry(logger: logger, action: action, approvalId: approvalId, approvedBy: approvedBy, scopeRuleId: scopeRuleId, denyReason: denyReason, scopeContext: scopeContext, beforeScreenshotHashHex: beforeScreenshotHashHex, afterScreenshotHashHex: afterScreenshotHashHex)
+        return auditPipeline.appendAuditEntry(
+            logger: logger,
+            action: action,
+            approvalId: approvalId,
+            approvedBy: approvedBy,
+            scopeRuleId: scopeRuleId,
+            denyReason: denyReason,
+            scopeContext: scopeContext,
+            beforeScreenshotHashHex: beforeScreenshotHashHex,
+            afterScreenshotHashHex: afterScreenshotHashHex
+        )
     }
 
     func captureEvidence(

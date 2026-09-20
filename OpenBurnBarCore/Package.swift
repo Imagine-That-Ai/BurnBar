@@ -104,7 +104,7 @@ let hasBurnBarRemoteXCFramework = !disableBurnBarRemoteXCFramework && FileManage
 if ProcessInfo.processInfo.environment["OPENBURNBAR_DECLARED_XCFRAMEWORKS"] == "1" {
     let required: [(String, Bool)] = [
         ("OpenBurnBarIroh.xcframework", hasIrohXCFramework),
-        ("OpenBurnBarSignalFfiMac.xcframework", hasSignalFfiMacXCFramework),
+        ("OpenBurnBarSignalFfiMac.xcframework", hasSignalFfiMacXCFramework)
     ]
     let missing = required.filter { !$0.1 }.map(\.0)
     if !missing.isEmpty {

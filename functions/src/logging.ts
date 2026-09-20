@@ -307,7 +307,7 @@ function traceIdFromHttpRequest(req: Request): string {
   return randomUUID();
 }
 
-export async function withRequestLogging(
+async function withRequestLogging(
   name: string,
   req: Request,
   handler: (traceId: string) => Promise<void>,

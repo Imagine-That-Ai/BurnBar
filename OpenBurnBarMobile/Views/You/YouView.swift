@@ -463,8 +463,8 @@ struct YouRowIcon: View {
 /// Settings-row label: SF/asset icon + title + subtitle. List supplies the
 /// disclosure chevron. No card chrome.
 private struct YouSettingsLabel: View {
-    var imageName: String? = nil
-    var systemImage: String? = nil
+    var imageName: String?
+    var systemImage: String?
     var systemTint: Color = MobileTheme.Colors.textSecondary
     let title: String
     let subtitle: String

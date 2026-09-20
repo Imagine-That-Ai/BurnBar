@@ -29,7 +29,6 @@ final class ComputerUseInputPipeline {
         session[keyPath: keyPath]
     }
 
-
     private struct PreparedControlFrame {
         var frame: HermesRealtimeRelayFrame
         var pendingSealSession: (peerNodeId: String, key: SymmetricKey)?

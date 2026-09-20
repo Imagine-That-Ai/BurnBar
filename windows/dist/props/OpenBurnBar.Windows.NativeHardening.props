@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Link-time DLL-load hardening props for the OpenBurnBar in-tree NATIVE binaries (Phase 5 · R19
+  library-validation equivalent). Imported by every native C++ project under windows/native/
+  (e.g. the future ViGEmBus virtual-HID bridge + the named-pipe IPC shim):
+
+      <Import Project="$(MSBuildThisFileDirectory)..\dist\props\OpenBurnBar.Windows.NativeHardening.props" />
+
+  This is the LINK-TIME third of the R19 hardening trio (see
+  windows/dist/OpenBurnBar.Dist.Hardening/HardeningPolicy.cs). Every in-tree DLL/EXE links with:
+
+    • /DEPENDENTLOADFLAG:0x0800  — statically-imported (load-config) DLLs resolve ONLY from
+      System32 (LOAD_LIBRARY_SEARCH_SYSTEM32), the load-time analog of the runtime
+      SetDefaultDllDirectories call, blocking DLL-planting/preloading of first-party imports.
+    • /guard:cf                  — Control Flow Guard (indirect-call integrity).
+    • /DYNAMICBASE               — ASLR.
+    • /HIGHENTROPYVA             — 64-bit high-entropy ASLR.
+    • /NXCOMPAT                  — DEP.
+
+  The exact required flags live in HardeningPolicy.RequiredNativeLinkerFlags and are asserted
+  against THIS file by windows/tests/dist so the flags can never silently drift from the policy.
+
+  These items only take effect for C++ (.vcxproj) projects that import this file; a managed C#
+  project that imports it simply ignores the ClCompile/Link ItemDefinitionGroups.
+-->
+<Project>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <!-- Control Flow Guard at compile time (paired with /guard:cf at link). -->
+      <ControlFlowGuard>Guard</ControlFlowGuard>
+      <AdditionalOptions>%(ClCompile.AdditionalOptions) /guard:cf</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <!-- Structured DLL-characteristics knobs (redundant with the explicit switches below,
+           but expressed as first-class metadata for readability + IDE surfacing). -->
+      <ControlFlowGuard>Guard</ControlFlowGuard>
+      <DynamicBase>true</DynamicBase>
+      <NXCompat>true</NXCompat>
+      <HighEntropyVirtualAddressSpace>true</HighEntropyVirtualAddressSpace>
+      <!-- The explicit, auditable hardening switch string the test suite asserts on. -->
+      <AdditionalOptions>%(Link.AdditionalOptions) /DEPENDENTLOADFLAG:0x0800 /guard:cf /DYNAMICBASE /HIGHENTROPYVA /NXCOMPAT</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+
+</Project>

@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Portable Windows UPDATE-FEED verification core (Phase 5 · signed distribution).
+
+    This is the Windows analog of the macOS Sparkle update path, reduced to the
+    PLATFORM-INDEPENDENT security kernel: parse the direct-download update feed, verify a
+    detached Ed25519 signature over a canonical release descriptor with a PINNED public key
+    that is INDEPENDENT of the Authenticode code-signing certificate, and decide —
+    fail-closed — whether an authenticated, newer release is available.
+
+    Parity + threat model
+    ─────────────────────
+      • macOS: Sparkle signs the DMG bytes with EdDSA (Curve25519) and pins SUPublicEDKey in
+        Info.plist, independent of the Developer-ID codesign cert. A compromised signing cert
+        alone cannot ship a malicious update — the appcast enclosure must ALSO carry a valid
+        EdDSA signature under the pinned key.
+      • Windows: Authenticode (Azure Artifact Signing) authenticates the
+        installer to SmartScreen and the OS loader. This library adds the SECOND, INDEPENDENT
+        control: a pinned Ed25519 signature over a canonical descriptor that BINDS the
+        artifact's sha256 (content), url, size, version, channel, minimum OS build, and the
+        critical flag. So — exactly as on macOS — a compromised Authenticode cert alone cannot
+        push an update: the feed entry must ALSO verify under the pinned update key, and the
+        downloaded bytes must hash to the signed sha256. Either check failing is fail-closed
+        (never "available").
+
+    Ed25519 comes from BouncyCastle.Cryptography (pure-managed, no native deps) — the SAME
+    approved dependency the Computer-Use input path (windows/pal/input) and the CloudVault
+    crypto (windows/cloudsync) already ship, and the SAME primitive as macOS CryptoKit
+    Curve25519.Signing over the same canonical bytes. It restores + runs + is unit-tested on
+    the macOS authoring host today (windows/tests/dist) via `dotnet test`.
+
+    net8.0 (no Windows TFM, zero P/Invoke, zero OS calls) so the WinUI app + the
+    OpenBurnBar.Dist.UpdateFeed.Tool signer reference it, and the net10.0 test project
+    consumes it too.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Dist.UpdateFeed</RootNamespace>
+    <AssemblyName>OpenBurnBar.Dist.UpdateFeed</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pure-managed Ed25519 (matches macOS CryptoKit Curve25519.Signing over the same
+         canonical bytes). No native deps: restores + runs on macOS CI and Windows. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpenBurnBar.Dist.UpdateFeed.Tests" />
+  </ItemGroup>
+
+</Project>

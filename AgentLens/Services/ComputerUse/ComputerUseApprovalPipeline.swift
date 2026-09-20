@@ -29,9 +29,7 @@ final class ComputerUseApprovalPipeline {
         session[keyPath: keyPath]
     }
 
-
-
-    public func endSession(reason: ComputerUseEndReason = .completed) async {
+    func endSession(reason: ComputerUseEndReason = .completed) async {
         endSessionNow(reason: reason)
     }
 
@@ -72,7 +70,7 @@ final class ComputerUseApprovalPipeline {
         )
     }
 
-    public func panicHalt(source: ComputerUsePanicSource) async {
+    func panicHalt(source: ComputerUsePanicSource) async {
         guard let sessionId = session.activeSessionId else { return }
         PrivilegedInputKillSwitch.activate(reason: source.rawValue)
         session.cancelPendingApprovals(decision: .rejectAndHalt, note: "panic halt")
@@ -247,7 +245,7 @@ final class ComputerUseApprovalPipeline {
         setTrustMode(mode)
     }
 
-    public func setTrustMode(_ mode: ComputerUseTrustMode) {
+    func setTrustMode(_ mode: ComputerUseTrustMode) {
         guard var current = session.state else { return }
         // R-L5 (Computer Use safety): while a session is LIVE, trust is
         // downgrade-only. A running session may only *lower* trust
@@ -278,7 +276,7 @@ final class ComputerUseApprovalPipeline {
         session.remoteUnlockResultHandler = handler
     }
 
-    public func submitApprovalResponse(_ response: HermesRealtimeRelayApprovalResponse) {
+    func submitApprovalResponse(_ response: HermesRealtimeRelayApprovalResponse) {
         submitApprovalResponse(response, source: .localPresenter)
     }
 
@@ -329,7 +327,7 @@ final class ComputerUseApprovalPipeline {
         continuation.resume(returning: response)
     }
 
-    public func invoke(_ invocation: BurnBarToolInvocation) async -> ComputerUseInvokeResponse {
+    func invoke(_ invocation: BurnBarToolInvocation) async -> ComputerUseInvokeResponse {
         await invoke(invocation, trustedPhoneOrigin: false)
     }
 

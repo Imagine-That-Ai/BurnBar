@@ -177,7 +177,7 @@ final class iPadNavigationUITests: XCTestCase {
         XCTAssertEqual(IPadAwayDeskNavigation.destination(forCommandNumber: 4), .you)
         XCTAssertNil(IPadAwayDeskNavigation.destination(forCommandNumber: 5))
         XCTAssertEqual(AppDestination.inbox.iPadCommandNumber, 1)
-        XCTAssertEqual(AppDestination.insights.iPadCommandNumber, nil)
+        XCTAssertNil(AppDestination.insights.iPadCommandNumber)
     }
 
     func testiPadDesk_agentsKeepsSidebarAndInboxUsesThreeColumns() {

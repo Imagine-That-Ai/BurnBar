@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Release-pipeline CLI for the Windows update feed (Phase 5 · signed distribution).
+
+    Used ONLY by the release workflow (.github/workflows/openburnbar-release-windows.yml) and
+    by the PR gate's end-to-end self-test — never inside the shipped app. It wraps the portable
+    OpenBurnBar.Dist.UpdateFeed core:
+
+      gen-key       — generate an Ed25519 keypair (offline setup of WINDOWS_UPDATE_SIGNING_KEY).
+      sign-entry    — sign one release descriptor with the private seed (read from an env var so
+                      the secret never appears on the command line), emit the entry JSON.
+      build-feed    — wrap one or more signed entry JSON files into a feed document.
+      verify-feed   — verify EVERY entry in a feed under the pinned public key (CI self-check);
+                      exits non-zero on any failure (fail-closed).
+
+    net8.0 (no Windows deps) so it runs on the ubuntu/macos release + PR runners today. The
+    signer/verifier it calls are byte-identical to what the shipped app runs, so the CI
+    round-trip proves the whole chain.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>OpenBurnBar.Dist.UpdateFeed.Tool</RootNamespace>
+    <AssemblyName>OpenBurnBar.Dist.UpdateFeed.Tool</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      Roll forward to the newest installed major runtime. The target is net8.0 (so it shares the
+      exact BouncyCastle + canonicalizer the shipped app uses), but the release/PR runners may
+      only have the net10 runtime available; Major roll-forward lets the same assembly run there.
+    -->
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBurnBar.Dist.UpdateFeed/OpenBurnBar.Dist.UpdateFeed.csproj" />
+  </ItemGroup>
+
+</Project>

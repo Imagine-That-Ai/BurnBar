@@ -1,5 +1,5 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import type { QueryDocumentSnapshot, DocumentData } from "firebase-admin/firestore";
+import type { Query, QueryDocumentSnapshot, DocumentData } from "firebase-admin/firestore";
 
 import { db } from "../adminRuntime.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
@@ -17,14 +17,14 @@ const DEFAULT_BATCH_SIZE = 100;
 const DEFAULT_MAX_BATCHES = 10;
 const DEFAULT_TIMEOUT_MS = 50_000; // 50s execution budget
 
-export interface ReaperOptions {
+interface ReaperOptions {
   nowMs?: number;
   batchSize?: number;
   maxBatches?: number;
   timeoutMs?: number;
 }
 
-export interface ReaperResult {
+interface ReaperResult {
   reaped: number;
   gatewayReaped: number;
   hasMore?: boolean;
@@ -109,7 +109,7 @@ export async function reapExpiredBurnbarAttachments(
       break;
     }
 
-    let query = db.collectionGroup("hermes_gateway_attachments");
+    let query: Query<DocumentData> = db.collectionGroup("hermes_gateway_attachments");
     if (lastGatewayDoc) {
       query = query.startAfter(lastGatewayDoc);
     }

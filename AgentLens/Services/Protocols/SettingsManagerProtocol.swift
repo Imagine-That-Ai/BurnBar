@@ -21,8 +21,7 @@ protocol SettingsManagerProtocol: AnyObject, Sendable,
     BehaviorSettingsManaging,
     IndexSettingsManaging,
     CloudSyncSettingsManaging,
-    ChatBackendSettingsManaging
-{
+    ChatBackendSettingsManaging {
 
     // MARK: - Appearance
 

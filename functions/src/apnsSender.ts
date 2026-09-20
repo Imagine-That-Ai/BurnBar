@@ -50,7 +50,7 @@ const APNS_HOST = defineString("APNS_HOST", {
   description: "APNs HTTP/2 host. Override to https://api.sandbox.push.apple.com for the development environment.",
 });
 
-export type ApnsPushType = "voip" | "liveactivity";
+type ApnsPushType = "voip" | "liveactivity";
 
 const JWT_LIFETIME_MS = 50 * 60 * 1000; // Apple recommends < 60 min
 

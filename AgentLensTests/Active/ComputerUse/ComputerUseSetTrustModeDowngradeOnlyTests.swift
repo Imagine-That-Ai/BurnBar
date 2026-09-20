@@ -141,7 +141,7 @@ final class ComputerUseSetTrustModeDowngradeOnlyTests: XCTestCase {
         coordinator.watchHUDFactory = { hud }
         try await startSession(coordinator, trustMode: .manual)
         XCTAssertEqual(hud.startCount, 1)
-        XCTAssertTrue(coordinator.watchHUDSession === hud)
+        XCTAssertIdentical(coordinator.watchHUDSession, hud)
     }
 
     func testPanicHaltStopsNonNilWatchHUD() async throws {

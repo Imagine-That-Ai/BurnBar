@@ -77,7 +77,7 @@ final class MediaGOPTests: XCTestCase {
         )
         let decoded = try MediaBweFeedbackPayload.decode(payload.encoded())
         XCTAssertEqual(decoded, payload)
-        XCTAssertEqual(decoded.sample.pathConstrained, true)
+        XCTAssertTrue(decoded.sample.pathConstrained)
         XCTAssertEqual(decoded.sample.roundTripMillis, 240)
         XCTAssertTrue(MediaBweFeedbackPayload.isConstrainedPath(
             usesCellular: true,

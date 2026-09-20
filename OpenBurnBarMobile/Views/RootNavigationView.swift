@@ -152,7 +152,7 @@ struct RootNavigationView: View {
             applyComputerUseE2EProofIfNeeded()
             updateColumnVisibility(animated: false)
         }
-        .onChange(of: selection) { _, destination in
+        .onChange(of: selection) { _, _ in
             updateColumnVisibility()
             applyDeskSearch(deskSearchText)
         }

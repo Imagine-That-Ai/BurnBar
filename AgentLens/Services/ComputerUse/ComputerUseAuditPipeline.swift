@@ -29,8 +29,6 @@ final class ComputerUseAuditPipeline {
         session[keyPath: keyPath]
     }
 
-
-
     func remoteClipboardTimelineSummary(
         for response: HermesRealtimeRelayClipboardResponse,
         action: ComputerUseAction

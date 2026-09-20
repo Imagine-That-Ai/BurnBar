@@ -24,7 +24,7 @@ final class KeepAwakeLeaseTests: XCTestCase {
     func testSetTogglesAReasonWithoutDroppingSiblings() {
         var lease = KeepAwakeLease()
         XCTAssertTrue(lease.set(.computerUse, held: true))
-        XCTAssertTrue(lease.set(.phoneToggle, held: true) == false)
+        XCTAssertFalse(lease.set(.phoneToggle, held: true))
         XCTAssertFalse(lease.set(.computerUse, held: false))
         XCTAssertEqual(lease.reasons, [.phoneToggle])
         XCTAssertTrue(lease.set(.phoneToggle, held: false))
