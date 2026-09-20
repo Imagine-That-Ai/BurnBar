@@ -20,7 +20,7 @@ gstreamer = [
 ]
 
 [dependencies]
-glib = { version = "=0.21.5", optional = true }
+glib = { version = "=0.22.9", optional = true }
 gst = { package = "gstreamer", version = "=0.24.5", optional = true, features = ["v1_24"] }
 gst_app = { package = "gstreamer-app", version = "=0.24.5", optional = true, features = ["v1_24"] }
 gst_video = { package = "gstreamer-video", version = "=0.24.5", optional = true, features = ["v1_24"] }
