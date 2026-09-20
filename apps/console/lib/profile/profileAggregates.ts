@@ -6,6 +6,7 @@
  * rollup day format) and all output is deterministic.
  */
 
+import type { AccountSummary, DeviceSummary, ExecutionSourceSummary, ModelSummary, ProviderSummary } from "@/lib/usage";
 import type { ProfileUsageEvent } from "./profileEvents";
 
 /** 7 × 24 grid of event counts + tokens, Monday-first row order for display. */
@@ -91,6 +92,149 @@ export interface NamedShare {
   tokens: number;
   events: number;
   cost: number;
+}
+
+/**
+ * Aggregate bounded events into per-dimension summary rows with the SAME
+ * shapes as the rollup summaries (ModelSummary / ExecutionSourceSummary /
+ * AccountSummary / DeviceSummary). Custom-range breakdowns use these rows
+ * because the rollup has no window docs for custom ranges.
+ */
+export function summarizeEvents(
+  events: readonly ProfileUsageEvent[],
+): {
+  providers: ProviderSummary[];
+  models: ModelSummary[];
+  harnesses: ExecutionSourceSummary[];
+  accounts: AccountSummary[];
+  devices: DeviceSummary[];
+} {
+  type Acc = { label: string; tokens: number; requests: number; cost: number };
+  type DeviceAcc = { label: string; tokens: number; requests: number };
+  const providers = new Map<string, Acc & { providerID?: string }>();
+  const models = new Map<string, Acc & { provider: string; model: string }>();
+  const harnesses = new Map<string, Acc & { sourceId: string; sourceName: string }>();
+  const accounts = new Map<string, Acc & { id: string; providerID: string; accountID?: string }>();
+  const devices = new Map<string, DeviceAcc & { deviceId: string }>();
+  for (const e of events) {
+    const providerKey = e.providerID ?? e.provider;
+    const p = providers.get(providerKey) ?? {
+      label: e.provider,
+      tokens: 0,
+      requests: 0,
+      cost: 0,
+      providerID: e.providerID,
+    };
+    p.tokens += e.totalTokens;
+    p.requests += 1;
+    p.cost += e.costUsd;
+    providers.set(providerKey, p);
+
+    const modelKey = `${providerKey}/${e.model ?? "unknown"}`;
+    const m = models.get(modelKey) ?? {
+      label: e.model ?? "Unknown model",
+      tokens: 0,
+      requests: 0,
+      cost: 0,
+      provider: providerKey,
+      model: e.model ?? "unknown",
+    };
+    m.tokens += e.totalTokens;
+    m.requests += 1;
+    m.cost += e.costUsd;
+    models.set(modelKey, m);
+
+    const harnessKey = e.harnessId ?? "unknown";
+    const h = harnesses.get(harnessKey) ?? {
+      label: e.harnessName ?? e.harnessId ?? "Unknown",
+      tokens: 0,
+      requests: 0,
+      cost: 0,
+      sourceId: harnessKey,
+      sourceName: e.harnessName ?? e.harnessId ?? "Unknown",
+    };
+    h.tokens += e.totalTokens;
+    h.requests += 1;
+    h.cost += e.costUsd;
+    harnesses.set(harnessKey, h);
+
+    const accountKey = e.accountId ?? `${e.providerID ?? e.provider}:unattributed`;
+    const a = accounts.get(accountKey) ?? {
+      label: e.accountLabel ?? accountKey,
+      tokens: 0,
+      requests: 0,
+      cost: 0,
+      id: accountKey,
+      providerID: e.providerID ?? e.provider,
+      accountID: e.accountId,
+    };
+    a.tokens += e.totalTokens;
+    a.requests += 1;
+    a.cost += e.costUsd;
+    accounts.set(accountKey, a);
+
+    const deviceKey = e.deviceId ?? e.sourceDeviceId ?? "unknown";
+    const d = devices.get(deviceKey) ?? {
+      label: deviceKey,
+      tokens: 0,
+      requests: 0,
+      deviceId: deviceKey,
+    };
+    d.tokens += e.totalTokens;
+    d.requests += 1;
+    devices.set(deviceKey, d);
+  }
+  const byTokens = <T extends { tokens: number }>(rows: T[]): T[] =>
+    rows.sort((a, b) => b.tokens - a.tokens);
+  const withKeys = <T extends { tokens: number }>(
+    map: Map<string, T>,
+  ): (T & { key: string })[] =>
+    byTokens([...map.entries()].map(([key, v]) => ({ ...v, key })));
+  const toModel = (r: Acc & { provider: string; model: string; key: string }): ModelSummary => ({
+    model: r.model,
+    provider: r.provider,
+    requests: r.requests,
+    tokens: r.tokens,
+    cost: r.cost,
+    label: r.label,
+  });
+  const toProvider = (r: Acc & { providerID?: string; key: string }): ProviderSummary => ({
+    provider: r.key,
+    providerID: r.providerID,
+    totalRequests: r.requests,
+    totalTokens: r.tokens,
+    totalCost: r.cost,
+  });
+  const toHarness = (r: Acc & { sourceId: string; sourceName: string; key: string }): ExecutionSourceSummary => ({
+    sourceId: r.sourceId,
+    sourceName: r.sourceName,
+    totalRequests: r.requests,
+    totalTokens: r.tokens,
+    totalCost: r.cost,
+    label: r.label,
+  });
+  const toAccount = (r: Acc & { id: string; providerID: string; accountID?: string; key: string }): AccountSummary => ({
+    id: r.id,
+    providerID: r.providerID,
+    accountID: r.accountID,
+    accountLabel: r.label,
+    totalRequests: r.requests,
+    totalTokens: r.tokens,
+    totalCost: r.cost,
+  });
+  const toDevice = (r: DeviceAcc & { deviceId: string; key: string }): DeviceSummary => ({
+    deviceId: r.deviceId,
+    requests: r.requests,
+    tokens: r.tokens,
+    label: r.label,
+  });
+  return {
+    providers: withKeys(providers).map(toProvider),
+    models: withKeys(models).map(toModel),
+    harnesses: withKeys(harnesses).map(toHarness),
+    accounts: withKeys(accounts).map(toAccount),
+    devices: withKeys(devices).map(toDevice),
+  };
 }
 
 /** Rank providers / models / harnesses / accounts / devices inside a day or range. */

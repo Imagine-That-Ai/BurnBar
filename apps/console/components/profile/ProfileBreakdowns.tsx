@@ -77,7 +77,7 @@ function ClickRow({
     <li>
       <div
         className={cn(
-          "group flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm transition-colors hover:bg-mercury-wash",
+          "group flex w-full min-w-0 items-center gap-token-2 rounded-md px-token-2 py-token-2 text-left text-sm transition-colors hover:bg-mercury-wash",
           active && "bg-mercury-wash ring-1 ring-[color:var(--accent)]",
         )}
       >
@@ -86,7 +86,7 @@ function ClickRow({
           onClick={onClick}
           aria-pressed={active}
           title={nameTitle}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
         >
           <BrandLogo id={logoId} label={logoLabel} size={18} />
           <span className="w-28 shrink-0 truncate text-content-bright sm:w-32">{name}</span>
@@ -102,9 +102,9 @@ function ClickRow({
           onClick={onInspect}
           title={inspectLabel}
           aria-label={inspectLabel}
-          className="shrink-0 rounded px-1 text-xs text-content-dim opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 hover:text-content-bright focus-visible:opacity-100"
+          className="shrink-0 rounded border border-glass-line px-token-2 py-0.5 text-[0.68rem] text-content-mute transition-colors hover:border-accent hover:text-content-bright focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
         >
-          Inspect →
+          Inspect
         </button>
       </div>
     </li>
@@ -181,9 +181,7 @@ export function ProfileBreakdowns({
     accounts: readonly string[];
     devices: readonly string[];
   };
-  /** Facet-chip toggle only (row body click). */
   onToggle: (f: BreakdownFacet) => void;
-  /** Facet + inspector focus in ONE update (row Inspect affordance). */
   onInspect: (f: BreakdownFacet) => void;
 }) {
   const pv = (p: ProviderSummary) =>
@@ -194,7 +192,8 @@ export function ProfileBreakdowns({
     metric === "tokens" ? h.totalTokens : metric === "runs" ? h.totalRequests : h.totalCost;
   const cv = (c: ComboSummary) =>
     metric === "tokens" ? c.tokens : metric === "runs" ? c.requests : c.cost;
-  const dv = (d: DeviceSummary) => (metric === "spend" ? 0 : metric === "runs" ? d.requests : d.tokens);
+  const dv = (d: DeviceSummary) =>
+    metric === "spend" ? 0 : metric === "runs" ? d.requests : d.tokens;
   const av = (a: AccountSummary) =>
     metric === "tokens" ? a.totalTokens : metric === "runs" ? a.totalRequests : a.totalCost;
 
@@ -337,12 +336,12 @@ export function ProfileBreakdowns({
           <ul className="max-h-64 space-y-token-1 overflow-y-auto pr-1">
             {combos.map((c) => (
               <li key={`${c.sourceId}/${c.provider}/${c.model}`}>
-                <div className="group flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left text-sm transition-colors hover:bg-mercury-wash">
+                <div className="group flex w-full min-w-0 items-center gap-token-2 rounded-md px-token-2 py-token-2 text-left text-sm transition-colors hover:bg-mercury-wash">
                   <button
                     type="button"
                     onClick={() => onToggle({ kind: "harness", id: c.sourceId })}
                     title={`${c.sourceName} × ${c.model} · ${formatCompact(c.tokens)} tok — click to filter by ${c.sourceName}`}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
                   >
                     <BrandLogo id={c.sourceId} label={c.sourceName} size={18} />
                     <span className="w-40 shrink-0 truncate text-content-bright sm:w-44">
@@ -368,9 +367,9 @@ export function ProfileBreakdowns({
                     onClick={() => onInspect({ kind: "harness", id: c.sourceId })}
                     title={`Inspect ${c.sourceName} in the inspector`}
                     aria-label={`Inspect ${c.sourceName} in the inspector`}
-                    className="shrink-0 rounded px-1 text-xs text-content-dim opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 hover:text-content-bright focus-visible:opacity-100"
+                    className="shrink-0 rounded border border-glass-line px-token-2 py-0.5 text-[0.68rem] text-content-mute transition-colors hover:border-accent hover:text-content-bright focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
                   >
-                    Inspect →
+                    Inspect
                   </button>
                 </div>
               </li>

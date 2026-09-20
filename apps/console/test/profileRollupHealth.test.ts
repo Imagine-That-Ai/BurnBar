@@ -53,6 +53,7 @@ describe("profileRollupNeedsFullRebuild", () => {
             {
               sourceId: "cursor",
               sourceName: "Cursor",
+              label: "Cursor",
               totalRequests: 3,
               totalTokens: 900,
               totalCost: 0.4,

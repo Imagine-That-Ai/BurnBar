@@ -52,6 +52,7 @@ import {
   hourWeekdayGrid,
   rankShares,
   summarizeDay,
+  summarizeEvents,
   tokenMix,
 } from "../lib/profile/profileAggregates";
 import type { ProfileUsageEvent } from "../lib/profile/profileEvents";
@@ -185,6 +186,18 @@ describe("matchEventFacets", () => {
     ).toBe(true);
     expect(matchEventFacets(base, { ...empty, models: ["m-2"] })).toBe(false);
     expect(matchEventFacets(base, { ...empty, devices: ["other"] })).toBe(false);
+  });
+
+  it("matches synthetic unknown chips against missing dimensions", () => {
+    const noModel = ev({ id: "u1" });
+    expect(matchEventFacets(noModel, { ...empty, models: ["unknown"] })).toBe(true);
+    expect(matchEventFacets(noModel, { ...empty, models: ["m-1"] })).toBe(false);
+    const noHarness = ev({ id: "u2", model: "m-1" });
+    expect(matchEventFacets(noHarness, { ...empty, harnesses: ["unknown"] })).toBe(true);
+    const noDevice = ev({ id: "u3", model: "m-1", harnessId: "h-1" });
+    expect(matchEventFacets(noDevice, { ...empty, devices: ["unknown"] })).toBe(true);
+    // …but a real chip still rejects a missing dimension.
+    expect(matchEventFacets(noDevice, { ...empty, devices: ["mac"] })).toBe(false);
   });
 });
 
@@ -356,6 +369,44 @@ describe("profileAggregates", () => {
     const day = summarizeDay("2026-08-14", events);
     expect(day).toMatchObject({ day: "2026-08-14", events: 2, tokens: 450, cost: 3 });
     expect(day.byModel[0]).toMatchObject({ key: "m-1", tokens: 450 });
+  });
+
+  it("summarizeEvents aggregates every dimension in rollup shapes", () => {
+    const s = summarizeEvents(events);
+    // Models carry rollup ModelSummary fields (model/provider/requests/
+    // tokens/cost/label) so breakdowns render both shapes identically.
+    expect(s.models).toMatchObject([
+      { model: "m-1", provider: "Claude Code", requests: 2, tokens: 450, cost: 3, label: "m-1" },
+      { model: "m-2", provider: "Claude Code", requests: 1, tokens: 50, cost: 0.5, label: "m-2" },
+    ]);
+    expect(s.harnesses).toEqual([
+      { label: "H2", sourceId: "h-2", sourceName: "H2", totalRequests: 1, totalTokens: 300, totalCost: 2 },
+      { label: "H1", sourceId: "h-1", sourceName: "H1", totalRequests: 1, totalTokens: 150, totalCost: 1 },
+      { label: "Unknown", sourceId: "unknown", sourceName: "Unknown", totalRequests: 1, totalTokens: 50, totalCost: 0.5 },
+    ]);
+    // Totals reconcile: every dimension sums to the same event totals.
+    const sum = (rows: { tokens: number; requests: number; cost: number }[]) => ({
+      tokens: rows.reduce((n, r) => n + r.tokens, 0),
+      requests: rows.reduce((n, r) => n + r.requests, 0),
+      cost: rows.reduce((n, r) => n + r.cost, 0),
+    });
+    const sumHarness = (rows: { totalTokens: number; totalRequests: number; totalCost: number }[]) => ({
+      tokens: rows.reduce((n, r) => n + r.totalTokens, 0),
+      requests: rows.reduce((n, r) => n + r.totalRequests, 0),
+      cost: rows.reduce((n, r) => n + r.totalCost, 0),
+    });
+    const sumDevice = (rows: { tokens: number; requests: number }[]) => ({
+      tokens: rows.reduce((n, r) => n + r.tokens, 0),
+      requests: rows.reduce((n, r) => n + r.requests, 0),
+    });
+    expect(sum(s.models)).toEqual({ tokens: 500, requests: 3, cost: 3.5 });
+    expect(sumHarness(s.harnesses)).toEqual({ tokens: 500, requests: 3, cost: 3.5 });
+    // Devices are cost-blind server-side (DeviceSummary has no cost field);
+    // the rollup never writes device cost, so accumulate tokens/runs only.
+    expect(sumDevice(s.devices)).toEqual({ tokens: 500, requests: 3 });
+    expect(sumHarness(s.accounts)).toEqual({ tokens: 500, requests: 3, cost: 3.5 });
+    // Unattributed accounts use the synthetic rollup key.
+    expect(s.accounts[0]).toMatchObject({ id: "Claude Code:unattributed" });
   });
 
   it("dailyModelTokenSplit groups tokens by day and model", () => {

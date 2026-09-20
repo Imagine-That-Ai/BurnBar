@@ -72,6 +72,7 @@ export interface ProfileUsageEvent {
   accountId?: string;
   accountLabel?: string;
   deviceId?: string;
+  sourceDeviceId?: string;
   sessionId?: string;
   inputTokens: number;
   outputTokens: number;
@@ -196,6 +197,9 @@ export function buildProfileEventConstraints(
  * - account: `${providerID}:unattributed` chips match events with NO
  *   `providerAccountID` (the synthetic key is rollup-only, never stored).
  * - device: `deviceId ?? sourceDeviceId`, same fallback the rollup uses.
+ * - model/harness/device chips literally named "unknown" match events
+ *   MISSING that dimension (the rail renders synthetic Unknown rows for
+ *   them, and clicking one must not empty the view).
  * Multi-value groups are ORs; groups AND across. Empty groups match all.
  */
 export function matchEventFacets(
@@ -208,12 +212,15 @@ export function matchEventFacets(
   ) {
     return false;
   }
-  if (facets.models.length > 0 && (e.model == null || !facets.models.includes(e.model))) {
+  if (
+    facets.models.length > 0 &&
+    !facets.models.some((m) => m === e.model || (m === "unknown" && e.model == null))
+  ) {
     return false;
   }
   if (
     facets.harnesses.length > 0 &&
-    (e.harnessId == null || !facets.harnesses.includes(e.harnessId))
+    !facets.harnesses.some((h) => h === e.harnessId || (h === "unknown" && e.harnessId == null))
   ) {
     return false;
   }
@@ -223,7 +230,7 @@ export function matchEventFacets(
   }
   if (
     facets.devices.length > 0 &&
-    (e.deviceId == null || !facets.devices.includes(e.deviceId))
+    !facets.devices.some((d) => d === e.deviceId || (d === "unknown" && e.deviceId == null))
   ) {
     return false;
   }
@@ -269,6 +276,7 @@ export function normalizeProfileEvent(id: string, raw: unknown): ProfileUsageEve
     accountId: str(r.providerAccountID),
     accountLabel: str(r.providerAccountLabel) ?? str(r.providerAccountID),
     deviceId: str(r.deviceId) ?? str(r.sourceDeviceId),
+    sourceDeviceId: str(r.sourceDeviceId),
     sessionId: str(r.sessionId),
     inputTokens,
     outputTokens,
