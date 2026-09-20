@@ -206,15 +206,19 @@ else
 fi
 [[ -x "${RUSTUP_BIN}" ]] || abort "rustup not found in PATH"
 
-if [[ -x "${HOME}/.cargo/bin/cargo" ]]; then
-  CARGO_BIN="${HOME}/.cargo/bin/cargo"
-else
-  CARGO_BIN="$(command -v cargo || true)"
-fi
-[[ -x "${CARGO_BIN}" ]] || abort "cargo not found in PATH"
-
 RUST_TOOLCHAIN="${SIGNAL_FFI_RUST_TOOLCHAIN:-stable}"
 [[ -n "${RUST_TOOLCHAIN}" ]] || abort "SIGNAL_FFI_RUST_TOOLCHAIN cannot be empty"
+
+# Homebrew cargo is often first on PATH and rejects `+stable`
+# (`error: no such command: '+stable'`). rustup's proxy understands
+# toolchain selectors; `rustup run` never needs one. Do not call
+# `command -v cargo` here. Skip the probe when SIGNAL_FFI_SKIP_BUILD=1
+# so packaging-only callers do not need a working toolchain.
+if [[ "${SIGNAL_FFI_SKIP_BUILD:-0}" != "1" ]]; then
+  if ! "${RUSTUP_BIN}" run "${RUST_TOOLCHAIN}" cargo --version >/dev/null 2>&1; then
+    abort "rustup cannot run cargo for toolchain ${RUST_TOOLCHAIN}"
+  fi
+fi
 
 write_macho_repair_tool() {
   mkdir -p "${BUILD_DIR}"
@@ -382,7 +386,7 @@ build_target() {
     )
   fi
   ensure_rust_target "${target}"
-  log "cargo +${RUST_TOOLCHAIN} rustc ${PROFILE} ${target} (${crate_type})"
+  log "rustup run ${RUST_TOOLCHAIN} cargo rustc ${PROFILE} ${target} (${crate_type})"
   (
     cd "${LIBSIGNAL_DIR}"
     CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}" \
@@ -393,7 +397,7 @@ build_target() {
     OPENBURNBAR_SIGNAL_FFI_MACHO_REPAIR_TOOL="${MACHO_REPAIR_TOOL}" \
     RUSTC_WRAPPER="${RUSTC_WRAPPER_SCRIPT}" \
     PATH="${HOME}/.cargo/bin:${PATH}" \
-      "${CARGO_BIN}" "+${RUST_TOOLCHAIN}" rustc \
+      "${RUSTUP_BIN}" run "${RUST_TOOLCHAIN}" cargo rustc \
         -p libsignal-ffi \
         ${PROFILE_FLAG} \
         --target "${target}" \

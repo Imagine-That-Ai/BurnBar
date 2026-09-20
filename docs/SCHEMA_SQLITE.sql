@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: 0e0610aa91306bdd2210a326b20592ff800029cb79c16fb66e0f644d18b4bdfd
+-- Schema hash: c35054ce6150812a3f7bd951d9434c3c7e6178999a1acdc7c8253b2602e0b1b6
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -68,6 +68,7 @@ CREATE INDEX token_usage_timestamp_idx ON token_usage(timestamp DESC);
 CREATE INDEX token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime);
 CREATE INDEX token_usage_originator_time_idx ON token_usage(originatorKind, startTime);
 CREATE INDEX token_usage_start_time_idx ON token_usage(startTime);   -- War Room Command Board window scan (v64+)
+CREATE INDEX token_usage_end_time_idx ON token_usage(endTime);       -- Receipt close-monitor end-time window (v69+)
 
 -- ── Conversations (v2+) ──────────────────────────────────────────────────────
 -- Session conversation bodies + FTS. Writer: app. See ADR-005 table matrix.

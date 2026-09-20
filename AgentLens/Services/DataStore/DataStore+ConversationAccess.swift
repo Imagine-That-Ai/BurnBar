@@ -32,6 +32,22 @@ extension DataStore {
         try await actor.conversationStore.fetchConversation(id: id)
     }
 
+    func fetchConversationForReceipt(
+        sessionId: String,
+        includeTranscript: Bool = true
+    ) async throws -> OpenBurnBarCore.ConversationRecord? {
+        try await actor.conversationStore.fetchConversationForReceipt(
+            sessionId: sessionId,
+            includeTranscript: includeTranscript
+        )
+    }
+
+    func fetchReceiptConversationOverlays(
+        sessionIDs: [String]
+    ) async throws -> [String: ReceiptConversationOverlay] {
+        try await actor.conversationStore.fetchConversationOverlaysForReceipts(sessionIDs: sessionIDs)
+    }
+
     nonisolated func fetchConversationSynchronously(id: String) throws -> OpenBurnBarCore.ConversationRecord? {
         try actor.conversationStore.fetchConversationSynchronously(id: id)
     }
@@ -40,8 +56,14 @@ extension DataStore {
         try await actor.conversationStore.fetchConversations(limit: limit)
     }
 
-    func fetchConversationsWithoutTranscripts(limit: Int) async throws -> [OpenBurnBarCore.ConversationRecord] {
-        try await actor.conversationStore.fetchConversationsWithoutTranscripts(limit: limit)
+    func fetchConversationsWithoutTranscripts(
+        limit: Int,
+        activeSince: Date? = nil
+    ) async throws -> [OpenBurnBarCore.ConversationRecord] {
+        try await actor.conversationStore.fetchConversationsWithoutTranscripts(
+            limit: limit,
+            activeSince: activeSince
+        )
     }
 
     func fetchConversationActivitySummaries(limit: Int) async throws -> [ConversationActivitySummary] {

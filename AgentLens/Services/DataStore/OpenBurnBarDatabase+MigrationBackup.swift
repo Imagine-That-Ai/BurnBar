@@ -24,7 +24,11 @@ extension OpenBurnBarDatabase {
         // Reviewed 2026-09-04 (Memory Blind Sync PR-2): two `IF NOT EXISTS`
         // statements, one new table and its index. No pre-existing row is read,
         // rewritten or deleted, so transactional rollback is sufficient protection.
-        "v67_agent_memory_inbox"
+        "v67_agent_memory_inbox",
+        // Reviewed 2026-09-20 (receipt close-monitor): one `IF NOT EXISTS`
+        // index on token_usage.endTime. No pre-existing row is read,
+        // rewritten or deleted.
+        "v69_token_usage_end_time_index"
     ]
 
     enum OpenBurnBarDatabaseError: Error {

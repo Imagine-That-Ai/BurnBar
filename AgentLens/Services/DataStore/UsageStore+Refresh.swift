@@ -15,6 +15,69 @@ extension UsageStore {
         }
     }
 
+    /// Usage rows for specific session identities. `sessionId` is indexed, so
+    /// this is how the receipt close-monitor joins long-lived Factory / Claude
+    /// chats whose original `startTime` fell out of the newest-N usage window.
+    ///
+    /// `limit` is per session. A single global `LIMIT` would keep only the
+    /// newest rows across every candidate and mint older chats with empty
+    /// totals.
+    func fetchUsage(sessionIDs: [String], limit: Int = 800) async throws -> [TokenUsage] {
+        let ids = Array(Set(sessionIDs.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })).sorted()
+        guard !ids.isEmpty, limit > 0 else { return [] }
+        return try await dbQueue.read { db in
+            let placeholders = OpenBurnBarDatabase.sqlPlaceholders(count: ids.count)
+            var arguments = StatementArguments(ids)
+            arguments += [limit]
+            let columns = Self.usageDecodeSelectColumns.joined(separator: ", ")
+            return try Self.compactMapCachedRows(
+                db: db,
+                sql: """
+                    SELECT \(columns)
+                    FROM (
+                        SELECT \(columns),
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY sessionId
+                                   ORDER BY endTime DESC
+                               ) AS usage_row_number
+                        FROM token_usage
+                        WHERE sessionId IN (\(placeholders))
+                    )
+                    WHERE usage_row_number <= ?
+                    ORDER BY endTime DESC
+                    """,
+                arguments: arguments,
+                transform: Self.decodeUsage
+            )
+        }
+    }
+
+    /// Every `token_usage` row for the given session identities.
+    /// Receipt mint must not truncate Warp / event-oriented sessions.
+    func fetchAllUsage(sessionIDs: [String]) async throws -> [TokenUsage] {
+        let ids = Array(Set(sessionIDs.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })).sorted()
+        guard !ids.isEmpty else { return [] }
+        return try await dbQueue.read { db in
+            let placeholders = OpenBurnBarDatabase.sqlPlaceholders(count: ids.count)
+            let columns = Self.usageDecodeSelectColumns.joined(separator: ", ")
+            return try Self.compactMapCachedRows(
+                db: db,
+                sql: """
+                    SELECT \(columns)
+                    FROM token_usage
+                    WHERE sessionId IN (\(placeholders))
+                    ORDER BY endTime DESC
+                    """,
+                arguments: StatementArguments(ids),
+                transform: Self.decodeUsage
+            )
+        }
+    }
+
     func fetchUsage(in dateRange: ClosedRange<Date>, limit: Int) async throws -> [TokenUsage] {
         try await dbQueue.read { db -> [TokenUsage] in
             try Self.fetchUsageRows(db: db, dateRange: dateRange, limit: limit)
@@ -28,6 +91,14 @@ extension UsageStore {
     func fetchUsage(startingIn dateRange: Range<Date>, limit: Int) async throws -> [TokenUsage] {
         try await dbQueue.read { db -> [TokenUsage] in
             try Self.fetchUsageRows(db: db, startingIn: dateRange, limit: limit)
+        }
+    }
+
+    /// Index-friendly end-time window for usage-only harnesses whose
+    /// original start fell out of the six-hour start horizon.
+    func fetchUsage(endingIn dateRange: Range<Date>, limit: Int) async throws -> [TokenUsage] {
+        try await dbQueue.read { db -> [TokenUsage] in
+            try Self.fetchUsageRows(db: db, endingIn: dateRange, limit: limit)
         }
     }
 

@@ -267,8 +267,9 @@ struct ReceiptAccomplishmentSynthesizer: Sendable {
             items.append("Objective: \(context.promptSummary)")
         }
 
-        if items.isEmpty {
-            items.append("Session completed successfully")
+        if items.isEmpty, !context.promptSummary.isEmpty,
+           !ReceiptChatBridge.isGenericAccomplishment(context.promptSummary) {
+            items.append(context.promptSummary)
         }
 
         return items

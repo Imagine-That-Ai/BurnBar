@@ -28,6 +28,10 @@ final class NavigationCoordinator {
     
     /// The pending route to navigate to in the dashboard.
     var dashboardRoute: DashboardRoute?
+
+    /// Optional lens carried by `openburnbar://receipts/{id}?lens=chat`.
+    /// Consumed with `dashboardRoute` so a flyout can open Chat tape.
+    var pendingReceiptLens: ReceiptLens?
     
     /// Dashboard route enum - mirrors DashboardMainRoute for external coordination
     enum DashboardRoute: Hashable {
@@ -41,7 +45,7 @@ final class NavigationCoordinator {
         case recap
         case database
         case projects
-        case sessionLogs
+        case sessionLogs(conversationID: String?)
         case chat
         /// Subscription & quota vault. The pre-limit alert deep-links here — the
         /// product's core loop ends on this screen, so it must be reachable from
@@ -50,8 +54,9 @@ final class NavigationCoordinator {
         /// AI Inbox. The associated id is the item a notification was about, so a
         /// tapped alert lands on that item rather than the top of the list.
         case inbox(itemID: String?)
-        /// Itemized token burn slips and cache discounts register.
-        case receipts
+        /// Itemized token burn slips. The optional id is the slip a
+        /// notification was about, so a tapped banner lands on that row.
+        case receipts(receiptID: String?)
     }
     
     // MARK: - Navigation Methods
@@ -96,11 +101,10 @@ final class NavigationCoordinator {
     /// fall back rather than silently swallowing an unknown URL.
     @discardableResult
     func handleDeepLink(_ url: URL) -> Bool {
-        guard url.scheme == "openburnbar" else { return false }
-        switch url.host {
+        guard url.scheme?.lowercased() == "openburnbar" else { return false }
+        switch url.host?.lowercased() {
         case "inbox":
-            let itemID = url.pathComponents.first { $0 != "/" }
-            setDashboardRoute(.inbox(itemID: itemID))
+            setDashboardRoute(.inbox(itemID: Self.pathIdentifier(from: url)))
             pendingNavigation = .dashboard
             return true
         case "quota":
@@ -116,11 +120,27 @@ final class NavigationCoordinator {
             pendingNavigation = .dashboard
             return true
         case "receipts":
-            setDashboardRoute(.receipts)
+            pendingReceiptLens = Self.receiptLens(from: url)
+            setDashboardRoute(.receipts(receiptID: Self.pathIdentifier(from: url)))
+            pendingNavigation = .dashboard
+            return true
+        case "sessions":
+            setDashboardRoute(.sessionLogs(conversationID: Self.pathIdentifier(from: url)))
             pendingNavigation = .dashboard
             return true
         default:
             return false
         }
+    }
+
+    /// First non-empty path segment, already percent-decoded by `URL`.
+    /// `openburnbar://receipts/` must not become an empty-string id.
+    static func pathIdentifier(from url: URL) -> String? {
+        ReceiptChatBridge.pathIdentifier(from: url)
+    }
+
+    /// `?lens=chat` / `slip` / `burn` / `proof` on a receipts URL.
+    static func receiptLens(from url: URL) -> ReceiptLens? {
+        ReceiptChatBridge.receiptLens(from: url)
     }
 }

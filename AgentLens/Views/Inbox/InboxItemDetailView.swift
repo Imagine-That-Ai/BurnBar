@@ -155,8 +155,15 @@ struct InboxItemDetailView: View {
     private var navigator: InboxDrillNavigator {
         InboxDrillNavigator(
             openSessionLog: onOpenSessionLog,
+            openReceipt: { id in
+                guard let url = ReceiptChatBridge.receiptURL(receiptID: id) else { return }
+                ReceiptDeepLink.open(url)
+            },
             openWeb: { raw in
-                guard let url = URL(string: raw), url.scheme == "https" || url.scheme == "http" else { return }
+                guard let url = URL(string: raw),
+                      let scheme = url.scheme?.lowercased(),
+                      scheme == "https" || scheme == "http"
+                else { return }
                 NSWorkspace.shared.open(url)
             },
             reveal: { path in

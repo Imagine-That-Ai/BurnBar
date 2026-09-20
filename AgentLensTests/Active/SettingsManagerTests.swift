@@ -484,6 +484,8 @@ final class SettingsManagerTests: XCTestCase {
         COMM ARGS
         codex-code-mode-host /Users/alberto/.codex/bin/codex-code-mode-host
         cursor-agent worker start
+        cursor-agent /Applications/Cursor.app/Contents/Resources/app/bin/cursor-agent
+        ollama serve
         open-code --stdio
         mini-max --model MiniMax-M2
         z-ai --stdio
@@ -496,6 +498,10 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(statuses[AgentProvider.minimax.persistedToken], .running)
         XCTAssertEqual(statuses[AgentProvider.zai.persistedToken], .running)
         XCTAssertEqual(statuses[AgentProvider.xAI.persistedToken], .running)
+        XCTAssertNil(
+            statuses[AgentProvider.ollama.persistedToken],
+            "ollama serve is the daemon, not a live session"
+        )
     }
 
     func test_agentProcessDetectorStillExcludesHyphenatedHelpersAndServices() {
@@ -508,6 +514,21 @@ final class SettingsManagerTests: XCTestCase {
         """)
 
         XCTAssertTrue(statuses.isEmpty)
+    }
+
+    func test_agentProcessDetectorKeepsUnknownSnapshotsOutOfTheIdleMap() {
+        XCTAssertNil(
+            PixelClockAgentProcessDetector.statusesOrUnknown(
+                fromProcessLines: [AgentCLIProcessClassifier.unknownProcessSnapshotSentinel]
+            ),
+            "A timed-out ps must not wipe running Pixel Clock lanes"
+        )
+        XCTAssertEqual(
+            PixelClockAgentProcessDetector.statusesOrUnknown(
+                fromProcessLines: ["codex exec --cd /Users/a/burnbar"]
+            )?[AgentProvider.codex.persistedToken],
+            .running
+        )
     }
 
     func test_swarmWallpaperColorDriver_fallsBackToHistoricalUsageWhenNoProviderIsRunning() {

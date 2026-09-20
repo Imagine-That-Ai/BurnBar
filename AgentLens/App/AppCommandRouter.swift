@@ -77,7 +77,7 @@ final class AppCommandRouter {
         // it, but a host missing from this list never reaches that handler — it
         // falls through to `default` and is handed to the Google Sign-In fallback,
         // so the route would be declared and unreachable.
-        case "quota", "inbox", "home", "recap", "receipts":
+        case "quota", "inbox", "home", "recap", "receipts", "sessions":
             return routeDashboardDeepLink?(url) ?? false
         case "approve-device", "device-approval", "devices":
             Task { @MainActor in
@@ -89,6 +89,14 @@ final class AppCommandRouter {
         default:
             return false
         }
+    }
+
+    /// In-app first, then the URL scheme. Banner taps, Chat tape, Proof,
+    /// the close flyout, and inbox citations all use this so a missing
+    /// router install still opens the slip instead of swallowing the tap.
+    func open(_ url: URL) {
+        if handle(url) { return }
+        NSWorkspace.shared.open(url)
     }
 
     /// Outcome of the device-owner authentication gate in the link-cli flow.

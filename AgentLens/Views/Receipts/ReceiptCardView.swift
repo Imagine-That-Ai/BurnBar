@@ -43,6 +43,10 @@ struct ReceiptInspectorState: Equatable {
 
 struct ReceiptDetailCardView: View {
     let receipt: ReceiptRecord
+    var overlay: ReceiptConversationOverlay?
+    var dataStore: DataStore?
+    var requestedLens: ReceiptLens?
+    var lensRequestToken: UUID
     var onToggleStar: ((Bool) -> Void)?
     var onUpdateReview: ((ReceiptQualityReview) -> Void)?
 
@@ -50,14 +54,26 @@ struct ReceiptDetailCardView: View {
 
     init(
         receipt: ReceiptRecord,
+        overlay: ReceiptConversationOverlay? = nil,
+        dataStore: DataStore? = nil,
         initialLens: ReceiptLens = .thermal,
+        requestedLens: ReceiptLens? = nil,
+        lensRequestToken: UUID = UUID(),
         onToggleStar: ((Bool) -> Void)? = nil,
         onUpdateReview: ((ReceiptQualityReview) -> Void)? = nil
     ) {
         self.receipt = receipt
-        self._state = State(initialValue: ReceiptInspectorState(receipt: receipt, lens: initialLens))
+        self.overlay = overlay
+        self.dataStore = dataStore
+        self.requestedLens = requestedLens
+        self.lensRequestToken = lensRequestToken
+        self._state = State(initialValue: ReceiptInspectorState(receipt: receipt, lens: requestedLens ?? initialLens))
         self.onToggleStar = onToggleStar
         self.onUpdateReview = onUpdateReview
+    }
+
+    private var chatSummary: String {
+        ReceiptChatBridge.contentSummary(receipt: receipt, overlay: overlay)
     }
 
     var body: some View {
@@ -65,12 +81,17 @@ struct ReceiptDetailCardView: View {
             // Top Controls: Lens Segmented Picker & Actions
             topToolbar
 
+            if state.selectedLens != .transcript {
+                chatSummaryBanner
+            }
+
             // Lens Content with smooth transition
             ZStack {
                 switch state.selectedLens {
                 case .thermal:
                     ReceiptThermalSlipView(
                         receipt: receipt,
+                        overlay: overlay,
                         onUpdateReview: onUpdateReview,
                         onToggleStar: { toggleStar() }
                     )
@@ -85,7 +106,18 @@ struct ReceiptDetailCardView: View {
                             removal: .opacity
                         ))
                 case .audit:
-                    ReceiptAuditLensView(receipt: receipt)
+                    ReceiptAuditLensView(receipt: receipt, overlay: overlay)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                case .transcript:
+                    ReceiptTranscriptLensView(
+                        receipt: receipt,
+                        overlay: overlay,
+                        dataStore: dataStore,
+                        onCopied: { triggerCopiedToast($0) }
+                    )
                         .transition(.asymmetric(
                             insertion: .scale(scale: 0.95).combined(with: .opacity),
                             removal: .opacity
@@ -112,12 +144,22 @@ struct ReceiptDetailCardView: View {
             }
         }
         .padding(16)
-        .frame(maxWidth: 400)
+        .frame(maxWidth: 520)
         .onChange(of: receipt.id) { _, _ in
             state.receiptChanged(to: receipt)
         }
         .onChange(of: receipt.isStarred) { _, newStarred in
             state.isStarred = newStarred
+        }
+        .onChange(of: lensRequestToken) { _, _ in
+            if let requestedLens {
+                state.selectedLens = requestedLens
+            }
+        }
+        .onAppear {
+            if let requestedLens {
+                state.selectedLens = requestedLens
+            }
         }
     }
 
@@ -128,8 +170,7 @@ struct ReceiptDetailCardView: View {
             // Lens Picker
             Picker("Lens", selection: $state.selectedLens) {
                 ForEach(ReceiptLens.allCases) { lens in
-                    Label(lens.title, systemImage: lens.iconName)
-                        .tag(lens)
+                    Text(lens.pickerTitle).tag(lens)
                 }
             }
             .pickerStyle(.segmented)
@@ -151,7 +192,7 @@ struct ReceiptDetailCardView: View {
             Menu {
                 Button {
                     ReceiptExportService.copyReceiptImageToClipboard(
-                        view: ReceiptThermalSlipView(receipt: receipt)
+                        view: ReceiptThermalSlipView(receipt: receipt, overlay: overlay)
                     )
                     triggerCopiedToast("Thermal Slip PNG Copied")
                 } label: {
@@ -160,7 +201,7 @@ struct ReceiptDetailCardView: View {
 
                 Button {
                     ReceiptExportService.saveReceiptImageToFile(
-                        view: ReceiptThermalSlipView(receipt: receipt),
+                        view: ReceiptThermalSlipView(receipt: receipt, overlay: overlay),
                         suggestedFileName: "receipt-\(receipt.projectName)-\(receipt.shortSignature).png"
                     )
                 } label: {
@@ -170,7 +211,7 @@ struct ReceiptDetailCardView: View {
                 Divider()
 
                 Button {
-                    ReceiptExportService.copyMarkdownToClipboard(receipt: receipt)
+                    ReceiptExportService.copyMarkdownToClipboard(receipt: receipt, overlay: overlay)
                     triggerCopiedToast("Markdown Table Copied")
                 } label: {
                     Label("Copy Markdown Table", systemImage: "doc.text")
@@ -187,7 +228,7 @@ struct ReceiptDetailCardView: View {
 
                 Button {
                     ReceiptExportService.printReceipt(
-                        view: ReceiptThermalSlipView(receipt: receipt)
+                        view: ReceiptThermalSlipView(receipt: receipt, overlay: overlay)
                     )
                 } label: {
                     Label("Print / Save as PDF…", systemImage: "printer")
@@ -199,6 +240,58 @@ struct ReceiptDetailCardView: View {
             .menuStyle(.borderlessButton)
             .frame(width: 24)
         }
+    }
+
+    private var chatSummaryBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "text.quote")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Text("Chat")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                Spacer()
+                if let count = overlay?.messageCount, count > 0 {
+                    Text("\(count) turns")
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Text(chatSummary.isEmpty ? "Open Chat for the transcript of this session." : chatSummary)
+                .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+
+            HStack(spacing: 8) {
+                Button {
+                    state.selectedLens = .transcript
+                } label: {
+                    Label("Read transcript", systemImage: "text.bubble")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button {
+                    if let url = ReceiptChatBridge.sessionURL(
+                        conversationID: ReceiptChatBridge.conversationID(receipt: receipt, overlay: overlay)
+                    ) {
+                        ReceiptDeepLink.open(url)
+                    }
+                } label: {
+                    Label("Open in Session Logs", systemImage: "arrow.up.right")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func toggleStar() {

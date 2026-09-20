@@ -84,6 +84,7 @@ struct ReceiptSlipState: Equatable {
 
 struct ReceiptThermalSlipView: View {
     let receipt: ReceiptRecord
+    var overlay: ReceiptConversationOverlay?
     var onUpdateReview: ((ReceiptQualityReview) -> Void)?
     var onToggleStar: (() -> Void)?
 
@@ -92,10 +93,12 @@ struct ReceiptThermalSlipView: View {
 
     init(
         receipt: ReceiptRecord,
+        overlay: ReceiptConversationOverlay? = nil,
         onUpdateReview: ((ReceiptQualityReview) -> Void)? = nil,
         onToggleStar: (() -> Void)? = nil
     ) {
         self.receipt = receipt
+        self.overlay = overlay
         self.onUpdateReview = onUpdateReview
         self.onToggleStar = onToggleStar
         self._state = State(initialValue: ReceiptSlipState(receipt: receipt))
@@ -103,6 +106,10 @@ struct ReceiptThermalSlipView: View {
 
     private var effectiveReview: ReceiptQualityReview? {
         state.localReview ?? receipt.qualityReview
+    }
+
+    private var printedAccomplishments: [String] {
+        receipt.actualAccomplishments.filter { !ReceiptChatBridge.isGenericAccomplishment($0) }
     }
 
     private var paperBackground: Color {
@@ -132,10 +139,8 @@ struct ReceiptThermalSlipView: View {
                 dashedDivider
 
                 // Context & Task summary
-                if !receipt.promptSummary.isEmpty {
-                    taskSummarySection
-                    dashedDivider
-                }
+                taskSummarySection
+                dashedDivider
 
                 // Git & Repository Deliverables (if any)
                 if receipt.gitStats != nil || receipt.gitBranch != nil || receipt.gitCommit != nil {
@@ -144,7 +149,7 @@ struct ReceiptThermalSlipView: View {
                 }
 
                 // What was ACTUALLY accomplished
-                if !receipt.actualAccomplishments.isEmpty {
+                if !printedAccomplishments.isEmpty {
                     accomplishmentsSection
                     dashedDivider
                 }
@@ -226,8 +231,8 @@ struct ReceiptThermalSlipView: View {
                     .font(.system(size: 10, weight: .heavy, design: .monospaced))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.orange.opacity(0.14))
-                    .foregroundStyle(.orange)
+                    .background(ReceiptHarnessInk.color(for: receipt.provider).opacity(0.14))
+                    .foregroundStyle(ReceiptHarnessInk.color(for: receipt.provider))
                     .clipShape(.rect(cornerRadius: 3))
 
                 Text("•")
@@ -250,13 +255,13 @@ struct ReceiptThermalSlipView: View {
 
     private var taskSummarySection: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("PROMPT / GOAL:")
+            Text("CHAT / GOAL:")
                 .font(.system(size: 8.5, weight: .bold, design: .monospaced))
                 .foregroundStyle(.secondary)
 
-            Text(receipt.promptSummary)
+            Text(ReceiptChatBridge.listPreview(receipt: receipt, overlay: overlay))
                 .font(.system(size: 10.5, design: .monospaced))
-                .lineLimit(3)
+                .lineLimit(4)
                 .foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -313,7 +318,7 @@ struct ReceiptThermalSlipView: View {
                     .foregroundStyle(.green)
             }
 
-            ForEach(receipt.actualAccomplishments, id: \.self) { item in
+            ForEach(printedAccomplishments, id: \.self) { item in
                 HStack(alignment: .top, spacing: 5) {
                     Text("☑")
                         .font(.system(size: 10, design: .monospaced))
@@ -574,7 +579,7 @@ struct ReceiptThermalSlipView: View {
     private var actionsSection: some View {
         HStack(spacing: 8) {
             Button {
-                ReceiptExportService.copyMarkdownToClipboard(receipt: receipt)
+                ReceiptExportService.copyMarkdownToClipboard(receipt: receipt, overlay: overlay)
                 state.hasCopied = true
                 Task {
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
