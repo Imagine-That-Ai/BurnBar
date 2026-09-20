@@ -1,13 +1,36 @@
 #!/usr/bin/env bash
-# Fail closed when the Mac/iOS product lanes on main have been red for >24h.
-# Merge-queue (merge_group) and push:main are the enforcement events.
-# pull_request prints the same evidence but does not fail, so the gate can land
-# while App PR Gate is being repaired.
+# Check whether the Mac/iOS product lanes on main have a success inside the
+# configured freshness window. The shared circuit-breaker mode in
+# governance/burnbar-ci-gate.json controls the verdict:
+#   observe: report red evidence without blocking any event.
+#   enforce: fail merge_group/push while pull_request remains advisory, so a
+#            repair can still reach review.
 set -euo pipefail
 
 REPO="${GITHUB_REPOSITORY:-Imagine-That-Ai/BurnBar}"
 EVENT="${GITHUB_EVENT_NAME:-}"
 MAX_AGE_SECONDS="${PRODUCT_LANE_MAX_AGE_SECONDS:-86400}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+CIRCUIT_BREAKER_MODE="${PRODUCT_LANE_CIRCUIT_BREAKER_MODE:-}"
+if [[ -z "${CIRCUIT_BREAKER_MODE}" ]]; then
+  CONFIG="${PRODUCT_LANE_GATE_CONFIG:-${ROOT}/governance/burnbar-ci-gate.json}"
+  [[ -f "${CONFIG}" ]] || {
+    echo "::error::Product-lane circuit-breaker config is missing: ${CONFIG}"
+    exit 1
+  }
+  CIRCUIT_BREAKER_MODE="$(
+    python3 - "${CONFIG}" <<'PY'
+import json, sys
+
+config = json.load(open(sys.argv[1], encoding="utf-8"))
+print(config.get("circuitBreaker", {}).get("mode", ""))
+PY
+  )"
+fi
+if [[ "${CIRCUIT_BREAKER_MODE}" != "observe" && "${CIRCUIT_BREAKER_MODE}" != "enforce" ]]; then
+  echo "::error::Invalid product-lane circuit-breaker mode: ${CIRCUIT_BREAKER_MODE:-<empty>}"
+  exit 1
+fi
 now="$(date -u +%s)"
 
 if ! command -v gh >/dev/null 2>&1; then
@@ -55,12 +78,16 @@ inspect_workflow "openburnbar-pr-harness.yml" || status=$?
 
 if [[ "$status" -ne 0 ]]; then
   echo "Product lane on main is red with no success inside ${MAX_AGE_SECONDS}s."
-  if [[ "$EVENT" == "pull_request" ]]; then
-    echo "::warning::Product-lane freshness is red; merge_group will fail until App PR Gate / full harness succeed on main."
+  if [[ "${CIRCUIT_BREAKER_MODE}" == "observe" ]]; then
+    echo "::warning::Product-lane freshness is red; circuit-breaker mode=observe, so this event remains non-blocking."
     exit 0
   fi
-  echo "::error::Red App PR Gate / full harness older than 24h blocks merge."
+  if [[ "$EVENT" == "pull_request" ]]; then
+    echo "::warning::Product-lane freshness is red; circuit-breaker mode=enforce will block merge_group until App PR Gate / full harness succeed on main."
+    exit 0
+  fi
+  echo "::error::Red App PR Gate / full harness older than ${MAX_AGE_SECONDS}s blocks merge (circuit-breaker mode=enforce)."
   exit 1
 fi
 
-echo "Product-lane freshness: App PR Gate and full harness have a success inside the window."
+echo "Product-lane freshness: App PR Gate and full harness have a success inside the window (circuit-breaker mode=${CIRCUIT_BREAKER_MODE})."

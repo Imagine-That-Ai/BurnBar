@@ -332,7 +332,9 @@ jobs:
       - name: Fail if App PR Gate / full harness has been red >24h
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/require-product-lane-freshness.sh
+        run: |
+          bash scripts/ci/require-product-lane-freshness.test.sh
+          bash scripts/ci/require-product-lane-freshness.sh
 
   pr-native-gate:
     name: PR Native Gate
