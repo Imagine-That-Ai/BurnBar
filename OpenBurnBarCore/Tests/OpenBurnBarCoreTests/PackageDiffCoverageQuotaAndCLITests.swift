@@ -268,8 +268,8 @@ final class PackageDiffCoverageQuotaAndCLITests: XCTestCase {
         XCTAssertEqual(cline.provider, AgentProvider.cline.rawValue)
     }
 
-    func testClaudeJSONLFetchUsesProCapsWhenNoOAuthCredentialsAreInjected() async throws {
-        let root = try makeTemporaryDirectory("claude-jsonl-pro")
+    func testClaudeJSONLFetchWithoutTierHintRendersTokenCountsWithoutInventedCaps() async throws {
+        let root = try makeTemporaryDirectory("claude-jsonl-no-hint")
         defer { try? FileManager.default.removeItem(at: root) }
 
         let now = Date()
@@ -285,10 +285,47 @@ final class PackageDiffCoverageQuotaAndCLITests: XCTestCase {
 
         let snapshot = try await ClaudeQuotaAdapter().fetch(context: makeContext(root: root))
         let fiveHour = try XCTUnwrap(snapshot.buckets.first { $0.key.contains("five-hour") })
-        XCTAssertEqual(fiveHour.limitValue, 220_000)
-        XCTAssertEqual(try XCTUnwrap(fiveHour.usedPercent), 1.0, accuracy: 0.01)
+        // No OAuth credentials and no ~/.claude.json tier hint: the adapter
+        // must NOT invent Pro caps — a Max user would read the resulting
+        // 45x-overstatement as "quota exhausted".
+        XCTAssertNil(fiveHour.limitValue)
+        XCTAssertNil(fiveHour.usedPercent)
+        XCTAssertEqual(try XCTUnwrap(fiveHour.usedValue), 2_200, accuracy: 0.5)
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(snapshot.sourceKind, .localSession)
+        XCTAssertFalse(snapshot.statusMessage?.contains("Plan:") ?? false)
+    }
+
+    func testClaudeJSONLFetchUsesPlanTierFromClaudeConfigWhenOAuthCredentialsAreUnavailable() async throws {
+        let root = try makeTemporaryDirectory("claude-jsonl-config-tier")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let now = Date()
+        let projects = root.appendingPathComponent(".claude/projects/demo", isDirectory: true)
+        try FileManager.default.createDirectory(at: projects, withIntermediateDirectories: true)
+        let timestamp = iso.string(from: now.addingTimeInterval(-600))
+        try write(
+            """
+            {"type":"assistant","timestamp":"\(timestamp)","message":{"usage":{"input_tokens":2200,"output_tokens":0}}}
+            """,
+            to: projects.appendingPathComponent("session.jsonl")
+        )
+        // Claude Code's own config names the plan tier — public state, no
+        // credentials. A Max-20x user must get Max-20x caps, not Pro's.
+        try write(
+            """
+            {"oauthAccount":{"organizationRateLimitTier":"default_claude_max_20x"}}
+            """,
+            to: root.appendingPathComponent(".claude.json")
+        )
+
+        let snapshot = try await ClaudeQuotaAdapter().fetch(context: makeContext(root: root))
+        let fiveHour = try XCTUnwrap(snapshot.buckets.first { $0.key.contains("five-hour") })
+        XCTAssertEqual(try XCTUnwrap(fiveHour.limitValue), 3_520_000)
+        XCTAssertEqual(try XCTUnwrap(fiveHour.usedPercent), 2_200.0 / 3_520_000.0 * 100.0, accuracy: 0.01)
         XCTAssertEqual(snapshot.confidence, .estimated)
         XCTAssertEqual(snapshot.sourceKind, .localSession)
+        XCTAssertTrue(snapshot.statusMessage?.contains("Max 20x (from Claude Code config)") ?? false)
     }
 
     func testGooseParserReadsLegacyJSONLFromAnOverriddenSessionDirectory() async throws {

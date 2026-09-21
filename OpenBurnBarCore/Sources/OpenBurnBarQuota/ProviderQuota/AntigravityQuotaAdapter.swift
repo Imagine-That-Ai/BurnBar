@@ -254,13 +254,39 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                 buckets.append(bucket)
             }
 
+            // A zero-usage window is correct rolling-window math, but a bare
+            // wall of 0/N rows reads as "broken" to a user who was burning
+            // requests hours ago. Say WHEN the window last had traffic.
+            // (Relative time is computed by hand — ICU's
+            // `RelativeDateTimeFormatter` is not part of
+            // swift-corelibs-foundation, so this file must stay portable
+            // across the macOS app and the Windows/Linux Core builds.)
+            let windowSuffix: String
+            if usedCount == 0, let lastActivity = transcriptScan.latestActivityTimestamp {
+                let lastActivityDate = Date(timeIntervalSince1970: lastActivity / 1000.0)
+                let secondsAgo = max(0, now.timeIntervalSince(lastActivityDate))
+                let relative: String
+                if secondsAgo < 60 {
+                    relative = "just now"
+                } else if secondsAgo < 3_600 {
+                    relative = "\(Int(secondsAgo / 60)) min ago"
+                } else if secondsAgo < 86_400 {
+                    relative = "\(Int((secondsAgo / 3_600).rounded()))h ago"
+                } else {
+                    relative = "\(Int((secondsAgo / 86_400).rounded()))d ago"
+                }
+                windowSuffix = "No requests in the current 5-hour window — last activity \(relative)."
+            } else {
+                windowSuffix = "Rolling 5h quota across \(Self.availableModels.count) model tiers."
+            }
+
             return ProviderQuotaSnapshot(
                 provider: .antigravity,
                 fetchedAt: now,
                 source: .localCLI,
                 confidence: .estimated,
                 managementURL: nil,
-                statusMessage: "Active model: \(activeModelName). Rolling 5h quota across \(Self.availableModels.count) model tiers. Caps are community-estimated.",
+                statusMessage: "Active model: \(activeModelName). \(windowSuffix) Caps are community-estimated.",
                 buckets: buckets
             )
         } catch {
@@ -284,6 +310,10 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
         var latestModel: String?
         var sawAnyEvent: Bool
         var bytesRead: Int
+        /// Wall-clock ms of the most recent session activity found, in-window
+        /// or not (transcript mtime). Lets a zero-usage card say WHEN the
+        /// window last had traffic instead of rendering a bare wall of zeros.
+        var latestActivityTimestamp: Double?
     }
 
     static func scanTranscripts(
@@ -301,6 +331,7 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
         var latestModel: String?
         var sawAnyEvent = false
         var bytesRead = 0
+        var latestActivityTimestamp: Double?
         var seenSessionIds = Set<String>()
 
         for root in candidateRoots {
@@ -325,6 +356,8 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                       let mtime = attrs[.modificationDate] as? Date else { continue }
 
                 sawAnyEvent = true
+                let mtimeMs = mtime.timeIntervalSince1970 * 1000.0
+                latestActivityTimestamp = max(latestActivityTimestamp ?? 0, mtimeMs)
                 guard mtime >= cutoff else { continue }
 
                 guard let data = try? Data(contentsOf: file),
@@ -365,7 +398,8 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
             earliestInWindowTimestamp: earliestInWindowTimestamp,
             latestModel: latestModel,
             sawAnyEvent: sawAnyEvent,
-            bytesRead: bytesRead
+            bytesRead: bytesRead,
+            latestActivityTimestamp: latestActivityTimestamp
         )
     }
 

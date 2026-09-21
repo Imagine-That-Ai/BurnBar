@@ -339,4 +339,44 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             XCTAssertNotNil(active.resetsAt)
         }
     }
+
+    func testFetch_fromBrainTranscripts_whenWindowEmpty_reportsLastActivityInsteadOfBareZeros() async throws {
+        let adapter = AntigravityQuotaAdapter()
+        let referenceNow = Date(timeIntervalSince1970: Self.referenceEpochMs / 1000.0)
+
+        // One session whose transcript was last written 6 hours before the
+        // reference clock: outside the current 5-hour window, but proof the
+        // user was active hours ago. A bare wall of 0/N rows reads as broken;
+        // the card must say WHEN the window last had traffic.
+        let sessionDir = tempDirectoryURL
+            .appendingPathComponent(".gemini/antigravity/brain/stale-session/.system_generated/logs")
+        try fileManager.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        let transcriptURL = sessionDir.appendingPathComponent("transcript.jsonl")
+        try "{\"source\":\"MODEL\",\"type\":\"PLANNER_RESPONSE\",\"content\":\"done\"}\n"
+            .write(to: transcriptURL, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes(
+            [.modificationDate: referenceNow.addingTimeInterval(-6 * 3600)],
+            ofItemAtPath: transcriptURL.path
+        )
+
+        let snapshot = try await adapter.fetch(context: try makeContext())
+
+        XCTAssertEqual(snapshot.sourceKind, .localCLI)
+        let activeBucket = try XCTUnwrap(snapshot.buckets.first { $0.label.contains("(Active)") })
+        XCTAssertEqual(activeBucket.usedValue, 0)
+        XCTAssertTrue(
+            snapshot.statusMessage?.contains("No requests in the current 5-hour window") ?? false,
+            "status line was: \(snapshot.statusMessage ?? "")"
+        )
+        XCTAssertTrue(
+            snapshot.statusMessage?.contains("last activity") ?? false,
+            "status line was: \(snapshot.statusMessage ?? "")"
+        )
+        XCTAssertTrue(
+            snapshot.statusMessage?.contains("6h ago") ?? false,
+            "status line was: \(snapshot.statusMessage ?? "")"
+        )
+        // Active model falls back to the default when no selection event exists.
+        XCTAssertTrue(snapshot.statusMessage?.contains("Gemini 3.8 Flash (High)") ?? false)
+    }
 }
