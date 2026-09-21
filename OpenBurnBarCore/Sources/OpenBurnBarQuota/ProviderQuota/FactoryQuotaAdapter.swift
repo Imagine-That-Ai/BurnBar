@@ -20,11 +20,16 @@ import FoundationNetworking
 /// 3. **Unavailable** — when neither source yields data.
 ///
 /// ## Data returned
-/// - 5-hour window: rolling token count from recent sessions
-/// - 7-day window: token count from the past week
-/// - 30-day window: monthly token count
+/// - 5-hour window: rolling billable-token count from recent sessions
+/// - 7-day window: billable-token count from the past week
+/// - 30-day window: monthly billable-token count
 /// - Per-model breakdown (top models by session count)
-/// - Cache efficiency (cache read / total tokens)
+/// - Cache efficiency (cache read share of processed tokens)
+///
+/// "Billable" means input + output + cache creation + thinking. Cache READS
+/// are excluded from the plan-facing windows (see
+/// `FactorySessionClassifier.billableTokens`) but still feed the
+/// cache-hit-rate diagnostic.
 ///
 /// Unchanged `*.settings.json` files resume from a mtime+size disk cache of
 /// **quota facts only** (token total, cache reads, session date, lane, model).
@@ -124,7 +129,10 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         let cacheStore = ParserDiskCacheStore<FactorySessionQuotaCacheEntry>(
             cacheURL: cacheURL(context: context, sessionsURL: sessionsURL),
             fileManager: fileManager,
-            schemaVersion: 1,
+            // v2: `total` switched from the all-fields sum to the
+            // cache-read-excluded billable sum. Cached v1 totals would
+            // silently keep the old meaning, so they must be discarded.
+            schemaVersion: 2,
             logLabel: "FactoryQuotaAdapter"
         )
         var parseCache = cacheStore.load()
@@ -157,7 +165,6 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         func consume(_ facts: FactorySessionQuotaFacts) {
             guard facts.total > 0 else { return }
             filesWithUsage += 1
-            cacheReadTokens += facts.cacheRead
             laneCounts[facts.lane, default: 0] += 1
 
             switch facts.lane {
@@ -165,6 +172,16 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
                 customProxyTokens += facts.total
                 customProxySessions += 1
                 return
+            case .factoryUnknown, .standard, .droidCore:
+                // Cache reads feed only the cache-hit-rate diagnostic, and
+                // only for Factory-billed lanes so the rate never counts
+                // custom-proxy traffic against a Factory denominator.
+                cacheReadTokens += facts.cacheRead
+            }
+
+            switch facts.lane {
+            case .customProxy:
+                break
             case .factoryUnknown:
                 factoryUnknownTokens += facts.total
                 // Fall through — treat unknown Factory-billed models as
@@ -381,8 +398,10 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         // Cache efficiency — informational only; intentionally filtered out
         // of the displayable quota signal (`isDisplayableQuotaSignal` excludes
         // "cache"/"hit rate" markers) but kept in the snapshot for diagnostics.
+        // The rate is the cache-read share of ALL processed tokens
+        // (cache reads + billable), so it mathematically stays ≤ 100%.
         if cacheReadTokens > 0 && thirtyDayTokens > 0 {
-            let cacheRate = Double(cacheReadTokens) / Double(thirtyDayTokens) * 100
+            let cacheRate = Double(cacheReadTokens) / Double(cacheReadTokens + thirtyDayTokens) * 100
             buckets.append(ProviderQuotaBucket(
                 key: "factory-cache",
                 label: "Cache hit rate (30d)",
@@ -413,7 +432,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
             ? " Excluded \(customProxySessions) custom-proxy session(s) — those route through your own proxies and don't count against Factory's plan."
             : ""
 
-        let statusMessage = "Real token counts from \(factoryBilledSessions) Factory-billed droid session(s). \(topModel).\(planSuffix)\(proxySuffix)"
+        let statusMessage = "Real billable token counts from \(factoryBilledSessions) Factory-billed droid session(s) — cache reads excluded. \(topModel).\(planSuffix)\(proxySuffix)"
 
         return ProviderQuotaSnapshot(
             provider: .factory,
@@ -875,7 +894,10 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
               let usage = json["tokenUsage"] as? [String: Any] else {
             return nil
         }
-        let total = FactorySessionClassifier.totalTokens(in: usage)
+        // `total` is the Factory-billable footprint (cache reads excluded —
+        // see FactorySessionClassifier.billableTokens); `cacheRead` stays a
+        // separate diagnostic fact for the cache-hit-rate bucket.
+        let total = FactorySessionClassifier.billableTokens(in: usage)
         let cacheRead = (usage["cacheReadTokens"] as? Int64)
             ?? (usage["cacheReadTokens"] as? Int).map(Int64.init)
             ?? 0

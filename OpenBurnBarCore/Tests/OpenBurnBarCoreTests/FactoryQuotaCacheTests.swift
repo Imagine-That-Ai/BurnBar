@@ -103,6 +103,41 @@ final class FactoryQuotaCacheTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(fiveHourBucket(in: third)?.usedValue), 1_650, accuracy: 0.5)
     }
 
+    func test_fetch_excludesCacheReadTokensFromPlanWindows() async throws {
+        let root = try makeTemporaryDirectory("factory-quota-cache-read")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sessions = root.appendingPathComponent("sessions", isDirectory: true)
+        // One agentic session with heavy cache reuse: 3B cache-read tokens
+        // dwarf the 1.5M billable tokens. Counting cache reads against the
+        // plan cap pins the card at 100% weeks before the real cap approaches.
+        try writeSession(
+            name: "cached-heavy",
+            in: sessions,
+            prompt: "agentic session with heavy cache reuse",
+            inputTokens: 1_000_000,
+            outputTokens: 500_000,
+            cacheReadTokens: 3_000_000_000,
+            hoursAgo: 1
+        )
+
+        let adapter = FactoryQuotaAdapter(
+            sessionsDirectoryOverride: sessions,
+            cacheURLOverride: root.appendingPathComponent("factory-cache.plist")
+        )
+        let snapshot = try await adapter.fetch(context: makeContext(root: root))
+
+        let fiveHour = try XCTUnwrap(fiveHourBucket(in: snapshot))
+        XCTAssertEqual(try XCTUnwrap(fiveHour.usedValue), 1_500_000, accuracy: 0.5)
+
+        // The cache-hit rate stays a diagnostic bucket, is computed over
+        // cache reads + billable tokens, and can never exceed 100%.
+        let cacheBucket = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-cache" })
+        let rate = try XCTUnwrap(cacheBucket.usedValue)
+        XCTAssertLessThanOrEqual(rate, 100.0)
+        XCTAssertEqual(rate, 3_000_000_000.0 / 3_001_500_000.0 * 100.0, accuracy: 0.001)
+        XCTAssertFalse(cacheBucket.isDisplayableQuotaSignal)
+    }
+
     private func fiveHourBucket(in snapshot: ProviderQuotaSnapshot) -> ProviderQuotaBucket? {
         snapshot.buckets.first { $0.key == "factory-5h" }
     }
@@ -117,6 +152,7 @@ final class FactoryQuotaCacheTests: XCTestCase {
         prompt: String,
         inputTokens: Int,
         outputTokens: Int,
+        cacheReadTokens: Int = 0,
         hoursAgo: Double
     ) throws {
         let project = sessions.appendingPathComponent("test-project", isDirectory: true)
@@ -134,7 +170,7 @@ final class FactoryQuotaCacheTests: XCTestCase {
             "inputTokens": \(inputTokens),
             "outputTokens": \(outputTokens),
             "cacheCreationTokens": 0,
-            "cacheReadTokens": 0,
+            "cacheReadTokens": \(cacheReadTokens),
             "thinkingTokens": 0
           }
         }
