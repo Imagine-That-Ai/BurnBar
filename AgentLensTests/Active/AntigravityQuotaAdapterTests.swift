@@ -372,6 +372,10 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
             snapshot.statusMessage?.contains("last activity") ?? false,
             "status line was: \(snapshot.statusMessage ?? "")"
         )
+        XCTAssertTrue(
+            snapshot.statusMessage?.contains("6h ago") ?? false,
+            "status line was: \(snapshot.statusMessage ?? "")"
+        )
         // Active model falls back to the default when no selection event exists.
         XCTAssertTrue(snapshot.statusMessage?.contains("Gemini 3.8 Flash (High)") ?? false)
     }
