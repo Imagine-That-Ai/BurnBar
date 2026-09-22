@@ -310,7 +310,9 @@ private struct AugmentSummary {
         guard let json = raw as? [String: Any] else { return }
         let message = json["message"] as? [String: Any]
 
-        if let model = (message?["model"] as? String) ?? (json["model"] as? String), !model.isEmpty {
+        if let model = (message?["model"] as? String) ?? (json["model"] as? String),
+           !model.isEmpty,
+           !TokenExtractionUtility.isPlaceholderModelName(model) {
             self.model = model
         }
 

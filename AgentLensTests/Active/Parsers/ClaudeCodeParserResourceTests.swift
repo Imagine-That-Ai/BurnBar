@@ -335,7 +335,7 @@ final class ClaudeCodeParserResourceTests: XCTestCase {
         let root = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: rawCache, options: [], format: nil) as? [String: Any]
         )
-        XCTAssertEqual(root["schemaVersion"] as? Int, 3)
+        XCTAssertEqual(root["schemaVersion"] as? Int, 4)
         let entries = try XCTUnwrap(root["fileEntries"] as? [String: Any])
         XCTAssertFalse(entries.isEmpty, "the pass must have cached the session's usage")
         for (path, value) in entries {

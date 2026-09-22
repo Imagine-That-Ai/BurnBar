@@ -106,6 +106,55 @@ final class LiftedParserBoundaryTests: XCTestCase {
         XCTAssertTrue(conversation.fullText.contains("Quota usage is healthy."))
     }
 
+    func testClineFormatParserSkipsPlaceholderModelNames() async throws {
+        let storageRoot = try makeTemporaryDirectory(named: "cline-placeholder-storage")
+        let taskID = "cline-task-placeholder"
+        let taskDirectory = storageRoot.appendingPathComponent(taskID, isDirectory: true)
+        try FileManager.default.createDirectory(at: taskDirectory, withIntermediateDirectories: true)
+        let historyURL = taskDirectory.appendingPathComponent("api_conversation_history.json")
+        // A synthesized `<synthetic>` notice sorts before real ids (`<` is
+        // 0x3C); without placeholder rejection it would win model selection
+        // and render as a chart band instead of the exact model.
+        let fixture = """
+        [
+          {
+            "role": "assistant",
+            "content": "API Error: 503",
+            "ts": 1772323200000,
+            "model": "<synthetic>",
+            "usage": {
+              "input_tokens": 10,
+              "output_tokens": 2
+            }
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {"type": "text", "text": "The parser boundary is covered exactly."}
+            ],
+            "ts": 1772323260000,
+            "model": "claude-3-5-sonnet",
+            "usage": {
+              "input_tokens": 321,
+              "output_tokens": 87
+            }
+          }
+        ]
+        """
+        try write(fixture, to: historyURL)
+
+        let parser = ClineFormatParser(provider: .cline, storagePaths: [storageRoot.path])
+        let result = try await parser.parse(
+            options: LogParseOptions(includeConversationBodies: false)
+        )
+
+        XCTAssertEqual(result.usages.count, 1)
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "claude-3-5-sonnet")
+        XCTAssertEqual(usage.inputTokens, 331)
+        XCTAssertEqual(usage.outputTokens, 89)
+    }
+
     func testClineFormatParserParsesExactUsageAndConversationBodies() async throws {
         let storageRoot = try makeTemporaryDirectory(named: "cline-storage")
         let taskID = "cline-task-42"

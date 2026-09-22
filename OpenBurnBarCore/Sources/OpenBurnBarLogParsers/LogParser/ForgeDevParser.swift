@@ -501,7 +501,9 @@ public final class ForgeDevParser: LogParser, Sendable {
                 endTime = timestamp
             }
 
-            if let model = (message?["model"] as? String) ?? (json["model"] as? String), !model.isEmpty {
+            if let model = (message?["model"] as? String) ?? (json["model"] as? String),
+               !model.isEmpty,
+               !TokenExtractionUtility.isPlaceholderModelName(model) {
                 summary.model = model
             }
 

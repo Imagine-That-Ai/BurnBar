@@ -351,7 +351,8 @@ public final class CopilotParser: LogParser, Sendable {
             state.end = state.end.map { max($0, timestamp) } ?? timestamp
         }
         if let model = object["model"] as? String ?? eventData?["model"] as? String,
-           !model.isEmpty {
+           !model.isEmpty,
+           !TokenExtractionUtility.isPlaceholderModelName(model) {
             state.model = model
         }
 

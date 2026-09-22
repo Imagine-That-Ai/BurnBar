@@ -237,6 +237,24 @@ final class PrimeAgentParserTests: XCTestCase {
         XCTAssertEqual(usage.costUSD, 0.06, accuracy: 0.0001)
     }
 
+    // MARK: - Placeholder models
+
+    func testPlaceholderModelNeverBecomesSessionModel() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let content = [
+            sessionEnvelope(id: "sess-placeholder"),
+            assistantMessage(model: "muse-spark-1.2", input: 100, output: 100, cost: 0.01, text: "real turn"),
+            assistantMessage(model: "<synthetic>", input: 50, output: 25, cost: 0.0, text: "synthesized notice")
+        ].joined(separator: "\n")
+        _ = try writeSessionFile(dir: dir, content: content)
+        let result = try await PrimeAgentParser(logDirectoryOverride: dir.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "muse-spark-1.2", "a harness placeholder must not displace the exact model")
+        XCTAssertEqual(usage.inputTokens, 150)
+        XCTAssertEqual(usage.outputTokens, 125)
+    }
+
     // MARK: - Cache buckets
 
     func testCacheReadAndCacheWriteBucketsAreDistinct() async throws {

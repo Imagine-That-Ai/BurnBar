@@ -519,6 +519,23 @@ public enum TokenExtractionUtility {
             .lowercased()
     }
 
+    /// True for model strings that are harness placeholders rather than real
+    /// model ids: empty/unknown/default/none sentinels, and angle-bracket
+    /// tokens like `<synthetic>` that harnesses (e.g. Claude Code) stamp on
+    /// synthesized messages such as API-error notices. Callers must never
+    /// persist these as a usage row's model — a placeholder sorts before real
+    /// ids (`<` is 0x3C), so it wins lexicographic model selection and renders
+    /// as a chart band instead of the exact model that did the work.
+    public static func isPlaceholderModelName(_ model: String) -> Bool {
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        let lowered = trimmed.lowercased()
+        if lowered == "unknown" || lowered == "default" || lowered == "none" {
+            return true
+        }
+        return trimmed.hasPrefix("<") && trimmed.hasSuffix(">") && trimmed.count > 2
+    }
+
     /// Human-readable display name for a model string.
     public static func displayNameForModel(_ rawName: String) -> String {
         let key = normalizeModelKey(rawName)

@@ -68,7 +68,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 3,
+            schemaVersion: 4,
             logLabel: "ClaudeCodeParser"
         )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
@@ -434,7 +434,13 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             return SessionScanOutcome(usage: nil, conversation: nil, scanState: scanState)
         }
 
-        let model = effective.models.first ?? "claude"
+        // Prefer a real model id over harness placeholders: sessions that
+        // contain a synthesized `<synthetic>` error message alongside real
+        // turns must attribute to the exact model, never to the placeholder
+        // (which sorts first lexicographically and would otherwise win).
+        let model = effective.models
+            .filter { !TokenExtractionUtility.isPlaceholderModelName($0) }
+            .min() ?? "claude"
         let pricing = ModelPricing.lookup(model: model)
         let totalCost = try pricing.cost(
             inputTokens: effective.inputTokens,
@@ -530,7 +536,8 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         accumulator.cacheCreationTokens += extracted.cacheCreation
         accumulator.cacheReadTokens += extracted.cacheRead
 
-        if let model = message["model"] as? String {
+        if let model = message["model"] as? String,
+           !TokenExtractionUtility.isPlaceholderModelName(model) {
             accumulator.models.insert(model)
         }
     }
@@ -660,9 +667,11 @@ public struct ClaudeTokenScanState: Codable, Equatable, Sendable {
     }
 }
 
-/// v3 (schemaVersion 3): carries the incremental `scanState` and, by
+/// v4 (schemaVersion 4): carries the incremental `scanState` and, by
 /// construction, can no longer hold conversation bodies — parser caches are
-/// privacy-transient for conversation text (PR #1808).
+/// privacy-transient for conversation text (PR #1808). v4 additionally drops
+/// v3 rows whose model resolved to a harness placeholder (`<synthetic>`)
+/// so affected sessions re-parse against the exact model that did the work.
 struct ClaudeCodeCacheEntry: Codable, Equatable {
     let signature: FileSignature
     let usage: TokenUsage?
