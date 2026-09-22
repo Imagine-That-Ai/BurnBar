@@ -10,18 +10,27 @@
  */
 
 import { randomUUID } from "node:crypto";
-import {
-  onCall,
-  type CallableOptions,
-  type CallableRequest,
-  type Request,
-} from "firebase-functions/v2/https";
+import { onCall, type CallableOptions, type CallableRequest, type Request } from "firebase-functions/v2/https";
 import type { Response } from "express";
 
 // Patterns for PII and sensitive data scrubbing
 const SCRUB_PATTERNS: Array<[RegExp, string]> = [
   // Email addresses
   [/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, "[email]"],
+  // IPv6 addresses — full (`2001:db8:85a3::8a2e:370:7334`), compressed
+  // (`2001:db8::1`, `::1`, `fe80::`), and IPv4-mapped (`::ffff:192.0.2.1`)
+  // forms, bracketed or bare. Two alternatives: 4+ colon-separated hex groups
+  // (full/short forms), or anything containing `::` with at least one hex
+  // digit (compressed forms). Deliberately NOT matched: clock times
+  // (`12:34:56`, only two single colons), Rust paths (`std::io`), and a bare
+  // `::` with no hex. MAC addresses (`00:1B:44:11:3A:B7`) DO match — also
+  // device-identifying, so scrubbing them is desirable, not a false positive.
+  // Runs BEFORE the IPv4 entry: otherwise the IPv4 pass fragments mapped
+  // forms (`::ffff:192.0.2.1` → `::ffff:[ip]`) and the `::ffff:` prefix leaks.
+  [
+    /(?<![\w.:])(?:(?:[0-9A-Fa-f]{1,4}:){3,}[0-9A-Fa-f:.]*[0-9A-Fa-f]|(?=[0-9A-Fa-f:.]*[0-9A-Fa-f])[0-9A-Fa-f:]*::(?:[0-9A-Fa-f:.]*[0-9A-Fa-f])?)(?![\w:])/g,
+    "[ip]",
+  ],
   // IPv4 addresses
   [/\b(\d{1,3}\.){3}\d{1,3}\b/g, "[ip]"],
   // API keys / bearer tokens (long alphanumeric strings with known prefixes).
@@ -44,10 +53,7 @@ const SCRUB_PATTERNS: Array<[RegExp, string]> = [
   ],
   // Android credential-transfer v2 full token. The ct_ handle is public, but
   // the token carries the device-local secret half after the second dot.
-  [
-    /\bobbct_v2\.ct_[A-Za-z0-9_-]{22,86}\.[ABCDEFGHJKMNPQRSTUVWXYZ23456789-]{26,64}\b/g,
-    "[REDACTED]",
-  ],
+  [/\bobbct_v2\.ct_[A-Za-z0-9_-]{22,86}\.[ABCDEFGHJKMNPQRSTUVWXYZ23456789-]{26,64}\b/g, "[REDACTED]"],
   // Credit card-like numbers (16 digits, optional separators)
   [/\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, "[REDACTED]"],
   // NOTE: Firebase Auth UIDs (28-char alphanumeric) are handled by key-based
