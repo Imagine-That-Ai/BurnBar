@@ -35,7 +35,7 @@ public final class ClineFormatParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "ClineFormatParser.\(provider.persistedToken)"
         )
     }

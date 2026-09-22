@@ -153,6 +153,15 @@ final class LiftedParserBoundaryTests: XCTestCase {
         XCTAssertEqual(usage.model, "claude-3-5-sonnet")
         XCTAssertEqual(usage.inputTokens, 331)
         XCTAssertEqual(usage.outputTokens, 89)
+
+        // The cache rewrite pins schema v2: a pre-fix v1 cache holding a
+        // `<synthetic>` row is dropped wholesale on load, so the session
+        // re-scans against the exact model instead of re-serving the marker.
+        let cacheData = try Data(contentsOf: storageRoot.appendingPathComponent(".obb-parser-cache.plist"))
+        let cacheRoot = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: cacheData, options: [], format: nil) as? [String: Any]
+        )
+        XCTAssertEqual(cacheRoot["schemaVersion"] as? Int, 2)
     }
 
     func testClineFormatParserParsesExactUsageAndConversationBodies() async throws {

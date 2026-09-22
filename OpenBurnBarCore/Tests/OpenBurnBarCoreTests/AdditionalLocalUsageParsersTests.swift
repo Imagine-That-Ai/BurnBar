@@ -431,6 +431,31 @@ final class AdditionalLocalUsageParsersTests: XCTestCase {
         XCTAssertEqual(result.usages.first?.provenanceConfidence, .lowConfidenceEstimate)
     }
 
+    func testForgeSQLitePathSkipsPlaceholderContextModel() async throws {
+        let root = try makeDirectory("forge-sqlite")
+        defer { remove(root) }
+        let path = root.appendingPathComponent(".forge.db")
+        let db = try SQLiteConnection.openForWriting(creatingAt: path.path)
+        defer { db.close() }
+        try db.execute("CREATE TABLE conversations (conversation_id TEXT, title TEXT, workspace_id TEXT, context TEXT, created_at TEXT, updated_at TEXT, metrics TEXT)")
+        // Primary SQLite path: a synthesized context message carries the
+        // harness marker while a sibling records the exact model.
+        let context = """
+        {"messages":[
+        {"message":{"text":{"role":"assistant","content":"API Error","model":"<synthetic>"}},"usage":{"prompt_tokens":5,"completion_tokens":1,"total_tokens":6}},
+        {"message":{"text":{"role":"assistant","content":"done","model":"forge-model-x"}},"usage":{"prompt_tokens":20,"completion_tokens":4,"total_tokens":24}}
+        ]}
+        """
+        try db.execute(
+            "INSERT INTO conversations VALUES (?, ?, ?, ?, ?, ?, ?)",
+            arguments: [.text("forge-conv-1"), .text("Demo"), .text("ws-1"), .text(context), .text("2026-07-01 00:00:00"), .text("2026-07-01 00:01:00"), .text("{}")]
+        )
+        let result = try await ForgeDevParser(logDirectoryOverride: root.path).parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.sessionId, "forge-conv-1")
+        XCTAssertEqual(usage.model, "forge-model-x")
+    }
+
     func testOpenCodeSQLiteJoinsMessagePartsAndUsage() async throws {
         let root = try makeDirectory("opencode")
         defer { remove(root) }

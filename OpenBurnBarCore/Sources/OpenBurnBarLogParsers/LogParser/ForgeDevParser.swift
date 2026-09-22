@@ -37,7 +37,7 @@ public final class ForgeDevParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "ForgeDevParser"
         )
     }
@@ -367,7 +367,9 @@ public final class ForgeDevParser: LogParser, Sendable {
                 summary.cacheReadTokens += normalized.cacheRead
             }
 
-            if let model = text?["model"] as? String, !model.isEmpty {
+            if let model = text?["model"] as? String,
+               !model.isEmpty,
+               !TokenExtractionUtility.isPlaceholderModelName(model) {
                 summary.model = model
             }
 
@@ -501,9 +503,15 @@ public final class ForgeDevParser: LogParser, Sendable {
                 endTime = timestamp
             }
 
-            if let model = (message?["model"] as? String) ?? (json["model"] as? String),
-               !model.isEmpty,
-               !TokenExtractionUtility.isPlaceholderModelName(model) {
+            // First non-placeholder candidate wins: a harness marker at one
+            // level must not shadow the exact model recorded at the other.
+            let candidates = [
+                message?["model"] as? String,
+                json["model"] as? String
+            ]
+            if let model = candidates.compactMap({ $0 }).first(where: {
+                !$0.isEmpty && !TokenExtractionUtility.isPlaceholderModelName($0)
+            }) {
                 summary.model = model
             }
 

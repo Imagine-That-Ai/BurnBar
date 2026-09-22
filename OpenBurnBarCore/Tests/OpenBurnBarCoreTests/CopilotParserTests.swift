@@ -73,6 +73,23 @@ final class CopilotParserTests: XCTestCase {
         XCTAssertEqual(usage.cacheReadTokens, 4)
     }
 
+    func testNestedExactModelWinsOverOuterPlaceholder() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let session = try fixture.session("nested-model")
+        // Outer field carries a harness marker while the nested data model
+        // is exact: the candidate check must fall through to the nested
+        // value instead of rejecting the event outright.
+        try #"{"id":"usage-1","type":"assistant.usage","model":"<synthetic>","data":{"model":"gpt-5","input_tokens":12,"output_tokens":3},"usage":{"input_tokens":12,"output_tokens":3},"timestamp":"2026-07-20T10:00:01Z"}"#
+            .write(to: session.appendingPathComponent("events.jsonl"), atomically: true, encoding: .utf8)
+
+        let result = try await fixture.parser().parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "gpt-5")
+        XCTAssertEqual(usage.inputTokens, 12)
+        XCTAssertEqual(usage.outputTokens, 3)
+    }
+
     func testMissingRootIsEmptyButInvalidRootSurfacesDiscoveryError() async throws {
         let fixture = try Fixture(createSessionRoot: false)
         defer { fixture.remove() }
