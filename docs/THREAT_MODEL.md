@@ -206,11 +206,11 @@ Cloud Functions write budget rollups and observability documents under top-level
 | Collection | Read access | Write access |
 |---|---|---|
 | `ops/computer_use_budget_status/**` | Any signed-in user (envelope display) | Server only |
-| `ops/computer_use_session_daily_rollups/**` | Deny-all (`if false`) | Server only |
+| `ops/computer_use_session_daily_rollups/**` | Deny-all (no rule; default deny) | Server only |
 | `ops/media_budget_status/**` | Any signed-in user (Mercury budget envelope) | Server only |
-| `ops/media_session_daily_rollups/**` | Deny-all (`if false`) | Server only |
+| `ops/media_session_daily_rollups/**` | Deny-all (no rule; default deny) | Server only |
 
-Retired 2026-09-22: the former `burnbarOperator` custom claim never had a mint path (no Admin SDK issuance, no inventory, no revocation), so operator reads were already deny-all in practice. The claim was removed from `firestore.rules` and these reads are now explicit `if false`. Operator telemetry flows via hourly Cloud Functions + BigQuery export, never via client reads. Do not reintroduce an operator claim without a minted, inventoried, revocable issuance path.
+Retired 2026-09-22: the former `burnbarOperator` custom claim never had a mint path (no Admin SDK issuance, no inventory, no revocation), so operator reads were already deny-all in practice. The match blocks were removed from `firestore.rules` outright (repo convention forbids dead `allow ... if false`; default deny applies). Operator telemetry flows via hourly Cloud Functions + BigQuery export, never via client reads. Do not reintroduce an operator claim without a minted, inventoried, revocable issuance path.
 
 ## LLM / GenAI / Agent-Specific Security
 

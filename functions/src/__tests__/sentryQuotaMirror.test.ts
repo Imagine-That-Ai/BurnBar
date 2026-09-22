@@ -10,15 +10,16 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isRecord } from "../guards.js";
 
 function lastWarnJson(spy: ReturnType<typeof vi.spyOn>): Record<string, unknown> {
   const call = spy.mock.calls.at(-1);
   if (!call) throw new Error("no warning log emitted");
   const parsed: unknown = JSON.parse(String(call[0]));
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     throw new Error("expected a structured log object");
   }
-  return parsed as Record<string, unknown>;
+  return parsed;
 }
 
 describe("sentry quota-exhaustion log mirror", () => {
@@ -109,8 +110,8 @@ describe("sentry quota-exhaustion log mirror", () => {
 
     expect(result).not.toBeNull();
     expect(warnSpy).not.toHaveBeenCalled();
-    const nested = result?.extra?.nested as Record<string, unknown> | undefined;
-    expect(nested?.apiKey).toBe("[REDACTED]");
+    const nested: unknown = result?.extra?.nested;
+    expect(isRecord(nested) ? nested.apiKey : undefined).toBe("[REDACTED]");
     expect(result?.message).toBe("genuine bug");
   });
 

@@ -4245,21 +4245,18 @@ service cloud.firestore {
     // No mint path for the former `burnbarOperator` claim ever existed (no
     // Admin SDK issuance, no inventory, no revocation), so the claim was
     // unholdable and these reads were already deny-all in practice. The
-    // explicit `if false` keeps that posture without a dead claim check.
-    // Operator telemetry flows via the hourly functions + BigQuery export,
-    // never via client reads (clients only ever read state/current).
+    // The match blocks were removed outright (repo convention forbids dead
+    // `allow ... if false`): default deny keeps that posture without a dead
+    // claim check. Operator telemetry flows via the hourly functions +
+    // BigQuery export, never via client reads (clients only ever read
+    // state/current).
     match /ops/computer_use_budget_status/state/current {
       allow read: if isSignedIn();
     }
-    match /ops/computer_use_budget_status/metrics/current {
-      allow read: if false;
-    }
-    match /ops/computer_use_budget_status/events/{eventId} {
-      allow read: if false;
-    }
-    match /ops/computer_use_session_daily_rollups/days/{day} {
-      allow read: if false;
-    }
+    // (Former `burnbarOperator` reads for metrics/events/rollups removed
+    // entirely 2026-09-22: the claim never had a mint path, and repo
+    // convention forbids dead `allow ... if false` — Firestore's default
+    // deny applies. Telemetry flows via functions + BigQuery export.)
 
     // Server-reconciled daily quota counter. Capability enforcement must not
     // trust client-writable counters; the hourly `recomputeMediaQuotaUsage`
@@ -5321,21 +5318,14 @@ service cloud.firestore {
     // Public envelope: level + caps only (no USD). Operator metrics and
     // events hold projections and audit rows. Rollups stay server-only.
     // (Former `burnbarOperator` reads retired: the claim had no mint path,
-    // so these were already deny-all in practice. See the computer-use
-    // budget split above.)
+    // so the match blocks were removed outright — default deny. See the
+    // computer-use budget split above.)
     match /ops/media_budget_status/state/current {
       allow read: if isSignedIn();
     }
-    match /ops/media_budget_status/metrics/current {
-      allow read: if false;
-    }
-    match /ops/media_budget_status/events/{eventId} {
-      allow read: if false;
-    }
-
-    match /ops/media_session_daily_rollups/{document=**} {
-      allow read: if false;
-    }
+    // (Former `burnbarOperator` reads for metrics/events/rollups removed
+    // entirely 2026-09-22 — same rationale as the computer-use split above:
+    // no mint path ever existed; default deny applies.)
 
     // --- Global Google Play token claims (server-only) ---
 

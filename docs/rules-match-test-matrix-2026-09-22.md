@@ -39,6 +39,10 @@ Notes that apply to many rows:
 > this artifact contains no secrets. Supersedes the parent's grep-heuristic v0
 > (89 named / 15 unnamed); this inspected version (52 COVERED / 27
 > COVERED-BASIC / 24 UNCOVERED) is the honest one.
+>
+> 2026-09-22 fixup: 6 operator rows (67-69, 102-104) REMOVED — match blocks
+> deleted outright per the dead-`if false` convention; deny-by-default now
+> covers them (98 live matches).
 
 ## Coverage map
 
@@ -110,9 +114,9 @@ Notes that apply to many rows:
 | 64 | `L4158` `/users/{userId}/computer_use_sessions/{sessionId}` | COVERED | [computer-use](../firestore-rules-tests/computer-use.test.js) · [parity](../firestore-rules-tests/rules-consolidation-parity.test.js) |
 | 65 | `L4169` `/users/{userId}/computer_use_actions/{actionId}` | COVERED | [computer-use](../firestore-rules-tests/computer-use.test.js) · [parity](../firestore-rules-tests/rules-consolidation-parity.test.js) |
 | 66 | `L4179` `/ops/computer_use_budget_status/state/current` | COVERED | [computer-use](../firestore-rules-tests/computer-use.test.js) |
-| 67 | `L4182` `/ops/computer_use_budget_status/metrics/current` | COVERED | [computer-use](../firestore-rules-tests/computer-use.test.js) |
-| 68 | `L4185` `/ops/computer_use_budget_status/events/{eventId}` | UNCOVERED | — |
-| 69 | `L4188` `/ops/computer_use_session_daily_rollups/days/{day}` | UNCOVERED | — |
+| 67 | ~~`/ops/computer_use_budget_status/metrics/current`~~ | REMOVED 2026-09-22 | match block deleted; default deny (operator retirement; deny asserted by computer-use suite) |
+| 68 | ~~`/ops/computer_use_budget_status/events/{eventId}`~~ | REMOVED 2026-09-22 | match block deleted; default deny (deny asserted by computer-use suite) |
+| 69 | ~~`/ops/computer_use_session_daily_rollups/days/{day}`~~ | REMOVED 2026-09-22 | match block deleted; default deny (deny asserted by computer-use suite) |
 | 70 | `L4208` `/users/{userId}/media_attachment_manifests/{manifestId}` | COVERED-BASIC | [parity](../firestore-rules-tests/rules-consolidation-parity.test.js) only |
 | 71 | `L4242` `/users/{userId}/pi_agent_connections/{connectionId}` | COVERED-BASIC | [parity](../firestore-rules-tests/rules-consolidation-parity.test.js) only |
 | 72 | `L4250` `/users/{userId}/pi_agent_relay_requests/{requestId}` | COVERED | [rr12-relay-and-root](../firestore-rules-tests/rr12-relay-and-root.test.js) · [parity](../firestore-rules-tests/rules-consolidation-parity.test.js) |
@@ -145,9 +149,9 @@ Notes that apply to many rows:
 | 99 | `L5132` `/team_memory_facts/{teamId}/facts/{docID}` | UNCOVERED | — |
 | 100 | `L5213` `/team_memory_facts/{teamId}/forget_receipts/{receiptId}` | UNCOVERED | — (only personal `memory_forget_receipts` is tested) |
 | 101 | `L5250` `/ops/media_budget_status/state/current` | COVERED | [media-budget](../firestore-rules-tests/media-budget.test.js) |
-| 102 | `L5253` `/ops/media_budget_status/metrics/current` | COVERED | [media-budget](../firestore-rules-tests/media-budget.test.js) |
-| 103 | `L5256` `/ops/media_budget_status/events/{eventId}` | UNCOVERED | — |
-| 104 | `L5260` `/ops/media_session_daily_rollups/{document=**}` | UNCOVERED | — |
+| 102 | ~~`/ops/media_budget_status/metrics/current`~~ | REMOVED 2026-09-22 | match block deleted; default deny (deny asserted by media-budget suite) |
+| 103 | ~~`/ops/media_budget_status/events/{eventId}`~~ | REMOVED 2026-09-22 | match block deleted; default deny (deny asserted by media-budget suite) |
+| 104 | ~~`/ops/media_session_daily_rollups/{document=**}`~~ | REMOVED 2026-09-22 | match block deleted; default deny (deny asserted by media-budget suite) |
 
 ## Totals
 

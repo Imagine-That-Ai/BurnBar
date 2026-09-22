@@ -16,11 +16,11 @@ import {
   assertActiveBurnBarProEntitlement,
 } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
-import {
-  REMOTE_MCP_TOKEN_HASH_PEPPER,
-  revokeRemoteMcpClient as revokeRemoteMcpClientDoc,
-  type RemoteMcpScope,
-} from "../remoteMcpGrant.js";
+// Namespace import: the module's revokeRemoteMcpClient collides with this
+// file's callable of the same name, and an `as` alias trips the
+// unsafe-cast assert-zero budget. (Same reason the grant issuer reaches the
+// pepper through the namespace below.)
+import * as remoteMcpGrant from "../remoteMcpGrant.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import { remoteMcpTokenHmacSecretValueForRuntime, remoteMcpTokenSigningSecrets } from "./remoteMcpSigningSecrets.js";
@@ -34,7 +34,7 @@ const remoteMcpScopeValues = new Set<string>([
   "code:read",
 ]);
 
-function isRemoteMcpScope(value: unknown): value is RemoteMcpScope {
+function isRemoteMcpScope(value: unknown): value is remoteMcpGrant.RemoteMcpScope {
   return typeof value === "string" && remoteMcpScopeValues.has(value);
 }
 
@@ -47,7 +47,7 @@ export const issueRemoteMcpGrant = onCall(
     // REMOTE_MCP_TOKEN_HASH_PEPPER so stored verifiers use one construction.
     // The secret exists in Secret Manager (created 2026-09-22); if it is ever
     // missing, deploy fails closed rather than shipping mixed hashes.
-    secrets: [...remoteMcpTokenSigningSecrets(), REMOTE_MCP_TOKEN_HASH_PEPPER],
+    secrets: [...remoteMcpTokenSigningSecrets(), remoteMcpGrant.REMOTE_MCP_TOKEN_HASH_PEPPER],
   },
   wrapCallableHandler(
     "issueRemoteMcpGrant",
@@ -116,7 +116,7 @@ export const revokeRemoteMcpClient = onCall(
       actionKind: "remote_mcp_grant_revoke",
       subjectId: clientId,
     });
-    await revokeRemoteMcpClientDoc(db, uid, clientId);
+    await remoteMcpGrant.revokeRemoteMcpClient(db, uid, clientId);
     logInfo({ event: "callable_info", message: "remote_mcp_client_revoked", client_id: clientId });
     return { ok: true, clientId };
   }),
