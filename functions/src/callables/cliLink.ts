@@ -15,6 +15,7 @@ import {
   REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64,
 } from "./shared.js";
 import { remoteMcpTokenHmacSecretValueForRuntime, remoteMcpTokenSigningSecrets } from "./remoteMcpSigningSecrets.js";
+import { REMOTE_MCP_TOKEN_HASH_PEPPER } from "../remoteMcpGrant.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
 import { getConfig } from "../config.js";
 import { isSha256Hex, safeEqualHex } from "../hermesGateway.js";
@@ -33,12 +34,6 @@ interface CliLinkSessionDoc {
   deviceSecretVerifierHash?: string;
   expiresAt: Timestamp;
   status: string;
-  accessToken?: string;
-  refreshToken?: string;
-  expiresIn?: number;
-  clientId?: string;
-  scopes?: string[];
-  grantMode?: string;
   clientType?: string;
   displayName?: string;
   credentialDelivery?: CliLinkCredentialDelivery;
@@ -73,20 +68,17 @@ function readCliLinkSessionData(raw: FirebaseFirestore.DocumentData | undefined)
   ) {
     return undefined;
   }
+  // NOTE: legacy plaintext credential fields (accessToken, refreshToken,
+  // expiresIn, clientId, scopes, grantMode) are deliberately NOT parsed back
+  // out of the session document. completeCliLink deletes them when it seals
+  // the credential envelope, and pollCliLink must never return plaintext —
+  // see the approved-without-envelope branch below.
   return {
     deviceSecretHash: typeof raw.deviceSecretHash === "string" ? raw.deviceSecretHash : undefined,
     deviceSecretVerifierHash:
       typeof raw.deviceSecretVerifierHash === "string" ? raw.deviceSecretVerifierHash : undefined,
     expiresAt,
     status: raw.status,
-    accessToken: typeof raw.accessToken === "string" ? raw.accessToken : undefined,
-    refreshToken: typeof raw.refreshToken === "string" ? raw.refreshToken : undefined,
-    expiresIn: typeof raw.expiresIn === "number" ? raw.expiresIn : undefined,
-    clientId: typeof raw.clientId === "string" ? raw.clientId : undefined,
-    scopes: Array.isArray(raw.scopes)
-      ? raw.scopes.filter((scope): scope is string => typeof scope === "string")
-      : undefined,
-    grantMode: typeof raw.grantMode === "string" ? raw.grantMode : undefined,
     clientType: typeof raw.clientType === "string" ? raw.clientType : undefined,
     displayName: typeof raw.displayName === "string" ? raw.displayName : undefined,
     credentialDelivery: readCliLinkCredentialDelivery(raw.credentialDelivery),
@@ -338,16 +330,13 @@ export const pollCliLink = onRequest(
           await sessionRef.delete();
           return;
         }
-        res.status(200).json({
-          status: "approved",
-          accessToken: data.accessToken,
-          refreshToken: data.refreshToken,
-          expiresIn: data.expiresIn,
-          clientId: data.clientId,
-          scopes: data.scopes,
-          grantMode: data.grantMode,
-        });
+        // Legacy plaintext approvals predate sealed delivery: completeCliLink
+        // now always writes a credential envelope and deletes the plaintext
+        // fields, so an approved session without an envelope is either stale
+        // (10-minute TTL) or malformed. Retire the session and report expiry
+        // so the CLI starts a fresh link flow — plaintext is never returned.
         await sessionRef.delete();
+        res.status(200).json({ status: "expired" });
         return;
       }
 
@@ -373,7 +362,7 @@ export const completeCliLink = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
-    secrets: remoteMcpTokenSigningSecrets(),
+    secrets: [...remoteMcpTokenSigningSecrets(), REMOTE_MCP_TOKEN_HASH_PEPPER],
   },
   wrapCallableHandler("completeCliLink", async (request: CallableRequest<{ userCode?: unknown; nonce?: unknown }>) => {
     const uid = request.auth?.uid;
