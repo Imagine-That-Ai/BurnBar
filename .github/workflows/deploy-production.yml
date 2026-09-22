@@ -1305,7 +1305,9 @@ jobs:
           && needs.prepare-functions-deploy.outputs.domain_core_profile != 'public-production-rollback'
           && needs.prepare-functions-deploy.outputs.break_glass != 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 20 min: repo policy requires >=15 for checkout-bearing jobs (slow
+    # checkouts must not starve the rollback dispatch itself).
+    timeout-minutes: 20
     permissions:
       actions: write
       contents: read

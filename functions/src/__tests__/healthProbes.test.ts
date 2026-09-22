@@ -49,7 +49,6 @@ import { domainCoreDeploymentIdentity } from "../domainCoreBuildProfile.js";
 import { loadedDomainCorePricingIdentity } from "../domainCorePricing.js";
 import { checkPublicHttpEndpointRateLimit } from "../callables/publicRateLimit.js";
 import { getFirestore } from "firebase-admin/firestore";
-import type { Firestore } from "firebase-admin/firestore";
 
 const mockDeploymentIdentity = vi.mocked(domainCoreDeploymentIdentity);
 const mockLoadedCore = vi.mocked(loadedDomainCorePricingIdentity);
@@ -73,7 +72,9 @@ function deploymentIdentity(pricingMode: "legacy" | "shadow" | "rust") {
 
 function fakeFirestore(
   options: { read?: () => Promise<unknown>; transaction?: (fn: (tx: unknown) => Promise<void>) => Promise<void> } = {},
-): Firestore {
+) {
+  // NOTE: inferred structural type (a Firestore subset). Callers hand it to
+  // givenFirestore, which carries the single sanctioned @ts-expect-error.
   const read = options.read ?? (async () => ({ exists: false }));
   const transaction =
     options.transaction ??
@@ -83,18 +84,23 @@ function fakeFirestore(
   return {
     collection: () => ({ doc: () => ({ get: read }) }),
     runTransaction: transaction,
-  } as unknown as Firestore;
+  };
+}
+
+function givenFirestore(double: ReturnType<typeof fakeFirestore>): void {
+  // @ts-expect-error reason: structural Firestore-subset double; health.ts only touches collection().doc().get() + runTransaction
+  mockGetFirestore.mockReturnValue(double);
 }
 
 function mockFirestoreHealthy(): void {
-  mockGetFirestore.mockReturnValue(fakeFirestore());
+  givenFirestore(fakeFirestore());
 }
 
 function mockFirestoreBlocked(): void {
   const failure = async (): Promise<never> => {
     throw new Error("Firestore unavailable");
   };
-  mockGetFirestore.mockReturnValue(fakeFirestore({ read: failure, transaction: failure }));
+  givenFirestore(fakeFirestore({ read: failure, transaction: failure }));
 }
 
 // ---------------------------------------------------------------------------
@@ -258,7 +264,7 @@ describe("health probes — liveness can never throttle as DOWN", () => {
   });
 
   it("readiness returns 503 when plain reads work but transactions fail", async () => {
-    mockGetFirestore.mockReturnValue(
+    givenFirestore(
       fakeFirestore({
         transaction: async () => {
           throw new Error("transaction rejected");

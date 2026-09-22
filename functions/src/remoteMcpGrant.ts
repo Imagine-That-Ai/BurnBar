@@ -54,7 +54,7 @@ export const REMOTE_MCP_TOKEN_HASH_PEPPER = defineSecret("REMOTE_MCP_TOKEN_HASH_
 
 const REMOTE_MCP_HASH_CONTEXT_V1 = "remote-mcp-secret-hash-v1";
 
-export function remoteMcpHashPepperValue(): string {
+function remoteMcpHashPepperValue(): string {
   try {
     const bound = REMOTE_MCP_TOKEN_HASH_PEPPER.value();
     if (bound) return bound;
