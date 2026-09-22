@@ -35,7 +35,7 @@ public final class ClineFormatParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "ClineFormatParser.\(provider.persistedToken)"
         )
     }
@@ -168,8 +168,11 @@ public final class ClineFormatParser: LogParser, Sendable {
                 lastTimestamp = date
             }
 
-            // Model detection
-            if let model = message["model"] as? String, !model.isEmpty {
+            // Model detection — harness placeholders (`<synthetic>`) are never
+            // real models; persisting one makes it win model selection and
+            // render as a chart band instead of the exact model.
+            if let model = message["model"] as? String, !model.isEmpty,
+               !TokenExtractionUtility.isPlaceholderModelName(model) {
                 models.insert(TokenExtractionUtility.normalizeModelName(model))
             }
 
@@ -251,7 +254,9 @@ public final class ClineFormatParser: LogParser, Sendable {
 
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
-        let model = models.first ?? "unknown"
+        let model = models
+            .filter { !TokenExtractionUtility.isPlaceholderModelName($0) }
+            .min() ?? "unknown"
         let pricing = ModelPricing.lookup(model: model)
         let cost = try pricing.cost(
             inputTokens: inputTokens,

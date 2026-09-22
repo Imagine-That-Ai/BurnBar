@@ -47,7 +47,7 @@ public final class CopilotParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "CopilotParser"
         )
     }
@@ -350,8 +350,15 @@ public final class CopilotParser: LogParser, Sendable {
             state.start = state.start.map { min($0, timestamp) } ?? timestamp
             state.end = state.end.map { max($0, timestamp) } ?? timestamp
         }
-        if let model = object["model"] as? String ?? eventData?["model"] as? String,
-           !model.isEmpty {
+        // First non-placeholder candidate wins: a harness marker in the
+        // outer field must not shadow the exact model nested in data.
+        let candidates = [
+            object["model"] as? String,
+            eventData?["model"] as? String
+        ]
+        if let model = candidates.compactMap({ $0 }).first(where: {
+            !$0.isEmpty && !TokenExtractionUtility.isPlaceholderModelName($0)
+        }) {
             state.model = model
         }
 

@@ -29,7 +29,7 @@ public final class AugmentParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "AugmentParser"
         )
     }
@@ -310,7 +310,15 @@ private struct AugmentSummary {
         guard let json = raw as? [String: Any] else { return }
         let message = json["message"] as? [String: Any]
 
-        if let model = (message?["model"] as? String) ?? (json["model"] as? String), !model.isEmpty {
+        // First non-placeholder candidate wins: a harness marker at one
+        // level must not shadow the exact model recorded at the other.
+        let candidates = [
+            message?["model"] as? String,
+            json["model"] as? String
+        ]
+        if let model = candidates.compactMap({ $0 }).first(where: {
+            !$0.isEmpty && !TokenExtractionUtility.isPlaceholderModelName($0)
+        }) {
             self.model = model
         }
 

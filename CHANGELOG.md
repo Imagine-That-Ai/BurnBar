@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Claude Charts (`<synthetic>` band)** — Claude Code stamps synthesized
+  messages (e.g. API-error notices) with `"model":"<synthetic>"`, and the
+  parser took that marker verbatim into the session's model set. `<`
+  sorts before alphanumerics, so the placeholder won model selection and
+  the Home MODEL breakdown rendered a `<synthetic>` band instead of the
+  exact model that did the work. Parsers now reject harness placeholder
+  model names (`<…>` markers plus the empty/unknown/default/none
+  sentinels) at insert and at selection time, preferring the exact model;
+  sessions with only placeholder messages fall back to the provider
+  default. The Claude parser cache schema bumped (v3→v4) so affected
+  sessions re-parse, and inserts delete same-session placeholder rows
+  when the corrected exact-model row arrives (Kimi `chatcmpl-` precedent),
+  so no ghost placeholder row survives next to the real one.
 - **Muse Charts (this morning missing)** — `~/.local/share/muse/sessions` on
   Alberto's machine is ~4k `session.jsonl` / ~11GB. The parser walked
   oldest-first and charged the shared 256MB refresh budget *before* the

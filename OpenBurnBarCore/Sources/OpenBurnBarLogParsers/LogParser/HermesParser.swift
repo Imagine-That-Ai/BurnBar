@@ -40,7 +40,7 @@ public final class HermesParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "HermesParser"
         )
     }
@@ -856,7 +856,15 @@ public final class HermesParser: LogParser, Sendable {
             let rawContent = message?["content"] ?? json["content"]
             let toolName = (json["tool_name"] as? String) ?? (message?["tool_name"] as? String)
 
-            if let model = (message?["model"] as? String) ?? (json["model"] as? String), !model.isEmpty {
+            // First non-placeholder candidate wins: a harness marker at one
+            // level must not shadow the exact model recorded at the other.
+            let candidates = [
+                message?["model"] as? String,
+                json["model"] as? String
+            ]
+            if let model = candidates.compactMap({ $0 }).first(where: {
+                !$0.isEmpty && !TokenExtractionUtility.isPlaceholderModelName($0)
+            }) {
                 summary.model = TokenExtractionUtility.normalizeModelName(model)
             }
 

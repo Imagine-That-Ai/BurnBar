@@ -683,4 +683,116 @@ final class DataStoreTests: XCTestCase {
             endTime: endTime
         )
     }
+
+    func test_insert_replacesPlaceholderModelRowWithExactModel() async throws {
+        let store = try DataStore.makeInMemoryForTesting()
+        let now = Date()
+        let placeholder = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "placeholder-session",
+            projectName: "p",
+            model: "<synthetic>",
+            inputTokens: 11,
+            outputTokens: 3,
+            costUSD: 0.01,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(placeholder)
+        var rows = try await store.fetchAllUsage()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.model, "<synthetic>")
+
+        // The re-parse emits the corrected exact-model row for the same
+        // session; the placeholder row must be deleted, not kept alongside.
+        let corrected = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "placeholder-session",
+            projectName: "p",
+            model: "claude-fable-5-1",
+            inputTokens: 11,
+            outputTokens: 3,
+            costUSD: 0.01,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(corrected)
+        rows = try await store.fetchAllUsage()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.model, "claude-fable-5-1")
+    }
+
+    func test_insert_placeholderRowNeverDeletesExactModel() async throws {
+        let store = try DataStore.makeInMemoryForTesting()
+        let now = Date()
+        let exact = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "exact-session",
+            projectName: "p",
+            model: "claude-fable-5-1",
+            inputTokens: 11,
+            outputTokens: 3,
+            costUSD: 0.01,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(exact)
+        let placeholder = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "exact-session",
+            projectName: "p",
+            model: "<synthetic>",
+            inputTokens: 1,
+            outputTokens: 1,
+            costUSD: 0.001,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(placeholder)
+        let rows = try await store.fetchAllUsage()
+        // The stale placeholder must be dropped entirely when the exact row
+        // exists: a second row would restore the chart band and double-bill.
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.model, "claude-fable-5-1")
+    }
+
+    func test_insert_lowerConfidenceCorrectionPreservesHigherConfidencePlaceholderTokens() async throws {
+        let store = try DataStore.makeInMemoryForTesting()
+        let now = Date()
+        let exactPlaceholder = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "confidence-session",
+            projectName: "p",
+            model: "<synthetic>",
+            inputTokens: 500,
+            outputTokens: 200,
+            costUSD: 0.05,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        )
+        try await store.insert(exactPlaceholder)
+        // A lower-confidence correction with the exact model must not discard
+        // the higher-confidence token payload: the upsert key includes the
+        // model, so the delete cannot run and the placeholder row survives.
+        let estimate = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "confidence-session",
+            projectName: "p",
+            model: "claude-fable-5-1",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 0.001,
+            startTime: now,
+            endTime: now,
+            provenanceMethod: .heuristicEstimate,
+            provenanceConfidence: .lowConfidenceEstimate
+        )
+        try await store.insert(estimate)
+        let rows = try await store.fetchAllUsage()
+        let surviving = try XCTUnwrap(rows.first { $0.model == "<synthetic>" })
+        XCTAssertEqual(surviving.inputTokens, 500)
+        XCTAssertEqual(surviving.outputTokens, 200)
+    }
 }

@@ -68,7 +68,7 @@ public final class PrimeAgentParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "PrimeAgentParser"
         )
     }
@@ -257,15 +257,21 @@ public final class PrimeAgentParser: LogParser, Sendable {
                     // keep for debugging; model is more specific
                     _ = provider
                 }
-                if let model = msg["model"] as? String, !model.isEmpty {
+                if let model = msg["model"] as? String,
+                   !model.isEmpty,
+                   !TokenExtractionUtility.isPlaceholderModelName(model) {
                     lastModel = model
-                } else if let inner = msg["modelId"] as? String, !inner.isEmpty {
+                } else if let inner = msg["modelId"] as? String,
+                          !inner.isEmpty,
+                          !TokenExtractionUtility.isPlaceholderModelName(inner) {
                     lastModel = inner
                 }
             } else {
                 // Some messages may have provider/model without usage (user/tool) — still track model
                 if role == "assistant" {
-                    if let model = msg["model"] as? String, !model.isEmpty {
+                    if let model = msg["model"] as? String,
+                       !model.isEmpty,
+                       !TokenExtractionUtility.isPlaceholderModelName(model) {
                         lastModel = model
                     }
                 }
