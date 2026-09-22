@@ -10,6 +10,24 @@
  *
  * All three are public (no auth) and safe to hit from monitoring tools.
  * Usage: curl https://us-central1-<project>.cloudfunctions.net/healthCheck
+ *
+ * LIVENESS CONTRACT (Stream D): healthLive is the ONLY endpoint load balancers
+ * and GCP uptime checks may use for "is this instance up". It is deliberately
+ * NOT product-rate-limited and performs NO Firestore I/O, so it answers 200
+ * whenever the process is alive — under monitor bursts, under abusive load, and
+ * even during a Firestore outage. A 429 or 500 from any other endpoint (or from
+ * the Firestore-backed limiter itself) must NEVER be interpreted as DOWN; point
+ * liveness at healthLive and treat 429 elsewhere as "back off and retry".
+ * healthReady/healthCheck keep their per-IP rate limits because each call costs
+ * Firestore reads; their 429s carry a Retry-After hint.
+ *
+ * RUNTIME COORDINATES DECISION (Stream D): the `domainCore.runtime` block
+ * (K_SERVICE/K_REVISION/K_CONFIGURATION/FUNCTION_TARGET) stays public. The
+ * post-deploy gate (scripts/ci/post-deploy-health-gate.sh) requires these
+ * coordinates to prove the probed instance is the just-deployed revision, and
+ * the values are low-sensitivity — the service name is derivable from the
+ * public function URL and the revision is an opaque Cloud Run suffix carrying
+ * no tenant data, credentials, or version fingerprint beyond `version`.
  */
 
 import { createHash } from "node:crypto";
@@ -93,53 +111,130 @@ function domainCoreDeploymentIdentityForHealth(): Record<string, unknown> {
   return identity;
 }
 
+/** Seconds monitors should wait before retrying a rate-limited health probe. */
+const HEALTH_RATE_LIMIT_RETRY_AFTER_SECONDS = "60";
+
+type DependencyCheck = "ok" | "error";
+
+interface FirestoreReadiness {
+  latencyMs: number;
+  firestore: DependencyCheck;
+  firestoreTransaction: DependencyCheck;
+}
+
 /**
- * Probe Firestore with a hard timeout. Returns the probe latency in ms.
- * Throws if Firestore is unreachable or exceeds the timeout.
+ * Probe Firestore with a hard timeout shared across both sub-checks.
+ *
+ *   - firestore: single-doc read (the historical readiness signal).
+ *   - firestoreTransaction: read-only transaction over the same doc. This
+ *     exercises the transaction Begin/Commit RPC surface that every Firestore
+ *     write depends on, without mutating data — a cheap write-path-adjacent
+ *     signal. A backend that serves plain reads but rejects transactions (the
+ *     product rate limiter itself runs in a transaction) is not healthy.
+ *
+ * Never throws for backend failures: each sub-check reports "ok"/"error"
+ * independently so the response `checks` object stays honest about partial
+ * degradation. Only a client-construction failure (getFirestore throwing
+ * before any RPC) propagates to the caller, which reports all-error.
  * Uses clearTimeout to avoid timer leaks in warm container instances.
+ *
+ * Coverage note — what readiness still does NOT prove:
+ *   - actual mutation writes (deliberately unprobed: a write per probe would
+ *     cost quota on every LB tick and contend on a single doc);
+ *   - Firebase Auth, FCM/APNs delivery, Sentry ingest, or provider APIs;
+ *   - regional failover (this probes the instance's own region only).
  */
-async function probeFirestore(timeoutMs = 3000): Promise<number> {
+async function probeFirestoreReadiness(timeoutMs = 3000): Promise<FirestoreReadiness> {
   const startMs = Date.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Firestore probe timed out after ${timeoutMs}ms`)), timeoutMs);
+    timer = setTimeout(() => {
+      timedOut = true;
+      reject(new Error(`Firestore probe timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
   });
 
+  let firestore: DependencyCheck = "error";
+  let firestoreTransaction: DependencyCheck = "error";
   try {
     const db = getFirestore();
-    await Promise.race([db.collection("_health").doc("probe").get(), timeoutPromise]);
-    return Date.now() - startMs;
+    const probeRef = db.collection("_health").doc("probe");
+    try {
+      await Promise.race([probeRef.get(), timeoutPromise]);
+      firestore = "ok";
+    } catch {
+      // Stays "error" — reported honestly in `checks`, not thrown.
+    }
+    if (!timedOut) {
+      try {
+        await Promise.race([
+          db.runTransaction(async (tx) => {
+            await tx.get(probeRef);
+          }),
+          timeoutPromise,
+        ]);
+        firestoreTransaction = "ok";
+      } catch {
+        // Stays "error" — reported honestly in `checks`, not thrown.
+      }
+    }
+    return { latencyMs: Date.now() - startMs, firestore, firestoreTransaction };
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** Liveness probe — returns 200 if the function process is alive. */
-export const healthLive = onRequest({ region: FUNCTIONS_REGION, cors: false, invoker: "public" }, wrapRequestHandler("healthLive", async (req, res) => {
-  setPublicJsonSecurityHeaders(res);
-  try {
-    await checkPublicHttpEndpointRateLimit("healthLive", clientIpFromHttpRequest(req));
-  } catch (err) {
-    if (isPublicRateLimitExceeded(err)) {
-      res.status(429).json({ error: "too_many_requests" });
-      return;
-    }
-    logError({ event: "health_live_rate_limit_failed", error: String(err) });
-    res.status(500).json({ error: "internal" });
-    return;
-  }
-  res.status(200).json({
-    status: "alive",
-    timestamp: new Date().toISOString(),
-    domainCore: domainCoreDeploymentIdentityForHealth(),
-    ...sourceMetadata(),
-  });
-}));
+/**
+ * Domain-core dependency state for readiness.
+ *
+ * Returns "loaded" when the pricing WASM identity is present, "unavailable"
+ * otherwise. It gates the 200/503 verdict ONLY when the deployment serves in
+ * `rust` pricing mode (production), where a missing core breaks pricing. In
+ * every other mode the TypeScript fallback serves traffic, so the check is
+ * informational — dev/source builds without the vendored WASM stay ready.
+ */
+function domainCoreReadiness(identity: Record<string, unknown>): {
+  check: "loaded" | "unavailable";
+  gatesVerdict: boolean;
+} {
+  const check = identity.loadedCore == null ? "unavailable" : "loaded";
+  return { check, gatesVerdict: identity.pricingMode === "rust" };
+}
 
 /**
- * Readiness probe — verifies Firestore responds within 3 seconds.
+ * Liveness probe — returns 200 if the function process is alive.
+ *
+ * Deliberately exempt from the product rate limiter AND from Firestore: the
+ * limiter is Firestore-backed, so limiting liveness would 429 under monitor
+ * bursts and 500 during a Firestore outage — both misread as DOWN by load
+ * balancers. This handler performs no I/O (static identity + timestamps), so
+ * per-request cost is ~zero and platform maxInstances/concurrency bounds abuse.
+ *
+ * Registry status: "healthLive" was removed from
+ * RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS and added to DOCUMENTED_EXEMPTIONS in
+ * publicEndpointRateLimitInventory.test.ts, citing this contract — the
+ * inventory stays green and the declarations stay true.
+ */
+export const healthLive = onRequest(
+  { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
+  wrapRequestHandler("healthLive", async (_req, res) => {
+    setPublicJsonSecurityHeaders(res);
+    res.status(200).json({
+      status: "alive",
+      timestamp: new Date().toISOString(),
+      domainCore: domainCoreDeploymentIdentityForHealth(),
+      ...sourceMetadata(),
+    });
+  }),
+);
+
+/**
+ * Readiness probe — verifies dependencies respond within 3 seconds.
  * Returns 200 when ready, 503 when degraded.
+ * A 429 here means "monitor, back off and retry" — never DOWN (see liveness
+ * contract above); it carries a Retry-After hint for well-behaved pollers.
  */
 export const healthReady = onRequest(
   { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
@@ -149,6 +244,7 @@ export const healthReady = onRequest(
       await checkPublicHttpEndpointRateLimit("healthReady", clientIpFromHttpRequest(req));
     } catch (err) {
       if (isPublicRateLimitExceeded(err)) {
+        res.setHeader("Retry-After", HEALTH_RATE_LIMIT_RETRY_AFTER_SECONDS);
         res.status(429).json({ error: "too_many_requests" });
         return;
       }
@@ -160,38 +256,72 @@ export const healthReady = onRequest(
     // post-deploy gate can probe the live endpoint for sentry.enabled=true and
     // fail closed when functions ship with SENTRY_DSN unset (shipping dark).
     const sentry = sentryStatus();
+    const domainCore = domainCoreDeploymentIdentityForHealth();
+    const core = domainCoreReadiness(domainCore);
+    let probe: FirestoreReadiness;
     try {
-      const latencyMs = await probeFirestore();
-      logInfo({ event: "health_ready_ok", latency_ms: latencyMs, sentry_enabled: sentry.enabled });
-      res.status(200).json({
-        status: "ready",
-        timestamp: new Date().toISOString(),
-        version: FUNCTION_VERSION,
-        domainCore: domainCoreDeploymentIdentityForHealth(),
-        latency_ms: latencyMs,
-        checks: { firestore: "ok" },
-        sentry,
-        ...sourceMetadata(),
-      });
+      probe = await probeFirestoreReadiness();
     } catch (error) {
+      // Client-construction failure (no RPC was possible): all-error, 503.
       logError({ event: "health_ready_failed", error: String(error) });
       res.status(503).json({
         status: "degraded",
         timestamp: new Date().toISOString(),
         version: FUNCTION_VERSION,
-        domainCore: domainCoreDeploymentIdentityForHealth(),
-        checks: { firestore: "error" },
+        domainCore,
+        checks: { firestore: "error", firestoreTransaction: "error", domainCore: core.check },
         sentry,
         error: "Firestore connectivity check failed",
         ...sourceMetadata(),
       });
+      return;
     }
+    const ready =
+      probe.firestore === "ok" &&
+      probe.firestoreTransaction === "ok" &&
+      (!core.gatesVerdict || core.check === "loaded");
+    const checks = {
+      firestore: probe.firestore,
+      firestoreTransaction: probe.firestoreTransaction,
+      domainCore: core.check,
+    };
+    if (ready) {
+      logInfo({ event: "health_ready_ok", latency_ms: probe.latencyMs, sentry_enabled: sentry.enabled });
+      res.status(200).json({
+        status: "ready",
+        timestamp: new Date().toISOString(),
+        version: FUNCTION_VERSION,
+        domainCore,
+        latency_ms: probe.latencyMs,
+        checks,
+        sentry,
+        ...sourceMetadata(),
+      });
+      return;
+    }
+    const failed = Object.entries(checks)
+      .filter(([, value]) => value === "error" || value === "unavailable")
+      .map(([name]) => name);
+    logError({ event: "health_ready_failed", error: `Readiness checks failed: ${failed.join(", ")}` });
+    res.status(503).json({
+      status: "degraded",
+      timestamp: new Date().toISOString(),
+      version: FUNCTION_VERSION,
+      domainCore,
+      latency_ms: probe.latencyMs,
+      checks,
+      sentry,
+      error: "Firestore connectivity check failed",
+      ...sourceMetadata(),
+    });
   }),
 );
 
 /**
  * Combined health check — returns full status, version, uptime, and all
  * dependency health. Used by monitoring dashboards and deployment scripts.
+ * Same verdict inputs as healthReady; a 429 here likewise means "retry", not
+ * DOWN (see liveness contract above).
  */
 export const healthCheck = onRequest(
   { region: FUNCTIONS_REGION, cors: false, invoker: "public" },
@@ -201,6 +331,7 @@ export const healthCheck = onRequest(
       await checkPublicHttpEndpointRateLimit("healthCheck", clientIpFromHttpRequest(req));
     } catch (err) {
       if (isPublicRateLimitExceeded(err)) {
+        res.setHeader("Retry-After", HEALTH_RATE_LIMIT_RETRY_AFTER_SECONDS);
         res.status(429).json({ error: "too_many_requests" });
         return;
       }
@@ -208,21 +339,31 @@ export const healthCheck = onRequest(
       res.status(500).json({ error: "internal" });
       return;
     }
-    let firestoreStatus: "ok" | "error" = "ok";
-    let latencyMs = 0;
-
+    const domainCore = domainCoreDeploymentIdentityForHealth();
+    const core = domainCoreReadiness(domainCore);
+    let probe: FirestoreReadiness;
     try {
-      latencyMs = await probeFirestore();
+      probe = await probeFirestoreReadiness();
     } catch {
-      firestoreStatus = "error";
+      probe = { latencyMs: 0, firestore: "error", firestoreTransaction: "error" };
     }
+    const checks = {
+      firestore: probe.firestore,
+      firestoreTransaction: probe.firestoreTransaction,
+      domainCore: core.check,
+    };
 
-    const allHealthy = firestoreStatus === "ok";
+    const allHealthy =
+      probe.firestore === "ok" &&
+      probe.firestoreTransaction === "ok" &&
+      (!core.gatesVerdict || core.check === "loaded");
 
     logInfo({
       event: "health_check",
-      firestore: firestoreStatus,
-      latency_ms: latencyMs,
+      firestore: probe.firestore,
+      firestore_transaction: probe.firestoreTransaction,
+      domain_core: core.check,
+      latency_ms: probe.latencyMs,
       healthy: allHealthy,
     });
 
@@ -230,10 +371,10 @@ export const healthCheck = onRequest(
       status: allHealthy ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
       version: FUNCTION_VERSION,
-      domainCore: domainCoreDeploymentIdentityForHealth(),
+      domainCore,
       uptime_ms: Math.round(process.uptime() * 1000),
-      checks: { firestore: firestoreStatus },
-      ...(latencyMs > 0 && { latency_ms: latencyMs }),
+      checks,
+      ...(probe.latencyMs > 0 && { latency_ms: probe.latencyMs }),
       ...sourceMetadata(),
     });
   }),

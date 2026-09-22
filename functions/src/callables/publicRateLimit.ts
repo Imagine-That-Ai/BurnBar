@@ -21,7 +21,6 @@ type PublicHttpRateLimitAction = "cli_link_start" | "hermes_gateway_device_start
 type PublicHttpEndpointName =
   | "burnBarHermesGateway"
   | "healthCheck"
-  | "healthLive"
   | "healthReady"
   | "latestRouterRundown"
   | "issueLinuxAppCheckChallenge"
@@ -61,7 +60,9 @@ const PUBLIC_HTTP_ENDPOINT_LIMITS: Record<PublicHttpEndpointName, { windowSecond
   // capping abuse of the public HTTP surface.
   burnBarHermesGateway: { windowSeconds: 60, maxAttempts: 120 },
   healthCheck: { windowSeconds: 60, maxAttempts: 30 },
-  healthLive: { windowSeconds: 60, maxAttempts: 60 },
+  // NOTE: healthLive is intentionally absent — liveness is exempt from the
+  // product limiter by the contract in health.ts (a 429 must never read as
+  // DOWN). See DOCUMENTED_EXEMPTIONS in publicEndpointRateLimitInventory.test.ts.
   healthReady: { windowSeconds: 60, maxAttempts: 30 },
   latestRouterRundown: { windowSeconds: 60, maxAttempts: 60 },
   // Authenticated pre-App-Check bootstrap. Keep enrollment and challenge
@@ -641,7 +642,6 @@ export function isPublicRateLimitExceeded(err: unknown): boolean {
 export const RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS: ReadonlyArray<PublicHttpEndpointName> = Object.freeze([
   "burnBarHermesGateway",
   "healthCheck",
-  "healthLive",
   "healthReady",
   "latestRouterRundown",
   "issueLinuxAppCheckChallenge",

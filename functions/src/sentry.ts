@@ -16,7 +16,7 @@
 import * as Sentry from "@sentry/node";
 import type { ErrorEvent, EventHint, Breadcrumb } from "@sentry/core";
 import { createHash } from "node:crypto";
-import { logInfo } from "./logging.js";
+import { logInfo, logWarn } from "./logging.js";
 
 const dsn = process.env.SENTRY_DSN;
 const release = process.env.FUNCTION_VERSION ?? "unknown";
@@ -68,18 +68,9 @@ if (dsn) {
     sendDefaultPii: false,
 
     // Filter events that are noise rather than actionable bugs.
-    beforeSend(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
-      // Drop rate-limit errors (429) — these are expected under load.
-      const statusCode = typeof event.extra?.statusCode === "number" ? event.extra.statusCode : undefined;
-      if (
-        statusCode === 429 ||
-        (typeof event.message === "string" &&
-          (event.message.includes("rate limit") || event.message.includes("RESOURCE_EXHAUSTED")))
-      ) {
-        return null;
-      }
-      return sanitizeSentryEvent(event);
-    },
+    // Named export (sentryBeforeSend) so unit tests can drive the drop +
+    // GCP log-mirror path without initializing the Sentry SDK.
+    beforeSend: sentryBeforeSend,
 
     // Breadcrumb scrubbing: remove auth tokens from URL breadcrumbs.
     beforeBreadcrumb(breadcrumb: Breadcrumb) {
@@ -93,6 +84,57 @@ if (dsn) {
   logInfo({ event: "sentry_initialized", environment, release, dsn_configured: "true" });
 } else {
   logInfo({ event: "sentry_disabled", reason: "SENTRY_DSN not set" });
+}
+
+/**
+ * Structured-log event emitted for every Sentry event dropped as quota noise.
+ *
+ * The Sentry drop stays (429/RESOURCE_EXHAUSTED would drown real bugs), but
+ * sustained quota exhaustion must still page SOMEWHERE, so each drop is
+ * mirrored to Cloud Logging at WARNING severity for a log-based alert:
+ *
+ *   logName="projects/PROJECT_ID/logs/run.googleapis.com%2Fstderr"
+ *   jsonPayload.event="quota_exhaustion_dropped_from_sentry"
+ *
+ * Suggested wiring: a count-based log metric over that filter plus an alert
+ * policy on burn-rate (e.g. >50 drops/5min pages; any sustained nonzero rate
+ * in staging notifies). The mirrored payload carries only low-cardinality,
+ * non-PII fields (reason, status_code) — never the event message.
+ */
+export const QUOTA_EXHAUSTION_LOG_EVENT = "quota_exhaustion_dropped_from_sentry";
+
+/** True when a Sentry event is quota noise (429 / RESOURCE_EXHAUSTED). */
+export function isRateLimitNoiseEvent(event: ErrorEvent): boolean {
+  const statusCode = typeof event.extra?.statusCode === "number" ? event.extra.statusCode : undefined;
+  return (
+    statusCode === 429 ||
+    (typeof event.message === "string" &&
+      (event.message.includes("rate limit") || event.message.includes("RESOURCE_EXHAUSTED")))
+  );
+}
+
+function quotaExhaustionReason(event: ErrorEvent): "status_429" | "resource_exhausted" | "rate_limit_message" {
+  if (typeof event.extra?.statusCode === "number" && event.extra.statusCode === 429) return "status_429";
+  if (typeof event.message === "string" && event.message.includes("RESOURCE_EXHAUSTED")) return "resource_exhausted";
+  return "rate_limit_message";
+}
+
+/**
+ * Sentry beforeSend hook: drops quota noise (mirrored to Cloud Logging for
+ * alerting) and sanitizes everything else. Exported for unit tests.
+ */
+export function sentryBeforeSend(event: ErrorEvent, _hint?: EventHint): ErrorEvent | null {
+  if (isRateLimitNoiseEvent(event)) {
+    const statusCode = typeof event.extra?.statusCode === "number" ? event.extra.statusCode : undefined;
+    logWarn({
+      event: QUOTA_EXHAUSTION_LOG_EVENT,
+      reason: quotaExhaustionReason(event),
+      ...(statusCode !== undefined && { status_code: statusCode }),
+      sentry_dropped: true,
+    });
+    return null;
+  }
+  return sanitizeSentryEvent(event);
 }
 
 /**
