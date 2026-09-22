@@ -41,6 +41,11 @@ on:
         required: false
         type: boolean
         default: false
+      break_glass_reason:
+        description: "Human-readable justification for break_glass (incident link, what attestation cannot prove and why). Required when break_glass=true; recorded in the run summary for audit. True dual control additionally needs production-environment required-reviewers >= 2 in repo settings (owner decision, not expressible here)."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
   group: deploy-production
@@ -107,6 +112,7 @@ jobs:
           INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           INPUT_DOMAIN_CORE_PROFILE: ${{ inputs.domain_core_profile }}
           INPUT_BREAK_GLASS: ${{ inputs.break_glass }}
+          INPUT_BREAK_GLASS_REASON: ${{ inputs.break_glass_reason }}
           REF_NAME: ${{ github.ref_name }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -131,6 +137,13 @@ jobs:
           if [[ "$IS_BREAK_GLASS" == "true" && "$IS_EXISTING_TAG_RETRY" != "true" ]]; then
             echo "::error::break_glass requires existing_tag_retry=true from main."
             exit 1
+          fi
+          if [[ "$IS_BREAK_GLASS" == "true" && -z "${INPUT_BREAK_GLASS_REASON:-}" ]]; then
+            echo "::error::break_glass requires break_glass_reason: say what attestation cannot prove and why (incident link preferred)."
+            exit 1
+          fi
+          if [[ "$IS_BREAK_GLASS" == "true" ]]; then
+            echo "break_glass engaged by $GITHUB_ACTOR: ${INPUT_BREAK_GLASS_REASON}" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_TAG" ]]; then
@@ -1238,6 +1251,7 @@ jobs:
             echo "- Health: functions-health-gate job"
             echo ""
             echo "### On failure — rollback"
+            echo "- AUTO (on health-gate failure): this workflow dispatches an approval-gated rollback-profile run — see the auto-rollback-on-health-failure job (human approval still required)."
             echo "- MANUAL FAST (sub-minute): pin traffic to a previous-good Cloud Run revision, no rebuild:"
             echo "  \`scripts/ops/rollback-revision.sh <cloud-run-service> --yes\`"
             echo "- MANUAL SLOW (tens of minutes): full source rollback (rebuild + redeploy):"
@@ -1280,6 +1294,83 @@ jobs:
           name: domain-core-functions-deploy-health-${{ needs.deploy-functions.outputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: deploy-health.json
           if-no-files-found: ignore
+
+  auto-rollback-on-health-failure:
+    needs: [prepare-functions-deploy, deploy-functions, functions-health-gate]
+    if: >-
+      ${{ always()
+          && needs.deploy-functions.result == 'success'
+          && needs.functions-health-gate.result == 'failure'
+          && needs.prepare-functions-deploy.outputs.dry_run != 'true'
+          && needs.prepare-functions-deploy.outputs.domain_core_profile != 'public-production-rollback'
+          && needs.prepare-functions-deploy.outputs.break_glass != 'true' }}
+    runs-on: ubuntu-latest
+    # 20 min: repo policy requires >=15 for checkout-bearing jobs (slow
+    # checkouts must not starve the rollback dispatch itself).
+    timeout-minutes: 20
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve previous-good rollback target
+        id: target
+        env:
+          # The deploy step succeeded, so the live source commit is the commit
+          # it just shipped. Feeding it to the live-source guard keeps the
+          # #2195 ancestry check meaningful without GCP readback: the target
+          # must be a published ancestor of what is live, never a sideways move.
+          OPENBURNBAR_LIVE_SOURCE_COMMIT: ${{ needs.deploy-functions.outputs.commit }}
+        run: |
+          set -euo pipefail
+          # Same SemVer-grammar + creatordate selection as the manual path.
+          # --print-target implies dry-run (no checkout, build, or deploy) and
+          # still enforces the live-source ancestry and freshness guards, so a
+          # refusal here fails closed into the manual runbook below.
+          out="$RUNNER_TEMP/rollback-target.txt"
+          bash scripts/rollback.sh --print-target | tee "$out"
+          tag="$(grep -E '^TARGET_TAG=' "$out" | cut -d= -f2)"
+          commit="$(grep -E '^TARGET_COMMIT=' "$out" | cut -d= -f2)"
+          [[ "$tag" =~ ^v[0-9]{1,3}\.[0-9]+\.[0-9]+([-+].*)?$ ]]
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch approval-gated rollback run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLLBACK_TAG: ${{ steps.target.outputs.tag }}
+          ROLLBACK_COMMIT: ${{ steps.target.outputs.commit }}
+        run: |
+          set -euo pipefail
+          # The rollback profile stays manual-authorized: the dispatched run is
+          # a workflow_dispatch from main, so it still requires the
+          # domain-core-promotion environment reviewers AND the production
+          # environment approval before anything deploys. This step only queues
+          # the proposal so the on-call approves instead of assembling flags.
+          # Loop guard: a failed rollback-profile deploy never auto-dispatches
+          # another rollback (see the job-level `if:`); a human must look.
+          gh workflow run deploy-production.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            --field tag="$ROLLBACK_TAG" \
+            --field candidate_sha="$ROLLBACK_COMMIT" \
+            --field existing_tag_retry=true \
+            --field domain_core_profile=public-production-rollback
+          {
+            echo "## Auto-rollback dispatched (awaiting human approval)"
+            echo ""
+            echo "- Failed deploy: \`${{ needs.deploy-functions.outputs.tag }}\` (\`${{ needs.deploy-functions.outputs.commit }}\`)"
+            echo "- Rollback target: \`$ROLLBACK_TAG\` (\`$ROLLBACK_COMMIT\`)"
+            echo "- Profile: \`public-production-rollback\` via \`existing_tag_retry\` from \`main\`"
+            echo "- Authorization: still requires domain-core-promotion + production environment approvals — nothing deploys automatically."
+            echo "- FAST path (sub-minute, no rebuild): \`scripts/ops/rollback-revision.sh <cloud-run-service> --yes\`"
+            echo "- If the dispatched run fails attestation, fall back to manual: \`scripts/rollback.sh $ROLLBACK_TAG --yes\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   functions-result:
     needs: [prepare-functions-deploy, deploy-functions, functions-health-gate]

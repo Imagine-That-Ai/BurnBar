@@ -20,4 +20,12 @@ COPY src ./src
 ENV NODE_ENV=production
 ENV PORT=8080
 
+# Drop privileges: the runner only needs to serve HTTP and shell out to the
+# provider CLIs, so it runs as the stock `node` user instead of root.
+RUN chown -R node:node /app
+USER node
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+
 CMD ["node", "src/server.mjs"]

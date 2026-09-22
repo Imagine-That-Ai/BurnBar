@@ -38,17 +38,42 @@ struct LiveUsageDocumentChange: @unchecked Sendable {
 /// window) every streamed usage write used to re-decode and re-decrypt the
 /// entire window on the main actor.
 ///
+/// The result order is maintained incrementally for the same reason: the
+/// window used to be re-sorted whole on every delivery even when a single
+/// document changed. Each mutation binary-searches the ordered id list and
+/// splices one entry, so a delivery costs O(changed docs × window) pointer
+/// moves instead of O(window log window) comparisons, and `snapshot()` is a
+/// projection with no sort at all.
+///
 /// Not thread-safe by itself — the listener confines all access to its
 /// serial decode queue (`@unchecked Sendable` reflects that confinement).
 final class LiveUsageAccumulator: Sendable {
-    private let byDocID = Locked<[String: TokenUsage]>([:])
+    private struct State: Sendable {
+        var byDocID: [String: TokenUsage] = [:]
+        /// Doc ids in snapshot order: `endTime` descending with the document
+        /// id as the descending tiebreaker (Firestore implicitly appends
+        /// `__name__` in the sort direction of the last explicit `orderBy`).
+        /// The same ids as `byDocID.keys`, no more and no fewer.
+        var orderedIDs: [String] = []
+    }
+
+    private let state = Locked(State())
 
     func upsert(_ usage: TokenUsage, docID: String) {
-        byDocID.withLock { $0[docID] = usage }
+        state.withLock { state in
+            if let old = state.byDocID[docID] {
+                Self.removeID(docID, endTime: old.endTime, from: &state)
+            }
+            state.byDocID[docID] = usage
+            state.orderedIDs.insert(docID, at: Self.insertionIndex(for: usage.endTime, docID: docID, in: state))
+        }
     }
 
     func remove(docID: String) {
-        byDocID.withLock { _ = $0.removeValue(forKey: docID) }
+        state.withLock { state in
+            guard let endTime = state.byDocID.removeValue(forKey: docID)?.endTime else { return }
+            Self.removeID(docID, endTime: endTime, from: &state)
+        }
     }
 
     /// The current window contents, ordered exactly like the raw query
@@ -56,16 +81,51 @@ final class LiveUsageAccumulator: Sendable {
     /// the descending tiebreaker (Firestore implicitly appends `__name__`
     /// in the sort direction of the last explicit `orderBy`).
     func snapshot() -> [TokenUsage] {
-        byDocID.withLock { byDocID in
-            byDocID
-                .sorted { lhs, rhs in
-                    if lhs.value.endTime != rhs.value.endTime {
-                        return lhs.value.endTime > rhs.value.endTime
-                    }
-                    return lhs.key > rhs.key
-                }
-                .map(\.value)
+        state.withLock { state in
+            state.orderedIDs.compactMap { state.byDocID[$0] }
         }
+    }
+
+    /// Whether `(endTime, docID)` sorts strictly before the entry at `index`
+    /// under the snapshot order (both keys descending).
+    private static func isOrderedBefore(endTime: Date, docID: String, entryAt index: Int, in state: State) -> Bool {
+        let entryID = state.orderedIDs[index]
+        guard let entryEndTime = state.byDocID[entryID]?.endTime else { return false }
+        if endTime != entryEndTime { return endTime > entryEndTime }
+        return docID > entryID
+    }
+
+    /// The index at which `(endTime, docID)` belongs in `orderedIDs`.
+    private static func insertionIndex(for endTime: Date, docID: String, in state: State) -> Int {
+        var low = 0
+        var high = state.orderedIDs.count
+        while low < high {
+            let mid = (low + high) / 2
+            if isOrderedBefore(endTime: endTime, docID: docID, entryAt: mid, in: state) {
+                high = mid
+            } else {
+                low = mid + 1
+            }
+        }
+        return low
+    }
+
+    /// Drop `docID` from `orderedIDs` by its known sort key. `insertionIndex`
+    /// is a lower bound, so for a key that is present it returns one past the
+    /// entry (equal keys are not strictly-before); check both slots. The
+    /// linear fallback keeps a missed index a slow removal rather than a
+    /// stuck duplicate that would corrupt every later snapshot.
+    private static func removeID(_ docID: String, endTime: Date?, from state: inout State) {
+        if let endTime {
+            let index = insertionIndex(for: endTime, docID: docID, in: state)
+            for candidate in [index - 1, index] {
+                if state.orderedIDs.indices.contains(candidate), state.orderedIDs[candidate] == docID {
+                    state.orderedIDs.remove(at: candidate)
+                    return
+                }
+            }
+        }
+        state.orderedIDs.removeAll { $0 == docID }
     }
 }
 

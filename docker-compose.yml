@@ -38,7 +38,8 @@ services:
           --export-on-exit /emulator-data
       "
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000"]
+      # node:22-slim ships no curl/wget; probe with the node runtime itself.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 5

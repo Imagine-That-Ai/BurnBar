@@ -30,6 +30,159 @@ import {
   bulkhead,
 } from "cockatiel";
 import { logError, logInfo } from "./logging.js";
+import { errorCode, isRecord } from "./guards.js";
+
+// ── Retryable-error classification ────────────────────────────────────────────
+
+/**
+ * HTTP statuses where a retry with backoff can plausibly succeed: rate limits,
+ * lock conflicts (Stripe 409 lock timeouts, Firestore/Google ABORTED), request
+ * timeouts, and server faults. Every other classified status fails fast so a
+ * 4xx client error is never replayed.
+ */
+const RETRYABLE_HTTP_STATUSES: ReadonlySet<number> = new Set([408, 409, 429, 500, 502, 503, 504]);
+
+/** Stripe SDK error `type` values that signal a transient fault (stripe 19.x). */
+const RETRYABLE_STRIPE_ERROR_TYPES: ReadonlySet<string> = new Set([
+  "StripeConnectionError",
+  "StripeRateLimitError",
+  "StripeAPIError",
+]);
+
+/**
+ * Firebase Admin SDK / HttpsError code suffixes that signal a transient fault.
+ * Matches both `messaging/server-unavailable` and bare `unavailable` forms.
+ */
+const RETRYABLE_ERROR_CODE_SUFFIXES: ReadonlySet<string> = new Set([
+  "aborted",
+  "deadline-exceeded",
+  "internal",
+  "internal-error",
+  "quota-exceeded",
+  "resource-exhausted",
+  "server-unavailable",
+  "timeout",
+  "unavailable",
+]);
+
+/**
+ * gRPC status codes the Firestore client surfaces on numeric `code` for
+ * transient faults: DEADLINE_EXCEEDED (4), RESOURCE_EXHAUSTED (8), ABORTED
+ * (10), INTERNAL (13), UNAVAILABLE (14).
+ */
+const RETRYABLE_GRPC_CODES: ReadonlySet<number> = new Set([4, 8, 10, 13, 14]);
+
+/** Node syscall failures where the network path — not the request — failed. */
+const RETRYABLE_SYSCALL_CODES: ReadonlySet<string> = new Set([
+  "EAI_AGAIN",
+  "ECONNABORTED",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTDOWN",
+  "EHOSTUNREACH",
+  "ENETDOWN",
+  "ENETRESET",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EPIPE",
+  "ETIMEDOUT",
+]);
+
+/**
+ * Google API `errors[].reason` values that mean "back off and retry" even when
+ * the HTTP status is not itself retryable (Play quota errors arrive as 403).
+ */
+const RETRYABLE_GOOGLE_REASONS: ReadonlySet<string> = new Set([
+  "backendError",
+  "quotaExceeded",
+  "rateLimitExceeded",
+  "userRateLimitExceeded",
+]);
+
+/** Marker thrown by apnsSender for pre-classified transient APNs outcomes. */
+const APNS_RETRYABLE_ERROR_NAME = "ApnsRetryableError";
+
+const MAX_CLASSIFY_DEPTH = 3;
+
+function numericStatus(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^\d{3}$/.test(value.trim())) return Number(value.trim());
+  return undefined;
+}
+
+/** Extracts the HTTP status from Stripe / Gaxios / fetch-wrapper error shapes. */
+function httpStatusOf(record: Record<string, unknown>): number | undefined {
+  return (
+    numericStatus(record["status"]) ??
+    numericStatus(record["statusCode"]) ??
+    (isRecord(record["response"]) ? numericStatus(record["response"]["status"]) : undefined)
+  );
+}
+
+function hasRetryableGoogleReason(record: Record<string, unknown>): boolean {
+  const errors = record["errors"];
+  if (!Array.isArray(errors)) return false;
+  return errors.some((entry) => isRecord(entry) && typeof entry["reason"] === "string" && RETRYABLE_GOOGLE_REASONS.has(entry["reason"]));
+}
+
+/**
+ * Returns true when `error` carries an explicit transient signal: a retryable
+ * HTTP status, a transient SDK code/type (Stripe, Firebase, gRPC, Google
+ * reasons), a network syscall failure, or a pre-classified marker.
+ *
+ * Unknown shapes fail fast (return false): an unrecognized error is more
+ * likely a bug or a permanent rejection than a transient fault, and silent
+ * retries would only delay the caller's own handling. Statuses checked by
+ * callers via `res.ok` never reach this classifier — only thrown errors do.
+ */
+export function isRetryableError(error: unknown, depth = 0): boolean {
+  if (!isRecord(error) || depth > MAX_CLASSIFY_DEPTH) return false;
+
+  const name = typeof error["name"] === "string" ? error["name"] : undefined;
+  // Caller-cancelled work must never be replayed.
+  if (name === "AbortError") return false;
+  if (name === APNS_RETRYABLE_ERROR_NAME) return true;
+  if (name === "TimeoutError") return true;
+
+  // Stripe SDK errors self-classify via `type`; authoritative for the SDK.
+  const stripeType = typeof error["type"] === "string" ? error["type"] : undefined;
+  if (stripeType?.startsWith("Stripe")) return RETRYABLE_STRIPE_ERROR_TYPES.has(stripeType);
+
+  // Google quota signals can hide behind a non-retryable 403, so check reasons first.
+  if (hasRetryableGoogleReason(error)) return true;
+
+  const status = httpStatusOf(error);
+  if (status !== undefined) return RETRYABLE_HTTP_STATUSES.has(status);
+
+  const code = errorCode(error);
+  if (typeof code === "number") {
+    // Numeric codes are either gRPC statuses (small) or HTTP statuses.
+    return code >= 100 ? RETRYABLE_HTTP_STATUSES.has(code) : RETRYABLE_GRPC_CODES.has(code);
+  }
+  if (typeof code === "string") {
+    const trimmed = code.trim();
+    const numeric = numericStatus(trimmed);
+    if (numeric !== undefined) return RETRYABLE_HTTP_STATUSES.has(numeric);
+    if (RETRYABLE_SYSCALL_CODES.has(trimmed)) return true;
+    const suffix = trimmed.includes("/") ? trimmed.slice(trimmed.lastIndexOf("/") + 1) : trimmed;
+    if (RETRYABLE_ERROR_CODE_SUFFIXES.has(suffix)) return true;
+  }
+
+  // Undici fetch failures (`TypeError: fetch failed`) and Firebase SDK errors
+  // carry the signal on `cause` / `error`; a missing signal fails fast.
+  for (const nested of [error["cause"], error["error"]]) {
+    if (isRecord(nested) && isRetryableError(nested, depth + 1)) return true;
+  }
+  return false;
+}
+
+/**
+ * Retry filter: only transient faults are replayed. Circuit breakers
+ * deliberately stay on `handleAll` — a flood of 4xx still signals an
+ * unhealthy integration and should shed load, and breaker isolation tests
+ * rely on every failure counting toward the trip threshold.
+ */
+const retryableErrors = handleWhen((error) => isRetryableError(error));
 
 // ── Shared backoff strategy ───────────────────────────────────────────────────
 
@@ -65,7 +218,7 @@ stripeBreaker.onReset(() => {
   logInfo({ event: "circuit_breaker_reset", service: "stripe", state: "closed" });
 });
 
-const stripeRetry = retry(handleAll, {
+const stripeRetry = retry(retryableErrors, {
   maxAttempts: 3,
   backoff: makeBackoff(),
 });
@@ -90,7 +243,7 @@ pushBreaker.onBreak(() => {
   logError({ event: "circuit_breaker_tripped", service: "push", state: "open" });
 });
 
-const pushRetry = retry(handleAll, {
+const pushRetry = retry(retryableErrors, {
   maxAttempts: 2,
   backoff: makeBackoff(),
 });
@@ -125,7 +278,7 @@ function makeExternalApiBreaker(service: string) {
 }
 
 function makeExternalApiRetry() {
-  return retry(handleAll, {
+  return retry(retryableErrors, {
     maxAttempts: EXTERNAL_API_RETRY_MAX_ATTEMPTS,
     backoff: makeBackoff(),
   });
@@ -161,7 +314,10 @@ googlePlayConsumeBreaker.onBreak(() => {
     state: "open",
   });
 });
-const googlePlayConsumeRetry = retry(googlePlayConsumeErrors, {
+const googlePlayConsumeRetryErrors = handleWhen(
+  (error) => !isGooglePlayPurchaseNotOwnedError(error) && isRetryableError(error),
+);
+const googlePlayConsumeRetry = retry(googlePlayConsumeRetryErrors, {
   maxAttempts: EXTERNAL_API_RETRY_MAX_ATTEMPTS,
   backoff: makeBackoff(),
 });
@@ -243,7 +399,7 @@ firestoreBreaker.onBreak(() => {
   logError({ event: "circuit_breaker_tripped", service: "firestore", state: "open" });
 });
 
-const firestoreRetry = retry(handleAll, {
+const firestoreRetry = retry(retryableErrors, {
   maxAttempts: 5,
   backoff: makeBackoff(),
 });

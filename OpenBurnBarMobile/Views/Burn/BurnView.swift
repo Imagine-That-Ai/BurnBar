@@ -59,7 +59,7 @@ struct BurnView: View {
                 }
             }
             .padding(.horizontal, AuroraDesign.Layout.cardInset)
-            .padding(.bottom, trayInset) // clears the tray, or nothing on iPad
+            // Bottom clearance comes from RootTabView's safeAreaInset reservation.
             .padding(.top, MobileTheme.Spacing.sm)
         }
         .trackEasterEggScroll(tag: "burn")

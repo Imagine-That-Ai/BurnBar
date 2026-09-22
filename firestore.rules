@@ -37,10 +37,6 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/account_erasure_tombstones/$(request.auth.uid));
     }
 
-    function isOperator() {
-      return isSignedIn() && request.auth.token.get('burnbarOperator', false) == true;
-    }
-
     function requestWithinBasicLimits() {
       return request.resource.size() < 1048576
         && request.resource.data.keys().size() < 80;
@@ -63,26 +59,96 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // Plaintext-secret denylist. Two depths, split by schema posture:
+    //
+    // - hasNoPlaintextSecretFields (FLAT): the top-level document keys must
+    //   not name a secret field (camelCase and snake_case twins). Cheap —
+    //   this is the hot path used by every owner-writable collection,
+    //   including rules already near the 1,000-expression evaluation budget
+    //   (session_logs creates), so it must stay a single hasAny.
+    // - hasNoPlaintextSecretFieldsDeep (FLAT + NESTED): additionally rejects
+    //   the same names one level down inside known container maps
+    //   (`metadata` on escrow audit events, `detail` on iroh audit events,
+    //   `encryption` on session/project snapshots, plus the generic
+    //   `config`/`data`/`payload`/`params` wrappers), so a
+    //   `metadata: {apiKey: ...}` write fails like a top-level one.
+    //
+    // The deep check applies ONLY to collections with no strict key
+    // allowlist — devices, quota_snapshots, provider_connections,
+    // cloud_profile/*, usage, budgetRules, escrow_audit_events — where the
+    // denylist is the sole key guard and the rules have budget headroom.
+    // Strict-allowlist collections keep the flat check: their top-level keys
+    // are already fixed, and their nested sealed envelopes (signalEnvelope,
+    // sealedPayload, ciphertext maps) carry opaque ciphertext validated
+    // separately. (`in` short-circuits, so documents without container maps
+    // pay only the flat check even under the deep variant.)
+    function plaintextSecretFieldNames() {
+      return [
+        "apiKey", "api_key",
+        "token",
+        "refreshToken", "refresh_token",
+        "accessToken", "access_token",
+        "idToken", "id_token",
+        "authToken", "auth_token",
+        "sessionToken", "session_token",
+        "clientSecret", "client_secret",
+        "apiSecret", "api_secret",
+        "appSecret", "app_secret",
+        "cookie",
+        "password",
+        "passphrase",
+        "mnemonic",
+        "seedPhrase", "seed_phrase",
+        "secret",
+        "secretVersionName",
+        "otpSecret",
+        "totpSecret", "totp_secret",
+        "webhookSecret", "webhook_secret",
+        "signingKey", "signing_key",
+        "privateKey", "private_key",
+        "encryptionKey", "encryption_key",
+        "authorization",
+        "bearer",
+        "credential"
+      ];
+    }
+
+    function mapHasNoPlaintextSecretKeys(m) {
+      return !m.keys().hasAny(plaintextSecretFieldNames());
+    }
+
+    function nestedMapHasNoPlaintextSecretKeys(d, key) {
+      return !(key in d) || !(d[key] is map) || mapHasNoPlaintextSecretKeys(d[key]);
+    }
+
     function hasNoPlaintextSecretFields() {
+      return mapHasNoPlaintextSecretKeys(request.resource.data);
+    }
+
+    function hasNoPlaintextSecretFieldsDeep() {
       let d = request.resource.data;
-      return !("apiKey" in d)
-        && !("token" in d)
-        && !("refreshToken" in d)
-        && !("accessToken" in d)
-        && !("idToken" in d)
-        && !("cookie" in d)
-        && !("password" in d)
-        && !("secret" in d)
-        && !("secretVersionName" in d)
-        && !("authorization" in d)
-        && !("bearer" in d)
-        && !("credential" in d);
+      return mapHasNoPlaintextSecretKeys(d)
+        && nestedMapHasNoPlaintextSecretKeys(d, "metadata")
+        && nestedMapHasNoPlaintextSecretKeys(d, "detail")
+        && nestedMapHasNoPlaintextSecretKeys(d, "encryption")
+        && nestedMapHasNoPlaintextSecretKeys(d, "config")
+        && nestedMapHasNoPlaintextSecretKeys(d, "data")
+        && nestedMapHasNoPlaintextSecretKeys(d, "payload")
+        && nestedMapHasNoPlaintextSecretKeys(d, "params");
     }
 
     function ownerWritableNonSecret(userId) {
       return ownsUserNamespace(userId)
         && requestWithinBasicLimits()
         && hasNoPlaintextSecretFields();
+    }
+
+    // Deep variant for collections with no strict key allowlist (see the
+    // denylist note above). Do NOT use on near-budget strict-schema rules.
+    function ownerWritableNonSecretDeep(userId) {
+      return ownsUserNamespace(userId)
+        && requestWithinBasicLimits()
+        && hasNoPlaintextSecretFieldsDeep();
     }
 
     // BEGIN GENERATED MISSION_RUNTIMES: helper
@@ -2060,7 +2126,7 @@ service cloud.firestore {
       allow create, update: if collectionId in [
           "devices", "quota_snapshots", "provider_connections"
         ]
-        && ownerWritableNonSecret(userId);
+        && ownerWritableNonSecretDeep(userId);
 
       allow create, update: if collectionId in [
           "cloud_profile", "sync_watermarks", "sync_status",
@@ -2068,7 +2134,7 @@ service cloud.firestore {
         ]
         && ownsUserNamespace(userId)
         && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
+        && hasNoPlaintextSecretFieldsDeep();
 
 
     }
@@ -2155,10 +2221,10 @@ service cloud.firestore {
     // field already exists on the stored doc — no write may re-introduce one
     // (privacy-leak-remediation §1 / F6).
     match /users/{userId}/usage/{usageId} {
-      allow create: if ownerWritableNonSecret(userId)
+      allow create: if ownerWritableNonSecretDeep(userId)
         && !("projectName" in request.resource.data)
         && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "usage", usageId, "sealedProjectName", request.resource.data.sealedProjectName));
-      allow update: if ownerWritableNonSecret(userId)
+      allow update: if ownerWritableNonSecretDeep(userId)
         && (!("projectName" in request.resource.data) || ("projectName" in resource.data))
         && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "usage", usageId, "sealedProjectName", request.resource.data.sealedProjectName));
     }
@@ -2170,12 +2236,12 @@ service cloud.firestore {
     // outright; `update` tolerates a legacy plaintext field only while it
     // already exists on the stored doc (migration), never on a fresh write.
     match /users/{userId}/budgetRules/{ruleId} {
-      allow create: if ownerWritableNonSecret(userId)
+      allow create: if ownerWritableNonSecretDeep(userId)
         && !("projectName" in request.resource.data)
         && !("label" in request.resource.data)
         && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "budgetRules", ruleId, "sealedProjectName", request.resource.data.sealedProjectName))
         && (!("sealedLabel" in request.resource.data) || validCloudSealedTextAt(userId, "budgetRules", ruleId, "sealedLabel", request.resource.data.sealedLabel));
-      allow update: if ownerWritableNonSecret(userId)
+      allow update: if ownerWritableNonSecretDeep(userId)
         && (!("projectName" in request.resource.data) || ("projectName" in resource.data))
         && (!("label" in request.resource.data) || ("label" in resource.data))
         && (!("sealedProjectName" in request.resource.data) || validCloudSealedTextAt(userId, "budgetRules", ruleId, "sealedProjectName", request.resource.data.sealedProjectName))
@@ -4176,18 +4242,21 @@ service cloud.firestore {
     // these transactionally; the hourly function only reconciles upward.
 
     // Budget split (ADR 006): public envelope vs operator metrics.
+    // No mint path for the former `burnbarOperator` claim ever existed (no
+    // Admin SDK issuance, no inventory, no revocation), so the claim was
+    // unholdable and these reads were already deny-all in practice. The
+    // The match blocks were removed outright (repo convention forbids dead
+    // `allow ... if false`): default deny keeps that posture without a dead
+    // claim check. Operator telemetry flows via the hourly functions +
+    // BigQuery export, never via client reads (clients only ever read
+    // state/current).
     match /ops/computer_use_budget_status/state/current {
       allow read: if isSignedIn();
     }
-    match /ops/computer_use_budget_status/metrics/current {
-      allow read: if isOperator();
-    }
-    match /ops/computer_use_budget_status/events/{eventId} {
-      allow read: if isOperator();
-    }
-    match /ops/computer_use_session_daily_rollups/days/{day} {
-      allow read: if isOperator();
-    }
+    // (Former `burnbarOperator` reads for metrics/events/rollups removed
+    // entirely 2026-09-22: the claim never had a mint path, and repo
+    // convention forbids dead `allow ... if false` — Firestore's default
+    // deny applies. Telemetry flows via functions + BigQuery export.)
 
     // Server-reconciled daily quota counter. Capability enforcement must not
     // trust client-writable counters; the hourly `recomputeMediaQuotaUsage`
@@ -4994,10 +5063,11 @@ service cloud.firestore {
       // Tamper-evidence log: append-only for the owner. Once written, an audit
       // event cannot be mutated or erased from the client — only server-side
       // (Admin SDK) reconciliation may touch history. Mirrors the stricter
-      // computer_use_actions header above.
+      // computer_use_actions header above. The deep secret check guards the
+      // free-form `metadata` map (no key allowlist on this collection).
       allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
+        && hasNoPlaintextSecretFieldsDeep();
     }
 
 
@@ -5246,20 +5316,16 @@ service cloud.firestore {
 
     // --- Mercury budget split (ADR 006) ---
     // Public envelope: level + caps only (no USD). Operator metrics and
-    // events hold projections and audit rows. Rollups stay operator-only.
+    // events hold projections and audit rows. Rollups stay server-only.
+    // (Former `burnbarOperator` reads retired: the claim had no mint path,
+    // so the match blocks were removed outright — default deny. See the
+    // computer-use budget split above.)
     match /ops/media_budget_status/state/current {
       allow read: if isSignedIn();
     }
-    match /ops/media_budget_status/metrics/current {
-      allow read: if isOperator();
-    }
-    match /ops/media_budget_status/events/{eventId} {
-      allow read: if isOperator();
-    }
-
-    match /ops/media_session_daily_rollups/{document=**} {
-      allow read: if isOperator();
-    }
+    // (Former `burnbarOperator` reads for metrics/events/rollups removed
+    // entirely 2026-09-22 — same rationale as the computer-use split above:
+    // no mint path ever existed; default deny applies.)
 
     // --- Global Google Play token claims (server-only) ---
 

@@ -259,6 +259,42 @@ describe("CLI link credential delivery", () => {
     expect(cliLinkStore.has(`cli_link_sessions/${deviceCode}`)).toBe(false);
   });
 
+  it("retires legacy approved sessions without an envelope instead of returning plaintext", async () => {
+    cliLinkStore.clear();
+    const deviceCode = "legacy-plaintext-device-code";
+    const deviceSecret = "device-secret-for-legacy-poll";
+
+    seedDoc(cliLinkStore, `cli_link_sessions/${deviceCode}`, {
+      userCode: "LEGACY-PLAINTEXT",
+      deviceSecretVerifierHash: sha256Hex(sha256Hex(deviceSecret)),
+      status: "approved",
+      expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
+      accessToken: "legacy-access-plaintext",
+      refreshToken: "legacy-refresh-plaintext",
+      expiresIn: 900,
+      clientId: "legacy-client",
+      scopes: ["search:read"],
+      grantMode: "local_decrypt_shim",
+    });
+
+    const req = {
+      method: "POST",
+      body: { deviceCode, deviceSecret },
+      headers: {},
+      socket: { remoteAddress: "127.0.0.1" },
+    };
+    const res = new FakeRes();
+
+    const { pollCliLink } = await import("../callables/cliLink.js");
+    await runHttpHandler(pollCliLink, req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ status: "expired" });
+    expect(JSON.stringify(res.body)).not.toContain("legacy-access-plaintext");
+    expect(JSON.stringify(res.body)).not.toContain("legacy-refresh-plaintext");
+    expect(cliLinkStore.has(`cli_link_sessions/${deviceCode}`)).toBe(false);
+  });
+
   it("rejects malformed delivery sessions before issuing a remote grant", async () => {
     cliLinkStore.clear();
     const deviceSecretHash = sha256Hex("legacy-device-secret");
