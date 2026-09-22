@@ -15,6 +15,38 @@
 import Foundation
 @preconcurrency import GRDB
 
+/// The per-table row cap for `MemoryExportStoreReader.read`, behind the
+/// `OPENBURNBAR_MEMORY_EXPORT_MAX_ROWS_PER_TABLE` gate. The reader
+/// materializes every row it touches — eight unbounded whole-table fetches —
+/// so without a cap a large store OOMs the exporter instead of failing. An
+/// absent or unparseable gate value is the default, never unlimited: raising
+/// the cap is an explicit operator act, the way `--allow-long-read` is.
+public enum MemoryExportRowLimit {
+    public static let environmentKey = "OPENBURNBAR_MEMORY_EXPORT_MAX_ROWS_PER_TABLE"
+    /// 100k rows at ~1-3 KB fully-loaded cost each is a few hundred MB of
+    /// transient working set: the largest defensible single-read budget for a
+    /// CLI/daemon, and 1,000x over any store the suite builds. Stores past
+    /// this refuse with the table and count named, not with a SIGKILL.
+    public static let defaultValue = 100_000
+
+    public static func resolve(environment: [String: String] = ProcessInfo.processInfo.environment) -> Int {
+        guard let raw = environment[environmentKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              raw.isEmpty == false else {
+            return defaultValue
+        }
+        if raw.lowercased() == "unlimited" { return .max }
+        guard let value = Int(raw), value > 0 else { return defaultValue }
+        return value
+    }
+}
+
+public enum MemoryExportStoreReaderError: Error, Equatable {
+    /// A source table holds more rows than the reader will materialize in one
+    /// pass. Fail closed with the count named — truncating would silently
+    /// break §10's closed sum, and the operator raises the gate deliberately.
+    case rowLimitExceeded(table: String, count: Int, limit: Int)
+}
+
 public enum MemoryExportStoreReader {
 
     /// Read every table the export needs, in one read transaction.
@@ -22,7 +54,18 @@ public enum MemoryExportStoreReader {
     /// Column presence is probed rather than assumed: a daemon-only or
     /// Python-created file has no `review_status` and no `source_kind`, and
     /// that absence is §3.1 row 13, not an error.
-    public static func read(_ db: Database) throws -> MemoryExportSourceSnapshot {
+    ///
+    /// `maxRowsPerTable` caps what one pass may materialize; nil resolves the
+    /// `MemoryExportRowLimit` gate (safe default when the operator said
+    /// nothing). The cap is enforced on the counts, before the first row is
+    /// read, so an over-limit store refuses in milliseconds rather than after
+    /// materializing it.
+    public static func read(
+        _ db: Database,
+        maxRowsPerTable: Int? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> MemoryExportSourceSnapshot {
+        let limit = maxRowsPerTable ?? MemoryExportRowLimit.resolve(environment: environment)
         var snapshot = MemoryExportSourceSnapshot()
         snapshot.sourceQuickCheck = try quickCheck(db)
         snapshot.storeIdentity = try storeIdentity(db)
@@ -34,6 +77,7 @@ public enum MemoryExportStoreReader {
         // (review R3). A row deleted between the count and the SELECT leaves the
         // sum short by one, which is exactly the fact worth reporting.
         snapshot.sourceRowCounts = try rowCounts(db)
+        try enforceRowLimit(db, counts: snapshot.sourceRowCounts, limit: limit)
         snapshot.memories = try memories(db, columns: memoryColumns)
 
         if try tableExists(db, "memory_audit") {
@@ -230,6 +274,28 @@ public enum MemoryExportStoreReader {
             ) ?? 0
         }
         return counts
+    }
+
+    /// Refuse an over-limit store before the first row is materialized. The
+    /// §10 counts cover the six reconciled tables; the audit chain, the
+    /// project snapshots and the quarantine bodies have no count edge of their
+    /// own but are read whole, so they are counted here. The two `GROUP BY`
+    /// reads (path-alias counts, embedding lanes) are bounded by their key
+    /// cardinality and need no cap.
+    static func enforceRowLimit(_ db: Database, counts: [String: Int], limit: Int) throws {
+        for table in counts.keys.sorted() {
+            if let count = counts[table], count > limit {
+                throw MemoryExportStoreReaderError.rowLimitExceeded(table: table, count: count, limit: limit)
+            }
+        }
+        for table in ["memory_audit", "project_memory_snapshots", "memory_quarantine_bodies"]
+            where try tableExists(db, table) {
+            // The table names are this file's own literals, never a caller's.
+            let count = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM \(table)") ?? 0
+            if count > limit {
+                throw MemoryExportStoreReaderError.rowLimitExceeded(table: table, count: count, limit: limit)
+            }
+        }
     }
 
     /// The store's identity, read from INSIDE the database.
