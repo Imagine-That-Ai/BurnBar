@@ -141,19 +141,24 @@ final class MemoryExportStoreReaderRowLimitTests: XCTestCase {
 
     // MARK: - Bounded load
 
-    /// Env-gated load probe (Stream C evidence, not a CI assertion): with
-    /// `OPENBURNBAR_EXPORT_LOAD_ROWS=N` set, builds an N-row store and reports
-    /// what one `read` costs — full materialization when the gate is raised,
-    /// a millisecond refusal at the default. Returns quietly otherwise: this
-    /// must be a PASS, not an XCTSkip — the Linux gate verifies a pass per
-    /// test and skips read as unverified (same lesson as the R7 fixture rule
-    /// in MemoryExportClassifierTests).
+    /// Always-on load probe with an opt-up evidence mode. Without
+    /// `OPENBURNBAR_EXPORT_LOAD_ROWS`, it builds a small store (fast enough
+    /// for CI) and asserts the read materializes every row. With
+    /// `OPENBURNBAR_EXPORT_LOAD_ROWS=N`, it builds N rows and reports what
+    /// one `read` costs instead — full materialization when the gate is
+    /// raised, a millisecond refusal at the default. N is clamped so a stray
+    /// environment cannot OOM the lane.
+    ///
+    /// Deliberately never skipped: an env-gated skip here would hide the one
+    /// test that exercises multi-hundred-row reads (shrink-only skip budget).
+    static let defaultLoadProbeRows = 1_000
+    static let maxLoadProbeRows = 250_000
+
     func test_load_rowsReportReadCost() throws {
-        guard let raw = ProcessInfo.processInfo.environment["OPENBURNBAR_EXPORT_LOAD_ROWS"],
-              let rows = Int(raw), rows > 0 else {
-            print("LOAD probe idle: set OPENBURNBAR_EXPORT_LOAD_ROWS=N to run it")
-            return
-        }
+        let requested = ProcessInfo.processInfo.environment["OPENBURNBAR_EXPORT_LOAD_ROWS"]
+            .flatMap(Int.init)
+            .flatMap { $0 > 0 ? $0 : nil }
+        let rows = min(requested ?? Self.defaultLoadProbeRows, Self.maxLoadProbeRows)
         let gate = ProcessInfo.processInfo.environment[MemoryExportRowLimit.environmentKey] ?? "(default)"
         let queue = try MemoryExportFixtureStore.makeQueue()
         try queue.write { db in
@@ -177,8 +182,22 @@ final class MemoryExportStoreReaderRowLimitTests: XCTestCase {
         do {
             let snapshot = try queue.read { try MemoryExportStoreReader.read($0) }
             print("LOAD rows=\(rows) gate=\(gate) outcome=read seconds=\(Date().timeIntervalSince(start)) memories=\(snapshot.memories.count)")
+            XCTAssertEqual(
+                snapshot.memories.count, rows,
+                "a successful read must materialize every inserted row"
+            )
         } catch {
             print("LOAD rows=\(rows) gate=\(gate) outcome=refused seconds=\(Date().timeIntervalSince(start)) error=\(error)")
+            // Refusal with no gate override and a below-default row count means
+            // the read path regressed — the gate cannot have refused it. (With
+            // a gate override set, the operator is probing refusal itself, so
+            // there is nothing to assert; refusal shape is pinned above.)
+            if ProcessInfo.processInfo.environment[MemoryExportRowLimit.environmentKey] == nil {
+                XCTAssertGreaterThan(
+                    rows, MemoryExportRowLimit.defaultValue,
+                    "refusal below the default gate means the read path regressed, not the gate"
+                )
+            }
         }
     }
 }
