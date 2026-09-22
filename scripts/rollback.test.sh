@@ -241,4 +241,70 @@ if [[ "$(git -C "${execution_repo}" rev-parse HEAD)" != "${execution_commit}" ]]
   exit 1
 fi
 
+print_repo="$(build_fixture_repo print-target)"
+print_head="$(git -C "${print_repo}" rev-parse HEAD)"
+print_commit="$(git -C "${print_repo}" rev-parse 'refs/tags/v1.0.1^{commit}')"
+STALE_TAG_MAX_AGE_DAYS=999 run_rollback "${print_repo}" --print-target >"${TMP_DIR}/print-target.out"
+if ! grep -Fqx "TARGET_TAG=v1.0.1" "${TMP_DIR}/print-target.out"; then
+  echo "FAIL: --print-target did not emit the previous canonical SemVer tag" >&2
+  cat "${TMP_DIR}/print-target.out" >&2
+  exit 1
+fi
+if ! grep -Fqx "TARGET_COMMIT=${print_commit}" "${TMP_DIR}/print-target.out"; then
+  echo "FAIL: --print-target did not emit the target tag peel commit" >&2
+  cat "${TMP_DIR}/print-target.out" >&2
+  exit 1
+fi
+if ! grep -Fq "DRY RUN: No changes made." "${TMP_DIR}/print-target.out"; then
+  echo "FAIL: --print-target did not imply dry-run semantics" >&2
+  cat "${TMP_DIR}/print-target.out" >&2
+  exit 1
+fi
+if [[ "$(git -C "${print_repo}" rev-parse HEAD)" != "${print_head}" ]]; then
+  echo "FAIL: --print-target mutated the fixture checkout" >&2
+  exit 1
+fi
+if grep -Fq "SENTRY_DSN" "${TMP_DIR}/print-target.out"; then
+  echo "FAIL: --print-target unexpectedly mentioned Sentry requirements" >&2
+  cat "${TMP_DIR}/print-target.out" >&2
+  exit 1
+fi
+
+STALE_TAG_MAX_AGE_DAYS=999 run_rollback "${print_repo}" v1.0.0 --print-target >"${TMP_DIR}/print-explicit.out"
+if ! grep -Fqx "TARGET_TAG=v1.0.0" "${TMP_DIR}/print-explicit.out"; then
+  echo "FAIL: --print-target did not honor the explicit rollback target" >&2
+  cat "${TMP_DIR}/print-explicit.out" >&2
+  exit 1
+fi
+
+if STALE_TAG_MAX_AGE_DAYS=1 run_rollback "${stale_repo}" --print-target >"${TMP_DIR}/print-stale.out" 2>"${TMP_DIR}/print-stale.err"; then
+  echo "FAIL: --print-target accepted a stale auto-selected target" >&2
+  exit 1
+fi
+if ! grep -Fq "Auto-selected target 'v1.0.0'" "${TMP_DIR}/print-stale.err"; then
+  echo "FAIL: --print-target stale refusal did not name the auto-selected tag" >&2
+  cat "${TMP_DIR}/print-stale.err" >&2
+  exit 1
+fi
+
+print_live="$(git -C "${print_repo}" rev-parse 'refs/tags/v1.0.2^{commit}')"
+STALE_TAG_MAX_AGE_DAYS=999 OPENBURNBAR_SOURCE_COMMIT="${print_live}" \
+  run_rollback "${print_repo}" --print-target >"${TMP_DIR}/print-live.out"
+if ! grep -Fqx "TARGET_TAG=v1.0.1" "${TMP_DIR}/print-live.out"; then
+  echo "FAIL: --print-target refused a routine ancestor of the live source commit" >&2
+  cat "${TMP_DIR}/print-live.out" >&2
+  exit 1
+fi
+
+print_older="$(git -C "${print_repo}" rev-parse 'refs/tags/v1.0.1^{commit}')"
+if OPENBURNBAR_SOURCE_COMMIT="${print_older}" run_rollback "${print_repo}" v1.0.2 --print-target >"${TMP_DIR}/print-forward.out" 2>"${TMP_DIR}/print-forward.err"; then
+  echo "FAIL: --print-target accepted a target that is not an ancestor of the live source commit" >&2
+  exit 1
+fi
+if ! grep -Fq "is not an ancestor of live source commit" "${TMP_DIR}/print-forward.err"; then
+  echo "FAIL: --print-target forward-move refusal did not name the hazard" >&2
+  cat "${TMP_DIR}/print-forward.err" >&2
+  exit 1
+fi
+
 echo "rollback target selection test: all green"
