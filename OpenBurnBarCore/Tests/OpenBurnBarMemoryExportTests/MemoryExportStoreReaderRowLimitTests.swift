@@ -151,8 +151,8 @@ final class MemoryExportStoreReaderRowLimitTests: XCTestCase {
     ///
     /// Deliberately never skipped: an env-gated skip here would hide the one
     /// test that exercises multi-hundred-row reads (shrink-only skip budget).
-    static let defaultLoadProbeRows = 1_000
-    static let maxLoadProbeRows = 250_000
+    private static let defaultLoadProbeRows = 1_000
+    private static let maxLoadProbeRows = 250_000
 
     func test_load_rowsReportReadCost() throws {
         let requested = ProcessInfo.processInfo.environment["OPENBURNBAR_EXPORT_LOAD_ROWS"]
