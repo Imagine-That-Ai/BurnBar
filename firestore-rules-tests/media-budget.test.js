@@ -73,7 +73,9 @@ await assertSucceeds(getDoc(doc(aliceDB, "ops/media_budget_status/state/current"
 await assertFails(getDoc(doc(aliceDB, "ops/media_budget_status/metrics/current")));
 await assertFails(getDoc(doc(unauthDB, "ops/media_budget_status/state/current")));
 await assertFails(getDoc(doc(unauthDB, "ops/media_budget_status/metrics/current")));
-await assertSucceeds(getDoc(doc(operatorDB, "ops/media_budget_status/metrics/current")));
+// The burnbarOperator claim had no mint path and was retired: even a caller
+// presenting the legacy claim is denied operator metrics.
+await assertFails(getDoc(doc(operatorDB, "ops/media_budget_status/metrics/current")));
 
 await assertFails(
   setDoc(doc(aliceDB, "ops/media_budget_status/state/current"), {

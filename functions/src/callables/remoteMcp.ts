@@ -16,7 +16,11 @@ import {
   assertActiveBurnBarProEntitlement,
 } from "./shared.js";
 import { issueRemoteMcpGrantForSignedInUser } from "../remoteMcpOAuth.js";
-import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc, type RemoteMcpScope } from "../remoteMcpGrant.js";
+import {
+  REMOTE_MCP_TOKEN_HASH_PEPPER,
+  revokeRemoteMcpClient as revokeRemoteMcpClientDoc,
+  type RemoteMcpScope,
+} from "../remoteMcpGrant.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { enforceHighRiskOwnerAction } from "./highRiskOwnerAction.js";
 import { remoteMcpTokenHmacSecretValueForRuntime, remoteMcpTokenSigningSecrets } from "./remoteMcpSigningSecrets.js";
@@ -39,7 +43,11 @@ export const issueRemoteMcpGrant = onCall(
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
-    secrets: remoteMcpTokenSigningSecrets(),
+    // Pepper binding (mirrors completeCliLink): every grant issuer must bind
+    // REMOTE_MCP_TOKEN_HASH_PEPPER so stored verifiers use one construction.
+    // The secret exists in Secret Manager (created 2026-09-22); if it is ever
+    // missing, deploy fails closed rather than shipping mixed hashes.
+    secrets: [...remoteMcpTokenSigningSecrets(), REMOTE_MCP_TOKEN_HASH_PEPPER],
   },
   wrapCallableHandler(
     "issueRemoteMcpGrant",

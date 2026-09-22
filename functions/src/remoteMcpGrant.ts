@@ -1,5 +1,7 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { FieldPath, Timestamp, type Firestore } from "firebase-admin/firestore";
+import { defineSecret } from "firebase-functions/params";
+import { logWarn } from "./logging.js";
 
 export type RemoteMcpGrantMode = "sealed_only" | "local_decrypt_shim" | "remote_readable_explicit_opt_in";
 export type RemoteMcpScope = "search:read" | "conversation:read" | "usage:read" | "index:status" | "knowledge:read" | "code:read";
@@ -41,7 +43,51 @@ interface RemoteMcpGrantWriter {
   };
 }
 
-export function hashRemoteMcpSecret(value: string): string {
+/**
+ * Server-side pepper for stored Remote MCP verifiers (Secret Manager).
+ *
+ * Issuing callables must declare this in their `secrets` binding (see
+ * `completeCliLink`); otherwise the hash falls back to the legacy
+ * unpeppered construction and a warning is logged in production.
+ */
+export const REMOTE_MCP_TOKEN_HASH_PEPPER = defineSecret("REMOTE_MCP_TOKEN_HASH_PEPPER");
+
+const REMOTE_MCP_HASH_CONTEXT_V1 = "remote-mcp-secret-hash-v1";
+
+export function remoteMcpHashPepperValue(): string {
+  try {
+    const bound = REMOTE_MCP_TOKEN_HASH_PEPPER.value();
+    if (bound) return bound;
+  } catch {
+    // Secret params unavailable (unit tests without param wiring): fall
+    // through to the direct env read below, then to the legacy hash.
+  }
+  return process.env.REMOTE_MCP_TOKEN_HASH_PEPPER ?? "";
+}
+
+function isProductionFunctionsRuntime(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.NODE_ENV === "test") return false;
+  return typeof env.K_SERVICE === "string" && env.K_SERVICE.length > 0;
+}
+
+/**
+ * One-way verifier for stored Remote MCP secrets (refresh tokens, install
+ * fingerprints, token-family bindings).
+ *
+ * Peppered HMAC-SHA256 with a domain-separation context when a pepper is
+ * available; the legacy single-round unsalted SHA-256 otherwise (emulator,
+ * unit tests, and callers that have not yet declared the secret). The
+ * fallback is fail-open by necessity — issuance must keep working for
+ * callers outside the pepper rollout — so production use without a pepper
+ * logs a warning for the on-call dashboard instead of failing silently.
+ */
+export function hashRemoteMcpSecret(value: string, pepper: string = remoteMcpHashPepperValue()): string {
+  if (pepper.length > 0) {
+    return createHmac("sha256", pepper).update(`${REMOTE_MCP_HASH_CONTEXT_V1}\0${value}`, "utf8").digest("hex");
+  }
+  if (isProductionFunctionsRuntime()) {
+    logWarn({ event: "remote_mcp.unpeppered_hash_fallback" });
+  }
   return createHash("sha256").update(value).digest("hex");
 }
 
