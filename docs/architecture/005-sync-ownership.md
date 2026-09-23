@@ -52,7 +52,8 @@ The live file is `~/Library/Application Support/OpenBurnBar/openburnbar.sqlite`.
 | chunk_embeddings | daemon (target) | app | |
 | embedding_models | app | daemon | |
 | embedding_versions | app | daemon | |
-| agent_memories | daemon (target) | app | |
+| agent_memories | daemon (target) | app | One-shot rebuilds owned by the versioned Core migrator (v68); daemon bootstrap must not duplicate versioned repairs |
+| memory_embedding_refs | daemon | app read-only | Enforced Wave 0.3: dead app-side upsert removed; app reads via `memoryEmbeddingMatches` |
 | memory_audit | daemon (target) | app | |
 | memory_* | daemon (target) | app | Remaining memory_* tables |
 | pcm_* / code_* | daemon | app RPC | Project code memory |
