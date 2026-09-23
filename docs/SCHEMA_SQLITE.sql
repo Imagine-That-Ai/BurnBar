@@ -1,10 +1,11 @@
 -- OpenBurnBar SQLite Schema (GRDB)
--- Generated from migration history in OpenBurnBarDatabaseMigrationTests.swift
--- and the OpenBurnBarDatabase migration definitions.
+-- Hand-maintained alongside the Swift GRDB migration definitions and the
+-- migration history in OpenBurnBarDatabaseMigrationTests.swift.
+-- Drift-checked by scripts/ci/verify-sqlite-schema-doc.mjs (migration-source
+-- table coverage, PCM columns/indexes, AgentLens/Core mirror pairs).
 --
 -- This file is the canonical reference for the local SQLite database schema.
--- It is maintained alongside the Swift migration code. When adding a new
--- migration, update both the Swift GRDB migration AND this file.
+-- When adding a new migration, update both the Swift GRDB migration AND this file.
 --
 -- Primary database: ~/Library/Application Support/OpenBurnBar/openburnbar.sqlite
 -- Opened via: DatabaseQueue / DatabasePool (GRDB 6.x)
