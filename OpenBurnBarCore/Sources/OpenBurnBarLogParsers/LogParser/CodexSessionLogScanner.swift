@@ -106,6 +106,12 @@ public enum CodexSessionLogScanner {
     static let headDigestSpan = 4096
     /// Governor memory checkpoints happen every this many scanned lines.
     static let checkpointLineInterval = 4096
+    /// Maximum retained conversation markdown per session. Turn text beyond
+    /// the budget is still counted for message/word metrics (and still feeds
+    /// first-title / last-reply tracking), but is not retained — the same
+    /// 1MB bound `ClaudeConversationAccumulator` applies, so a pathological
+    /// multi-MB rollout cannot pin its full text in memory or the database.
+    static let maxConversationMarkdownBytes = 1 << 20
 
     public struct TokenScanResult {
         /// Exact token breakdown, or `nil` when the file contained no token
@@ -499,7 +505,17 @@ public enum CodexSessionLogScanner {
         }
         defer { try? handle.close() } // try?-ok(handle teardown)
 
-        var turns: [(role: String, text: String)] = []
+        // Streaming accumulation: per-turn text is transient (released by the
+        // autorelease pool each line). Only metrics, the title source, the
+        // latest reply head, and a byte-budgeted markdown prefix are retained.
+        var messageCount = 0
+        var userWordCount = 0
+        var assistantWordCount = 0
+        var userTitle: String?
+        var lastAssistantHead = ""
+        var markdownParts: [String] = []
+        var markdownByteCount = 0
+        var markdownCapped = false
         var keyFiles = Set<String>()
         var keyCommands = Set<String>()
         var keyTools = Set<String>()
@@ -517,7 +533,38 @@ public enum CodexSessionLogScanner {
                     return
                 }
                 if let extracted = Self.extractCodexMessage(from: json) {
-                    turns.append(extracted)
+                    messageCount += 1
+                    let words = extracted.text.split(whereSeparator: \.isWhitespace).count
+                    if extracted.role == "user" {
+                        userWordCount += words
+                        if userTitle == nil {
+                            userTitle = Self.firstLineTitle(extracted.text)
+                        }
+                    } else {
+                        assistantWordCount += words
+                        lastAssistantHead = String(extracted.text.prefix(500))
+                    }
+                    if !markdownCapped {
+                        let formatted = extracted.role == "user"
+                            ? "## User\n\n\(extracted.text)"
+                            : "## Assistant\n\n\(extracted.text)"
+                        // "\n\n" separators join the parts; account for them so
+                        // the budget bounds the joined string, not just the parts.
+                        let separatorBytes = markdownParts.isEmpty ? 0 : 2
+                        if markdownByteCount + separatorBytes + formatted.utf8.count > Self.maxConversationMarkdownBytes {
+                            let remaining = Self.maxConversationMarkdownBytes - markdownByteCount - separatorBytes
+                            if remaining > 0 {
+                                let clipped = TranscriptByteTruncation.truncateToUTF8Bytes(formatted, maxBytes: remaining)
+                                if !clipped.isEmpty {
+                                    markdownParts.append(clipped)
+                                }
+                            }
+                            markdownCapped = true
+                        } else {
+                            markdownParts.append(formatted)
+                            markdownByteCount += separatorBytes + formatted.utf8.count
+                        }
+                    }
                 }
                 if let tool = Self.extractCodexTool(from: json) {
                     keyTools.insert(tool.name)
@@ -532,43 +579,35 @@ public enum CodexSessionLogScanner {
             }
         }
 
-        guard !turns.isEmpty else { return .scanned(nil) }
+        guard messageCount > 0 else { return .scanned(nil) }
 
-        let markdown = turns.map { turn in
-            turn.role == "user"
-                ? "## User\n\n\(turn.text)"
-                : "## Assistant\n\n\(turn.text)"
-        }.joined(separator: "\n\n")
-
-        let firstUser = turns.first(where: { $0.role == "user" })?.text ?? fallbackTitle
-        let title = firstUser
-            .split(separator: "\n")
-            .first
-            .map(String.init)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .nonEmpty ?? fallbackTitle
-        let lastAssistant = turns.last(where: { $0.role == "assistant" })?.text ?? ""
-        let userWordCount = turns
-            .filter { $0.role == "user" }
-            .reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
-        let assistantWordCount = turns
-            .filter { $0.role == "assistant" }
-            .reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count }
+        let markdown = markdownParts.joined(separator: "\n\n")
+        // The first user turn titles the session; assistant-only rollouts
+        // title from the fallback's first line.
+        let title = userTitle ?? Self.firstLineTitle(fallbackTitle) ?? fallbackTitle
         let sortedKeyFiles = Array(Array(keyFiles).sorted().prefix(12))
         let sortedKeyCommands = Array(Array(keyCommands).sorted().prefix(12))
         let sortedKeyTools = Array(Array(keyTools).sorted().prefix(12))
         let conversation = CodexConversationCacheEntry(
             title: String(title.prefix(160)),
             markdown: markdown,
-            messageCount: turns.count,
+            messageCount: messageCount,
             userWordCount: userWordCount,
             assistantWordCount: assistantWordCount,
             keyFiles: sortedKeyFiles,
             keyCommands: sortedKeyCommands,
             keyTools: sortedKeyTools,
-            lastAssistantMessage: String(lastAssistant.prefix(500))
+            lastAssistantMessage: lastAssistantHead
         )
         return .scanned(conversation)
+    }
+
+    /// First line of `text`, trimmed; `nil` when that line is blank.
+    private static func firstLineTitle(_ text: String) -> String? {
+        text.split(separator: "\n").first
+            .map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty
     }
 
     public static func extractCodexMessage(from json: [String: Any]) -> (role: String, text: String)? {
