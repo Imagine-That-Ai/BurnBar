@@ -23,7 +23,10 @@ import FoundationNetworking
 /// 3. **JSONL token counting + plan cap** — sums real assistant-turn
 ///    tokens from `~/.claude/projects/**/*.jsonl`. If explicit OAuth
 ///    credentials were injected by tests, route credential slots, or CLI
-///    profiles, their plan tier can annotate JSONL buckets with plan caps.
+///    profiles, their plan tier can annotate JSONL buckets with plan caps;
+///    otherwise the plan tier Claude Code records in `~/.claude.json`
+///    (`oauthAccount.organizationRateLimitTier`) supplies the same caps
+///    without touching a credential store.
 /// 4. **Plan-only snapshot** — only for explicitly injected credentials.
 public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
@@ -50,10 +53,13 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private struct ClaudePlanCaps {
         let fiveHourTokens: Double
         let sevenDayTokens: Double
-        static let pro = ClaudePlanCaps(fiveHourTokens: 220_000, sevenDayTokens: 880_000)
+        /// Human-readable plan name surfaced in the snapshot status line so
+        /// the user can see WHICH allowance the percentages came from.
+        let label: String
+        static let pro = ClaudePlanCaps(fiveHourTokens: 220_000, sevenDayTokens: 880_000, label: "Pro")
         // Max-5x baseline. Max-20x scales linearly via `rateLimitTier`.
-        static let max5x = ClaudePlanCaps(fiveHourTokens: 880_000, sevenDayTokens: 7_700_000)
-        static let max20x = ClaudePlanCaps(fiveHourTokens: 3_520_000, sevenDayTokens: 30_800_000)
+        static let max5x = ClaudePlanCaps(fiveHourTokens: 880_000, sevenDayTokens: 7_700_000, label: "Max 5x")
+        static let max20x = ClaudePlanCaps(fiveHourTokens: 3_520_000, sevenDayTokens: 30_800_000, label: "Max 20x")
     }
 
     /// Token totals across the rolling Claude windows. Public so app and
@@ -305,7 +311,15 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         )) ?? JSONLTokenWindows(fiveHourTokens: 0, sevenDayTokens: 0, latestTimestamp: nil, filesScanned: 0)
 
         if jsonlWindows.fiveHourTokens > 0 || jsonlWindows.sevenDayTokens > 0 {
-            return makeJSONLSnapshot(jsonlWindows: jsonlWindows, credentials: workingCredentials, bridgeStatus: postInstallStatus)
+            return makeJSONLSnapshot(
+                jsonlWindows: jsonlWindows,
+                credentials: workingCredentials,
+                configTierHint: Self.planTierHintFromClaudeConfig(
+                    homeDirectoryURL: context.homeDirectoryURL,
+                    fileManager: context.fileManager
+                ),
+                bridgeStatus: postInstallStatus
+            )
         }
 
         if workingCredentials == nil,
@@ -484,11 +498,12 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private func makeJSONLSnapshot(
         jsonlWindows: JSONLTokenWindows,
         credentials: ClaudeOAuthCredentials?,
+        configTierHint: String?,
         bridgeStatus: ClaudeQuotaBridgeStatus
     ) -> ProviderQuotaSnapshot {
         let now = Date()
         let calendar = Calendar.current
-        let caps = inferredCaps(from: credentials)
+        let caps = inferredCaps(from: credentials, configTierHint: configTierHint)
 
         var buckets: [ProviderQuotaBucket] = []
         if jsonlWindows.fiveHourTokens > 0 {
@@ -513,7 +528,15 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         }
 
         let confidence: ProviderQuotaConfidence = caps != nil ? .estimated : .exact
-        let planSuffix = credentials.map { " · Plan: \($0.planDisplayName) (inferred caps)" } ?? ""
+        let planSuffix: String = {
+            if let credentials {
+                return " · Plan: \(credentials.planDisplayName) (inferred caps)"
+            }
+            if let caps {
+                return " · Plan: \(caps.label) (from Claude Code config)"
+            }
+            return ""
+        }()
         let bridgeNudge = bridgeStatus.state == .ready
             ? ""
             : " Install OpenBurnBar's status line bridge for exact percentages."
@@ -558,14 +581,21 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// Best-effort plan cap inference. Explicit OAuth payloads can carry
     /// `rateLimitTier` values (`default_claude_max_20x`,
     /// `default_claude_pro_5x`, etc.) that identify the multiplier; we
-    /// map them to the Anthropic-published allowance. Returns `nil` when
-    /// we can't recognize the tier — in that case the JSONL buckets
-    /// render token counts only (still useful, just without percentages).
-    private func inferredCaps(from credentials: ClaudeOAuthCredentials?) -> ClaudePlanCaps? {
-        guard let credentials else { return .pro }
-        let tier = credentials.rateLimitTier.lowercased()
-        let sub = credentials.subscriptionType.lowercased()
-        let combined = tier + " " + sub
+    /// map them to the Anthropic-published allowance. When no OAuth
+    /// credentials are available, the plan tier recorded by Claude Code
+    /// itself in `~/.claude.json` (`oauthAccount.organizationRateLimitTier`)
+    /// is used instead. Returns `nil` when neither source names a
+    /// recognizable tier — in that case the JSONL buckets render token
+    /// counts only (still useful, just without percentages). Never assume
+    /// Pro: a Max-20x user shown Pro caps reads a 45x-overstatement as
+    /// "quota exhausted" while their real 5-hour window is nearly empty.
+    private func inferredCaps(
+        from credentials: ClaudeOAuthCredentials?,
+        configTierHint: String?
+    ) -> ClaudePlanCaps? {
+        let raw = credentials.map { $0.rateLimitTier + " " + $0.subscriptionType } ?? configTierHint
+        guard let raw, !raw.isEmpty else { return nil }
+        let combined = raw.lowercased()
         if combined.contains("20x") || combined.contains("max_20") {
             return .max20x
         }
@@ -575,7 +605,34 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         if combined.contains("pro") {
             return .pro
         }
-        return .pro
+        return nil
+    }
+
+    /// Reads the plan tier Claude Code itself records in `~/.claude.json`.
+    ///
+    /// That file is Claude Code's public config state — the OAuth secrets
+    /// live in the Keychain or `~/.claude/.credentials.json`, which the
+    /// default reader refuses — so reading this hint cannot trigger a
+    /// Keychain authorization prompt for a third party's credentials and
+    /// respects the security boundary documented on
+    /// `NoClaudeCredentialsReader`. `organizationRateLimitTier`
+    /// (`default_claude_max_20x`, `default_claude_pro_5x`, ...) is the
+    /// exact same tier string format the OAuth payloads carry.
+    static func planTierHintFromClaudeConfig(
+        homeDirectoryURL: URL,
+        fileManager: FileManager
+    ) -> String? {
+        let configURL = homeDirectoryURL.appendingPathComponent(".claude.json")
+        guard fileManager.fileExists(atPath: configURL.path),
+              let data = try? Data(contentsOf: configURL), // try?-ok(hint is best-effort)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(hint is best-effort)
+            return nil
+        }
+        let oauthAccount = json["oauthAccount"] as? [String: Any]
+        let tier = (oauthAccount?["organizationRateLimitTier"] as? String)
+            ?? (oauthAccount?["userRateLimitTier"] as? String)
+            ?? (oauthAccount?["organizationType"] as? String)
+        return tier?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - File Discovery
