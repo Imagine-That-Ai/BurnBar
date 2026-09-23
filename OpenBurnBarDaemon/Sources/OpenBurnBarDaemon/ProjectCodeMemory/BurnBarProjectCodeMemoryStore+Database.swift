@@ -258,7 +258,7 @@ extension BurnBarProjectCodeMemoryStore {
         // One-shot table rebuilds live in the versioned Core migrator (v68 owns the
         // review-default rebuild); the daemon must not duplicate them here
         // (ADR-005). Daemon-created databases declare the fail-closed default
-        // at CREATE TABLE time, and every writer names review_status
+        // at table-definition time, and every writer names review_status
         // explicitly, so no row can land on a stale default.
         // Mirrors the canonical migrator's v51 column. `code` is the shipped
         // default: only rows the Memory MCP engine mirrors are marked `agent`,

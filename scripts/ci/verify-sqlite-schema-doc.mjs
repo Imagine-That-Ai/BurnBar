@@ -117,15 +117,25 @@ function sourceTables() {
   for (const spec of sourceSpecs) {
     const text = sourceText(spec);
     const tableOperationPattern =
-      /\bcreate\(table:\s*"([^"]+)"|\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)|\bDROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
+      /\bcreate\(table:\s*"([^"]+)"|\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)|\bDROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)|\bALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+RENAME\s+TO\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
     for (const match of text.matchAll(tableOperationPattern)) {
       const createdTable = match[1] ?? match[2];
       const droppedTable = match[3];
+      const renamedFrom = match[4];
+      const renamedTo = match[5];
       if (createdTable) {
         tables.add(createdTable);
       }
       if (droppedTable) {
         tables.delete(droppedTable);
+      }
+      if (renamedFrom) {
+        // One-shot rebuilds (CREATE repair → DROP live → RENAME repair to
+        // live) must not require the doc to cover the transient repair table.
+        tables.delete(renamedFrom);
+      }
+      if (renamedTo) {
+        tables.add(renamedTo);
       }
     }
   }
