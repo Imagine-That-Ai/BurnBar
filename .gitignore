@@ -333,3 +333,8 @@ arena-public/publish_manifest.json
 website/.tmp/
 # Agent-owned goal ledgers are working notes, not public artifacts.
 .factory/goals/
+# Wave 0.6 hygiene: tool-output debris and local-only state must never be tracked.
+--help/
+.audit.out
+.muse/
+.xcode-source-packages-audit/

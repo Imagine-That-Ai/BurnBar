@@ -1,11 +1,14 @@
 {
   "schemaVersion": 2,
-  "inventoryKind": "tracked-root-blobs",
-  "measuredFrom": "git ls-tree HEAD | awk '$2==\"blob\"'",
+  "inventoryKind": "tracked-root-blobs-and-dirs",
+  "measuredFrom": "git ls-files --stage (index): root blobs plus first segments of nested paths; gitlinks excluded",
   "initialRootBlobCount": 57,
-  "measuredRootBlobCount": 50,
-  "maxRootBlobCount": 50,
-  "measurementNote": "The base checkout measured 57 root blobs, matching the plan. W0-11 moves eight reports and deletes one root image, so the committed inventory holds 48; W0-7 adds two toolchain pin files (global.json, .xcode-version) recorded as schema-v2 amendments below \u2014 the base freeze itself is untouched. The Linux DEB deletion is not a root-blob change.",
+  "measuredRootBlobCount": 49,
+  "maxRootBlobCount": 49,
+  "initialRootDirCount": 61,
+  "measuredRootDirCount": 61,
+  "maxRootDirCount": 61,
+  "measurementNote": "The base checkout measured 57 root blobs, matching the plan. W0-11 moves eight reports and deletes one root image, so the committed inventory holds 48; W0-7 adds two toolchain pin files (global.json, .xcode-version) recorded as schema-v2 amendments below — the base freeze itself is untouched. The Linux DEB deletion is not a root-blob change. Wave-0 0.6 untracks .audit.out (stale npm-audit output; 50→49 blobs), moves reports/ to docs/diligence/, and adds the directory dimension: 61 top-level dirs inventoried, so a new root directory now fails the gate the same way a new root file does.",
   "historicalRootPaths": [
     ".audit.out",
     ".firebaserc",
@@ -65,11 +68,70 @@
     "storage.rules",
     "tmp-utm-desktop.png"
   ],
+  "historicalRootDirs": [
+    ".agent",
+    ".agents",
+    ".appstore-screenshots",
+    ".build_helpers",
+    ".claude",
+    ".context",
+    ".cursor",
+    ".deepsec",
+    ".devcontainer",
+    ".factory",
+    ".forge",
+    ".github",
+    ".playwright-cli",
+    ".serena",
+    "AgentLens",
+    "AgentLensTests",
+    "android",
+    "apps",
+    "arena-public",
+    "assets",
+    "budgets",
+    "config",
+    "contracts",
+    "crates",
+    "decisions",
+    "docs",
+    "droid-wiki",
+    "extensions",
+    "firestore-rules-tests",
+    "functions",
+    "governance",
+    "homebrew",
+    "launch-evidence",
+    "LICENSES",
+    "mockups",
+    "OpenBurnBar.xcodeproj",
+    "OpenBurnBarCore",
+    "OpenBurnBarDaemon",
+    "OpenBurnBarKeyboard",
+    "OpenBurnBarMobile",
+    "OpenBurnBarMobileTests",
+    "OpenBurnBarMobileUITests",
+    "OpenBurnBarSafariExtension",
+    "OpenBurnBarUITests",
+    "OpenBurnBarWidget",
+    "ops",
+    "packages",
+    "packaging",
+    "plans",
+    "plugins",
+    "quota-runner",
+    "schemas",
+    "scripts",
+    "services",
+    "test",
+    "tests",
+    "third_party",
+    "tools",
+    "Vendor",
+    "website",
+    "windows"
+  ],
   "paths": [
-    {
-      "path": ".audit.out",
-      "purpose": "Committed audit output used by repository review tooling."
-    },
     {
       "path": ".firebaserc",
       "purpose": "Firebase project aliases and deployment targets."
@@ -267,11 +329,257 @@
       "purpose": "Firebase Storage authorization rules."
     }
   ],
+  "directories": [
+    {
+      "path": ".agent",
+      "purpose": "Agent goal ledgers and run notes."
+    },
+    {
+      "path": ".agents",
+      "purpose": "Committed agent skills and orchestrator prompt."
+    },
+    {
+      "path": ".appstore-screenshots",
+      "purpose": "App Store review screenshots."
+    },
+    {
+      "path": ".build_helpers",
+      "purpose": "XcodeGen and build helper scripts."
+    },
+    {
+      "path": ".claude",
+      "purpose": "Claude Code workspace state (memory, locks, and worktrees ignored)."
+    },
+    {
+      "path": ".context",
+      "purpose": "Codex session-id pointer left by committed worktree state."
+    },
+    {
+      "path": ".cursor",
+      "purpose": "Cursor editor workspace commands."
+    },
+    {
+      "path": ".deepsec",
+      "purpose": "DeepSec security-review tooling configuration."
+    },
+    {
+      "path": ".devcontainer",
+      "purpose": "Dev-container definition and setup."
+    },
+    {
+      "path": ".factory",
+      "purpose": "Software-factory automation skills and validation state."
+    },
+    {
+      "path": ".forge",
+      "purpose": "Forge slash-commands and skills."
+    },
+    {
+      "path": ".github",
+      "purpose": "GitHub Actions workflows and repository automation."
+    },
+    {
+      "path": ".playwright-cli",
+      "purpose": "Playwright CLI console logs."
+    },
+    {
+      "path": ".serena",
+      "purpose": "Serena coding-agent project memory and configuration."
+    },
+    {
+      "path": "AgentLens",
+      "purpose": "Mac app Swift sources."
+    },
+    {
+      "path": "AgentLensTests",
+      "purpose": "Mac app XCTest sources (OpenBurnBarTests bundle)."
+    },
+    {
+      "path": "android",
+      "purpose": "Android app Gradle sources and tests."
+    },
+    {
+      "path": "apps",
+      "purpose": "Companion apps (console, linux-desktop, pensieve-experience)."
+    },
+    {
+      "path": "arena-public",
+      "purpose": "BurnBench Arena blind-comparison public site."
+    },
+    {
+      "path": "assets",
+      "purpose": "Brand assets and SVG artwork."
+    },
+    {
+      "path": "budgets",
+      "purpose": "Shrink-only debt-budget baselines."
+    },
+    {
+      "path": "config",
+      "purpose": "Signing policies, build profiles, and release configuration."
+    },
+    {
+      "path": "contracts",
+      "purpose": "Provider ingestion-catalog contracts."
+    },
+    {
+      "path": "crates",
+      "purpose": "Rust workspace crates (domain-core, iroh, media, remote)."
+    },
+    {
+      "path": "decisions",
+      "purpose": "Architecture decision records."
+    },
+    {
+      "path": "docs",
+      "purpose": "Product and engineering documentation."
+    },
+    {
+      "path": "droid-wiki",
+      "purpose": "Droid wiki mirror source for memory sync."
+    },
+    {
+      "path": "extensions",
+      "purpose": "VS Code extension sources."
+    },
+    {
+      "path": "firestore-rules-tests",
+      "purpose": "Firestore security-rules emulator suites."
+    },
+    {
+      "path": "functions",
+      "purpose": "Cloud Functions TypeScript backend."
+    },
+    {
+      "path": "governance",
+      "purpose": "CI gates, policy state, and inventory manifests."
+    },
+    {
+      "path": "homebrew",
+      "purpose": "Homebrew distribution formula."
+    },
+    {
+      "path": "launch-evidence",
+      "purpose": "Launch attestation and legal-packet evidence bundles."
+    },
+    {
+      "path": "LICENSES",
+      "purpose": "Third-party license texts (REUSE)."
+    },
+    {
+      "path": "mockups",
+      "purpose": "HTML UI mockups and prototypes."
+    },
+    {
+      "path": "OpenBurnBar.xcodeproj",
+      "purpose": "Committed Xcode project and workspace state."
+    },
+    {
+      "path": "OpenBurnBarCore",
+      "purpose": "Core Swift package: migrator, models, and shared logic."
+    },
+    {
+      "path": "OpenBurnBarDaemon",
+      "purpose": "Daemon Swift sources and tests."
+    },
+    {
+      "path": "OpenBurnBarKeyboard",
+      "purpose": "iOS keyboard extension sources."
+    },
+    {
+      "path": "OpenBurnBarMobile",
+      "purpose": "iOS app sources."
+    },
+    {
+      "path": "OpenBurnBarMobileTests",
+      "purpose": "iOS unit tests."
+    },
+    {
+      "path": "OpenBurnBarMobileUITests",
+      "purpose": "iOS UI tests."
+    },
+    {
+      "path": "OpenBurnBarSafariExtension",
+      "purpose": "Safari extension sources."
+    },
+    {
+      "path": "OpenBurnBarUITests",
+      "purpose": "Mac app UI tests."
+    },
+    {
+      "path": "OpenBurnBarWidget",
+      "purpose": "Widget extension sources."
+    },
+    {
+      "path": "ops",
+      "purpose": "Operations policy state (Firestore TTL policies)."
+    },
+    {
+      "path": "packages",
+      "purpose": "Shared JS/TS packages (tokens, entitlements, signal bridges)."
+    },
+    {
+      "path": "packaging",
+      "purpose": "OS packaging definitions."
+    },
+    {
+      "path": "plans",
+      "purpose": "Engineering plans and design documents."
+    },
+    {
+      "path": "plugins",
+      "purpose": "Plugin sources (browser, dashboard auth, achievements)."
+    },
+    {
+      "path": "quota-runner",
+      "purpose": "Quota-runner service sources and container definition."
+    },
+    {
+      "path": "schemas",
+      "purpose": "JSON schemas for certification and feature proofs."
+    },
+    {
+      "path": "scripts",
+      "purpose": "Repository automation scripts and CI checks."
+    },
+    {
+      "path": "services",
+      "purpose": "Hosted services (hermes relay, hosted MCP)."
+    },
+    {
+      "path": "test",
+      "purpose": "Shared test fixtures."
+    },
+    {
+      "path": "tests",
+      "purpose": "Python and integration test suites."
+    },
+    {
+      "path": "third_party",
+      "purpose": "Vendored third-party sources."
+    },
+    {
+      "path": "tools",
+      "purpose": "Developer tools (schema-sync, MCP remote, store tooling)."
+    },
+    {
+      "path": "Vendor",
+      "purpose": "Vendored binaries, sources, and the libsignal submodule."
+    },
+    {
+      "path": "website",
+      "purpose": "Marketing and documentation website."
+    },
+    {
+      "path": "windows",
+      "purpose": "Windows port and C# binding sources."
+    }
+  ],
   "amendments": [
     {
       "path": "global.json",
       "addedBy": "Wave-0 W0-7",
-      "reason": "The .NET SDK resolves global.json by walking up from the project directory \u2014 it must live at the root. Floor: 10.0, rollForward: latestFeature (54 csproj files still target net8.0)."
+      "reason": "The .NET SDK resolves global.json by walking up from the project directory — it must live at the root. Floor: 10.0, rollForward: latestFeature (54 csproj files still target net8.0)."
     },
     {
       "path": ".xcode-version",
