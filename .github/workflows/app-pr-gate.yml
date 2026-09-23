@@ -198,7 +198,7 @@ jobs:
           retention-days: 7
 
       - name: Guard against zero-test false greens
-        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
+        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" --min 137 # smoke catalog recorded 137 on merge_group 35762858131; net-zero churn since
 
   mobile-build-gate:
     name: Mobile build + unit test
@@ -331,7 +331,7 @@ jobs:
             -only-testing:OpenBurnBarMobileTests/HermesServiceToolUseLoopTests
 
       - name: Guard against zero-test false greens
-        run: ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult"
+        run: ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult" --min 9 # 3 filtered classes hold 11 tests (4 keychain-conditional but counted); trips on any file loss
 
   app-pr-gate:
     name: App build + test (AgentLens)

@@ -186,7 +186,7 @@ jobs:
           ./scripts/test-openburnbar-app.sh
 
       - name: Guard against zero-test false greens
-        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
+        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" --min 6736 # full bundle executed 6736 on schedule 35706682713; net +134 methods since (dels are renames)
 
       - name: Enforce app diff coverage
         env:
@@ -299,7 +299,7 @@ jobs:
             -only-testing:OpenBurnBarMobileTests/AssistantPendingThreadIsolationTests \
             -only-testing:OpenBurnBarMobileTests/OpenBurnBarCoreTypeIdentityTests \
             -only-testing:OpenBurnBarMobileTests/HermesServiceToolUseLoopTests
-          ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult"
+          ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult" --min 9 # 3 filtered classes hold 11 tests (4 keychain-conditional but counted); trips on any file loss
 
   daemon:
     name: Turbo daemon tests + release build
