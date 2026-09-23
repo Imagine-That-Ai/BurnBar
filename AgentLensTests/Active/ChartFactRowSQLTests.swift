@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
+import OpenBurnBarData
 
 @MainActor
 final class ChartFactRowSQLTests: XCTestCase {

@@ -3,6 +3,7 @@ import GRDB
 import OpenBurnBarCore
 import OpenBurnBarMemoryExport
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Wave 2.1c-iii memory authority single-writer cutover: the app finalizes
 /// its memory write sets locally and commits them through the

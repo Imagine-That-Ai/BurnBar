@@ -3,6 +3,7 @@ import CryptoKit
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 @MainActor
 final class OpenBurnBarDatabaseMigrationTests: XCTestCase {

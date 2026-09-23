@@ -31,13 +31,13 @@ extension OpenBurnBarDatabase {
         "v69_token_usage_end_time_index"
     ]
 
-    enum OpenBurnBarDatabaseError: Error {
+    public enum OpenBurnBarDatabaseError: Error {
         case integrityCheckFailed(details: String)
         case backupFailed(underlying: Error)
         case migrationFailed(restoredFromBackup: Bool, underlying: Error)
     }
 
-    static func isLikelyDatabaseCorruption(_ error: Error) -> Bool {
+    public static func isLikelyDatabaseCorruption(_ error: Error) -> Bool {
         guard let dbError = error as? DatabaseError else { return false }
         return dbError.resultCode == .SQLITE_CORRUPT || dbError.resultCode == .SQLITE_NOTADB
     }
@@ -70,7 +70,7 @@ extension OpenBurnBarDatabase {
         }
     }
 
-    static func requiresFullPreMigrationProtection(
+    public static func requiresFullPreMigrationProtection(
         pendingMigrationIdentifiers: [String]
     ) -> Bool {
         pendingMigrationIdentifiers.contains {

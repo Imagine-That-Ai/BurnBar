@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// PR2 of the usage-memory program: the `v61_usage_memory` migration.
 /// The byte-identity of the AgentLens/OpenBurnBarData migration file pair is

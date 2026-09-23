@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import CryptoKit
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Portable DB **byte-compat de-risk kit** shared by the macOS generator/validator
 /// (`VAL-P0-DB-009`) and the future Windows open-side check (`VAL-P0-DB-010`).

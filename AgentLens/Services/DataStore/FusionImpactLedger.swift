@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 /// Reads The Elder Wand's fusion-versus-normal spend over a window directly
 /// from the canonical `token_usage` table.

@@ -8,31 +8,31 @@ const repoRoot = resolve(scriptDir, "../..");
 
 const sourceSpecs = [
   {
-    // v41+ migrations moved to a split extension file (wave-4 decomposition of
-    // OpenBurnBarDatabase.swift); the v50 marker anchors the PCM-era schema scan.
-    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationsV41toV51.swift",
+    // v41+ migrations live in a split extension file of the single migrator
+    // (OpenBurnBarData); the v50 marker anchors the PCM-era schema scan.
+    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationsV41toV51.swift",
     startMarker: 'migrator.registerMigration("v50_project_code_memory_schema")',
   },
   {
-    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV56.swift",
+    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV56.swift",
   },
   {
-    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV58.swift",
+    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV58.swift",
   },
   {
-    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV59.swift",
+    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV59.swift",
   },
   {
-    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift",
+    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+MemoryMigrations.swift",
   },
   {
-    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+UsageMemoryMigrations.swift",
+    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+UsageMemoryMigrations.swift",
   },
   {
-    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+StandingOrderMigrations.swift",
+    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+StandingOrderMigrations.swift",
   },
   {
-    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
+    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
   },
   {
     path: "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift",
@@ -42,41 +42,8 @@ const sourceSpecs = [
   },
 ];
 
-// Migration files that exist as byte-identical AgentLens/OpenBurnBarData
-// pairs. A drifted pair means the app and the Data package migrate to
-// different schemas — fail loudly here rather than at runtime.
-const mirrorPairs = [
-  [
-    "AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift",
-    "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+MemoryMigrations.swift",
-  ],
-  [
-    "AgentLens/Services/DataStore/OpenBurnBarDatabase+UsageMemoryMigrations.swift",
-    "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+UsageMemoryMigrations.swift",
-  ],
-  [
-    "AgentLens/Services/DataStore/OpenBurnBarDatabase+StandingOrderMigrations.swift",
-    "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+StandingOrderMigrations.swift",
-  ],
-  [
-    "AgentLens/Services/DataStore/OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
-    "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
-  ],
-];
-
 function readRepoFile(path) {
   return readFileSync(resolve(repoRoot, path), "utf8");
-}
-
-function verifyMirrorPairs() {
-  for (const [left, right] of mirrorPairs) {
-    if (readRepoFile(left) !== readRepoFile(right)) {
-      console.error(
-        `Migration mirror pair drifted (must stay byte-identical):\n  ${left}\n  ${right}`,
-      );
-      process.exit(1);
-    }
-  }
 }
 
 function addMatches(set, text, regex) {
@@ -116,8 +83,10 @@ function sourceTables() {
   const tables = new Set();
   for (const spec of sourceSpecs) {
     const text = sourceText(spec);
+    // `(?!IF\b)` keeps a doc comment that merely quotes `CREATE TABLE IF NOT
+    // EXISTS` from registering a table named IF.
     const tableOperationPattern =
-      /\bcreate\(table:\s*"([^"]+)"|\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)|\bDROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)|\bALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+RENAME\s+TO\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
+      /\bcreate\(table:\s*"([^"]+)"|\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+(?!IF\b)([A-Za-z_][A-Za-z0-9_]*)|\bDROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+(?!IF\b)([A-Za-z_][A-Za-z0-9_]*)|\bALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+RENAME\s+TO\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
     for (const match of text.matchAll(tableOperationPattern)) {
       const createdTable = match[1] ?? match[2];
       const droppedTable = match[3];
@@ -237,6 +206,5 @@ for (const indexName of [
   );
 }
 
-verifyMirrorPairs();
 
 console.log(`SQLite schema doc covers ${required.size} migration/source tables and Project Code Memory columns/indexes.`);

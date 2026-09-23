@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// PR1 of the usage-memory program: `MemorySourceKind` gains the two usage
 /// kinds and the authority store is parameterized by source kind. These tests

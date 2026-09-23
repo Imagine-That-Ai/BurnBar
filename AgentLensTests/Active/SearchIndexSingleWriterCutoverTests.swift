@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Wave 2.1c-iv search single-writer cutover: the app builds typed daemon
 /// RPC requests instead of writing `search_documents` / `search_chunks` /

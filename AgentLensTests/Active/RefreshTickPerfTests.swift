@@ -3,6 +3,7 @@ import GRDB
 import FirebaseFirestore
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - Shared fixtures
 

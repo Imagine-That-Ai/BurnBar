@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import CryptoKit
 import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - Memory extraction trigger context (G3)
 //

@@ -256,6 +256,8 @@ extension ControlPlaneStore {
         let merge = try await memoryAuthorityMergePlan(
             duplicateIDs: duplicates.ids,
             newID: id,
+            newCitations: citations,
+            newSourceKind: sourceKind,
             winnerID: winnerID,
             storageProjectID: storageProjectID,
             sourceKinds: dedupSourceKinds,

@@ -2,6 +2,7 @@ import Foundation
 import os
 @preconcurrency import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - DataStoreActor
 //

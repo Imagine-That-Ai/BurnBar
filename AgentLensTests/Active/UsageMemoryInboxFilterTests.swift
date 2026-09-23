@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// U7 of the usage-memory program: the memory review inbox serves usage
 /// memories (`.safariAsk` / `.agentSession`) alongside chat through the same

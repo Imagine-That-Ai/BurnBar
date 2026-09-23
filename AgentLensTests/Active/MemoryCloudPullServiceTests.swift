@@ -3,6 +3,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Memory Blind Sync PR-2 — the PULL half.
 ///

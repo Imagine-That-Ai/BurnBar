@@ -218,19 +218,22 @@ different stream-integration model, so wrapping it would mean reimplementing
 the parser plumbing that `auth:import` and `database:import` feed user data
 through.
 
-## Mac/iOS Swift twin-basename allowlist
+## Mac/iOS/Core Swift twin-basename allowlist
 
 [`scripts/ci/check-twin-basenames.sh`](../scripts/ci/check-twin-basenames.sh)
-blocks new `.swift` files that share a basename across `AgentLens/` and
-`OpenBurnBarMobile/`. The current twins are allowed only as explicit exact-path
-pairs so new forks cannot slip in behind the existing debt. Asset twins are not
-in scope.
+blocks new `.swift` files that share a basename across `AgentLens/` ×
+`OpenBurnBarMobile/` and `AgentLens/` × `OpenBurnBarCore/`. The current twins
+are allowed only as explicit exact-path pairs so new forks cannot slip in
+behind the existing debt. Asset twins are not in scope. Wave 2.2 added the
+Core pair when it deleted the AgentLens migration mirror, so a second tree
+cannot silently return.
 
 Categories:
 
 - `storage-backend-divergence`: shared domain concept with intentionally different local storage, Firestore, or platform persistence.
 - `platform-ui`: parallel SwiftUI surface with platform-specific layout or navigation.
 - `transport`: shared realtime, attachment, media, relay, or attestation concept with platform-specific runtime wiring.
+- `pending-core-consolidation`: known app/Core basename twin awaiting Wave 3.4 (move the non-view twin into Core, or confirm the fork).
 
 <!-- BEGIN:twin-basename-allowlist -->
 
@@ -300,6 +303,24 @@ AgentLens/Views/Settings/Search/SettingsSearchResultsView.swift | OpenBurnBarMob
 AgentLens/Views/Settings/SmartDisplays/NestHubSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/NestHubSettingsCard.swift | storage-backend-divergence
 AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/PixelClockSettingsCard.swift | storage-backend-divergence
 AgentLens/Views/Settings/TextExpansionSettingsView.swift | OpenBurnBarMobile/Views/You/TextExpansionSettingsView.swift | platform-ui
+# Exact AgentLens path | exact OpenBurnBarCore path | category (Wave 2.2 widening)
+AgentLens/Models/AgentProvider.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AgentProvider.swift | pending-core-consolidation
+AgentLens/Models/ConversationRecord.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ConversationRecord.swift | pending-core-consolidation
+AgentLens/Services/Analytics/Analytics.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/Analytics.swift | pending-core-consolidation
+AgentLens/Services/Analytics/AnalyticsBuckets.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsBuckets.swift | pending-core-consolidation
+AgentLens/Services/Analytics/AnalyticsConsentStore.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsConsentStore.swift | pending-core-consolidation
+AgentLens/Services/Analytics/AnalyticsEvent.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsEvent.swift | pending-core-consolidation
+AgentLens/Services/Analytics/AnalyticsIdentity.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsIdentity.swift | pending-core-consolidation
+AgentLens/Services/Analytics/AnalyticsName.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsName.swift | pending-core-consolidation
+AgentLens/Services/Analytics/AnalyticsSuperProperties.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsSuperProperties.swift | pending-core-consolidation
+AgentLens/Services/Analytics/AnalyticsTransporting.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsTransporting.swift | pending-core-consolidation
+AgentLens/Services/Analytics/AnalyticsValue.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsValue.swift | pending-core-consolidation
+AgentLens/Services/ProviderQuota/AnthropicCredentialProbe.swift | OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/AnthropicCredentialProbe.swift | pending-core-consolidation
+AgentLens/Services/ProviderQuota/ProviderQuotaAdapter.swift | OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/ProviderQuotaAdapter.swift | pending-core-consolidation
+AgentLens/Services/ProviderQuota/ProviderQuotaPacing.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderQuotaPacing.swift | pending-core-consolidation
+AgentLens/Services/ProviderQuota/ProviderQuotaTypes.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderQuotaTypes.swift | pending-core-consolidation
+AgentLens/Utilities/Formatting.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Formatting.swift | pending-core-consolidation
+AgentLens/Views/Components/CardRowPacker.swift | OpenBurnBarCore/Sources/OpenBurnBarUI/Views/CardRowPacker.swift | platform-ui
 ```
 
 <!-- END:twin-basename-allowlist -->

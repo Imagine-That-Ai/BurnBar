@@ -4,6 +4,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// PR-E2 — proves the cloud-sync scheduling lane ships DORMANT and only egresses
 /// when BOTH the explicit user opt-in AND the Remote Config fleet ceiling allow.

@@ -477,12 +477,10 @@ jobs:
         with:
           filter: blob:none
           # Directory-level pins (not file pins) so split/renamed migration
-          # files and the AgentLens↔OpenBurnBarData byte-identical mirror
-          # pairs stay visible. File pins missed
+          # files stay visible. File pins missed
           # OpenBurnBarDatabase+MemoryMigrations.swift after it landed in
-          # OpenBurnBarData (ENOENT on the mirror-pair check).
+          # OpenBurnBarData (ENOENT on the old mirror-pair check).
           sparse-checkout: |
-            AgentLens/Services/DataStore
             OpenBurnBarCore/Sources/OpenBurnBarData
             OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory
             docs/SCHEMA_SQLITE.sql

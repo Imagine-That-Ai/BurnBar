@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Proves an inbox "Remember this" takes the existing memory authority route:
 /// the record lands quarantined-then-approved through the same two audited

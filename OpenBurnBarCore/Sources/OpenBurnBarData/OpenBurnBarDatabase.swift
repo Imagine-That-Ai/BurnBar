@@ -9,17 +9,17 @@ import GRDB
 /// Stores receive a `DatabaseWriter` reference; this type additionally provides
 /// a single migration entry-point and shared codecs so that each store file
 /// stays focused on domain SQL.
-final class OpenBurnBarDatabase: Sendable {
-    typealias MigrationBackupConfigurationBuilder = @Sendable () throws -> Configuration
+public final class OpenBurnBarDatabase: Sendable {
+    public typealias MigrationBackupConfigurationBuilder = @Sendable () throws -> Configuration
 
     /// The identifier of the last registered migration, derived from the
     /// migrator so schema/version consumers always track the current head.
-    static var latestMigrationIdentifier: String { migrator.migrations.last ?? "" }
+    public static var latestMigrationIdentifier: String { migrator.migrations.last ?? "" }
 
     let dbQueue: any DatabaseWriter
     let migrationBackupConfigurationBuilder: MigrationBackupConfigurationBuilder?
 
-    init(
+    public init(
         databaseQueue: any DatabaseWriter,
         migrationBackupConfigurationBuilder: MigrationBackupConfigurationBuilder? = nil
     ) {
@@ -28,7 +28,7 @@ final class OpenBurnBarDatabase: Sendable {
     }
 
     /// Run all registered migrations in order.
-    func runMigrations() throws {
+    public func runMigrations() throws {
         try Self.migrator.migrate(dbQueue)
     }
 
@@ -39,7 +39,7 @@ final class OpenBurnBarDatabase: Sendable {
     /// additive migrations rely on GRDB's transactional rollback instead of
     /// walking and copying a multi-gigabyte database before first paint.
     /// In-memory databases skip backup protection.
-    func runMigrationsSafely(beforeMigration: (@Sendable () throws -> Void)? = nil) throws {
+    public func runMigrationsSafely(beforeMigration: (@Sendable () throws -> Void)? = nil) throws {
         let migrationBackupURL: URL?
         do {
             if try needsBackupBeforeMigration() {
@@ -96,7 +96,7 @@ final class OpenBurnBarDatabase: Sendable {
 
     // MARK: - Migrator
 
-    static var migrator: DatabaseMigrator {
+    public static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
 
         registerDataMigrationsV1toV20(on: &migrator)

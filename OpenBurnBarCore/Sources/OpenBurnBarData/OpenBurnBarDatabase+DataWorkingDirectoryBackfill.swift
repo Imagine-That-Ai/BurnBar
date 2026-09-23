@@ -3,14 +3,14 @@ import GRDB
 
 // MARK: - Working Directory Backfill
 
-struct WorkingDirectoryBackfillService {
+public struct WorkingDirectoryBackfillService {
     private let batchSize: Int
 
-    init(batchSize: Int = 1_000) {
+    public init(batchSize: Int = 1_000) {
         self.batchSize = max(1, batchSize)
     }
 
-    func runIfNeeded(database: OpenBurnBarDatabase) async {
+    public func runIfNeeded(database: OpenBurnBarDatabase) async {
         // Distinguish "column genuinely absent" from "transient read failed": a
         // bare `try?` would collapse both into `false` and silently abort the
         // backfill on a flaky read. Treat a read error as "cannot determine yet"
@@ -107,7 +107,7 @@ struct WorkingDirectoryBackfillService {
         }
     }
 
-    static func inferWorkingDirectory(fromKeyFilesJSON json: String) -> String? {
+    public static func inferWorkingDirectory(fromKeyFilesJSON json: String) -> String? {
         guard let data = json.data(using: .utf8),
               let paths = try? JSONDecoder().decode([String].self, from: data), // try?-ok(decode fallback nil)
               let first = paths.first?.trimmingCharacters(in: .whitespacesAndNewlines),

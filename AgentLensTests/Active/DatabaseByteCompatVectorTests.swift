@@ -1,6 +1,7 @@
 import XCTest
 import GRDB
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Marker so `Bundle(for:)` resolves the `OpenBurnBarTests` resource bundle,
 /// where the committed DB-compat fixture + vector are copied (they live under

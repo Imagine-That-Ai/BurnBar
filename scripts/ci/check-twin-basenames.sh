@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 #
-# Blocks new Mac/iOS Swift files that share a basename unless the current pair
-# is explicitly allowlisted with a reason category in docs/LINT_RATIONALE.md.
+# Blocks new Mac/iOS and Mac/Core Swift files that share a basename unless the
+# current pair is explicitly allowlisted with a reason category in
+# docs/LINT_RATIONALE.md. Wave 2.2 widened the original Mac/iOS guard to
+# AgentLens x OpenBurnBarCore so the deleted migration mirror (and any future
+# second tree) cannot silently return.
 set -euo pipefail
 
 if [[ -n "${TWIN_BASELINE_ROOT:-}" ]]; then
@@ -24,7 +27,9 @@ ALLOWED_CATEGORIES = {
     "storage-backend-divergence",
     "platform-ui",
     "transport",
+    "pending-core-consolidation",
 }
+PEER_ROOTS = ("OpenBurnBarMobile", "OpenBurnBarCore")
 
 
 def fatal(message):
@@ -66,6 +71,8 @@ def root_for(path):
         return "AgentLens"
     if path.startswith("OpenBurnBarMobile/"):
         return "OpenBurnBarMobile"
+    if path.startswith("OpenBurnBarCore/"):
+        return "OpenBurnBarCore"
     return None
 
 
@@ -83,21 +90,21 @@ for raw in doc_lines[begins[0] + 1:ends[0]]:
     if len(parts) != 3:
         errors.append(f"malformed allowlist entry: {raw}")
         continue
-    mac_path, mobile_path, category = parts
+    mac_path, peer_path, category = parts
     if category not in ALLOWED_CATEGORIES:
-        errors.append(f"{mac_path} | {mobile_path}: unknown category '{category}'")
-    if has_glob(mac_path) or has_glob(mobile_path):
-        errors.append(f"{mac_path} | {mobile_path}: globs are not allowed")
-    if mac_path not in tracked_set or mobile_path not in tracked_set:
-        warnings.append(f"stale twin allowlist entry: {mac_path} | {mobile_path}")
+        errors.append(f"{mac_path} | {peer_path}: unknown category '{category}'")
+    if has_glob(mac_path) or has_glob(peer_path):
+        errors.append(f"{mac_path} | {peer_path}: globs are not allowed")
+    if mac_path not in tracked_set or peer_path not in tracked_set:
+        warnings.append(f"stale twin allowlist entry: {mac_path} | {peer_path}")
         continue
-    if root_for(mac_path) != "AgentLens" or root_for(mobile_path) != "OpenBurnBarMobile":
-        errors.append(f"{mac_path} | {mobile_path}: paths must be AgentLens | OpenBurnBarMobile")
-    if not mac_path.endswith(".swift") or not mobile_path.endswith(".swift"):
-        errors.append(f"{mac_path} | {mobile_path}: only .swift entries are accepted")
-    if os.path.basename(mac_path) != os.path.basename(mobile_path):
-        errors.append(f"{mac_path} | {mobile_path}: basenames differ")
-    allowlist[(mac_path, mobile_path)] = category
+    if root_for(mac_path) != "AgentLens" or root_for(peer_path) not in PEER_ROOTS:
+        errors.append(f"{mac_path} | {peer_path}: paths must be AgentLens | {' or '.join(PEER_ROOTS)}")
+    if not mac_path.endswith(".swift") or not peer_path.endswith(".swift"):
+        errors.append(f"{mac_path} | {peer_path}: only .swift entries are accepted")
+    if os.path.basename(mac_path) != os.path.basename(peer_path):
+        errors.append(f"{mac_path} | {peer_path}: basenames differ")
+    allowlist[(mac_path, peer_path)] = category
 
 if errors:
     print("FATAL: invalid twin-basename allowlist:", file=sys.stderr)
@@ -106,7 +113,7 @@ if errors:
 for warning in warnings:
     print(f"warning: {warning}", file=sys.stderr)
 
-swift_by_root = {"AgentLens": defaultdict(list), "OpenBurnBarMobile": defaultdict(list)}
+swift_by_root = {root: defaultdict(list) for root in ("AgentLens", *PEER_ROOTS)}
 for path in tracked:
     root = root_for(path)
     if root is None or not path.endswith(".swift"):
@@ -115,26 +122,27 @@ for path in tracked:
 
 current_pairs = set()
 for basename, mac_paths in swift_by_root["AgentLens"].items():
-    mobile_paths = swift_by_root["OpenBurnBarMobile"].get(basename, [])
-    for mac_path in mac_paths:
-        for mobile_path in mobile_paths:
-            current_pairs.add((mac_path, mobile_path))
+    for peer_root in PEER_ROOTS:
+        for mac_path in mac_paths:
+            for peer_path in swift_by_root[peer_root].get(basename, []):
+                current_pairs.add((mac_path, peer_path))
 
 violations = sorted(current_pairs - set(allowlist))
 if violations:
-    print("FAIL: new Mac/iOS Swift twin basenames require an allowlist entry:", file=sys.stderr)
-    for mac_path, mobile_path in violations:
-        print(f"  {mac_path} | {mobile_path}", file=sys.stderr)
+    print("FAIL: new Mac/iOS/Core Swift twin basenames require an allowlist entry:", file=sys.stderr)
+    for mac_path, peer_path in violations:
+        print(f"  {mac_path} | {peer_path}", file=sys.stderr)
     print(
         "\nAdd an exact-path entry under BEGIN:twin-basename-allowlist with one "
-        "category: storage-backend-divergence, platform-ui, or transport.",
+        "category: storage-backend-divergence, platform-ui, transport, or "
+        "pending-core-consolidation.",
         file=sys.stderr,
     )
     sys.exit(1)
 
 stale_pairs = sorted(set(allowlist) - current_pairs)
-for mac_path, mobile_path in stale_pairs:
-    print(f"warning: stale twin allowlist pair no longer present: {mac_path} | {mobile_path}", file=sys.stderr)
+for mac_path, peer_path in stale_pairs:
+    print(f"warning: stale twin allowlist pair no longer present: {mac_path} | {peer_path}", file=sys.stderr)
 
 print(f"PASS: {len(current_pairs)} tracked Swift twin basename pair(s) are allowlisted")
 PY

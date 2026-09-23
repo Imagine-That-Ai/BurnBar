@@ -3,6 +3,7 @@ import CryptoKit
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 // MARK: - PR-D1 LLM Extractor tests
 //

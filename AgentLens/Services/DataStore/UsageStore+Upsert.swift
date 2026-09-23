@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 extension UsageStore {
     func upsertUsage(_ usage: TokenUsage, in db: Database) throws { // pure-move: was private

@@ -20,10 +20,10 @@ insert_re = re.compile(r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+([A-Za-z_][A-Za-z0-9_]*
 # Migrator registry files seed rows as part of schema creation (v46 seeds the
 # global switcher pointer; FTS rebuilds re-populate index tables). The
 # migrator is the schema owner — a third role, not a runtime writer — so its
-# one-time seeds must not pin a table dual-writer forever. Scoped to the
-# registry basenames (AgentLens copy until Wave 2.2 deletes it, Core copy
-# after); runtime INSERTs hidden in any other file still trip the ratchet.
-migrator_re = re.compile(r"OpenBurnBarDatabase\+.*Migration.*\.swift$")
+# one-time seeds must not pin a table dual-writer forever. Scoped to the one
+# registry (Wave 2.2 deleted the AgentLens copy): a migrator-shaped file
+# anywhere else is NOT excluded, so a second tree trips the ratchet.
+migrator_re = re.compile(r"OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase\+.*Migration.*\.swift$")
 
 def tables_in(root: Path, exclude_migrations: bool = False) -> set[str]:
     found = set()

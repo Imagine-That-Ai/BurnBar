@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 // MARK: - PR-D2 MemoryExtractionEngine / pump tests
 //

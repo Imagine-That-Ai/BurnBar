@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - ArtifactStore
 

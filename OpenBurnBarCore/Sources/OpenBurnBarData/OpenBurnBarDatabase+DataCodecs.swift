@@ -3,7 +3,7 @@ import GRDB
 
 extension OpenBurnBarDatabase {
 
-    static func sqlPlaceholders(count: Int) -> String {
+    public static func sqlPlaceholders(count: Int) -> String {
         Array(repeating: "?", count: max(0, count)).joined(separator: ", ")
     }
 
@@ -11,7 +11,7 @@ extension OpenBurnBarDatabase {
 
     /// Canonical GRDB on-disk timestamp: `yyyy-MM-dd HH:mm:ss.SSS` in UTC.
     /// Formatting is lock-free so concurrent `DatabasePool` readers cannot race ICU.
-    static func sqliteDateString(_ date: Date) -> String {
+    public static func sqliteDateString(_ date: Date) -> String {
         SQLiteUTCTimestamp.format(date)
     }
 
@@ -32,7 +32,7 @@ extension OpenBurnBarDatabase {
         return basic.date(from: string)
     }
 
-    static func parseDateValue(_ value: Any?) -> Date? {
+    public static func parseDateValue(_ value: Any?) -> Date? {
         if let date = value as? Date { return date }
         if let timeInterval = value as? TimeInterval {
             return Date(timeIntervalSince1970: timeInterval)
@@ -55,7 +55,7 @@ extension OpenBurnBarDatabase {
         return nil
     }
 
-    static func parseBoolValue(_ value: Any?) -> Bool? {
+    public static func parseBoolValue(_ value: Any?) -> Bool? {
         if let value = value as? Bool { return value }
         if let value = value as? Int { return value != 0 }
         if let value = value as? Int64 { return value != 0 }
@@ -75,12 +75,12 @@ extension OpenBurnBarDatabase {
 
     // MARK: - JSON Helpers
 
-    static func encodeJSON<T: Encodable>(_ value: T) throws -> String {
+    public static func encodeJSON<T: Encodable>(_ value: T) throws -> String {
         let data = try JSONEncoder().encode(value)
         return String(data: data, encoding: .utf8) ?? "[]"
     }
 
-    static func decodeJSONStringArray(_ string: String?) -> [String] {
+    public static func decodeJSONStringArray(_ string: String?) -> [String] {
         guard let string, !string.isEmpty, let data = string.data(using: .utf8),
               let arr = try? JSONDecoder().decode([String].self, from: data) else { // try?-ok(decode fallback empty)
             return []
@@ -95,7 +95,7 @@ extension OpenBurnBarDatabase {
     /// column — would overwrite a real array with an empty list (silent data loss).
     /// Callers persist this inside throwing `dbQueue.write` blocks, so propagating
     /// fails the whole insert closed instead of committing a lossy empty value.
-    static func encodeJSONStringArray(_ array: [String]) throws -> String {
+    public static func encodeJSONStringArray(_ array: [String]) throws -> String {
         try encodeJSON(array)
     }
 

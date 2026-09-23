@@ -2,6 +2,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// B11: the card aggregates output that already exists — the counters
 /// `daemon.memory.analytics` serves and the checks this Mac can run itself.

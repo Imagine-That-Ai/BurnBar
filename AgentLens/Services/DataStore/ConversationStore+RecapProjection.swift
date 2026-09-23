@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarData
 import OpenBurnBarInsights
 import OpenBurnBarKernel
 

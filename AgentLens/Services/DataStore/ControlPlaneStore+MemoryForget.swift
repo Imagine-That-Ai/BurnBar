@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 @preconcurrency import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 extension ControlPlaneStore {
     struct MemorySourceTombstoneRecord: Equatable, Sendable {

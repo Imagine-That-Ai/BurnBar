@@ -429,7 +429,7 @@ cmd_revert() {
   echo "Migration source (from OpenBurnBarDatabase.swift):"
   echo "────────────────────────────────────────────────────────────"
   db_file="$(grep -RIlF "registerMigration(\"$full_name\"" \
-    "$REPO_ROOT/AgentLens/Services/DataStore" --include='*.swift' | head -1)"
+    "$REPO_ROOT/OpenBurnBarCore/Sources/OpenBurnBarData" --include='*.swift' | head -1)"
   if [[ -n "$db_file" && -f "$db_file" ]]; then
     echo "  $db_file"
     awk "/migrator\.registerMigration\(\"$full_name\"/,/^\s*\}/" "$db_file" | head -60

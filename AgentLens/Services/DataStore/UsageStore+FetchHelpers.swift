@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 extension UsageStore {
     /// Columns `decodeUsage` reads. Covering dashboard / session-list scans

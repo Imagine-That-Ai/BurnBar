@@ -3,6 +3,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Team memory — the client sealer, the pull, the consent gate (D16 / P22, PR 3).
 ///

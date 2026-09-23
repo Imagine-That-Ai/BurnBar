@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 @preconcurrency import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 extension ControlPlaneStore {
     func fetchChatMemoryAuthorityRecord(id: MemoryID) async throws -> Memory? {

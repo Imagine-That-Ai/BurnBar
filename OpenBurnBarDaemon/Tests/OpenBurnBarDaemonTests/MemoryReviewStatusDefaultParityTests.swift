@@ -7,8 +7,7 @@ import XCTest
 
 /// Reads a schema statement back out of the checkout, so a parity test compares
 /// what a file actually declares rather than what a test author retyped. Shared
-/// with `MemoryQuarantineBodiesSchemaParityTests`, which pins the
-/// quarantine-bodies table the same way.
+/// with the other schema parity suites, which pin their tables the same way.
 enum MemorySchemaSource {
 
     /// Walks up from this file to the repository root. Deliberately fails rather
@@ -34,6 +33,28 @@ enum MemorySchemaSource {
         }
         return try String(contentsOf: url, encoding: .utf8)
     }
+
+    /// Wave 2.2 deleted the AgentLens migration mirror; the app runs the
+    /// `OpenBurnBarData` registry. If the mirror path exists again, the
+    /// two-tree setup is back.
+    static func assertAgentLensMirrorDeleted(
+        _ relativePath: String,
+        under root: URL? = nil,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let root = try root ?? repositoryRoot(file: file, line: line)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: root.appendingPathComponent(relativePath).path),
+            """
+            \(relativePath) exists again — Wave 2.2 deleted the AgentLens \
+            migration mirror and the app runs OpenBurnBarData's registry. \
+            Do not reintroduce the second tree.
+            """,
+            file: file,
+            line: line
+        )
+    }
 }
 
 /// `agent_memories.review_status` is where a memory waits, and its column DEFAULT
@@ -46,15 +67,16 @@ enum MemorySchemaSource {
 /// said `quarantined` since v51. Every writer in the tree names the column
 /// explicitly, so the drift changed no row; it was a loaded gun pointed at the
 /// next writer who forgot. I-57 closes it, and this suite is what keeps it shut:
-/// the default is part of the pinned DDL text now, in all three trees, and the
-/// last test proves the text is what SQLite actually applies.
+/// the default is part of the pinned DDL text now, in both trees, and the
+/// last test proves the text is what SQLite actually applies. Wave 2.2 deleted
+/// the AgentLens mirror of the migration, so the app runs this same registry.
 final class MemoryReviewStatusDefaultParityTests: XCTestCase {
 
     private static let daemonBootstrapPath =
         "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift"
     private static let dataMigrationPath =
         "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+MemoryMigrations.swift"
-    private static let appMigrationPath =
+    private static let deletedAppMigrationPath =
         "AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift"
 
     /// The pinned text. Both statements in the daemon's bootstrap — the column in
@@ -64,11 +86,16 @@ final class MemoryReviewStatusDefaultParityTests: XCTestCase {
     private static let daemonColumn = "review_status TEXT NOT NULL DEFAULT 'quarantined'"
     private static let daemonEnsureColumn =
         #"ensureColumn(table: "agent_memories", column: "review_status", definition: "TEXT NOT NULL DEFAULT 'quarantined'")"#
-    /// The GRDB spelling of the same default, in both hand-mirrored trees.
+    /// The GRDB spelling of the same default, in the single migrator.
     private static let migratorColumn =
         #"t.add(column: "review_status", .text).notNull().defaults(to: "quarantined")"#
 
     // MARK: - Source parity
+
+    /// The v51 DDL lives in exactly one file now.
+    func testAgentLensMirrorStaysDeleted() throws {
+        try MemorySchemaSource.assertAgentLensMirrorDeleted(Self.deletedAppMigrationPath)
+    }
 
     func testTheDaemonBootstrapDefaultsReviewStatusToQuarantined() throws {
         let bootstrap = try MemorySchemaSource.text(at: Self.daemonBootstrapPath)
@@ -90,16 +117,14 @@ final class MemoryReviewStatusDefaultParityTests: XCTestCase {
         )
     }
 
-    /// The two hand-mirrored migration trees, which have said `quarantined` since
-    /// v51 and are the reason the bootstrap was the drifted one.
-    func testBothMigrationTreesDeclareTheSameReviewStatusDefault() throws {
-        for path in [Self.dataMigrationPath, Self.appMigrationPath] {
-            let migration = try MemorySchemaSource.text(at: path)
-            XCTAssertTrue(
-                migration.contains(Self.migratorColumn),
-                "the v51 migration in \(path) must add `review_status` fail-closed"
-            )
-        }
+    /// The single migrator, which has said `quarantined` since v51 and is the
+    /// reason the bootstrap was the drifted one.
+    func testSingleMigratorDeclaresTheReviewStatusDefault() throws {
+        let migration = try MemorySchemaSource.text(at: Self.dataMigrationPath)
+        XCTAssertTrue(
+            migration.contains(Self.migratorColumn),
+            "the v51 migration in \(Self.dataMigrationPath) must add `review_status` fail-closed"
+        )
     }
 
     // MARK: - Behaviour on a real store

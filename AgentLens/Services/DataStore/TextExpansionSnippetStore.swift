@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 public final class TextExpansionSnippetStore: Sendable {
     private let dbQueue: any DatabaseWriter

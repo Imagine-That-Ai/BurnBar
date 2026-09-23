@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 @preconcurrency import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 import OpenBurnBarKernel
 
 // MARK: - Memory authority app lane (Wave 2.1c-iii single-writer cutover)
@@ -480,7 +481,10 @@ extension ControlPlaneStore {
     }
 
     /// The dedup provenance copies: same deterministic ids, same skip rule,
-    /// same row shape as the legacy `copyMemoryProvenance`.
+    /// same row shape as the legacy `copyMemoryProvenance`. The legacy copy
+    /// ran per source row inside the write transaction, so each row's
+    /// existence check saw the copies emitted just before it; `seen` replays
+    /// that sequential check so two losers sharing a pair emit one copy.
     static func memoryAuthorityProvenanceCopies(
         sources: [MemoryAuthorityProvenanceSource],
         winnerID: MemoryID,
@@ -488,10 +492,12 @@ extension ControlPlaneStore {
         now: Date
     ) -> [BurnBarMemoryAuthorityProvenanceRow] {
         var copies: [BurnBarMemoryAuthorityProvenanceRow] = []
+        var seen = winnerPairs
         for source in sources {
             guard source.loserID != winnerID else { continue }
             let pair = MemoryAuthorityProvenancePair(xdeviceHMAC: source.xdeviceHMAC, occurrence: source.occurrence)
-            guard winnerPairs.contains(pair) == false else { continue }
+            guard seen.contains(pair) == false else { continue }
+            seen.insert(pair)
             copies.append(BurnBarMemoryAuthorityProvenanceRow(
                 id: "dedup-\(winnerID)-\(sha256Hex("\(source.loserID)|\(source.id)"))",
                 memoryID: winnerID,
@@ -516,6 +522,8 @@ extension ControlPlaneStore {
     func memoryAuthorityMergePlan(
         duplicateIDs: [MemoryID],
         newID: MemoryID,
+        newCitations: [MemoryCitation],
+        newSourceKind: MemorySourceKind,
         winnerID: MemoryID,
         storageProjectID: String,
         sourceKinds: Set<MemorySourceKind>,
@@ -525,8 +533,53 @@ extension ControlPlaneStore {
         guard duplicateIDs.isEmpty == false else { return nil }
         let loserIDs = (duplicateIDs + [newID]).filter { $0 != winnerID }.uniqued()
         guard loserIDs.isEmpty == false else { return nil }
-        let sources = try await memoryAuthorityProvenanceSources(memoryIDs: loserIDs)
-        let winnerPairs = try await memoryAuthorityWinnerProvenancePairs(winnerID: winnerID)
+        var sources = try await memoryAuthorityProvenanceSources(memoryIDs: loserIDs)
+        // The remember's own provenance rows commit atomically with this
+        // merge, so the pre-read above cannot see newID's citations — but the
+        // legacy in-transaction copy ran after the insert and did. Synthesize
+        // newID's sources from the in-flight citations (same ids, same row
+        // shape as the remember inserts) so the union keeps them.
+        if loserIDs.contains(newID) {
+            let provenanceKind = Self.memoryProvenanceSourceKind(for: newSourceKind).rawValue
+            for citation in newCitations {
+                sources.append(MemoryAuthorityProvenanceSource(
+                    id: Self.memoryProvenanceID(memoryID: newID, citationID: citation.id),
+                    loserID: newID,
+                    sourceKind: provenanceKind,
+                    threadLogicalID: citation.threadLogicalID,
+                    messageID: citation.messageID,
+                    role: citation.role,
+                    authoredAtText: Self.memoryAuthorityTimestampText(citation.authoredAt),
+                    contentHash: citation.contentHash,
+                    occurrence: citation.occurrence,
+                    xdeviceHMAC: citation.crossDeviceHMAC,
+                    citationState: citation.citationState.rawValue
+                ))
+            }
+        }
+        // Legacy `mergeDuplicateMemories` copied per loser in loserID order
+        // (each loser's rows by authored_at, occurrence, id). Replay that
+        // order so the same copy wins when two losers share a pair.
+        let loserOrder = Dictionary(uniqueKeysWithValues: loserIDs.enumerated().map { ($0.element, $0.offset) })
+        sources.sort {
+            let leftOrder = loserOrder[$0.loserID] ?? Int.max
+            let rightOrder = loserOrder[$1.loserID] ?? Int.max
+            if leftOrder != rightOrder { return leftOrder < rightOrder }
+            if $0.authoredAtText != $1.authoredAtText { return $0.authoredAtText < $1.authoredAtText }
+            if $0.occurrence != $1.occurrence { return $0.occurrence < $1.occurrence }
+            return $0.id < $1.id
+        }
+        var winnerPairs = try await memoryAuthorityWinnerProvenancePairs(winnerID: winnerID)
+        // Same post-insert visibility for the existence check: when the
+        // winner is the new record, legacy saw its just-inserted rows.
+        if winnerID == newID {
+            for citation in newCitations {
+                winnerPairs.insert(MemoryAuthorityProvenancePair(
+                    xdeviceHMAC: citation.crossDeviceHMAC,
+                    occurrence: citation.occurrence
+                ))
+            }
+        }
         let copies = Self.memoryAuthorityProvenanceCopies(
             sources: sources,
             winnerID: winnerID,

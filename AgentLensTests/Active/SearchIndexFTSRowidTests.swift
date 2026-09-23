@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Covers the `v55_search_chunks_fts_rowid` performance fix: chunk FTS rows are
 /// deleted by recorded rowid instead of `WHERE chunkID = ?` (an UNINDEXED FTS5

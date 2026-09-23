@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import GRDB
 import OpenBurnBarComputerUseCore
+import OpenBurnBarData
 import Security
 #if canImport(Darwin)
 import Darwin

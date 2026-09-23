@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - Retrieval Health Service
 

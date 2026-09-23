@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 struct ProviderRunCostTotals: Equatable, Sendable {
     let sessionCount: Int

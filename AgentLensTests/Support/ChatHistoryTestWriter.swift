@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 // MARK: - Local chat history writer (test double)
 //

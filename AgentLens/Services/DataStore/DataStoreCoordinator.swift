@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import Observation
 import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - DataStoreCoordinator
 //

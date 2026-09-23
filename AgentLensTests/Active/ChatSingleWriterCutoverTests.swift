@@ -1,7 +1,9 @@
 import XCTest
 import GRDB
+import OpenBurnBarAssistantModels
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Wave 2.1 chat single-writer cutover: the app builds typed daemon RPC
 /// requests instead of writing `chat_threads` / `chat_messages` directly.
@@ -53,7 +55,7 @@ final class ChatSingleWriterCutoverTests: XCTestCase {
                 ChatTranscriptPiece(id: "p2", kind: .toolUse, value: "Read", detail: "{\"path\":\"a.ts\"}")
             ],
             attachments: [
-                HermesAttachment(
+                OpenBurnBarAssistantModels.HermesAttachment(
                     id: "att-1",
                     kind: .image,
                     displayName: "shot.png",
@@ -180,7 +182,7 @@ final class ChatSingleWriterCutoverTests: XCTestCase {
             cliUsed: "codex",
             transcriptPieces: [ChatTranscriptPiece(id: "p1", kind: .toolResult, value: "out", detail: "d")],
             attachments: [
-                HermesAttachment(
+                OpenBurnBarAssistantModels.HermesAttachment(
                     id: "att-rt",
                     kind: .textDocument,
                     displayName: "notes.md",

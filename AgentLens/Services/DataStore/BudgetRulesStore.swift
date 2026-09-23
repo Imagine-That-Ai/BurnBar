@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 /// SQLite CRUD against `budget_rules` and `budget_events`. The `BudgetSettings` observable
 /// store wraps this; `BudgetLedger` reads via this; Hermes / MCP write through this.

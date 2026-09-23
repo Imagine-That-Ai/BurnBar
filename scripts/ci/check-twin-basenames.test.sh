@@ -11,7 +11,9 @@ mkdir -p \
   "$tmp/AgentLens/Views" \
   "$tmp/OpenBurnBarMobile/Views" \
   "$tmp/AgentLens/Assets" \
-  "$tmp/OpenBurnBarMobile/Assets"
+  "$tmp/OpenBurnBarMobile/Assets" \
+  "$tmp/AgentLens/Services" \
+  "$tmp/OpenBurnBarCore/Sources"
 
 cat >"$tmp/docs/LINT_RATIONALE.md" <<'EOF'
 # Test rationale
@@ -20,6 +22,7 @@ cat >"$tmp/docs/LINT_RATIONALE.md" <<'EOF'
 ```text
 AgentLens/Views/Allowed.swift | OpenBurnBarMobile/Views/Allowed.swift | platform-ui
 AgentLens/Views/Missing.swift | OpenBurnBarMobile/Views/Missing.swift | platform-ui
+AgentLens/Services/AllowedCore.swift | OpenBurnBarCore/Sources/AllowedCore.swift | pending-core-consolidation
 ```
 <!-- END:twin-basename-allowlist -->
 EOF
@@ -28,6 +31,8 @@ touch "$tmp/AgentLens/Views/Allowed.swift"
 touch "$tmp/OpenBurnBarMobile/Views/Allowed.swift"
 touch "$tmp/AgentLens/Assets/Icon.png"
 touch "$tmp/OpenBurnBarMobile/Assets/Icon.png"
+touch "$tmp/AgentLens/Services/AllowedCore.swift"
+touch "$tmp/OpenBurnBarCore/Sources/AllowedCore.swift"
 
 git -C "$tmp" init -q
 git -C "$tmp" config user.email "ci@example.invalid"
@@ -48,5 +53,17 @@ if TWIN_BASELINE_ROOT="$tmp" bash scripts/ci/check-twin-basenames.sh >/tmp/check
 fi
 
 grep -q "NewTwin.swift" /tmp/check-twin-bad.err
+
+# Wave 2.2: the AgentLens x OpenBurnBarCore pair is guarded too.
+touch "$tmp/AgentLens/Services/NewCoreTwin.swift"
+touch "$tmp/OpenBurnBarCore/Sources/NewCoreTwin.swift"
+git -C "$tmp" add .
+
+if TWIN_BASELINE_ROOT="$tmp" bash scripts/ci/check-twin-basenames.sh >/tmp/check-twin-core-bad.out 2>/tmp/check-twin-core-bad.err; then
+  echo "FAIL: unallowlisted AgentLens/Core twin basename was accepted" >&2
+  exit 1
+fi
+
+grep -q "NewCoreTwin.swift" /tmp/check-twin-core-bad.err
 
 echo "PASS: twin-basename guard positive controls"

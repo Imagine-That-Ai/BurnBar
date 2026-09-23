@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 @preconcurrency import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 extension ControlPlaneStore {
     /// App scope for memories harvested out of the indexed agent corpus. It is
