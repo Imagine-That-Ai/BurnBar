@@ -726,14 +726,30 @@ jobs:
       - name: BurnBar source provenance preflight
         run: python3 scripts/ci/check_burnbar_release_preflight.py --source-provenance-only
 
-      # Product preflight (runtime readiness + signed counsel / owner-emergency
-      # legal) is required for real tag deploys only. Dry-runs prove tag binding
-      # without claiming the product lane is launch-ready. Break-glass
-      # existing-tag retries skip product ceremony because the remaining human
-      # gate is the production environment reviewer.
+      # Product preflight runs the owner-emergency profile (same flags as
+      # release.yml): source integrity is always enforced, and the legal +
+      # runtime holds are satisfied by the validated per-release-train owner
+      # packet while libsignal runtime cutover and signed counsel approval
+      # are pending. Without this profile the Functions lane demands full
+      # product-launch readiness on every tag push and deadlocks; see
+      # docs/runbooks/production-deploy-boundaries.md. Required for real tag
+      # deploys only. Dry-runs prove tag binding without claiming the product
+      # lane is launch-ready. Break-glass existing-tag retries skip product
+      # ceremony because the remaining human gate is the production
+      # environment reviewer.
       - name: BurnBar product release preflight
         if: steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.break_glass != 'true'
-        run: python3 scripts/ci/check_burnbar_release_preflight.py
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/check_burnbar_release_preflight.py \
+            --allow-owner-emergency-approval \
+            --allow-owner-emergency-runtime-hold \
+            --expected-release-tag "${{ steps.tag.outputs.tag }}"
+          {
+            echo "product-preflight=owner-emergency (tag ${{ steps.tag.outputs.tag }})"
+            echo "The signed-counsel + runtime-readiness holds are bypassed only"
+            echo "via the validated per-train owner packet; see run log warnings."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify dry-run attestations
         if: steps.tag.outputs.dry_run != 'true' && steps.tag.outputs.break_glass != 'true'

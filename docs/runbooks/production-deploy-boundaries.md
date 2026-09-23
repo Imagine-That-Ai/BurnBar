@@ -45,6 +45,21 @@ credentialed step writes runtime env and deploys with the direct Firebase binary
 against the generated config. The health gate runs afterward in a separate job
 without WIF credentials.
 
+### Product preflight: owner-emergency profile
+
+`deploy-production.yml` runs `check_burnbar_release_preflight.py` with
+`--allow-owner-emergency-approval --allow-owner-emergency-runtime-hold
+--expected-release-tag <tag>` (same flags as `release.yml`). Source integrity
+is always enforced; the legal + runtime holds are satisfied by the validated
+per-release-train owner packet while libsignal runtime cutover and signed
+counsel approval are pending. Without this profile the Functions lane demands
+full product-launch readiness on every tag push and deadlocks (every
+v1.0.40+repair.40/.41 tag push failed in "BurnBar product release preflight").
+The engagement is recorded in the run summary as
+`product-preflight=owner-emergency (tag <tag>)`. The signed-counsel packet
+remains the default gate; removing this profile is the Wave 5 counsel
+sign-off item.
+
 ### Nightly health scoreboard
 
 `nightly-health.yml` publishes exactly six stable scheduled lanes:
@@ -74,11 +89,13 @@ machine-readable scoreboard.
 
 - **Green:** both the latest deploy and both public probes are successful.
 - **Red or unavailable:** the workflow exits non-zero, records a
-  `deploy-health` issue, and pages through the shared ops action when the
-  configured webhook is available. A missing deploy run, skipped/cancelled run,
-  API error, or failed probe is an explicit infrastructure blocker, not a
-  green/no-op result. A failed deploy conclusion remains a product/deploy
-  failure and is not relabeled as a healthy probe.
+  `deploy-health` issue, and pages through the shared ops action with
+  `repage-until-green` when the configured webhook is available: every red
+  run re-pages until a green run closes the issue and re-arms the alarm.
+  A `known-red-named-blocker` still suppresses paging. A missing deploy run,
+  skipped/cancelled run, API error, or failed probe is an explicit
+  infrastructure blocker, not a green/no-op result. A failed deploy conclusion
+  remains a product/deploy failure and is not relabeled as a healthy probe.
 - **Human queue exit:** the release owner assigns the issue, records the
   blocker, owner, and expiry in the issue, and chooses either an approved
   main-only `existing_tag_retry` or the documented rollback path. Do not rerun

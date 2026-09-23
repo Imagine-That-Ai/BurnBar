@@ -223,3 +223,152 @@ test("action.yml fetch call includes AbortSignal.timeout to bound the webhook PO
     "action.yml fetch() must include signal: AbortSignal.timeout(<ms>) to bound the webhook POST"
   );
 });
+
+// ---------------------------------------------------------------------------
+// Re-page until green: lanes that opt in page on EVERY red run. The paged:ops
+// dedupe is bypassed so a standing red can never go silent; a green run
+// closes the issue and re-arms the alarm.
+// ---------------------------------------------------------------------------
+
+test("repage-until-green: a paged P0 still pages on the next red run", () => {
+  const repaged = shouldPageP0({
+    mode: "open",
+    labels: [P0_LABEL, PAGED_LABEL],
+    repageUntilGreen: true,
+  });
+  assert.equal(repaged.shouldPage, true);
+  assert.equal(repaged.reason, "p0-repage-until-green");
+});
+
+test("repage-until-green: every red run pages until green (three-run sequence)", () => {
+  // Run 1: unpaged P0 → initial page.
+  assert.deepEqual(
+    shouldPageP0({ mode: "open", labels: [P0_LABEL], repageUntilGreen: true }),
+    { shouldPage: true, reason: "p0-unpaged" }
+  );
+
+  // Runs 2 and 3: standing red, paged:ops present → re-page each time.
+  for (const run of [2, 3]) {
+    const decision = shouldPageP0({
+      mode: "open",
+      labels: [P0_LABEL, PAGED_LABEL],
+      repageUntilGreen: true,
+    });
+    assert.equal(decision.shouldPage, true, `run ${run} must re-page`);
+    assert.equal(decision.reason, "p0-repage-until-green");
+  }
+});
+
+test("repage-until-green: a named blocker still suppresses paging", () => {
+  const suppressed = shouldPageP0({
+    mode: "open",
+    labels: [P0_LABEL, PAGED_LABEL, BLOCKER_LABEL],
+    repageUntilGreen: true,
+  });
+  assert.equal(suppressed.shouldPage, false);
+  assert.equal(suppressed.reason, "named-blocker");
+});
+
+test("repage-until-green: close mode still never pages", () => {
+  const decision = shouldPageP0({
+    mode: "close",
+    labels: [P0_LABEL, PAGED_LABEL],
+    repageUntilGreen: true,
+  });
+  assert.equal(decision.shouldPage, false);
+  assert.equal(decision.reason, "not-open-mode");
+});
+
+test("repage-until-green: non-P0 lanes still never page", () => {
+  const decision = shouldPageP0({
+    mode: "open",
+    labels: ["P1 - High", PAGED_LABEL],
+    repageUntilGreen: true,
+  });
+  assert.equal(decision.shouldPage, false);
+  assert.equal(decision.reason, "not-p0");
+});
+
+test("repage-until-green: omitting the flag preserves page-once dedupe", () => {
+  // No repageUntilGreen key at all (old call sites) and explicit false agree.
+  for (const opts of [{}, { repageUntilGreen: false }]) {
+    const decision = shouldPageP0({
+      mode: "open",
+      labels: [P0_LABEL, PAGED_LABEL],
+      ...opts,
+    });
+    assert.equal(decision.shouldPage, false);
+    assert.equal(decision.reason, "already-paged");
+  }
+});
+
+test("re-page payload keeps the { text } shape and says the lane is still red", () => {
+  const lane = "deploy-health";
+  const repoSlug = "burnbar/openburnbar";
+  const serverUrl = "https://github.com";
+  const issueNumber = 4242;
+  const runUrl = `${serverUrl}/${repoSlug}/actions/runs/99`;
+  const summary = "Production deploy history or health probes are red or unavailable.";
+  const issueUrl = `${serverUrl}/${repoSlug}/issues/${issueNumber}`;
+
+  // Mirrors the action's re-page slackText template verbatim.
+  const slackText = `🚨 *P0 ops failure re-page (still red)* — ${repoSlug} lane \`${lane}\`: ${summary}\nIssue: ${issueUrl}\nRun: ${runUrl}`;
+
+  const payload = JSON.parse(JSON.stringify({ text: slackText }));
+  assert.equal(typeof payload.text, "string");
+  assert.ok(payload.text.length > 0);
+  assert.ok(payload.text.includes(lane));
+  assert.ok(payload.text.includes(issueUrl));
+  assert.ok(
+    payload.text.includes("still red"),
+    "re-page text must say the lane is still red so it reads as a repeat, not a new incident"
+  );
+  assert.ok(!("blocks" in payload) && !("attachments" in payload));
+});
+
+test("action.yml threads repage-until-green from input to shouldPageP0", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const actionYml = fs.readFileSync(path.join(__dirname, "action.yml"), "utf8");
+  assert.match(
+    actionYml,
+    /^  repage-until-green:$/m,
+    "action.yml must declare the repage-until-green input"
+  );
+  assert.match(
+    actionYml,
+    /OPS_REPAGE_UNTIL_GREEN:\s*\$\{\{\s*inputs\.repage-until-green\s*\}\}/,
+    "action.yml must map the input to OPS_REPAGE_UNTIL_GREEN"
+  );
+  assert.match(
+    actionYml,
+    /shouldPageP0\(\{\s*mode,\s*labels:\s*issueLabels,\s*repageUntilGreen\s*\}\)/,
+    "pageP0IfEligible must pass repageUntilGreen to shouldPageP0"
+  );
+  assert.match(
+    actionYml,
+    /p0-repage-until-green/,
+    "pageP0IfEligible must branch on the p0-repage-until-green reason for re-page text"
+  );
+});
+
+test("deploy-lane-health.yml opts the open step into repage-until-green", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const repoRoot = path.join(__dirname, "..", "..", "..");
+  const workflow = fs.readFileSync(
+    path.join(repoRoot, ".github/workflows/deploy-lane-health.yml"),
+    "utf8"
+  );
+  assert.match(
+    workflow,
+    /mode:\s*open[\s\S]*?repage-until-green:\s*"true"/,
+    "deploy-lane-health.yml must set repage-until-green: \"true\" on the failure step"
+  );
+  // Negative control: the bare default must not satisfy the matcher.
+  assert.doesNotMatch(
+    workflow.replace('repage-until-green: "true"', 'repage-until-green: "false"'),
+    /mode:\s*open[\s\S]*?repage-until-green:\s*"true"/,
+    "matcher must fail when the opt-in is removed"
+  );
+});
