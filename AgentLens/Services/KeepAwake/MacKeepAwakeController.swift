@@ -2,12 +2,23 @@ import Foundation
 import OpenBurnBarIrohRelay
 import OSLog
 
+/// The Computer Use session surface of the keep-awake controller: hold a
+/// reason while a session is live, release it on every end path, and cache
+/// the phone toggle key that authorizes remote hold changes. Extracted so
+/// session-lifecycle tests can assert hold/release without touching the
+/// process-wide `IOPMAssertion` singleton.
+@MainActor
+protocol KeepAwakeControlling: AnyObject {
+    func set(_ reason: KeepAwakeReason, held: Bool)
+    func rememberTogglePublicKey(_ publicKey: Data, for deviceId: String)
+}
+
 /// Mac-side owner of the idle-sleep assertion. Auto-arms when a live
 /// Mercury mirror, Computer Use session, or iroh `media.control` stream
 /// is up. A signed phone toggle (trusted-device Ed25519, riding presence
 /// on `media.control`) is sticky until the phone turns it off.
 @MainActor
-final class MacKeepAwakeController {
+final class MacKeepAwakeController: KeepAwakeControlling {
     static let shared = MacKeepAwakeController()
 
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "KeepAwake")

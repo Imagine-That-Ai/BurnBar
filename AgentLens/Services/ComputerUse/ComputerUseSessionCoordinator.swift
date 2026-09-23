@@ -201,6 +201,11 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
 
     var watchHUDSession: (any AgentWatchHUDControlling)?
 
+    /// Idle-sleep hold owner. Defaults to the process singleton; tests
+    /// replace it with a fake to assert hold-on-start / release-on-end
+    /// without taking a real `IOPMAssertion`.
+    var keepAwakeController: any KeepAwakeControlling = MacKeepAwakeController.shared
+
     var phoneFirstActionConfirmedSessionKeys: Set<String> = []
 
     var inputPipeline: ComputerUseInputPipeline!
@@ -467,9 +472,12 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         }
     }
 
-    private func rememberKeepAwakeToggleKey(nodeId: String, key: PhoneControlVerifyingKey) {
+    /// Caches the phone toggle key that authorizes remote hold changes.
+    /// Ed25519 only: other key kinds cannot sign toggles, so caching them
+    /// would arm a path that can never verify. Internal for lifecycle tests.
+    func rememberKeepAwakeToggleKey(nodeId: String, key: PhoneControlVerifyingKey) {
         guard key.kind == .ed25519 else { return }
-        MacKeepAwakeController.shared.rememberTogglePublicKey(
+        keepAwakeController.rememberTogglePublicKey(
             key.publicKeyRepresentation,
             for: nodeId
         )
@@ -590,7 +598,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         configuration.quotaUsage = quotaReservation.usage
 
         activeSessionId = sessionId
-        MacKeepAwakeController.shared.set(.computerUse, held: true)
+        keepAwakeController.set(.computerUse, held: true)
         auditLogger = logger
         state = ComputerUseSessionState(
             sessionId: sessionId,
@@ -709,7 +717,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
     /// (normal end, panic halt, budget hard cap) funnels through here so the
     /// two cannot drift apart.
     func releaseSessionScopedHolds() async {
-        MacKeepAwakeController.shared.set(.computerUse, held: false)
+        keepAwakeController.set(.computerUse, held: false)
         let session = watchHUDSession
         watchHUDSession = nil
         await session?.stop()
