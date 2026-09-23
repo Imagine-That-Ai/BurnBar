@@ -33,7 +33,9 @@ final class AccountManager {
     private(set) var lastOAuthToken: String?
     private(set) var lastOAuthEmail: String?
     private(set) var lastOAuthDisplayName: String?
-    private(set) var isCloudSyncEnabled = true
+    /// Master cloud-sync switch. Off by default (Wave 0.5 consent): nothing
+    /// leaves the Mac until the user turns it on. Persisted on-device.
+    private(set) var isCloudSyncEnabled: Bool
     private(set) var isFirebaseAvailable = false
 
     /// The signed-in account's profile photo. Surfaced to UI (e.g. the Mercury
@@ -46,6 +48,7 @@ final class AccountManager {
 
     // MARK: - Private
 
+    private let userDefaults: UserDefaults
     private var authStateListenerHandle: AuthStateDidChangeListenerHandle?
     /// Callbacks registered through `observeAccountIdentityChanges(_:)`, fired
     /// on every uid transition. Retained for the process's lifetime by design —
@@ -71,8 +74,14 @@ final class AccountManager {
 
     // MARK: - Init
 
-    init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         deviceId = Self.loadOrCreateDeviceId()
+        // A missing key means "never chose" → off. No grandfathering: the
+        // flag was never persisted before, so nobody opted in.
+        isCloudSyncEnabled = (userDefaults.object(
+            forKey: OpenBurnBarCore.OpenBurnBarIdentity.cloudSyncEnabledKey
+        ) as? Bool) ?? false
         configureFirebase()
     }
 
@@ -662,6 +671,7 @@ final class AccountManager {
 
     func setCloudSyncEnabled(_ enabled: Bool) {
         isCloudSyncEnabled = enabled
+        userDefaults.set(enabled, forKey: OpenBurnBarCore.OpenBurnBarIdentity.cloudSyncEnabledKey)
     }
 
     // MARK: - Device UUID

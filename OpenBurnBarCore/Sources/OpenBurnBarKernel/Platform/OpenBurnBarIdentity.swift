@@ -55,6 +55,9 @@ public enum OpenBurnBarIdentity {
         "com.burnbar.deviceId",
         "com.agentlens.deviceId"
     ]
+
+    /// Wave 0.5 consent: master cloud-sync switch. Absent = never chose = off.
+    public static let cloudSyncEnabledKey = "com.openburnbar.cloudSyncEnabled"
 }
 
 public struct OpenBurnBarAppPaths: Sendable {

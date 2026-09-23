@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Cloud sync is now opt-in** — the master switch defaults to off and
+  persists on-device; nothing leaves the Mac until it is turned on in
+  Settings → Devices & Sync, where a real toggle now lives. Fresh installs
+  perform zero Firestore writes. Existing installs: sync turns off on
+  upgrade until re-enabled (the flag was never persisted, so no prior
+  opt-in exists to honor); per-scope backup choices are preserved and
+  resume when the master switch is flipped. Settings and SECURITY.md copy
+  now states plainly that synced usage metadata is plaintext while
+  credentials and vault contents stay sealed.
 - **Audit verification now fails closed** — the offline verifier requires a
   signed head anchor by default (`audit-verify` on a session or archive
   without `signed_head.json` reports `fully_verified=false` with

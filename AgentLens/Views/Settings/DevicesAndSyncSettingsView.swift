@@ -122,7 +122,7 @@ struct DevicesAndSyncSettingsView: View {
                             icon: "icloud.fill",
                             iconTint: DesignSystem.Colors.teal,
                             title: MacCopy.cloudSyncSectionTitle,
-                            subtitle: "Status and security model for sync across devices",
+                            subtitle: "Sync is off until you turn it on. Usage metadata syncs as plaintext; credentials stay sealed",
                             value: "Healthy",
                             valueTint: DesignSystem.Colors.success
                         )
@@ -238,11 +238,13 @@ struct DevicesAndSyncSettingsView: View {
 
 struct CloudSyncStatusDetailView: View {
     @State private var appCheckMonitor = AppCheckAttestationMonitor.shared
+    /// Wave 0.5: the master cloud-sync switch. Off by default; persisted on-device.
+    var accountManager: AccountManager = .shared
 
     var body: some View {
         SettingsDetailContainer(
             title: MacCopy.cloudSyncSectionTitle,
-            subtitle: "OpenBurnBar uses Firebase for cross-device sync. The transfer pipeline is end-to-end encrypted with device trust and provider readback."
+            subtitle: "Off by default — nothing leaves this Mac until you turn sync on. When on, usage metadata uploads to Firebase as plaintext for cross-device resume; provider credentials and vault contents stay sealed end-to-end."
         ) {
             if let warning = appCheckMonitor.lastWarningMessage {
                 GlassCard {
@@ -264,6 +266,23 @@ struct CloudSyncStatusDetailView: View {
                 }
             }
 
+            GlassCard {
+                Toggle(isOn: cloudSyncBinding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Cloud sync")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text(accountManager.isCloudSyncEnabled ? "On — usage metadata syncs to Firebase" : "Off — everything stays on this Mac")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(.switch)
+                .tint(DesignSystem.Colors.teal)
+                .padding(DesignSystem.Spacing.md)
+            }
+
             MercuryEnvelopeCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     Text(appCheckMonitor.lastWarningMessage == nil ? MacCopy.cloudSyncHealthy : MacCopy.cloudSyncDegraded)
@@ -273,6 +292,15 @@ struct CloudSyncStatusDetailView: View {
                 }
             }
         }
+    }
+
+    /// Master cloud-sync switch (Wave 0.5 consent). Follows the
+    /// CloudStoreSettingsView binding precedent.
+    private var cloudSyncBinding: Binding<Bool> {
+        Binding(
+            get: { accountManager.isCloudSyncEnabled },
+            set: { accountManager.setCloudSyncEnabled($0) }
+        )
     }
 }
 

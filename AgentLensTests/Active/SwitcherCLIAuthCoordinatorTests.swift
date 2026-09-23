@@ -2179,7 +2179,9 @@ final class AccountManagerTests: XCTestCase {
     // MARK: - Cloud Sync Toggle Tests
 
     func test_setCloudSyncEnabled_updatesState() {
-        let manager = AccountManager()
+        // Isolated suite: the choice persists (Wave 0.5), so the shared
+        // standard defaults must not leak between tests.
+        let manager = AccountManager(userDefaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         manager.setCloudSyncEnabled(false)
         XCTAssertFalse(manager.isCloudSyncEnabled)
 
