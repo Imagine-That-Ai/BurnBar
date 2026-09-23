@@ -14,6 +14,7 @@ import {
   extractWindows,
   diffSchemaSurfaces,
   reconcileBaseline,
+  reconcileBaselineHeader,
   runParityCheck,
   SURFACES,
   BASELINE_PATH,
@@ -219,6 +220,43 @@ test("reconcileBaseline flags new, stale, and unannotated divergences", () => {
   );
   assert.equal(todoErrors.length, 1);
   assert.match(todoErrors[0], /no real annotation/);
+});
+
+test("reconcileBaselineHeader passes on truth, fails each stale field", () => {
+  const canon = { identifiers: ["v0_seed", "v1_alpha", "v2_beta"] };
+  assert.deepEqual(
+    reconcileBaselineHeader(canon, {
+      migrationEndpoint: "v2_beta",
+      migrationCount: 3,
+    }),
+    [],
+  );
+
+  const stale = reconcileBaselineHeader(canon, {
+    migrationEndpoint: "v1_alpha",
+    migrationCount: 2,
+  });
+  assert.equal(stale.length, 2);
+  assert.match(stale[0], /STALE baseline header: migrationEndpoint/);
+  assert.match(stale[0], /v2_beta/);
+  assert.match(stale[1], /STALE baseline header: migrationCount/);
+
+  const halfStale = reconcileBaselineHeader(canon, {
+    migrationEndpoint: "v2_beta",
+    migrationCount: 2,
+  });
+  assert.equal(halfStale.length, 1);
+  assert.match(halfStale[0], /migrationCount/);
+});
+
+test("reconcileBaselineHeader stays silent on an empty canon", () => {
+  assert.deepEqual(
+    reconcileBaselineHeader({ identifiers: [] }, {
+      migrationEndpoint: "v2_beta",
+      migrationCount: 3,
+    }),
+    [],
+  );
 });
 
 // ---------------------------------------------------------------------------

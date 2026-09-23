@@ -649,6 +649,19 @@ for waiver_path, waiver_reason in COVERAGE_ALLOWLIST.items():
               "Every waiver must carry a written justification.", file=sys.stderr)
         raise SystemExit(1)
 
+# Shrink-only freeze (2026-09-22): the allowlist may lose entries, never gain
+# them silently. Adding a waiver means raising this cap in the same diff with
+# a written justification — exactly the friction CG-1 calls for. Lower the cap
+# whenever an entry is removed so the ratchet follows the list down.
+# NOTE: the cap is the evaluated dict size (69), not a grep count — reason
+# tuples contain quoted continuation lines that naive counters overcount.
+COVERAGE_ALLOWLIST_MAX_ENTRIES = 69
+if len(COVERAGE_ALLOWLIST) > COVERAGE_ALLOWLIST_MAX_ENTRIES:
+    print(f"::error::COVERAGE_ALLOWLIST grew to {len(COVERAGE_ALLOWLIST)} entries "
+          f"(cap {COVERAGE_ALLOWLIST_MAX_ENTRIES}). Remove the entry, wire the missing "
+          "lane's artifact, or raise the cap in this diff with a justification.", file=sys.stderr)
+    raise SystemExit(1)
+
 
 def allowlist_reason(rel_path):
     direct = COVERAGE_ALLOWLIST.get(rel_path)

@@ -28,7 +28,10 @@
  * Hard failures (never baseline-able):
  *   - identifier list drift between any two surfaces (order-sensitive),
  *   - Windows CurrentMigrationCount / CurrentMigrationEndpoint inconsistency,
- *   - Linux test pin / manifest / byte-compat vector drift.
+ *   - Linux test pin / manifest / byte-compat vector drift,
+ *   - baseline header drift: budgets/migrator-parity-baseline.json
+ *     migrationCount / migrationEndpoint disagreeing with the canonical
+ *     migrator (a stale header certifies an old schema as current).
  *
  * Baseline-able divergences (annotated, exact-set matched both ways so the
  * baseline can never rot): schema-surface deltas between the Swift endpoint
@@ -800,6 +803,26 @@ export function loadBaseline(repoRoot) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
+export function reconcileBaselineHeader(canon, baseline) {
+  const errors = [];
+  if (canon.identifiers.length === 0) {
+    return errors; // Extraction already raised the hard error; don't pile on.
+  }
+  const endpoint = canon.identifiers[canon.identifiers.length - 1];
+  const count = canon.identifiers.length;
+  if (baseline.migrationEndpoint !== endpoint) {
+    errors.push(
+      `STALE baseline header: migrationEndpoint is ${JSON.stringify(baseline.migrationEndpoint)} but the canonical migrator ends at ${JSON.stringify(endpoint)} — run with --update-baseline (it refreshes the header) and commit the result.`,
+    );
+  }
+  if (baseline.migrationCount !== count) {
+    errors.push(
+      `STALE baseline header: migrationCount is ${JSON.stringify(baseline.migrationCount)} but the canonical migrator registers ${count} migrations — run with --update-baseline and commit the result.`,
+    );
+  }
+  return errors;
+}
+
 export function reconcileBaseline(computed, baseline) {
   const errors = [];
   const baselineByKey = new Map(
@@ -995,7 +1018,10 @@ export function main(argv, { cwd } = {}) {
 
   const baselineErrors = update
     ? []
-    : reconcileBaseline(computedDivergences, baseline);
+    : [
+        ...reconcileBaselineHeader(canon, baseline),
+        ...reconcileBaseline(computedDivergences, baseline),
+      ];
 
   const errors = [...hardErrors, ...baselineErrors];
   if (errors.length > 0) {

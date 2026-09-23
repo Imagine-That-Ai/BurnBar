@@ -95,6 +95,12 @@ jobs:
       - name: Check usage refresh-tick budget (shrink-only)
         run: ./scripts/debt/check-usage-refresh-tick-budget.sh
 
+      - name: Check XCTSkip budget (shrink-only, baseline 153)
+        run: ./scripts/debt/check-xctskip-budget.sh
+
+      - name: Check quarantine manifest freshness
+        run: ./scripts/ci/check-quarantine-freshness.sh
+
       - name: Refresh tech debt metrics snapshot
         run: |
           set -euo pipefail

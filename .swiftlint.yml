@@ -29,13 +29,20 @@ disabled_rules:
 #     god-file decomposition lands and re-measures the maxima, tighten again.
 #     Do NOT raise any error threshold to "make room"; lower the code instead.
 #   * brownfield-refactor opt-ins that require API-changing rewrites were
-#     removed with their measured debt recorded:
-#       force_unwrapping               715 sites
-#       discouraged_optional_collection 326 sites
-#       implicitly_unwrapped_optional   169 sites
-#       no_extension_access_modifier    190 sites (codebase convention is
-#                                       ACL-on-extension, e.g. `public extension`)
-#       discouraged_optional_boolean     99 sites
+#     removed with their measured debt recorded (swiftlint 0.63.3, repo
+#     exclusions, CI-equivalent scope):
+#       rule                            2026-06-12   2026-09-22
+#       force_unwrapping                715 sites    916 sites
+#       discouraged_optional_collection 326 sites    589 sites
+#       implicitly_unwrapped_optional   169 sites    324 sites
+#       no_extension_access_modifier    190 sites    265 sites (codebase
+#                                       convention is ACL-on-extension,
+#                                       e.g. `public extension`)
+#       discouraged_optional_boolean     99 sites    228 sites
+#     All five grew (~2/3 of force_unwrapping sits in test targets, where
+#     `!` is largely idiomatic). Re-measure with the same scope before
+#     quoting these; local `.build-*` / `.muse/worktrees` checkouts must
+#     stay out of the count (CI lints a fresh checkout).
 opt_in_rules:
   # Original rules
   - empty_count
