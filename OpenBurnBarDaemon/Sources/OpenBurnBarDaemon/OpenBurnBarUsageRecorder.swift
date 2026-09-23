@@ -61,6 +61,14 @@ public struct BurnBarUsageLedgerSignature: Equatable, Sendable {
     }
 }
 
+/// Source-of-truth usage ledger. Unlike the diagnostic JSONL trails
+/// (`provider-routing-decisions.jsonl`, `metrics.jsonl`), this file must NEVER
+/// be size-rotated: the in-memory index addresses records by byte offset and
+/// projections rebuild from these exact lines, so rotation is silent data
+/// loss. If the ledger outgrows disk comfort, the answer is compaction (fold
+/// aged events into the projection, then truncate with the index rebuilt) —
+/// not a ring. See the routing store's ring for the pattern that applies
+/// everywhere EXCEPT here.
 public actor BurnBarUsageRecorder {
     static let maximumIdentifierBytes = 256
     static let maximumProjectNameBytes = 256

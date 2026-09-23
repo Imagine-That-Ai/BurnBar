@@ -144,6 +144,13 @@ public struct BurnBarRouteRankingResult: Hashable, Sendable {
 }
 
 public actor BurnBarProviderRoutingDecisionEventStore {
+    /// Ring bounds, matching the metrics.jsonl rotation: a 5MB live file
+    /// plus 3 rotated generations (`.1`, `.2`, `.3`). This log is a
+    /// write-only diagnostic trail with no product readers, so dropping the
+    /// oldest generation loses nothing the daemon can observe back.
+    static let maxBytes = 5 * 1024 * 1024
+    static let maxRotatedFiles = 3
+
     private let fileURL: URL
     private let encoder: JSONEncoder
     private let logger: BurnBarDaemonLogger
@@ -160,6 +167,9 @@ public actor BurnBarProviderRoutingDecisionEventStore {
     }
 
     public func append(_ event: ProviderRoutingDecisionEvent) {
+        // Rotation is best-effort and runs before the append: a rotation
+        // failure must never lose the event being recorded.
+        rotateIfNeeded()
         do {
             let directoryURL = fileURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(
@@ -190,6 +200,41 @@ public actor BurnBarProviderRoutingDecisionEventStore {
                 ]
             )
         }
+    }
+
+    /// Moves the live file to `.1` (shifting older generations up, deleting
+    /// the oldest) once it reaches `maxBytes`. Every step is best-effort:
+    /// rotation exists to bound disk, never to gate the append. Runs on the
+    /// actor, so concurrent appends cannot interleave rotations.
+    private func rotateIfNeeded() {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path), // try?-ok(skip rotation check)
+              let size = attributes[.size] as? NSNumber,
+              size.intValue >= Self.maxBytes else {
+            return
+        }
+
+        for index in stride(from: Self.maxRotatedFiles, through: 1, by: -1) {
+            let source = fileURL.appendingPathExtension("\(index)")
+            if index == Self.maxRotatedFiles {
+                try? FileManager.default.removeItem(at: source) // try?-ok(log rotation cleanup)
+            } else {
+                let destination = fileURL.appendingPathExtension("\(index + 1)")
+                if FileManager.default.fileExists(atPath: source.path) {
+                    try? FileManager.default.removeItem(at: destination) // try?-ok(log rotation cleanup)
+                    try? FileManager.default.moveItem(at: source, to: destination) // try?-ok(log rotation cleanup)
+                }
+            }
+        }
+        let firstRotated = fileURL.appendingPathExtension("1")
+        try? FileManager.default.removeItem(at: firstRotated) // try?-ok(log rotation cleanup)
+        try? FileManager.default.moveItem(at: fileURL, to: firstRotated) // try?-ok(log rotation cleanup)
+        // moveItem preserves source permissions: a live file that predates
+        // the 0600 default would otherwise rotate to a world-readable .1
+        // and stay there. Best-effort like everything else here.
+        try? FileManager.default.setAttributes( // try?-ok(log rotation cleanup)
+            [.posixPermissions: 0o600],
+            ofItemAtPath: firstRotated.path
+        )
     }
 }
 
