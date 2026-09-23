@@ -257,15 +257,18 @@ public final class PrimeAgentParser: LogParser, Sendable {
                     // keep for debugging; model is more specific
                     _ = provider
                 }
-                if let model = msg["model"] as? String, !model.isEmpty {
+                if let model = msg["model"] as? String,
+                   !TokenExtractionUtility.isPlaceholderModelName(model) {
                     lastModel = model
-                } else if let inner = msg["modelId"] as? String, !inner.isEmpty {
+                } else if let inner = msg["modelId"] as? String,
+                          !TokenExtractionUtility.isPlaceholderModelName(inner) {
                     lastModel = inner
                 }
             } else {
                 // Some messages may have provider/model without usage (user/tool) — still track model
                 if role == "assistant" {
-                    if let model = msg["model"] as? String, !model.isEmpty {
+                    if let model = msg["model"] as? String,
+                       !TokenExtractionUtility.isPlaceholderModelName(model) {
                         lastModel = model
                     }
                 }

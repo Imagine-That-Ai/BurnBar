@@ -317,6 +317,91 @@ final class AdditionalLocalUsageParsersTests: XCTestCase {
         XCTAssertEqual(conversation.lastAssistantMessage, "done")
     }
 
+    func testPlaceholderModelNamesAreRejected() {
+        XCTAssertTrue(TokenExtractionUtility.isPlaceholderModelName(""))
+        XCTAssertTrue(TokenExtractionUtility.isPlaceholderModelName("   "))
+        XCTAssertTrue(TokenExtractionUtility.isPlaceholderModelName("unknown"))
+        XCTAssertTrue(TokenExtractionUtility.isPlaceholderModelName("Unknown"))
+        XCTAssertTrue(TokenExtractionUtility.isPlaceholderModelName("default"))
+        XCTAssertTrue(TokenExtractionUtility.isPlaceholderModelName("none"))
+        // Harness-synthesized markers (e.g. Claude Code API-error notices
+        // stamped `"model":"<synthetic>"`) are placeholders, not models.
+        XCTAssertTrue(TokenExtractionUtility.isPlaceholderModelName("<synthetic>"))
+        XCTAssertTrue(TokenExtractionUtility.isPlaceholderModelName("<SYNTHETIC>"))
+
+        XCTAssertFalse(TokenExtractionUtility.isPlaceholderModelName("claude-opus-4-6"))
+        XCTAssertFalse(TokenExtractionUtility.isPlaceholderModelName("claude-fable-5-1"))
+        XCTAssertFalse(TokenExtractionUtility.isPlaceholderModelName("Gemini 3.8 Flash (High)"))
+        XCTAssertFalse(TokenExtractionUtility.isPlaceholderModelName("grok-4.6"))
+        XCTAssertFalse(TokenExtractionUtility.isPlaceholderModelName("codex-grok-4-6"))
+        // A bare angle bracket is not a well-formed marker; leave it alone.
+        XCTAssertFalse(TokenExtractionUtility.isPlaceholderModelName("<"))
+        XCTAssertFalse(TokenExtractionUtility.isPlaceholderModelName("<>"))
+    }
+
+    func testClaudeSkipsSyntheticModelAndAttributesToExactModel() async throws {
+        let root = try makeDirectory("claude-synthetic")
+        defer { remove(root) }
+        // Mirrors a real transcript: a synthesized `<synthetic>` API-error
+        // notice (zero tokens) interleaved with real turns. `<` (0x3C) sorts
+        // before alphanumerics, so without placeholder filtering the marker
+        // wins model selection and renders as a chart band.
+        let syntheticLine = #"{"type":"assistant","timestamp":"2026-07-01T00:00:01Z","sessionId":"synthetic-session","cwd":"/tmp/demo","#
+            + #""message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"API Error: 503 auth_unavailable"}],"#
+            + #""usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#
+        let realLine = #"{"type":"assistant","timestamp":"2026-07-01T00:00:02Z","sessionId":"synthetic-session","cwd":"/tmp/demo","#
+            + #""message":{"role":"assistant","model":"claude-fable-5-1","content":[{"type":"text","text":"done"}],"#
+            + #""usage":{"input_tokens":19,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#
+        try write(
+            """
+            {"type":"user","timestamp":"2026-07-01T00:00:00Z","sessionId":"synthetic-session","cwd":"/tmp/demo","message":{"role":"user","content":[{"type":"text","text":"inspect"}]}}
+            \(syntheticLine)
+            \(realLine)
+            """,
+            to: root.appendingPathComponent("-Users-test-Project/synthetic-session.jsonl")
+        )
+
+        let parser = ClaudeCodeParser(projectsDirectoryOverride: root)
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        XCTAssertEqual(usage.model, "claude-fable-5-1")
+        XCTAssertEqual(usage.inputTokens, 19)
+        XCTAssertEqual(usage.outputTokens, 5)
+    }
+
+    func testClaudeFallsBackToProviderDefaultWhenOnlyPlaceholderModelsExist() async throws {
+        let root = try makeDirectory("claude-synthetic-only")
+        defer { remove(root) }
+        let syntheticLine = #"{"type":"assistant","timestamp":"2026-07-01T00:00:01Z","sessionId":"synthetic-only-session","cwd":"/tmp/demo","#
+            + #""message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"API Error: 503"}],"#
+            + #""usage":{"input_tokens":11,"output_tokens":3,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}"#
+        try write(
+            """
+            {"type":"user","timestamp":"2026-07-01T00:00:00Z","sessionId":"synthetic-only-session","cwd":"/tmp/demo","message":{"role":"user","content":[{"type":"text","text":"inspect"}]}}
+            \(syntheticLine)
+            """,
+            to: root.appendingPathComponent("-Users-test-Project/synthetic-only-session.jsonl")
+        )
+
+        let parser = ClaudeCodeParser(projectsDirectoryOverride: root)
+        let result = try await parser.parse()
+        let usage = try XCTUnwrap(result.usages.first)
+        // Tokens are preserved; the model falls back to the provider default
+        // rather than persisting the harness marker.
+        XCTAssertEqual(usage.model, "claude")
+        XCTAssertEqual(usage.inputTokens, 11)
+        XCTAssertEqual(usage.outputTokens, 3)
+    }
+
+    func testSharedModelLookupIgnoresPlaceholderTokens() {
+        let synthetic: LocalUsageJSONObject = ["message": ["model": "<synthetic>", "role": "assistant"]]
+        XCTAssertNil(LocalUsageParserSupport.model(in: synthetic))
+        let unknown: LocalUsageJSONObject = ["model": "unknown"]
+        XCTAssertNil(LocalUsageParserSupport.model(in: unknown))
+        let real: LocalUsageJSONObject = ["message": ["model": "claude-fable-5-1", "role": "assistant"]]
+        XCTAssertEqual(LocalUsageParserSupport.model(in: real), "claude-fable-5-1")
+    }
+
     func testOllamaReadsOnlyExplicitServerCounters() async throws {
         let root = try makeDirectory("ollama")
         defer { remove(root) }

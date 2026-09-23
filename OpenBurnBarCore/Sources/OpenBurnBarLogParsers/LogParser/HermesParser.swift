@@ -856,7 +856,8 @@ public final class HermesParser: LogParser, Sendable {
             let rawContent = message?["content"] ?? json["content"]
             let toolName = (json["tool_name"] as? String) ?? (message?["tool_name"] as? String)
 
-            if let model = (message?["model"] as? String) ?? (json["model"] as? String), !model.isEmpty {
+            if let model = (message?["model"] as? String) ?? (json["model"] as? String),
+               !TokenExtractionUtility.isPlaceholderModelName(model) {
                 summary.model = TokenExtractionUtility.normalizeModelName(model)
             }
 

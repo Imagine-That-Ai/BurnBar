@@ -32,6 +32,37 @@ extension UsageStore {
             .hasPrefix("chatcmpl-")
     }
 
+    /// Deletes same-session rows whose model is a harness placeholder
+    /// (`<synthetic>`, `unknown`, …) once the corrected exact-model row for
+    /// that session arrives. Mirrors `deleteKimiRequestIDModelRows`: the
+    /// upsert key includes `model`, so without this the placeholder row and
+    /// the corrected row coexist and dashboards double-bill the session while
+    /// rendering a `<synthetic>` band. No-op when the incoming row is itself a
+    /// placeholder, so a placeholder can never delete a real model.
+    func deletePlaceholderModelRows(replacedBy usage: TokenUsage, in db: Database) throws {
+        guard !OpenBurnBarCore.TokenExtractionUtility.isPlaceholderModelName(usage.model) else { return }
+        let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
+        try db.execute(
+            sql: """
+                DELETE FROM token_usage
+                WHERE provider = ?
+                  AND sessionId = ?
+                  AND COALESCE(sourceDeviceId, '') = COALESCE(?, '')
+                  AND COALESCE(providerAccountID, '') = COALESCE(?, '')
+                  AND (
+                    LOWER(TRIM(model)) IN ('', 'unknown', 'default', 'none')
+                    OR (TRIM(model) LIKE '<%>' AND LENGTH(TRIM(model)) > 2)
+                  )
+                """,
+            arguments: [
+                usage.provider.rawValue,
+                usage.sessionId,
+                usage.sourceDeviceId,
+                usagePartition
+            ]
+        )
+    }
+
     func shouldSuppressFactoryRoutedMirror(_ usage: TokenUsage, in db: Database) throws -> Bool { // pure-move: was private
         guard Self.isFactoryRoutedMirrorProvider(usage.provider) else { return false }
         let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
@@ -126,6 +157,9 @@ extension UsageStore {
     /// Cloud sync data with equal or higher confidence than existing row will update it.
     func insertRemoteUsage(_ usage: TokenUsage) async throws {
         let changedRows = try await dbQueue.write { db -> Int in
+            // A synced exact-model correction must retire a local placeholder
+            // row for the same session, exactly as on the local insert path.
+            try self.deletePlaceholderModelRows(replacedBy: usage, in: db)
             let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
             try db.execute(
                 sql: """
