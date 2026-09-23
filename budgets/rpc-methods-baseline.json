@@ -4,7 +4,7 @@
     1,
     2
   ],
-  "totalMethods": 188,
+  "totalMethods": 194,
   "methods": [
     {
       "caseName": "approvalRespond",
@@ -85,6 +85,10 @@
     {
       "caseName": "chatMessageAppend",
       "methodString": "daemon.chat.message.append"
+    },
+    {
+      "caseName": "chatThreadCreate",
+      "methodString": "daemon.chat.thread.create"
     },
     {
       "caseName": "chatThreadGet",
@@ -423,6 +427,10 @@
       "methodString": "daemon.memory.audit_trail"
     },
     {
+      "caseName": "memoryAuthorityApply",
+      "methodString": "daemon.memory.authority.apply"
+    },
+    {
       "caseName": "memoryForget",
       "methodString": "daemon.memory.forget"
     },
@@ -441,6 +449,18 @@
     {
       "caseName": "memoryReviewStatus",
       "methodString": "daemon.memory.review_status"
+    },
+    {
+      "caseName": "memorySnapshotDelete",
+      "methodString": "daemon.memory.snapshot.delete"
+    },
+    {
+      "caseName": "memorySnapshotDeleteAll",
+      "methodString": "daemon.memory.snapshot.delete_all"
+    },
+    {
+      "caseName": "memorySnapshotUpsert",
+      "methodString": "daemon.memory.snapshot.upsert"
     },
     {
       "caseName": "memorySyncInboxAck",
@@ -627,6 +647,10 @@
       "methodString": "daemon.search.sql"
     },
     {
+      "caseName": "searchVectorSnapshotUpsert",
+      "methodString": "daemon.search.vector_snapshot.upsert"
+    },
+    {
       "caseName": "simulatorList",
       "methodString": "daemon.simulator.list"
     },
@@ -759,5 +783,5 @@
       "methodString": "workspace.toolResult"
     }
   ],
-  "note": "Baseline for scripts/debt/check-rpc-method-freeze.sh. Freezes the 185-case v1 Daemon RPC method catalog (BurnBarRPCMethod in BurnBarRPCContracts.swift) to prevent unversioned RPC drift and untyped method additions without schema-sync / TypeSpec contract generation. v1 amendment 2026-09-22 (Wave 0.3): +3 memory methods (daemon.memory.model_policy for Memory Pro policy distribution; daemon.memory.sync.inbox.list/.ack for Blind Sync PR-2 inbox drain). All three are typed, handled on both ends, and covered by the N-1 suite; protocol stays v1-compatible with v2 in supported."
+  "note": "Baseline for scripts/debt/check-rpc-method-freeze.sh. Freezes the 185-case v1 Daemon RPC method catalog (BurnBarRPCMethod in BurnBarRPCContracts.swift) to prevent unversioned RPC drift and untyped method additions without schema-sync / TypeSpec contract generation. v1 amendment 2026-09-22 (Wave 0.3): +3 memory methods (daemon.memory.model_policy for Memory Pro policy distribution; daemon.memory.sync.inbox.list/.ack for Blind Sync PR-2 inbox drain). All three are typed, handled on both ends, and covered by the N-1 suite; protocol stays v1-compatible with v2 in supported. v1 amendment 2026-09-23 (Wave 2.1 single-writer cutover, ADR-005): +6 app-lane methods that move SQLite writes from the app to the daemon, which is now the single writer of those tables: daemon.chat.thread.create (chat thread creation), daemon.memory.snapshot.upsert/.delete/.delete_all (project memory snapshots, 2.1c-i), daemon.search.vector_snapshot.upsert (vector index snapshots, 2.1c-ii), daemon.memory.authority.apply (atomic memory authority mutations, 2.1c-iii). All six are typed request/response pairs, handled on both ends (daemon applier + app writer seam), and covered by Core contract tests, daemon lane/socket tests, and app cutover tests; protocol stays v1-compatible with v2 in supported."
 }

@@ -6,7 +6,9 @@ import SQLite3
 import CSQLite
 #endif
 
-private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+// Internal (not private): the SQLite plumbing extension in
+// `OpenBurnBarIndexedSearchService+SQLite.swift` shares it.
+let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 // DispatchSpecificKey is not Sendable; access is confined to the search serial queue.
 private nonisolated(unsafe) let indexedSearchQueueKey = DispatchSpecificKey<UUID>()
 
@@ -41,7 +43,10 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         let lastBuiltAt: Date?
     }
 
-    private let db: OpaquePointer?
+    /// Internal (not private) so the Wave 2.1c-ii vector-snapshot app lane —
+    /// which lives in its own file next to the daemon's rebuild path — can
+    /// share this handle. All access stays serialized through `dbQueue`.
+    let db: OpaquePointer?
     private let dbQueue = DispatchQueue(label: "com.openburnbar.daemon.indexed-search.sqlite")
     private let dbQueueID = UUID()
     /// Cached result of the v47 `conversations.deletedAt` column probe. Only ever
@@ -205,7 +210,8 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         let dateRange: ClosedRange<Date>?
     }
 
-    private func databaseSync<T>(_ work: () throws -> T) rethrows -> T {
+    /// Internal for the vector-snapshot app lane (`BurnBarIndexedSearchService+VectorSnapshotAppLane.swift`).
+    func databaseSync<T>(_ work: () throws -> T) rethrows -> T {
         if DispatchQueue.getSpecific(key: indexedSearchQueueKey) == dbQueueID {
             return try work()
         }
@@ -1234,42 +1240,6 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         }
     }
 
-    // MARK: - SQLite Utilities
-
-    private enum SQLiteBindValue {
-        case text(String)
-        case int(Int64)
-        case null
-    }
-
-    private func prepareStatement(sql: String) throws -> OpaquePointer? {
-        guard let db else { return nil }
-        var statement: OpaquePointer?
-        let rc = sqlite3_prepare_v2(db, sql, -1, &statement, nil)
-        guard rc == SQLITE_OK else {
-            throw sqliteError(db: db, code: rc, context: "prepare")
-        }
-        return statement
-    }
-
-    private func bind(_ args: [SQLiteBindValue], to statement: OpaquePointer) throws {
-        for (index, arg) in args.enumerated() {
-            let position = Int32(index + 1)
-            let rc: Int32
-            switch arg {
-            case .text(let value):
-                rc = sqlite3_bind_text(statement, position, value, -1, SQLITE_TRANSIENT)
-            case .int(let value):
-                rc = sqlite3_bind_int64(statement, position, value)
-            case .null:
-                rc = sqlite3_bind_null(statement, position)
-            }
-            guard rc == SQLITE_OK else {
-                throw sqliteError(db: db, code: rc, context: "bind")
-            }
-        }
-    }
-
     private func fetchSingleInt(sql: String, args: [SQLiteBindValue]) throws -> Int {
         guard let statement = try prepareStatement(sql: sql) else { return 0 }
         defer { sqlite3_finalize(statement) }
@@ -1563,7 +1533,8 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         )
     }
 
-    private static func sqliteTimestamp(_ date: Date) -> String {
+    /// Internal for the vector-snapshot app lane (`BurnBarIndexedSearchService+VectorSnapshotAppLane.swift`).
+    static func sqliteTimestamp(_ date: Date) -> String {
         sqliteDateFormatter.string(from: date)
     }
 
@@ -1575,7 +1546,8 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         return formatter
     }()
 
-    private func sqliteError(db: OpaquePointer?, code: Int32, context: String) -> NSError {
+    /// Internal for the vector-snapshot app lane (`BurnBarIndexedSearchService+VectorSnapshotAppLane.swift`).
+    func sqliteError(db: OpaquePointer?, code: Int32, context: String) -> NSError {
         let message = db.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "sqlite error"
         return NSError(
             domain: "BurnBarIndexedSearchService",

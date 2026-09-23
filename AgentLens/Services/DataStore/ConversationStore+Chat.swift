@@ -22,10 +22,6 @@ struct MemoryExtractionContext: Sendable {
     let promptVersion: String
 }
 
-protocol TransactionalMemoryExtractionServing: MemoryServing {
-    func enqueueExtraction(_ intent: ExtractionIntent, in db: Database) throws
-}
-
 enum MemoryExtraction {
     /// `idempotency_key = HMAC-SHA256(threadLogicalID | messageID | promptVersion)`, hex.
     /// Deterministic so a replayed commit (e.g. re-save) collapses to one backend
@@ -51,56 +47,14 @@ extension ConversationStore {
             memoryService: (any MemoryServing)? = nil,
             extractionContext: MemoryExtractionContext? = nil
         ) async throws {
-            let piecesJSON: String?
-            if message.transcriptPieces.isEmpty {
-                piecesJSON = nil
-            } else {
-                piecesJSON = try OpenBurnBarDatabase.encodeTranscriptPieces(message.transcriptPieces)
-            }
-
-            let attachmentsJSON: String?
-            if message.attachments.isEmpty {
-                attachmentsJSON = nil
-            } else {
-                attachmentsJSON = try OpenBurnBarDatabase.encodeChatAttachments(message.attachments)
-            }
-
-            let extractionIntent = Self.makeMemoryExtractionIntent(
-                message,
-                threadID: threadID,
-                isTerminalAssistantCommit: isTerminalAssistantCommit,
-                memoryService: memoryService,
-                extractionContext: extractionContext
-            )
-            let transactionalMemoryService = memoryService as? any TransactionalMemoryExtractionServing
-
-            try await dbQueue.write { db in
-                try Self.upsertChatThread(threadID, at: message.timestamp, db: db)
-                try db.execute(
-                    sql: """
-                    INSERT OR REPLACE INTO chat_messages (id, threadId, role, content, timestamp, cliUsed, transcriptPiecesJSON, attachmentsJSON)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    arguments: [
-                        message.id,
-                        threadID,
-                        message.role.rawValue,
-                        message.content,
-                        message.timestamp,
-                        message.cliUsed,
-                        piecesJSON,
-                        attachmentsJSON
-                    ]
-                )
-
-                if let extractionIntent, let transactionalMemoryService {
-                    do {
-                        try transactionalMemoryService.enqueueExtraction(extractionIntent, in: db)
-                    } catch {
-                        AppLogger.chat.silentFailure("memory enqueueExtraction (transactional)", error: error)
-                    }
-                }
-            }
+            // Wave 2.1: the daemon owns `chat_threads` / `chat_messages`
+            // (ADR-005). The app builds the typed RPC request and the injected
+            // writer persists it — no local chat writes. Fails closed when the
+            // daemon is unreachable; callers log-and-continue, as with DB
+            // errors. `replace: true` preserves the historical
+            // `INSERT OR REPLACE` re-save semantics (streaming placeholder →
+            // final under one message ID).
+            try await chatWriter.appendMessage(Self.appendRequest(message, threadID: threadID))
 
             // G3: emit the extraction trigger from the persistence chokepoint, not
             // UI streaming state. Fires only for a terminal, non-empty assistant
@@ -108,13 +62,82 @@ extension ConversationStore {
             // (PR-5) lands, production wires no service, so this is a no-op in app
             // builds; tests inject `FakeMemoryService` to assert it fires.
             // Extraction failure must never fail the chat save or block the caller.
-            if let extractionIntent, let memoryService, transactionalMemoryService == nil {
+            //
+            // Wave 2.1 note: the enqueue is no longer atomic with the chat write —
+            // cross-process atomicity is impossible now that the daemon persists
+            // the row. The enqueue runs after a successful RPC; a crash between
+            // the two is repaired by re-save (the idempotency key dedupes), and
+            // a failed RPC enqueues nothing. The old in-transaction branch died
+            // with the local write.
+            if let extractionIntent = Self.makeMemoryExtractionIntent(
+                message,
+                threadID: threadID,
+                isTerminalAssistantCommit: isTerminalAssistantCommit,
+                memoryService: memoryService,
+                extractionContext: extractionContext
+            ), let memoryService {
                 do {
                     try await memoryService.enqueueExtraction(extractionIntent)
                 } catch {
                     AppLogger.chat.silentFailure("memory enqueueExtraction", error: error)
                 }
             }
+        }
+
+        /// Map the app record to the daemon's append contract. Roles and
+        /// transcript-piece kinds are exhaustive switches (not raw-value
+        /// round-trips) so a new case fails closed at compile time on both
+        /// sides of the IPC boundary. Attachments ride the opaque
+        /// `appAttachmentsJSON` passthrough — the typed metadata cannot
+        /// represent app display fields (workspace path, thumbnail, preview).
+        private static func appendRequest(
+            _ message: ChatMessageRecord,
+            threadID: String
+        ) throws -> BurnBarChatMessageAppendRequest {
+            let role: BurnBarChatMessageRole
+            switch message.role {
+            case .user: role = .user
+            case .assistant: role = .assistant
+            case .system: role = .system
+            }
+
+            let pieces: [BurnBarChatTranscriptPiece]? = message.transcriptPieces.isEmpty
+                ? nil
+                : message.transcriptPieces.map { piece in
+                    let kind: BurnBarChatTranscriptPiece.Kind
+                    switch piece.kind {
+                    case .text: kind = .text
+                    case .reasoning: kind = .reasoning
+                    case .refusal: kind = .refusal
+                    case .toolUse: kind = .toolUse
+                    case .toolResult: kind = .toolResult
+                    }
+                    return BurnBarChatTranscriptPiece(
+                        id: piece.id,
+                        kind: kind,
+                        value: piece.value,
+                        detail: piece.detail
+                    )
+                }
+
+            let appAttachmentsJSON: String?
+            if message.attachments.isEmpty {
+                appAttachmentsJSON = nil
+            } else {
+                appAttachmentsJSON = try OpenBurnBarDatabase.encodeChatAttachments(message.attachments)
+            }
+
+            return BurnBarChatMessageAppendRequest(
+                threadID: threadID,
+                messageID: message.id,
+                role: role,
+                content: message.content,
+                timestamp: ControlPlaneStore.iso8601String(message.timestamp),
+                backendID: message.cliUsed,
+                transcriptPieces: pieces,
+                replace: true,
+                appAttachmentsJSON: appAttachmentsJSON
+            )
         }
 
         private static func makeMemoryExtractionIntent(
@@ -146,9 +169,12 @@ extension ConversationStore {
         }
 
         func createChatThread(id: String, at date: Date) async throws -> String {
-            try await dbQueue.write { db in
-                try Self.upsertChatThread(id, at: date, db: db)
-            }
+            try await chatWriter.createThread(
+                BurnBarChatThreadCreateRequest(
+                    threadID: id,
+                    createdAt: ControlPlaneStore.iso8601String(date)
+                )
+            )
             return id
         }
 
@@ -307,15 +333,4 @@ extension ConversationStore {
             }
         }
 
-        func deleteAllChatMessages() async throws {
-            try await dbQueue.write { db in
-                try db.execute(sql: "DELETE FROM chat_messages")
-                try db.execute(sql: "DELETE FROM chat_threads")
-                let now = Date()
-                try db.execute(
-                    sql: "INSERT INTO chat_threads (id, createdAt, updatedAt) VALUES (?, ?, ?)",
-                    arguments: [OpenBurnBarDatabase.legacyChatThreadID, now, now]
-                )
-            }
-        }
 }

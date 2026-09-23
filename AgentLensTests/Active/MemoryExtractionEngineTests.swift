@@ -33,7 +33,7 @@ final class MemoryExtractionEngineTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        return (ControlPlaneStore(dbQueue: queue), queue)
+        return (ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue)), queue)
     }
 
     private func insertChatMessage(

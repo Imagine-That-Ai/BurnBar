@@ -364,9 +364,10 @@ extension ControlPlaneStore {
         )
     }
 
-    /// `labels_json` is written by `insertMemoryAuditEvent` as a sorted JSON
-    /// array of strings. A row this cannot parse contributes no labels rather
-    /// than failing the whole timeline: the labels are context, not the history.
+    /// `labels_json` is written by the authority lane (`auditLabelsJSON`) as
+    /// a sorted JSON array of strings. A row this cannot parse contributes no
+    /// labels rather than failing the whole timeline: the labels are context,
+    /// not the history.
     private static func decodedAuditLabels(_ json: String) -> [String] {
         guard let data = json.data(using: .utf8) else { return [] }
         do {

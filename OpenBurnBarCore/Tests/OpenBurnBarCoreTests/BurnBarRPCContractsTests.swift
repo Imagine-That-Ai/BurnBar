@@ -64,6 +64,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .usageInsights: "daemon.usage.insights",
         .usageProjection: "daemon.usage.projection",
         .usageRecount: "daemon.usage.recount",
+        .chatThreadCreate: "daemon.chat.thread.create",
         .chatThreadList: "daemon.chat.thread.list",
         .chatThreadGet: "daemon.chat.thread.get",
         .chatMessageAppend: "daemon.chat.message.append",
@@ -138,6 +139,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .clientDetach: "client.detach",
         .searchQuery: "daemon.search.query",
         .searchSQL: "daemon.search.sql",
+        .searchVectorSnapshotUpsert: "daemon.search.vector_snapshot.upsert",
         .memoryRemember: "daemon.memory.remember",
         .memoryRecall: "daemon.memory.recall",
         .memoryReviewStatus: "daemon.memory.review_status",
@@ -149,6 +151,13 @@ final class BurnBarRPCContractsTests: XCTestCase {
         // Memory Blind Sync PR-2: the engine's drain of verified remote facts.
         .memorySyncInboxList: "daemon.memory.sync.inbox.list",
         .memorySyncInboxAck: "daemon.memory.sync.inbox.ack",
+        // Wave 2.1c: the app lane of project_memory_snapshots moves to the daemon.
+        .memorySnapshotUpsert: "daemon.memory.snapshot.upsert",
+        .memorySnapshotDelete: "daemon.memory.snapshot.delete",
+        .memorySnapshotDeleteAll: "daemon.memory.snapshot.delete_all",
+        // Wave 2.1c-iii: the memory authority app lane — atomic mutations
+        // over the daemon-owned authority tables.
+        .memoryAuthorityApply: "daemon.memory.authority.apply",
         .codeIndexProject: "daemon.code.index_project",
         .codeWatchProject: "daemon.code.watch_project",
         .codeSearch: "daemon.code.search",

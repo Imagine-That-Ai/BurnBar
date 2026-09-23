@@ -67,6 +67,10 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case chatThreadList = "daemon.chat.thread.list"
     case chatThreadGet = "daemon.chat.thread.get"
     case chatMessageAppend = "daemon.chat.message.append"
+    /// Wave 2.1: pre-mint an empty thread row (pane/thread-lifecycle UX mints
+    /// IDs before the first send). Idempotent `INSERT OR IGNORE` semantics so
+    /// retries are safe. v1 amendment 2026-09-23, see ADR-005.
+    case chatThreadCreate = "daemon.chat.thread.create"
     case proxyRouteLogRecent = "daemon.proxy.route_log.recent"
     case proxyRouteLogClear = "daemon.proxy.route_log.clear"
     case quotaSignalsRecent = "daemon.quota.signals.recent"
@@ -168,6 +172,11 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     /// keyed handle so socket clients (local MCP) work against the SQLCipher database
     /// without holding the key. Enforced via `sqlite3_stmt_readonly` + row/byte caps.
     case searchSQL = "daemon.search.sql"
+    /// Wave 2.1c-ii: the app lane of `vector_index_snapshots` moves to the
+    /// daemon (single writer, ADR-005). The app finalizes the row; the daemon
+    /// validates shape and bounds, then stores it verbatim. v1 amendment
+    /// 2026-09-23, see ADR-005.
+    case searchVectorSnapshotUpsert = "daemon.search.vector_snapshot.upsert"
     case memoryRemember = "daemon.memory.remember"
     case memoryRecall = "daemon.memory.recall"
     case memoryReviewStatus = "daemon.memory.review_status"
@@ -182,6 +191,19 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     /// the inbox is a memory read; the acknowledgement writes `applied_at`.
     case memorySyncInboxList = "daemon.memory.sync.inbox.list"
     case memorySyncInboxAck = "daemon.memory.sync.inbox.ack"
+    /// Wave 2.1c: the app lane of `project_memory_snapshots` moves to the
+    /// daemon (single writer, ADR-005). Upsert stores the app-finalized bytes
+    /// verbatim; delete drops one slug; delete-all serves the indexed-data
+    /// wipe. v1 amendment 2026-09-23, see ADR-005.
+    case memorySnapshotUpsert = "daemon.memory.snapshot.upsert"
+    case memorySnapshotDelete = "daemon.memory.snapshot.delete"
+    case memorySnapshotDeleteAll = "daemon.memory.snapshot.delete_all"
+    /// Wave 2.1c-iii: the app lane of the memory authority tables
+    /// (`agent_memories`, `memory_audit`, and their satellite rows) moves to
+    /// the daemon (single writer, ADR-005). One atomic applier for the app's
+    /// finalized write sets; the daemon assigns only the audit chain fields.
+    /// v1 amendment 2026-09-23, see ADR-005.
+    case memoryAuthorityApply = "daemon.memory.authority.apply"
     case codeIndexProject = "daemon.code.index_project"
     case codeSearch = "daemon.code.search"
     case codeContextPack = "daemon.code.context_pack"

@@ -247,10 +247,6 @@ extension DataStore {
         try await actor.conversationStore.threadID(forChatMessageID: messageID)
     }
 
-    func deleteAllChatMessages() async throws {
-        try await actor.conversationStore.deleteAllChatMessages()
-    }
-
     func searchConversationsFTS(
         query: String,
         provider: AgentProvider? = nil,

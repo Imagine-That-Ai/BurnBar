@@ -391,13 +391,19 @@ final class DataStoreCoordinator {
 
     static func makeInMemoryForTesting(
         runMigrations: Bool = true,
-        refreshOnInit: Bool = false
+        refreshOnInit: Bool = false,
+        chatWriter: ((any DatabaseWriter) -> any ChatHistoryWriter)? = nil,
+        snapshotWriter: ((any DatabaseWriter) -> any ProjectMemorySnapshotWriter)? = nil,
+        vectorSnapshotWriter: ((any DatabaseWriter) -> any VectorIndexSnapshotWriter)? = nil
     ) throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue()
         return try DataStoreCoordinator(
             databaseQueue: queue,
             runMigrations: runMigrations,
-            refreshOnInit: refreshOnInit
+            refreshOnInit: refreshOnInit,
+            chatWriter: chatWriter?(queue) ?? DaemonChatHistoryWriter(),
+            snapshotWriter: snapshotWriter?(queue) ?? DaemonProjectMemorySnapshotWriter(),
+            vectorSnapshotWriter: vectorSnapshotWriter?(queue) ?? DaemonVectorIndexSnapshotWriter()
         )
     }
     #endif
@@ -460,12 +466,20 @@ final class DataStoreCoordinator {
         databaseQueue: any DatabaseWriter,
         runMigrations: Bool = true,
         refreshOnInit: Bool = true,
-        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil
+        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil,
+        chatWriter: any ChatHistoryWriter = DaemonChatHistoryWriter(),
+        snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter(),
+        vectorSnapshotWriter: any VectorIndexSnapshotWriter = DaemonVectorIndexSnapshotWriter(),
+        memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter()
     ) throws {
         let actor = try DataStoreActor(
             databaseQueue: databaseQueue,
             runMigrations: runMigrations,
-            migrationBackupConfigurationBuilder: migrationBackupConfigurationBuilder
+            migrationBackupConfigurationBuilder: migrationBackupConfigurationBuilder,
+            chatWriter: chatWriter,
+            snapshotWriter: snapshotWriter,
+            vectorSnapshotWriter: vectorSnapshotWriter,
+            memoryAuthorityWriter: memoryAuthorityWriter
         )
         self.actor = actor
 

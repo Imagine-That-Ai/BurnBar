@@ -25,7 +25,7 @@ final class UsageMemoryInboxFilterTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        return (queue, ControlPlaneStore(dbQueue: queue))
+        return (queue, ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue)))
     }
 
     /// Mirrors `MemoryReviewInboxHost`'s closure wiring over the real store.

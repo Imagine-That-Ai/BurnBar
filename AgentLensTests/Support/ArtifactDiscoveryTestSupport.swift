@@ -23,7 +23,16 @@ final class StubArtifactDiscoverySettings: ArtifactDiscoverySettingsProviding {
 @MainActor
 func makeDiscoveryInMemoryStore() throws -> DataStore {
     let queue = try DatabaseQueue()
-    return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+    // Wave 2.1/2.1c: no live daemon in tests — chat and snapshot writes use
+    // the local doubles (pre-cutover semantics) instead of the default daemon
+    // writers.
+    return try DataStore(
+        databaseQueue: queue,
+        runMigrations: true,
+        refreshOnInit: false,
+        chatWriter: LocalChatHistoryWriter(dbQueue: queue),
+        snapshotWriter: LocalProjectMemorySnapshotWriter(dbQueue: queue)
+    )
 }
 
 func writeDiscoveryFixture(_ text: String, to url: URL) throws {

@@ -72,7 +72,7 @@ final class TeamMemorySyncTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         return PullFixture(
             queue: queue,
@@ -1185,7 +1185,7 @@ final class TeamMemorySyncTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let updatedAt = Date(timeIntervalSince1970: 1_700_008_000)
         for index in 0..<count {
             try await seedMirroredAgentMemory(
@@ -2289,7 +2289,7 @@ final class TeamMemorySyncTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let updatedAt = Date(timeIntervalSince1970: 1_700_009_000)
         try await seedMirroredAgentMemory(
             store: store,
@@ -2369,7 +2369,7 @@ final class TeamMemorySyncTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let updatedAt = Date(timeIntervalSince1970: 1_700_009_000)
         try await seedMirroredAgentMemory(
             store: store,

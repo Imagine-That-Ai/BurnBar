@@ -7,7 +7,7 @@ import OpenBurnBarCore
 // MARK: - PR-D3 headline END-TO-END memory-activation test
 //
 // Proves the whole loop is closed: a terminal chat commit enqueues an extraction job
-// THROUGH THE TRANSACTIONAL (atomic-outbox) BRANCH → the `MemoryExtractionEngine` drains
+// AFTER THE CHAT WRITE COMMITS → the `MemoryExtractionEngine` drains
 // it via a REAL `ChatTranscriptExtractor` over a stubbed local model → a secret-bearing
 // candidate is DROPPED by the G7 gate → a clean fact is stored QUARANTINED with the
 // worker-stamped scope and deterministic id → the human APPROVES it → `recallChatMemory-
@@ -16,8 +16,9 @@ import OpenBurnBarCore
 // This is the §4 "headline proof the loop is closed" from the integrated build plan. It
 // also nails the PR-D3 must-fixes that are otherwise only structural:
 //   #1 ONE shared `ControlPlaneStore` backs the service (enqueue) AND the engine (drain).
-//   #2 The enqueue takes the TRANSACTIONAL branch: it commits inside the same db write as
-//      the chat message (no second store, no post-write dual-write).
+//   #2 The enqueue fires after the chat write commits (Wave 2.1: the daemon owns
+//      the chat write, so cross-process atomicity is impossible; the idempotency
+//      key dedupes a re-save after a crash between the two).
 //   #3 Architectural guard: the engine's only durable-write path is the worker's
 //      preflight/quarantine; a clean fact lands `.quarantined`, NEVER `.approved`, even
 //      though the model proposed `.approved` — the worker overrode it.
@@ -47,21 +48,22 @@ final class MemoryActivationEndToEndTests: XCTestCase {
 
     // MARK: - The headline end-to-end proof
 
-    func test_endToEnd_transactionalEnqueue_engineDrains_secretDropped_factQuarantined_approved_recallResolvesCitation() async throws {
+    func test_endToEnd_writeThenEnqueue_engineDrains_secretDropped_factQuarantined_approved_recallResolvesCitation() async throws {
         // One queue → one DataStore → ONE shared ControlPlaneStore (must-fix #1).
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
-        let store = ControlPlaneStore(dbQueue: queue)
+        let dataStore = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            chatWriter: LocalChatHistoryWriter(dbQueue: queue)
+        )
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let settings = Self.makeSettingsWithExtractionEnabled()
 
-        // The service wired through the TRANSACTIONAL slot, sharing `store` with the engine.
+        // The service sharing `store` with the engine. Since Wave 2.1 the daemon
+        // owns the chat write, so `saveChatMessage` enqueues via the async API
+        // after the write commits (write-then-enqueue, ordered but not atomic).
+        // Must-fix #2.
         let service = OpenBurnBarMemoryService(store: store)
-        // `OpenBurnBarMemoryService` conforms to `TransactionalMemoryExtractionServing`
-        // at COMPILE TIME (since #602), so `saveChatMessage` selects the atomic enqueue
-        // branch, never the async fallback. This typed binding fails to compile if that
-        // conformance ever regresses; the atomic commit itself is proven below
-        // (`jobRows == 1` in the same write transaction as the chat row). Must-fix #2.
-        let _: any TransactionalMemoryExtractionServing = service
 
         // The engine over the SAME store. It builds a real extractor + LLM client; the HTTP
         // stub answers the OpenAI-compatible /chat/completions the local provider calls.
@@ -92,11 +94,11 @@ final class MemoryActivationEndToEndTests: XCTestCase {
         ]}
         """
 
-        // (1) ENQUEUE THROUGH THE TRANSACTIONAL BRANCH. We drive the production seam
+        // (1) WRITE THEN ENQUEUE. We drive the production seam
         // `ConversationStore.saveChatMessage(..., isTerminalAssistantCommit: true,
-        // memoryService: service, ...)`, which writes the chat row AND the extraction-outbox
-        // row in ONE transaction. This is the real atomic-outbox path, not a hand-rolled
-        // enqueue.
+        // memoryService: service, ...)`, which persists the chat row (via the
+        // injected local writer in tests, via the daemon in production) and then
+        // enqueues the extraction-outbox row. Ordered, not atomic.
         let assistant = ChatMessageRecord(
             id: terminalID,
             role: .assistant,
@@ -115,14 +117,14 @@ final class MemoryActivationEndToEndTests: XCTestCase {
             )
         )
 
-        // The chat row and the outbox row both landed in the same commit.
+        // The chat row landed, then the outbox row.
         let (chatRows, jobRows) = try await queue.read { db -> (Int, Int) in
             let chat = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM chat_messages WHERE id = ?", arguments: [terminalID]) ?? 0
             let jobs = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_extraction_jobs") ?? 0
             return (chat, jobs)
         }
         XCTAssertEqual(chatRows, 1, "terminal chat message persisted")
-        XCTAssertEqual(jobRows, 1, "extraction job enqueued atomically in the same transaction")
+        XCTAssertEqual(jobRows, 1, "extraction job enqueued after the chat write")
 
         // (2) ENGINE DRAINS. With both levers on, `runDrain` claims + processes the job via
         // the real extractor → stubbed model → G7 drop → worker provenance recompute.
@@ -198,8 +200,12 @@ final class MemoryActivationEndToEndTests: XCTestCase {
 
     func test_endToEnd_killSwitchOff_drainsNothing_andWritesNothing() async throws {
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
-        let store = ControlPlaneStore(dbQueue: queue)
+        let dataStore = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            chatWriter: LocalChatHistoryWriter(dbQueue: queue)
+        )
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         // Gate CLOSED via the EXTRACTION lever: the user toggle is off, so
         // `memoryExtractionEnabled` is false and the engine's `runDrain` short-circuits to
         // `.killSwitchOff` before any pump. Authority writes are forced ON here so this leg
@@ -234,11 +240,11 @@ final class MemoryActivationEndToEndTests: XCTestCase {
             )
         )
 
-        // The job still enqueues atomically (the enqueue is not gated — only processing is).
+        // The job still enqueues (the enqueue is not gated — only processing is).
         let jobRows = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_extraction_jobs") ?? 0
         }
-        XCTAssertEqual(jobRows, 1, "enqueue is independent of the kill switch (atomic outbox always fills)")
+        XCTAssertEqual(jobRows, 1, "enqueue is independent of the kill switch (outbox always fills)")
 
         // Drain with the gate OFF: returns the kill-switch reason, claims nothing, never
         // calls the model, and writes no memory.
@@ -261,8 +267,12 @@ final class MemoryActivationEndToEndTests: XCTestCase {
 
     func test_gateOpeningAfterJobEnqueued_launchesDrainForExistingBacklog() async throws {
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
-        let store = ControlPlaneStore(dbQueue: queue)
+        let dataStore = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            chatWriter: LocalChatHistoryWriter(dbQueue: queue)
+        )
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let settings = Self.makeIsolatedSettings()
         Self.configureLocalProvider(settings)
         settings.memoryAutomaticExtraction = true
@@ -329,8 +339,12 @@ final class MemoryActivationEndToEndTests: XCTestCase {
     // job is NOT silently marked succeeded as if it had written.
     func test_gateMatrix_extractionEnabled_explicitWritesOff_drainsButWritesNothing() async throws {
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
-        let store = ControlPlaneStore(dbQueue: queue)
+        let dataStore = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            chatWriter: LocalChatHistoryWriter(dbQueue: queue)
+        )
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
 
         // Extraction ENABLED (both G4 sub-levers on) — the LLM round-trip is permitted.
         let settings = Self.makeSettingsWithExtractionEnabled()
@@ -370,7 +384,7 @@ final class MemoryActivationEndToEndTests: XCTestCase {
             )
         )
 
-        // The outbox still fills atomically — enqueue is never gated, only processing is.
+        // The outbox still fills — enqueue is never gated, only processing is.
         let jobRows = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM memory_extraction_jobs") ?? 0
         }
@@ -413,8 +427,12 @@ final class MemoryActivationEndToEndTests: XCTestCase {
 
     func test_runDrainSchedulesFollowUpWhenBacklogExceedsPumpCeiling() async throws {
         let queue = try DatabaseQueue()
-        let dataStore = try DataStore(databaseQueue: queue, runMigrations: true)
-        let store = ControlPlaneStore(dbQueue: queue)
+        let dataStore = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            chatWriter: LocalChatHistoryWriter(dbQueue: queue)
+        )
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let settings = Self.makeSettingsWithExtractionEnabled()
         let service = OpenBurnBarMemoryService(store: store)
         let engine = MemoryExtractionEngine(

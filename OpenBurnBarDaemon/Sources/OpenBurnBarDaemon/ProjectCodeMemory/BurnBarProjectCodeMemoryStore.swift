@@ -35,6 +35,9 @@ enum BurnBarProjectCodeMemoryStoreError: Error, LocalizedError {
     case databaseSnapshotTooLarge(Int)
     case databaseSnapshotPermissions(String)
     case databaseSnapshotFailed(String)
+    case snapshotInvalidRequest(String)
+    case memoryAuthorityInvalidRequest(String)
+    case memoryAuthorityConflict(String)
     case sqlite(String)
 
     var errorDescription: String? {
@@ -61,6 +64,12 @@ enum BurnBarProjectCodeMemoryStoreError: Error, LocalizedError {
             return "Database snapshot permissions are unsafe: \(path)"
         case .databaseSnapshotFailed(let reason):
             return "Database snapshot operation failed: \(reason)"
+        case .snapshotInvalidRequest(let detail):
+            return "Invalid project memory snapshot request: \(detail)"
+        case .memoryAuthorityInvalidRequest(let detail):
+            return "Invalid memory authority request: \(detail)"
+        case .memoryAuthorityConflict(let detail):
+            return "Memory authority precondition failed: \(detail)"
         case .sqlite(let message):
             return message
         }
@@ -1269,18 +1278,19 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         let ts = Self.isoNow()
         let normalizedLabels = Array(Set(labels)).sorted()
         let labelsJSON = try encodeJSONString(normalizedLabels)
-        let payload = try Self.jsonData([
-            "schema": "openburnbar.memory_audit.v2",
-            "seq": nextSequence,
-            "ts": ts,
-            "actor": "daemon",
-            "action": action,
-            "domain": domain,
-            "projectID": projectID.map { $0 as Any } ?? NSNull(),
-            "subjectID": subjectID.map { $0 as Any } ?? NSNull(),
-            "labels": normalizedLabels,
-            "prevHash": prevHash ?? ""
-        ])
+        // Shared builder with the 2.1c-iii app lane: identical keys and
+        // encoding, so both lanes commit to identical bytes.
+        let payload = try Self.memoryAuditPayloadData(
+            seq: nextSequence,
+            ts: ts,
+            actor: "daemon",
+            action: action,
+            domain: domain,
+            projectID: projectID,
+            subjectID: subjectID,
+            labels: normalizedLabels,
+            prevHash: prevHash
+        )
         let hash = Self.sha256Hex(payload)
         try execute(
             """
@@ -1418,11 +1428,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
     private func codeEmbeddingVector(for text: String) -> [Float]? {
         guard embeddingProvider.isAvailable else { return nil }
         return embeddingProvider.embed(text)
-    }
-
-    private static func codeEmbeddingVectorStorageByteCount(_ vector: [Float]?) -> Int {
-        guard let vector else { return 0 }
-        return BurnBarCodeVectorCodec.base64EncodedByteCount(vectorDimension: vector.count)
     }
 
     private func deleteCodeArtifact(artifactID: String) throws {
@@ -1750,21 +1755,6 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 totalCandidateCount: rows.count
             )
         )
-    }
-
-    /// A short snippet windowed around the first query-token match, else the text head.
-    private static func codeSnippet(text: String, query: String) -> String {
-        let tokens = query.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
-        for token in tokens where token.isEmpty == false {
-            if let range = text.range(of: token, options: .caseInsensitive) {
-                let start = text.index(range.lowerBound, offsetBy: -80, limitedBy: text.startIndex) ?? text.startIndex
-                let end = text.index(range.upperBound, offsetBy: 160, limitedBy: text.endIndex) ?? text.endIndex
-                let prefix = start > text.startIndex ? "..." : ""
-                let suffix = end < text.endIndex ? "..." : ""
-                return prefix + String(text[start..<end]) + suffix
-            }
-        }
-        return String(text.prefix(240))
     }
 
     func contextSelection(

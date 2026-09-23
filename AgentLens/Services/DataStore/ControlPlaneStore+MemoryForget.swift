@@ -43,74 +43,54 @@ extension ControlPlaneStore {
             contentHash: contentHash,
             reason: reason
         )
-        try await dbQueue.write { db in
-            try Self.insertMemorySourceTombstone(
-                db: db,
-                id: id,
-                userID: userID,
-                threadLogicalID: threadLogicalID,
-                messageID: messageID,
-                contentHash: contentHash,
-                reason: reason,
-                now: now
-            )
-        }
+        // Wave 2.1c-iii: daemon-owned tables — commits through the writer seam.
+        _ = try await commitMemoryAuthorityOperationsChecked([
+            .recordSourceTombstone(BurnBarMemoryAuthoritySourceTombstone(
+                tombstone: Self.memoryAuthoritySourceTombstoneRow(
+                    id: id,
+                    userID: userID,
+                    threadLogicalID: threadLogicalID,
+                    messageID: messageID,
+                    contentHash: contentHash,
+                    reason: reason,
+                    createdAt: now
+                )
+            ))
+        ])
         return id
     }
 
     func reconcileMemorySourceTombstones(now: Date = Date()) async throws -> Int {
         let nowString = Self.iso8601String(now)
-        return try await dbQueue.write { db in
-            let rows = try Row.fetchAll(
-                db,
-                sql: """
-                SELECT DISTINCT m.id, m.project_id
-                FROM agent_memories m
-                JOIN memory_provenance p
-                  ON p.memory_id = m.id
-                JOIN memory_source_tombstones t
-                  ON t.thread_logical_id = p.thread_logical_id
-                 AND (t.message_id IS NULL OR t.message_id = p.message_id)
-                 AND (t.content_hash IS NULL OR t.content_hash = p.content_hash)
-                WHERE m.source_kind = ?
-                  AND m.valid_to IS NULL
-                """,
-                arguments: [MemorySourceKind.chat.rawValue]
-            )
-            var suppressed = 0
-            for row in rows {
-                guard let memoryID: String = row["id"],
-                      let projectID: String = row["project_id"] else {
-                    continue
-                }
-                try db.execute(
-                    sql: """
-                    UPDATE agent_memories
-                    SET valid_to = ?,
-                        updated_at = ?
-                    WHERE id = ?
-                      AND source_kind = ?
-                      AND valid_to IS NULL
-                    """,
-                    arguments: [now, now, memoryID, MemorySourceKind.chat.rawValue]
-                )
-                let auditLabels = [
-                    "memory_id:\(memoryID)",
-                    "reason:source_tombstone",
-                    "source_kind:\(MemorySourceKind.chat.rawValue)"
-                ]
-                try Self.insertMemoryAuditEvent(
-                    db: db,
-                    action: "memory.source_tombstone_suppressed",
-                    projectID: projectID,
-                    subjectID: memoryID,
-                    labels: auditLabels,
-                    nowString: nowString
-                )
-                suppressed += 1
-            }
-            return suppressed
+        // Wave 2.1c-iii: daemon-owned tables — matches pre-read locally,
+        // the suppress sweep commits through the writer seam.
+        let matches = try await memoryAuthorityReconcileCandidates()
+        var wireMatches: [BurnBarMemoryAuthorityReconcileMatch] = []
+        wireMatches.reserveCapacity(matches.count)
+        for match in matches {
+            let (labels, labelsJSON) = try Self.memoryAuthoritySortedLabels([
+                "memory_id:\(match.memoryID)",
+                "reason:source_tombstone",
+                "source_kind:\(MemorySourceKind.chat.rawValue)"
+            ])
+            wireMatches.append(BurnBarMemoryAuthorityReconcileMatch(
+                memoryID: match.memoryID,
+                projectID: match.projectID,
+                labels: labels,
+                labelsJSON: labelsJSON
+            ))
         }
+        guard wireMatches.isEmpty == false else { return 0 }
+        let response = try await commitMemoryAuthorityOperationsChecked([
+            .reconcileSuppressions(BurnBarMemoryAuthorityReconcile(
+                matches: wireMatches,
+                sourceKind: MemorySourceKind.chat.rawValue,
+                validToText: Self.memoryAuthorityTimestampText(now),
+                updatedAtText: Self.memoryAuthorityTimestampText(now),
+                timestampText: nowString
+            ))
+        ])
+        return response.results.first?.affectedRows ?? 0
     }
 
     /// The daemon writes mirrored rows with no `user_id`: it has no Firebase
@@ -119,16 +99,14 @@ extension ControlPlaneStore {
     /// by a different account is left alone and never replicated under this one.
     @discardableResult
     func claimUnownedAgentMemories(userID: String) async throws -> Int {
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: """
-                UPDATE agent_memories SET user_id = ?
-                WHERE source_kind = ? AND (user_id IS NULL OR user_id = '')
-                """,
-                arguments: [userID, MemorySourceKind.agent.rawValue]
-            )
-            return db.changesCount
-        }
+        // Wave 2.1c-iii: daemon-owned tables — commits through the writer seam.
+        let response = try await commitMemoryAuthorityOperationsChecked([
+            .claimUnowned(BurnBarMemoryAuthorityClaim(
+                userID: userID,
+                sourceKind: MemorySourceKind.agent.rawValue
+            ))
+        ])
+        return response.results.first?.affectedRows ?? 0
     }
 
     /// The daemon marks a forgotten mirrored memory `forgotten` in the shared
@@ -159,51 +137,35 @@ extension ControlPlaneStore {
     /// pull half (see docs/superpowers/plans/2026-09-03-memory-blind-sync.md).
     @discardableResult
     func enqueueTombstonesForUnsyncableAgentMemories(userID: String, now: Date = Date()) async throws -> Int {
+        // Legacy no-millis ISO quirk, verbatim: the enqueue path stamped
+        // `created_at` with a default `ISO8601DateFormatter`, and the daemon
+        // binds the carried string untouched.
         let timestamp = ISO8601DateFormatter().string(from: now)
-        return try await dbQueue.write { db in
-            let rows = try Row.fetchAll(
-                db,
-                sql: """
-                SELECT m.id AS id, b.engine_memory_id AS engine_memory_id
-                FROM agent_memories m
-                LEFT JOIN agent_memory_bodies b ON b.memory_id = m.id
-                WHERE m.source_kind = ? AND m.user_id = ?
-                  AND (
-                    m.review_status = ?
-                    OR (b.memory_id IS NOT NULL AND m.review_status != ?)
-                  )
-                """,
-                arguments: [
-                    MemorySourceKind.agent.rawValue,
-                    userID,
-                    MemoryReviewStatus.forgotten.rawValue,
-                    MemoryReviewStatus.approved.rawValue
-                ]
+        // Wave 2.1c-iii: daemon-owned tables — candidates pre-read locally,
+        // the enqueue commits through the writer seam.
+        let candidates = try await memoryAuthorityEnqueueCandidates(userID: userID)
+        // A mirrored memory has no chat citations, so the receipt carries no
+        // source hashes — only the opaque memory label and a coarse reason.
+        let tombstones = candidates.map { candidate in
+            Self.memoryAuthorityFactTombstoneRow(
+                id: Self.agentMemoryFactTombstoneID(
+                    memoryID: candidate.memoryID,
+                    engineMemoryID: candidate.engineMemoryID
+                ),
+                userID: userID,
+                memoryID: candidate.memoryID,
+                sourceRefsJSON: "[]",
+                reason: "user_delete",
+                createdAtText: timestamp,
+                overwriteOnConflict: false,
+                refreshSourceRefsOnConflict: false
             )
-            var enqueued = 0
-            for row in rows {
-                guard let memoryID: String = row["id"] else { continue }
-                let engineMemoryID: String? = row["engine_memory_id"]
-                // A mirrored memory has no chat citations, so the receipt carries no
-                // source hashes — only the opaque memory label and a coarse reason.
-                try db.execute(
-                    sql: """
-                    INSERT INTO memory_fact_tombstones (
-                        id, user_id, memory_id, source_refs_json, reason, created_at, replicated_at
-                    ) VALUES (?, ?, ?, '[]', 'user_delete', ?, NULL)
-                    ON CONFLICT(id) DO NOTHING
-                    """,
-                    arguments: [
-                        Self.agentMemoryFactTombstoneID(memoryID: memoryID, engineMemoryID: engineMemoryID),
-                        userID,
-                        memoryID,
-                        timestamp
-                    ]
-                )
-                enqueued += db.changesCount
-            }
-            return enqueued
         }
+        guard tombstones.isEmpty == false else { return 0 }
+        let response = try await commitMemoryAuthorityOperationsChecked([
+            .enqueueFactTombstones(BurnBarMemoryAuthorityEnqueueTombstones(tombstones: tombstones))
+        ])
+        return response.results.first?.affectedRows ?? 0
     }
 
     /// One tombstone per (memory, engine generation). A row that was never mapped
@@ -216,40 +178,10 @@ extension ControlPlaneStore {
         return memoryFactTombstoneID(memoryID: "\(memoryID)#engine:\(engineMemoryID)")
     }
 
-    /// The delete-time half of `enqueueTombstonesForUnsyncableAgentMemories`:
-    /// that helper discovers stale rows by joining `agent_memories`, so once the
-    /// row itself is deleted there is nothing left to join — the tombstone must
-    /// be written in the same transaction as the delete. Same shape as the
-    /// enqueue path writes: no source refs (a mirrored memory has no chat
-    /// citations) and the engine-keyed id.
-    static func insertAgentMemoryFactTombstone(
-        db: Database,
-        memoryID: MemoryID,
-        userID: String,
-        engineMemoryID: String?,
-        reason: String,
-        now: Date
-    ) throws {
-        try db.execute(
-            sql: """
-            INSERT INTO memory_fact_tombstones (
-                id, user_id, memory_id, source_refs_json, reason, created_at, replicated_at
-            ) VALUES (?, ?, ?, '[]', ?, ?, NULL)
-            ON CONFLICT(id) DO UPDATE SET
-                user_id = excluded.user_id,
-                reason = excluded.reason,
-                created_at = excluded.created_at,
-                replicated_at = NULL
-            """,
-            arguments: [
-                agentMemoryFactTombstoneID(memoryID: memoryID, engineMemoryID: engineMemoryID),
-                userID,
-                memoryID,
-                normalizedMemoryForgetReason(reason),
-                now
-            ]
-        )
-    }
+    // Wave 2.1c-iii: the delete-time agent tombstone is built by
+    // `memoryAuthorityAgentFactTombstone` and commits inside the delete
+    // operation's single daemon transaction — the tombstone still lands
+    // atomically with the delete it guards.
 
     /// Rows the cloud lane may replicate: member-authored chat memories and the
     /// memories the Memory MCP engine mirrored (`agent`). Repository knowledge
@@ -340,21 +272,25 @@ extension ControlPlaneStore {
     }
 
     func markMemorySourceTombstoneReplicated(id: String, now: Date = Date()) async throws {
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: "UPDATE memory_source_tombstones SET replicated_at = ? WHERE id = ?",
-                arguments: [now, id]
-            )
-        }
+        // Wave 2.1c-iii: daemon-owned tables — commits through the writer seam.
+        _ = try await commitMemoryAuthorityOperationsChecked([
+            .markTombstoneReplicated(BurnBarMemoryAuthorityMarkReplicated(
+                table: .source,
+                id: id,
+                replicatedAtText: Self.memoryAuthorityTimestampText(now)
+            ))
+        ])
     }
 
     func markMemoryFactTombstoneReplicated(id: String, now: Date = Date()) async throws {
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: "UPDATE memory_fact_tombstones SET replicated_at = ? WHERE id = ?",
-                arguments: [now, id]
-            )
-        }
+        // Wave 2.1c-iii: daemon-owned tables — commits through the writer seam.
+        _ = try await commitMemoryAuthorityOperationsChecked([
+            .markTombstoneReplicated(BurnBarMemoryAuthorityMarkReplicated(
+                table: .fact,
+                id: id,
+                replicatedAtText: Self.memoryAuthorityTimestampText(now)
+            ))
+        ])
     }
 
     func memoryHasTombstonedSource(id: MemoryID) async throws -> Bool {
@@ -433,79 +369,10 @@ extension ControlPlaneStore {
         }
     }
 
-    static func insertMemorySourceTombstone(
-        db: Database,
-        id: String,
-        userID: String?,
-        threadLogicalID: String,
-        messageID: String?,
-        contentHash: String?,
-        reason: String,
-        now: Date
-    ) throws {
-        try db.execute(
-            sql: """
-            INSERT INTO memory_source_tombstones (
-                id, user_id, thread_logical_id, message_id, content_hash, reason, created_at, replicated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
-            ON CONFLICT(id) DO UPDATE SET
-                user_id = excluded.user_id,
-                reason = excluded.reason,
-                created_at = excluded.created_at,
-                replicated_at = NULL
-            """,
-            arguments: [
-                id,
-                userID,
-                threadLogicalID,
-                messageID,
-                contentHash,
-                normalizedMemoryForgetReason(reason),
-                now
-            ]
-        )
-    }
-
-    static func insertMemoryFactTombstone(
-        db: Database,
-        memory: Memory,
-        reason: String,
-        now: Date
-    ) throws {
-        guard let userID = memory.scope.userID else { return }
-        let sourceRefs = memory.citations.map {
-            MemoryFactTombstoneSourceRef(
-                threadLogicalID: $0.threadLogicalID,
-                messageID: $0.messageID,
-                contentHash: $0.contentHash
-            )
-        }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let sourceRefsData = try encoder.encode(sourceRefs)
-        let sourceRefsJSON = String(decoding: sourceRefsData, as: UTF8.self)
-        try db.execute(
-            sql: """
-            INSERT INTO memory_fact_tombstones (
-                id, user_id, memory_id, source_refs_json, reason, created_at, replicated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, NULL)
-            ON CONFLICT(id) DO UPDATE SET
-                user_id = excluded.user_id,
-                source_refs_json = excluded.source_refs_json,
-                reason = excluded.reason,
-                created_at = excluded.created_at,
-                replicated_at = NULL
-            """,
-            arguments: [
-                memoryFactTombstoneID(memoryID: memory.id),
-                userID,
-                memory.id,
-                sourceRefsJSON,
-                normalizedMemoryForgetReason(reason),
-                now
-            ]
-        )
-    }
+    // Wave 2.1c-iii: tombstone inserts commit through the writer seam
+    // (`memoryAuthoritySourceTombstoneRow` /
+    // `memoryAuthorityChatFactTombstone` /
+    // `memoryAuthorityAgentFactTombstone`); the daemon owns the tables.
 
     private static func memorySourceTombstoneID(
         threadLogicalID: String,
@@ -591,7 +458,7 @@ extension ControlPlaneStore {
         )
     }
 
-    private static func normalizedMemoryForgetReason(_ reason: String) -> String {
+    static func normalizedMemoryForgetReason(_ reason: String) -> String {
         let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         switch trimmed {
         case "user_delete", "review_status_quarantined", "review_status_rejected", "clear_history", "gc_30d":

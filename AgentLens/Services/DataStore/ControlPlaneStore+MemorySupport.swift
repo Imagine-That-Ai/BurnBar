@@ -367,25 +367,16 @@ extension ControlPlaneStore {
     }
 
     static func memoryDedupWinnerID(
-        duplicateRows: [Row],
+        candidates: [MemoryAuthorityDedupCandidate],
         newID: MemoryID,
         newConfidence: Double,
         newReviewStatus: MemoryReviewStatus,
         newValidFrom: Date
     ) -> MemoryID {
-        var candidates: [(id: MemoryID, confidence: Double, reviewStatus: MemoryReviewStatus, validFrom: Date)] = duplicateRows.compactMap { row in
-            guard let id: String = row["id"],
-                  let confidence: Double = row["confidence"],
-                  let reviewStatusRaw: String = row["review_status"],
-                  let reviewStatus = MemoryReviewStatus(rawValue: reviewStatusRaw),
-                  let validFrom = OpenBurnBarDatabase.parseDateValue(row["valid_from"])
-            else {
-                return nil
-            }
-            return (id, confidence, reviewStatus, validFrom)
-        }
-        candidates.append((newID, newConfidence, newReviewStatus, newValidFrom))
-        return candidates.min { lhs, rhs in
+        var contenders: [(id: MemoryID, confidence: Double, reviewStatus: MemoryReviewStatus, validFrom: Date)] =
+            candidates.map { ($0.id, $0.confidence, $0.reviewStatus, $0.validFrom) }
+        contenders.append((newID, newConfidence, newReviewStatus, newValidFrom))
+        return contenders.min { lhs, rhs in
             let lhsRank = memoryReviewDedupRank(lhs.reviewStatus)
             let rhsRank = memoryReviewDedupRank(rhs.reviewStatus)
             if lhsRank != rhsRank { return lhsRank < rhsRank }
@@ -408,164 +399,9 @@ extension ControlPlaneStore {
         }
     }
 
-    static func mergeDuplicateChatMemories(
-        db: Database,
-        duplicateRows: [Row],
-        newID: MemoryID,
-        winnerID: MemoryID,
-        storageProjectID: String,
-        now: Date,
-        nowString: String
-    ) throws {
-        try mergeDuplicateMemories(
-            db: db,
-            duplicateRows: duplicateRows,
-            newID: newID,
-            winnerID: winnerID,
-            storageProjectID: storageProjectID,
-            sourceKinds: [.chat],
-            now: now,
-            nowString: nowString
-        )
-    }
-
-    /// Supersede exact-duplicate losers inside one partition. The audit
-    /// `source_kind` label joins the sorted raw values of `sourceKinds` — for
-    /// chat that is the shipped `chat` label byte-for-byte; a cross-kind usage
-    /// merge is labeled `agent_session,safari_ask` deterministically.
-    static func mergeDuplicateMemories(
-        db: Database,
-        duplicateRows: [Row],
-        newID: MemoryID,
-        winnerID: MemoryID,
-        storageProjectID: String,
-        sourceKinds: Set<MemorySourceKind>,
-        now: Date,
-        nowString: String
-    ) throws {
-        guard duplicateRows.isEmpty == false else { return }
-        let duplicateIDs: [MemoryID] = duplicateRows.compactMap { row in row["id"] }
-        let loserIDs = (duplicateIDs + [newID]).filter { $0 != winnerID }.uniqued()
-        guard loserIDs.isEmpty == false else { return }
-
-        let kindClause = memorySourceKindInClause(column: "source_kind", kinds: sourceKinds)
-        let auditSourceKindLabel = sourceKinds.map(\.rawValue).sorted().joined(separator: ",")
-        for loserID in loserIDs {
-            var arguments: [any DatabaseValueConvertible] = [now, winnerID, now, loserID]
-            arguments.append(contentsOf: kindClause.arguments)
-            try db.execute(
-                sql: """
-                UPDATE agent_memories
-                SET valid_to = COALESCE(valid_to, ?),
-                    superseded_by = ?,
-                    updated_at = ?
-                WHERE id = ?
-                  AND \(kindClause.sql)
-                """,
-                arguments: StatementArguments(arguments)
-            )
-            try copyMemoryProvenance(db: db, from: loserID, to: winnerID, now: now)
-            let auditLabels = [
-                "reason:duplicate_body_hash",
-                "source_kind:\(auditSourceKindLabel)",
-                "winner_id:\(winnerID)"
-            ]
-            try insertMemoryAuditEvent(
-                db: db,
-                action: "memory.supersede",
-                projectID: storageProjectID,
-                subjectID: loserID,
-                labels: auditLabels,
-                nowString: nowString
-            )
-        }
-
-        let mergeLabels = [
-            "merged_ids:\(loserIDs.joined(separator: ","))",
-            "reason:duplicate_body_hash",
-            "source_kind:\(auditSourceKindLabel)",
-            "winner_id:\(winnerID)"
-        ]
-        try insertMemoryAuditEvent(
-            db: db,
-            action: "memory.merge",
-            projectID: storageProjectID,
-            subjectID: winnerID,
-            labels: mergeLabels,
-            nowString: nowString
-        )
-    }
-
-    private static func copyMemoryProvenance(
-        db: Database,
-        from loserID: MemoryID,
-        to winnerID: MemoryID,
-        now: Date
-    ) throws {
-        guard loserID != winnerID else { return }
-        let rows = try Row.fetchAll(
-            db,
-            sql: """
-            SELECT *
-            FROM memory_provenance
-            WHERE memory_id = ?
-            ORDER BY authored_at ASC, occurrence ASC, id ASC
-            """,
-            arguments: [loserID]
-        )
-        for row in rows {
-            guard let sourceID: String = row["id"],
-                  let sourceKind: String = row["source_kind"],
-                  let threadLogicalID: String = row["thread_logical_id"],
-                  let role: String = row["role"],
-                  let authoredAt = OpenBurnBarDatabase.parseDateValue(row["authored_at"]),
-                  let contentHash: String = row["content_hash"],
-                  let occurrence: Int = row["occurrence"],
-                  let xdeviceHMAC: String = row["xdevice_hmac"],
-                  let citationState: String = row["citation_state"]
-            else {
-                continue
-            }
-            let messageID: String? = row["message_id"]
-            let existing = try Int.fetchOne(
-                db,
-                sql: """
-                SELECT COUNT(*)
-                FROM memory_provenance
-                WHERE memory_id = ?
-                  AND xdevice_hmac = ?
-                  AND occurrence = ?
-                """,
-                arguments: [winnerID, xdeviceHMAC, occurrence]
-            ) ?? 0
-            guard existing == 0 else { continue }
-
-            let copyID = "dedup-\(winnerID)-\(sha256Hex("\(loserID)|\(sourceID)"))"
-            try db.execute(
-                sql: """
-                INSERT INTO memory_provenance (
-                    id, memory_id, source_kind, thread_logical_id, message_id, role,
-                    authored_at, content_hash, occurrence, xdevice_hmac, citation_state, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO NOTHING
-                """,
-                arguments: [
-                    copyID,
-                    winnerID,
-                    sourceKind,
-                    threadLogicalID,
-                    messageID,
-                    role,
-                    authoredAt,
-                    contentHash,
-                    occurrence,
-                    xdeviceHMAC,
-                    citationState,
-                    now
-                ]
-            )
-        }
-    }
+    // Wave 2.1c-iii: the dedup merge (loser supersede, provenance copy,
+    // supersede/merge audits) moved to the daemon applier; the app plans it
+    // in `memoryAuthorityMergePlan` and commits through the writer seam.
 
     func appendMemoryAuditEvent(
         action: String,
@@ -576,16 +412,17 @@ extension ControlPlaneStore {
     ) async throws {
         let auditLabels = labels.map { "\($0.key):\($0.value)" }.sorted()
         let nowString = Self.iso8601String(now)
-        try await dbQueue.write { db in
-            try Self.insertMemoryAuditEvent(
-                db: db,
+        // Wave 2.1c-iii: daemon-owned tables — commits through the writer
+        // seam; the daemon assigns the chain fields from the live head.
+        _ = try await commitMemoryAuthorityOperationsChecked([
+            .appendAudit(try Self.memoryAuthorityAuditEvent(
                 action: action,
                 projectID: projectID,
                 subjectID: subjectID,
                 labels: auditLabels,
                 nowString: nowString
-            )
-        }
+            ))
+        ])
     }
 
     /// Emit a `memory.candidate_dropped` audit event for a G7-rejected extraction candidate.

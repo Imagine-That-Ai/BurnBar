@@ -60,7 +60,8 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
     }
     func testChatMethodsUseChatDomain() {
         for method in [
-            BurnBarRPCMethod.chatThreadList,
+            BurnBarRPCMethod.chatThreadCreate,
+            .chatThreadList,
             .chatThreadGet,
             .chatMessageAppend
         ] {

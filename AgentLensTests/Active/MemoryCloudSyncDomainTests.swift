@@ -18,7 +18,7 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_900)
         let scope = MemoryScope(userID: uid, appID: "cloud-app")
         _ = try await store.addChatMemoryAuthorityRecord(

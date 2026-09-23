@@ -15,7 +15,11 @@ extension ControlPlaneStore {
         }
     }
 
-    /// Transaction-scoped enqueue (shared INSERT) so the outbox row commits atomically with the chat write (G3/P1b).
+    /// Transaction-scoped enqueue (shared INSERT). Since Wave 2.1 the daemon owns
+    /// the chat write, so this no longer shares a transaction with it — the
+    /// async wrapper above commits the outbox row in its own write, after the
+    /// chat RPC succeeds. Idempotency-keyed, so a re-save after a crash
+    /// between the two collapses to one job.
     func enqueueMemoryExtraction(_ intent: ExtractionIntent, in db: Database, now: Date = Date()) throws -> String {
         let id = "memory-extraction-\(Self.sha256Hex(intent.idempotencyKey))"
         let scopeData = try JSONEncoder().encode(intent.scope)

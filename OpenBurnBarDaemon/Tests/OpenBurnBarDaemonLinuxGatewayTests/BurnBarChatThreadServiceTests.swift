@@ -204,6 +204,317 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
         XCTAssertEqual(loaded.messages.first?.attachments, [validAttachment()])
     }
 
+    func testCreateThreadIsIdempotentAndKeepsNewestUpdatedAt() async throws {
+        let service = try makeService()
+        let first = try await service.createThread(
+            .init(threadID: "thread-premint", createdAt: "2026-07-10T12:00:00Z")
+        )
+        XCTAssertEqual(first.threadID, "thread-premint")
+        XCTAssertTrue(first.created)
+        let retry = try await service.createThread(
+            .init(threadID: "thread-premint", createdAt: "2026-07-10T12:00:00Z")
+        )
+        XCTAssertFalse(retry.created)
+        let older = try await service.createThread(
+            .init(threadID: "thread-premint", createdAt: "2026-07-09T12:00:00Z")
+        )
+        XCTAssertFalse(older.created)
+
+        let fetched = try await service.getThread(.init(threadID: "thread-premint"))
+        XCTAssertEqual(fetched.thread?.id, "thread-premint")
+        XCTAssertEqual(fetched.messages, [])
+        XCTAssertEqual(fetched.thread?.updatedAt, "2026-07-10T12:00:00.000Z")
+    }
+
+    func testReplaceTrueReplacesStreamingPlaceholder() async throws {
+        let service = try makeService()
+        let evolved = [
+            BurnBarChatTranscriptPiece(id: "p1", kind: .text, value: "Final.", detail: nil),
+            BurnBarChatTranscriptPiece(id: "p2", kind: .toolResult, value: "out", detail: "d")
+        ]
+        let initial = try await service.appendMessage(
+            append(
+                threadID: "thread-stream",
+                messageID: "message-stream",
+                role: .assistant,
+                content: "…",
+                timestamp: "2026-07-10T12:00:00Z",
+                backendID: "claude",
+                transcriptPieces: [
+                    BurnBarChatTranscriptPiece(id: "p1", kind: .text, value: "…", detail: nil)
+                ],
+                replace: true
+            )
+        )
+        XCTAssertTrue(initial.inserted)
+        XCTAssertFalse(initial.replaced)
+
+        let final = try await service.appendMessage(
+            append(
+                threadID: "thread-stream",
+                messageID: "message-stream",
+                role: .assistant,
+                content: "Final.",
+                timestamp: "2026-07-10T12:00:00Z",
+                backendID: "claude",
+                transcriptPieces: evolved,
+                replace: true
+            )
+        )
+        XCTAssertFalse(final.inserted)
+        XCTAssertTrue(final.replaced)
+
+        let loaded = try await service.getThread(.init(threadID: "thread-stream"))
+        XCTAssertEqual(loaded.messages.map(\.content), ["Final."])
+        XCTAssertEqual(loaded.messages.first?.transcriptPieces, evolved)
+    }
+
+    func testTranscriptPieceChangeWithoutReplaceConflicts() async throws {
+        let service = try makeService()
+        _ = try await service.appendMessage(
+            append(
+                threadID: "thread-pieces",
+                messageID: "message-pieces",
+                role: .assistant,
+                content: "tools",
+                timestamp: "2026-07-10T12:00:00Z",
+                transcriptPieces: [
+                    BurnBarChatTranscriptPiece(id: "k1", kind: .text, value: "a")
+                ]
+            )
+        )
+        do {
+            _ = try await service.appendMessage(
+                append(
+                    threadID: "thread-pieces",
+                    messageID: "message-pieces",
+                    role: .assistant,
+                    content: "tools",
+                    timestamp: "2026-07-10T12:00:00Z",
+                    transcriptPieces: [
+                        BurnBarChatTranscriptPiece(id: "k1", kind: .toolResult, value: "a")
+                    ]
+                )
+            )
+            XCTFail("Evolved transcript pieces without replace must conflict")
+        } catch BurnBarChatThreadServiceError.conflict {
+            // Expected: the gateway default stays conflict-only.
+        }
+    }
+
+    func testAppAttachmentsJSONStoredVerbatimAndSurfacedAsForeign() async throws {
+        let databasePath = try makeDatabasePath()
+        let service = try BurnBarChatThreadService(databasePath: databasePath)
+        let blob = #"[{"id":"att-1","kind":"image","displayName":"shot.png"}]"#
+        let initial = try await service.appendMessage(
+            append(
+                threadID: "thread-blob",
+                messageID: "message-blob",
+                role: .assistant,
+                content: "See shot",
+                timestamp: "2026-07-10T12:00:00Z",
+                replace: true,
+                appAttachmentsJSON: blob
+            )
+        )
+        XCTAssertTrue(initial.inserted)
+        XCTAssertEqual(
+            try rawQuerySingle(
+                at: databasePath,
+                "SELECT attachmentsJSON FROM chat_messages WHERE id = 'message-blob'"
+            ),
+            blob
+        )
+        let loaded = try await service.getThread(.init(threadID: "thread-blob"))
+        XCTAssertNil(loaded.messages.first?.attachments)
+    }
+
+    func testAppAttachmentsJSONRejectsTypedMixBlankAndInvalid() async throws {
+        let service = try makeService()
+        await assertInvalidRequest {
+            _ = try await service.appendMessage(
+                self.append(
+                    threadID: "thread-blob",
+                    messageID: "message-mixed",
+                    role: .user,
+                    content: "mixed",
+                    timestamp: "2026-07-10T12:00:00Z",
+                    attachments: [self.validAttachment()],
+                    appAttachmentsJSON: #"[{"id":"att-1"}]"#
+                )
+            )
+        }
+        await assertInvalidRequest {
+            _ = try await service.appendMessage(
+                self.append(
+                    threadID: "thread-blob",
+                    messageID: "message-blank",
+                    role: .user,
+                    content: "blank",
+                    timestamp: "2026-07-10T12:00:00Z",
+                    appAttachmentsJSON: "  "
+                )
+            )
+        }
+        await assertInvalidRequest {
+            _ = try await service.appendMessage(
+                self.append(
+                    threadID: "thread-blob",
+                    messageID: "message-invalid",
+                    role: .user,
+                    content: "invalid",
+                    timestamp: "2026-07-10T12:00:00Z",
+                    appAttachmentsJSON: "not-json"
+                )
+            )
+        }
+    }
+
+    func testBlobOnlyChangeWithReplaceTrueUpdatesStoredBytes() async throws {
+        let databasePath = try makeDatabasePath()
+        let service = try BurnBarChatThreadService(databasePath: databasePath)
+        let firstBlob = #"[{"id":"att-1","displayName":"before.png"}]"#
+        let secondBlob = #"[{"id":"att-1","displayName":"after.png"}]"#
+        _ = try await service.appendMessage(
+            append(
+                threadID: "thread-blob-only",
+                messageID: "message-blob-only",
+                role: .assistant,
+                content: "Same content",
+                timestamp: "2026-07-10T12:00:00Z",
+                replace: true,
+                appAttachmentsJSON: firstBlob
+            )
+        )
+        // Same IDs, role, content, and timestamp — only the opaque blob
+        // evolved. Decoded equality cannot see it (foreign formats decode to
+        // nil), so the stored bytes decide.
+        let replaced = try await service.appendMessage(
+            append(
+                threadID: "thread-blob-only",
+                messageID: "message-blob-only",
+                role: .assistant,
+                content: "Same content",
+                timestamp: "2026-07-10T12:00:00Z",
+                replace: true,
+                appAttachmentsJSON: secondBlob
+            )
+        )
+        XCTAssertFalse(replaced.inserted)
+        XCTAssertTrue(replaced.replaced)
+        XCTAssertEqual(
+            try rawQuerySingle(
+                at: databasePath,
+                "SELECT attachmentsJSON FROM chat_messages WHERE id = 'message-blob-only'"
+            ),
+            secondBlob
+        )
+        let retry = try await service.appendMessage(
+            append(
+                threadID: "thread-blob-only",
+                messageID: "message-blob-only",
+                role: .assistant,
+                content: "Same content",
+                timestamp: "2026-07-10T12:00:00Z",
+                replace: true,
+                appAttachmentsJSON: secondBlob
+            )
+        )
+        XCTAssertFalse(retry.inserted)
+        XCTAssertFalse(retry.replaced)
+    }
+
+    func testTranscriptPiecesColumnIsAddedToOlderChatSchema() async throws {
+        let databasePath = try makeDatabasePath()
+        try rawExecute(at: databasePath, [
+            """
+            CREATE TABLE chat_messages (
+                id TEXT PRIMARY KEY,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp DATETIME NOT NULL,
+                cliUsed TEXT,
+                threadId TEXT NOT NULL,
+                attachmentsJSON TEXT
+            )
+            """,
+            """
+            CREATE TABLE chat_threads (
+                id TEXT PRIMARY KEY,
+                createdAt DATETIME NOT NULL,
+                updatedAt DATETIME NOT NULL
+            )
+            """
+        ])
+
+        let service = try BurnBarChatThreadService(databasePath: databasePath)
+        let pieces = [BurnBarChatTranscriptPiece(id: "k1", kind: .toolUse, value: "Read", detail: nil)]
+        _ = try await service.appendMessage(
+            append(
+                threadID: "thread-pieces-migrated",
+                messageID: "message-pieces-migrated",
+                role: .assistant,
+                content: "Pieces survive migration",
+                timestamp: "2026-07-10T12:00:00Z",
+                transcriptPieces: pieces
+            )
+        )
+
+        XCTAssertEqual(
+            try rawQuerySingle(
+                at: databasePath,
+                "SELECT COUNT(1) FROM pragma_table_info('chat_messages') WHERE name = 'transcriptPiecesJSON'"
+            ),
+            "1"
+        )
+        let loaded = try await service.getThread(.init(threadID: "thread-pieces-migrated"))
+        XCTAssertEqual(loaded.messages.first?.transcriptPieces, pieces)
+    }
+
+    func testChatThreadCreateRPCUsesTypedContractsAndUnavailableCode() async throws {
+        let service = try makeService()
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            chatThreadService: service
+        )
+        let createData = try await server.handleChatRPC(
+            method: .chatThreadCreate,
+            decoder: JSONDecoder(),
+            requestData: Data(
+                #"{"id":"create-1","method":"daemon.chat.thread.create","params":{"threadID":"thread-rpc","createdAt":"2026-07-10T12:00:00Z"}}"#.utf8
+            )
+        )
+        let createResponse = try JSONDecoder().decode(
+            BurnBarRPCResponseEnvelope<BurnBarChatThreadCreateResponse>.self,
+            from: createData
+        )
+        XCTAssertEqual(createResponse.result?.threadID, "thread-rpc")
+        XCTAssertEqual(createResponse.result?.created, true)
+
+        let unavailableServer = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            )
+        )
+        let unavailableData = try await unavailableServer.handleChatRPC(
+            method: .chatThreadCreate,
+            decoder: JSONDecoder(),
+            requestData: Data(
+                #"{"id":"create-2","method":"daemon.chat.thread.create","params":{"threadID":"thread-rpc","createdAt":"2026-07-10T12:00:00Z"}}"#.utf8
+            )
+        )
+        let unavailable = try JSONDecoder().decode(
+            BurnBarRPCResponseEnvelope<BurnBarChatThreadCreateResponse>.self,
+            from: unavailableData
+        )
+        XCTAssertNil(unavailable.result)
+        XCTAssertEqual(unavailable.error?.code, BurnBarRPCErrorCode.unavailable)
+    }
+
     func testCursorPaginationUsesMessageIDAsTieBreaker() async throws {
         let service = try makeService()
         let timestamp = "2026-07-10T12:00:00.000Z"
@@ -357,7 +668,8 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
 
     func testChatMethodsHaveDedicatedCapabilityAndSocketDomain() {
         for method in [
-            BurnBarRPCMethod.chatThreadList,
+            BurnBarRPCMethod.chatThreadCreate,
+            .chatThreadList,
             .chatThreadGet,
             .chatMessageAppend
         ] {
@@ -569,7 +881,10 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
         content: String,
         timestamp: String,
         backendID: String? = nil,
-        attachments: [BurnBarChatAttachmentMetadata]? = nil
+        attachments: [BurnBarChatAttachmentMetadata]? = nil,
+        transcriptPieces: [BurnBarChatTranscriptPiece]? = nil,
+        replace: Bool = false,
+        appAttachmentsJSON: String? = nil
     ) -> BurnBarChatMessageAppendRequest {
         BurnBarChatMessageAppendRequest(
             threadID: threadID,
@@ -578,7 +893,10 @@ final class BurnBarChatThreadServiceTests: XCTestCase {
             content: content,
             timestamp: timestamp,
             backendID: backendID,
-            attachments: attachments
+            attachments: attachments,
+            transcriptPieces: transcriptPieces,
+            replace: replace,
+            appAttachmentsJSON: appAttachmentsJSON
         )
     }
 

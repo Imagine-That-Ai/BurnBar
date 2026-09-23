@@ -17,7 +17,7 @@ final class InboxMemoryApprovalHandlerTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        store = ControlPlaneStore(dbQueue: queue)
+        store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         scope = MemoryScope(userID: "user-1", appID: "inbox-app")
         handler = InboxMemoryApprovalHandler(store: store, scope: scope)
     }

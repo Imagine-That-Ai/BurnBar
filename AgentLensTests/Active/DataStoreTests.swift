@@ -343,7 +343,13 @@ final class DataStoreTests: XCTestCase {
 
     func test_projectMemorySnapshot_roundTripsThroughControlPlaneStore() async throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        // Wave 2.1c: snapshots are daemon-owned; tests use the local double.
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            snapshotWriter: LocalProjectMemorySnapshotWriter(dbQueue: queue)
+        )
         let now = Date()
         let snapshot = ProjectMemorySnapshot(
             projectSlug: "apollo",
@@ -404,7 +410,13 @@ final class DataStoreTests: XCTestCase {
 
     func test_projectMemorySnapshot_deleteRemovesSnapshot() async throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        // Wave 2.1c: snapshots are daemon-owned; tests use the local double.
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            snapshotWriter: LocalProjectMemorySnapshotWriter(dbQueue: queue)
+        )
         let snapshot = ProjectMemorySnapshot(
             projectSlug: "remove-me",
             projectDisplayName: "Remove Me",
@@ -434,7 +446,13 @@ final class DataStoreTests: XCTestCase {
 
     func test_deleteAllIndexedConversationsClearsDerivedProjectMemorySnapshots() async throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        // Wave 2.1c: snapshots are daemon-owned; tests use the local double.
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            snapshotWriter: LocalProjectMemorySnapshotWriter(dbQueue: queue)
+        )
         let now = Date()
         let snapshot = ProjectMemorySnapshot(
             projectSlug: "privacy-reset",

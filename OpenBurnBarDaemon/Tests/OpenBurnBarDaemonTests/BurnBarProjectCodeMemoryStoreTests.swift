@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 import SQLite3
 @testable import OpenBurnBarDaemon
 import XCTest
@@ -503,6 +504,255 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let audit = try store.auditTrail(BurnBarProjectMemoryAuditTrailRequest(projectPath: fixture.project.path))
         XCTAssertTrue(audit.events.contains { $0.action == "memory.remember" })
         XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("snapshot section removed") })
+    }
+
+    func testSnapshotUpsertAppLaneStoresAppBytesVerbatim() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-app-lane-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        // Deliberately non-canonical JSON: odd spacing and key order. The
+        // daemon must store it byte-for-byte, never re-serialize it.
+        let snapshotJSON = #"{"b":2,  "a":[1,{"z":null}],"s":"héllo"}"#
+        let contentHash = String(repeating: "ab", count: 32)
+        let response = try store.snapshotUpsertAppLane(
+            BurnBarProjectMemorySnapshotUpsertRequest(
+                projectSlug: "apollo",
+                projectDisplayName: "Apollo",
+                snapshotJSON: snapshotJSON,
+                contentHash: contentHash,
+                sourceSessionCount: 7,
+                sourceConversationCount: 3,
+                generatedAt: "2026-07-10T12:00:00Z",
+                schemaVersion: 1,
+                updatedAt: "2026-07-11T08:30:05Z"
+            )
+        )
+        XCTAssertEqual(response.projectSlug, "apollo")
+        XCTAssertEqual(response.updatedAt, "2026-07-11T08:30:05.000Z")
+
+        let rows = try sqliteStrings(
+            database: fixture.database,
+            sql: "SELECT projectSlug || '|' || projectDisplayName || '|' || contentHash || '|' || sourceSessionCount || '|' || sourceConversationCount FROM project_memory_snapshots"
+        )
+        XCTAssertEqual(rows, ["apollo|Apollo|\(contentHash)|7|3"])
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT snapshotJSON FROM project_memory_snapshots WHERE projectSlug = 'apollo'"
+            ),
+            [snapshotJSON]
+        )
+        // GRDB `Date` text, exactly as the app's pre-cutover writes stored it —
+        // never the ISO wire form.
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT generatedAt || '|' || updatedAt FROM project_memory_snapshots WHERE projectSlug = 'apollo'"
+            ),
+            ["2026-07-10 12:00:00.000|2026-07-11 08:30:05.000"]
+        )
+    }
+
+    func testSnapshotUpsertAppLaneOverwritesExistingSlug() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-app-lane-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        let base = validSnapshotUpsertRequest()
+        _ = try store.snapshotUpsertAppLane(base)
+        _ = try store.snapshotUpsertAppLane(
+            BurnBarProjectMemorySnapshotUpsertRequest(
+                projectSlug: base.projectSlug,
+                projectDisplayName: "Apollo Renamed",
+                snapshotJSON: #"{"v":2}"#,
+                contentHash: String(repeating: "cd", count: 32),
+                sourceSessionCount: 9,
+                sourceConversationCount: 4,
+                generatedAt: "2026-07-12T00:00:00Z",
+                schemaVersion: 1,
+                updatedAt: "2026-07-12T00:00:01Z"
+            )
+        )
+        XCTAssertEqual(
+            try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM project_memory_snapshots"),
+            1
+        )
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT projectDisplayName || '|' || snapshotJSON FROM project_memory_snapshots"
+            ),
+            ["Apollo Renamed|{\"v\":2}"]
+        )
+    }
+
+    func testSnapshotUpsertAppLaneRejectsInvalidRequests() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-app-lane-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        let base = validSnapshotUpsertRequest()
+        let invalid: [BurnBarProjectMemorySnapshotUpsertRequest] = [
+            upsertRequest(base, projectSlug: ""),
+            upsertRequest(base, projectSlug: "  apollo  "),
+            upsertRequest(base, projectSlug: String(repeating: "s", count: 257)),
+            upsertRequest(base, projectSlug: "apol\u{07}lo"),
+            upsertRequest(base, projectDisplayName: "   "),
+            upsertRequest(base, projectDisplayName: String(repeating: "d", count: 513)),
+            upsertRequest(base, snapshotJSON: "   "),
+            upsertRequest(base, snapshotJSON: "not-json"),
+            upsertRequest(
+                base,
+                snapshotJSON: "\"\(String(repeating: "a", count: 1_048_576))\""
+            ),
+            upsertRequest(base, contentHash: "abc123"),
+            upsertRequest(base, contentHash: String(repeating: "zz", count: 32)),
+            upsertRequest(base, contentHash: String(repeating: "ab", count: 33)),
+            upsertRequest(base, sourceSessionCount: -1),
+            upsertRequest(base, sourceSessionCount: 10_000_001),
+            upsertRequest(base, sourceConversationCount: -2),
+            upsertRequest(base, generatedAt: "07/10/2026"),
+            upsertRequest(base, generatedAt: "1999-12-31T23:59:59Z"),
+            upsertRequest(base, updatedAt: "not-a-date"),
+            upsertRequest(base, updatedAt: "2101-01-01T00:00:00Z")
+        ]
+        for request in invalid {
+            assertSnapshotInvalid {
+                _ = try store.snapshotUpsertAppLane(request)
+            }
+        }
+        // schemaVersion is strict: only the version both sides know.
+        assertSnapshotInvalid {
+            _ = try store.snapshotUpsertAppLane(
+                BurnBarProjectMemorySnapshotUpsertRequest(
+                    projectSlug: base.projectSlug,
+                    projectDisplayName: base.projectDisplayName,
+                    snapshotJSON: base.snapshotJSON,
+                    contentHash: base.contentHash,
+                    sourceSessionCount: base.sourceSessionCount,
+                    sourceConversationCount: base.sourceConversationCount,
+                    generatedAt: base.generatedAt,
+                    schemaVersion: 2,
+                    updatedAt: base.updatedAt
+                )
+            )
+        }
+        XCTAssertEqual(
+            try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM project_memory_snapshots"),
+            0
+        )
+    }
+
+    func testSnapshotDeleteAppLaneRemovesOneSlug() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-app-lane-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        _ = try store.snapshotUpsertAppLane(validSnapshotUpsertRequest())
+        _ = try store.snapshotUpsertAppLane(upsertRequest(validSnapshotUpsertRequest(), projectSlug: "hermes"))
+
+        let deleted = try store.snapshotDeleteAppLane(
+            BurnBarProjectMemorySnapshotDeleteRequest(projectSlug: "apollo")
+        )
+        XCTAssertEqual(deleted.projectSlug, "apollo")
+        XCTAssertTrue(deleted.deleted)
+        let retry = try store.snapshotDeleteAppLane(
+            BurnBarProjectMemorySnapshotDeleteRequest(projectSlug: "apollo")
+        )
+        XCTAssertFalse(retry.deleted)
+        XCTAssertEqual(
+            try sqliteStrings(
+                database: fixture.database,
+                sql: "SELECT projectSlug FROM project_memory_snapshots ORDER BY projectSlug"
+            ),
+            ["hermes"]
+        )
+        assertSnapshotInvalid {
+            _ = try store.snapshotDeleteAppLane(BurnBarProjectMemorySnapshotDeleteRequest(projectSlug: " "))
+        }
+    }
+
+    func testSnapshotDeleteAllAppLaneRemovesEveryRow() throws {
+        let fixture = try makeFixture()
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "snapshot-app-lane-test"),
+            embeddingProvider: DisabledEmbeddingProvider()
+        )
+        _ = try store.snapshotUpsertAppLane(validSnapshotUpsertRequest())
+        // The delete-all serves the indexed-data wipe, which must not spare
+        // any row: the table is shared with the daemon lane (documented in
+        // ADR-005), so the wipe clears both lanes and reports the true count.
+        _ = try store.snapshotUpsertAppLane(upsertRequest(validSnapshotUpsertRequest(), projectSlug: "agent-apollo"))
+        let wiped = try store.snapshotDeleteAllAppLane()
+        XCTAssertEqual(wiped.deletedCount, 2)
+        XCTAssertEqual(
+            try sqliteInt(database: fixture.database, sql: "SELECT COUNT(*) FROM project_memory_snapshots"),
+            0
+        )
+        XCTAssertEqual(try store.snapshotDeleteAllAppLane().deletedCount, 0)
+    }
+
+    private func validSnapshotUpsertRequest() -> BurnBarProjectMemorySnapshotUpsertRequest {
+        BurnBarProjectMemorySnapshotUpsertRequest(
+            projectSlug: "apollo",
+            projectDisplayName: "Apollo",
+            snapshotJSON: #"{"schemaVersion":1}"#,
+            contentHash: String(repeating: "ab", count: 32),
+            sourceSessionCount: 7,
+            sourceConversationCount: 3,
+            generatedAt: "2026-07-10T12:00:00Z",
+            schemaVersion: 1,
+            updatedAt: "2026-07-11T08:30:05Z"
+        )
+    }
+
+    private func upsertRequest(
+        _ base: BurnBarProjectMemorySnapshotUpsertRequest,
+        projectSlug: String? = nil,
+        projectDisplayName: String? = nil,
+        snapshotJSON: String? = nil,
+        contentHash: String? = nil,
+        sourceSessionCount: Int? = nil,
+        sourceConversationCount: Int? = nil,
+        generatedAt: String? = nil,
+        updatedAt: String? = nil
+    ) -> BurnBarProjectMemorySnapshotUpsertRequest {
+        BurnBarProjectMemorySnapshotUpsertRequest(
+            projectSlug: projectSlug ?? base.projectSlug,
+            projectDisplayName: projectDisplayName ?? base.projectDisplayName,
+            snapshotJSON: snapshotJSON ?? base.snapshotJSON,
+            contentHash: contentHash ?? base.contentHash,
+            sourceSessionCount: sourceSessionCount ?? base.sourceSessionCount,
+            sourceConversationCount: sourceConversationCount ?? base.sourceConversationCount,
+            generatedAt: generatedAt ?? base.generatedAt,
+            schemaVersion: base.schemaVersion,
+            updatedAt: updatedAt ?? base.updatedAt
+        )
+    }
+
+    private func assertSnapshotInvalid(
+        _ work: () throws -> Void,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        do {
+            try work()
+            XCTFail("expected snapshotInvalidRequest", file: file, line: line)
+        } catch BurnBarProjectCodeMemoryStoreError.snapshotInvalidRequest {
+            // Expected: the request never reaches storage.
+        } catch {
+            XCTFail("wrong error for invalid snapshot request: \(error)", file: file, line: line)
+        }
     }
 
     func testMemoryIdentityKeepsIdenticalBodiesDistinctAcrossScopes() throws {
@@ -3062,12 +3312,13 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
     }
 
     /// The stale `DEFAULT 'approved'` that shipped before the fail-closed
-    /// default (review #2565-F3): `ALTER ADD COLUMN` sets a default once, and
-    /// `CREATE TABLE IF NOT EXISTS` never rewrites a schema, so a table
-    /// bootstrapped by an older daemon kept approving every insert that omitted
-    /// `review_status` — forever. Bootstrap now rebuilds the table when the
-    /// declared default is wrong.
-    func testBootstrapRepairsAStaleApprovedReviewStatusDefault() throws {
+    /// default (review #2565-F3) is repaired by the versioned Core migrator
+    /// (v68), not by the daemon: one-shot table rebuilds live in exactly one
+    /// place (ADR-005; 86d822c7fd removed the daemon's unversioned bootstrap
+    /// duplicate). Bootstrap leaves a stale declared default in place — and
+    /// rows still land fail-closed, because every daemon writer names
+    /// `review_status` explicitly.
+    func testBootstrapLeavesStaleReviewStatusDefaultForVersionedMigrator() throws {
         let fixture = try makeFixture()
         // The shape a stale install actually reaches bootstrap in: the table an
         // older daemon binary wrote with the wrong default, PLUS columns the
@@ -3107,17 +3358,19 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             databasePath: fixture.database.path,
             logger: BurnBarDaemonLogger(category: "review-default-repair-test")
         )
-        _ = store
 
+        // No rebuild: the stale declared default survives bootstrap untouched.
+        // (Fresh daemon-created databases declare `DEFAULT 'quarantined'` at
+        // `CREATE TABLE` time — pinned by MemoryReviewStatusDefaultParityTests.)
         XCTAssertEqual(
             try sqliteStrings(
                 database: fixture.database,
                 sql: "SELECT dflt_value FROM pragma_table_info('agent_memories') WHERE name = 'review_status'"
             ),
-            ["'quarantined'"],
-            "the rebuilt table carries the fail-closed default"
+            ["'approved'"],
+            "the daemon never rebuilds tables; the v68 migrator owns the one-shot repair"
         )
-        // Rows and later columns both survive the rebuild.
+        // No rewrite touched the existing row either.
         XCTAssertEqual(
             try sqliteStrings(
                 database: fixture.database,
@@ -3126,34 +3379,64 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             ["approved|member-1"],
             "the existing row — verdict and claimed owner alike — is preserved verbatim"
         )
+        // And rows still land fail-closed: the memory authority writer binds
+        // review_status explicitly, so the stale default never fires.
+        try store.memoryAuthorityTestCompleteSchema()
+        _ = try store.memoryAuthorityApplyAppLane(BurnBarMemoryAuthorityApplyRequest(
+            mutationID: "stale-default-probe",
+            actor: "app",
+            operations: [.remember(BurnBarMemoryAuthorityRemember(
+                snapshot: BurnBarMemoryAuthoritySnapshotRow(
+                    id: "snapshot-mem_explicit_status",
+                    memoryID: "mem_explicit_status",
+                    bodyRef: "memory_body_snapshots:snapshot-mem_explicit_status",
+                    snapshotJSON: #"{"schemaVersion":1}"#,
+                    bodyHash: String(repeating: "ab", count: 32),
+                    sourceKind: "chat",
+                    createdAtText: "2026-09-23 05:00:00.000",
+                    updatedAtText: "2026-09-23 05:00:00.000"
+                ),
+                memory: BurnBarMemoryAuthorityMemoryRow(
+                    id: "mem_explicit_status",
+                    projectID: "prj_fixture",
+                    kind: "fact",
+                    scopeText: "project",
+                    confidence: 0.9,
+                    bodyRef: "memory_body_snapshots:snapshot-mem_explicit_status",
+                    bodyRedacted: "memory_body_snapshots:snapshot-mem_explicit_status",
+                    tagsJSON: "[]",
+                    sourcePath: nil,
+                    validFromText: "2026-09-23 05:00:00.000",
+                    validToText: nil,
+                    supersededBy: nil,
+                    createdAtText: "2026-09-23 05:00:00.000",
+                    updatedAtText: "2026-09-23 05:00:00.000",
+                    sourceKind: "chat",
+                    reviewStatus: "quarantined",
+                    userID: "member-1",
+                    agentID: nil,
+                    runID: nil,
+                    appID: nil
+                ),
+                provenance: [],
+                audits: [BurnBarMemoryAuthorityAuditEvent(
+                    action: "memory.add",
+                    projectID: "prj_fixture",
+                    subjectID: "mem_explicit_status",
+                    labels: ["memory_id:mem_explicit_status", "source_kind:chat"],
+                    labelsJSON: #"["memory_id:mem_explicit_status","source_kind:chat"]"#,
+                    timestampText: "2026-09-23T05:00:00.000Z"
+                )],
+                merge: nil
+            ))]
+        ))
         XCTAssertEqual(
             try sqliteStrings(
                 database: fixture.database,
-                sql: "SELECT name FROM pragma_table_info('agent_memories') WHERE name IN ('user_id', 'source_kind') ORDER BY name"
-            ),
-            ["source_kind", "user_id"],
-            "and columns the rebuild did not write — the app's and the daemon's — are all still there"
-        )
-        // The point of the repair: an insert that names no review_status lands
-        // in review, never in production.
-        try sqliteExecute(
-            database: fixture.database,
-            sql: """
-            INSERT INTO agent_memories
-                (id, project_id, kind, scope, confidence, body_ref, body_redacted, tags_json,
-                 valid_from, created_at, updated_at)
-            VALUES
-                ('mem_no_status_insert', 'prj_fixture', 'fact', 'project', 0.9, 'ref', 'redacted', '[]',
-                 '2026-09-02T00:00:00Z', '2026-09-02T00:00:00Z', '2026-09-02T00:00:00Z')
-            """
-        )
-        XCTAssertEqual(
-            try sqliteStrings(
-                database: fixture.database,
-                sql: "SELECT review_status FROM agent_memories WHERE id = 'mem_no_status_insert'"
+                sql: "SELECT review_status FROM agent_memories WHERE id = 'mem_explicit_status'"
             ),
             ["quarantined"],
-            "an insert omitting the column lands in review — fail-closed, as the wire promises"
+            "daemon writers bind review_status explicitly — the stale default never fires"
         )
     }
 

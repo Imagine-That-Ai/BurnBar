@@ -32,7 +32,11 @@ actor DataStoreActor {
     init(
         databaseQueue: any DatabaseWriter,
         runMigrations: Bool = true,
-        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil
+        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil,
+        chatWriter: any ChatHistoryWriter = DaemonChatHistoryWriter(),
+        snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter(),
+        vectorSnapshotWriter: any VectorIndexSnapshotWriter = DaemonVectorIndexSnapshotWriter(),
+        memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter()
     ) throws {
         dbQueue = databaseQueue
         database = OpenBurnBarDatabase(
@@ -40,12 +44,20 @@ actor DataStoreActor {
             migrationBackupConfigurationBuilder: migrationBackupConfigurationBuilder
         )
         usageStore = UsageStore(dbQueue: databaseQueue)
-        conversationStore = ConversationStore(dbQueue: databaseQueue)
+        conversationStore = ConversationStore(
+            dbQueue: databaseQueue,
+            chatWriter: chatWriter,
+            snapshotWriter: snapshotWriter
+        )
         receiptStore = ReceiptStore(dbQueue: databaseQueue)
         searchIndexStore = SearchIndexStore(dbQueue: databaseQueue)
         artifactStore = ArtifactStore(dbQueue: databaseQueue)
-        projectionStore = ProjectionStore(dbQueue: databaseQueue)
-        controlPlaneStore = ControlPlaneStore(dbQueue: databaseQueue)
+        projectionStore = ProjectionStore(dbQueue: databaseQueue, vectorSnapshotWriter: vectorSnapshotWriter)
+        controlPlaneStore = ControlPlaneStore(
+            dbQueue: databaseQueue,
+            snapshotWriter: snapshotWriter,
+            memoryAuthorityWriter: memoryAuthorityWriter
+        )
         deviceStore = DeviceStore(dbQueue: databaseQueue)
         checkpointStore = ParserCheckpointStore(dbQueue: databaseQueue)
         remoteSyncWatermarkStore = RemoteSyncWatermarkStore(dbQueue: databaseQueue)

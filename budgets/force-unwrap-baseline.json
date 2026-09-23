@@ -1,11 +1,7 @@
 {
   "note": "Force-unwrap (!) site budget across AgentLens/, OpenBurnBarMobile/, OpenBurnBarCore/Sources/, OpenBurnBarDaemon/Sources/, OpenBurnBarKeyboard/, OpenBurnBarWidget/. Shrink-only: count may only decrease as sites are removed. Excludes try! and as! (governed by force_try / force_cast) and implicitly-unwrapped optional type declarations (governed by implicitly_unwrapped_optional). String interpolation expressions are counted (executable code). Regenerate via scripts/debt/check-force-unwrap-budget.sh --update.",
-  "total": 213,
+  "total": 212,
   "files": [
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarAssistantModels/AssistantRuntimeID.swift",
-      "count": 13
-    },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift",
       "count": 8
@@ -28,6 +24,10 @@
     },
     {
       "path": "AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSupport.swift",
+      "count": 5
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI+MemoryExport.swift",
       "count": 5
     },
     {
@@ -56,6 +56,10 @@
     },
     {
       "path": "AgentLens/Views/SessionLogs/SessionLogsView+Filtering.swift",
+      "count": 3
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarAssistantModels/AssistantRuntimeID.swift",
       "count": 3
     },
     {
@@ -127,7 +131,7 @@
       "count": 2
     },
     {
-      "path": "AgentLens/Views/Chat/Components/ChatEngineBackendStrip.swift",
+      "path": "AgentLens/Views/Chat/DashboardChatWorkspaceToolbar.swift",
       "count": 2
     },
     {
@@ -155,10 +159,6 @@
       "count": 2
     },
     {
-      "path": "AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift",
-      "count": 2
-    },
-    {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/main.swift",
       "count": 2
     },
@@ -176,6 +176,10 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarLinuxSecurity/OpenBurnBarLinuxSecurity.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarMemoryExport/MemoryExporter.swift",
       "count": 2
     },
     {
@@ -263,6 +267,10 @@
       "count": 1
     },
     {
+      "path": "AgentLens/Views/Settings/MemoryMCPWalkthroughView.swift",
+      "count": 1
+    },
+    {
       "path": "AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift",
       "count": 1
     },
@@ -320,6 +328,18 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarLogParsers/LogParser/ForgeDevParser.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarMemoryExport/MemoryExportBundleWriter.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarMemoryExport/MIFCanonicalJSON.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarMemoryExport/MIFVocabulary.swift",
       "count": 1
     },
     {
@@ -407,6 +427,10 @@
       "count": 1
     },
     {
+      "path": "OpenBurnBarMobile/Services/ChartStudio/TrendDigestCacheStore.swift",
+      "count": 1
+    },
+    {
       "path": "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
       "count": 1
     },
@@ -440,10 +464,6 @@
     },
     {
       "path": "OpenBurnBarMobile/Views/Hermes/HermesTabView+MessageBubble.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarMobile/Views/Pulse/TrendAtlasCard.swift",
       "count": 1
     },
     {

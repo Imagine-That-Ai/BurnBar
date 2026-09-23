@@ -10,11 +10,14 @@ import OpenBurnBarCore
 // the extraction-job queue, embedding refs, the chat-memory private helpers and nested
 // types, the Array.uniqued() helper, and the extraction worker/admission actors.
 //
-// Shared, single-sourced helpers (iso8601String, insertMemoryAuditEvent, auditLabelsJSON,
-// auditPayloadData, sha256Hex(_:Data)) intentionally remain in ControlPlaneStore.swift
-// because they are also called by ControlPlaneStore+MemoryForget.swift; Swift `internal`
-// access keeps them reachable across the split. Likewise, this file calls back into
-// +MemoryForget's `insertMemoryFactTombstone` / `memoryHasTombstonedSource` (both internal).
+// Shared, single-sourced helpers (iso8601String, auditLabelsJSON) intentionally
+// remain in ControlPlaneStore.swift because they are also called by
+// ControlPlaneStore+MemoryForget.swift and the 2.1c-iii authority lane;
+// Swift `internal` access keeps them reachable across the split. Likewise,
+// this file calls back into +MemoryForget's `memoryHasTombstonedSource`
+// (internal). Audit appends and tombstone inserts commit through the writer
+// seam (`ControlPlaneStore+MemoryAuthorityLane.swift`); the daemon assigns
+// the chain fields.
 
 extension ControlPlaneStore {
     // MARK: - Chat Memory Authority (flagged off)
@@ -24,6 +27,8 @@ extension ControlPlaneStore {
         case emptyBody
         case secretRejected(labels: [String])
         case agentForgetRequiresDaemon
+        case conflictRetryExhausted
+        case authorityResultMismatch
 
         var errorDescription: String? {
             switch self {
@@ -35,6 +40,10 @@ extension ControlPlaneStore {
                 "Chat memory body was rejected by the secret scanner: \(labels.joined(separator: ", "))."
             case .agentForgetRequiresDaemon:
                 "The daemon could not hard-forget this memory, so nothing was deleted."
+            case .conflictRetryExhausted:
+                "The memory changed under this write too many times; nothing was applied."
+            case .authorityResultMismatch:
+                "The daemon's authority response did not match the request; nothing was applied."
             }
         }
     }
@@ -182,132 +191,86 @@ extension ControlPlaneStore {
             "source_kind:\(sourceKind.rawValue)"
         ].sorted()
 
-        let dedupState = try await dbQueue.write { db -> (validTo: Date?, supersededBy: MemoryID?) in
-            let duplicateRows = try Self.memoryDuplicateCandidates(
-                db: db,
-                bodyHash: bodyHash,
-                storageProjectID: storageProjectID,
-                kind: request.kind,
-                scope: request.scope,
-                excludingID: id,
-                sourceKinds: dedupSourceKinds
+        // Wave 2.1c-iii: daemon-owned tables — the decision half (dedup
+        // election, merge plan) runs over local pre-reads and the finalized
+        // write set commits through the writer seam. The daemon applies it
+        // atomically and assigns only the audit chain fields.
+        let duplicates = try await memoryAuthorityDuplicates(
+            bodyHash: bodyHash,
+            storageProjectID: storageProjectID,
+            kind: request.kind,
+            scope: request.scope,
+            excludingID: id,
+            sourceKinds: dedupSourceKinds
+        )
+        let winnerID = Self.memoryDedupWinnerID(
+            candidates: duplicates.candidates,
+            newID: id,
+            newConfidence: request.confidence,
+            newReviewStatus: request.reviewStatus,
+            newValidFrom: now
+        )
+        let newSupersededBy = winnerID == id ? nil : winnerID
+        let newValidTo = newSupersededBy == nil ? nil : now
+        let snapshot = Self.memoryAuthoritySnapshotRow(
+            id: snapshotSlug,
+            memoryID: id,
+            bodyRef: bodyRef,
+            snapshotJSON: snapshotJSON,
+            bodyHash: bodyHash,
+            sourceKind: sourceKind,
+            createdAt: now,
+            updatedAt: now
+        )
+        // G1 at-rest: BOTH `body_ref` and `body_redacted` store the SEALED REFERENCE
+        // (`bodyRef` = "memory_body_snapshots:<slug>"), never plaintext and never a
+        // redacted body — the column name `body_redacted` is legacy and is a misnomer
+        // here. The only plaintext fact body lives in `memory_body_snapshots.snapshot_json`
+        // inside the SQLCipher-encrypted database, opened transiently via `openChatMemoryBody`.
+        let memory = Self.memoryAuthorityMemoryRow(
+            id: id,
+            request: request,
+            sourceKind: sourceKind,
+            storageProjectID: storageProjectID,
+            bodyRef: bodyRef,
+            now: now,
+            validTo: newValidTo,
+            supersededBy: newSupersededBy
+        )
+        let provenance = citations.map { citation in
+            Self.memoryAuthorityProvenanceRow(
+                id: Self.memoryProvenanceID(memoryID: id, citationID: citation.id),
+                memoryID: id,
+                sourceKind: Self.memoryProvenanceSourceKind(for: sourceKind),
+                citation: citation,
+                createdAt: now
             )
-            let winnerID = Self.memoryDedupWinnerID(
-                duplicateRows: duplicateRows,
-                newID: id,
-                newConfidence: request.confidence,
-                newReviewStatus: request.reviewStatus,
-                newValidFrom: now
-            )
-            let newSupersededBy = winnerID == id ? nil : winnerID
-            let newValidTo = newSupersededBy == nil ? nil : now
-            try db.execute(
-                sql: """
-                INSERT INTO memory_body_snapshots (
-                    id, memory_id, body_ref, snapshot_json, body_hash, source_kind, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(memory_id) DO UPDATE SET
-                    body_ref = excluded.body_ref,
-                    snapshot_json = excluded.snapshot_json,
-                    body_hash = excluded.body_hash,
-                    source_kind = excluded.source_kind,
-                    updated_at = excluded.updated_at
-                """,
-                arguments: [
-                    snapshotSlug,
-                    id,
-                    bodyRef,
-                    snapshotJSON,
-                    bodyHash,
-                    sourceKind.rawValue,
-                    now,
-                    now
-                ]
-            )
-            // G1 at-rest: BOTH `body_ref` and `body_redacted` store the SEALED REFERENCE
-            // (`bodyRef` = "memory_body_snapshots:<slug>"), never plaintext and never a
-            // redacted body — the column name `body_redacted` is legacy and is a misnomer
-            // here. The only plaintext fact body lives in `memory_body_snapshots.snapshot_json`
-            // inside the SQLCipher-encrypted database, opened transiently via `openChatMemoryBody`.
-            try db.execute(
-                sql: """
-                INSERT INTO agent_memories (
-                    id, project_id, kind, scope, confidence, body_ref, body_redacted,
-                    tags_json, source_path, valid_from, valid_to, superseded_by, created_at, updated_at,
-                    source_kind, review_status, user_id, agent_id, run_id, app_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO NOTHING
-                """,
-                arguments: [
-                    id,
-                    storageProjectID,
-                    request.kind.rawValue,
-                    // Legacy v50 `scope` text column: chat rows shipped as the
-                    // literal "chat"; usage rows carry their raw source kind.
-                    sourceKind == .chat ? "chat" : sourceKind.rawValue,
-                    request.confidence,
-                    bodyRef,
-                    bodyRef,
-                    "[]",
-                    nil,
-                    now,
-                    newValidTo,
-                    newSupersededBy,
-                    now,
-                    now,
-                    sourceKind.rawValue,
-                    request.reviewStatus.rawValue,
-                    request.scope.userID,
-                    request.scope.agentID,
-                    request.scope.runID,
-                    request.scope.appID
-                ]
-            )
-            for citation in citations {
-                try db.execute(
-                    sql: """
-                    INSERT INTO memory_provenance (
-                        id, memory_id, source_kind, thread_logical_id, message_id, role,
-                        authored_at, content_hash, occurrence, xdevice_hmac, citation_state, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO NOTHING
-                    """,
-                    arguments: [
-                        Self.memoryProvenanceID(memoryID: id, citationID: citation.id),
-                        id,
-                        Self.memoryProvenanceSourceKind(for: sourceKind).rawValue,
-                        citation.threadLogicalID,
-                        citation.messageID,
-                        citation.role,
-                        citation.authoredAt,
-                        citation.contentHash,
-                        citation.occurrence,
-                        citation.crossDeviceHMAC,
-                        citation.citationState.rawValue,
-                        now
-                    ]
-                )
-            }
-            try Self.insertMemoryAuditEvent(
-                db: db,
-                action: "memory.add",
-                projectID: storageProjectID,
-                subjectID: id,
-                labels: auditLabels,
-                nowString: nowString
-            )
-            try Self.mergeDuplicateMemories(
-                db: db,
-                duplicateRows: duplicateRows,
-                newID: id,
-                winnerID: winnerID,
-                storageProjectID: storageProjectID,
-                sourceKinds: dedupSourceKinds,
-                now: now,
-                nowString: nowString
-            )
-            return (newValidTo, newSupersededBy)
         }
+        let addAudit = try Self.memoryAuthorityAuditEvent(
+            action: "memory.add",
+            projectID: storageProjectID,
+            subjectID: id,
+            labels: auditLabels,
+            nowString: nowString
+        )
+        let merge = try await memoryAuthorityMergePlan(
+            duplicateIDs: duplicates.ids,
+            newID: id,
+            winnerID: winnerID,
+            storageProjectID: storageProjectID,
+            sourceKinds: dedupSourceKinds,
+            now: now,
+            nowString: nowString
+        )
+        _ = try await commitMemoryAuthorityOperationsChecked([
+            .remember(BurnBarMemoryAuthorityRemember(
+                snapshot: snapshot,
+                memory: memory,
+                provenance: provenance,
+                audits: [addAudit],
+                merge: merge
+            ))
+        ])
 
         return Memory(
             id: id,
@@ -319,8 +282,8 @@ extension ControlPlaneStore {
             reviewStatus: request.reviewStatus,
             citations: citations,
             validFrom: now,
-            validTo: dedupState.validTo,
-            supersededBy: dedupState.supersededBy,
+            validTo: newValidTo,
+            supersededBy: newSupersededBy,
             createdAt: now,
             updatedAt: now
         )

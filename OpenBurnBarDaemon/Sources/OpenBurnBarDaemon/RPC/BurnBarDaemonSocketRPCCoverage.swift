@@ -70,7 +70,8 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let chat: Set<BurnBarRPCMethod> = [
         .chatThreadList,
         .chatThreadGet,
-        .chatMessageAppend
+        .chatMessageAppend,
+        .chatThreadCreate
     ]
 
     static let observability: Set<BurnBarRPCMethod> = [
@@ -185,7 +186,8 @@ enum BurnBarDaemonSocketRPCCoverage {
 
     static let search: Set<BurnBarRPCMethod> = [
         .searchQuery,
-        .searchSQL
+        .searchSQL,
+        .searchVectorSnapshotUpsert
     ]
 
     static let memory: Set<BurnBarRPCMethod> = [
@@ -197,7 +199,11 @@ enum BurnBarDaemonSocketRPCCoverage {
         .memoryAnalytics,
         .memoryModelPolicy,
         .memorySyncInboxList,
-        .memorySyncInboxAck
+        .memorySyncInboxAck,
+        .memorySnapshotUpsert,
+        .memorySnapshotDelete,
+        .memorySnapshotDeleteAll,
+        .memoryAuthorityApply
     ]
 
     static let code: Set<BurnBarRPCMethod> = [

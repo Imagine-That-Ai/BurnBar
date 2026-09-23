@@ -70,8 +70,43 @@ extension BurnBarDaemonServer {
                     message: error.localizedDescription
                 )
             }
+        case .searchVectorSnapshotUpsert:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarVectorIndexSnapshotUpsertRequest>.self,
+                from: requestData
+            )
+            guard let indexedSearch else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message:
+                        "OpenBurnBar indexed search is not available. Ensure OPENBURNBAR_INDEX_DATABASE_PATH points to your OpenBurnBar database and restart the daemon."
+                )
+            }
+            do {
+                let result = try indexedSearch.vectorSnapshotUpsertAppLane(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            } catch {
+                return vectorSnapshotErrorResponse(id: typedRequest.id, error: error)
+            }
         default:
             preconditionFailure("Unhandled search RPC method: \(method.rawValue)")
         }
+    }
+
+    /// Error mapping for the vector-snapshot app lane only: validation
+    /// failures are the caller's fault (`invalidParams`, matching the chat
+    /// and memory cutover lanes), never an `internalError`. The older search
+    /// cases keep their existing mapping untouched.
+    private func vectorSnapshotErrorResponse(id: String, error: Error) -> Data {
+        if case BurnBarIndexedSearchService.VectorSnapshotAppLaneError.invalidRequest = error {
+            return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.invalidParams, message: error.localizedDescription)
+        }
+        return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
     }
 }

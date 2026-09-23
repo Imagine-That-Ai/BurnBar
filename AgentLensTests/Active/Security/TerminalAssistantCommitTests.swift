@@ -19,7 +19,12 @@ final class TerminalAssistantCommitTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeInMemoryStore() throws -> DataStoreCoordinator {
-        try DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: true)
+        let queue = try DatabaseQueue()
+        return try DataStoreCoordinator(
+            databaseQueue: queue,
+            runMigrations: true,
+            chatWriter: LocalChatHistoryWriter(dbQueue: queue)
+        )
     }
 
     private func memoryCount(in fake: FakeMemoryService) async throws -> Int {
@@ -129,9 +134,18 @@ final class TerminalAssistantCommitTests: XCTestCase {
         XCTAssertEqual(total, 0)
     }
 
-    func testTransactionalMemoryServiceEnqueuesInsideChatWrite() async throws {
-        let store = try makeInMemoryStore()
-        let memory = TransactionalMemoryService()
+    func testEnqueueObservesPersistedChatRow() async throws {
+        // Wave 2.1: the atomic in-transaction enqueue is gone with the local
+        // write (the daemon persists the row over RPC). The surviving G3 proof
+        // is ordering — the enqueue fires after the write commits, so the
+        // enqueued intent always names a persisted row.
+        let queue = try DatabaseQueue()
+        let store = try DataStoreCoordinator(
+            databaseQueue: queue,
+            runMigrations: true,
+            chatWriter: LocalChatHistoryWriter(dbQueue: queue)
+        )
+        let memory = RecordingMemoryService(dbQueue: queue)
         let assistant = makeAssistant()
 
         try await store.saveChatMessage(
@@ -142,9 +156,33 @@ final class TerminalAssistantCommitTests: XCTestCase {
             extractionContext: makeContext()
         )
 
-        XCTAssertEqual(memory.transactionalIntents.map(\.messageID), [assistant.id])
-        XCTAssertEqual(memory.chatRowsObservedInTransaction, [1], "The extraction enqueue must see the committed chat row inside the same write transaction.")
-        XCTAssertFalse(memory.asyncFallbackCalled, "A transactional memory service must not also receive the post-commit async fallback.")
+        XCTAssertEqual(memory.enqueuedIntents.map(\.messageID), [assistant.id])
+        XCTAssertEqual(memory.chatRowsObservedAtEnqueue, [1], "The extraction enqueue must fire after the chat write commits, naming a persisted row.")
+    }
+
+    func testFailedChatWriteEnqueuesNothing() async throws {
+        // A failed write (daemon unreachable in production) must not enqueue:
+        // the intent would name a row that was never persisted.
+        let queue = try DatabaseQueue()
+        let store = try DataStoreCoordinator(
+            databaseQueue: queue,
+            runMigrations: true,
+            chatWriter: ThrowingChatHistoryWriter()
+        )
+        let memory = RecordingMemoryService(dbQueue: queue)
+
+        do {
+            try await store.saveChatMessage(
+                makeAssistant(),
+                threadID: "thread-1",
+                isTerminalAssistantCommit: true,
+                memoryService: memory,
+                extractionContext: makeContext()
+            )
+            XCTFail("A throwing writer must propagate the write failure.")
+        } catch is ThrowingChatHistoryWriter.Boom {
+        }
+        XCTAssertTrue(memory.enqueuedIntents.isEmpty, "No enqueue may fire for a chat write that failed.")
     }
 
     // MARK: - Idempotency key (deterministic, backend dedup surface)
@@ -260,19 +298,12 @@ final class TerminalAssistantCommitTests: XCTestCase {
         XCTAssertEqual(ctx.threadLogicalID, "thread-xyz")
         XCTAssertEqual(ctx.promptVersion, ChatSessionController.memoryPromptVersion)
     }
-    // MARK: - Production memory service uses the atomic transactional enqueue (audit regression, G3/P1b)
+    // MARK: - Production memory service enqueues via the async API (Wave 2.1)
 
-    func testRealMemoryServiceUsesAtomicTransactionalEnqueue() async throws {
+    func testRealMemoryServiceEnqueuesExactlyOneIdempotencyKeyedJob() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStoreCoordinator(databaseQueue: queue, runMigrations: true)
-        let service = OpenBurnBarMemoryService(store: ControlPlaneStore(dbQueue: queue))
-
-        // Regression guard: the production service MUST take the atomic in-transaction path
-        // (the chokepoint downcasts to this protocol), not the post-commit async fallback.
-        let tx = try XCTUnwrap(
-            service as? any TransactionalMemoryExtractionServing,
-            "OpenBurnBarMemoryService must enqueue extraction atomically with the chat write (G3/P1b)"
-        )
+        let service = OpenBurnBarMemoryService(store: ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue)))
 
         let intent = ExtractionIntent(
             threadID: "t1",
@@ -283,61 +314,50 @@ final class TerminalAssistantCommitTests: XCTestCase {
             idempotencyKey: MemoryExtraction.idempotencyKey(threadLogicalID: "t1", messageID: "m1", promptVersion: "v1")
         )
 
-        // Atomicity: a write that throws after enqueue leaves NO job (rolled back with the chat write).
-        struct Boom: Error {}
-        do {
-            try await queue.write { db in
-                try tx.enqueueExtraction(intent, in: db)
-                throw Boom()
-            }
-            XCTFail("expected the write to throw")
-        } catch is Boom {}
-        let afterRollback = try await queue.read { db in
+        // The chokepoint calls the async API after the chat RPC succeeds; a
+        // re-save after a crash between the two collapses to one job.
+        try await service.enqueueExtraction(intent)
+        try await service.enqueueExtraction(intent)
+        let jobCount = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(1) FROM memory_extraction_jobs") ?? -1
         }
-        XCTAssertEqual(afterRollback, 0, "A rolled-back transaction must persist no extraction job.")
-
-        // Commit path: a successful write persists exactly one job (idempotency-keyed).
-        try await queue.write { db in try tx.enqueueExtraction(intent, in: db) }
-        let afterCommit = try await queue.read { db in
-            try Int.fetchOne(db, sql: "SELECT COUNT(1) FROM memory_extraction_jobs") ?? -1
-        }
-        XCTAssertEqual(afterCommit, 1, "A committed transaction must persist exactly one extraction job.")
+        XCTAssertEqual(jobCount, 1, "Repeat enqueues under one idempotency key must collapse to one job.")
     }
 }
 
-private final class TransactionalMemoryService: TransactionalMemoryExtractionServing, @unchecked Sendable {
+/// Wave 2.1 replacement for the old transactional fake: records async enqueues
+/// and reads back the chat row at enqueue time, proving the enqueue fires
+/// after the write commits.
+private final class RecordingMemoryService: MemoryServing, @unchecked Sendable {
     private let lock = NSLock()
-    private var _transactionalIntents: [ExtractionIntent] = []
-    private var _chatRowsObservedInTransaction: [Int] = []
-    private var _asyncFallbackCalled = false
+    private let dbQueue: any DatabaseWriter
+    private var _enqueuedIntents: [ExtractionIntent] = []
+    private var _chatRowsObservedAtEnqueue: [Int] = []
 
-    var transactionalIntents: [ExtractionIntent] {
-        lock.withLock { _transactionalIntents }
+    init(dbQueue: any DatabaseWriter) {
+        self.dbQueue = dbQueue
     }
 
-    var chatRowsObservedInTransaction: [Int] {
-        lock.withLock { _chatRowsObservedInTransaction }
+    var enqueuedIntents: [ExtractionIntent] {
+        lock.withLock { _enqueuedIntents }
     }
 
-    var asyncFallbackCalled: Bool {
-        lock.withLock { _asyncFallbackCalled }
-    }
-
-    func enqueueExtraction(_ intent: ExtractionIntent, in db: Database) throws {
-        let rowCount = try Int.fetchOne(
-            db,
-            sql: "SELECT COUNT(1) FROM chat_messages WHERE id = ?",
-            arguments: [intent.messageID]
-        ) ?? 0
-        lock.withLock {
-            _transactionalIntents.append(intent)
-            _chatRowsObservedInTransaction.append(rowCount)
-        }
+    var chatRowsObservedAtEnqueue: [Int] {
+        lock.withLock { _chatRowsObservedAtEnqueue }
     }
 
     func enqueueExtraction(_ intent: ExtractionIntent) async throws {
-        lock.withLock { _asyncFallbackCalled = true }
+        let rowCount = try await dbQueue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(1) FROM chat_messages WHERE id = ?",
+                arguments: [intent.messageID]
+            ) ?? 0
+        }
+        lock.withLock {
+            _enqueuedIntents.append(intent)
+            _chatRowsObservedAtEnqueue.append(rowCount)
+        }
     }
 
     func add(_ request: MemoryAddRequest) async throws -> MemoryEventID { "evt_unused_add" }

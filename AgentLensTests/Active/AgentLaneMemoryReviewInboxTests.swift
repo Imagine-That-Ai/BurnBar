@@ -171,7 +171,8 @@ final class AgentLaneMemoryReviewInboxTests: XCTestCase {
             },
             forgetAgentMemory: { memoryID, projectPath in
                 try forgetter.forget(memoryID, projectPath)
-            }
+            },
+            memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue)
         )
         return (queue, store)
     }

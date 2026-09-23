@@ -15,7 +15,7 @@ final class UsageMemorySourceKindTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        return (queue, ControlPlaneStore(dbQueue: queue))
+        return (queue, ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue)))
     }
 
     func test_chatWrapperKeepsRowShapeAndAuditLabelsByteIdentical() async throws {

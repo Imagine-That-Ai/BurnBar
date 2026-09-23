@@ -111,16 +111,16 @@ public actor BurnBarDaemonServer {
     let memoryGatewayTokenStore: BurnBarGatewayScopedTokenStore
     var chatThreadService: (any BurnBarChatThreadServing)?
     var indexedSearch: BurnBarIndexedSearchService?
-    /// The code-memory store is opened lazily when a configured database file
-    /// appears. Chat owns first-use database creation on a fresh profile, so
-    /// opening this store only during daemon init would leave code/memory RPCs
-    /// unavailable until the next restart.
-    private var projectCodeMemoryStorage: BurnBarProjectCodeMemoryStore?
-    private var projectCodeMemoryBootstrapAttempted = false
-    private var projectCodeMemoryBootstrapFailure: String?
-    var projectCodeMemory: BurnBarProjectCodeMemoryStore? {
-        ensureProjectCodeMemoryBootstrapped()
-    }
+    // The code-memory store is opened lazily when a configured database file
+    // appears. Chat owns first-use database creation on a fresh profile, so
+    // opening this store only during daemon init would leave code/memory RPCs
+    // unavailable until the next restart.
+    // Internal (not private): the project-memory ownership extension in
+    // `BurnBarDaemonServer+ProjectMemory.swift` manages this state.
+    // Actor-isolated, like every other member here.
+    var projectCodeMemoryStorage: BurnBarProjectCodeMemoryStore?
+    var projectCodeMemoryBootstrapAttempted = false
+    var projectCodeMemoryBootstrapFailure: String?
     let databaseRecoveryService: BurnBarDatabaseRecoveryBundleService?
     let textExpansionService: BurnBarTextExpansionService?
     var resumeService: BurnBarResumeService?
@@ -785,58 +785,6 @@ public actor BurnBarDaemonServer {
     /// keeps the RPC surface fail closed without ever opening an unconfigured
     /// or plaintext fallback database.
     @discardableResult
-    func ensureProjectCodeMemoryBootstrapped() -> BurnBarProjectCodeMemoryStore? {
-        if let projectCodeMemoryStorage {
-            return projectCodeMemoryStorage
-        }
-        guard projectCodeMemoryBootstrapAttempted == false else {
-            return nil
-        }
-        guard let path = configuration.indexDatabasePath?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            path.isEmpty == false,
-            FileManager.default.fileExists(atPath: path) else {
-            return nil
-        }
-
-        // Only mark the attempt after the configured file exists. The chat
-        // store may create that file after the daemon has initialized.
-        projectCodeMemoryBootstrapAttempted = true
-        do {
-            // Keep the same migration/key ordering as daemon initialization.
-            // The helper never creates an unconfigured plaintext fallback.
-            do {
-                _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
-                    at: path,
-                    logger: BurnBarDaemonLogger(category: "database-cipher")
-                )
-            } catch {
-                logger.warning(
-                    "daemon_database_encrypted_migration_failed",
-                    metadata: ["path": path, "error": "\(error)"]
-                )
-            }
-            let store = try BurnBarProjectCodeMemoryStore(
-                databasePath: path,
-                logger: BurnBarDaemonLogger(category: "project-code-memory")
-            )
-            projectCodeMemoryStorage = store
-            projectCodeMemoryBootstrapFailure = nil
-            logger.info(
-                "project_code_memory_lazy_bootstrap_succeeded",
-                metadata: ["path": path]
-            )
-            return store
-        } catch {
-            projectCodeMemoryBootstrapFailure = error.localizedDescription
-            logger.warning(
-                "project_code_memory_lazy_bootstrap_failed",
-                metadata: ["path": path, "error": error.localizedDescription]
-            )
-            return nil
-        }
-    }
-
     /// Entry point for the authenticated paired-controller transport. The
     /// transport must pass the peer identity established by its own handshake;
     /// renderer/socket fields are never accepted as that identity.
@@ -1564,7 +1512,7 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .chatThreadList, .chatThreadGet, .chatMessageAppend:
+            case .chatThreadCreate, .chatThreadList, .chatThreadGet, .chatMessageAppend:
                 return try await handleChatRPC(
                     method: method,
                     decoder: decoder,
@@ -1655,14 +1603,15 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .searchQuery, .searchSQL:
+            case .searchQuery, .searchSQL, .searchVectorSnapshotUpsert:
                 return try await handleSearchRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData
                 )
             case .memoryRemember, .memoryRecall, .memoryReviewStatus, .memoryForget, .memoryAuditTrail, .memoryAnalytics, .memoryModelPolicy,
-                 .memorySyncInboxList, .memorySyncInboxAck:
+                 .memorySyncInboxList, .memorySyncInboxAck, .memorySnapshotUpsert, .memorySnapshotDelete,
+                 .memorySnapshotDeleteAll, .memoryAuthorityApply:
                 return try await handleMemoryRPC(
                     method: method,
                     decoder: decoder,
