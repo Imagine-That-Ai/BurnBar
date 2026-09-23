@@ -117,7 +117,11 @@ extension OpenBurnBarDatabase {
             throw OpenBurnBarDatabaseError.backupFailed(underlying: error)
         }
 
-        pruneOldBackups(in: supportDir, keeping: 5)
+        // One restore point, not five: at multi-GB database sizes every kept
+        // copy is gigabytes of user disk that row deletes never reclaim.
+        // The newest backup is always the restore candidate; older ones are
+        // unreferenced the moment a migration succeeds.
+        pruneOldBackups(in: supportDir, keeping: 1)
         return backupURL
     }
 

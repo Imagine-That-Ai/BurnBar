@@ -3154,15 +3154,22 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         }())
     }
 
-    func test_runMigrationsSafely_prunesOldBackups() async throws {
+    /// Pre-migration backups are capped at ONE restore point: at multi-GB
+    /// database sizes every kept copy is gigabytes of user disk that row
+    /// deletes never reclaim. The newest backup is always the restore
+    /// candidate the moment a migration succeeds; older ones are pruned
+    /// when a new one lands.
+    func test_runMigrationsSafely_prunesOldBackups_keepingOneRestorePoint() async throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         // Seed 7 fake backup files with staggered dates
+        var seeded: [String] = []
         for i in 0..<7 {
             let name = "test.sqlite.backup.2026010\(i)-120000"
+            seeded.append(name)
             let url = tempDir.appendingPathComponent(name)
             try "backup".write(to: url, atomically: true, encoding: .utf8)
             // Adjust modification date so they sort predictably
@@ -3182,7 +3189,10 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         let contents = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
         let backups = contents.filter { $0.contains(".backup.") }
-        XCTAssertEqual(backups.count, 5, "Expected 5 backups after pruning, got: \(backups)")
+        XCTAssertEqual(backups.count, 1, "only the newest restore point survives, got: \(backups)")
+        for seed in seeded {
+            XCTAssertFalse(backups.contains(seed), "stale backup \(seed) must be pruned")
+        }
     }
 
     // MARK: - Data Repairs
