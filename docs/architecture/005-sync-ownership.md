@@ -33,7 +33,7 @@ Multiple planes can hold overlapping data: local SQLite, daemon JSONL usage ledg
 
 - Daemon owns provider execution, gateway, MissionControl, and heartbeat.
 - App owns SQLite, UI, and Firestore client credentials.
-- IPC boundary: typed RPC contracts in `OpenBurnBarCore` (`BurnBarRPCContracts.swift`); version negotiated on connect. Current protocol is **v2**; v1 remains in `supported`.
+- IPC boundary: typed RPC contracts in `OpenBurnBarCore` (`BurnBarRPCContracts.swift`); version negotiated on connect. Current protocol is **v2**; v1 remains in `supported`. v1 amendment 2026-09-22 (Wave 0.3): `daemon.memory.model_policy`, `daemon.memory.sync.inbox.list`, `daemon.memory.sync.inbox.ack` registered in `budgets/rpc-methods-baseline.json` (185→188); see the baseline note for justification.
 
 ### SQLite table → process owner (Phase 1 contract)
 

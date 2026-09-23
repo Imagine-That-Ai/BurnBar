@@ -1,7 +1,10 @@
 {
   "protocolVersion": 2,
-  "supported": [1, 2],
-  "totalMethods": 185,
+  "supported": [
+    1,
+    2
+  ],
+  "totalMethods": 188,
   "methods": [
     {
       "caseName": "approvalRespond",
@@ -424,6 +427,10 @@
       "methodString": "daemon.memory.forget"
     },
     {
+      "caseName": "memoryModelPolicy",
+      "methodString": "daemon.memory.model_policy"
+    },
+    {
       "caseName": "memoryRecall",
       "methodString": "daemon.memory.recall"
     },
@@ -434,6 +441,14 @@
     {
       "caseName": "memoryReviewStatus",
       "methodString": "daemon.memory.review_status"
+    },
+    {
+      "caseName": "memorySyncInboxAck",
+      "methodString": "daemon.memory.sync.inbox.ack"
+    },
+    {
+      "caseName": "memorySyncInboxList",
+      "methodString": "daemon.memory.sync.inbox.list"
     },
     {
       "caseName": "missionApprove",
@@ -744,5 +759,5 @@
       "methodString": "workspace.toolResult"
     }
   ],
-  "note": "Baseline for scripts/debt/check-rpc-method-freeze.sh. Freezes the 185-case v1 Daemon RPC method catalog (BurnBarRPCMethod in BurnBarRPCContracts.swift) to prevent unversioned RPC drift and untyped method additions without schema-sync / TypeSpec contract generation."
+  "note": "Baseline for scripts/debt/check-rpc-method-freeze.sh. Freezes the 185-case v1 Daemon RPC method catalog (BurnBarRPCMethod in BurnBarRPCContracts.swift) to prevent unversioned RPC drift and untyped method additions without schema-sync / TypeSpec contract generation. v1 amendment 2026-09-22 (Wave 0.3): +3 memory methods (daemon.memory.model_policy for Memory Pro policy distribution; daemon.memory.sync.inbox.list/.ack for Blind Sync PR-2 inbox drain). All three are typed, handled on both ends, and covered by the N-1 suite; protocol stays v1-compatible with v2 in supported."
 }
