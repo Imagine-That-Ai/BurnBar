@@ -25,7 +25,7 @@ final class ComputerUseAuditVerifierTests: XCTestCase {
         )
     }
 
-    func test_verifyEmptyChainAgainstGenesis() {
+    func test_verifyEmptyChainWithoutHeadAnchorFailsClosed() {
         let verifier = ComputerUseAuditVerifier()
         let report = verifier.verify(
             chainJSONL: Data(),
@@ -33,7 +33,10 @@ final class ComputerUseAuditVerifierTests: XCTestCase {
             signedHead: nil,
             maxEntryIndexInclusive: nil
         )
-        XCTAssertTrue(report.chainValid)
+        // Wave 0.4 fail-closed: no anchor, no pass — even for an empty chain.
+        XCTAssertFalse(report.chainValid)
+        XCTAssertFalse(report.isFullyVerified)
+        XCTAssertEqual(report.firstInvalidReason, .headAnchorMissing)
         XCTAssertEqual(report.entryCount, 0)
     }
 
@@ -170,5 +173,91 @@ final class ComputerUseAuditVerifierTests: XCTestCase {
 
         let unpacked = try ComputerUseAuditExportWriter().verify(archive: archiveURL)
         XCTAssertTrue(unpacked.contains { $0.path == ComputerUseAuditHeadFinalizer.signedHeadFilename })
+    }
+
+    func test_truncatedChainWithMissingHeadFailsClosed() throws {
+        let base = try tempDir()
+        let sessionId = "truncated-no-head"
+        let logger = try ComputerUseAuditLogger(
+            sessionId: ComputerUseSessionID(sessionId),
+            baseDirectory: base,
+            macAppVersion: macAppVersion
+        )
+        try logger.beginSession(manifest: makeManifest(sessionId: sessionId))
+        for index in 0..<3 {
+            try logger.append(try logger.makeEntry(
+                for: .browser(BrowserAction(kind: .click, selector: "step-\(index)")),
+                approvedBy: .mac
+            ))
+        }
+
+        let sessionDir = base.appendingPathComponent(sessionId, isDirectory: true)
+        let chainURL = sessionDir.appendingPathComponent("chain.jsonl")
+        let lines = try String(contentsOf: chainURL, encoding: .utf8)
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map(String.init)
+        XCTAssertEqual(lines.count, 3)
+        // Attacker drops the terminal entry. The parent walk over the
+        // remaining prefix is self-consistent — only the missing head
+        // anchor (Wave 0.4 strict default) catches it.
+        let truncated = Data((lines.dropLast().joined(separator: "\n") + "\n").utf8)
+        let manifestHash = try ComputerUseAuditChain().hashSessionManifest(makeManifest(sessionId: sessionId))
+
+        let report = ComputerUseAuditVerifier().verify(
+            chainJSONL: truncated,
+            sessionManifestHashHex: manifestHash,
+            signedHead: nil,
+            maxEntryIndexInclusive: nil
+        )
+        XCTAssertFalse(report.isFullyVerified)
+        XCTAssertFalse(report.chainValid)
+        XCTAssertEqual(report.firstInvalidReason, .headAnchorMissing)
+        XCTAssertEqual(report.entryCount, 0)
+    }
+
+    func test_malformedHeadSealRecordsSealUnavailable() throws {
+        let base = try tempDir()
+        let sessionId = "malformed-seal"
+        let logger = try ComputerUseAuditLogger(
+            sessionId: ComputerUseSessionID(sessionId),
+            baseDirectory: base,
+            macAppVersion: macAppVersion
+        )
+        try logger.beginSession(manifest: makeManifest(sessionId: sessionId))
+        try logger.append(try logger.makeEntry(
+            for: .browser(BrowserAction(kind: .click, selector: "ok")),
+            approvedBy: .mac
+        ))
+
+        let signer = ComputerUseEd25519AuditExportSigner(
+            privateKey: Curve25519.Signing.PrivateKey(),
+            signerIdentifier: "test-signer"
+        )
+        let goodHead = try ComputerUseAuditHeadFinalizer.finalize(logger: logger, signer: signer)
+        // Same anchor (chain still validates) but unevaluable seal bytes.
+        let badSealHead = ComputerUseAuditSignedHead(
+            sessionId: goodHead.sessionId,
+            lastEntryIndex: goodHead.lastEntryIndex,
+            headHashHex: goodHead.headHashHex,
+            closedAt: goodHead.closedAt,
+            signatureEd25519Base64: "!!!not-base64!!!",
+            signerPublicKeyEd25519Base64: goodHead.signerPublicKeyEd25519Base64
+        )
+
+        let sessionDir = base.appendingPathComponent(sessionId, isDirectory: true)
+        let manifestHash = try ComputerUseAuditChain().hashSessionManifest(makeManifest(sessionId: sessionId))
+        let chainData = try Data(contentsOf: sessionDir.appendingPathComponent("chain.jsonl"))
+
+        let report = ComputerUseAuditVerifier().verify(
+            chainJSONL: chainData,
+            sessionManifestHashHex: manifestHash,
+            signedHead: badSealHead,
+            maxEntryIndexInclusive: nil,
+            openTimestampsProofURL: nil
+        )
+        XCTAssertFalse(report.headSignatureValid ?? true)
+        XCTAssertFalse(report.isFullyVerified)
+        XCTAssertTrue(report.chainValid)
+        XCTAssertEqual(report.firstInvalidReason, .auditSealUnavailable)
     }
 }

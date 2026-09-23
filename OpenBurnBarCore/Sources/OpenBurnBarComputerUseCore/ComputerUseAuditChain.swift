@@ -195,6 +195,10 @@ public struct ComputerUseAuditChain: Sendable {
         /// (`signed_head.json`) was supplied, so a truncation of the final
         /// entry could not be ruled out. Fail closed rather than pass.
         case headAnchorMissing = "head_anchor_missing"
+        /// Wave 0.4: the signed head was supplied but its seal could not be
+        /// evaluated at all (malformed signature or key material). Recorded
+        /// distinctly from a checked-and-invalid seal. Fail closed either way.
+        case auditSealUnavailable = "audit_seal_unavailable"
 
         /// Human-readable explanation for operator-facing surfaces (settings
         /// validation status, alerts). Raw values stay wire/log-stable.
@@ -214,6 +218,8 @@ public struct ComputerUseAuditChain: Sendable {
                 return "the signed head hash does not match the final entry"
             case .headAnchorMissing:
                 return "no signed head was supplied, so truncation of the final entry cannot be ruled out"
+            case .auditSealUnavailable:
+                return "the signed head seal could not be evaluated (malformed signature or key)"
             }
         }
     }
@@ -231,11 +237,14 @@ public struct ComputerUseAuditChain: Sendable {
     /// recomputed terminal head against it — this catches tampering of
     /// the *last* entry, which a parent-chain walk alone cannot detect
     /// (there's no successor entry to break against).
+    /// `requireExpectedHead` defaults to `true` (Wave 0.4 fail-closed):
+    /// without an anchor, terminal truncation is undetectable, so an
+    /// unanchored chain reports `.headAnchorMissing`.
     public func validate(
         at url: URL,
         sessionManifestHashHex: String,
         expectedHeadHashHex: String? = nil,
-        requireExpectedHead: Bool = false
+        requireExpectedHead: Bool = true
     ) throws -> ValidationResult {
         let raw = try Data(contentsOf: url)
         return validate(
@@ -250,6 +259,7 @@ public struct ComputerUseAuditChain: Sendable {
     /// (`signed_head.json`). Use this for dispute/export verification so a
     /// last-entry truncation cannot pass unnoticed when the caller forgot to
     /// pass the head. Equivalent to `validate(..., requireExpectedHead: true)`.
+    /// Since Wave 0.4 this is also the default; kept as the explicit spelling.
     public func validateRequiringSignedHead(
         at url: URL,
         sessionManifestHashHex: String,
@@ -268,7 +278,7 @@ public struct ComputerUseAuditChain: Sendable {
         rawJSONLines: Data,
         sessionManifestHashHex: String,
         expectedHeadHashHex: String? = nil,
-        requireExpectedHead: Bool = false
+        requireExpectedHead: Bool = true
     ) -> ValidationResult {
         // L8b: when strict head anchoring is requested, a missing anchor is a
         // verification failure, not a silent pass — the terminal entry could have

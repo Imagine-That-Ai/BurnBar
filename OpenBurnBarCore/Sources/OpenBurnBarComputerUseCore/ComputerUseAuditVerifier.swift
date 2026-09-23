@@ -14,7 +14,10 @@ public struct ComputerUseAuditVerifier: Sendable {
 
         public var isFullyVerified: Bool {
             chainValid
-                && (headSignatureValid ?? true)
+                // Wave 0.4 fail-closed: a missing signature check is NOT a pass.
+                // (The index bound and timestamp proof below stay opt-in: they
+                // only constrain the report when the caller requested them.)
+                && (headSignatureValid ?? false)
                 && (noEntriesAfterIndex ?? true)
                 && (openTimestampsVerified ?? true)
         }
@@ -46,8 +49,17 @@ public struct ComputerUseAuditVerifier: Sendable {
         )
 
         var headSignatureValid: Bool?
+        var sealReason: ComputerUseAuditChain.InvalidReason?
         if let signedHead {
-            headSignatureValid = (try? signedHead.verifySignature()) ?? false
+            do {
+                headSignatureValid = try signedHead.verifySignature()
+            } catch {
+                // The seal could not be evaluated at all (malformed signature
+                // or key material) — record it distinctly from "checked and
+                // invalid" instead of swallowing it. Fail closed either way.
+                headSignatureValid = false
+                sealReason = .auditSealUnavailable
+            }
         }
 
         var noEntriesAfterIndex: Bool?
@@ -80,7 +92,7 @@ public struct ComputerUseAuditVerifier: Sendable {
             noEntriesAfterIndex: noEntriesAfterIndex,
             openTimestampsVerified: openTimestampsVerified,
             openTimestampsDetail: openTimestampsDetail,
-            firstInvalidReason: chainResult.firstInvalidReason
+            firstInvalidReason: chainResult.firstInvalidReason ?? sealReason
         )
     }
 

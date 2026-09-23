@@ -82,9 +82,11 @@ final class ComputerUseAuditChainTests: XCTestCase {
         let chainFile = dir
             .appendingPathComponent(sessionId.rawValue, isDirectory: true)
             .appendingPathComponent("chain.jsonl")
+        // Wave 0.4: anchoring is required by default; the walk test supplies it.
         let result = try ComputerUseAuditChain().validate(
             at: chainFile,
-            sessionManifestHashHex: manifestHashHex
+            sessionManifestHashHex: manifestHashHex,
+            expectedHeadHashHex: logger.headHashHex
         )
         XCTAssertTrue(result.isValid)
         XCTAssertEqual(result.entryCount, 20)

@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Audit verification now fails closed** — the offline verifier requires a
+  signed head anchor by default (`audit-verify` on a session or archive
+  without `signed_head.json` reports `fully_verified=false` with
+  `head_anchor_missing` instead of passing), an unevaluable head seal
+  (malformed signature/key) is recorded distinctly as
+  `audit_seal_unavailable`, and `audit-verify --archive` runs the real
+  chain verifier instead of printing a literal `fully_verified=true`.
+  `--archive` output keys changed: the tar listing count moved to
+  `archive_entry_count`, `entry_count` now reports chain entries, and the
+  tautological `contains_manifest`/`contains_chain` lines were replaced by
+  the verifier's `chain_valid`/`head_signature_valid` lines.
 - **Claude Charts (`<synthetic>` band)** — Claude Code stamps synthesized
   messages (e.g. API-error notices) with `"model":"<synthetic>"`, and the
   parser took that marker verbatim into the session's model set. `<`
