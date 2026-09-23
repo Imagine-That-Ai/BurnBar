@@ -247,12 +247,13 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         }
 
         let fileSize = signature?.sizeBytes ?? 0
-        // Bodies may resume the token accumulator from byteOffset. Conversation
-        // text is still accumulated only from the resumed tail when
-        // `resumeConversationBodies` is on (default), so appends do not
-        // re-decode the prefix. Privacy: conversation text is not written to
-        // the parser cache (ClaudeCodeCacheEntry).
-        let resumableState = (fileSize >= Self.incrementalScanThresholdBytes)
+        // Incremental resume is usage-only. Bodies passes always re-read from
+        // offset 0: conversation text is privacy-transient and never stored in
+        // the parser cache (PR #1808), so a resumed tail cannot rebuild the
+        // prefix — resuming here would replace the stored transcript with its
+        // tail on upsert. The governor already budgets the full file for
+        // bodies passes (estimatedNewBytes below).
+        let resumableState = (fileSize >= Self.incrementalScanThresholdBytes && !includeConversation)
             ? cached?.scanState
             : nil
         let estimatedNewBytes: Int64 = includeConversation
