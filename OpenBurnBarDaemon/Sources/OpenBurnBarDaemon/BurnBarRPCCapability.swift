@@ -56,6 +56,10 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case codeRead = "code_read"
     /// Project code indexing writes.
     case codeWrite = "code_write"
+    /// Account-switcher active-profile writes (Wave 2.1c-v single-writer
+    /// lane). Split from any read surface so attenuated profiles keep query
+    /// access without gaining authority over which account drains quota.
+    case switcherWrite = "switcher_write"
     /// Operator-only code-store diagnostics (schema version, store sizes, forget
     /// backlog). Excluded from the readOnly/runClient profiles so only the trusted
     /// first-party controller can inspect store internals.
@@ -191,6 +195,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .codeRead
         case .codeOpsDiagnostics, .codeDatabaseSnapshot, .codeDatabaseRestore:
             return .codeOperator
+        case .switcherActiveProfileApply:
+            return .switcherWrite
         }
     }
 }

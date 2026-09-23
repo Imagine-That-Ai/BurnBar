@@ -183,6 +183,12 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     /// the daemon validates shape and bounds, then stores it verbatim in one
     /// transaction. v1 amendment 2026-09-23, see ADR-005.
     case searchIndexApply = "daemon.search.index.apply"
+    /// Wave 2.1c-v: the app lane of `switcher_active_profile` moves to the
+    /// daemon (single writer, ADR-005). The app finalizes the write (mirror
+    /// and fallback lookups computed against local reads); the daemon
+    /// validates shape, then applies the sets verbatim in one transaction.
+    /// v1 amendment 2026-09-23, see ADR-005.
+    case switcherActiveProfileApply = "daemon.switcher.active_profile.apply"
     case memoryRemember = "daemon.memory.remember"
     case memoryRecall = "daemon.memory.recall"
     case memoryReviewStatus = "daemon.memory.review_status"

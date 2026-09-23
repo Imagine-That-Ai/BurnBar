@@ -110,6 +110,10 @@ public actor BurnBarDaemonServer {
     /// Scoped loopback-gateway tokens minted for the memory engine (Memory Pro).
     let memoryGatewayTokenStore: BurnBarGatewayScopedTokenStore
     var chatThreadService: (any BurnBarChatThreadServing)?
+    // Wave 2.1c-v: the daemon-owned writer of `switcher_active_profile`.
+    // Injected by tests; otherwise bootstrapped eagerly from the configured
+    // database path next to the chat store below.
+    var switcherProfileStore: BurnBarSwitcherSQLiteProfileStore?
     var indexedSearch: BurnBarIndexedSearchService?
     // The code-memory store is opened lazily when a configured database file
     // appears. Chat owns first-use database creation on a fresh profile, so
@@ -198,6 +202,7 @@ public actor BurnBarDaemonServer {
         linuxPrivacyService: BurnBarLinuxPrivacyService? = nil,
         subscriptionService: BurnBarSubscriptionService? = nil,
         chatThreadService: (any BurnBarChatThreadServing)? = nil,
+        switcherProfileStore: BurnBarSwitcherSQLiteProfileStore? = nil,
         fleetService: BurnBarFleetService? = nil,
         flameService: BurnBarFlameService? = nil
     ) {
@@ -241,6 +246,7 @@ public actor BurnBarDaemonServer {
         )
         self.chatThreadService = chatThreadService
         self.ownsChatThreadService = chatThreadService == nil
+        self.switcherProfileStore = switcherProfileStore
         self.fleetService = fleetService ?? BurnBarFleetServiceFactory.makeDefault(configuration: configuration)
         self.flameService = flameService ?? BurnBarFlameServiceFactory.makeDefault()
 
@@ -659,6 +665,22 @@ public actor BurnBarDaemonServer {
                 } catch {
                     logger.warning(
                         "chat_thread_service_init_failed",
+                        metadata: ["path": path, "error": "\(error)"]
+                    )
+                }
+            }
+            // Wave 2.1c-v: eager like the chat store — the store opens with
+            // CREATE semantics and keys itself via the shared Keychain key
+            // when a SQLCipher codec is linked, so an injected store is only
+            // needed for tests.
+            if self.switcherProfileStore == nil {
+                do {
+                    self.switcherProfileStore = try BurnBarSwitcherSQLiteProfileStore(
+                        databaseURL: URL(fileURLWithPath: path)
+                    )
+                } catch {
+                    logger.warning(
+                        "switcher_profile_store_init_failed",
                         metadata: ["path": path, "error": "\(error)"]
                     )
                 }
@@ -1605,6 +1627,12 @@ public actor BurnBarDaemonServer {
                 )
             case .searchQuery, .searchSQL, .searchVectorSnapshotUpsert, .searchIndexApply:
                 return try await handleSearchRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .switcherActiveProfileApply:
+                return try await handleSwitcherRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData

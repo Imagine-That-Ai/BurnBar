@@ -33,7 +33,7 @@ Multiple planes can hold overlapping data: local SQLite, daemon JSONL usage ledg
 
 - Daemon owns provider execution, gateway, MissionControl, and heartbeat.
 - App owns SQLite, UI, and Firestore client credentials.
-- IPC boundary: typed RPC contracts in `OpenBurnBarCore` (`BurnBarRPCContracts.swift`); version negotiated on connect. Current protocol is **v2**; v1 remains in `supported`. v1 amendment 2026-09-22 (Wave 0.3): `daemon.memory.model_policy`, `daemon.memory.sync.inbox.list`, `daemon.memory.sync.inbox.ack` registered in `budgets/rpc-methods-baseline.json` (185→188); see the baseline note for justification. v1 amendment 2026-09-23 (Wave 2.1b): `daemon.chat.thread.create` (188→189) for the chat single-writer cutover — the app's `upsertChatThread` INSERT moves to the daemon; see the baseline note. v1 amendment 2026-09-23 (Wave 2.1c–iii): `daemon.memory.snapshot.upsert` / `.delete` / `.delete_all` (189→192), `daemon.search.vector_snapshot.upsert` (192→193), `daemon.memory.authority.apply` (193→194) for the snapshot, vector-snapshot, and memory-authority single-writer cutovers; see the baseline note.
+- IPC boundary: typed RPC contracts in `OpenBurnBarCore` (`BurnBarRPCContracts.swift`); version negotiated on connect. Current protocol is **v2**; v1 remains in `supported`. v1 amendment 2026-09-22 (Wave 0.3): `daemon.memory.model_policy`, `daemon.memory.sync.inbox.list`, `daemon.memory.sync.inbox.ack` registered in `budgets/rpc-methods-baseline.json` (185→188); see the baseline note for justification. v1 amendment 2026-09-23 (Wave 2.1b): `daemon.chat.thread.create` (188→189) for the chat single-writer cutover — the app's `upsertChatThread` INSERT moves to the daemon; see the baseline note. v1 amendment 2026-09-23 (Wave 2.1c–iii): `daemon.memory.snapshot.upsert` / `.delete` / `.delete_all` (189→192), `daemon.search.vector_snapshot.upsert` (192→193), `daemon.memory.authority.apply` (193→194) for the snapshot, vector-snapshot, and memory-authority single-writer cutovers; see the baseline note. v1 amendment 2026-09-23 (Wave 2.1c-iv): `daemon.search.index.apply` (194→195) for the search-index single-writer cutover; see the baseline note. v1 amendment 2026-09-23 (Wave 2.1c-v): `daemon.switcher.active_profile.apply` (195→196) for the switcher single-writer cutover; see the baseline note.
 
 ### SQLite table → process owner (Phase 1 contract)
 
@@ -59,7 +59,7 @@ The live file is `~/Library/Application Support/OpenBurnBar/openburnbar.sqlite`.
 | pcm_* / code_* | daemon | app RPC | Project code memory |
 | ai_inbox_* | daemon | app | Self-heal DDL until migrator-first |
 | switcher_profiles | app | daemon | |
-| switcher_active_profile | app | daemon | Daemon may add `providerID` column guard |
+| switcher_active_profile | daemon | app via RPC | Cut over Wave 2.1c-v: app writes via `daemon.switcher.active_profile.apply` (atomic pointer-set batch plus clear-by-profile; mirror/fallback lookups finalized against local reads, daemon assigns `updatedAt`); app reads stay local until the read cutover. The legacy fetch-time dedup is subsumed: every set rewrites its scope |
 | parser_checkpoints | app | app | |
 | parser_checkpoint_files | app | app | |
 | source_artifacts | app | app | |

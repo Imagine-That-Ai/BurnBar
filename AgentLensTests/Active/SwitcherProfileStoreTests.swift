@@ -11,7 +11,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         try await super.setUp()
         dbQueue = try DatabaseQueue()
         try await self.addMigrationv32(to: dbQueue)
-        store = SwitcherProfileStore(dbQueue: dbQueue)
+        store = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
     }
 
     override func tearDown() {
@@ -502,7 +502,7 @@ final class SwitcherProfileStoreTests: XCTestCase {
         // Verify the store works on a fresh database
         let freshDb = try DatabaseQueue()
         try await self.addMigrationv32(to: freshDb)
-        let freshStore = SwitcherProfileStore(dbQueue: freshDb)
+        let freshStore = SwitcherProfileStore(dbQueue: freshDb, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: freshDb))
 
         let state = try freshStore.fetchActiveProfileState()
         XCTAssertNil(state.activeProfileID)
@@ -727,17 +727,28 @@ final class SwitcherProfileStoreTests: XCTestCase {
             )
         }
 
-        // First fetch should clean up duplicates and return the most recent
+        // Wave 2.1c-v: fetch is read-only — it returns the most recent row
+        // without touching the legacy duplicates. Cleanup moved to the
+        // writer: the next set rewrites the scope (heal-on-write).
         let state = try store.fetchActiveProfileState()
 
         // Should return the profile.id (most recent row) not the stale ones
         XCTAssertEqual(state.activeProfileID, profile.id)
 
-        // Verify only one row remains after cleanup
-        let rowCount = try await dbQueue.read { db in
+        // Fetch writes nothing: the seed row plus the three injected legacy
+        // rows are all still present.
+        let rowsAfterFetch = try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
-        XCTAssertEqual(rowCount, 1)
+        XCTAssertEqual(rowsAfterFetch, 4)
+
+        // The next set heals the scope (a browser profile has no mirror).
+        try store.setActiveProfile(profile.id)
+        let rowsAfterSet = try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
+        }
+        XCTAssertEqual(rowsAfterSet, 1)
+        XCTAssertEqual(try store.fetchActiveProfileState().activeProfileID, profile.id)
     }
 
     func test_fetchActiveProfileStateSnapshot_doesNotRunWriterCleanup() async throws {
@@ -835,21 +846,31 @@ final class SwitcherProfileStoreTests: XCTestCase {
             )
         }
 
-        // Simulate multiple relaunch reads - should be deterministic
+        // Simulate multiple relaunch reads - should be deterministic. Wave
+        // 2.1c-v: reads are pure (no fetch-time cleanup); determinism comes
+        // from the ORDER BY, and the next set heals the scope.
         for _ in 0..<5 {
             let state = try store.fetchActiveProfileState()
             XCTAssertEqual(state.activeProfileID, profile2.id, "Repeated reads should be deterministic")
         }
 
-        // Verify only one row remains
-        let rowCount = try await dbQueue.read { db in
+        // Reads write nothing: both legacy rows survive.
+        let rowsAfterFetch = try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
-        XCTAssertEqual(rowCount, 1)
+        XCTAssertEqual(rowsAfterFetch, 2)
+
+        // The next set heals the scope (a browser profile has no mirror).
+        try store.setActiveProfile(profile2.id)
+        let rowsAfterSet = try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
+        }
+        XCTAssertEqual(rowsAfterSet, 1)
     }
 
-    /// Verifies cleanup selects correct canonical row when active profile was
-    /// the older row and a newer row with different profile exists.
+    /// Verifies fetch resolves to the newer row when the older row points at a
+    /// different (stale) profile. Wave 2.1c-v: reads are pure; the next set
+    /// heals the legacy rows.
     func test_fetchActiveProfileState_cleansUpStaleActiveWithNewerRowPresent() async throws {
         let staleProfile = try store.create(SwitcherProfileRecord(
             targetKind: .browser,
@@ -879,15 +900,22 @@ final class SwitcherProfileStoreTests: XCTestCase {
             )
         }
 
-        // Fetch should return the newer row (currentProfile)
+        // Fetch should return the newer row (currentProfile). Wave 2.1c-v:
+        // reads are pure — both legacy rows survive the fetch, and the next
+        // set heals the scope.
         let state = try store.fetchActiveProfileState()
         XCTAssertEqual(state.activeProfileID, currentProfile.id)
 
-        // Verify only one row remains
-        let rowCount = try await dbQueue.read { db in
+        let rowsAfterFetch = try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
-        XCTAssertEqual(rowCount, 1)
+        XCTAssertEqual(rowsAfterFetch, 2)
+
+        try store.setActiveProfile(currentProfile.id)
+        let rowsAfterSet = try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
+        }
+        XCTAssertEqual(rowsAfterSet, 1)
     }
 
     /// Verifies that after hydration cleanup, subsequent writes work correctly.

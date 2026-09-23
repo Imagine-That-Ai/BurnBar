@@ -83,7 +83,10 @@ public protocol BurnBarCLIShellExecuting: Sendable {
 public protocol BurnBarSwitcherProfileStoreProviding: SwitcherProfileStoreAdapter {}
 
 public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStoreProviding, Sendable {
-    private let dbQueue: any DatabaseWriter
+    // Internal (not private) so the Wave 2.1c-v app lane — the single write
+    // choke point, in BurnBarSwitcherSQLiteProfileStore+ActiveProfileLane —
+    // shares this queue. Still module-confined; no API change.
+    let dbQueue: any DatabaseWriter
     private let logger = BurnBarDaemonLogger(category: "switcher-profile-store")
 
     public init(databaseURL: URL = BurnBarDaemonPaths.supportDirectoryURL.appendingPathComponent("openburnbar.sqlite")) throws {
@@ -182,34 +185,26 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
     }
 
     public func setActiveProfileID(_ profileID: String?) {
+        // Wave 2.1c-v: the app lane is the single write choke point; this
+        // legacy void setter keeps its silent-failure contract for the CLI
+        // launch path while sharing the lane's statements byte for byte.
         do {
-            try dbQueue.write { db in
-                // Rewrite only the global pointer (providerID IS NULL). Wiping
-                // every row would also delete per-provider drain targets the
-                // app has set in the shared SQLite file.
-                try db.execute(sql: "DELETE FROM switcher_active_profile WHERE providerID IS NULL")
-                try db.execute(
-                    sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, NULL, ?)",
-                    arguments: [profileID, Date()]
-                )
-            }
+            _ = try switcherActiveProfileApply(
+                BurnBarSwitcherActiveProfileApplyRequest(sets: [.init(profileID: profileID)])
+            )
         } catch {
             logger.silentFailure("set_active_profile_id", error: error)
         }
     }
 
     public func setActiveProfileID(_ profileID: String?, for providerID: ProviderID) {
+        // Wave 2.1c-v: delegates to the app lane (see above).
         do {
-            try dbQueue.write { db in
-                try db.execute(
-                    sql: "DELETE FROM switcher_active_profile WHERE providerID = ?",
-                    arguments: [providerID.rawValue]
+            _ = try switcherActiveProfileApply(
+                BurnBarSwitcherActiveProfileApplyRequest(
+                    sets: [.init(profileID: profileID, providerID: providerID.rawValue)]
                 )
-                try db.execute(
-                    sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, ?, ?)",
-                    arguments: [profileID, providerID.rawValue, Date()]
-                )
-            }
+            )
         } catch {
             logger.silentFailure("set_active_profile_id_for_provider", error: error)
         }

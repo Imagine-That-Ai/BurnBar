@@ -43,7 +43,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
         }
 
         // Create store with injectable log emitter for test capture
-        store = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter)
+        store = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         logCapture = RuntimeLogCapture()
     }
 
@@ -384,7 +384,7 @@ final class SwitcherRuntimeLogCaptureTests: XCTestCase {
 
         // Simulate startup rehydration - fresh store reads active state
         // Create a fresh store with the same log emitter for consistent capture
-        let freshStore = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter)
+        let freshStore = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let state = try freshStore.fetchActiveProfileStateWithLogging()
 
         // Capture for verification

@@ -1662,6 +1662,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.switcher.active_profile.apply",
+    "caseName": "switcherActiveProfileApply",
+    "domain": "switcher",
+    "capability": "switcher_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.switcher.active_profile.apply",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.text_expansion.consent.update",
     "caseName": "textExpansionConsentUpdate",
     "domain": "config",

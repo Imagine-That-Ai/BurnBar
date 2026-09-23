@@ -24,7 +24,7 @@ final class SwitcherDashboardUITests: XCTestCase {
         try await super.setUp()
         dbQueue = try DatabaseQueue()
         try await Self.addMigrationv32(to: dbQueue)
-        store = SwitcherProfileStore(dbQueue: dbQueue)
+        store = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
 
         // Create adapter for launch services
         let adapter = ProdSwitcherProfileStoreAdapter(store: store)
@@ -811,7 +811,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view
@@ -881,11 +882,12 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profiles in the SAME database that the view will use
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         _ = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -938,11 +940,12 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Ensure no profiles exist in the SAME database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let existingProfiles = try localStore.fetchAllProfiles()
         for profile in existingProfiles {
             try localStore.deleteProfile(id: profile.id)
@@ -987,11 +990,12 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profiles in the SAME database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let p1 = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1051,11 +1055,12 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create a profile in the SAME database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1103,7 +1108,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let first = try store.create(SwitcherProfileRecord(
@@ -1140,7 +1146,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let first = try store.create(SwitcherProfileRecord(
@@ -1181,7 +1188,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let first = try store.create(SwitcherProfileRecord(
@@ -1219,11 +1227,12 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create a browser profile in the SAME database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1292,7 +1301,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view with announcement handler
@@ -1335,7 +1345,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view with injected error state and skip loadData
@@ -1364,7 +1375,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view with injected error state
@@ -1393,7 +1405,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let errorMessage = "Database connection failed"
@@ -1422,7 +1435,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let view = DashboardQuickSwitchView(
@@ -1450,7 +1464,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let view = DashboardQuickSwitchView(
@@ -1482,7 +1497,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let view = DashboardQuickSwitchView(
@@ -1510,7 +1526,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         var settingsCallbackFired = false
@@ -1544,7 +1561,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create view with error state
@@ -1576,7 +1594,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let errorMessage = "Connection timeout"
@@ -1606,7 +1625,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let view = DashboardQuickSwitchView(
@@ -1646,7 +1666,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create a profile so reload succeeds
@@ -1692,7 +1713,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         var settingsCallbackFired = false
@@ -1731,7 +1753,8 @@ final class SwitcherDashboardUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let view = DashboardQuickSwitchView(
@@ -1871,7 +1894,8 @@ final class SwitcherDashboardDataSourceTests: XCTestCase {
         dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
     }
 

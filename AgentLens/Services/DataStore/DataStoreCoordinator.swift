@@ -395,7 +395,8 @@ final class DataStoreCoordinator {
         chatWriter: ((any DatabaseWriter) -> any ChatHistoryWriter)? = nil,
         snapshotWriter: ((any DatabaseWriter) -> any ProjectMemorySnapshotWriter)? = nil,
         vectorSnapshotWriter: ((any DatabaseWriter) -> any VectorIndexSnapshotWriter)? = nil,
-        searchIndexWriter: ((any DatabaseWriter) -> any SearchIndexWriter)? = nil
+        searchIndexWriter: ((any DatabaseWriter) -> any SearchIndexWriter)? = nil,
+        switcherActiveProfileWriter: ((any DatabaseWriter) -> any SwitcherActiveProfileWriter)? = nil
     ) throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue()
         return try DataStoreCoordinator(
@@ -405,7 +406,8 @@ final class DataStoreCoordinator {
             chatWriter: chatWriter?(queue) ?? DaemonChatHistoryWriter(),
             snapshotWriter: snapshotWriter?(queue) ?? DaemonProjectMemorySnapshotWriter(),
             vectorSnapshotWriter: vectorSnapshotWriter?(queue) ?? DaemonVectorIndexSnapshotWriter(),
-            searchIndexWriter: searchIndexWriter?(queue) ?? DaemonSearchIndexWriter()
+            searchIndexWriter: searchIndexWriter?(queue) ?? DaemonSearchIndexWriter(),
+            switcherActiveProfileWriter: switcherActiveProfileWriter?(queue) ?? DaemonSwitcherActiveProfileWriter()
         )
     }
     #endif
@@ -473,7 +475,8 @@ final class DataStoreCoordinator {
         snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter(),
         vectorSnapshotWriter: any VectorIndexSnapshotWriter = DaemonVectorIndexSnapshotWriter(),
         memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter(),
-        searchIndexWriter: any SearchIndexWriter = DaemonSearchIndexWriter()
+        searchIndexWriter: any SearchIndexWriter = DaemonSearchIndexWriter(),
+        switcherActiveProfileWriter: any SwitcherActiveProfileWriter = DaemonSwitcherActiveProfileWriter()
     ) throws {
         let actor = try DataStoreActor(
             databaseQueue: databaseQueue,
@@ -483,7 +486,8 @@ final class DataStoreCoordinator {
             snapshotWriter: snapshotWriter,
             vectorSnapshotWriter: vectorSnapshotWriter,
             memoryAuthorityWriter: memoryAuthorityWriter,
-            searchIndexWriter: searchIndexWriter
+            searchIndexWriter: searchIndexWriter,
+            switcherActiveProfileWriter: switcherActiveProfileWriter
         )
         self.actor = actor
 

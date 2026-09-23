@@ -54,14 +54,14 @@ final class CLIProfileStreamFailoverRunnerMattersTests: XCTestCase {
                 VALUES (NULL, NULL, '2024-01-01T00:00:00Z')
             """)
         }
-        return (SwitcherProfileStore(dbQueue: queue), queue)
+        return (SwitcherProfileStore(dbQueue: queue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: queue)), queue)
     }
 
     /// Builds a store backed by an in-memory queue with NO tables, so every
     /// underlying read/write throws (`no such table`). Models a real DB fault.
     private func makeFaultingStore() throws -> SwitcherProfileStore {
         let queue = try DatabaseQueue()
-        return SwitcherProfileStore(dbQueue: queue)
+        return SwitcherProfileStore(dbQueue: queue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: queue))
     }
 
     private func makeCLIProfile(id: String, sortKey: Int) -> SwitcherProfileRecord {

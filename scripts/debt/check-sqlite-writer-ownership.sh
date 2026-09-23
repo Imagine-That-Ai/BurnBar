@@ -17,8 +17,15 @@ repo = Path(sys.argv[1])
 baseline_path = Path(sys.argv[2])
 mode = sys.argv[3] if len(sys.argv) > 3 else ""
 insert_re = re.compile(r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+([A-Za-z_][A-Za-z0-9_]*)", re.I)
+# Migrator registry files seed rows as part of schema creation (v46 seeds the
+# global switcher pointer; FTS rebuilds re-populate index tables). The
+# migrator is the schema owner — a third role, not a runtime writer — so its
+# one-time seeds must not pin a table dual-writer forever. Scoped to the
+# registry basenames (AgentLens copy until Wave 2.2 deletes it, Core copy
+# after); runtime INSERTs hidden in any other file still trip the ratchet.
+migrator_re = re.compile(r"OpenBurnBarDatabase\+.*Migration.*\.swift$")
 
-def tables_in(root: Path) -> set[str]:
+def tables_in(root: Path, exclude_migrations: bool = False) -> set[str]:
     found = set()
     if not root.exists():
         return found
@@ -31,12 +38,14 @@ def tables_in(root: Path) -> set[str]:
         path = line.split(":", 1)[0]
         if "/Tests/" in path or path.endswith("Tests.swift"):
             continue
+        if exclude_migrations and migrator_re.search(path):
+            continue
         match = insert_re.search(line)
         if match:
             found.add(match.group(1))
     return found
 
-app = tables_in(repo / "AgentLens") | tables_in(repo / "OpenBurnBarCore/Sources/OpenBurnBarData")
+app = tables_in(repo / "AgentLens", exclude_migrations=True) | tables_in(repo / "OpenBurnBarCore/Sources/OpenBurnBarData", exclude_migrations=True)
 daemon = tables_in(repo / "OpenBurnBarDaemon/Sources")
 dual = sorted(app & daemon)
 live = {"dualWriterTables": dual}

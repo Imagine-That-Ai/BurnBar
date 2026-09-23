@@ -37,7 +37,8 @@ actor DataStoreActor {
         snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter(),
         vectorSnapshotWriter: any VectorIndexSnapshotWriter = DaemonVectorIndexSnapshotWriter(),
         memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter(),
-        searchIndexWriter: any SearchIndexWriter = DaemonSearchIndexWriter()
+        searchIndexWriter: any SearchIndexWriter = DaemonSearchIndexWriter(),
+        switcherActiveProfileWriter: any SwitcherActiveProfileWriter = DaemonSwitcherActiveProfileWriter()
     ) throws {
         dbQueue = databaseQueue
         database = OpenBurnBarDatabase(
@@ -62,7 +63,10 @@ actor DataStoreActor {
         deviceStore = DeviceStore(dbQueue: databaseQueue)
         checkpointStore = ParserCheckpointStore(dbQueue: databaseQueue)
         remoteSyncWatermarkStore = RemoteSyncWatermarkStore(dbQueue: databaseQueue)
-        switcherStore = SwitcherProfileStore(dbQueue: databaseQueue)
+        switcherStore = SwitcherProfileStore(
+            dbQueue: databaseQueue,
+            activeProfileWriter: switcherActiveProfileWriter
+        )
         backfillCursorStore = BackfillCursorStore(dbQueue: databaseQueue)
         providerAccountStore = ProviderAccountStore(dbQueue: databaseQueue)
         textExpansionSnippetStore = TextExpansionSnippetStore(dbQueue: databaseQueue)

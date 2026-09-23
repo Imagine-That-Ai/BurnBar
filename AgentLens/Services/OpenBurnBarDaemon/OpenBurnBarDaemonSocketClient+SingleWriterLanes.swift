@@ -159,6 +159,25 @@ extension OpenBurnBarDaemonSocketClient {
         )
     }
 
+    // MARK: - Switcher lane (Wave 2.1c-v single-writer cutover)
+
+    /// The daemon owns `switcher_active_profile`; the app routes its
+    /// finalized active-profile writes through this wrapper instead of
+    /// touching the table directly. Reads stay on the app's local connection
+    /// for now.
+    static func switcherActiveProfileApply(
+        _ request: BurnBarSwitcherActiveProfileApplyRequest,
+        at socketURL: URL
+    ) throws -> BurnBarSwitcherActiveProfileApplyResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .switcherActiveProfileApply,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
     // MARK: - Memory lanes (pre-existing daemon.memory.* surface)
 
     /// Per-project memory counters from the daemon's own store — which is this
