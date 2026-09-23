@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 @preconcurrency import GRDB
-import OpenBurnBarData
+import OpenBurnBarCore
 import OpenBurnBarKernel
 
 // MARK: - Memory authority app lane (Wave 2.1c-iii single-writer cutover)

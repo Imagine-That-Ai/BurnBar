@@ -142,6 +142,23 @@ extension OpenBurnBarDaemonSocketClient {
         )
     }
 
+    /// The daemon owns `search_documents` / `search_chunks` /
+    /// `search_chunks_fts`; the app routes its finalized search-index
+    /// write sets through this wrapper instead of touching the tables
+    /// directly. Reads stay on the app's local connection for now.
+    static func searchIndexApply(
+        _ request: BurnBarSearchIndexApplyRequest,
+        at socketURL: URL
+    ) throws -> BurnBarSearchIndexApplyResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .searchIndexApply,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
     // MARK: - Memory lanes (pre-existing daemon.memory.* surface)
 
     /// Per-project memory counters from the daemon's own store — which is this

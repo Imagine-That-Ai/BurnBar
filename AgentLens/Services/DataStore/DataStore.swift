@@ -36,7 +36,8 @@ actor DataStoreActor {
         chatWriter: any ChatHistoryWriter = DaemonChatHistoryWriter(),
         snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter(),
         vectorSnapshotWriter: any VectorIndexSnapshotWriter = DaemonVectorIndexSnapshotWriter(),
-        memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter()
+        memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter(),
+        searchIndexWriter: any SearchIndexWriter = DaemonSearchIndexWriter()
     ) throws {
         dbQueue = databaseQueue
         database = OpenBurnBarDatabase(
@@ -50,7 +51,7 @@ actor DataStoreActor {
             snapshotWriter: snapshotWriter
         )
         receiptStore = ReceiptStore(dbQueue: databaseQueue)
-        searchIndexStore = SearchIndexStore(dbQueue: databaseQueue)
+        searchIndexStore = SearchIndexStore(dbQueue: databaseQueue, searchIndexWriter: searchIndexWriter)
         artifactStore = ArtifactStore(dbQueue: databaseQueue)
         projectionStore = ProjectionStore(dbQueue: databaseQueue, vectorSnapshotWriter: vectorSnapshotWriter)
         controlPlaneStore = ControlPlaneStore(

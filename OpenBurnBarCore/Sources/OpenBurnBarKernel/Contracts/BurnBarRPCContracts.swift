@@ -177,6 +177,12 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     /// validates shape and bounds, then stores it verbatim. v1 amendment
     /// 2026-09-23, see ADR-005.
     case searchVectorSnapshotUpsert = "daemon.search.vector_snapshot.upsert"
+    /// Wave 2.1c-iv: the app lane of `search_documents` / `search_chunks` /
+    /// `search_chunks_fts` moves to the daemon (single writer, ADR-005).
+    /// The app finalizes the write set (diffs computed against local reads);
+    /// the daemon validates shape and bounds, then stores it verbatim in one
+    /// transaction. v1 amendment 2026-09-23, see ADR-005.
+    case searchIndexApply = "daemon.search.index.apply"
     case memoryRemember = "daemon.memory.remember"
     case memoryRecall = "daemon.memory.recall"
     case memoryReviewStatus = "daemon.memory.review_status"

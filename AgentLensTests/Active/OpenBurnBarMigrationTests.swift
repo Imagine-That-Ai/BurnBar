@@ -136,7 +136,9 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         let store = try DataStore(
             databaseQueue: queue,
             runMigrations: true,
-            refreshOnInit: false
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
         )
 
         let expectedTables: Set<String> = [
@@ -320,6 +322,8 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         try await harness.dataStore.replaceSearchChunks(
             documentID: legacyDocument.id,
             title: legacyDocument.title,
+            projectName: legacyDocument.projectName ?? "",
+            provider: legacyDocument.provider ?? "",
             chunks: [legacyChunk]
         )
 

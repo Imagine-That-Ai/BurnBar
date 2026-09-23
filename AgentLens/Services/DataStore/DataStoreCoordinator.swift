@@ -394,7 +394,8 @@ final class DataStoreCoordinator {
         refreshOnInit: Bool = false,
         chatWriter: ((any DatabaseWriter) -> any ChatHistoryWriter)? = nil,
         snapshotWriter: ((any DatabaseWriter) -> any ProjectMemorySnapshotWriter)? = nil,
-        vectorSnapshotWriter: ((any DatabaseWriter) -> any VectorIndexSnapshotWriter)? = nil
+        vectorSnapshotWriter: ((any DatabaseWriter) -> any VectorIndexSnapshotWriter)? = nil,
+        searchIndexWriter: ((any DatabaseWriter) -> any SearchIndexWriter)? = nil
     ) throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue()
         return try DataStoreCoordinator(
@@ -403,7 +404,8 @@ final class DataStoreCoordinator {
             refreshOnInit: refreshOnInit,
             chatWriter: chatWriter?(queue) ?? DaemonChatHistoryWriter(),
             snapshotWriter: snapshotWriter?(queue) ?? DaemonProjectMemorySnapshotWriter(),
-            vectorSnapshotWriter: vectorSnapshotWriter?(queue) ?? DaemonVectorIndexSnapshotWriter()
+            vectorSnapshotWriter: vectorSnapshotWriter?(queue) ?? DaemonVectorIndexSnapshotWriter(),
+            searchIndexWriter: searchIndexWriter?(queue) ?? DaemonSearchIndexWriter()
         )
     }
     #endif
@@ -470,7 +472,8 @@ final class DataStoreCoordinator {
         chatWriter: any ChatHistoryWriter = DaemonChatHistoryWriter(),
         snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter(),
         vectorSnapshotWriter: any VectorIndexSnapshotWriter = DaemonVectorIndexSnapshotWriter(),
-        memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter()
+        memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter(),
+        searchIndexWriter: any SearchIndexWriter = DaemonSearchIndexWriter()
     ) throws {
         let actor = try DataStoreActor(
             databaseQueue: databaseQueue,
@@ -479,7 +482,8 @@ final class DataStoreCoordinator {
             chatWriter: chatWriter,
             snapshotWriter: snapshotWriter,
             vectorSnapshotWriter: vectorSnapshotWriter,
-            memoryAuthorityWriter: memoryAuthorityWriter
+            memoryAuthorityWriter: memoryAuthorityWriter,
+            searchIndexWriter: searchIndexWriter
         )
         self.actor = actor
 

@@ -94,6 +94,29 @@ extension BurnBarDaemonServer {
             } catch {
                 return vectorSnapshotErrorResponse(id: typedRequest.id, error: error)
             }
+        case .searchIndexApply:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarSearchIndexApplyRequest>.self,
+                from: requestData
+            )
+            guard let projectCodeMemory else {
+                return encodeErrorResponse(
+                    id: typedRequest.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: "Project memory is not available. Configure OPENBURNBAR_INDEX_DATABASE_PATH and restart the daemon."
+                )
+            }
+            do {
+                let result = try projectCodeMemory.searchIndexApplyAppLane(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            } catch {
+                return searchIndexErrorResponse(id: typedRequest.id, error: error)
+            }
         default:
             preconditionFailure("Unhandled search RPC method: \(method.rawValue)")
         }
@@ -105,6 +128,16 @@ extension BurnBarDaemonServer {
     /// cases keep their existing mapping untouched.
     private func vectorSnapshotErrorResponse(id: String, error: Error) -> Data {
         if case BurnBarIndexedSearchService.VectorSnapshotAppLaneError.invalidRequest = error {
+            return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.invalidParams, message: error.localizedDescription)
+        }
+        return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
+    }
+
+    /// Error mapping for the search-index app lane: validation failures
+    /// are the caller's fault (`invalidParams`, matching the other
+    /// single-writer lanes), never an `internalError`.
+    private func searchIndexErrorResponse(id: String, error: Error) -> Data {
+        if case BurnBarProjectCodeMemoryStore.SearchIndexAppLaneError.invalidRequest = error {
             return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.invalidParams, message: error.localizedDescription)
         }
         return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)

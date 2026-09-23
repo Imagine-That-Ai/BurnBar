@@ -178,7 +178,13 @@ actor ProjectionPipelineService {
 
         // Apply incremental chunk diff: only write changed/added/deleted chunks.
         // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
-        let chunkDiff = try await dataStore.applySearchChunkDiff(documentID: document.id, title: title, chunks: chunks)
+        let chunkDiff = try await dataStore.applySearchChunkDiff(
+            documentID: document.id,
+            title: title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
+            chunks: chunks
+        )
         self.lastChunkDiffResult = chunkDiff
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
@@ -272,7 +278,13 @@ actor ProjectionPipelineService {
 
         // Apply incremental chunk diff: only write changed/added/deleted chunks.
         // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
-        let chunkDiff = try await dataStore.applySearchChunkDiff(documentID: document.id, title: artifact.title, chunks: chunks)
+        let chunkDiff = try await dataStore.applySearchChunkDiff(
+            documentID: document.id,
+            title: artifact.title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
+            chunks: chunks
+        )
         self.lastChunkDiffResult = chunkDiff
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.

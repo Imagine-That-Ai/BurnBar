@@ -18,7 +18,13 @@ final class UsageAggregatorTests: XCTestCase {
 
     private func makeTestDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
     }
 
     private func makeTestQuotaService() -> ProviderQuotaService {
@@ -240,6 +246,8 @@ final class UsageAggregatorTests: XCTestCase {
         try await dataStore.replaceSearchChunks(
             documentID: document.id,
             title: document.title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
             chunks: chunks
         )
         let storedChunkCount = try await dataStore.countSearchChunks(documentID: document.id)

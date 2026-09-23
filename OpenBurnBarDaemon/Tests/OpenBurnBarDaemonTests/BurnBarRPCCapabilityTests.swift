@@ -30,6 +30,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .linuxOnboardingReset), .config)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .searchQuery), .search)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .searchVectorSnapshotUpsert), .searchWrite)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .searchIndexApply), .searchWrite)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .chatThreadCreate), .chat)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .chatThreadList), .chat)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .chatThreadGet), .chat)
@@ -83,6 +84,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.memorySnapshotDelete))
         XCTAssertFalse(profile.permits(.memorySnapshotDeleteAll))
         XCTAssertFalse(profile.permits(.searchVectorSnapshotUpsert))
+        XCTAssertFalse(profile.permits(.searchIndexApply))
         XCTAssertFalse(profile.permits(.codeIndexProject))
     }
 
@@ -104,6 +106,7 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertFalse(profile.permits(.memorySnapshotDelete))
         XCTAssertFalse(profile.permits(.memorySnapshotDeleteAll))
         XCTAssertFalse(profile.permits(.searchVectorSnapshotUpsert))
+        XCTAssertFalse(profile.permits(.searchIndexApply))
         XCTAssertFalse(profile.permits(.codeIndexProject))
     }
 

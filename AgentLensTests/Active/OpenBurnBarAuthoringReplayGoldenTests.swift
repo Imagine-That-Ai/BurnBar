@@ -33,6 +33,8 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
         try await harness.dataStore.replaceSearchChunks(
             documentID: skillContextDocument.id,
             title: skillContextDocument.title,
+            projectName: skillContextDocument.projectName ?? "",
+            provider: skillContextDocument.provider ?? "",
             chunks: [
                 SearchChunkRecord(
                     id: "chunk-authoring-skill-context",
@@ -71,6 +73,8 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
         try await harness.dataStore.replaceSearchChunks(
             documentID: agentContextDocument.id,
             title: agentContextDocument.title,
+            projectName: agentContextDocument.projectName ?? "",
+            provider: agentContextDocument.provider ?? "",
             chunks: [
                 SearchChunkRecord(
                     id: "chunk-authoring-agent-context",
@@ -210,6 +214,8 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
         try await harness.dataStore.replaceSearchChunks(
             documentID: contextDocument.id,
             title: contextDocument.title,
+            projectName: contextDocument.projectName ?? "",
+            provider: contextDocument.provider ?? "",
             chunks: [
                 SearchChunkRecord(
                     id: "chunk-smoke-context",

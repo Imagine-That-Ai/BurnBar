@@ -1603,7 +1603,7 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData
                 )
-            case .searchQuery, .searchSQL, .searchVectorSnapshotUpsert:
+            case .searchQuery, .searchSQL, .searchVectorSnapshotUpsert, .searchIndexApply:
                 return try await handleSearchRPC(
                     method: method,
                     decoder: decoder,

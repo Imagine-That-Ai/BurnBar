@@ -10,6 +10,12 @@ struct SearchChunkEmbeddingInput: Identifiable, Equatable, Sendable {
 }
 
 /// Search documents, chunks, FTS-based lexical search, and document-level deletion.
+///
+/// Wave 2.1c-iv: the daemon owns the search tables (ADR-005). This store
+/// finalizes its write sets locally — diffs are computed against local
+/// reads — and commits them through `searchIndexWriter` instead of
+/// writing the tables directly. Reads stay on the local connection until
+/// the read cutover.
 final class SearchIndexStore: Sendable {
     private struct ChunkDiffMetadata {
         let id: String
@@ -22,53 +28,22 @@ final class SearchIndexStore: Sendable {
     }
 
     private let dbQueue: any DatabaseWriter
+    private let searchIndexWriter: any SearchIndexWriter
 
-    init(dbQueue: any DatabaseWriter) {
+    init(
+        dbQueue: any DatabaseWriter,
+        searchIndexWriter: any SearchIndexWriter = DaemonSearchIndexWriter()
+    ) {
         self.dbQueue = dbQueue
+        self.searchIndexWriter = searchIndexWriter
     }
 
     // MARK: - Documents
 
     func upsertDocument(_ document: SearchDocumentRecord) async throws {
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO search_documents (
-                    id, sourceKind, sourceID, sourceVersionID, provider, projectName, title, subtitle,
-                    bodyPreview, sourceUpdatedAt, indexedAt, contentHash, createdAt, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    sourceKind = excluded.sourceKind,
-                    sourceID = excluded.sourceID,
-                    sourceVersionID = excluded.sourceVersionID,
-                    provider = excluded.provider,
-                    projectName = excluded.projectName,
-                    title = excluded.title,
-                    subtitle = excluded.subtitle,
-                    bodyPreview = excluded.bodyPreview,
-                    sourceUpdatedAt = excluded.sourceUpdatedAt,
-                    indexedAt = excluded.indexedAt,
-                    contentHash = excluded.contentHash,
-                    updatedAt = excluded.updatedAt
-                """,
-                arguments: [
-                    document.id,
-                    document.sourceKind.rawValue,
-                    document.sourceID,
-                    document.sourceVersionID,
-                    document.provider,
-                    document.projectName,
-                    document.title,
-                    document.subtitle,
-                    document.bodyPreview,
-                    document.sourceUpdatedAt,
-                    document.indexedAt,
-                    document.contentHash,
-                    document.createdAt,
-                    document.updatedAt
-                ]
-            )
-        }
+        _ = try await searchIndexWriter.apply(BurnBarSearchIndexApplyRequest(
+            documentUpsert: Self.wireDocument(document)
+        ))
     }
 
     func fetchDocuments(limit: Int) async throws -> [SearchDocumentRecord] {
@@ -237,52 +212,12 @@ final class SearchIndexStore: Sendable {
     }
 
     func deleteDocuments(sourceKind: SearchSourceKind, sourceID: String) async throws {
-        try await dbQueue.write { db in
-            let documentIDs = try String.fetchAll(
-                db,
-                sql: """
-                SELECT id
-                FROM search_documents
-                WHERE sourceKind = ? AND sourceID = ?
-                """,
-                arguments: [sourceKind.rawValue, sourceID]
+        _ = try await searchIndexWriter.apply(BurnBarSearchIndexApplyRequest(
+            documentDelete: BurnBarSearchIndexDeleteDocuments(
+                sourceKind: sourceKind.rawValue,
+                sourceID: sourceID
             )
-
-            for documentID in documentIDs {
-                // Rowid-targeted delete via the ftsRowid mapping (documentID is
-                // an UNINDEXED FTS5 column; matching on it scans the whole FTS
-                // table). Legacy chunks with NULL ftsRowid predate v55 and take
-                // the scan path once, individually.
-                try db.execute(
-                    sql: """
-                    DELETE FROM search_chunks_fts WHERE rowid IN (
-                        SELECT ftsRowid FROM search_chunks
-                        WHERE documentID = ? AND ftsRowid IS NOT NULL
-                    )
-                    """,
-                    arguments: [documentID]
-                )
-                let legacyChunkIDs = try String.fetchAll(
-                    db,
-                    sql: "SELECT id FROM search_chunks WHERE documentID = ? AND ftsRowid IS NULL",
-                    arguments: [documentID]
-                )
-                for chunkID in legacyChunkIDs {
-                    try db.execute(
-                        sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?",
-                        arguments: [chunkID]
-                    )
-                }
-            }
-
-            try db.execute(
-                sql: """
-                DELETE FROM search_documents
-                WHERE sourceKind = ? AND sourceID = ?
-                """,
-                arguments: [sourceKind.rawValue, sourceID]
-            )
-        }
+        ))
     }
 
     // MARK: - Chunks
@@ -353,6 +288,8 @@ final class SearchIndexStore: Sendable {
     func applyChunkDiff(
         documentID: String,
         title: String,
+        projectName: String,
+        provider: String,
         newChunks: [SearchChunkRecord]
     ) async throws -> ChunkDiffResult {
         // Diffing needs only stable identity and content hash. Reading full rows
@@ -365,7 +302,13 @@ final class SearchIndexStore: Sendable {
             guard newChunks.isEmpty == false else {
                 return ChunkDiffResult(unchanged: 0, rekeyed: 0, added: newChunks.count, deleted: 0, existingTotal: 0, newTotal: newChunks.count)
             }
-            try await replaceChunks(documentID: documentID, title: title, chunks: newChunks)
+            try await replaceChunks(
+                documentID: documentID,
+                title: title,
+                projectName: projectName,
+                provider: provider,
+                chunks: newChunks
+            )
             return ChunkDiffResult(unchanged: 0, rekeyed: 0, added: newChunks.count, deleted: 0, existingTotal: 0, newTotal: newChunks.count)
         }
 
@@ -446,7 +389,6 @@ final class SearchIndexStore: Sendable {
             chunksToInsert.append(contentsOf: newByHash[hash, default: []].filter { idsOnlyInNew.contains($0.id) })
         }
 
-        let (projectName, provider) = try await fetchDocumentIndexContext(documentID: documentID)
         let (actualAdded, actualDeleted) = try await applyChunkMutationsInBatches(
             documentID: documentID,
             title: title,
@@ -490,7 +432,17 @@ final class SearchIndexStore: Sendable {
         }
     }
 
-    func replaceChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) async throws {
+    /// Wave 2.1c-iv: `projectName`/`provider` arrive explicitly from the
+    /// caller (which finalizes the document in hand) instead of being read
+    /// back from `search_documents` — the daemon owns that table now, so a
+    /// local re-read would always miss and stamp empty FTS context.
+    func replaceChunks(
+        documentID: String,
+        title: String,
+        projectName: String,
+        provider: String,
+        chunks: [SearchChunkRecord]
+    ) async throws {
         let existingChunkIDs = try await dbQueue.read { db in
             try String.fetchAll(
                 db,
@@ -498,7 +450,6 @@ final class SearchIndexStore: Sendable {
                 arguments: [documentID]
             )
         }
-        let (projectName, provider) = try await fetchDocumentIndexContext(documentID: documentID)
         _ = try await applyChunkMutationsInBatches(
             documentID: documentID,
             title: title,
@@ -511,19 +462,6 @@ final class SearchIndexStore: Sendable {
         )
     }
 
-    private func fetchDocumentIndexContext(documentID: String) async throws -> (projectName: String, provider: String) {
-        try await dbQueue.read { db in
-            let documentRow = try Row.fetchOne(
-                db,
-                sql: "SELECT projectName, provider FROM search_documents WHERE id = ?",
-                arguments: [documentID]
-            )
-            let projectName = documentRow?["projectName"] as? String ?? ""
-            let provider = documentRow?["provider"] as? String ?? ""
-            return (projectName, provider)
-        }
-    }
-
     private func applyChunkMutationsInBatches(
         documentID: String,
         title: String,
@@ -532,6 +470,9 @@ final class SearchIndexStore: Sendable {
         chunkIDsToDelete: [String],
         chunksToInsert: [SearchChunkRecord]
     ) async throws -> (added: Int, deleted: Int) {
+        // One RPC per batch, deletes before inserts, with the same
+        // inter-batch pauses the pre-cutover path used: wire messages
+        // stay small and daemon write transactions stay short.
         let batchSize = max(1, WriteTuning.chunkMutationBatchSize)
         var deleted = 0
         var added = 0
@@ -539,12 +480,15 @@ final class SearchIndexStore: Sendable {
         for start in stride(from: 0, to: chunkIDsToDelete.count, by: batchSize) {
             let end = min(chunkIDsToDelete.count, start + batchSize)
             let batch = Array(chunkIDsToDelete[start..<end])
-            try await dbQueue.write { db in
-                for chunkID in batch {
-                    try Self.deleteChunkFTSRow(chunkID: chunkID, db: db)
-                    try db.execute(sql: "DELETE FROM search_chunks WHERE id = ?", arguments: [chunkID])
-                }
-            }
+            _ = try await searchIndexWriter.apply(BurnBarSearchIndexApplyRequest(
+                chunkMutations: BurnBarSearchIndexChunkMutations(
+                    documentID: documentID,
+                    ftsTitle: title,
+                    ftsProjectName: projectName,
+                    ftsProvider: provider,
+                    chunkIDsToDelete: batch
+                )
+            ))
             deleted += batch.count
             if end < chunkIDsToDelete.count || chunksToInsert.isEmpty == false {
                 try await Task.sleep(nanoseconds: WriteTuning.interChunkMutationPauseNanoseconds)
@@ -554,11 +498,15 @@ final class SearchIndexStore: Sendable {
         for start in stride(from: 0, to: chunksToInsert.count, by: batchSize) {
             let end = min(chunksToInsert.count, start + batchSize)
             let batch = Array(chunksToInsert[start..<end])
-            try await dbQueue.write { db in
-                for chunk in batch {
-                    try Self.insertChunk(chunk, documentID: documentID, title: title, projectName: projectName, provider: provider, db: db)
-                }
-            }
+            _ = try await searchIndexWriter.apply(BurnBarSearchIndexApplyRequest(
+                chunkMutations: BurnBarSearchIndexChunkMutations(
+                    documentID: documentID,
+                    ftsTitle: title,
+                    ftsProjectName: projectName,
+                    ftsProvider: provider,
+                    chunksToInsert: batch.map(Self.wireChunk)
+                )
+            ))
             added += batch.count
             if end < chunksToInsert.count {
                 try await Task.sleep(nanoseconds: WriteTuning.interChunkMutationPauseNanoseconds)
@@ -566,6 +514,51 @@ final class SearchIndexStore: Sendable {
         }
 
         return (added, deleted)
+    }
+
+    // MARK: - Wire mapping
+
+    /// Dates cross as GRDB timestamp text (`yyyy-MM-dd HH:mm:ss.SSS`, UTC)
+    /// via the canonical on-disk renderer — the exact representation this
+    /// store's pre-cutover GRDB writes persisted — so daemon-written rows
+    /// are byte-compatible with legacy rows in `ORDER BY` and `MAX()`.
+    private static func wireDocument(_ document: SearchDocumentRecord) -> BurnBarSearchIndexDocumentRow {
+        BurnBarSearchIndexDocumentRow(
+            id: document.id,
+            sourceKind: document.sourceKind.rawValue,
+            sourceID: document.sourceID,
+            sourceVersionID: document.sourceVersionID,
+            provider: document.provider,
+            projectName: document.projectName,
+            title: document.title,
+            subtitle: document.subtitle,
+            bodyPreview: document.bodyPreview,
+            sourceUpdatedAtText: document.sourceUpdatedAt.map(OpenBurnBarDatabase.sqliteDateString),
+            indexedAtText: OpenBurnBarDatabase.sqliteDateString(document.indexedAt),
+            contentHash: document.contentHash,
+            createdAtText: OpenBurnBarDatabase.sqliteDateString(document.createdAt),
+            updatedAtText: OpenBurnBarDatabase.sqliteDateString(document.updatedAt)
+        )
+    }
+
+    private static func wireChunk(_ chunk: SearchChunkRecord) -> BurnBarSearchIndexChunkRow {
+        BurnBarSearchIndexChunkRow(
+            id: chunk.id,
+            documentID: chunk.documentID,
+            sourceKind: chunk.sourceKind.rawValue,
+            sourceID: chunk.sourceID,
+            sourceVersionID: chunk.sourceVersionID,
+            ordinal: chunk.ordinal,
+            startOffset: chunk.startOffset,
+            endOffset: chunk.endOffset,
+            messageStartOffset: chunk.messageStartOffset,
+            messageEndOffset: chunk.messageEndOffset,
+            sectionPath: chunk.sectionPath,
+            text: chunk.text,
+            contentHash: chunk.contentHash,
+            createdAtText: OpenBurnBarDatabase.sqliteDateString(chunk.createdAt),
+            updatedAtText: OpenBurnBarDatabase.sqliteDateString(chunk.updatedAt)
+        )
     }
 
     /// Fetches existing embeddings keyed by contentHash for a document.
@@ -594,73 +587,6 @@ final class SearchIndexStore: Sendable {
             }
             return result
         }
-    }
-
-    /// Deletes a chunk's FTS row by its recorded rowid (O(log n)). `chunkID` /
-    /// `documentID` are UNINDEXED FTS5 columns, so a plain
-    /// `DELETE ... WHERE chunkID = ?` full-scans the entire FTS content table —
-    /// on a mature index that is a multi-GB read per chunk. Rows written by a
-    /// pre-`v55_search_chunks_fts_rowid` binary can carry a NULL `ftsRowid`;
-    /// only those take the legacy scan path.
-    static func deleteChunkFTSRow(chunkID: String, db: Database) throws {
-        let ftsRowid = try Int64.fetchOne(
-            db,
-            sql: "SELECT ftsRowid FROM search_chunks WHERE id = ? AND ftsRowid IS NOT NULL",
-            arguments: [chunkID]
-        )
-        if let ftsRowid {
-            try db.execute(sql: "DELETE FROM search_chunks_fts WHERE rowid = ?", arguments: [ftsRowid])
-        } else {
-            try db.execute(sql: "DELETE FROM search_chunks_fts WHERE chunkID = ?", arguments: [chunkID])
-        }
-    }
-
-    private static func insertChunk(
-        _ chunk: SearchChunkRecord,
-        documentID: String,
-        title: String,
-        projectName: String,
-        provider: String,
-        db: Database
-    ) throws {
-        // FTS row first so its rowid can be recorded on the chunk row —
-        // deletes then target the FTS rowid instead of scanning the table.
-        try db.execute(
-            sql: """
-            INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            arguments: [chunk.id, chunk.documentID, title, chunk.text, projectName, provider]
-        )
-        let ftsRowid = db.lastInsertedRowID
-
-        try db.execute(
-            sql: """
-            INSERT INTO search_chunks (
-                id, documentID, sourceKind, sourceID, sourceVersionID, ordinal,
-                startOffset, endOffset, messageStartOffset, messageEndOffset,
-                sectionPath, text, contentHash, ftsRowid, createdAt, updatedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            arguments: [
-                chunk.id,
-                chunk.documentID,
-                chunk.sourceKind.rawValue,
-                chunk.sourceID,
-                chunk.sourceVersionID,
-                chunk.ordinal,
-                chunk.startOffset,
-                chunk.endOffset,
-                chunk.messageStartOffset,
-                chunk.messageEndOffset,
-                chunk.sectionPath,
-                chunk.text,
-                chunk.contentHash,
-                ftsRowid,
-                chunk.createdAt,
-                chunk.updatedAt
-            ]
-        )
     }
 
     func fetchChunks(documentID: String) async throws -> [SearchChunkRecord] {

@@ -1,9 +1,6 @@
 {
   "dualWriterTables": [
     "chat_threads",
-    "search_chunks",
-    "search_chunks_fts",
-    "search_documents",
     "switcher_active_profile"
   ],
   "note": "Tables that both AgentLens/OpenBurnBarData and the daemon INSERT INTO. Shrink-only; new dual-writers are forbidden. Assign a writer in ADR-005 before adding INSERT."

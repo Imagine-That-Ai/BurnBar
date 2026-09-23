@@ -140,6 +140,9 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .searchQuery: "daemon.search.query",
         .searchSQL: "daemon.search.sql",
         .searchVectorSnapshotUpsert: "daemon.search.vector_snapshot.upsert",
+        // Wave 2.1c-iv: the search-index app lane — atomic document/chunk
+        // applies over the daemon-owned search tables.
+        .searchIndexApply: "daemon.search.index.apply",
         .memoryRemember: "daemon.memory.remember",
         .memoryRecall: "daemon.memory.recall",
         .memoryReviewStatus: "daemon.memory.review_status",

@@ -28,6 +28,8 @@ final class ArtifactAuthoringServiceTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: contextDocument.id,
             title: contextDocument.title,
+            projectName: contextDocument.projectName ?? "",
+            provider: contextDocument.provider ?? "",
             chunks: [
                 SearchChunkRecord(
                     id: "chunk-authoring-context",

@@ -1,6 +1,7 @@
 import XCTest
 import GRDB
 import OpenBurnBarCore
+import OpenBurnBarMemoryExport
 @testable import OpenBurnBar
 
 /// Wave 2.1c-iii memory authority single-writer cutover: the app finalizes
@@ -151,10 +152,14 @@ final class MemoryAuthorityCutoverTests: XCTestCase {
         XCTAssertNil(memory.supersededBy)
 
         // The commit crossed the seam; nothing landed locally.
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM agent_memories"), 0)
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM memory_body_snapshots"), 0)
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM memory_provenance"), 0)
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM memory_audit"), 0)
+        let hoisted0 = try await count(fixture.queue, "SELECT COUNT(*) FROM agent_memories")
+        XCTAssertEqual(hoisted0, 0)
+        let hoisted1 = try await count(fixture.queue, "SELECT COUNT(*) FROM memory_body_snapshots")
+        XCTAssertEqual(hoisted1, 0)
+        let hoisted2 = try await count(fixture.queue, "SELECT COUNT(*) FROM memory_provenance")
+        XCTAssertEqual(hoisted2, 0)
+        let hoisted3 = try await count(fixture.queue, "SELECT COUNT(*) FROM memory_audit")
+        XCTAssertEqual(hoisted3, 0)
     }
 
     func testAddPlansMergeForDuplicateBody() async throws {
@@ -313,7 +318,7 @@ final class MemoryAuthorityCutoverTests: XCTestCase {
                 now: Date(timeIntervalSince1970: 1_750_000_000)
             )
             XCTFail("three conflicting reseals must surface, not loop")
-        } catch ChatMemoryAuthorityError.conflictRetryExhausted {
+        } catch ControlPlaneStore.ChatMemoryAuthorityError.conflictRetryExhausted {
         } catch {
             XCTFail("expected conflictRetryExhausted, got \(error)")
         }
@@ -420,9 +425,12 @@ final class MemoryAuthorityCutoverTests: XCTestCase {
         XCTAssertEqual(delete.audit.action, "memory.delete")
 
         // Every local byte stays: the cascade is the daemon's.
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM agent_memories"), 1)
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM memory_body_snapshots"), 1)
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM memory_provenance"), 1)
+        let hoisted4 = try await count(fixture.queue, "SELECT COUNT(*) FROM agent_memories")
+        XCTAssertEqual(hoisted4, 1)
+        let hoisted5 = try await count(fixture.queue, "SELECT COUNT(*) FROM memory_body_snapshots")
+        XCTAssertEqual(hoisted5, 1)
+        let hoisted6 = try await count(fixture.queue, "SELECT COUNT(*) FROM memory_provenance")
+        XCTAssertEqual(hoisted6, 1)
     }
 
     // MARK: - Source tombstones + reconcile
@@ -456,7 +464,8 @@ final class MemoryAuthorityCutoverTests: XCTestCase {
         XCTAssertEqual(record.tombstone.id, first)
         XCTAssertEqual(record.tombstone.threadLogicalID, "thread-1")
         XCTAssertEqual(record.tombstone.reason, "user_delete")
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM memory_source_tombstones"), 0)
+        let hoisted7 = try await count(fixture.queue, "SELECT COUNT(*) FROM memory_source_tombstones")
+        XCTAssertEqual(hoisted7, 0)
     }
 
     func testReconcileSuppressesTombstonedSources() async throws {
@@ -618,7 +627,8 @@ final class MemoryAuthorityCutoverTests: XCTestCase {
         XCTAssertEqual(event.labels, ["alpha:2", "memory_id:mem-1", "source_kind:chat", "zeta:1"])
         XCTAssertEqual(event.labelsJSON, try ControlPlaneStore.auditLabelsJSON(event.labels))
         XCTAssertEqual(event.timestampText, ControlPlaneStore.iso8601String(now))
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM memory_audit"), 0)
+        let hoisted8 = try await count(fixture.queue, "SELECT COUNT(*) FROM memory_audit")
+        XCTAssertEqual(hoisted8, 0)
     }
 
     func testCandidateDroppedCarriesStableLabels() async throws {
@@ -660,10 +670,14 @@ final class MemoryAuthorityCutoverTests: XCTestCase {
             XCTFail("an unreachable daemon must throw, never silently succeed")
         } catch is ThrowingMemoryAuthorityWriter.Boom {
         }
-        XCTAssertEqual(try await count(queue, "SELECT COUNT(*) FROM agent_memories"), 0)
-        XCTAssertEqual(try await count(queue, "SELECT COUNT(*) FROM memory_body_snapshots"), 0)
-        XCTAssertEqual(try await count(queue, "SELECT COUNT(*) FROM memory_provenance"), 0)
-        XCTAssertEqual(try await count(queue, "SELECT COUNT(*) FROM memory_audit"), 0)
+        let hoisted9 = try await count(queue, "SELECT COUNT(*) FROM agent_memories")
+        XCTAssertEqual(hoisted9, 0)
+        let hoisted10 = try await count(queue, "SELECT COUNT(*) FROM memory_body_snapshots")
+        XCTAssertEqual(hoisted10, 0)
+        let hoisted11 = try await count(queue, "SELECT COUNT(*) FROM memory_provenance")
+        XCTAssertEqual(hoisted11, 0)
+        let hoisted12 = try await count(queue, "SELECT COUNT(*) FROM memory_audit")
+        XCTAssertEqual(hoisted12, 0)
     }
 
     func testResponseMutationMismatchThrows() async throws {
@@ -677,7 +691,7 @@ final class MemoryAuthorityCutoverTests: XCTestCase {
                 now: Date(timeIntervalSince1970: 1_750_000_000)
             )
             XCTFail("a shape-mismatched response must throw, never silently succeed")
-        } catch ChatMemoryAuthorityError.authorityResultMismatch {
+        } catch ControlPlaneStore.ChatMemoryAuthorityError.authorityResultMismatch {
         } catch {
             XCTFail("expected authorityResultMismatch, got \(error)")
         }
@@ -694,7 +708,7 @@ final class MemoryAuthorityCutoverTests: XCTestCase {
                 now: Date(timeIntervalSince1970: 1_750_000_000)
             )
             XCTFail("a short response must throw, never read as a silent partial apply")
-        } catch ChatMemoryAuthorityError.authorityResultMismatch {
+        } catch ControlPlaneStore.ChatMemoryAuthorityError.authorityResultMismatch {
         } catch {
             XCTFail("expected authorityResultMismatch, got \(error)")
         }
@@ -718,23 +732,29 @@ final class MemoryAuthorityCutoverTests: XCTestCase {
             patch: MemoryPatch(confidence: 0.5),
             now: Date(timeIntervalSince1970: 1_750_000_000)
         )
-        XCTAssertEqual(try await fixture.local.fetchChatMemoryAuthorityRecord(id: "mem-1")?.confidence, 0.5)
+        let hoisted13 = try await fixture.local.fetchChatMemoryAuthorityRecord(id: "mem-1")?.confidence
+        XCTAssertEqual(hoisted13, 0.5)
 
         _ = try await fixture.local.setChatMemoryReviewStatus(
             id: "mem-1",
             status: .approved,
             now: Date(timeIntervalSince1970: 1_750_000_100)
         )
-        XCTAssertEqual(try await fixture.local.fetchChatMemoryAuthorityRecord(id: "mem-1")?.reviewStatus, .approved)
+        let hoisted14 = try await fixture.local.fetchChatMemoryAuthorityRecord(id: "mem-1")?.reviewStatus
+        XCTAssertEqual(hoisted14, .approved)
 
         _ = try await fixture.local.deleteChatMemoryAuthorityRecord(
             id: "mem-1",
             now: Date(timeIntervalSince1970: 1_750_000_200)
         )
-        XCTAssertNil(try await fixture.local.fetchChatMemoryAuthorityRecord(id: "mem-1"))
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM agent_memories"), 0)
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM memory_body_snapshots"), 0)
-        XCTAssertEqual(try await count(fixture.queue, "SELECT COUNT(*) FROM memory_provenance"), 0)
+        let hoisted15 = try await fixture.local.fetchChatMemoryAuthorityRecord(id: "mem-1")
+        XCTAssertNil(hoisted15)
+        let hoisted16 = try await count(fixture.queue, "SELECT COUNT(*) FROM agent_memories")
+        XCTAssertEqual(hoisted16, 0)
+        let hoisted17 = try await count(fixture.queue, "SELECT COUNT(*) FROM memory_body_snapshots")
+        XCTAssertEqual(hoisted17, 0)
+        let hoisted18 = try await count(fixture.queue, "SELECT COUNT(*) FROM memory_provenance")
+        XCTAssertEqual(hoisted18, 0)
     }
 
     func testLocalDoubleChainVerifiesThroughExportVerifier() async throws {

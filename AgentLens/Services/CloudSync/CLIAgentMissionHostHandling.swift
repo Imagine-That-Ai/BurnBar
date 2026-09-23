@@ -310,12 +310,10 @@ extension CLIAgentMissionRequestListener {
                     requestedRuntime: muRequestedRuntime,
                     missionKind: muData["missionKind"] as? String
                 )
-                logger.info(
-                    "wand routing selected mission id=\(document.documentID, privacy: .private(mask: .hash)) "
-                        + "model=\(wandRoutingSelection.modelID, privacy: .private) "
-                        + "provider=\(wandRoutingSelection.provider ?? "unknown", privacy: .private) "
-                        + "source=\(wandRoutingSelection.source ?? "unknown", privacy: .private)"
-                )
+                let wandModelID = wandRoutingSelection.modelID
+                let wandProvider = wandRoutingSelection.provider ?? "unknown"
+                let wandSource = wandRoutingSelection.source ?? "unknown"
+                logger.info("wand routing selected mission id=\(document.documentID, privacy: .private(mask: .hash)) model=\(wandModelID, privacy: .private) provider=\(wandProvider, privacy: .private) source=\(wandSource, privacy: .private)")
             }
         } catch {
             logger.warning("mission id=\(document.documentID, privacy: .private(mask: .hash)) refused before claim: \(error.localizedDescription, privacy: .private)")

@@ -46,9 +46,9 @@ The live file is `~/Library/Application Support/OpenBurnBar/openburnbar.sqlite`.
 | conversations_fts | app | app | Virtual table |
 | chat_threads | daemon | app via RPC | Cut over Wave 2.1b: app writes via `daemon.chat.thread.create`; app reads stay local until the read cutover |
 | chat_messages | daemon | app via RPC | Cut over Wave 2.1b: app writes via `daemon.chat.message.append` (`replace: true` preserves re-save semantics) |
-| search_documents | daemon (target) | app | Projection/search |
-| search_chunks | daemon (target) | app | |
-| search_chunks_fts | daemon (target) | app | |
+| search_documents | daemon | app via RPC | Cut over Wave 2.1c-iv: app writes via `daemon.search.index.apply` (atomic document-upsert / document-delete / chunk-mutation batch; app-finalized rows stored verbatim, timestamps as GRDB text); app reads stay local until the read cutover |
+| search_chunks | daemon | app via RPC | Cut over Wave 2.1c-iv with `search_documents` via `daemon.search.index.apply` (deletes-before-inserts in ≤64-row batches; FTS `title`/`projectName`/`provider` supplied explicitly from the finalized document — the app can no longer read the document row back) |
+| search_chunks_fts | daemon | app via RPC | Cut over Wave 2.1c-iv: the daemon assigns FTS `rowid`s in-transaction and records the `ftsRowid` linkage per chunk row; app chunk writes ride `daemon.search.index.apply` |
 | chunk_embeddings | daemon (target) | app | |
 | embedding_models | app | daemon | |
 | embedding_versions | app | daemon | |

@@ -1592,6 +1592,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.search.index.apply",
+    "caseName": "searchIndexApply",
+    "domain": "search",
+    "capability": "search_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.search.index.apply",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.search.query",
     "caseName": "searchQuery",
     "domain": "search",

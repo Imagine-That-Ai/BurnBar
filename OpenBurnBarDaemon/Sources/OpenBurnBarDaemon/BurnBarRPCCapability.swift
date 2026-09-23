@@ -171,7 +171,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .run
         case .searchQuery, .searchSQL:
             return .search
-        case .searchVectorSnapshotUpsert:
+        case .searchVectorSnapshotUpsert, .searchIndexApply:
             return .searchWrite
         // `memoryModelPolicy` mints a 15-minute gateway bearer that can spend
         // under the member's consented providers: agency, not a store read, so
