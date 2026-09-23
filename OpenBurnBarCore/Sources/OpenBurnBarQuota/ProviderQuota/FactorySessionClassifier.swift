@@ -142,11 +142,16 @@ public enum FactorySessionClassifier {
 
     // MARK: - Token totals helper
 
-    /// Sums input + output + cacheCreate + cacheRead + thinking from a
-    /// `tokenUsage` blob. Returns 0 when the blob is missing or every
-    /// field is zero — callers should skip sessions that report 0 so
-    /// the burn windows stay clean.
-    static func totalTokens(in tokenUsage: [String: Any]) -> Int64 {
+    /// Factory-billable token total used against plan caps: input + output +
+    /// cache creation + thinking from a `tokenUsage` blob. Cache READS are
+    /// deliberately excluded — a cache read re-processes tokens Factory
+    /// already metered when they were first written, so counting each read
+    /// at full weight multiplies a session's plan footprint by its own
+    /// cache-hit count and pins the plan card at 100% weeks before the real
+    /// cap approaches (observed: 3.0B "used" against a 50M 7-day cap).
+    /// Returns 0 when the blob is missing or every field is zero — callers
+    /// should skip sessions that report 0 so the burn windows stay clean.
+    static func billableTokens(in tokenUsage: [String: Any]) -> Int64 {
         func intValue(_ key: String) -> Int64 {
             (tokenUsage[key] as? Int64)
                 ?? (tokenUsage[key] as? Int).map(Int64.init)
@@ -156,7 +161,6 @@ public enum FactorySessionClassifier {
         return intValue("inputTokens")
             + intValue("outputTokens")
             + intValue("cacheCreationTokens")
-            + intValue("cacheReadTokens")
             + intValue("thinkingTokens")
     }
 }
