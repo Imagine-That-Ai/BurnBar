@@ -954,4 +954,42 @@ final class CloudVaultCryptoTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         return defaults
     }
+
+    func test_nonThrowingAccessors_returnLegacyValues_whenRustModeCannotServeNative() throws {
+        // The non-throwing vault accessors must never trap — not even when an
+        // experiment mode selects Rust and the native FFI cannot serve it.
+        // Force rust mode for this process: where the FFI is not linked the
+        // adapter throws nativeUnavailable internally and the accessors must
+        // return the deterministic legacy values (previously preconditionFailure,
+        // which would crash the test runner here). Where the FFI is linked,
+        // the same assertions pin native/legacy agreement on these pure values.
+        let key = "OPENBURNBAR_DOMAIN_CORE_CLOUDVAULT_MODE"
+        let saved = getenv(key).map { String(cString: $0) }
+        setenv(key, "rust", 1)
+        defer {
+            if let saved { setenv(key, saved, 1) } else { unsetenv(key) }
+        }
+
+        let context = try CloudVaultAADContext(
+            uid: "u1",
+            collection: "c1",
+            docID: "d1",
+            field: "f1",
+            schemaVersion: 2,
+            purpose: "p1"
+        )
+        XCTAssertEqual(
+            context.stringValue,
+            "OpenBurnBar-CloudVault-aad-v2|u1|c1|d1|f1|2|p1"
+        )
+        XCTAssertEqual(
+            context.legacyV1StringValue,
+            "OpenBurnBar-CloudVault-aad-v1|u1|c1|d1|f1"
+        )
+        // NIST vector: SHA-256("abc").
+        XCTAssertEqual(
+            CloudVaultCrypto.sha256Hex(Data("abc".utf8)),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        )
+    }
 }

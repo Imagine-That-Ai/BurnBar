@@ -3,6 +3,25 @@ import Foundation
 import Security
 #endif
 
+/// Fault-level fallback log for the non-throwing vault accessors below
+/// (`CloudVaultAADContext.stringValue`, `legacyV1StringValue`,
+/// `CloudVaultCrypto.sha256Hex`).
+///
+/// The domain-core adapter throws only outside legacy mode (native FFI
+/// missing, ABI mismatch, or a forced-native environment); in legacy mode —
+/// every production profile — the legacy closure runs directly and cannot
+/// throw for the already-validated inputs. Trapping there would brick vault
+/// access exactly when an experiment mode misbehaves, so the accessors log
+/// at fault level on the adapter's own channel and return the deterministic
+/// legacy value instead. That fault line is the rust-health signal: it fires
+/// only when native mode failed to serve. Deliberately NOT recorded as a
+/// shadow-comparison mismatch — nothing was compared, and a synthetic
+/// mismatch would corrupt promotion evidence with false disagreement.
+private func logCloudVaultLegacyFallback(operation: String, error: Error) {
+    PlatformLogger(subsystem: "com.openburnbar.core", category: "CloudVaultDomainCore")
+        .fault("domain_core.cloudvault operation=\(operation) version=3 category=legacy_fallback_after_adapter_throw error=\(String(describing: error))")
+}
+
 public enum CloudVaultCryptoError: LocalizedError, Sendable {
     case invalidKeyLength
     case sealedBoxUnavailable
@@ -62,6 +81,16 @@ public struct CloudVaultAADContext: Codable, Hashable, Sendable {
     }
 
     public var stringValue: String {
+        let legacy = {
+            CloudVaultLegacyCrypto.aadV2(
+                uid: uid,
+                collection: collection,
+                docID: docID,
+                field: field,
+                schemaVersion: schemaVersion,
+                purpose: purpose
+            )
+        }
         do {
             return try CloudVaultDomainCoreAdapter.aadV2(
                 uid: uid,
@@ -70,31 +99,27 @@ public struct CloudVaultAADContext: Codable, Hashable, Sendable {
                 field: field,
                 schemaVersion: schemaVersion,
                 purpose: purpose,
-                legacy: { CloudVaultLegacyCrypto.aadV2(
-                    uid: uid,
-                    collection: collection,
-                    docID: docID,
-                    field: field,
-                    schemaVersion: schemaVersion,
-                    purpose: purpose
-                ) }
+                legacy: legacy
             )
         } catch {
-            preconditionFailure("CloudVault AAD v2 construction failed")
+            logCloudVaultLegacyFallback(operation: "aad_v2", error: error)
+            return legacy()
         }
     }
 
     public var legacyV1StringValue: String {
+        let legacy = { CloudVaultLegacyCrypto.aadV1(uid: uid, collection: collection, docID: docID, field: field) }
         do {
             return try CloudVaultDomainCoreAdapter.aadV1(
                 uid: uid,
                 collection: collection,
                 docID: docID,
                 field: field,
-                legacy: { CloudVaultLegacyCrypto.aadV1(uid: uid, collection: collection, docID: docID, field: field) }
+                legacy: legacy
             )
         } catch {
-            preconditionFailure("CloudVault AAD v1 construction failed")
+            logCloudVaultLegacyFallback(operation: "aad_v1", error: error)
+            return legacy()
         }
     }
 
@@ -993,12 +1018,12 @@ public enum CloudVaultCrypto {
     }
 
     public static func sha256Hex(_ data: Data) -> String {
+        let legacy = { CloudVaultLegacyCrypto.sha256Hex(data) }
         do {
-            return try CloudVaultDomainCoreAdapter.sha256Hex(data) {
-                CloudVaultLegacyCrypto.sha256Hex(data)
-            }
+            return try CloudVaultDomainCoreAdapter.sha256Hex(data, legacy: legacy)
         } catch {
-            preconditionFailure("CloudVault SHA-256 failed")
+            logCloudVaultLegacyFallback(operation: "sha256", error: error)
+            return legacy()
         }
     }
 
