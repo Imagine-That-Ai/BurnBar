@@ -21,7 +21,7 @@ extension CLIAgentMissionRequestListener {
     ) async {
         guard let uid = accountManager.currentUID else { return }
         guard let handle = claimedMissions[document.documentID] else {
-            logger.warning("refusing unclaimed host status \(status, privacy: .public) for \(document.documentID, privacy: .public)")
+            logger.warning("refusing unclaimed host status \(status, privacy: .private) for \(document.documentID, privacy: .private(mask: .hash))")
             return
         }
         do {
@@ -48,12 +48,12 @@ extension CLIAgentMissionRequestListener {
                 claimedMissions.removeValue(forKey: document.documentID)
             }
         } catch {
-            logger.error("host status \(status, privacy: .public) failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("host status \(status, privacy: .private) failed id=\(document.documentID, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
         }
     }
 
     func handleCancellation(document: QueryDocumentSnapshot, backend: CLIAgentMissionBackend) async {
-        logger.warning("handling cancellation for mission id=\(document.documentID, privacy: .public)")
+        logger.warning("handling cancellation for mission id=\(document.documentID, privacy: .private(mask: .hash))")
         await applyHostStatus(
             document: document,
             status: "canceled",
@@ -102,7 +102,7 @@ extension CLIAgentMissionRequestListener {
 
     func fail(document: QueryDocumentSnapshot, message: String) async {
         guard claimedMissions[document.documentID] != nil else {
-            logger.warning("refusing unclaimed fail() for \(document.documentID, privacy: .public)")
+            logger.warning("refusing unclaimed fail() for \(document.documentID, privacy: .private(mask: .hash))")
             return
         }
         let safeMessage = CLIAgentMissionEventFactory.mobileSafeText(message, limit: 2048)
@@ -134,9 +134,9 @@ extension CLIAgentMissionRequestListener {
                 backend: nil,
                 isError: true
             )
-            logger.info("marked mission failed id=\(document.documentID, privacy: .public)")
+            logger.info("marked mission failed id=\(document.documentID, privacy: .private(mask: .hash))")
         } catch {
-            logger.error("mission failure update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("mission failure update failed id=\(document.documentID, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -152,7 +152,7 @@ extension CLIAgentMissionRequestListener {
         do {
             guard let uid = accountManager.currentUID else { return }
             guard let handle = claimedMissions[document.documentID] else {
-                logger.warning("refusing unclaimed failAfterTrustedClaim for \(document.documentID, privacy: .public)")
+                logger.warning("refusing unclaimed failAfterTrustedClaim for \(document.documentID, privacy: .private(mask: .hash))")
                 return
             }
             let sealed = try await sealedStateUpdate(
@@ -180,9 +180,9 @@ extension CLIAgentMissionRequestListener {
                 backend: backend,
                 isError: true
             )
-            logger.info("marked trusted mission failed id=\(document.documentID, privacy: .public)")
+            logger.info("marked trusted mission failed id=\(document.documentID, privacy: .private(mask: .hash))")
         } catch {
-            logger.error("trusted mission failure update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("trusted mission failure update failed id=\(document.documentID, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -202,7 +202,7 @@ extension CLIAgentMissionRequestListener {
         do {
             guard let uid = accountManager.currentUID else { return }
             guard let handle = claimedMissions[document.documentID] else {
-                logger.warning("refusing unclaimed requestApproval for \(document.documentID, privacy: .public)")
+                logger.warning("refusing unclaimed requestApproval for \(document.documentID, privacy: .private(mask: .hash))")
                 return
             }
             let sealed = try await sealedStateUpdate(
@@ -249,9 +249,9 @@ extension CLIAgentMissionRequestListener {
                 message: message,
                 backend: backend
             )
-            logger.info("mission id=\(document.documentID, privacy: .public) waiting for mobile approval")
+            logger.info("mission id=\(document.documentID, privacy: .private(mask: .hash)) waiting for mobile approval")
         } catch {
-            logger.error("mission approval request failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("mission approval request failed id=\(document.documentID, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
             await fail(document: document, message: "Mac could not request mission approval: \(error.localizedDescription)")
         }
     }
@@ -278,9 +278,9 @@ extension CLIAgentMissionRequestListener {
                 backend: nil,
                 isError: true
             )
-            logger.info("mission approval \(approvalStatus, privacy: .public) id=\(document.documentID, privacy: .public)")
+            logger.info("mission approval \(approvalStatus, privacy: .private) id=\(document.documentID, privacy: .private(mask: .hash))")
         } catch {
-            logger.error("mission approval cancellation failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("mission approval cancellation failed id=\(document.documentID, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
         }
     }
 
