@@ -8,6 +8,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Claude Charts (`<synthetic>` band)** — Claude Code stamps synthesized
+  messages (e.g. API-error notices) with `"model":"<synthetic>"`, and the
+  parser took that marker verbatim into the session's model set. `<`
+  sorts before alphanumerics, so the placeholder won model selection and
+  the Home MODEL breakdown rendered a `<synthetic>` band instead of the
+  exact model that did the work. Parsers now reject harness placeholder
+  model names (`<…>` markers plus the empty/unknown/default/none
+  sentinels) before they enter a session's model set, so the exact model wins;
+  sessions with only placeholder messages fall back to the provider
+  default. The Claude parser cache schema bumped (v3→v4) so affected
+  sessions re-parse, and inserts delete same-session placeholder rows
+  when the corrected exact-model row arrives (Kimi `chatcmpl-` precedent),
+  so no ghost placeholder row survives next to the real one.
+- **Claude transcripts ≥8MB no longer lose their prefix** — bodies passes
+  resumed token accumulation from the persisted byte offset but rebuilt
+  conversation text from the tail alone, so the next index replaced the
+  stored transcript (and its message counts and title) with the tail.
+  Bodies passes now re-read from offset 0 while usage-only ticks keep
+  the incremental resume; covered by a generated-8MB two-pass regression
+  test plus a small-file control.
+- **Codex conversations are memory-bounded (1MB)** — rollout scans
+  retained every turn's full text. Accumulation is now streaming with
+  the same byte budget as the Claude accumulator (metrics still count
+  every turn; under-budget output is pinned identical by a golden test,
+  including the assistant-only first-line title), sharing one UTF-8-safe
+  truncation helper instead of a second copy.
+- **Vault crypto accessors fail to legacy instead of trapping** — the
+  non-throwing AAD / SHA-256 accessors called `preconditionFailure` when
+  the domain-core adapter threw (only possible outside legacy mode).
+  They now log at fault level and return the deterministic legacy value;
+  a forced-rust-mode test pins the contract.
+- **Pre-migration backups capped at one restore point** — the pruner kept
+  five full-database copies (tens of GB at current sizes). Only the
+  newest backup survives; older ones are pruned when a new one lands.
+- **Routing-decision audit log rotates (5MB + 3 generations)** — the
+  write-only `provider-routing-decisions.jsonl` trail now uses the same
+  ring as `metrics.jsonl`. The usage ledger is explicitly excluded (its
+  byte-offset index makes rotation data loss; compaction is the answer).
+- **CI honesty ratchets** — the PR harness now runs the shrink-only
+  XCTSkip budget (153, with the load probe converted to always-on
+  instead of env-skipped) and the quarantine freshness check; the
+  migrator-parity gate fails on a stale baseline header (which was
+  v61/62 against a v69/70 migrator); the diff-coverage waiver allowlist
+  is frozen at 69 entries; the quarantine freshness gate now fails
+  closed on malformed entry rows. The quarantine manifest's cipher-version row
+  is corrected to Done (the test runs unconditionally).
+- **Computer Use keep-awake is asserted on every end path** — the
+  session coordinator's idle-sleep hold is now injected (defaulting to
+  the process singleton), with tests proving hold-on-start and
+  release-on-end/panic/budget-cap.
 - **Muse Charts (this morning missing)** — `~/.local/share/muse/sessions` on
   Alberto's machine is ~4k `session.jsonl` / ~11GB. The parser walked
   oldest-first and charged the shared 256MB refresh budget *before* the
