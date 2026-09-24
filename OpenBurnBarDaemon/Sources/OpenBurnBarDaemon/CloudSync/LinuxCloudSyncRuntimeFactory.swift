@@ -32,7 +32,7 @@ public enum LinuxCloudSyncRuntimeFactory {
         )
         let database = try DatabasePool(
             path: databaseURL.path,
-            configuration: databaseConfiguration()
+            configuration: databaseConfiguration(for: databaseURL.path)
         )
         let engine = try LinuxCloudReplicaEngine(
             database: database,
@@ -70,8 +70,10 @@ public enum LinuxCloudSyncRuntimeFactory {
 
         do {
             // Keep migration ordering identical to the rest of daemon startup.
-            // A failed migration leaves the original file untouched; opening it
-            // below preserves the existing daemon's non-bricking behavior.
+            // A failed migration leaves the original file untouched. The GRDB
+            // open below executes the shared fail-closed keying decision, so a
+            // codec-less build or ciphertext-without-a-key throws out of the
+            // open instead of serving disclosed-plaintext.
             do {
                 _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
                     at: databasePath,
@@ -132,14 +134,24 @@ public enum LinuxCloudSyncRuntimeFactory {
     }
     #endif
 
-    private static func databaseConfiguration() -> Configuration {
+    private static func databaseConfiguration(for databasePath: String) -> Configuration {
         var configuration = Configuration()
         configuration.readonly = false
         configuration.busyMode = .timeout(5)
         configuration.maximumReaderCount = 8
-        if BurnBarDaemonDatabaseCipher.isCipherAvailable(),
-           let key = BurnBarDaemonDatabaseCipher.validatedKeyForGRDB() {
-            configuration.prepareDatabase { db in
+        // Wave 2.4 fail-closed: shared with the switcher store — the closure is
+        // ALWAYS installed and refusal throws out of the open.
+        configuration.prepareDatabase { db in
+            let decision = BurnBarDaemonDatabaseCipher.grdbKeyingDecision(
+                databasePath: databasePath,
+                resolvedKey: BurnBarDaemonDatabaseCipher.validatedKeyForGRDB()
+            )
+            switch decision {
+            case .openPlaintext:
+                return
+            case .refuse(let error):
+                throw error
+            case .applyKey(let key):
                 try db.execute(sql: "PRAGMA key = '\(key)'")
                 let cipherVersion = try String.fetchOne(db, sql: "PRAGMA cipher_version")
                 guard let cipherVersion, cipherVersion.isEmpty == false else {

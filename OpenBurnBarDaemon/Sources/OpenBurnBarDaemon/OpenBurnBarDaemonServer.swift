@@ -590,10 +590,13 @@ public actor BurnBarDaemonServer {
 #endif
             if FileManager.default.fileExists(atPath: path) {
                 // RR-1: one-time plaintext→encrypted migration of the shared SQLite
-                // file BEFORE any service opens it. No-op on a stock-SQLite build or
-                // when no key is provisioned, so the disclosed-plaintext file is left
-                // exactly as-is (do-not-brick). On failure we log and continue —
-                // the original plaintext file is untouched and still opens below.
+                // file BEFORE any service opens it. Wave 2.4 fail-closed: a
+                // plaintext file with no codec throws out of the migration (the
+                // main() startup gate exits before this is reachable); a
+                // plaintext file with no resolvable key is left exactly as-is
+                // with a loud log, to be migrated once a key appears. On
+                // migration failure we log and continue — the original
+                // plaintext file is untouched and still opens below.
                 do {
                     _ = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
                         at: path,

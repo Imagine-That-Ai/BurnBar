@@ -7,11 +7,12 @@ import OpenBurnBarLinuxSecurity
 import XCTest
 
 /// RR-1 (daemon side): the daemon keys the shared SQLite with the app's Keychain
-/// key WHEN a SQLCipher codec is linked, and migrates an existing plaintext file
-/// once. On the current stock-SQLite build the codec is absent, so every keyed
-/// path is a deliberate no-op (do-not-brick): these tests pin BOTH the
-/// stock-build no-op contract AND, behind a codec-present flag, the real keyed
-/// open + migration.
+/// key and migrates an existing plaintext file once. Wave 2.4 fail-closed,
+/// like the app: missing codec or key means REFUSE to open — there is no
+/// stock-SQLite compatibility mode. Refusal is driven through injected probes
+/// so these tests pin the fail-closed contract on EVERY build (no
+/// codec-stripped binary required); the live-codec round-trip still runs
+/// behind `requireCodec()`.
 final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
     private let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private static let testEncryptionKey = "daemon-test-" + String(repeating: "a", count: 32)
@@ -67,34 +68,234 @@ final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
         XCTAssertFalse(BurnBarDaemonDatabaseCipher.isPlaintextDatabaseFile(at: path))
     }
 
-    // MARK: - Stock-build do-not-brick contract
+    // MARK: - Fail-closed refusal contract (runs on every build)
 
-    func test_applyKeyIfAvailable_isNoOpOnStockSQLite() throws {
-        // On a stock-SQLite build (no codec) applyKeyIfAvailable must NOT throw
-        // and must leave a readable plaintext handle: the daemon keeps opening the
-        // disclosed-plaintext file rather than bricking on a no-op PRAGMA key.
-        try XCTSkipIf(BurnBarDaemonDatabaseCipher.isCipherAvailable(), "codec present; covered by the keyed-open test")
-
+    func test_applyKeyIfAvailable_refusesWithoutCodec() throws {
+        // Without a codec the open throws instead of silently serving
+        // disclosed-plaintext. Injected probe: no codec-stripped binary needed.
         let path = try makePlaintextDatabase(rows: ["row1"])
         defer { try? FileManager.default.removeItem(atPath: path) }
 
         var handle: OpaquePointer?
         XCTAssertEqual(sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
         defer { sqlite3_close(handle) }
-        XCTAssertNoThrow(try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: handle!))
-        XCTAssertEqual(try readAllRows(handle!), ["row1"], "stock plaintext DB must remain readable")
+        XCTAssertThrowsError(
+            try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: handle!, codecAvailable: false)
+        ) { error in
+            guard case BurnBarDaemonDatabaseCipherError.codecUnavailable = error else {
+                return XCTFail("expected codecUnavailable, got \(error)")
+            }
+        }
     }
 
-    func test_migratePlaintextDatabaseIfNeeded_isNoOpOnStockSQLite() throws {
-        try XCTSkipIf(BurnBarDaemonDatabaseCipher.isCipherAvailable(), "codec present; covered by the migration test")
-
+    func test_migratePlaintextDatabaseIfNeeded_refusesWithoutCodec() throws {
         let path = try makePlaintextDatabase(rows: ["keep-me"])
         defer { try? FileManager.default.removeItem(atPath: path) }
 
         let logger = BurnBarDaemonLogger(category: "cipher-test")
-        let migrated = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(at: path, logger: logger)
-        XCTAssertFalse(migrated, "no codec ⇒ no migration")
-        XCTAssertTrue(BurnBarDaemonDatabaseCipher.isPlaintextDatabaseFile(at: path), "file must stay plaintext and intact")
+        XCTAssertThrowsError(
+            try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+                at: path,
+                logger: logger,
+                codecAvailable: false
+            )
+        ) { error in
+            guard case BurnBarDaemonDatabaseCipherError.codecUnavailable = error else {
+                return XCTFail("expected codecUnavailable, got \(error)")
+            }
+        }
+        XCTAssertTrue(
+            BurnBarDaemonDatabaseCipher.isPlaintextDatabaseFile(at: path),
+            "refused migration must leave the file untouched"
+        )
+    }
+
+    func test_migratePlaintextDatabaseIfNeeded_missingFileStaysNoOpWithoutCodec() throws {
+        // Refusal applies to databases that exist: a missing file is still a
+        // silent no-op (first-run creation path), even without a codec.
+        let path = NSTemporaryDirectory() + "obb-missing-\(UUID().uuidString).sqlite"
+        let logger = BurnBarDaemonLogger(category: "cipher-test")
+        let migrated = try BurnBarDaemonDatabaseCipher.migratePlaintextDatabaseIfNeeded(
+            at: path,
+            logger: logger,
+            codecAvailable: false
+        )
+        XCTAssertFalse(migrated)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
+    }
+
+    func test_runPlaintextMigration_withoutKeyLeavesPlaintextInPlace() throws {
+        // No resolvable key: the file stays plaintext with a loud log (no
+        // throw — first-run and locked-secret-store operation keep working),
+        // to be migrated once a key appears. Resolved key is injected so the
+        // test never depends on the ambient secret store.
+        let path = try makePlaintextDatabase(rows: ["keep-me"])
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let logger = BurnBarDaemonLogger(category: "cipher-test")
+        let migrated = try BurnBarDaemonDatabaseCipher.runPlaintextMigration(
+            at: path,
+            logger: logger,
+            resolvedKey: nil
+        )
+        XCTAssertFalse(migrated)
+        XCTAssertTrue(BurnBarDaemonDatabaseCipher.isPlaintextDatabaseFile(at: path))
+
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
+        defer { sqlite3_close(handle) }
+        XCTAssertEqual(try readAllRows(handle!), ["keep-me"])
+    }
+
+    func test_applyResolvedKey_refusesEncryptedFileWithoutKey() throws {
+        // Ciphertext with no key is a typed refusal, not a late opaque
+        // "file is not a database" on the first read.
+        try requireCodec()
+
+        let path = try makePlaintextDatabase(rows: ["secret-row"])
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let logger = BurnBarDaemonLogger(category: "cipher-test")
+        XCTAssertTrue(try BurnBarDaemonDatabaseCipher.runPlaintextMigration(
+            at: path,
+            logger: logger,
+            resolvedKey: Self.testEncryptionKey
+        ))
+
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
+        defer { sqlite3_close(handle) }
+        XCTAssertThrowsError(try BurnBarDaemonDatabaseCipher.applyResolvedKey(nil, to: handle!)) { error in
+            guard case BurnBarDaemonDatabaseCipherError.missingKeyForEncryptedDatabase(let refused) = error else {
+                return XCTFail("expected missingKeyForEncryptedDatabase, got \(error)")
+            }
+            // sqlite3 reports the resolved path (/private/var/…); the fixture
+            // path may use the /var/… symlink spelling of the same file.
+            XCTAssertEqual(
+                URL(fileURLWithPath: refused).resolvingSymlinksInPath().path,
+                URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+            )
+        }
+    }
+
+    func test_applyResolvedKey_withoutKeyLeavesPlaintextReadable() throws {
+        // Plaintext with no key stays readable (first-run creation, legacy
+        // disclosed-plaintext with a genuinely unresolvable key). Runs on
+        // every build: no codec interaction on this path.
+        let path = try makePlaintextDatabase(rows: ["row1"])
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        var handle: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
+        defer { sqlite3_close(handle) }
+        XCTAssertNoThrow(try BurnBarDaemonDatabaseCipher.applyResolvedKey(nil, to: handle!))
+        XCTAssertEqual(try readAllRows(handle!), ["row1"])
+    }
+
+    func test_grdbKeyingDecision() throws {
+        // The shared GRDB prepareDatabase decision, exhaustively: no codec
+        // always refuses; ciphertext without a key refuses; everything else
+        // follows the key.
+        let plaintext = try makePlaintextDatabase(rows: ["row1"])
+        defer { try? FileManager.default.removeItem(atPath: plaintext) }
+        let ciphertext = NSTemporaryDirectory() + "obb-cipher-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: ciphertext) }
+        try Data([0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                  0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]).write(to: URL(fileURLWithPath: ciphertext))
+        let missing = NSTemporaryDirectory() + "obb-missing-\(UUID().uuidString).sqlite"
+
+        // No codec ⇒ refuse, even with a key in hand.
+        assertRefusesCodecUnavailable(BurnBarDaemonDatabaseCipher.grdbKeyingDecision(
+            databasePath: plaintext, resolvedKey: Self.testEncryptionKey, codecAvailable: false
+        ))
+        assertRefusesCodecUnavailable(BurnBarDaemonDatabaseCipher.grdbKeyingDecision(
+            databasePath: missing, resolvedKey: nil, codecAvailable: false
+        ))
+
+        // Codec + key ⇒ apply.
+        guard case .applyKey(let applied) = BurnBarDaemonDatabaseCipher.grdbKeyingDecision(
+            databasePath: plaintext, resolvedKey: Self.testEncryptionKey, codecAvailable: true
+        ) else {
+            XCTFail("expected applyKey")
+            return
+        }
+        XCTAssertEqual(applied, Self.testEncryptionKey)
+
+        // Codec, no key, ciphertext ⇒ refuse with the path.
+        guard case .refuse(let refusal) = BurnBarDaemonDatabaseCipher.grdbKeyingDecision(
+            databasePath: ciphertext, resolvedKey: nil, codecAvailable: true
+        ) else {
+            XCTFail("expected refuse for ciphertext without a key")
+            return
+        }
+        guard case BurnBarDaemonDatabaseCipherError.missingKeyForEncryptedDatabase(let refused) = refusal else {
+            XCTFail("expected missingKeyForEncryptedDatabase, got \(refusal)")
+            return
+        }
+        XCTAssertEqual(refused, ciphertext)
+
+        // Codec, no key, plaintext or missing ⇒ open.
+        guard case .openPlaintext = BurnBarDaemonDatabaseCipher.grdbKeyingDecision(
+            databasePath: plaintext, resolvedKey: nil, codecAvailable: true
+        ) else {
+            XCTFail("expected openPlaintext for a plaintext file without a key")
+            return
+        }
+        guard case .openPlaintext = BurnBarDaemonDatabaseCipher.grdbKeyingDecision(
+            databasePath: missing, resolvedKey: nil, codecAvailable: true
+        ) else {
+            XCTFail("expected openPlaintext for a missing file without a key")
+            return
+        }
+    }
+
+    private func assertRefusesCodecUnavailable(
+        _ decision: BurnBarDaemonDatabaseCipher.GRDBKeyingDecision,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard case .refuse(let error) = decision else {
+            XCTFail("expected refuse, got \(decision)", file: file, line: line)
+            return
+        }
+        guard case BurnBarDaemonDatabaseCipherError.codecUnavailable = error else {
+            XCTFail("expected codecUnavailable, got \(error)", file: file, line: line)
+            return
+        }
+    }
+
+    func test_requireCodecForStartup() throws {
+        // Forced-absent always throws; forced-present always passes; and the
+        // live gate agrees with the live probe on every build (no skips — a
+        // stock build must prove it refuses, not skip the proof).
+        XCTAssertNoThrow(try BurnBarDaemonDatabaseCipher.requireCodecForStartup(codecAvailable: true))
+        XCTAssertThrowsError(try BurnBarDaemonDatabaseCipher.requireCodecForStartup(codecAvailable: false)) { error in
+            guard case BurnBarDaemonDatabaseCipherError.codecUnavailable = error else {
+                return XCTFail("expected codecUnavailable, got \(error)")
+            }
+        }
+        if BurnBarDaemonDatabaseCipher.isCipherAvailable() {
+            XCTAssertNoThrow(try BurnBarDaemonDatabaseCipher.requireCodecForStartup())
+        } else {
+            XCTAssertThrowsError(try BurnBarDaemonDatabaseCipher.requireCodecForStartup())
+        }
+    }
+
+    func test_startupCodecProbe_forceNoCodecOverride() throws {
+        #if DEBUG
+        // DEBUG-only test hatch (compiled out of release, like the
+        // peer-codesig opt-out): forces the startup probe absent so the
+        // "daemon without codec exits with an error" proof can execute.
+        setenv("OPENBURNBAR_DAEMON_FORCE_NO_CODEC", "1", 1)
+        defer { unsetenv("OPENBURNBAR_DAEMON_FORCE_NO_CODEC") }
+        XCTAssertFalse(BurnBarDaemonDatabaseCipher.startupCodecProbe())
+        XCTAssertThrowsError(try BurnBarDaemonDatabaseCipher.requireCodecForStartup())
+        #else
+        // Release builds never read the override: the probe is the probe.
+        XCTAssertEqual(
+            BurnBarDaemonDatabaseCipher.startupCodecProbe(),
+            BurnBarDaemonDatabaseCipher.isCipherAvailable()
+        )
+        #endif
     }
 
     func test_applyKey_rejectsKeyWithUnsafeCharacters() {
@@ -112,9 +313,9 @@ final class BurnBarDaemonDatabaseCipherTests: XCTestCase {
 
     // MARK: - Real keyed open + migration (codec-present flag)
     //
-    // Activates the moment a SQLCipher codec is linked into the daemon's SQLite.
-    // Set DAEMON_SQLCIPHER_PRESENT=1 once such a build exists to demand the
-    // assertions below pass; otherwise the test self-checks via isCipherAvailable.
+    // The daemon package links SQLCipher, so these run live. Set
+    // DAEMON_SQLCIPHER_PRESENT=1 to demand the assertions below pass (the
+    // codec-proof lane); otherwise the test self-checks via isCipherAvailable.
 
     func test_keyedOpen_roundTripsThroughCodec_whenPresent() throws {
         try requireCodec()

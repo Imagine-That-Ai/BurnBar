@@ -77,6 +77,11 @@ jobs:
           OPENBURNBAR_SKIP_CORE_SWIFT_TESTS: "1"
         run: ./scripts/test-openburnbar-swift.sh
 
+      - name: Prove daemon codec startup gate (Wave 2.4)
+        # The DEBUG daemon binary with OPENBURNBAR_DAEMON_FORCE_NO_CODEC=1 must
+        # exit non-zero with the typed codec error and bind/create nothing.
+        run: bash scripts/ci/verify-daemon-codec-gate.sh
+
   # ── Release-build verification ───────────────────────────────────────────
   # The security gates on F-RR06-001/002 rely on `#if DEBUG` / `#else` compile
   # branches. Unit tests inject `isDebugBuild: false` to simulate release
@@ -142,6 +147,14 @@ jobs:
           # The debugOnlyArgument error message must NOT appear in release help.
           if echo "$HELP_OUTPUT" | grep -q "debugOnlyArgument"; then
             echo "::error::Release binary help output contains debugOnlyArgument text"
+            exit 1
+          fi
+
+          # The Wave 2.4 force-no-codec test hatch must be compiled out of the
+          # release binary entirely (a hostile launch environment must not be
+          # able to trip the startup gate, nor observe the override string).
+          if strings "$BINARY" | grep -q "OPENBURNBAR_DAEMON_FORCE_NO_CODEC"; then
+            echo "::error::Release binary still references OPENBURNBAR_DAEMON_FORCE_NO_CODEC (should be compiled out)"
             exit 1
           fi
 

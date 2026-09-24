@@ -34,6 +34,21 @@ struct OpenBurnBarDaemonExecutable {
         )
         try configuration.validate()
         let logger = BurnBarDaemonLogger(category: "process")
+
+        // Wave 2.4: refuse to serve without the SQLCipher codec, like the app.
+        // A codec-less binary cannot verify what it opens, so it exits here —
+        // before the socket binds — instead of serving a disclosed-plaintext
+        // database. Same log+throw shape as the T-DMN-03 self-verifier below.
+        do {
+            try BurnBarDaemonDatabaseCipher.requireCodecForStartup()
+        } catch {
+            logger.error(
+                "daemon_codec_unavailable_refusing_start",
+                metadata: ["error": "\(error)"]
+            )
+            throw error
+        }
+
         let peerAuthenticator = makePeerAuthenticator(
             environment: ProcessInfo.processInfo.environment,
             logger: logger
