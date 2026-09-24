@@ -1,6 +1,6 @@
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarFirestoreModels
 import OpenBurnBarSignalCore
 import OpenBurnBarSignalSessionTransport

@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarAssistantModels
 
 // MARK: - Assistant Model Catalog
 //

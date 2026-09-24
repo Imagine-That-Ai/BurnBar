@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 struct OpenBurnBarDaemonProviderConfiguration: Equatable, Identifiable {
 

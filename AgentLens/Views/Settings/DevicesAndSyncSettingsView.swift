@@ -1,4 +1,8 @@
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
@@ -675,7 +679,7 @@ enum MacCredentialTransferability: Equatable, Sendable {
         }
     }
 
-    var credentialKind: OpenBurnBarCore.EscrowCredentialKind {
+    var credentialKind: OpenBurnBarKernel.EscrowCredentialKind {
         switch self {
         case .apiKey: return .apiKey
         case .oauthToken: return .oauthToken
@@ -690,14 +694,14 @@ struct MacEscrowGrantSummary: Identifiable, Equatable {
     let id: String
     let provider: AgentProvider
     let targetDeviceName: String
-    let credentialKind: OpenBurnBarCore.EscrowCredentialKind
+    let credentialKind: OpenBurnBarKernel.EscrowCredentialKind
     let grantedAt: Date
 
     init(
         id: String,
         provider: AgentProvider,
         targetDeviceName: String,
-        credentialKind: OpenBurnBarCore.EscrowCredentialKind,
+        credentialKind: OpenBurnBarKernel.EscrowCredentialKind,
         grantedAt: Date = Date()
     ) {
         self.id = id
@@ -961,18 +965,18 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
     }
 
     static func loadOrCreateDeviceId(defaults: UserDefaults = .standard) -> String {
-        OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
-        if let stored = defaults.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
+        OpenBurnBarKernel.OpenBurnBarMigration.migrateUserDefaults()
+        if let stored = defaults.string(forKey: OpenBurnBarKernel.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
             return stored
         }
-        for legacyKey in OpenBurnBarCore.OpenBurnBarIdentity.legacyDeviceIDKeys {
+        for legacyKey in OpenBurnBarKernel.OpenBurnBarIdentity.legacyDeviceIDKeys {
             if let stored = defaults.string(forKey: legacyKey), !stored.isEmpty {
-                defaults.set(stored, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
+                defaults.set(stored, forKey: OpenBurnBarKernel.OpenBurnBarIdentity.deviceIDKey)
                 return stored
             }
         }
         let created = UUID().uuidString
-        defaults.set(created, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
+        defaults.set(created, forKey: OpenBurnBarKernel.OpenBurnBarIdentity.deviceIDKey)
         return created
     }
 

@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarQuota
 
 /// Bootstraps Anthropic gateway routes from an already-signed-in Claude Code OAuth
 /// session when the user wires Claude Code but has not yet added an Anthropic

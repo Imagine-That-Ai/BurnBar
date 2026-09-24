@@ -1,5 +1,8 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 /// Tolerant JSON value coercion + control-plane response parsing shared by
 /// the Hermes wire decoders.

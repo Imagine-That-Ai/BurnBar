@@ -1,7 +1,11 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 struct ChatInputRow: View {
     @Bindable var controller: ChatSessionController

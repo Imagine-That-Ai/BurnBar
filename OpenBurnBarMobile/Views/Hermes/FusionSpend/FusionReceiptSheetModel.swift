@@ -1,5 +1,8 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OSLog
 
 // MARK: - Fusion Receipt Sheet Model (iOS)

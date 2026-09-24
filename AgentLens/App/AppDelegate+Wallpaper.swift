@@ -1,6 +1,7 @@
 import AppKit
 import IOKit.ps
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // Extracted verbatim from AppDelegate.swift (audit wave 4, item 14).

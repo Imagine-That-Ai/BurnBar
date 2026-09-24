@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarUI
 import AppKit
 
 // MARK: - macOS Smart Hub Display Adapter

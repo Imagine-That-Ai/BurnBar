@@ -2,7 +2,9 @@
 import AppKit
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 extension ComputerUseRuntimeController {

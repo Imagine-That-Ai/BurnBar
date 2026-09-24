@@ -1,7 +1,11 @@
 #if canImport(UIKit)
 import SwiftUI
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 struct AgentPermissionGrantSheet: View {
     @Environment(\.dismiss) private var dismiss

@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Composition Root (WP3-IOSROOT)
 //

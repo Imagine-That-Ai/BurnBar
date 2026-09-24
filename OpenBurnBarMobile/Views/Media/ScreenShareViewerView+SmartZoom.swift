@@ -7,7 +7,8 @@ import SwiftUI
 import UIKit
 #endif
 import OpenBurnBarMedia
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 extension ScreenShareViewerView {

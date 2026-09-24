@@ -4,7 +4,9 @@ import os.log
 import Security
 import SwiftUI
 import UIKit
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Observable wrapper around the Insights services for the mobile shell.
 ///

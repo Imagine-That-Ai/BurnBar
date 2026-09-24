@@ -3,7 +3,9 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import os.log
 import Security
 import UIKit

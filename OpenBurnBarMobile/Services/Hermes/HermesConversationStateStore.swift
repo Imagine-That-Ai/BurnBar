@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarHermes
+import OpenBurnBarKernel
 
 /// Per-surface Hermes conversation state: the visible transcript, the
 /// active session id, streaming/error flags, the per-conversation token

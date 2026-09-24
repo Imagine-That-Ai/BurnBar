@@ -1,6 +1,8 @@
 import Foundation
 import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - Mobile Tool Catalog
 //

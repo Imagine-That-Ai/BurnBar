@@ -1,7 +1,10 @@
 #if canImport(UIKit)
 import SwiftUI
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import UIKit
 
 /// Phase 14 — Full mercury-themed bottom sheet that opens from the

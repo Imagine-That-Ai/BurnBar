@@ -1,5 +1,8 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Search Query Cache
 
@@ -13,7 +16,7 @@ struct SearchQueryCacheKey: Hashable, Sendable {
     let dateRangeUpper: Date?
     let ownership: String
     let sourceIDs: Set<String>?
-    let conversationSources: Set<OpenBurnBarCore.ConversationSourceType>?
+    let conversationSources: Set<OpenBurnBarInboxModels.ConversationSourceType>?
     let lexicalCandidateLimit: Int
     let semanticCandidateLimit: Int
     let rerankCandidateLimit: Int

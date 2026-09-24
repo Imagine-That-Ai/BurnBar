@@ -1,6 +1,8 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 struct AgentActionTimelineSheet: View {
     let entries: [HermesRealtimeRelayActionLogEntry]

@@ -1,6 +1,6 @@
 import Foundation
 import UserNotifications
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Fires UNUserNotifications on budget thresholds. Requests authorization on first use,
 /// builds `UNMutableNotificationContent`, and schedules with a

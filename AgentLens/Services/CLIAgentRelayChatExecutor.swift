@@ -1,6 +1,8 @@
 import Foundation
 import os
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
 
 typealias CLIAgentRelayChatDispatcher = @Sendable (
     _ request: CLIAgentRelayChatRequest,

@@ -1,6 +1,10 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 struct DashboardView: View {
     @State private var store = DashboardStore()

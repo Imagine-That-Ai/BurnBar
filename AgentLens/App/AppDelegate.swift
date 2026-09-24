@@ -1,7 +1,8 @@
 import AppKit
 import Carbon
 import GoogleSignIn
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Hosts the OpenBurnBar status item and popover.
 ///

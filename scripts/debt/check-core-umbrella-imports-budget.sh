@@ -3,8 +3,11 @@
 #
 # The decomposition repoints privileged consumers off the OpenBurnBarCore umbrella
 # onto narrow targets (daemon/CLI -> OpenBurnBarEngine at S17, Widget -> Kernel+
-# Insights+UI at S18, Keyboard -> TextExpansion+Kernel at S19). Apps (AgentLens,
-# OpenBurnBarMobile) deliberately KEEP importing the umbrella. This gate freezes
+# Insights+UI at S18, Keyboard -> TextExpansion+Kernel at S19). Wave 3.3 then
+# codemodded the apps (AgentLens, OpenBurnBarMobile) to explicit module imports
+# (908 -> 78 files); the remaining tail is files that module-qualify
+# `OpenBurnBarCore.X` (already explicit), >9-module fan-out files, and files
+# where import lines would grow a size-baselined file. This gate freezes
 # umbrella imports per consumer root so they can only shrink:
 #
 # Fails CI if a NEW file in a tracked root contains `import OpenBurnBarCore` that
@@ -33,10 +36,10 @@ const path = require("node:path");
 
 const [repoRoot, baselinePath, mode] = process.argv.slice(2);
 
-// Consumer roots scanned for umbrella imports. AgentLens/OpenBurnBarMobile keep
-// the umbrella (ratchet-only, never bulk-rewritten); the daemon/widget/keyboard
-// roots ratchet to zero after their repoint packets. tools/ and scripts/ catch
-// stray umbrella imports in automation.
+// Consumer roots scanned for umbrella imports. Since wave 3.3 every root is
+// shrink-only toward zero (daemon/widget/keyboard/tools/scripts are AT zero;
+// the apps keep a small tail of module-qualified, high-fan-out, and
+// size-capped files).
 const consumerRoots = [
   "OpenBurnBarDaemon",
   "OpenBurnBarWidget",
@@ -103,8 +106,10 @@ if (mode === "update") {
       "prefixes (so no repoint can leave a hidden umbrella import). Shrink-only: no " +
       "NEW file may import the umbrella in a tracked root. Privileged roots " +
       "(OpenBurnBarDaemon, OpenBurnBarWidget, OpenBurnBarKeyboard) ratchet to zero " +
-      "after their repoint packets (S17/S18/S19); AgentLens/OpenBurnBarMobile keep " +
-      "the umbrella deliberately. Regenerate via " +
+      "after their repoint packets (S17/S18/S19); wave 3.3 codemodded the apps to " +
+      "explicit imports, keeping a tail of module-qualified, high-fan-out, and " +
+      "size-capped files. " +
+      "History: budgets/umbrella-imports-trend.jsonl. Regenerate via " +
       "scripts/debt/check-core-umbrella-imports-budget.sh --update.",
     total,
     roots,
@@ -114,6 +119,30 @@ if (mode === "update") {
     `Wrote ${path.relative(repoRoot, baselinePath)}: ${total} umbrella-importing file(s) across ` +
       `${consumerRoots.length} root(s).`
   );
+  // Wave 3.3 trend line: record every ratchet-down so the burn-down stays
+  // visible. Skipped when the last entry already has this total (repeat runs).
+  try {
+    const trendPath = path.join(repoRoot, "budgets/umbrella-imports-trend.jsonl");
+    const shortNames = {
+      OpenBurnBarDaemon: "daemon", OpenBurnBarWidget: "widget",
+      OpenBurnBarKeyboard: "keyboard", AgentLens: "agentLens",
+      OpenBurnBarMobile: "mobile", tools: "tools", scripts: "scripts",
+    };
+    const short = (r) => shortNames[r] || r;
+    const lines = fs.existsSync(trendPath)
+      ? fs.readFileSync(trendPath, "utf8").trim().split("\n").filter(Boolean)
+      : [];
+    const last = lines.length ? JSON.parse(lines[lines.length - 1]) : null;
+    if (!last || last.total !== total) {
+      const entry = { date: new Date().toISOString().slice(0, 10), total, roots: {} };
+      for (const root of consumerRoots) entry.roots[short(root)] = live[root].length;
+      entry.note = "ratchet --update";
+      fs.appendFileSync(trendPath, JSON.stringify(entry) + "\n");
+      console.log(`Appended trend entry to budgets/umbrella-imports-trend.jsonl (total ${total}).`);
+    }
+  } catch (err) {
+    console.error(`Trend append skipped: ${err.message}`);
+  }
   process.exit(0);
 }
 

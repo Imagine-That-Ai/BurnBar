@@ -1,6 +1,9 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Model Lane Scene
 //

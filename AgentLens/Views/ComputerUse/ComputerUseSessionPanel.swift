@@ -1,6 +1,10 @@
 #if canImport(SwiftUI) && canImport(AppKit) && !DISTRIBUTION_MAS
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 /// Settings → Computer Use panel. Trust-mode pill picker, scope-rule

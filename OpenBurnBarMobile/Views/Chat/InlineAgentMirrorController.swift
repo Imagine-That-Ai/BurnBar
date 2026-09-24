@@ -4,7 +4,10 @@ import Combine
 import FirebaseAuth
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 import OSLog
 import UIKit

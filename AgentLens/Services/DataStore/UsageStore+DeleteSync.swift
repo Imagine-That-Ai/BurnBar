@@ -1,6 +1,8 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import OpenBurnBarData
 
 extension UsageStore {

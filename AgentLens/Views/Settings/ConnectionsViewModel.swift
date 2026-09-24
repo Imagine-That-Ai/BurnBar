@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import SwiftUI
 
 // MARK: - Connection State

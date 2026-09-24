@@ -1,5 +1,8 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 struct CLIFallbackQuotaStatus: Sendable {
     let fiveHourRemainingPercent: Double?

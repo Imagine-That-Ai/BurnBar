@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 /// Domain slices of `SettingsManagerProtocol` matching the Settings/Stores types.
 /// Callers that only need one store can depend on the narrow protocol.

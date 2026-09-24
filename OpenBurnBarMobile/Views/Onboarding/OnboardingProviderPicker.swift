@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// First real step of the wizard. The user picks the providers they want to
 /// connect; the wizard then walks them through one connect-flow per pick.

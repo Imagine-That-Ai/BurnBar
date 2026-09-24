@@ -1,6 +1,9 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import OpenBurnBarData
 
 extension UsageStore {
@@ -946,7 +949,7 @@ extension UsageStore {
     private static func makeModelSummaries(fromAggregateRows rows: [UsageAggregateRow]) -> [ModelSummary] {
         var models: [String: ModelSummaryAccumulator] = [:]
         for row in rows {
-            let normalized = OpenBurnBarCore.TokenExtractionUtility.normalizeModelKey(row.model)
+            let normalized = OpenBurnBarLogParsers.TokenExtractionUtility.normalizeModelKey(row.model)
             models[normalized, default: ModelSummaryAccumulator(modelName: normalized)].record(row)
         }
         return models.values

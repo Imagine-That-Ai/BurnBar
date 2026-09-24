@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import OpenBurnBarData
 
 /// Per-session token + cost + timing facets used to enrich the encrypted session-log

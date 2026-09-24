@@ -1,5 +1,8 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Quota Refresh Actor
 
@@ -36,7 +39,7 @@ actor QuotaRefreshActor {
 
     let keyStore: ProviderAPIKeyStore
     let providerRuntimeKeyStore: KeychainStore
-    let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
+    let appPaths: OpenBurnBarKernel.OpenBurnBarAppPaths
     let fileManager: FileManager
     let session: URLSession
     let environment: [String: String]
@@ -62,7 +65,7 @@ actor QuotaRefreshActor {
         settingsManager: SettingsManager,
         keyStore: ProviderAPIKeyStore,
         providerRuntimeKeyStore: KeychainStore,
-        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths,
+        appPaths: OpenBurnBarKernel.OpenBurnBarAppPaths,
         fileManager: FileManager,
         session: URLSession,
         environment: [String: String],

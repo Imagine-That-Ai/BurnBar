@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Remote Sync Watermark Record
 

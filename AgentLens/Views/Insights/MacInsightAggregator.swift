@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// macOS aggregator. Pulls a real `InsightDataSnapshot` from
 /// `MacInsightDataSource` (DataStore + local session ledger) and asks the

@@ -1,6 +1,6 @@
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 typealias GatewaySignalSessionProvider = OBBSignalGatewayEnvelopeProvider
 
 /// E2EE sealing core for phone→agent Hermes Gateway events, extracted

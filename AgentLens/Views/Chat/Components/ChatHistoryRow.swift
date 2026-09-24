@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarHermes
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Row representing a chat thread summary. Shared by the floating panel's
 /// menu popover, the maximized workspace thread rail, and the pop-out window.

@@ -1,5 +1,8 @@
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
 
 // Project list/hub rows and inline question/mission/followup cards.
@@ -339,7 +342,7 @@ struct ProjectHubView: View {
             }
         }
 
-        var conversations: [OpenBurnBarCore.ConversationRecord] = []
+        var conversations: [OpenBurnBarInboxModels.ConversationRecord] = []
         for key in projectMemoryKeys {
             if let rows = try? await dataStore.fetchConversationsForTranscriptScan(
                 provider: nil,

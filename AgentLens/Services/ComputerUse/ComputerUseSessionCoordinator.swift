@@ -4,7 +4,9 @@ import Combine
 import CryptoKit
 import Foundation
 import OSLog
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 

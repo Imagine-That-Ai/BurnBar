@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Maximum accounts per provider during onboarding.
 enum SwitcherOnboardingLimits {

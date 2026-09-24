@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import UIKit
 
 // MARK: - iOS Smart Hub Display Adapter

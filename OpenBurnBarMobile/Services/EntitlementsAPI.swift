@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Entitlements API (Apple-verified hosted quota)
 

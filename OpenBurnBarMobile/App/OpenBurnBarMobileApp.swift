@@ -2,7 +2,10 @@ import SwiftUI
 import UIKit
 import FirebaseCore
 import GoogleSignIn
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 #if DEBUG && GSTACK_IOS_QA
 import DebugBridgeCore

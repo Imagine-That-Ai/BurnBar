@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 actor MemoryExtractionAdmissionController {
     private let maxConcurrent: Int

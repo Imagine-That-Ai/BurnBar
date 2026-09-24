@@ -1,7 +1,10 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
 import os.log
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 /// Read-only viewer that surfaces the persistent Agent Watch session

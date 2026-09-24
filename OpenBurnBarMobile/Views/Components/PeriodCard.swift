@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Horizontal-scrolling period selector card. Each card shows a window
 /// label (Today / 7d / 30d / 90d / All time) plus the formatted total.

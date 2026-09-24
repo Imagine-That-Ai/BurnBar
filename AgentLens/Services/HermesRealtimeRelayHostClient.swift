@@ -1,7 +1,7 @@
 import FirebaseAppCheck
 @preconcurrency import FirebaseAuth
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 @MainActor
 protocol HermesRealtimeRelayHosting: AnyObject {

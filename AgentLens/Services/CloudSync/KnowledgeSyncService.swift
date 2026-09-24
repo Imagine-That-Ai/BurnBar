@@ -2,7 +2,8 @@ import FirebaseAuth
 import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarVectorKit
 import OpenBurnBarSignalCore
 
 /// Serializes Pensieve knowledge syncs across the process so a folder-watch

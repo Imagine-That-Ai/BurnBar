@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Hermes Square Agent Avatar
 //

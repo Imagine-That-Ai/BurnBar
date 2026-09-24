@@ -1,4 +1,9 @@
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Pixel Clock Settings Card (macOS)

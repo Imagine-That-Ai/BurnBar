@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 extension AccountSwitcherSettingsView {
     var body: some View {

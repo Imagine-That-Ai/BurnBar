@@ -1,5 +1,6 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // Extracted verbatim from AgentLensApp.swift (audit wave 4, item 14).
@@ -144,7 +145,7 @@ final class WindowManager: ObservableObject {
             backing: .buffered,
             defer: false
         )
-        window.title = OpenBurnBarCore.OpenBurnBarIdentity.productName
+        window.title = OpenBurnBarKernel.OpenBurnBarIdentity.productName
         // Keep a real title for the Window menu / accessibility; hide the redundant title text
         // in the title bar now that the in-toolbar brand mark carries the product name.
         window.titleVisibility = .hidden

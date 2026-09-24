@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Shared warm-up for disk-cache-backed parsers.
 ///
@@ -28,10 +28,10 @@ enum ParserSupportDirectoryWarmUp {
     @discardableResult
     nonisolated static func prepare(
         fileManager: FileManager,
-        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
+        appPaths: OpenBurnBarKernel.OpenBurnBarAppPaths
     ) -> Bool {
         do {
-            _ = try OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory(
+            _ = try OpenBurnBarKernel.OpenBurnBarMigration.prepareSupportDirectory(
                 fileManager: fileManager,
                 paths: appPaths
             )

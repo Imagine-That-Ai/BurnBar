@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import os
 
 // MARK: - BudgetGate platform seams (iOS)

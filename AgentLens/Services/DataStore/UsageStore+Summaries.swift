@@ -1,6 +1,8 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 extension UsageStore {
     // MARK: - Summary Builders
@@ -388,7 +390,7 @@ extension UsageStore {
 
     static func makeModelSummaries(from usages: [TokenUsage]) -> [ModelSummary] {
         let grouped = Dictionary(grouping: usages) {
-            OpenBurnBarCore.TokenExtractionUtility.normalizeModelKey($0.model)
+            OpenBurnBarLogParsers.TokenExtractionUtility.normalizeModelKey($0.model)
         }
         return grouped.compactMap { key, modelUsages -> ModelSummary? in
             guard !modelUsages.isEmpty else { return nil }
@@ -413,7 +415,7 @@ extension UsageStore {
 
             return ModelSummary(
                 modelName: key,
-                displayName: OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
+                displayName: OpenBurnBarLogParsers.TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
                 totalCost: totalCost,
                 totalTokens: totalTokens,
                 totalInputTokens: totalInputTokens,

@@ -4,7 +4,10 @@ import FirebaseFirestore
 import Foundation
 import os
 import CryptoKit
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import OpenBurnBarSignalCore
 
 private final class SessionLogSyncProcessGate: Sendable {
@@ -188,7 +191,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         )
                         continue
                     }
-                    let markdown = OpenBurnBarCore.SessionLogMarkdownFormatter.markdown(for: record)
+                    let markdown = OpenBurnBarLogParsers.SessionLogMarkdownFormatter.markdown(for: record)
                     // Project/path text is private. It is fed into keyed local
                     // search hashes, then stripped from every cloud document.
                     let privateProjectSearchText = Self.clampedPrivateSearchText(record.projectName)
@@ -531,7 +534,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private static func sessionLogTombstoneFields(for record: OpenBurnBarCore.ConversationRecord, deviceId: String, deletedAt: Date) -> [String: Any] {
+    private static func sessionLogTombstoneFields(for record: OpenBurnBarInboxModels.ConversationRecord, deviceId: String, deletedAt: Date) -> [String: Any] {
         var fields: [String: Any] = [
             "id": record.id,
             "deviceId": deviceId,
@@ -701,7 +704,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private static func progressLabel(for record: OpenBurnBarCore.ConversationRecord) -> String {
+    private static func progressLabel(for record: OpenBurnBarInboxModels.ConversationRecord) -> String {
         let title = record.summaryTitle ?? record.inferredTaskTitle
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
@@ -725,7 +728,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
     /// Builds the server-visible cockpit facet block merged onto a session-log manifest. Pure metadata:
     /// no message text or path/project text, only counters, cost, timing, model/provider, and generic tool tags.
     static func facetFields(
-        for record: OpenBurnBarCore.ConversationRecord,
+        for record: OpenBurnBarInboxModels.ConversationRecord,
         facets: SessionUsageFacets?,
         model: String
     ) -> [String: Any] {

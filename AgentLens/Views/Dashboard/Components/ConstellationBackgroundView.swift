@@ -1,4 +1,6 @@
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import SwiftUI
 
 /// A calm, slow "Constellation" alternate background for macOS.

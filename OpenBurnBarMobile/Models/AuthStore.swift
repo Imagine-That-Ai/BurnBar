@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarAnalytics
 
 public enum AuthState: Sendable, Equatable {

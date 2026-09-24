@@ -1,7 +1,10 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import AVKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 

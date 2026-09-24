@@ -2,7 +2,9 @@ import AppKit
 import CryptoKit
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
 
 // Decision logic lives in the line-gated companion files —
 // DirectDownloadReleaseMetadata.swift, DirectDownloadArtifactVerifier.swift,

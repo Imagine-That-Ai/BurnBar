@@ -1,5 +1,11 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Agent Switcher
 //

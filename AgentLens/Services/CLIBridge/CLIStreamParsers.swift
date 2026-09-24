@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 
 enum ClaudeCodeStreamJSONParser {
     /// Emits ordered `.text` / `.toolUse` events for one NDJSON line from Claude Code `stream-json`.

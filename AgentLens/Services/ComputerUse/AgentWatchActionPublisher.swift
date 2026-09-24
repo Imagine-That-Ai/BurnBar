@@ -1,6 +1,7 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 
 /// Converts daemon run-journal events into the small action-log stream

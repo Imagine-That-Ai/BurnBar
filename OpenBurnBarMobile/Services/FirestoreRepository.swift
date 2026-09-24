@@ -2,7 +2,11 @@ import Foundation
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OSLog
 
 private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "FirestoreRepository")

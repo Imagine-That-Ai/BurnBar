@@ -1,6 +1,9 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Refresh Result Types
 
@@ -26,7 +29,7 @@ struct FullRefreshResult: Sendable {
 
 struct SingleProviderResult: Sendable {
     var usages: [TokenUsage] = []
-    var conversations: [OpenBurnBarCore.ConversationRecord] = []
+    var conversations: [OpenBurnBarInboxModels.ConversationRecord] = []
     var health: ParserHealth = .empty
     var indexedConversationChanges: Int = 0
     var error: String?
@@ -74,7 +77,7 @@ enum RefreshBackgroundWork {
     /// main thread.  `await` it from the main actor; being `nonisolated` it runs
     /// off the main actor (SE-0338).
     static func runFullRefresh(
-        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
+        parsers: [AgentProvider: any OpenBurnBarLogParsers.LogParser],
         dataStore: DataStore,
         orchestrator: RefreshOrchestrator,
         settings: RefreshSettingsSnapshot,
@@ -207,7 +210,7 @@ enum RefreshBackgroundWork {
     /// an empty array. Work is limited to metadata enumeration plus one indexed
     /// checkpoint-manifest read per provider; transcript content is not re-read.
     static func runConversationIndexing(
-        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
+        parsers: [AgentProvider: any OpenBurnBarLogParsers.LogParser],
         dataStore: DataStore,
         orchestrator: RefreshOrchestrator,
         indexingEnabled: Bool
@@ -240,16 +243,16 @@ enum RefreshBackgroundWork {
                     existingCheckpoint = nil // safe recovery — full reprocess (VAL-PERSIST-014)
                 }
                 let previousWatermark: Date? = existingCheckpoint?.lastProcessedAt
-                let fileDiscoveryTracker: OpenBurnBarCore.ParserFileDiscoveryTracker?
+                let fileDiscoveryTracker: OpenBurnBarLogParsers.ParserFileDiscoveryTracker?
                 if indexingEnabled {
-                    let knownFiles: [OpenBurnBarCore.ParserDiscoveredFile]
+                    let knownFiles: [OpenBurnBarLogParsers.ParserDiscoveredFile]
                     do {
                         knownFiles = try await checkpointStore.fetchDiscoveredFiles(for: provider)
                     } catch {
                         // Missing/corrupt manifest safely falls back to a full scan.
                         knownFiles = []
                     }
-                    fileDiscoveryTracker = OpenBurnBarCore.ParserFileDiscoveryTracker(
+                    fileDiscoveryTracker = OpenBurnBarLogParsers.ParserFileDiscoveryTracker(
                         knownFiles: knownFiles
                     )
                 } else {
@@ -258,7 +261,7 @@ enum RefreshBackgroundWork {
 
                 let deferredFilesBeforeProvider = governor.deferredFileCount
                 let parseResult = try await parser.parse(
-                    options: OpenBurnBarCore.LogParseOptions(
+                    options: OpenBurnBarLogParsers.LogParseOptions(
                         includeConversationBodies: indexingEnabled,
                         minimumFileModificationDate: indexingEnabled ? previousWatermark : nil,
                         fileDiscoveryTracker: fileDiscoveryTracker,
@@ -288,7 +291,7 @@ enum RefreshBackgroundWork {
                 // The legacy ID/mtime filter remains a safe fallback for custom
                 // parsers that do not yet report their input identities.
                 let allConversations = parseResult.conversations
-                let changedConversations: [OpenBurnBarCore.ConversationRecord]
+                let changedConversations: [OpenBurnBarInboxModels.ConversationRecord]
                 if fileDiscoveryTracker?.hasAdmittedFiles == true {
                     changedConversations = allConversations
                 } else if let previousWatermark {
@@ -441,7 +444,7 @@ enum RefreshBackgroundWork {
 
     static func runSingleProviderRefresh(
         provider: AgentProvider,
-        parser: any OpenBurnBarCore.LogParser,
+        parser: any OpenBurnBarLogParsers.LogParser,
         dataStore: DataStore,
         settings: RefreshSettingsSnapshot
     ) async -> SingleProviderResult {
@@ -449,7 +452,7 @@ enum RefreshBackgroundWork {
 
         do {
             let parseResult = try await parser.parse(
-                options: OpenBurnBarCore.LogParseOptions.usageAccounting(
+                options: OpenBurnBarLogParsers.LogParseOptions.usageAccounting(
                     resourceGovernor: ParserResourcePolicy.makeRefreshGovernor()
                 )
             )
@@ -480,7 +483,7 @@ enum RefreshBackgroundWork {
     /// so this is safe to call from any executor.
     static func writeParserImportHealth(
         parserHealth: [AgentProvider: ParserHealth],
-        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
+        parsers: [AgentProvider: any OpenBurnBarLogParsers.LogParser],
         dataStore: DataStore,
         importedUsageCount: Int,
         persistenceError: String?,
@@ -571,7 +574,7 @@ enum RefreshBackgroundWork {
     }
 
     private static func savePartialManifest(
-        _ tracker: OpenBurnBarCore.ParserFileDiscoveryTracker?,
+        _ tracker: OpenBurnBarLogParsers.ParserFileDiscoveryTracker?,
         provider: AgentProvider,
         checkpointStore: ParserCheckpointStore
     ) async {

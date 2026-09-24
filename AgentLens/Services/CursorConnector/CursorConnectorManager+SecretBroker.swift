@@ -4,13 +4,14 @@ import Foundation
 import Network
 import os
 import SQLite3
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarInsights
+import OpenBurnBarQuota
 
 // Cursor connector secret broker and character-set helper.
 // Extracted from CursorConnectorManager.swift (god-file decomposition) — same module, verbatim.
 
 #if canImport(OpenBurnBarCore)
-import OpenBurnBarCore
 #endif
 final class CursorConnectorSecretBroker: Sendable {
     // `NWListener` is a Network-framework reference type bound to a queue and is

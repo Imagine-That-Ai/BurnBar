@@ -1,6 +1,6 @@
 import AppIntents
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - BurnBar Status Intent
 

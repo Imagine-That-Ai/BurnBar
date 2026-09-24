@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct CastleStatusLoadFailure: Equatable, Identifiable {
     let path: String

@@ -1,6 +1,8 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 extension UsageStore {
     func deleteKimiRequestIDModelRows(replacedBy usage: TokenUsage, in db: Database) throws { // pure-move: was private
@@ -40,7 +42,7 @@ extension UsageStore {
     /// rendering a `<synthetic>` band. No-op when the incoming row is itself a
     /// placeholder, so a placeholder can never delete a real model.
     func deletePlaceholderModelRows(replacedBy usage: TokenUsage, in db: Database) throws {
-        guard !OpenBurnBarCore.TokenExtractionUtility.isPlaceholderModelName(usage.model) else { return }
+        guard !OpenBurnBarLogParsers.TokenExtractionUtility.isPlaceholderModelName(usage.model) else { return }
         let usagePartition = Self.usagePartitionToken(from: usage.providerAccountID)
         try db.execute(
             sql: """

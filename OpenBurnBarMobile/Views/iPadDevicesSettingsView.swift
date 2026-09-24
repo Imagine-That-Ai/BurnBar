@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 struct iPadDevicesSettingsView: View {
     @Bindable var store: DevicesStore

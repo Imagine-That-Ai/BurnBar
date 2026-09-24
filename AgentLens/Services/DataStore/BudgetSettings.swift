@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import Observation
 
 /// Observable façade over `BudgetRulesStore`. The macOS Settings UI binds to this;

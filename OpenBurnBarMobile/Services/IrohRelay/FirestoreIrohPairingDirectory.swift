@@ -1,7 +1,7 @@
 import Foundation
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 
 /// Mobile (iOS / iPadOS) `IrohPairingDirectory`. Reads

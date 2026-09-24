@@ -1,6 +1,6 @@
 import Combine
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 
 /// Thin phone client for Mac keep-awake + honest reachability.

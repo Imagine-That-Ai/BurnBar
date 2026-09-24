@@ -5,7 +5,11 @@ import StoreKit
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // Aurora card/button styles, Mac pricing tiers + purchase store, and remote-MCP client store/sections.
 // Extracted from CloudStoreSettingsView.swift (god-file decomposition) — same module, verbatim.

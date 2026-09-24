@@ -1,7 +1,11 @@
 import Foundation
 import CryptoKit
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Checkpoint Record
 
@@ -243,7 +247,7 @@ final class ParserCheckpointStore: Sendable {
 /// and the checkpoint state for safe resume.
 struct CheckpointAwareParseResult: Sendable {
     let usages: [TokenUsage]
-    let conversations: [OpenBurnBarCore.ConversationRecord]
+    let conversations: [OpenBurnBarInboxModels.ConversationRecord]
     let checkpointToken: String
     let lastProcessedFilePath: String?
     let processedFiles: [String]
@@ -269,10 +273,10 @@ struct CheckpointAwareParseResult: Sendable {
 /// 3. Advances the checkpoint only after successful commit
 /// 4. Provides safe recovery when cache/checkpoint is corrupted
 final class CheckpointedParserWrapper: Sendable {
-    private let parser: any OpenBurnBarCore.LogParser
+    private let parser: any OpenBurnBarLogParsers.LogParser
     private let checkpointStore: ParserCheckpointStore
 
-    init(parser: any OpenBurnBarCore.LogParser, checkpointStore: ParserCheckpointStore) {
+    init(parser: any OpenBurnBarLogParsers.LogParser, checkpointStore: ParserCheckpointStore) {
         self.parser = parser
         self.checkpointStore = checkpointStore
     }
@@ -369,7 +373,7 @@ final class AtomicIngestionTransaction {
     private let usageWriteMarker: UsageTableWriteMarker?
 
     private var usages: [TokenUsage] = []
-    private var conversations: [OpenBurnBarCore.ConversationRecord] = []
+    private var conversations: [OpenBurnBarInboxModels.ConversationRecord] = []
     private var checkpointToken: String = ""
     private var lastProcessedFilePath: String?
 
@@ -392,7 +396,7 @@ final class AtomicIngestionTransaction {
     /// These are NOT visible until commit() is called.
     func append(
         usages: [TokenUsage],
-        conversations: [OpenBurnBarCore.ConversationRecord],
+        conversations: [OpenBurnBarInboxModels.ConversationRecord],
         checkpointToken: String,
         lastProcessedFilePath: String?
     ) {

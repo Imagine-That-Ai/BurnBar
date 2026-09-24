@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Runs an iroh host alongside the existing WSS host so users on the new
 /// transport reach the Mac peer-to-peer while users on older builds (or

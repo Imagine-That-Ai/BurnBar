@@ -1,10 +1,14 @@
 import SwiftUI
 import AVFoundation
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
+import OpenBurnBarLogParsers
 
 // Connection, gateway model-picker, and runtime sheets + Hermes service/option helpers.
 // Extracted from HermesTabView.swift (god-file decomposition) — same module, verbatim.

@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 extension Notification.Name {
     static let openBurnBarMobileAppCheckValidationFailed = Notification.Name("openBurnBarMobileAppCheckValidationFailed")

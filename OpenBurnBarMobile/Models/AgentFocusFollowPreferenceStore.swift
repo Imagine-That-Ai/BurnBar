@@ -1,6 +1,6 @@
 #if canImport(UIKit)
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 @MainActor
 final class AgentFocusFollowPreferenceStore: ObservableObject {

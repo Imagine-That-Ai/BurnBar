@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 final class CLIBridgeQuotaSignalRecorder: Sendable {
     private let state = Locked<String?>(nil)

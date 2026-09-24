@@ -1,5 +1,8 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 /// Mobile adapter that turns an `InsightsStore` (the canvas/composer
 /// shell) and a `MobileInsightDataSource` into `AgentInsightsBundle`s

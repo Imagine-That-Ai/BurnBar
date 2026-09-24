@@ -1,6 +1,7 @@
 @preconcurrency import ActivityKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import os.log
 
 /// Manages the BurnBar Live Activity lifecycle.

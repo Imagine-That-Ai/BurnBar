@@ -1,6 +1,9 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 @MainActor
 final class SmartDisplayActionsListener {

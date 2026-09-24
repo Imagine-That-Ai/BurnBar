@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Settings → Media → "Per-partner save preferences" surface for
 /// Decision 3 of the Mercury media plan. Lists each paired Mac with its

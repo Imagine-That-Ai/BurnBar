@@ -2,7 +2,7 @@
 import CryptoKit
 import Foundation
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 public protocol PhoneControlAuthorityPublicKeyProviding: Sendable {

@@ -1,7 +1,8 @@
 import CryptoKit
 import Darwin
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 import OSLog

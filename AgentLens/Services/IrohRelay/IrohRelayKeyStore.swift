@@ -1,6 +1,6 @@
 import Foundation
 import LocalAuthentication
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 import Security
 

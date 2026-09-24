@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Big "value of the period" card used at the top of the iOS Dashboard.
 /// Renders a label, the headline value, an optional supporting line, and a

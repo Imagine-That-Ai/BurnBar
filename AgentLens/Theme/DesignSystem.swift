@@ -1,4 +1,6 @@
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Design System

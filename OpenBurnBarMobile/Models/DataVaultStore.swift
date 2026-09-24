@@ -1,7 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Data Vault Callable Seam
 //

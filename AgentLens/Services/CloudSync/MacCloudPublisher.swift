@@ -1,7 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Publishes cloud-safe metadata from Mac to Firestore for mobile consumption:
 /// cloud profile, recent usage summaries, sync status, and escrow device records.

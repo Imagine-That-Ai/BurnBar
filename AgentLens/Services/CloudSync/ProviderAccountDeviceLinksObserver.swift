@@ -1,6 +1,7 @@
 @preconcurrency import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - Provider Account Device Links Observer (macOS)
 //

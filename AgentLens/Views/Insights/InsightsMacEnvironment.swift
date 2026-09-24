@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Top-level environment object that owns the Insights tab's mutable state
 /// on macOS: the canvas store, the model catalog, the cache, the audit

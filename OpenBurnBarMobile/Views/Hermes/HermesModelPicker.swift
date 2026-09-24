@@ -1,5 +1,7 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // remediation(hermes-decomposition): relocated verbatim from HermesTabView.swift
 // to shrink that god-file. `HermesModelPickerSheet` and its row

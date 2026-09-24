@@ -1,7 +1,11 @@
 #if canImport(SwiftUI) && canImport(AppKit) && !DISTRIBUTION_MAS
 import AppKit
 import ApplicationServices
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import SwiftUI
 
@@ -1075,7 +1079,7 @@ struct ComputerUseSettingsView: View {
     }
 
     private func auditSessionDirectory(sessionId: String) -> URL {
-        OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory
+        OpenBurnBarKernel.OpenBurnBarAppPaths.live().supportDirectory
             .appendingPathComponent("computer-use-audit", isDirectory: true)
             .appendingPathComponent(sessionId, isDirectory: true)
     }

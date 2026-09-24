@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarUI
 
 // MARK: - Plan Strategy
 

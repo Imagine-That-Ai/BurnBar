@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 import os.log
 
 // MARK: - Hermes Attachment Workspace (iOS / iPadOS)

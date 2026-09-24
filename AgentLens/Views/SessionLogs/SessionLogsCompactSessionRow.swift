@@ -1,10 +1,13 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Compact Session Row
 
 struct CompactSessionRow: View {
-    let record: OpenBurnBarCore.ConversationRecord
+    let record: OpenBurnBarInboxModels.ConversationRecord
     let isSelected: Bool
     var showDeviceIndicator: Bool = false
     var modelName: String?

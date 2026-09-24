@@ -1,5 +1,10 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarMedia
+import OpenBurnBarQuota
+import OpenBurnBarRecap
 
 private struct Arguments {
     let samples: Int

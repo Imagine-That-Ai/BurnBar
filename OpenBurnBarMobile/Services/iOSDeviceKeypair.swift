@@ -1,6 +1,6 @@
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import Security
 
 /// iOS Keychain-backed device keypair for escrow encryption.

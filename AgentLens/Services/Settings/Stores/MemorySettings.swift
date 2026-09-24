@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Memory Settings (user toggle + fleet kill switch, G4)
 

@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarKernel
+import OpenBurnBarVectorKit
 import OpenBurnBarComputerUseCore
 #if canImport(AppKit)
 import AppKit

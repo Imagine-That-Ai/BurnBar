@@ -1,5 +1,10 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarHermes
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Pi Conversation List View
 //

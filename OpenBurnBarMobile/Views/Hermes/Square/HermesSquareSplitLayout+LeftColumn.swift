@@ -1,6 +1,10 @@
 import SwiftUI
 import os.log
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarMedia
 import FirebaseAuth
 

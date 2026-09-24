@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Custom SwiftUI `Layout` that places widgets into a 12-column grid
 /// based on each widget's `InsightLayout.CellPlacement`.

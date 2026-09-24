@@ -2,7 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Syncs `budget_rules` and `budget_events` to Firestore for enterprise cross-seat
 /// rollup (Phase 8). Mirrors the `CloudSyncService` upload/download pattern: local

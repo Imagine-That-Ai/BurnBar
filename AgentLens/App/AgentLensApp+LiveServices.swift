@@ -1,5 +1,8 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // Extracted verbatim from AgentLensApp.swift (audit wave 4, item 14).

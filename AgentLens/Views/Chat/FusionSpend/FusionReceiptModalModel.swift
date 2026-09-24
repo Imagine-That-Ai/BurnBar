@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Fusion Receipt Modal Model
 //

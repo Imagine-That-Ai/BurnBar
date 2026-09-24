@@ -1,7 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Sync domain for synchronizing shared/team artifacts between local cache and Firestore.
 ///

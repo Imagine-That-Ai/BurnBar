@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 extension SessionLogsView {
     // MARK: - Detail Pane
@@ -135,7 +137,7 @@ extension SessionLogsView {
     }
 
     @MainActor
-    private func resolveExportBody(for record: OpenBurnBarCore.ConversationRecord) async -> String {
+    private func resolveExportBody(for record: OpenBurnBarInboxModels.ConversationRecord) async -> String {
         switch dataSource {
         case .local:
             if let full = try? await dataStore.fetchConversation(id: record.id)?.fullText, !full.isEmpty {
@@ -156,7 +158,7 @@ extension SessionLogsView {
 
     // MARK: - Data Loading
 
-    private func selectedConversationSources() -> Set<OpenBurnBarCore.ConversationSourceType>? {
+    private func selectedConversationSources() -> Set<OpenBurnBarInboxModels.ConversationSourceType>? {
         switch sourceFilter {
         case .all:
             return nil

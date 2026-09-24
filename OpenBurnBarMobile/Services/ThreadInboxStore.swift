@@ -1,6 +1,9 @@
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - Thread Inbox Store (Hermes Square §6.2)
 //

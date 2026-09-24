@@ -1,5 +1,4 @@
 import Foundation
-import OpenBurnBarCore
 
 /// Executes chat turns for a single backend implementation.
 @MainActor

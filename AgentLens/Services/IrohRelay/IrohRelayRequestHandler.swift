@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 
 /// Closure type the host client injects so this handler can hand a

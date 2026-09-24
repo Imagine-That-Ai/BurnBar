@@ -4,7 +4,11 @@ import SwiftUI
 import UIKit
 #endif
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarHermes
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // BurnBar Cloud Gateway settings section: status panels, setup wizard, pairing controls, client/approval lists, and gateway actions.
 // Extracted from HermesSettingsView.swift (god-type decomposition) — same module, same isolation, verbatim.

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// View-model backing the memory review inbox (`MemoryReviewInboxView`).
 ///

@@ -1,7 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
 import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import OSLog

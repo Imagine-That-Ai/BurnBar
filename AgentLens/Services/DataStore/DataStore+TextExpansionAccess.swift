@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarTextExpansion
 
 extension DataStoreCoordinator {
     func upsertTextExpansionSnippet(_ snippet: TextExpansionSnippet) async throws {

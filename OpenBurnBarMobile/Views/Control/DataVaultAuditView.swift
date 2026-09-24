@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Access audit log
 //

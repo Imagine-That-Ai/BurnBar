@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
 
 // MARK: - Chart Studio Hermes Bridge
 //

@@ -1,6 +1,7 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Editorial onboarding surface that replaces the dashed-rectangle placeholder
 /// when the Computer Use mirror has nothing to show. It explains what

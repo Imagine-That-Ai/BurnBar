@@ -1,6 +1,6 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension ConversationStore {
     /// Bounded age retention for conversations (Wave 2.6): the same cutoff

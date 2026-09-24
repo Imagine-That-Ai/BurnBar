@@ -1,5 +1,7 @@
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import SwiftUI
 
 // Shared project dashboard models extracted from ProjectsView for compile isolation.

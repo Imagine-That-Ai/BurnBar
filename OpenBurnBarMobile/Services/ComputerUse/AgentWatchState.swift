@@ -1,7 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Combine
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 import OpenBurnBarComputerUseCore
 

@@ -1,6 +1,10 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Fusion Impact View
 //

@@ -3,7 +3,8 @@ import os.log
 import FirebaseFirestore
 import FirebaseAuth
 import FirebaseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Smart Hub Store
 //

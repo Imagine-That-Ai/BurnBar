@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarUI
 
 // MARK: - Hermes Atom Environment Key
 //

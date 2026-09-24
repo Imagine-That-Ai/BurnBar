@@ -1,6 +1,9 @@
 import Foundation
 import os
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 extension ProviderQuotaService {
     internal func makeContext(  // pure-move: was private

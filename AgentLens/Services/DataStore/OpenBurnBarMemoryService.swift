@@ -1,5 +1,5 @@
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 actor OpenBurnBarMemoryService: MemoryServing {
     struct ScopeAuthorization: Sendable, Equatable {

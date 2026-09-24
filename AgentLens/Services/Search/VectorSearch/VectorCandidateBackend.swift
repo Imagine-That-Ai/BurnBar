@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarVectorKit
 
 // MARK: - Vector Candidate Backend Protocol
 

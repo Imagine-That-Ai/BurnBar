@@ -1,6 +1,9 @@
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - Agent Brand Zone Store (audit wave 4, item 15)
 //

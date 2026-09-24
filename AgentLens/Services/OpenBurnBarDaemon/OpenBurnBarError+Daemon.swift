@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension OpenBurnBarError {
     /// Maps daemon manager / socket client failures into the shared taxonomy.

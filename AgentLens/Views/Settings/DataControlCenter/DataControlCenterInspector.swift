@@ -1,6 +1,7 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Domain inspector
 //

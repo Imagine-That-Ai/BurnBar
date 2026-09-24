@@ -1,6 +1,6 @@
 import CoreGraphics
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
 import OpenBurnBarKernel
 
 /// Pure iPad command-desk navigation rules.

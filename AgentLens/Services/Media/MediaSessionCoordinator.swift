@@ -2,7 +2,8 @@ import Foundation
 import AVFoundation
 import AppKit
 import Combine
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 

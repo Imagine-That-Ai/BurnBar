@@ -2,7 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // Shared-artifact + memory sync boundary types and Firestore codecs used by `CloudSyncService`.
 

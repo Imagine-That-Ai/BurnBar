@@ -2,7 +2,7 @@ import Foundation
 @preconcurrency import FirebaseFirestore
 import FirebaseFunctions
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OSLog
 
 // Mission document handling and group-claim validation.

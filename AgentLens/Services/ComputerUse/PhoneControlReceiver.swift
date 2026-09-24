@@ -1,7 +1,11 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import Foundation
 import CryptoKit
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 /// Mac side of the Phase 12 `control.input` stream. Receives a

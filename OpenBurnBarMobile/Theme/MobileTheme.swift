@@ -1,6 +1,8 @@
 import SwiftUI
 import UIKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 /// Brand-sized system fonts that still follow Dynamic Type.
 enum MobileScaledFont {

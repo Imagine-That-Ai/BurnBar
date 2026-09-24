@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Rollback Card View (Hermes Square §6.10)
 //

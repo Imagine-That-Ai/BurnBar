@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct HermesLibrarySession: Identifiable, Hashable, Sendable {
     let id: String

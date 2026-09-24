@@ -3,7 +3,8 @@ import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Mission Group Observer (Hermes Square §6.4)
 //

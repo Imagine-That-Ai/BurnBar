@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import OSLog
 

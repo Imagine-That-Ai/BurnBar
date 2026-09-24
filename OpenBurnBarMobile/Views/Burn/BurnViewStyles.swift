@@ -1,6 +1,10 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Leaderboard math (pure, testable)
 

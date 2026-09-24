@@ -3,7 +3,8 @@ import Combine
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import StoreKit
 

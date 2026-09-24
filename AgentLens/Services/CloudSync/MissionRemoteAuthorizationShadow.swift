@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OSLog
 
 // MARK: - Mission remote authorization (split-brain cutover)

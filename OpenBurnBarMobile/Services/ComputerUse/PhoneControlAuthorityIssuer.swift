@@ -1,7 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import CryptoKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 // Builds + signs `PhoneControlAuthority` envelopes on the phone.

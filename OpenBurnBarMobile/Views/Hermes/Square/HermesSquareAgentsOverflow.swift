@@ -1,5 +1,7 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Agents overflow
 //

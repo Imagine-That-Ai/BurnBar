@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 public enum QuotaPercentageDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case remainingPercent

@@ -1,6 +1,9 @@
 import Foundation
 import UserNotifications
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 /// Subscribes to `NSDistributedNotificationCenter` posts from the per-user daemon and mirrors them into
 /// standard UserNotifications from the real app process (menu bar `.app`), avoiding helper-tool issues

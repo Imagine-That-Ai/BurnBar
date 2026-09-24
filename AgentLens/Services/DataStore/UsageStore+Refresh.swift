@@ -1,6 +1,9 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import OpenBurnBarData
 
 /// Ledger-wide analytic core of `DashboardUsageSnapshot`: per-window

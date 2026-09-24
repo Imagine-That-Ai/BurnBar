@@ -1,6 +1,9 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Conversation Indexing Seam
 
@@ -13,7 +16,7 @@ import OpenBurnBarCore
 /// cannot be subclassed for that purpose.
 protocol ConversationIndexingCoordinator: Sendable {
     func indexConversationsOffMain(
-        _ conversations: [OpenBurnBarCore.ConversationRecord],
+        _ conversations: [OpenBurnBarInboxModels.ConversationRecord],
         indexingEnabled: Bool
     ) async -> Int
 }
@@ -31,20 +34,20 @@ extension RefreshOrchestrator: ConversationIndexingCoordinator {}
 /// published before anything indexes conversation bodies. See
 /// `publishUsageThenIndexConversations(parsed:)`.
 struct UsageRefreshPipeline: Sendable {
-    let parsers: [AgentProvider: any OpenBurnBarCore.LogParser]
+    let parsers: [AgentProvider: any OpenBurnBarLogParsers.LogParser]
     let dataStore: DataStore
     let orchestrator: any ConversationIndexingCoordinator
     let settings: RefreshSettingsSnapshot
 
     struct DiscoverResult: Sendable {
-        var parserEntries: [(AgentProvider, any OpenBurnBarCore.LogParser)] = []
+        var parserEntries: [(AgentProvider, any OpenBurnBarLogParsers.LogParser)] = []
     }
 
     struct ParsedBatch: Sendable {
         var parserHealth: [AgentProvider: ParserHealth] = [:]
         var errors: [AgentProvider: String] = [:]
         var allUsages: [TokenUsage] = []
-        var allConversations: [OpenBurnBarCore.ConversationRecord] = []
+        var allConversations: [OpenBurnBarInboxModels.ConversationRecord] = []
         var usageSessionIDsToDeleteByProvider: [AgentProvider: Set<String>] = [:]
         var duration: TimeInterval = 0
     }
@@ -85,7 +88,7 @@ struct UsageRefreshPipeline: Sendable {
     func parse(
         from discovery: DiscoverResult,
         includeConversationBodies: Bool? = nil,
-        resourceGovernor: OpenBurnBarCore.ParserResourceGovernor? = nil
+        resourceGovernor: OpenBurnBarLogParsers.ParserResourceGovernor? = nil
     ) async throws -> ParsedBatch {
         var result = ParsedBatch()
         let startedAt = Date()
@@ -94,7 +97,7 @@ struct UsageRefreshPipeline: Sendable {
         for (provider, parser) in discovery.parserEntries {
             do {
                 let parseResult = try await parser.parse(
-                    options: OpenBurnBarCore.LogParseOptions.usageAccounting(
+                    options: OpenBurnBarLogParsers.LogParseOptions.usageAccounting(
                         includeConversationBodies: includeConversationBodies,
                         resourceGovernor: resourceGovernor
                     )

@@ -1,5 +1,9 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
 import FirebaseFirestore
 import WidgetKit

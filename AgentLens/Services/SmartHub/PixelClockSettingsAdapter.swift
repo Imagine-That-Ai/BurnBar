@@ -1,6 +1,6 @@
 import Foundation
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarUI
 
 // MARK: - macOS Pixel Clock Operations Adapter
 //

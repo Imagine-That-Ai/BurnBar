@@ -1,6 +1,7 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 /// Concrete Path C dispatcher for Mac-wide Computer Use actions.

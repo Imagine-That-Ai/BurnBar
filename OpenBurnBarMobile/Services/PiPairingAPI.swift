@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Pi Agent Pairing Servicing
 

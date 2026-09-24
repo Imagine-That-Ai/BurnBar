@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 import Darwin
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 import OSLog

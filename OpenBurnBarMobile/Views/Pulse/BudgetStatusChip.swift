@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Budget status chip for the Pulse top rail. Shows the most restrictive active
 /// rule's used/limit as a compact pill.

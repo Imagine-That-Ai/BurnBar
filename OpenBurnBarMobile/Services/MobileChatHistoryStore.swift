@@ -3,7 +3,8 @@ import Foundation
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import OSLog
 

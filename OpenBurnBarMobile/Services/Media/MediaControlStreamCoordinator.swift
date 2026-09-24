@@ -6,7 +6,7 @@ import Network
 #if canImport(UIKit)
 import UIKit
 #endif
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 import OSLog

@@ -4,7 +4,8 @@ import Foundation
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarQuota
 import OpenBurnBarFirestoreModels
 
 // AUDIT(@unchecked Sendable): immutable bridged NSDictionary of untyped callable

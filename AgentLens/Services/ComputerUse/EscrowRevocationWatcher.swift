@@ -2,7 +2,7 @@
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Process-scoped Firestore listener on `users/{uid}/escrow_devices`.
 ///

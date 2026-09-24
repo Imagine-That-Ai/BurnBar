@@ -1,6 +1,11 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Account Switcher Settings View
 

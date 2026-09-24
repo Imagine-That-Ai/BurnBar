@@ -1,6 +1,6 @@
 import Foundation
 import UserNotifications
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Fires UNUserNotifications on budget thresholds. Modeled on `DailyDigestManager` —
 /// requests authorization on first use, builds `UNMutableNotificationContent`, and

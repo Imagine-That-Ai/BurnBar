@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
 import OpenBurnBarComputerUseCore
 
 @MainActor

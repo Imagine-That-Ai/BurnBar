@@ -1,6 +1,8 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarTextExpansion
 import OpenBurnBarData
 
 public final class TextExpansionSnippetStore: Sendable {

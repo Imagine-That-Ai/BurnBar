@@ -1,6 +1,10 @@
 import SwiftUI
 import FirebaseAuth
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 struct AccountView: View {
     @State private var store = AccountStore()

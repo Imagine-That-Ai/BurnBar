@@ -1,5 +1,4 @@
 import Foundation
-import OpenBurnBarCore
 
 /// Hermes wiring for the mobile `InsightsStore`.
 ///

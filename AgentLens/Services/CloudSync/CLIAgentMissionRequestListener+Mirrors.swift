@@ -1,7 +1,10 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OSLog
 
 // Direct CLI stream mirror and locked process output.

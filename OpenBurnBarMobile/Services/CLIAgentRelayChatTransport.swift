@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
 
 @MainActor
 protocol CLIAgentRelayChatTransporting: AnyObject {

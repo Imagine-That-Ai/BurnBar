@@ -1,7 +1,9 @@
 import AppKit
 import SwiftUI
 import WebKit
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 struct AnimatedMiningPickView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let webView = WKWebView(frame: .zero)

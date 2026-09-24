@@ -4,7 +4,9 @@ import AppKit
 import ApplicationServices
 import AVFoundation
 import OSLog
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 #if canImport(CoreGraphics)

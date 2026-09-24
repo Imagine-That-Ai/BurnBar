@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 extension Color {
     /// Creates a Color that automatically adapts to macOS dark/light appearance.

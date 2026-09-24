@@ -1,5 +1,10 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarPretext
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import UniformTypeIdentifiers
 #if canImport(AppKit)
 import AppKit

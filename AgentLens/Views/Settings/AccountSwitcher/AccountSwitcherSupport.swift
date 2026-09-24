@@ -1,7 +1,11 @@
 import AppKit
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 struct BrowserServiceStatusDisplay: Identifiable, Equatable {
     let id: String

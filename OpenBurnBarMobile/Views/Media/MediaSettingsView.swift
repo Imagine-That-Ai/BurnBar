@@ -1,5 +1,7 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 /// Settings → Media. Phase 2 brings the per-partner save preferences
 /// link; Phase 6 adds the iPad back-camera toggle (only visible on

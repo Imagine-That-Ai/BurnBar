@@ -1,6 +1,11 @@
 import SwiftUI
 import AVFoundation
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import PhotosUI
 import UniformTypeIdentifiers

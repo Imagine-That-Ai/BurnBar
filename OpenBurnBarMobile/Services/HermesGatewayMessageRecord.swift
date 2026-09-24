@@ -4,7 +4,8 @@ import Foundation
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 import OpenBurnBarFirestoreModels
 
 // MARK: - Hermes Gateway message records

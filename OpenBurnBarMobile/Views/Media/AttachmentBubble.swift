@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// iOS Mercury attachment bubble — shown in the chat thread when a peer
 /// (or the local user) attaches a file. Mirror of the Mac

@@ -6,7 +6,12 @@ import Foundation
 import os
 import OSLog
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 public protocol RemoteClipboardPasteboard: Sendable {
     func readString() -> String?

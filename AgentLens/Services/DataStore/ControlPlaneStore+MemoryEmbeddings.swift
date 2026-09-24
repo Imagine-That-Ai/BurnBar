@@ -1,7 +1,9 @@
 import Foundation
 import CryptoKit
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarVectorKit
 
 extension ControlPlaneStore {
     func registerMemoryEmbeddingVersion(

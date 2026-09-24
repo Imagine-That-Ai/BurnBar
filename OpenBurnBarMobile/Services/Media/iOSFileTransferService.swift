@@ -1,6 +1,7 @@
 import Foundation
 import os.log
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 

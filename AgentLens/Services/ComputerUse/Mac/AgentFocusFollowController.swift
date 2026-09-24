@@ -3,7 +3,7 @@ import AppKit
 import ApplicationServices
 import Combine
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct AgentFocusFollowTarget: Sendable, Equatable {
     var appName: String

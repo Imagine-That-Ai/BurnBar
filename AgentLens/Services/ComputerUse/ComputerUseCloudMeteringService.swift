@@ -1,7 +1,7 @@
 #if canImport(AppKit)
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 @MainActor
 public protocol ComputerUseCloudMeteringRecording: AnyObject {

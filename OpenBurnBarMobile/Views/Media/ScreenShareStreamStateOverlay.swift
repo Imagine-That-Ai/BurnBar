@@ -7,7 +7,10 @@ import SwiftUI
 import UIKit
 #endif
 import OpenBurnBarMedia
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 struct StreamStateOverlay: View {

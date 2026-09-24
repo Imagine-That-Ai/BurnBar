@@ -1,7 +1,8 @@
 import CryptoKit
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarData
 
 extension ControlPlaneStore {

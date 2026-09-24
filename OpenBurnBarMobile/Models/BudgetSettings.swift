@@ -1,6 +1,6 @@
 import Foundation
 import os.log
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import SwiftUI
 import UIKit
 

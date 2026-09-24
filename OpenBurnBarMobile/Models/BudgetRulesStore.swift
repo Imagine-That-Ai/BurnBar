@@ -2,7 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Firestore-backed CRUD layer for budget rules and audit events on iOS.
 ///

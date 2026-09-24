@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarQuota
 
 // MARK: - Provider Accounts Servicing
 

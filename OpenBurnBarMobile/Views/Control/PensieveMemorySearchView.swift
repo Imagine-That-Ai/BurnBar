@@ -1,6 +1,10 @@
 import SwiftUI
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
+import OpenBurnBarVectorKit
 import OpenBurnBarSignalCore
 
 // MARK: - Pensieve memory search

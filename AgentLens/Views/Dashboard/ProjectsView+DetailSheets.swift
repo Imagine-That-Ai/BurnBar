@@ -1,5 +1,8 @@
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
 
 // Project-memory hero/page/visual detail sheets and citation insight sheet.

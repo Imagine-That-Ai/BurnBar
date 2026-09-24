@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import NaturalLanguage
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Deterministic Fake Embedding Provider
 

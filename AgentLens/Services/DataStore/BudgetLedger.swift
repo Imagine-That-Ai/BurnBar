@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Computes running spend for a budget rule against the canonical `token_usage` table.
 ///

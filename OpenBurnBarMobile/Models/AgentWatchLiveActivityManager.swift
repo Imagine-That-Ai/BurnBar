@@ -1,7 +1,8 @@
 #if canImport(ActivityKit)
 @preconcurrency import ActivityKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import os.log
 
 enum AgentWatchLiveActivityPushType: Equatable, Sendable {

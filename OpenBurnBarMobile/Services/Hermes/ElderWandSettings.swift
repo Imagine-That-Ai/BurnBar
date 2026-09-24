@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// iOS preset store for **The Elder Wand** model-fusion router (OpenRouter
 /// "Fusion"-compatible). Mirrors the macOS `ElderWandSettings` store: a pure

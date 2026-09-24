@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Conversation Search DTOs
 // Moved verbatim from `FunctionsRepository.swift` (tech-debt finding-67) so

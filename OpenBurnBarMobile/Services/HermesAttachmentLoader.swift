@@ -4,7 +4,8 @@ import UIKit
 import PhotosUI
 import CoreTransferable
 import UniformTypeIdentifiers
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 
 // MARK: - Mobile Hermes Attachment Loader
 

@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 @MainActor
 final class SmartDisplayConfigPublisher {

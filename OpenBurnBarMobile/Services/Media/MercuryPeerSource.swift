@@ -1,6 +1,6 @@
 import Foundation
 import Combine
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 
 /// iOS-side resolver for the "do I have a paired Mac to talk to right

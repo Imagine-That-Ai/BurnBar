@@ -4,7 +4,8 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 import os
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarTextExpansion
 
 /// Drives global (system-wide) text expansion on macOS via a `CGEvent` session tap.
 ///

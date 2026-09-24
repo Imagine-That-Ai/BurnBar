@@ -5,7 +5,7 @@ import OSLog
 #if canImport(Darwin)
 import Darwin
 #endif
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 extension OpenAICompatibleChatGatewayClient {

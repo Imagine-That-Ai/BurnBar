@@ -1,6 +1,9 @@
 import Combine
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarMedia
 
 /// Agents rail + canvas for the iPad desk.

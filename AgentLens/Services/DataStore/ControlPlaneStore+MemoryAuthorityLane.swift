@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
 import OpenBurnBarData
 import OpenBurnBarKernel
 

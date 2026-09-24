@@ -4,8 +4,11 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import OpenBurnBarAnalytics
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
+import OpenBurnBarAssistantModels
 import os.log
 
 private let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")

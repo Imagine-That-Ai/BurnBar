@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 struct MobileKernelBackdropView: View {
     let kernel: MobileBackdropKernel

@@ -546,6 +546,24 @@ targets:
       # transport wants this one, so the import here must stay narrow and explicit.
       - package: OpenBurnBarCore
         product: OpenBurnBarAssistantModels
+      # Wave 3.3 umbrella burn-down: every narrow product the codemod's
+      # explicit imports reference. Files import these directly instead of
+      # the OpenBurnBarCore umbrella (umbrella kept for module-qualified
+      # and high-fan-out tail files).
+      - package: OpenBurnBarCore
+        product: OpenBurnBarHermes
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInboxModels
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLaunchServices
+      - package: OpenBurnBarCore
+        product: OpenBurnBarPretext
+      - package: OpenBurnBarCore
+        product: OpenBurnBarTextExpansion
+      - package: OpenBurnBarCore
+        product: OpenBurnBarVectorKit
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -1271,6 +1289,32 @@ targets:
       # stayed under its decomposition ceiling.
       - package: OpenBurnBarCore
         product: OpenBurnBarRecap
+      # Wave 3.3 umbrella burn-down: every narrow product the codemod's
+      # explicit imports reference. Files import these directly instead of
+      # the OpenBurnBarCore umbrella (umbrella kept for module-qualified
+      # and high-fan-out tail files).
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAssistantModels
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInboxModels
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
+      - package: OpenBurnBarCore
+        product: OpenBurnBarKernel
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLaunchServices
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLogParsers
+      - package: OpenBurnBarCore
+        product: OpenBurnBarPretext
+      - package: OpenBurnBarCore
+        product: OpenBurnBarQuota
+      - package: OpenBurnBarCore
+        product: OpenBurnBarTextExpansion
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
+      - package: OpenBurnBarCore
+        product: OpenBurnBarVectorKit
       - package: DebugBridge
         product: DebugBridgeCore
       - package: DebugBridge

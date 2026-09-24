@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - BudgetGate platform seams (macOS)
 //

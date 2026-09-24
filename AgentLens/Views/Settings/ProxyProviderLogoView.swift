@@ -1,5 +1,7 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import SwiftUI
 
 /// Logo resolver for the proxy catalog. The advertised provider IDs come

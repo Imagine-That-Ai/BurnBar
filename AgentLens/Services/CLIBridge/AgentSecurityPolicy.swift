@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import OSLog
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Agentic security policy primitives (2026-06-13 remediation)
 //

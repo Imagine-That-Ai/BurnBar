@@ -1,7 +1,8 @@
 import Darwin
 import CoreWLAN
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 struct PixelClockFirmwareFlasher {
     struct FlashResult: Equatable, Sendable {

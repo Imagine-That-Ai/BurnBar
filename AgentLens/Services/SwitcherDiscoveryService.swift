@@ -1,7 +1,13 @@
 import AppKit
 import Combine
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Discovery Models
 

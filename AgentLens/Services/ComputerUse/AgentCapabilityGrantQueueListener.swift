@@ -4,7 +4,8 @@ import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 
 @MainActor
 final class AgentCapabilityGrantQueueListener {

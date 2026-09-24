@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Privacy & Indexing Settings View
 
@@ -599,8 +603,8 @@ struct PrivacyIndexingSettingsView: View {
 
     private func scrubParserConversationCaches() {
         Task.detached(priority: .utility) {
-            let options = OpenBurnBarCore.LogParseOptions.usageAccounting()
-            OpenBurnBarCore.ParserConversationCacheScrubber().scrubKnownParserCaches()
+            let options = OpenBurnBarLogParsers.LogParseOptions.usageAccounting()
+            OpenBurnBarLogParsers.ParserConversationCacheScrubber().scrubKnownParserCaches()
             _ = try? await CodexParser().parse(options: options)
             _ = try? await ClaudeCodeParser().parse(options: options)
             _ = try? await FactoryDroidParser().parse(options: options)

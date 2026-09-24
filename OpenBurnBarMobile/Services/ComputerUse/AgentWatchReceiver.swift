@@ -1,6 +1,10 @@
 #if canImport(UIKit)
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 

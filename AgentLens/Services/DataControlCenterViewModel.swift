@@ -4,7 +4,7 @@ import Observation
 @preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Data Control Center view model
 //

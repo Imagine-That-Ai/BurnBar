@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarUI
 
 /// macOS adapter that turns an `InsightsMacEnvironment` (canvas store +
 /// analysis state) and a `MacInsightDataSource` into

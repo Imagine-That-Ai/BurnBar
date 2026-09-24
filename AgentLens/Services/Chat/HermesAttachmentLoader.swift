@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 import UniformTypeIdentifiers
 
 /// Loads files from disk / `NSImage` into the chat workspace and produces

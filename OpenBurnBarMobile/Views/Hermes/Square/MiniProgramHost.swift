@@ -1,6 +1,6 @@
 import SwiftUI
 import WebKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Mini-Program Host (Hermes Square §6.6)
 //

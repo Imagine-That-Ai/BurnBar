@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarVectorKit
 
 struct SemanticCandidate: Sendable {
     let chunkID: String
@@ -122,7 +123,7 @@ actor VectorSemanticCandidateProvider: SemanticCandidateProviding {
         exactRerankEnabled: Bool = true,
         exactRerankLimit: Int = 320,
         nowProvider: @escaping @Sendable () -> Date = { Date() },
-        storageRootURL: URL = OpenBurnBarCore.OpenBurnBarAppPaths.live().vectorIndexesRootURL,
+        storageRootURL: URL = OpenBurnBarKernel.OpenBurnBarAppPaths.live().vectorIndexesRootURL,
         storageNamespace: String = "app",
         snapshotBackend: any BurnBarPersistentVectorIndexBackend = BurnBarPersistentVectorIndexFactory.defaultBackend(),
         snapshotPageSize: Int = 1_000

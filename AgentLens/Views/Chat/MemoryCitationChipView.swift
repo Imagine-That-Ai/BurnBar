@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// F-3: a compact citation affordance rendered on assistant turns whose system
 /// prompt included memories. Tap behavior is classified by

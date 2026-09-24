@@ -1,5 +1,10 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarTextExpansion
+import OpenBurnBarUI
 
 struct MobileTextExpansionSettingsView: View {
     @State private var store = MobileTextExpansionStore()

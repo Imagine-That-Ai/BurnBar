@@ -1,14 +1,18 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 struct SessionResumeRequest: Identifiable {
     let id = UUID()
-    let record: OpenBurnBarCore.ConversationRecord
+    let record: OpenBurnBarInboxModels.ConversationRecord
     let targetHarness: AgentProvider
 }
 
 struct ResumeConversationSheet: View {
-    let record: OpenBurnBarCore.ConversationRecord
+    let record: OpenBurnBarInboxModels.ConversationRecord
     let initialTargetHarness: AgentProvider
     var daemonManager: OpenBurnBarDaemonManager
 
@@ -22,7 +26,7 @@ struct ResumeConversationSheet: View {
     @State private var openedPath: String?
 
     init(
-        record: OpenBurnBarCore.ConversationRecord,
+        record: OpenBurnBarInboxModels.ConversationRecord,
         initialTargetHarness: AgentProvider,
         daemonManager: OpenBurnBarDaemonManager
     ) {

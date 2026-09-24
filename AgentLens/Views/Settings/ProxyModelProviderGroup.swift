@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct ProxyModelProviderGroup: Identifiable {
     let providerID: String

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Process-wide entry point that gate-aware call sites use without restructuring their
 /// initializers. The mobile Hermes chat path and any daemon-proxied gateway both reach

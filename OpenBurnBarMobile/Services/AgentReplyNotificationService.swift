@@ -5,7 +5,12 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import FirebaseMessaging
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarHermes
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import SwiftUI
 import UIKit
 import UserNotifications

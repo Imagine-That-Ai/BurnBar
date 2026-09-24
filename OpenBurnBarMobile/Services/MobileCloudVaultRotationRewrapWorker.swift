@@ -1,7 +1,7 @@
 import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct MobileCloudVaultRotationRewrapProgress: Equatable, Sendable {
     let scannedDocuments: Int

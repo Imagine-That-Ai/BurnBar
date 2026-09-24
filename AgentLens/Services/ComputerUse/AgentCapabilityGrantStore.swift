@@ -1,6 +1,7 @@
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 @MainActor

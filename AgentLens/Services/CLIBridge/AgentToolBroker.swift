@@ -5,7 +5,11 @@ import OSLog
 #if canImport(Darwin)
 import Darwin
 #endif
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 struct AgentToolExecutionPayload {

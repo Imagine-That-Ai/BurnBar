@@ -1,6 +1,10 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Model Card
 
@@ -163,7 +167,7 @@ struct ModelDashboardView: View {
     private var theme: ProviderTheme { ProviderTheme.theme(forModel: modelName) }
 
     private var displayName: String {
-        OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(usages.first?.model ?? modelName)
+        OpenBurnBarLogParsers.TokenExtractionUtility.displayNameForModel(usages.first?.model ?? modelName)
     }
 
     var body: some View {
@@ -425,8 +429,8 @@ struct ModelDashboardView: View {
         )
     }
 
-    private func conversationForUsage(_ usage: TokenUsage) async -> OpenBurnBarCore.ConversationRecord? {
-        let conversationID = OpenBurnBarCore.ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
+    private func conversationForUsage(_ usage: TokenUsage) async -> OpenBurnBarInboxModels.ConversationRecord? {
+        let conversationID = OpenBurnBarInboxModels.ConversationRecord.stableId(provider: usage.provider, sessionId: usage.sessionId)
         if let conversation = try? await dataStore.fetchConversation(id: conversationID) {
             return conversation
         }

@@ -2,7 +2,10 @@ import OSLog
 import SwiftUI
 import UIKit
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // Settings card, pairing-code formatter, wizard command/step enums, notice style, success splash.
 // Extracted from HermesSettingsView.swift (god-file decomposition) — same module, verbatim.

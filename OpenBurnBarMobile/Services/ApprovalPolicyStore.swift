@@ -3,7 +3,8 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 
 // MARK: - Approval Policy Store (Hermes Square §6.9)
 //

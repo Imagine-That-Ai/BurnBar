@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Pure open/close keyboard policy for Mercury screen-share auto-type.
 enum ScreenShareAutoTypeFollowPolicy {

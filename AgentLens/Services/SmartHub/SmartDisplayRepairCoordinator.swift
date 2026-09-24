@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarUI
 
 // MARK: - Smart Display Repair Coordinator
 //

@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarUI
 
 // MARK: - Pro Theme
 //

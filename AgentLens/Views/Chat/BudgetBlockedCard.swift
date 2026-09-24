@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// First-class error card rendered in chat when a per-usage credential hits its
 /// spending limit. Shows the rule name, used/limit, period, reset time, and three

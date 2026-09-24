@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Forward projections built from `token_usage` spend history.
 ///

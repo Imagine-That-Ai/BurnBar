@@ -1,6 +1,6 @@
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 enum LinuxAppCheckDeviceTrustState: String, Codable, Sendable, Equatable {
     case pending

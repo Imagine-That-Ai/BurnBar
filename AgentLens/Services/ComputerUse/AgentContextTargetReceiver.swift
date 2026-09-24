@@ -1,7 +1,9 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import Foundation
 import CryptoKit
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 /// Receiver class for controlAgentContextTarget frames on the Mac side.

@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
 
 // MARK: - Session Log Markdown Formatter (macOS app renderers)
 //
@@ -10,12 +12,12 @@ import OpenBurnBarCore
 // macOS UI accessor. They extend the Engine's `OpenBurnBarCore.SessionLogMarkdownFormatter` enum
 // so every existing call site (`OpenBurnBarCore.SessionLogMarkdownFormatter.markdown(for:)`,
 // `.cliMarkdown(from:)`) is unchanged.
-extension OpenBurnBarCore.SessionLogMarkdownFormatter {
+extension OpenBurnBarLogParsers.SessionLogMarkdownFormatter {
 
     /// Returns Markdown for a persisted `OpenBurnBarCore.ConversationRecord`.
     /// - Provider logs: metadata table + transcript body.
     /// - CLI assistant: pre-built Markdown stored in `record.fullText`.
-    static func markdown(for record: OpenBurnBarCore.ConversationRecord) -> String {
+    static func markdown(for record: OpenBurnBarInboxModels.ConversationRecord) -> String {
         switch record.sourceType {
         case .providerLog:
             return providerMarkdown(record)
@@ -98,7 +100,7 @@ extension OpenBurnBarCore.SessionLogMarkdownFormatter {
 
     // MARK: - Provider Log Markdown
 
-    private static func providerMarkdown(_ record: OpenBurnBarCore.ConversationRecord) -> String {
+    private static func providerMarkdown(_ record: OpenBurnBarInboxModels.ConversationRecord) -> String {
         var lines: [String] = []
 
         let title = displayTitle(for: record)
@@ -165,7 +167,7 @@ extension OpenBurnBarCore.SessionLogMarkdownFormatter {
         dateFormatter.string(from: date)
     }
 
-    private static func displayTitle(for record: OpenBurnBarCore.ConversationRecord) -> String {
+    private static func displayTitle(for record: OpenBurnBarInboxModels.ConversationRecord) -> String {
         if let summaryTitle = record.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
            !summaryTitle.isEmpty {
             return summaryTitle

@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
 
 // MARK: - OpenRouter Usage API
 
@@ -104,7 +105,7 @@ final class OpenRouterUsageAPI: ProviderUsageAPI, Sendable {
         if cost > 0 {
             finalCost = cost
         } else {
-            let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
+            let pricing = OpenBurnBarLogParsers.ModelPricing.lookup(model: model)
             guard let computedCost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try pricing.cost(
                 inputTokens: finalInput,
                 outputTokens: finalOutput

@@ -2,7 +2,8 @@ import CryptoKit
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import os.log
 
 /// Firestore writer-of-record for `users/{uid}/media_attachment_manifests/{id}`.

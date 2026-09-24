@@ -4,7 +4,7 @@ import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import GoogleSignIn
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OSLog
 
 #if canImport(Sentry)

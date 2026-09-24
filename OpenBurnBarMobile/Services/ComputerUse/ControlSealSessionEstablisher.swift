@@ -1,7 +1,7 @@
 #if canImport(UIKit)
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 import OpenBurnBarSignalCore
 import os.log

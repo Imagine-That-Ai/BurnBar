@@ -5,7 +5,8 @@ import OSLog
 #if canImport(Darwin)
 import Darwin
 #endif
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 struct OpenAICompatibleChatGatewayClient: Sendable {

@@ -6,7 +6,8 @@ import FirebaseAppCheck
 import FirebaseFirestore
 import FirebaseMessaging
 import GoogleSignIn
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
 import OpenBurnBarMedia
 #if canImport(Sentry)
 import Sentry

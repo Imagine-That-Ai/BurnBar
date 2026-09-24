@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 @Observable @MainActor
 final class CredentialTransferStore {

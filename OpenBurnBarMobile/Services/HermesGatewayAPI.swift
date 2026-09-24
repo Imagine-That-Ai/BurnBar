@@ -4,7 +4,7 @@ import Foundation
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarFirestoreModels
 
 // MARK: - Hermes Gateway API

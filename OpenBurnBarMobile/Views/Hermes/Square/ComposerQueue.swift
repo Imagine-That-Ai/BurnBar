@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
 
 // MARK: - Composer Queue (Hermes Square §6.8)
 //

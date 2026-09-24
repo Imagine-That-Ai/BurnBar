@@ -1,6 +1,6 @@
 import Foundation
 import OpenBurnBarAssistantModels
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarData
 
 // MARK: - App-Typed Database Codecs (Wave 2.2 Single Migrator)

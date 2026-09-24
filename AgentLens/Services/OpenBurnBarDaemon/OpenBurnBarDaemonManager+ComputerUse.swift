@@ -1,6 +1,6 @@
 import FirebaseAuth
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 extension OpenBurnBarDaemonManager {

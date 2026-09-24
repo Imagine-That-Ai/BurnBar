@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import os.log
 
 /// Mobile adapter: synthesizes `InsightUsageRow`s from the Firestore-

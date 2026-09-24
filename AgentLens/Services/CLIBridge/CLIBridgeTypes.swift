@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 
 /// Parsed from Claude `stream-json` lines (and Codex text deltas).
 enum CLIChatStreamEvent: Hashable {

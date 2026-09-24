@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarRecap
 
 /// Defines cross-platform layout destinations for the primary tabs and sidebar.

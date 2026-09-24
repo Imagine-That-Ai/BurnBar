@@ -1,6 +1,10 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // The conversation cockpit section: KPI header, facet bar, conversation rows, detail + filter sheets.
 // Extracted from StreamsView.swift (god-file decomposition) — same module, verbatim.

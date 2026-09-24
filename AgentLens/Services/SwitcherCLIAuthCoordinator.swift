@@ -1,7 +1,10 @@
 import AppKit
 import Darwin
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 @MainActor
 final class SwitcherCLIAuthCoordinator {

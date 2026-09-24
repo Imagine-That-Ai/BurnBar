@@ -1,7 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OSLog
 
 // CLI-agent mission payloads, cloud sealer, device-trust result, persona scope, backend, direct-launch plan.

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Surfaces App Check attestation bind failures to Settings UI (Mac).
 @Observable @MainActor

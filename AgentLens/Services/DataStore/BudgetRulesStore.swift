@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarData
 
 /// SQLite CRUD against `budget_rules` and `budget_events`. The `BudgetSettings` observable

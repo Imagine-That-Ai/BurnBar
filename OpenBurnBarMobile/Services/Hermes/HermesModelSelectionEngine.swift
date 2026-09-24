@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Coordinator surface the model-selection policy needs from
 /// `HermesService`: the persisted selection, the live catalog, favorites,

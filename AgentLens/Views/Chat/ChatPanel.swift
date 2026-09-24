@@ -1,5 +1,11 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarPretext
+import OpenBurnBarQuota
+import OpenBurnBarUI
+import OpenBurnBarHermes
 
 // MARK: - Chat Panel
 

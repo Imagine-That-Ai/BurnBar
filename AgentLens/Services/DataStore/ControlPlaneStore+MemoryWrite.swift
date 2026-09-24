@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension ControlPlaneStore {
     /// How a reseal treats the sealed snapshot's A-MEM `context` sentence.

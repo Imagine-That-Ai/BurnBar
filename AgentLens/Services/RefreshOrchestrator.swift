@@ -1,6 +1,9 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import OpenBurnBarData
 
 struct PostPersistenceResult {
@@ -52,7 +55,7 @@ actor RefreshOrchestrator {
         self.memoryCloudSyncDomain = memoryCloudSyncDomain
     }
 
-    func indexConversations(_ conversations: [OpenBurnBarCore.ConversationRecord]) async -> Int {
+    func indexConversations(_ conversations: [OpenBurnBarInboxModels.ConversationRecord]) async -> Int {
         guard !conversations.isEmpty else { return 0 }
         let indexingEnabled = await MainActor.run { settingsManager.conversationIndexingEnabled }
         guard indexingEnabled else { return 0 }
@@ -65,7 +68,7 @@ actor RefreshOrchestrator {
         }
     }
 
-    func indexConversationsOffMain(_ conversations: [OpenBurnBarCore.ConversationRecord], indexingEnabled: Bool) async -> Int {
+    func indexConversationsOffMain(_ conversations: [OpenBurnBarInboxModels.ConversationRecord], indexingEnabled: Bool) async -> Int {
         guard !conversations.isEmpty, indexingEnabled else { return 0 }
         do {
             let indexingReport = try await ConversationIndexer.shared.index(conversations, in: dataStore)
@@ -85,7 +88,7 @@ actor RefreshOrchestrator {
     /// lets the caller detect failure and skip checkpoint advancement so the
     /// next tick retries the failed upserts.
     func indexConversationsOffMainThrowing(
-        _ conversations: [OpenBurnBarCore.ConversationRecord],
+        _ conversations: [OpenBurnBarInboxModels.ConversationRecord],
         indexingEnabled: Bool
     ) async throws -> ConversationIndexingReport {
         guard !conversations.isEmpty, indexingEnabled else {
@@ -143,7 +146,7 @@ actor RefreshOrchestrator {
         }
     }
 
-    func runScheduledBackfillIfNeeded(parsers: [AgentProvider: any OpenBurnBarCore.LogParser]) async {
+    func runScheduledBackfillIfNeeded(parsers: [AgentProvider: any OpenBurnBarLogParsers.LogParser]) async {
         let now = Date()
 
         for provider in parsers.keys {

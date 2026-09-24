@@ -1,7 +1,9 @@
 import Foundation
 
 #if canImport(OpenBurnBarCore)
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 #endif
 
 enum ConnectorProvider: String, Codable, CaseIterable, Identifiable {

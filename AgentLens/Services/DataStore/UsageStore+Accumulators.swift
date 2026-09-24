@@ -1,6 +1,9 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import OpenBurnBarData
 
 struct ProviderRunCostTotals: Equatable, Sendable {
@@ -493,7 +496,7 @@ struct ModelSummaryAccumulator { // pure-move: was private
     var summary: ModelSummary {
         ModelSummary(
             modelName: modelName,
-            displayName: OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(displayModelName ?? modelName),
+            displayName: OpenBurnBarLogParsers.TokenExtractionUtility.displayNameForModel(displayModelName ?? modelName),
             totalCost: totalCost,
             totalTokens: totalTokens,
             totalInputTokens: totalInputTokens,

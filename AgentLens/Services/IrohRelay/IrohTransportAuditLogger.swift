@@ -1,7 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 
 final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, Sendable {

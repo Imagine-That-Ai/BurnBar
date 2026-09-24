@@ -1,6 +1,9 @@
 import Foundation
 import os
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Single source of truth for "which `AgentProvider` does this daemon
 /// credential-slot provider id belong to, for quota purposes".
