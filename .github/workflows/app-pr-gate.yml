@@ -212,7 +212,7 @@ jobs:
           OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180 \
           OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360 \
           OPENBURNBAR_APP_TEST_SCHEME=OpenBurnBarLab \
-          OPENBURNBAR_APP_TEST_FILTERS="OpenBurnBarTests/BehaviorTests,OpenBurnBarTests/PetDefinitionTests,OpenBurnBarTests/PetPropTests,OpenBurnBarTests/PetDropAttachmentTests,OpenBurnBarTests/PetChatBackendAvailabilityTests,OpenBurnBarTests/ControlDeckRegistryTests,OpenBurnBarTests/ControlDeckLayoutTests,OpenBurnBarTests/SettingsManifestCoverageTests" \
+          OPENBURNBAR_APP_TEST_FILTERS="OpenBurnBarTests/BehaviorTests,OpenBurnBarTests/PetDefinitionTests,OpenBurnBarTests/PetDefinitionResourcesTests,OpenBurnBarTests/PetPropTests,OpenBurnBarTests/PetDropAttachmentTests,OpenBurnBarTests/PetChatBackendAvailabilityTests,OpenBurnBarTests/ControlDeckRegistryTests,OpenBurnBarTests/ControlDeckLayoutTests,OpenBurnBarTests/SettingsManifestCoverageTests" \
           SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin \
           OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-lab-gate" \
           ./scripts/test-openburnbar-app.sh
