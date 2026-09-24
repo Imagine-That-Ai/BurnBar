@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,36 +7,14 @@ import { fileURLToPath } from "node:url";
 const DOC_START = "<!-- BEGIN GENERATED MIGRATION CATALOG -->";
 const DOC_END = "<!-- END GENERATED MIGRATION CATALOG -->";
 
-// These are reviewed, semantic platform adaptations, not blanket exclusions.
-// Both fingerprints are pinned so any edit on either side requires review.
-export const INTENTIONAL_DIVERGENCES = {
-  v21_multifield_fts: {
-    app: "da820ee7efc0ae17440cc7032743f27c7d525d3a92f44e0aec0649941e907531",
-    shared: "393f4396428b91eb0a5dd3d2d02c7d06b2f0e7ce939ca45e37a99ce8931711e0",
-    reason: "Shared SQLCipher/Linux builds must create both FTS virtual tables before swapping the chunk table.",
-  },
-  v22_cross_device_sync: {
-    app: "b6b325be8fb9a5799704e4d54252e1c148ccdb1928e9cf59c109ad4827eebcd9",
-    shared: "afb2d0143986985a87a4d205ecf6d089e7c278a967004389eb6fedba4ea4138a",
-    reason: "The app copy qualifies OpenBurnBarIdentity through the imported OpenBurnBarCore module.",
-  },
-  v46_drain_target_per_provider: {
-    app: "d9785e121f267f8cae8e5e79b5fcadbbafd572fc8796a2a303c78027af8e911b",
-    shared: "92860497ca3f6cc3c173e9b65ca792e97ccdec23c9f1e3fd05308bd837f80d4f",
-    appExternalDependencies: [
-      {
-        file: "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SwitcherProfile.swift",
-        property: "canonicalAgentProvider",
-      },
-      {
-        file: "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AgentProvider.swift",
-        property: "providerID",
-      },
-    ],
-    sharedDependencies: ["providerIDForSwitcherCLIType"],
-    reason: "The shared-data target cannot depend on the app enum; both its frozen map and the app's enum dependencies are pinned. App fingerprint refreshed for Hermes + Goose + Windsurf + OpenClaude + OpenClaw switcher mappings.",
-  },
-};
+// Wave 2.2 deleted the AgentLens migrator copy: OpenBurnBarData is the single
+// migrator, so there is no app↔shared body parity left to enforce (the former
+// INTENTIONAL_DIVERGENCES table died with the twin). This verifier now guards
+// the single-surface contract: every registration lives inside a function the
+// migrator calls, the rollback catalog lists the same migrations in the same
+// order, and the generated DATABASE_OPERATIONS.md table matches the catalog.
+// Migration BODY drift is caught by the schema-doc check
+// (scripts/ci/verify-sqlite-schema-doc.mjs) and the DB byte-compat vector.
 
 function walkSwiftFiles(root) {
   const files = [];
@@ -175,10 +152,6 @@ export function normalizeSwiftBody(source) {
   return result;
 }
 
-function sha256(value) {
-  return createHash("sha256").update(value).digest("hex");
-}
-
 function extractFunctionBodies(source) {
   const bodies = new Map();
   const pattern = /\b(?:private\s+)?static\s+func\s+([A-Za-z0-9_]+)\s*\(/gu;
@@ -189,15 +162,6 @@ function extractFunctionBodies(source) {
     bodies.set(match[1], source.slice(openingBrace + 1, closingBrace));
   }
   return bodies;
-}
-
-function extractPropertyBody(source, property) {
-  const pattern = new RegExp(`\\bvar\\s+${property}\\s*:[^\\n{=]+\\{`, "u");
-  const match = pattern.exec(source);
-  assert(match, `missing computed property ${property}`);
-  const openingBrace = source.indexOf("{", match.index + match[0].length - 1);
-  const closingBrace = matchingBrace(source, openingBrace);
-  return source.slice(openingBrace + 1, closingBrace);
 }
 
 export function extractMigrationRegistrations(source) {
@@ -239,21 +203,15 @@ function assertUnique(names, label) {
   assert.deepEqual(duplicates, [], `${label} contains duplicate migrations: ${duplicates.join(", ")}`);
 }
 
-function loadMigrationSurface(root, repoRoot, side) {
+function loadMigrationSurface(root) {
   const files = walkSwiftFiles(root);
   const functions = new Map();
   const allRegistrations = [];
-  const dependencyNames = new Set(
-    Object.values(INTENTIONAL_DIVERGENCES).flatMap((entry) => [
-      ...(entry.appDependencies ?? []),
-      ...(entry.sharedDependencies ?? []),
-    ])
-  );
   for (const file of files) {
     const source = readFileSync(file, "utf8");
     allRegistrations.push(...extractMigrationRegistrations(source));
     for (const [name, body] of extractFunctionBodies(source)) {
-      if (!body.includes("migrator.registerMigration") && !dependencyNames.has(name)) continue;
+      if (!body.includes("migrator.registerMigration")) continue;
       assert(!functions.has(name), `duplicate static function ${name} under ${root}`);
       functions.set(name, { body, source, file });
     }
@@ -271,29 +229,7 @@ function loadMigrationSurface(root, repoRoot, side) {
     const definition = functions.get(functionName);
     assert(definition, `${root} calls missing migration function ${functionName}`);
     for (const registration of extractMigrationRegistrations(definition.body)) {
-      const divergence = INTENTIONAL_DIVERGENCES[registration.name];
-      const dependencies = root.includes(`${path.sep}OpenBurnBarCore${path.sep}`)
-        ? divergence?.sharedDependencies ?? []
-        : divergence?.appDependencies ?? [];
-      const dependencyBodies = dependencies.map((dependency) => {
-        const dependencyDefinition = functions.get(dependency);
-        assert(dependencyDefinition, `${registration.name} is missing dependency ${dependency}`);
-        return dependencyDefinition.body;
-      });
-      const externalDependencyBodies = (divergence?.[`${side}ExternalDependencies`] ?? []).map(
-        (dependency) => {
-          const source = readFileSync(path.join(repoRoot, dependency.file), "utf8");
-          return extractPropertyBody(source, dependency.property);
-        }
-      );
-      ordered.push({
-        ...registration,
-        fingerprint: sha256(
-          [registration.body, ...dependencyBodies, ...externalDependencyBodies]
-            .map(normalizeSwiftBody)
-            .join("\n--dependency--\n")
-        ),
-      });
+      ordered.push(registration);
     }
   }
 
@@ -303,24 +239,6 @@ function loadMigrationSurface(root, repoRoot, side) {
     `${root} has migration registrations outside the functions called by migrator`
   );
   return ordered;
-}
-
-export function assertMigrationParity(appMigrations, sharedMigrations) {
-  const appNames = appMigrations.map(({ name }) => name);
-  const sharedNames = sharedMigrations.map(({ name }) => name);
-  assert.deepEqual(sharedNames, appNames, "shared-data migration registration order differs from the app migrator");
-
-  for (let index = 0; index < appMigrations.length; index += 1) {
-    const app = appMigrations[index];
-    const shared = sharedMigrations[index];
-    if (app.fingerprint === shared.fingerprint) continue;
-
-    const allowed = INTENTIONAL_DIVERGENCES[app.name];
-    assert(allowed, `${app.name} migration body differs without a reviewed exception`);
-    assert.equal(app.fingerprint, allowed.app, `${app.name} app exception fingerprint changed`);
-    assert.equal(shared.fingerprint, allowed.shared, `${app.name} shared exception fingerprint changed`);
-    assert(allowed.reason.length >= 20, `${app.name} exception requires a substantive reason`);
-  }
 }
 
 export function renderMigrationCatalog(entries) {
@@ -357,28 +275,19 @@ function updateOrVerifyDocumentation(repoRoot, entries, writeDocumentation) {
 }
 
 export function verifyMigrationRollbackCatalog(repoRoot, { writeDocumentation = false } = {}) {
-  const appMigrations = loadMigrationSurface(
-    path.join(repoRoot, "AgentLens", "Services", "DataStore"),
-    repoRoot,
-    "app"
-  );
-  const sharedMigrations = loadMigrationSurface(
-    path.join(repoRoot, "OpenBurnBarCore", "Sources", "OpenBurnBarData"),
-    repoRoot,
-    "shared"
+  const migrations = loadMigrationSurface(
+    path.join(repoRoot, "OpenBurnBarCore", "Sources", "OpenBurnBarData")
   );
   const rollbackSource = readFileSync(path.join(repoRoot, "scripts", "rollback-migration.sh"), "utf8");
   const rollbackEntries = extractCatalogEntries(rollbackSource);
   const rollbackNames = rollbackEntries.map(({ name }) => name);
 
-  assertUnique(appMigrations.map(({ name }) => name), "app migrator");
-  assertUnique(sharedMigrations.map(({ name }) => name), "shared-data migrator");
+  assertUnique(migrations.map(({ name }) => name), "single migrator");
   assertUnique(rollbackNames, "rollback catalog");
-  assertMigrationParity(appMigrations, sharedMigrations);
-  assert.deepEqual(rollbackNames, appMigrations.map(({ name }) => name), "rollback catalog order differs from migrator");
+  assert.deepEqual(rollbackNames, migrations.map(({ name }) => name), "rollback catalog order differs from migrator");
   updateOrVerifyDocumentation(repoRoot, rollbackEntries, writeDocumentation);
 
-  return appMigrations.length;
+  return migrations.length;
 }
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -387,6 +296,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === currentFile) {
   const writeDocumentation = process.argv.includes("--write-doc");
   const count = verifyMigrationRollbackCatalog(repoRoot, { writeDocumentation });
   console.log(
-    `migration contract: ${count} ordered migrations, normalized bodies, rollback catalog, and documentation verified`
+    `migration contract: ${count} ordered migrations, rollback catalog, and documentation verified`
   );
 }

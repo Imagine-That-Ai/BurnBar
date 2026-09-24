@@ -3,10 +3,9 @@ import XCTest
 @testable import OpenBurnBarData
 
 /// Core-side coverage for `v68_agent_memories_review_default_repair` (review
-/// #2565-F3). The AgentLens copy of `CommandBoardIndexMigration` is
-/// byte-identical — pair identity is enforced by
-/// `scripts/ci/verify-sqlite-schema-doc.mjs` — so running the Core migrator
-/// against a stale-default `agent_memories` proves both halves of the repair.
+/// #2565-F3). OpenBurnBarData is the single migrator (Wave 2.2 deleted the
+/// AgentLens copy), so running the Core migrator against a stale-default
+/// `agent_memories` proves the repair.
 final class OpenBurnBarDataReviewDefaultRepairMigrationTests: XCTestCase {
 
     /// An install whose shared table an older daemon binary created carries

@@ -28,7 +28,11 @@ extension OpenBurnBarDatabase {
         // Reviewed 2026-09-20 (receipt close-monitor): one `IF NOT EXISTS`
         // index on token_usage.endTime. No pre-existing row is read,
         // rewritten or deleted.
-        "v69_token_usage_end_time_index"
+        "v69_token_usage_end_time_index",
+        // Reviewed 2026-09-23 (Wave 2.3): three `IF NOT EXISTS` index creates
+        // on agent_memories. No pre-existing row is read, rewritten or
+        // deleted, so transactional rollback is sufficient protection.
+        "v70_agent_memories_index_backfill"
     ]
 
     public enum OpenBurnBarDatabaseError: Error {

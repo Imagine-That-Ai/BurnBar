@@ -5,10 +5,10 @@ import XCTest
 /// Core-side diff-coverage tests for the `v61_usage_memory` migration
 /// (`OpenBurnBarDatabase+UsageMemoryMigrations.swift`) and its migrator
 /// wiring line in `OpenBurnBarDatabase.swift`. The app-side
-/// `UsageMemoryMigrationTests` exercises the byte-identical AgentLens copy
-/// (pair identity is enforced by `scripts/ci/verify-sqlite-schema-doc.mjs`);
-/// these tests run the Core `OpenBurnBarDatabase` migrator directly so the
-/// SwiftPM diff-coverage gate sees the changed Core lines.
+/// `UsageMemoryMigrationTests` exercises the same single migrator through the
+/// app `DataStore` (Wave 2.2 deleted the AgentLens copy); these tests run the
+/// Core `OpenBurnBarDatabase` migrator directly so the SwiftPM diff-coverage
+/// gate sees the changed Core lines.
 final class OpenBurnBarDataUsageMemoryMigrationTests: XCTestCase {
 
     // MARK: - Fresh database shape

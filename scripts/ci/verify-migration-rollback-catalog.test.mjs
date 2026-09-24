@@ -17,7 +17,6 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
-  INTENTIONAL_DIVERGENCES,
   extractCatalogNames,
   extractMigrationNames,
   normalizeSwiftBody,
@@ -26,31 +25,19 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-// The verifier walks these two directories whole, so the fixture mirrors them
-// whole. Enumerating the migration files by hand meant every new migration had
-// to be remembered here too, and forgetting left the mutation tests running
-// against a partial migration surface — still throwing, just for the wrong
-// reason, which is the one failure mode a fail-closed contract test cannot have.
+// The verifier walks this directory whole, so the fixture mirrors it whole.
+// Enumerating the migration files by hand meant every new migration had to be
+// remembered here too, and forgetting left the mutation tests running against
+// a partial migration surface — still throwing, just for the wrong reason,
+// which is the one failure mode a fail-closed contract test cannot have.
+// (Wave 2.2 deleted the AgentLens twin: OpenBurnBarData is the only surface.)
 const migrationDirectories = [
-  path.join("AgentLens", "Services", "DataStore"),
   path.join("OpenBurnBarCore", "Sources", "OpenBurnBarData"),
 ];
-
-// Swift files outside those directories that pinned fingerprints depend on,
-// read straight off the verifier's own exception table.
-const dependencyFiles = Object.values(INTENTIONAL_DIVERGENCES)
-  .flatMap((divergence) => divergence.appExternalDependencies ?? [])
-  .map((dependency) => dependency.file);
 
 function copyFiles(sourceDirectory, destinationDirectory, files) {
   mkdirSync(destinationDirectory, { recursive: true });
   for (const file of files) cpSync(path.join(sourceDirectory, file), path.join(destinationDirectory, file));
-}
-
-function copyRelativeFile(root, relativePath) {
-  const destination = path.join(root, relativePath);
-  mkdirSync(path.dirname(destination), { recursive: true });
-  cpSync(path.join(repoRoot, relativePath), destination);
 }
 
 function fixture(t) {
@@ -59,7 +46,6 @@ function fixture(t) {
   for (const directory of migrationDirectories) {
     cpSync(path.join(repoRoot, directory), path.join(root, directory), { recursive: true });
   }
-  for (const dependency of dependencyFiles) copyRelativeFile(root, dependency);
   copyFiles(path.join(repoRoot, "scripts"), path.join(root, "scripts"), ["rollback-migration.sh"]);
   copyFiles(path.join(repoRoot, "docs"), path.join(root, "docs"), ["DATABASE_OPERATIONS.md"]);
   return root;
@@ -102,12 +88,12 @@ test("extracts only complete migration contracts", () => {
 });
 
 test("current migration surfaces, catalog, and generated documentation agree", () => {
-  // 70 as of v69_token_usage_end_time_index. This literal is a deliberate
+  // 71 as of v70_agent_memories_index_backfill. This literal is a deliberate
   // tripwire, not a derived value: pinning it means adding a migration cannot
   // quietly pass by agreeing with itself, and forces the author past every
   // mirror. Bump it ONLY together with the migrator, the rollback catalog, the
   // Windows endpoint/count, and the byte-compat vector.
-  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 70);
+  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 71);
 });
 
 test("registration reorder fails closed", (t) => {
@@ -118,51 +104,35 @@ test("registration reorder fails closed", (t) => {
     "registerDataMigrationsV1toV20(on: &migrator)\n        registerDataMigrationsV21toV40(on: &migrator)",
     "registerDataMigrationsV21toV40(on: &migrator)\n        registerDataMigrationsV1toV20(on: &migrator)"
   );
-  assert.throws(() => verifyMigrationRollbackCatalog(root), /registration order differs/u);
+  assert.throws(() => verifyMigrationRollbackCatalog(root), /rollback catalog order differs from migrator/u);
 });
 
-test("migration body mutation fails closed", (t) => {
+test("registration outside a migrator-called function fails closed", (t) => {
   const root = fixture(t);
+  // providerIDForSwitcherCLIType is a helper no migrator call reaches, so a
+  // registration smuggled into its body is invisible to the ordered walk but
+  // visible to the whole-directory scan.
   mutate(
     root,
     "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationsV41toV51.swift",
-    "MAX(inputTokens, 0)",
-    "MAX(inputTokens, 1)"
+    "static func providerIDForSwitcherCLIType(_ rawValue: String) -> String? {",
+    'static func providerIDForSwitcherCLIType(_ rawValue: String) -> String? {\n        migrator.registerMigration("v46_sneaky_unregistered") { _ in }'
   );
-  assert.throws(() => verifyMigrationRollbackCatalog(root), /v41_reprice_openai_family_cached_input migration body differs/u);
+  assert.throws(
+    () => verifyMigrationRollbackCatalog(root),
+    /has migration registrations outside the functions called by migrator/u
+  );
 });
 
-test("column-default mutation fails closed", (t) => {
+test("catalog missing a migration fails closed", (t) => {
   const root = fixture(t);
   mutate(
     root,
-    "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationsV1toV20.swift",
-    '.defaults(to: "provider_log")',
-    '.defaults(to: "mutated_default")'
+    "scripts/rollback-migration.sh",
+    '"v70_agent_memories_index_backfill|atomic|unapplied-only|backup-restore|',
+    '"v70_agent_memories_index_backfill|atomic|unapplied-only|dropped|'
   );
-  assert.throws(() => verifyMigrationRollbackCatalog(root), /v9_source_type migration body differs/u);
-});
-
-test("allowlisted provider mapping mutation invalidates its pinned fingerprint", (t) => {
-  const root = fixture(t);
-  mutate(
-    root,
-    "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationsV41toV51.swift",
-    'case "codex":\n            return "codex"',
-    'case "codex":\n            return "mutated-provider"'
-  );
-  assert.throws(() => verifyMigrationRollbackCatalog(root), /v46_drain_target_per_provider shared exception fingerprint changed/u);
-});
-
-test("app enum mapping mutation invalidates the migration dependency fingerprint", (t) => {
-  const root = fixture(t);
-  mutate(
-    root,
-    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SwitcherProfile.swift",
-    "case .junie: return .junie",
-    "case .junie: return .codex"
-  );
-  assert.throws(() => verifyMigrationRollbackCatalog(root), /v46_drain_target_per_provider app exception fingerprint changed/u);
+  assert.throws(() => verifyMigrationRollbackCatalog(root), /rollback catalog order differs from migrator/u);
 });
 
 test("stale generated catalog fails closed", (t) => {

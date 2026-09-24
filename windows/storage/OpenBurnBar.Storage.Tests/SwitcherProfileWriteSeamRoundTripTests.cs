@@ -31,9 +31,9 @@ public sealed class SwitcherProfileWriteSeamRoundTripTests
     // sibling TokenUsageWriteRoundTripTests, and regenerated together with it).
     // A switcher write must not move any of these.
     private const string ExpectedSchemaHash =
-        "a76600156cff641cd2128a996866060d9c542e6fec24eb8596e34de089ee622f";
-    private const string ExpectedMigrationEndpoint = "v68_agent_memories_review_default_repair";
-    private const long ExpectedMigrationCount = 69;
+        "acece1bef6035403c38d38468f101b3ed8e0cf609865b18a6bfeb56803453f96";
+    private const string ExpectedMigrationEndpoint = "v70_agent_memories_index_backfill";
+    private const long ExpectedMigrationCount = 71;
     private const long ExpectedUserVersion = 0;
 
     private static string FixtureSource =>

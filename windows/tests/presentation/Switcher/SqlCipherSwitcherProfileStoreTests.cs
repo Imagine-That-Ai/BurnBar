@@ -308,7 +308,7 @@ public sealed class SqlCipherSwitcherProfileStoreTests
             using (var connection = SqlCipherConnection.Open(working, SqlCipherParameters.FixturePassphrase))
             {
                 Assert.Equal(
-                    "a76600156cff641cd2128a996866060d9c542e6fec24eb8596e34de089ee622f",
+                    "acece1bef6035403c38d38468f101b3ed8e0cf609865b18a6bfeb56803453f96",
                     SqlCipherConnection.ComputeSchemaHash(connection));
             }
         }

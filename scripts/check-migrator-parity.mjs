@@ -3,19 +3,20 @@
  * Swift ↔ Windows ↔ Linux migrator parity ratchet.
  *
  * The GRDB migrator in OpenBurnBarCore/Sources/OpenBurnBarData is the schema
- * source of truth (docs/SCHEMA_SQLITE.sql is a known-stale doc — never trust
- * it). Two other surfaces hand-mirror that schema and have historically
- * drifted silently:
+ * source of truth (docs/SCHEMA_SQLITE.sql is generated from it — never trust
+ * a hand edit). Two other surfaces hand-mirror that schema and have
+ * historically drifted silently:
  *
- *   1. The AgentLens app migrator (AgentLens/Services/DataStore) — a split
- *      copy of the same migration set.
- *   2. The Windows port (windows/storage/OpenBurnBar.Storage) — a hand-written
+ *   1. The Windows port (windows/storage/OpenBurnBar.Storage) — a hand-written
  *      endpoint schema (SchemaStatements) plus a windows-migration-journal
  *      whose AppliedMigrationIdentifiers must replay the Swift migrator's
  *      ordered identifier list exactly.
- *   3. The Linux port — runs the Swift kernel directly, but pins the schema
+ *   2. The Linux port — runs the Swift kernel directly, but pins the schema
  *      through OpenBurnBarDataLinuxTests + the linux-swift-test-manifest and
  *      the committed DB byte-compat vector.
+ *
+ * (Wave 2.2 deleted the former surface 1, the AgentLens app migrator split
+ * copy — OpenBurnBarData is the single migrator now.)
  *
  * This script mechanically extracts, from source text alone (no DB, no build):
  *   - the ordered migration identifiers (registration order),
@@ -56,11 +57,6 @@ export const SURFACES = {
   swiftCanon: {
     label: "OpenBurnBarData (canonical Swift migrator)",
     dir: "OpenBurnBarCore/Sources/OpenBurnBarData",
-    assembly: "OpenBurnBarDatabase.swift",
-  },
-  agentLens: {
-    label: "AgentLens app migrator (split copy)",
-    dir: "AgentLens/Services/DataStore",
     assembly: "OpenBurnBarDatabase.swift",
   },
   windows: {
@@ -182,11 +178,20 @@ export function emptySchemaState() {
     virtualTables: new Map(), // name -> { columns: [], options: {} }
     indexes: new Map(), // name -> { table, unique }
     triggers: new Map(), // name -> { table }
+    // Table-rebuild idiom support: DROP TABLE x … RENAME repair TO x.
+    // A rebuild preserves columns by construction (INSERT..SELECT over the
+    // same names), but the repair CREATE is often built dynamically
+    // (v68 assembles it from table_info), so the replayed repair table has
+    // an empty column set. The stash carries the dropped set across.
+    droppedColumns: new Map(), // name -> Set(columns)
   };
 }
 
 function dropObject(state, kind, name) {
   if (kind === "TABLE") {
+    if (state.tables.has(name)) {
+      state.droppedColumns.set(name, state.tables.get(name));
+    }
     state.tables.delete(name);
     state.virtualTables.delete(name);
     // SQLite drops dependent indexes/triggers with the table.
@@ -205,7 +210,16 @@ function dropObject(state, kind, name) {
 
 function renameTable(state, from, to) {
   if (state.tables.has(from)) {
-    state.tables.set(to, state.tables.get(from));
+    const moving = state.tables.get(from);
+    // Rebuild idiom (see droppedColumns): an empty repair table renamed
+    // onto a just-dropped name restores the dropped columns. Only when `to`
+    // is currently absent — renaming onto a live table overwrites it, and
+    // the stash must never clobber a real column set.
+    if (moving.size === 0 && !state.tables.has(to) && state.droppedColumns.has(to)) {
+      state.tables.set(to, state.droppedColumns.get(to));
+    } else {
+      state.tables.set(to, moving);
+    }
     state.tables.delete(from);
   }
   if (state.virtualTables.has(from)) {
@@ -904,23 +918,7 @@ export function runParityCheck(
     }
   }
 
-  // 1. AgentLens split-copy migrator.
-  const agentLens = extractSwiftMigrations(
-    repoRoot,
-    SURFACES.agentLens,
-    listDir,
-  );
-  if (JSON.stringify(agentLens.identifiers) !== JSON.stringify(canon.identifiers)) {
-    hardErrors.push(
-      `AgentLens migrator identifier list diverged from OpenBurnBarData.\n    canonical: ${fmtList(canon.identifiers, 60)}\n    agentLens: ${fmtList(agentLens.identifiers, 60)}`,
-    );
-  }
-  const agentLensState = replayMigrations(agentLens.migrations);
-  computedDivergences.push(
-    ...diffSchemaSurfaces("agentlens", canonState, agentLensState),
-  );
-
-  // 2. Windows port.
+  // 1. Windows port.
   const windows = extractWindows(repoRoot, SURFACES.windows);
   if (JSON.stringify(windows.identifiers) !== JSON.stringify(canon.identifiers)) {
     const missing = canon.identifiers.filter((i) => !windows.identifiers.includes(i));
@@ -943,7 +941,7 @@ export function runParityCheck(
     ...diffSchemaSurfaces("windows", canonState, windows.state),
   );
 
-  // 3. Linux port pins.
+  // 2. Linux port pins.
   const linux = extractLinux(repoRoot, SURFACES.linux);
   if (!linux.pinnedLastIdentifiers.includes(canonLast)) {
     hardErrors.push(
@@ -1032,7 +1030,7 @@ export function main(argv, { cwd } = {}) {
 
   console.log(
     `✓ Migrator parity holds: ${canon.identifiers.length} migrations (endpoint ${canon.identifiers[canon.identifiers.length - 1]}), ` +
-      `${computedDivergences.length} annotated divergences, Windows journal + endpoint schema, AgentLens copy, and Linux pins all consistent.`,
+      `${computedDivergences.length} annotated divergences, Windows journal + endpoint schema and Linux pins all consistent.`,
   );
   return 0;
 }

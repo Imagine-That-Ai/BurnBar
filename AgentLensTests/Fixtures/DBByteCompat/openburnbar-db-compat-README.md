@@ -9,7 +9,7 @@ pinned SQLCipher parameters and rationale, and
 
 | File | What it is |
 | ---- | ---------- |
-| `openburnbar-db-compat-v64.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v65_memory_quarantine_bodies` and seeded with the canonical FTS corpus. The legacy filename stays stable for downstream fixture consumers; the vector records the actual endpoint. Genuinely encrypted (no plaintext SQLite header). |
+| `openburnbar-db-compat-v64.sqlcipher` | A **real Mac-produced** SQLCipher database, migrated through the **live** `OpenBurnBarDatabase` migrator to `v70_agent_memories_index_backfill` and seeded with the canonical FTS corpus. The legacy filename stays stable for downstream fixture consumers; the vector records the actual endpoint. Genuinely encrypted (no plaintext SQLite header). |
 | `openburnbar-db-compat-vector.json` | The **DB-compat vector**: expected schema hash (SHA-256 over normalized `sqlite_master` DDL) + the expected FTS5 `bm25()`/`snippet()` row set for a fixed set of `MATCH` probes. |
 | `openburnbar-db-compat-params-observed.json` | The SQLCipher parameters **read back from the live 4.16.0 binary** (evidence for the pinned values). |
 
@@ -65,8 +65,9 @@ bug rather than a stale artifact:
 
 1. `expectedSchemaEndpoint` in `AgentLensTests/Support/DatabaseByteCompatVector.swift`
    — the new `latestMigrationIdentifier`.
-2. `fixtureBaseName` in `DatabaseByteCompatVectorTests.swift` and the committed
-   `.sqlcipher` filename — both bump to the new version (`git rm` the old one).
+2. The committed `.sqlcipher` bytes — regenerated from the live migrator. The
+   legacy `v64` filename and `fixtureBaseName` stay stable for downstream
+   consumers; only the file bytes move (the vector records the actual endpoint).
 3. `openburnbar-db-compat-vector.json` — **regenerated, never hand-edited.** It
    carries `migrationCount` and the schema hash, which no human can compute.
 4. The `.sqlcipher` binary itself — a v(N-1) database can never satisfy a vN
@@ -91,9 +92,8 @@ follow the endpoint. Grep for the previous count before you assume it is done.
    `windows/storage/`: `windows/tests/presentation/Switcher/SqlCipherSwitcherProfileStoreTests.cs`
    (schema hash). `grep -rl <old hash>` across the whole repo before you
    push; the storage-layer files are not the only readers of this fixture.
-7. Every `openburnbar-db-compat-vN.sqlcipher` filename reference under
-   `windows/` — csproj `<Content>` links, `RepoFixtures`, and the per-suite
-   `FixtureName` constants.
+   (The `v64` fixture filename itself stays stable — no `windows/` filename
+   references move on a regeneration; see the Files table above.)
 
 The count is always the length of `AppliedMigrationIdentifiers`, which equals
 the Swift migrator's `registerMigration` count — verify it, don't copy whatever

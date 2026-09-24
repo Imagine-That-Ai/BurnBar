@@ -1649,6 +1649,22 @@ let firstPartyTargets: [Target] = platformFirstPartyTargetsBase
         ],
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),
+    // Wave 2.3 schema-doc generator: runs the live OpenBurnBarData migrator
+    // on an in-memory database and emits docs/SCHEMA_SQLITE.sql from the
+    // resulting sqlite_master DDL — the doc is byte-truth, not a hand copy.
+    // Same never-referenced-leaf shape as the parity harnesses: NO product
+    // in `packageProducts`, absent from the app's `project.yml`, so the Apple
+    // app scheme never resolves/links/builds it. Apple-only (pruned with
+    // OpenBurnBarData off-Apple): `swift run --package-path OpenBurnBarCore
+    // OpenBurnBarSchemaExport [--check]`.
+    .executableTarget(
+        name: "OpenBurnBarSchemaExport",
+        dependencies: [
+            "OpenBurnBarData",
+            .product(name: "GRDB", package: "GRDB-SQLCipher")
+        ],
+        path: "Sources/OpenBurnBarSchemaExport"
+    ),
     // BB-E. Depends on OpenBurnBarKernel for the ONE secret/PII gate — a
     // migration-private scanner would be a third corpus to drift against — and
     // on GRDB to read the store. It does NOT depend on OpenBurnBarData: the

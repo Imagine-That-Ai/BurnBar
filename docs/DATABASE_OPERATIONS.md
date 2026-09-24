@@ -117,6 +117,7 @@ No current migration is classified as independently reversible. SQL snippets pri
 | 68 | `v67_agent_memory_inbox` | atomic | unapplied-only | backup-restore | Landing zone for memory facts pulled back from the member's cloud vault, drained by the engine |
 | 69 | `v68_agent_memories_review_default_repair` | atomic | unapplied-only | backup-restore | Rebuilds agent_memories so review_status defaults to quarantined (fail closed) where an older bootstrap left DEFAULT approved; columns, rows and indexes carried verbatim; no-op when the default is already correct |
 | 70 | `v69_token_usage_end_time_index` | atomic | unapplied-only | backup-restore | Index on token_usage.endTime so the receipt close-monitor end-time window does not scan the ledger |
+| 71 | `v70_agent_memories_index_backfill` | atomic | unapplied-only | backup-restore | Backfills the three schema-owned agent_memories indexes (project, review_status, chat_scope) that v68 only recreated inside its conditional rebuild; no-op where they already exist |
 <!-- END GENERATED MIGRATION CATALOG -->
 
 Regenerate and verify the table with:

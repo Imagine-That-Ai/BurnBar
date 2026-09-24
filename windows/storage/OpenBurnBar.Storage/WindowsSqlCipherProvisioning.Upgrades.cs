@@ -36,7 +36,7 @@ public sealed partial class WindowsSqlCipherProvisioner
     internal static readonly WindowsSchemaUpgradeStep[] AdditiveUpgradeSteps =
     {
         // v60_billing_kind — mirrors OpenBurnBarDatabase+DataMigrationV60.swift
-        // (and its byte-identical AgentLens copy) statement for statement.
+        // statement for statement (OpenBurnBarData is the single migrator).
         new WindowsSchemaUpgradeStep(
             "v60_billing_kind",
             new[]
@@ -155,6 +155,18 @@ public sealed partial class WindowsSqlCipherProvisioner
                 WindowsSchemaUpgradeStatement.Always(
                     "CREATE INDEX IF NOT EXISTS token_usage_end_time_idx ON token_usage(endTime)"),
             }),
+
+        // v70_agent_memories_index_backfill — peer of
+        // OpenBurnBarDatabase+CommandBoardIndexMigration.swift. The Swift
+        // migration backfills the three schema-owned `agent_memories`
+        // indexes idempotently. Windows provisioning never creates
+        // `agent_memories` (daemon-owned, see
+        // budgets/migrator-parity-baseline.json), so there is nothing to
+        // backfill here: the step only advances the stamp, keeping an
+        // upgraded database identical to a freshly provisioned one.
+        new WindowsSchemaUpgradeStep(
+            "v70_agent_memories_index_backfill",
+            Array.Empty<WindowsSchemaUpgradeStatement>()),
     };
 
     internal const string AgentMemoryInboxTableSql =

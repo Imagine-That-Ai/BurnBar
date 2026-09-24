@@ -1,210 +1,340 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+// Wave 2.3 schema-doc drift check.
+//
+// docs/SCHEMA_SQLITE.sql is GENERATED from the live OpenBurnBarData migrator
+// (`swift run --package-path OpenBurnBarCore OpenBurnBarSchemaExport`). This
+// check — which runs on the ubuntu PR door with node only, no Swift toolchain
+// — proves the committed doc still matches the migrator sources by parsing
+// BOTH into endpoint schema surfaces and requiring them to be identical:
+//
+//   1. Canonical surface: every migration v1..head in registration order,
+//      replayed from OpenBurnBarCore/Sources/OpenBurnBarData (scans from v1
+//      by construction — the same extractor scripts/check-migrator-parity.mjs
+//      trusts).
+//   2. Doc surface: the DDL statements in docs/SCHEMA_SQLITE.sql.
+//
+// Any delta is a hard error with NO baseline: regenerate the doc. The check
+// also enforces the sealed-body rule (agent_memories_fts must never be
+// documented) and requires the doc's schema-hash header to agree with the DB
+// byte-compat vector.
+//
+// Surface granularity is tables/columns/indexes/triggers/FTS-config (names,
+// not column types). Byte truth is the generator output itself plus the
+// vector hash it carries.
+
+import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import {
+  SURFACES,
+  extractSwiftMigrations,
+  replayMigrations,
+  emptySchemaState,
+  collectSQLEvents,
+  diffSchemaSurfaces,
+} from "../check-migrator-parity.mjs";
 
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
+const here = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(here, "..", "..");
 
-const sourceSpecs = [
-  {
-    // v41+ migrations live in a split extension file of the single migrator
-    // (OpenBurnBarData); the v50 marker anchors the PCM-era schema scan.
-    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationsV41toV51.swift",
-    startMarker: 'migrator.registerMigration("v50_project_code_memory_schema")',
-  },
-  {
-    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV56.swift",
-  },
-  {
-    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV58.swift",
-  },
-  {
-    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV59.swift",
-  },
-  {
-    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+MemoryMigrations.swift",
-  },
-  {
-    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+UsageMemoryMigrations.swift",
-  },
-  {
-    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+StandingOrderMigrations.swift",
-  },
-  {
-    path: "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
-  },
-  {
-    path: "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift",
-  },
-  {
-    path: "tools/openburnbar-mcp/project_code_memory.py",
-  },
-];
+const DOC_PATH = "docs/SCHEMA_SQLITE.sql";
+const VECTOR_PATH =
+  "AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-vector.json";
 
-function readRepoFile(path) {
-  return readFileSync(resolve(repoRoot, path), "utf8");
-}
+// Sealed-body rule: the agent-memories FTS index must never appear in the
+// published schema doc (it was dropped in v51a and must stay dropped).
+const FORBIDDEN_OBJECTS = ["agent_memories_fts"];
 
-function addMatches(set, text, regex) {
-  for (const match of text.matchAll(regex)) {
-    set.add(match[1]);
-  }
-}
+// sqlite_master truth includes FTS5-managed objects the migration sources
+// never spell out; strip them from the doc surface before comparing.
+const BOOKKEEPING_TABLES = new Set(["grdb_migrations"]);
+const FTS_SHADOW_SUFFIXES = ["_data", "_idx", "_content", "_docsize", "_config"];
 
-function sourceText(spec) {
-  const text = readRepoFile(spec.path);
-  if (!spec.startMarker) {
-    return text;
-  }
-  const markerIndex = text.indexOf(spec.startMarker);
-  if (markerIndex === -1) {
-    console.error(`${spec.path} is missing schema verifier marker: ${spec.startMarker}`);
-    process.exit(1);
-  }
-  return text.slice(markerIndex);
-}
-
-function documentedTables() {
-  const tables = new Set();
-  addMatches(
-    tables,
-    readRepoFile("docs/SCHEMA_SQLITE.sql"),
-    /\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z_][A-Za-z0-9_]*)/gi,
-  );
-  return tables;
-}
-
-function schemaDocText() {
-  return readRepoFile("docs/SCHEMA_SQLITE.sql");
-}
-
-function sourceTables() {
-  const tables = new Set();
-  for (const spec of sourceSpecs) {
-    const text = sourceText(spec);
-    // `(?!IF\b)` keeps a doc comment that merely quotes `CREATE TABLE IF NOT
-    // EXISTS` from registering a table named IF.
-    const tableOperationPattern =
-      /\bcreate\(table:\s*"([^"]+)"|\bCREATE\s+(?:VIRTUAL\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+(?!IF\b)([A-Za-z_][A-Za-z0-9_]*)|\bDROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+(?!IF\b)([A-Za-z_][A-Za-z0-9_]*)|\bALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+RENAME\s+TO\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
-    for (const match of text.matchAll(tableOperationPattern)) {
-      const createdTable = match[1] ?? match[2];
-      const droppedTable = match[3];
-      const renamedFrom = match[4];
-      const renamedTo = match[5];
-      if (createdTable) {
-        tables.add(createdTable);
-      }
-      if (droppedTable) {
-        tables.delete(droppedTable);
-      }
-      if (renamedFrom) {
-        // One-shot rebuilds (CREATE repair → DROP live → RENAME repair to
-        // live) must not require the doc to cover the transient repair table.
-        tables.delete(renamedFrom);
-      }
-      if (renamedTo) {
-        tables.add(renamedTo);
-      }
-    }
-  }
-  return tables;
-}
-
-function assertIncludes(haystack, needle, message) {
-  if (!haystack.includes(needle)) {
-    console.error(message);
-    process.exit(1);
-  }
-}
-
-const docs = documentedTables();
-const required = sourceTables();
-const missing = [...required].filter((table) => !docs.has(table)).sort();
-
-if (missing.length > 0) {
-  console.error("docs/SCHEMA_SQLITE.sql is missing table definitions from migration sources:");
-  for (const table of missing) {
-    console.error(`- ${table}`);
-  }
-  console.error("\nUpdate docs/SCHEMA_SQLITE.sql alongside the migration/schema source.");
+function fail(message) {
+  console.error(`SQLite schema doc drift check FAILED:\n  ${message}`);
   process.exit(1);
 }
 
-const schema = schemaDocText();
-for (const forbidden of ["agent_memories_fts"]) {
-  if (schema.includes(forbidden)) {
-    console.error(
-      `docs/SCHEMA_SQLITE.sql must not document ${forbidden}; memory bodies stay behind sealed references only.`,
-    );
-    process.exit(1);
+function parseDocSurface(docText) {
+  const state = emptySchemaState();
+  const events = collectSQLEvents(docText).sort((a, b) => a.index - b.index);
+  for (const event of events) event.apply(state);
+  // The doc is endpoint truth: it must not contain endpoint drops/renames.
+  // (Any DROP/ALTER in the doc would mean the generator emitted non-endpoint
+  // DDL, which is impossible — but assert rather than assume.)
+  return state;
+}
+
+/**
+ * Split the generated doc into its verbatim sqlite_master statements
+ * (trimmed, without trailing `;`). Trigger bodies contain `;` at paren depth
+ * zero, so triggers scan to their balancing END instead. `--` framing lines
+ * are skipped only BETWEEN statements; anything comment-like inside a
+ * statement is preserved byte-for-byte. The split is self-validating: the
+ * caller rejoins with "\n" and requires the doc's own schema hash, so any
+ * splitter bug fails loudly instead of silently comparing the wrong corpus.
+ */
+export function splitDocStatements(docText) {
+  const statements = [];
+  let index = 0;
+
+  const skipGap = () => {
+    for (;;) {
+      while (index < docText.length && /\s/.test(docText[index])) index += 1;
+      if (docText.startsWith("--", index)) {
+        const end = docText.indexOf("\n", index);
+        index = end === -1 ? docText.length : end + 1;
+        continue;
+      }
+      return;
+    }
+  };
+
+  // [quoteChar | bracket] stack for '...', "...", `...`, [...] literals.
+  const scanQuoted = (start) => {
+    const open = docText[start];
+    const close = open === "[" ? "]" : open;
+    let i = start + 1;
+    while (i < docText.length) {
+      if (docText[i] === close) {
+        if ((close === "'" || close === '"') && docText[i + 1] === close) {
+          i += 2; // '' / "" escape
+          continue;
+        }
+        return i + 1;
+      }
+      i += 1;
+    }
+    return -1;
+  };
+
+  const matchWord = (at, word) => {
+    const slice = docText.slice(at, at + word.length);
+    if (slice.toUpperCase() !== word) return false;
+    const before = at === 0 ? "" : docText[at - 1];
+    const after = docText[at + word.length] ?? "";
+    return !/[A-Za-z0-9_]/.test(before) && !/[A-Za-z0-9_]/.test(after);
+  };
+
+  while (true) {
+    skipGap();
+    if (index >= docText.length) break;
+    const start = index;
+    const isTrigger =
+      matchWord(index, "CREATE") &&
+      /\bTRIGGER\b/i.test(docText.slice(index, index + 40).split("(")[0]);
+    let end = -1;
+
+    if (isTrigger) {
+      // Find BEGIN, then balance BEGIN/CASE..END outside string literals.
+      const beginAt = docText.slice(index).search(/\bBEGIN\b/i);
+      if (beginAt === -1) {
+        throw new Error(`trigger statement has no BEGIN (offset ${index})`);
+      }
+      let i = index + beginAt + 5;
+      let depth = 1;
+      while (i < docText.length && depth > 0) {
+        const ch = docText[i];
+        if (ch === "'" || ch === '"' || ch === "`" || ch === "[") {
+          const after = scanQuoted(i);
+          if (after === -1) throw new Error(`unterminated literal in trigger (offset ${i})`);
+          i = after;
+          continue;
+        }
+        if (matchWord(i, "BEGIN") || matchWord(i, "CASE")) {
+          depth += 1;
+          i += matchWord(i, "BEGIN") ? 5 : 4;
+          continue;
+        }
+        if (matchWord(i, "END")) {
+          depth -= 1;
+          i += 3;
+          continue;
+        }
+        i += 1;
+      }
+      if (depth !== 0) throw new Error(`trigger statement has unbalanced BEGIN/END (offset ${index})`);
+      while (i < docText.length && /\s/.test(docText[i])) i += 1;
+      if (docText[i] !== ";") throw new Error(`trigger statement has no terminating ; (offset ${index})`);
+      end = i + 1;
+    } else {
+      let depth = 0;
+      let i = start;
+      while (i < docText.length) {
+        const ch = docText[i];
+        if (ch === "'" || ch === '"' || ch === "`" || ch === "[") {
+          const after = scanQuoted(i);
+          if (after === -1) throw new Error(`unterminated literal (offset ${i})`);
+          i = after;
+          continue;
+        }
+        if (ch === "(") depth += 1;
+        else if (ch === ")") depth -= 1;
+        else if (ch === ";" && depth === 0) {
+          end = i + 1;
+          break;
+        }
+        i += 1;
+      }
+      if (end === -1) throw new Error(`statement has no terminating ; (offset ${index})`);
+    }
+
+    const statement = docText.slice(start, end - 1).trim();
+    if (!statement) throw new Error(`empty statement (offset ${index})`);
+    statements.push(statement);
+    index = end;
+  }
+  return statements;
+}
+
+function sha256Hex(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function stripDocOnlyObjects(state) {
+  for (const table of BOOKKEEPING_TABLES) state.tables.delete(table);
+  for (const virtual of [...state.virtualTables.keys()]) {
+    for (const suffix of FTS_SHADOW_SUFFIXES) {
+      state.tables.delete(`${virtual}${suffix}`);
+    }
   }
 }
 
-const pcmColumnChecks = {
-  agent_memories: [
-    "body_ref",
-    "body_redacted",
-    "valid_from",
-    "superseded_by",
-    "source_kind",
-    "review_status",
-    "user_id",
-    "agent_id",
-    "run_id",
-    "app_id",
-  ],
-  memory_provenance: ["memory_id", "thread_logical_id", "xdevice_hmac", "citation_state"],
-  memory_extraction_jobs: ["idempotency_key", "scope_json", "not_before"],
-  memory_embedding_refs: ["memory_id", "embedding_version_id", "dimension", "vector", "norm"],
-  memory_body_snapshots: ["memory_id", "body_ref", "snapshot_json", "body_hash", "source_kind"],
-  memory_source_tombstones: ["thread_logical_id", "message_id", "content_hash", "reason"],
-  memory_audit: ["seq", "prev_hash", "hash"],
-  pcm_projects: ["project_id", "identity_version", "identity_fingerprint", "primary_path"],
-  pcm_project_aliases: ["project_id", "alias_path", "path_hash", "first_seen_at", "last_seen_at"],
-  code_artifacts: ["project_id", "file_path", "blob_sha", "content_hash", "byte_count", "mtime"],
-  pcm_file_manifest: ["project_id", "file_path", "artifact_id", "content_hash", "ignored_reason", "secret_labels_json"],
-  code_symbols: ["range_json", "confidence_tier", "tier_evidence_json"],
-  code_references: ["from_artifact_id", "to_symbol_id", "blob_sha", "confidence_tier"],
-  code_call_edges: ["caller_symbol_id", "callee_symbol_id", "confidence_tier"],
-  code_diagnostics_cache: ["payload_json", "blob_sha", "cached_at"],
-  code_index_checkpoints: ["storage_byte_count", "storage_budget_bytes", "vacuumed_at"],
-};
-for (const [table, columns] of Object.entries(pcmColumnChecks)) {
-  for (const column of columns) {
-    assertIncludes(
-      schema,
-      column,
-      `docs/SCHEMA_SQLITE.sql is missing Project Code Memory column ${table}.${column}`,
+function checkForbiddenObjects(state) {
+  const present = [];
+  for (const name of FORBIDDEN_OBJECTS) {
+    if (state.tables.has(name) || state.virtualTables.has(name)) {
+      present.push(`table ${name}`);
+    }
+    for (const [index, meta] of state.indexes) {
+      if (index === name || meta.table === name) present.push(`index ${index}`);
+    }
+    for (const [trigger, meta] of state.triggers) {
+      if (trigger === name || meta.table === name) present.push(`trigger ${trigger}`);
+    }
+  }
+  if (present.length > 0) {
+    fail(
+      `forbidden sealed-body objects documented: ${present.join(", ")}. ` +
+        `The agent-memories FTS index must never appear in ${DOC_PATH}.`,
     );
   }
 }
 
-for (const indexName of [
-  "agent_memories_project_idx",
-  "agent_memories_chat_scope_idx",
-  "memory_provenance_memory_idx",
-  "memory_provenance_hmac_idx",
-  "memory_provenance_msg_idx",
-  "memory_extraction_jobs_status_idx",
-  "memory_embedding_refs_version_idx",
-  "memory_body_snapshots_source_idx",
-  "memory_source_tombstones_thread_idx",
-  "pcm_projects_fingerprint_idx",
-  "pcm_project_aliases_path_hash_idx",
-  "pcm_project_aliases_project_idx",
-  "code_artifacts_project_path_idx",
-  "pcm_file_manifest_project_path_idx",
-  "code_symbols_project_name_idx",
-  "code_references_symbol_idx",
-  "code_call_edges_project_idx",
-]) {
-  assertIncludes(
-    schema,
-    indexName,
-    `docs/SCHEMA_SQLITE.sql is missing Project Code Memory index ${indexName}`,
+function checkHeader(docText, identifiers) {
+  const endpoint = identifiers[identifiers.length - 1];
+  const headerEndpoint = docText.match(/^-- migrationEndpoint: (\S+)/m)?.[1];
+  const headerCount = docText.match(/^-- migrationCount: (\d+)/m)?.[1];
+  const headerHash = docText.match(/^-- schemaHashSHA256: ([0-9a-f]{64})/m)?.[1];
+  if (headerEndpoint !== endpoint) {
+    fail(
+      `doc header migrationEndpoint is ${headerEndpoint ?? "(missing)"}, migrator head is ${endpoint}. Regenerate the doc.`,
+    );
+  }
+  if (Number(headerCount) !== identifiers.length) {
+    fail(
+      `doc header migrationCount is ${headerCount ?? "(missing)"}, migrator registered ${identifiers.length}. Regenerate the doc.`,
+    );
+  }
+  if (!headerHash) {
+    fail(`doc header schemaHashSHA256 is missing. Regenerate the doc.`);
+  }
+  return headerHash;
+}
+
+function checkVectorCorpus(docText, headerHash) {
+  let vector;
+  try {
+    vector = JSON.parse(readFileSync(join(repoRoot, VECTOR_PATH), "utf8"));
+  } catch (error) {
+    fail(`cannot read ${VECTOR_PATH}: ${error.message}`);
+  }
+  if (vector.schemaHashSHA256 !== headerHash) {
+    fail(
+      `doc schema hash ${headerHash} disagrees with the DB byte-compat vector ` +
+        `(${vector.schemaHashSHA256 ?? "(missing)"}). Regenerate the vector ` +
+        `(DatabaseByteCompatVectorTests) and the doc together.`,
+    );
+  }
+  // Statement-for-statement lock: the doc's own DDL must reproduce the live
+  // migrator's DDL corpus byte-for-byte. This catches hand edits the
+  // name-level surface check cannot see (column types, defaults, constraints,
+  // trigger bodies, index expressions).
+  let statements;
+  try {
+    statements = splitDocStatements(docText);
+  } catch (error) {
+    fail(`cannot split ${DOC_PATH} into statements: ${error.message}`);
+  }
+  const rejoined = sha256Hex(statements.join("\n"));
+  if (rejoined !== headerHash) {
+    fail(
+      `doc statements hash to ${rejoined}, not the header hash ${headerHash}: ` +
+        `the doc was hand-edited or the splitter cannot represent it. Regenerate the doc.`,
+    );
+  }
+  const expected = vector.endpointStatements;
+  if (!Array.isArray(expected)) {
+    fail(
+      `${VECTOR_PATH} has no endpointStatements array. Regenerate the vector ` +
+        `(DatabaseByteCompatVectorTests) and the doc together.`,
+    );
+  }
+  if (statements.length !== expected.length) {
+    fail(
+      `doc holds ${statements.length} DDL statements, the live vector holds ` +
+        `${expected.length}. Regenerate the vector and the doc together.`,
+    );
+  }
+  for (let i = 0; i < statements.length; i += 1) {
+    if (statements[i] !== expected[i]) {
+      const show = (s) => JSON.stringify(s.length > 160 ? `${s.slice(0, 160)}…` : s);
+      fail(
+        `doc statement ${i} differs from the live vector:\n    doc:    ${show(statements[i])}\n    vector: ${show(expected[i])}\nRegenerate the vector and the doc together.`,
+      );
+    }
+  }
+}
+
+function main() {
+  const docText = readFileSync(join(repoRoot, DOC_PATH), "utf8");
+  if (!docText.startsWith("-- GENERATED BY")) {
+    fail(`${DOC_PATH} lost its GENERATED header — it must only ever be written by OpenBurnBarSchemaExport.`);
+  }
+
+  const canon = extractSwiftMigrations(
+    repoRoot,
+    SURFACES.swiftCanon,
+    (dir) => readdirSync(dir),
+  );
+  const canonState = replayMigrations(canon.migrations);
+
+  const docState = parseDocSurface(docText);
+  checkForbiddenObjects(docState);
+  stripDocOnlyObjects(docState);
+
+  const divergences = diffSchemaSurfaces("schemadoc", canonState, docState);
+  if (divergences.length > 0) {
+    const lines = divergences.map((d) => `  - ${d.key}: ${d.detail}`);
+    fail(
+      `doc surface differs from the migrator endpoint (${divergences.length} divergences, no baseline allowed):\n${lines.join("\n")}\nRegenerate the doc.`,
+    );
+  }
+
+  const headerHash = checkHeader(docText, canon.identifiers);
+  checkVectorCorpus(docText, headerHash);
+
+  console.log(
+    `SQLite schema doc covers the migrator endpoint (${canon.identifiers.length} migrations, ` +
+      `${docState.tables.size} tables, ${docState.indexes.size} indexes, ` +
+      `${docState.triggers.size} triggers, hash ${headerHash}).`,
   );
 }
 
-
-console.log(`SQLite schema doc covers ${required.size} migration/source tables and Project Code Memory columns/indexes.`);
+const isDirectRun =
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isDirectRun) {
+  main();
+}

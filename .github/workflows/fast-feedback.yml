@@ -482,10 +482,14 @@ jobs:
           # OpenBurnBarData (ENOENT on the old mirror-pair check).
           sparse-checkout: |
             OpenBurnBarCore/Sources/OpenBurnBarData
-            OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory
+            AgentLensTests/Fixtures/DBByteCompat
+            budgets/migrator-parity-baseline.json
             docs/SCHEMA_SQLITE.sql
+            scripts/check-migrator-parity.mjs
             scripts/ci/verify-sqlite-schema-doc.mjs
-            tools/openburnbar-mcp/project_code_memory.py
+            scripts/ci/verify-sqlite-schema-doc.test.mjs
+            scripts/ci/generate-windows-subset-doc.mjs
+            windows/storage/OpenBurnBar.Storage
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -493,6 +497,12 @@ jobs:
 
       - name: Verify SQLite schema doc covers migration sources
         run: node scripts/ci/verify-sqlite-schema-doc.mjs
+
+      - name: Schema-doc splitter tests (node --test)
+        run: node --test scripts/ci/verify-sqlite-schema-doc.test.mjs
+
+      - name: Verify Windows subset doc is fresh
+        run: node scripts/ci/generate-windows-subset-doc.mjs --check
 
   migrator-parity:
     name: Swift↔Windows↔Linux migrator parity
@@ -508,7 +518,6 @@ jobs:
           sparse-checkout: |
             OpenBurnBarCore/Sources/OpenBurnBarData
             OpenBurnBarCore/Tests/OpenBurnBarDataTests
-            AgentLens/Services/DataStore
             AgentLensTests/Fixtures/DBByteCompat
             windows/storage/OpenBurnBar.Storage
             scripts/linux-port
@@ -522,9 +531,10 @@ jobs:
       # Extracts the ordered migration identifiers + endpoint schema surface
       # (tables/columns/indexes/triggers + FTS5 config incl. the standalone
       # conversations_fts ftsRowid trigger contract) from the canonical Swift
-      # migrator and asserts the AgentLens copy, the Windows port's
-      # windows-migration-journal + SchemaStatements, and the Linux pins all
-      # match — or are explicitly annotated in budgets/migrator-parity-baseline.json.
+      # migrator (OpenBurnBarData is the single migrator since wave 2.2) and
+      # asserts the Windows port's windows-migration-journal +
+      # SchemaStatements and the Linux pins all match — or are explicitly
+      # annotated in budgets/migrator-parity-baseline.json.
       - name: Migrator parity unit + golden tests
         run: node --test scripts/check-migrator-parity.test.mjs
 
@@ -1643,7 +1653,7 @@ jobs:
       - name: BurnBarRPC IPC canon is current
         run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
 
-      - name: Migration rollback catalog covers both migrators
+      - name: Migration rollback catalog covers the single migrator
         run: |
           node --test scripts/ci/verify-migration-rollback-catalog.test.mjs
           node scripts/ci/verify-migration-rollback-catalog.mjs

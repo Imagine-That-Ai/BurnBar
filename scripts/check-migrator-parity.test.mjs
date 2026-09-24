@@ -167,6 +167,72 @@ test("replayMigrations applies DDL in order across DSL and raw SQL", () => {
   assert.equal(fts.options.tokenize, "porter unicode61");
 });
 
+test("replayMigrations preserves columns across a table-rebuild idiom (v68)", () => {
+  // v68 builds its repair CREATE from table_info interpolation, which parses
+  // to an empty column set. The DROP…RENAME pair must still carry the
+  // dropped columns across: a rebuild preserves columns by construction.
+  const migrations = [
+    {
+      id: "v1_initial",
+      body: `
+        registerMigration("v1_initial") { db in
+            try db.execute(sql: """
+                CREATE TABLE agent_memories (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    review_status TEXT NOT NULL DEFAULT 'quarantined'
+                )
+            """)
+            try db.execute(sql: "CREATE INDEX agent_memories_project_idx ON agent_memories(project_id)")
+      `,
+    },
+    {
+      id: "v2_repair",
+      body: `
+        registerMigration("v2_repair") { db in
+            try db.execute(sql: """
+                CREATE TABLE agent_memories__repair (
+                    \\(definitions.joined(separator: ",\\n    "))
+                )
+            """)
+            try db.execute(sql: "DROP TABLE agent_memories")
+            try db.execute(sql: "ALTER TABLE agent_memories__repair RENAME TO agent_memories")
+            try db.execute(sql: "CREATE INDEX agent_memories_project_idx ON agent_memories(project_id)")
+      `,
+    },
+  ];
+  const state = replayMigrations(migrations);
+
+  assert.ok(!state.tables.has("agent_memories__repair"));
+  assert.deepEqual(
+    [...state.tables.get("agent_memories")].sort(),
+    ["id", "project_id", "review_status"],
+  );
+  // DROP took the index; the migration recreated it.
+  assert.equal(state.indexes.get("agent_memories_project_idx").table, "agent_memories");
+});
+
+test("replayMigrations stash never clobbers a live table", () => {
+  // Renaming an (unparseable, empty) table onto a name that currently
+  // EXISTS is an overwrite, not a rebuild — the stash must stay out.
+  const migrations = [
+    {
+      id: "v1_initial",
+      body: `
+        registerMigration("v1_initial") { db in
+            try db.execute(sql: "CREATE TABLE live (a TEXT)")
+            try db.execute(sql: "CREATE TABLE ghost (\\(dynamic))")
+            try db.execute(sql: "DROP TABLE gone")
+            try db.execute(sql: "CREATE TABLE gone (z TEXT)")
+            try db.execute(sql: "DROP TABLE gone")
+            try db.execute(sql: "ALTER TABLE ghost RENAME TO live")
+      `,
+    },
+  ];
+  const state = replayMigrations(migrations);
+  assert.deepEqual([...state.tables.get("live")].sort(), []);
+});
+
 test("diffSchemaSurfaces reports missing/extra tables, column deltas, fts config", () => {
   const canonical = replayMigrations([
     {
@@ -366,8 +432,6 @@ function writeTree(root, overrides = {}) {
   const files = {
     [join(SURFACES.swiftCanon.dir, SURFACES.swiftCanon.assembly)]: SWIFT_ASSEMBLY,
     [join(SURFACES.swiftCanon.dir, "Migrations.swift")]: SWIFT_MIGRATIONS,
-    [join(SURFACES.agentLens.dir, SURFACES.agentLens.assembly)]: SWIFT_ASSEMBLY,
-    [join(SURFACES.agentLens.dir, "Migrations.swift")]: SWIFT_MIGRATIONS,
     [SURFACES.windows.provisioning]: WINDOWS_PROVISIONING,
     [SURFACES.windows.schema]: WINDOWS_PROVISIONING,
     [SURFACES.windows.metadata]: WINDOWS_METADATA,
@@ -434,11 +498,6 @@ test("synthetic tree: new Swift table missing on Windows is a divergence", () =>
           'try db.execute(sql: "CREATE TABLE token_usage',
           'try db.execute(sql: "CREATE TABLE brand_new (id TEXT PRIMARY KEY)")\n            try db.execute(sql: "CREATE TABLE token_usage',
         ),
-      [join(SURFACES.agentLens.dir, "Migrations.swift")]:
-        SWIFT_MIGRATIONS.replace(
-          'try db.execute(sql: "CREATE TABLE token_usage',
-          'try db.execute(sql: "CREATE TABLE brand_new (id TEXT PRIMARY KEY)")\n            try db.execute(sql: "CREATE TABLE token_usage',
-        ),
     });
     const result = runParityCheck(root, LOW_FLOORS);
     assert.deepEqual(result.hardErrors, []);
@@ -483,7 +542,6 @@ test("synthetic tree: canonical FTS going external-content is a hard error (ftsR
     );
     writeTree(root, {
       [join(SURFACES.swiftCanon.dir, "Migrations.swift")]: external,
-      [join(SURFACES.agentLens.dir, "Migrations.swift")]: external,
     });
     const result = runParityCheck(root, LOW_FLOORS);
     assert.ok(
@@ -504,31 +562,11 @@ test("synthetic tree: dropping the rowid-mirror trigger is a hard error", () => 
     );
     writeTree(root, {
       [join(SURFACES.swiftCanon.dir, "Migrations.swift")]: noTrigger,
-      [join(SURFACES.agentLens.dir, "Migrations.swift")]: noTrigger,
     });
     const result = runParityCheck(root, LOW_FLOORS);
     assert.ok(
       result.hardErrors.some((e) => e.includes("conversations_au")),
       `expected trigger hard error, got: ${JSON.stringify(result.hardErrors)}`,
-    );
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("synthetic tree: AgentLens copy drift is a hard error", () => {
-  const root = makeRoot();
-  try {
-    writeTree(root, {
-      [join(SURFACES.agentLens.dir, "Migrations.swift")]:
-        SWIFT_MIGRATIONS.replace('"v2_endpoint"', '"v2_renamed"'),
-    });
-    const result = runParityCheck(root, LOW_FLOORS);
-    assert.ok(
-      result.hardErrors.some((e) =>
-        e.includes("AgentLens migrator identifier list diverged"),
-      ),
-      `expected AgentLens hard error, got: ${JSON.stringify(result.hardErrors)}`,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

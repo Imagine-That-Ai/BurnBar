@@ -188,5 +188,40 @@ extension OpenBurnBarDatabase {
                 ifNotExists: true
             )
         }
+        // Wave 2.3: v68's index (re)creation sits inside the conditional
+        // rebuild, so installs that skipped the repair — every fresh install,
+        // whose `review_status` already defaults to 'quarantined' — never
+        // created `review_status_idx` anywhere else. v68 has shipped, so its
+        // body stays frozen; this migration backfills the three schema-owned
+        // `agent_memories` indexes idempotently on every install.
+        // `chat_scope_idx` names columns a daemon-only database may not have,
+        // so it is created only when ALL of them exist.
+        migrator.registerMigration("v70_agent_memories_index_backfill") { db in
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS agent_memories_project_idx
+                ON agent_memories(project_id, scope, updated_at)
+                """
+            )
+            try db.execute(
+                sql: """
+                CREATE INDEX IF NOT EXISTS agent_memories_review_status_idx
+                ON agent_memories(project_id, review_status, updated_at)
+                """
+            )
+            let names = Set(
+                try Row.fetchAll(db, sql: "PRAGMA table_info(agent_memories)")
+                    .compactMap { $0["name"] as? String }
+            )
+            let scopeColumns: Set<String> = ["user_id", "agent_id", "run_id", "app_id"]
+            if scopeColumns.isSubset(of: names) {
+                try db.execute(
+                    sql: """
+                    CREATE INDEX IF NOT EXISTS agent_memories_chat_scope_idx
+                    ON agent_memories(source_kind, user_id, agent_id, run_id, app_id, updated_at)
+                    """
+                )
+            }
+        }
     }
 }
