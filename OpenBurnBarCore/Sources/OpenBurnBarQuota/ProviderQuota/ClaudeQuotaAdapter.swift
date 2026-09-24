@@ -618,6 +618,18 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// `NoClaudeCredentialsReader`. `organizationRateLimitTier`
     /// (`default_claude_max_20x`, `default_claude_pro_5x`, ...) is the
     /// exact same tier string format the OAuth payloads carry.
+    /// Typed projection of `~/.claude.json` for the tier hint: only the
+    /// `oauthAccount` tier fields are decoded, everything else is ignored.
+    /// (Decodable instead of `[String: Any]` casts per the string-any ratchet.)
+    private struct ClaudeConfigTierHintFile: Decodable {
+        struct OAuthAccount: Decodable {
+            var organizationRateLimitTier: String?
+            var userRateLimitTier: String?
+            var organizationType: String?
+        }
+        var oauthAccount: OAuthAccount?
+    }
+
     static func planTierHintFromClaudeConfig(
         homeDirectoryURL: URL,
         fileManager: FileManager
@@ -625,13 +637,12 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let configURL = homeDirectoryURL.appendingPathComponent(".claude.json")
         guard fileManager.fileExists(atPath: configURL.path),
               let data = try? Data(contentsOf: configURL), // try?-ok(hint is best-effort)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(hint is best-effort)
+              let file = try? JSONDecoder().decode(ClaudeConfigTierHintFile.self, from: data) else { // try?-ok(hint is best-effort)
             return nil
         }
-        let oauthAccount = json["oauthAccount"] as? [String: Any]
-        let tier = (oauthAccount?["organizationRateLimitTier"] as? String)
-            ?? (oauthAccount?["userRateLimitTier"] as? String)
-            ?? (oauthAccount?["organizationType"] as? String)
+        let tier = file.oauthAccount?.organizationRateLimitTier
+            ?? file.oauthAccount?.userRateLimitTier
+            ?? file.oauthAccount?.organizationType
         return tier?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

@@ -87,6 +87,9 @@ budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json
 budgets/core-target-membership-baseline.json
 budgets/core-umbrella-imports-baseline.json
+# Wave 3.1 Core/Lab split: frozen count of Lab->Core boundary references;
+# scripts/debt/check-lab-boundary.sh fails on any increase.
+budgets/lab-boundary-baseline.json
 budgets/linux-desktop.perf.json
 budgets/usage-refresh-tick-baseline.json
 # macOS idle/occluded CPU regression tripwire (P-PERF-3): structural assertion

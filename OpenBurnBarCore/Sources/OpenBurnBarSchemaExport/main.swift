@@ -187,15 +187,24 @@ private func renderDocument(
     return lines.joined(separator: "\n")
 }
 
+/// Typed projection of the DB byte-compat vector: only the schema hash is
+/// read. (Decodable instead of `[String: Any]` casts per the string-any ratchet.)
+private struct ByteCompatVectorFile: Decodable {
+    var schemaHashSHA256: String?
+}
+
 private func byteCompatVectorHash(repoRoot: URL) throws -> String? {
     let url = repoRoot
         .appendingPathComponent("AgentLensTests/Fixtures/DBByteCompat/openburnbar-db-compat-vector.json")
     guard FileManager.default.fileExists(atPath: url.path) else { return nil }
     let data = try Data(contentsOf: url)
-    guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+    let vector: ByteCompatVectorFile
+    do {
+        vector = try JSONDecoder().decode(ByteCompatVectorFile.self, from: data)
+    } catch {
         throw ExportError.failure("byte-compat vector is not a JSON object: \(url.path)")
     }
-    return json["schemaHashSHA256"] as? String
+    return vector.schemaHashSHA256
 }
 
 private func run() throws -> Int32 {
