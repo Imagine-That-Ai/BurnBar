@@ -200,6 +200,26 @@ jobs:
       - name: Guard against zero-test false greens
         run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" --min 137 # smoke catalog recorded 137 on merge_group 35762858131; net-zero churn since
 
+      - name: Build + run Lab lane (Lab-gated code proof)
+        # Wave 3.1: compiles AgentLens/Lab/** (OPENBURNBAR_LAB injected by the
+        # script; the scheme tests under Debug because Xcode builds SPM
+        # packages testable only under Debug) and runs the Lab catalog: the
+        # Lab-guarded suites plus the suites with Lab-aware arms.
+        run: |
+          set -euo pipefail
+          OPENBURNBAR_ENABLE_COVERAGE=YES \
+          OPENBURNBAR_APP_TEST_ATTEMPTS=2 \
+          OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180 \
+          OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360 \
+          OPENBURNBAR_APP_TEST_SCHEME=OpenBurnBarLab \
+          OPENBURNBAR_APP_TEST_FILTERS="OpenBurnBarTests/BehaviorTests,OpenBurnBarTests/PetDefinitionTests,OpenBurnBarTests/PetPropTests,OpenBurnBarTests/PetDropAttachmentTests,OpenBurnBarTests/PetChatBackendAvailabilityTests,OpenBurnBarTests/ControlDeckRegistryTests,OpenBurnBarTests/ControlDeckLayoutTests,OpenBurnBarTests/SettingsManifestCoverageTests" \
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin \
+          OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-lab-gate" \
+          ./scripts/test-openburnbar-app.sh
+
+      - name: Guard against zero-test false greens (Lab lane)
+        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBarLab_TestCoverage.xcresult" --min 134 # Lab catalog: 134 methods; trips if the Lab flag is ever missing (Lab suites compile to nothing)
+
   mobile-build-gate:
     name: Mobile build + unit test
     # Routing (cost + security): post-merge main is trusted, but this lane still

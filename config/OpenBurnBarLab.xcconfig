@@ -1,0 +1,9 @@
+// OpenBurnBarLab.xcconfig — Lab (experimental surface) flags (Wave 3.1).
+//
+// Assigned as the base configuration of the Lab build configuration (app +
+// test targets), so a Lab build compiled WITHOUT extra flags still includes
+// AgentLens/Lab/**. Core builds (Debug/Release/ReleaseMAS) leave
+// OPENBURNBAR_LAB unset and compile Lab files to nothing; any Core reference
+// to a Lab type then fails closed at compile time.
+GCC_PREPROCESSOR_DEFINITIONS = $(inherited) OPENBURNBAR_LAB=1
+OTHER_SWIFT_FLAGS = $(inherited) -D OPENBURNBAR_LAB

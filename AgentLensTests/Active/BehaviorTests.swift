@@ -1,3 +1,4 @@
+#if OPENBURNBAR_LAB
 import XCTest
 @testable import OpenBurnBar
 
@@ -141,3 +142,4 @@ final class BehaviorTests: XCTestCase {
         return nil
     }
 }
+#endif

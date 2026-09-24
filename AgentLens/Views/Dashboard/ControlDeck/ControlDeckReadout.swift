@@ -109,8 +109,10 @@ struct ControlDeckReadout: Equatable, Sendable {
             // layout. Counting it as on keeps "N of M on" honest rather than
             // permanently one short.
             return true
+        #if OPENBURNBAR_LAB
         case .pets:
             return inputs.petCompanionEnabled
+        #endif
         case .updates:
             return inputs.updatesAutomaticChecks
         case .fleet:

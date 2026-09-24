@@ -1,3 +1,4 @@
+#if OPENBURNBAR_LAB
 import XCTest
 @testable import OpenBurnBar
 
@@ -65,3 +66,4 @@ final class PetChatBackendAvailabilityTests: XCTestCase {
         XCTAssertTrue(session.sendInFlight)
     }
 }
+#endif

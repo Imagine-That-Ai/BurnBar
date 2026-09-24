@@ -90,8 +90,12 @@ struct SettingsSearchResultsView: View {
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .receiptsRoot,
              .switcherRoot, .hermesRoot, .agentsRoot, .textExpansionRoot, .mediaRoot,
              .dataControlCenterRoot,
-             .computerUseRoot, .petsRoot:
+             .computerUseRoot:
             return ""
+        #if OPENBURNBAR_LAB
+        case .petsRoot:
+            return ""
+        #endif
         case .modelProxyRoot:
             return "Model Proxy"
         case .agentsAccounts: return "Accounts"

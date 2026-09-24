@@ -19,7 +19,7 @@ const pbxproj = readFileSync(
 test("project.yml keeps PetCompanion Models out of the default Mac sources and resources", () => {
   assert.match(
     projectYml,
-    /PetCompanion\/Resources\/Models\/\*\*/,
+    /Lab\/PetCompanion\/Resources\/Models\/\*\*/,
     "AgentLens sources must exclude the Models tree",
   );
   assert.match(
@@ -29,7 +29,7 @@ test("project.yml keeps PetCompanion Models out of the default Mac sources and r
   );
   assert.doesNotMatch(
     projectYml,
-    /path: AgentLens\/PetCompanion\/Resources\/Models/,
+    /path: AgentLens\/Lab\/PetCompanion\/Resources\/Models/,
     "project.yml must not add Models as a resources folder reference",
   );
 });

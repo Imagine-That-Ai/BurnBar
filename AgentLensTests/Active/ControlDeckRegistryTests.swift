@@ -51,12 +51,21 @@ final class ControlDeckRegistryTests: XCTestCase {
     func test_rawValuesAreStableIdentifiers() {
         // The raw value is the persistence key inside `controlDeck.layout.v1`.
         // Renaming one silently drops a user's arrangement for that tile.
+        // Lab: .pets exists only in Lab builds (3.1); concatenated because
+        // #if cannot appear inside the array literal (the toolchain rejects
+        // it). Sorted on both sides, so position is irrelevant.
+        #if OPENBURNBAR_LAB
+        let labRawValues = ["pets"]
+        #else
+        let labRawValues: [String] = []
+        #endif
         XCTAssertEqual(
             ControlKind.allCases.map(\.rawValue).sorted(),
-            [
+            ([
                 "aiInbox", "alerts", "appearance", "charts", "engineRoom", "fleet",
-                "memoryMCP", "modelRouter", "pets", "textExpansion", "updates", "wand"
-            ]
+                "memoryMCP", "modelRouter",
+                "textExpansion", "updates", "wand"
+            ] + labRawValues).sorted()
         )
     }
 

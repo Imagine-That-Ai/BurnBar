@@ -161,8 +161,10 @@ enum SettingsPageRoute: Hashable, Codable {
     // Computer Use
     case computerUseRoot
 
-    // Pets
+    // Pets (Lab-only, 3.1)
+    #if OPENBURNBAR_LAB
     case petsRoot
+    #endif
 
     // The Elder Wand (analysis-model fusion configurator)
     case analysisConfigurator
@@ -315,8 +317,10 @@ enum SettingsAnchor {
     static let computerUseReadiness = "computerUse.readiness"
     static let computerUsePermissionsSetup = "computerUse.permissionsSetup"
 
-    // Pets
+    // Pets (Lab-only, 3.1)
+    #if OPENBURNBAR_LAB
     static let petsCompanion = "pets.companion"
+    #endif
 
     // The Elder Wand (analysis-model fusion configurator)
     static let analysisConfigurator = "agents.analysisConfigurator"

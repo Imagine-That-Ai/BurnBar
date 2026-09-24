@@ -85,7 +85,11 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case charts
     case alerts
     case appearance
+    // Lab: the desktop companion ships only in Lab builds (3.1). Every
+    // switch over ControlKind gates its .pets arm the same way.
+    #if OPENBURNBAR_LAB
     case pets
+    #endif
     case updates
     case fleet
 
@@ -102,7 +106,9 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .charts: return "Charts"
         case .alerts: return "Alerts & Digest"
         case .appearance: return "Appearance"
+        #if OPENBURNBAR_LAB
         case .pets: return "Pets"
+        #endif
         case .updates: return "Updates"
         case .fleet: return "Fleet"
         }
@@ -130,8 +136,10 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
             return "The number that shouts before the month gets expensive."
         case .appearance:
             return "Skin, layout, and how much light the glass lets through."
+        #if OPENBURNBAR_LAB
         case .pets:
             return "A companion on the desktop with a model behind its eyes."
+        #endif
         case .updates:
             return "How this copy of OpenBurnBar finds its next version."
         case .fleet:
@@ -150,7 +158,9 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .charts: return "chart.xyaxis.line"
         case .alerts: return "bell.badge"
         case .appearance: return "paintpalette"
+        #if OPENBURNBAR_LAB
         case .pets: return "pawprint"
+        #endif
         case .updates: return "arrow.triangle.2.circlepath"
         case .fleet: return "rectangle.3.group"
         }
@@ -162,7 +172,10 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .modelRouter, .wand: return .cast
         case .textExpansion, .memoryMCP: return .know
         case .aiInbox, .charts, .alerts: return .spend
-        case .appearance, .pets, .updates: return .house
+        case .appearance, .updates: return .house
+        #if OPENBURNBAR_LAB
+        case .pets: return .house
+        #endif
         }
     }
 
@@ -202,8 +215,10 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
             return ["threshold", "budget", "digest", "notification", "spend alert"]
         case .appearance:
             return ["theme", "skin", "editorial", "aurora", "glass", "transparency", "layout"]
+        #if OPENBURNBAR_LAB
         case .pets:
             return ["companion", "pet", "desktop", "hotkey", "nimbus"]
+        #endif
         case .updates:
             return ["version", "release", "upgrade", "channel", "pre-release"]
         case .fleet:
@@ -227,7 +242,9 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .charts: return nil          // Charts is a dashboard route, not a Settings pane.
         case .alerts: return "alerts.dailySpend"
         case .appearance: return "general.appearance.skin"
+        #if OPENBURNBAR_LAB
         case .pets: return "pets.companion"
+        #endif
         case .updates: return "updates.automaticChecks"
         case .fleet: return nil
         }

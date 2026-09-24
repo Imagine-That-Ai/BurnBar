@@ -1650,6 +1650,13 @@ jobs:
       - name: Usage refresh-tick budget (shrink-only ratchet)
         run: ./scripts/debt/check-usage-refresh-tick-budget.sh
 
+      # Wave 3.1 Core/Lab boundary: every AgentLens/Lab file carries the
+      # file-level OPENBURNBAR_LAB gate, non-Lab references to Lab types
+      # live in guard-marked files, and the Core touchpoint set is
+      # shrink-only. Pure rg + python3.
+      - name: Lab boundary (shrink-only ratchet)
+        run: ./scripts/debt/check-lab-boundary.sh
+
       - name: BurnBarRPC IPC canon is current
         run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
 

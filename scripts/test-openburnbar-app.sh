@@ -26,6 +26,16 @@
 #                                      take precedence over both env knobs.
 #                                      `AgentLensTests/...` is accepted as a
 #                                      stable alias for `OpenBurnBarTests/...`.
+#   OPENBURNBAR_APP_TEST_SCHEME=...   Override the xcodebuild scheme (default
+#                                      OpenBurnBar). Wave 3.1: the Lab lane
+#                                      passes OpenBurnBarLab: the script
+#                                      injects -D OPENBURNBAR_LAB (Swift) and
+#                                      OPENBURNBAR_LAB=1 (ObjC++) because the
+#                                      scheme tests under Debug (Xcode builds
+#                                      SPM packages testable only under
+#                                      Debug); the coverage xcresult is
+#                                      promoted to
+#                                      <scheme>_TestCoverage.xcresult.
 #   OPENBURNBAR_APP_ISOLATED_TEST_ATTEMPTS=N
 #                                      Override fresh-host retry attempts for
 #                                      isolation-sensitive tests (default 2).
@@ -121,6 +131,11 @@ Environment:
   OPENBURNBAR_APP_TEST_FILTERS=<targets>
       Newline/comma/semicolon-separated default filters when -only-testing is
       not supplied. Takes precedence over OPENBURNBAR_APP_TEST_FILTER.
+  OPENBURNBAR_APP_TEST_SCHEME=<scheme>
+      xcodebuild scheme (default OpenBurnBar). The Wave 3.1 Lab lane passes
+      OpenBurnBarLab, which also injects -D OPENBURNBAR_LAB (Swift) and
+      OPENBURNBAR_LAB=1 (ObjC++); coverage promotes to
+      <scheme>_TestCoverage.xcresult.
 EOF
 }
 
@@ -448,7 +463,7 @@ populate_xcodebuild_args() {
     rm -rf "$attempt_result"
     xcodebuild_args=(
         -project "$repo_root/OpenBurnBar.xcodeproj"
-        -scheme "OpenBurnBar"
+        -scheme "$app_test_scheme"
         -destination "platform=macOS,arch=arm64"
         -clonedSourcePackagesDirPath "$cache_dir"
         -derivedDataPath "$dd"
@@ -463,6 +478,17 @@ populate_xcodebuild_args() {
         CODE_SIGNING_REQUIRED=NO
         -skip-testing:OpenBurnBarDaemonTests
     )
+    if [[ "$app_test_scheme" == "OpenBurnBarLab" ]]; then
+        # Wave 3.1: the Lab lane tests under the Debug configuration (Xcode
+        # builds SPM packages with -enable-testing ONLY under Debug), so the
+        # Lab flag comes from the runner. Single-quoted: $(inherited) must
+        # reach xcodebuild literally to preserve target-level flags such as
+        # the Testing plugin path.
+        xcodebuild_args+=(
+            'OTHER_SWIFT_FLAGS=$(inherited) -D OPENBURNBAR_LAB'
+            'GCC_PREPROCESSOR_DEFINITIONS=$(inherited) OPENBURNBAR_LAB=1'
+        )
+    fi
     if [[ "$phase" == "isolated" ]]; then
         for filter in "${isolated_test_filters[@]}"; do
             xcodebuild_args+=("-only-testing:$filter")
@@ -513,8 +539,14 @@ if [[ -z "${OPENBURNBAR_SNAPSHOT_RECORD:-}" && "${OPENBURNBAR_RUN_SNAPSHOT_TESTS
     export TEST_RUNNER_OPENBURNBAR_SKIP_SNAPSHOTS=true
 fi
 
-# Canonical coverage xcresult location consumed by extract-coverage.sh
+# Canonical coverage xcresult location consumed by extract-coverage.sh.
+# A non-default scheme (the Wave 3.1 Lab lane) promotes to its own bundle so
+# the Core and Lab lanes never overwrite each other's evidence.
+app_test_scheme="${OPENBURNBAR_APP_TEST_SCHEME:-OpenBurnBar}"
 canonical_xcresult_path="$artifact_root/OpenBurnBar_TestCoverage.xcresult"
+if [[ "$app_test_scheme" != "OpenBurnBar" ]]; then
+    canonical_xcresult_path="$artifact_root/${app_test_scheme}_TestCoverage.xcresult"
+fi
 if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
     rm -rf "$canonical_xcresult_path"
 fi

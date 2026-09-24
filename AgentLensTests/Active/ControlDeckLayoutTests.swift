@@ -30,7 +30,7 @@ final class ControlDeckLayoutTests: XCTestCase {
 
     func test_encodeDecodeRoundTripsExactly() throws {
         var layout = ControlDeckLayout.default
-        layout.setVisible(.pets, false)
+        layout.setVisible(.fleet, false)
         layout.setSpan(.charts, 2)
 
         let data = try XCTUnwrap(layout.encoded())
@@ -88,9 +88,9 @@ final class ControlDeckLayoutTests: XCTestCase {
 
     func test_setVisibleTogglesOnlyThatTile() {
         var layout = ControlDeckLayout.default
-        layout.setVisible(.pets, false)
-        XCTAssertEqual(layout.hiddenConfigs.map(\.kind), [.pets])
-        XCTAssertFalse(layout.visibleConfigs.contains { $0.kind == .pets })
+        layout.setVisible(.fleet, false)
+        XCTAssertEqual(layout.hiddenConfigs.map(\.kind), [.fleet])
+        XCTAssertFalse(layout.visibleConfigs.contains { $0.kind == .fleet })
     }
 
     func test_setSpanClampsToTheAllowedRange() {
@@ -103,7 +103,7 @@ final class ControlDeckLayoutTests: XCTestCase {
 
     func test_resetRestoresTheDefaultArrangement() {
         var layout = ControlDeckLayout.default
-        layout.setVisible(.pets, false)
+        layout.setVisible(.fleet, false)
         layout.setSpan(.charts, 2)
         layout.reset()
         XCTAssertEqual(layout, .default)
@@ -123,7 +123,7 @@ final class ControlDeckLayoutTests: XCTestCase {
         var layout = ControlDeckLayout.default
         let before = layout.configs.map(\.kind)
         // Charts is SPEND; Pets is HOUSE. The bands are the map.
-        layout.move(.charts, toPositionOf: .pets)
+        layout.move(.charts, toPositionOf: .fleet)
         XCTAssertEqual(layout.configs.map(\.kind), before)
     }
 
@@ -195,7 +195,13 @@ final class ControlDeckLayoutTests: XCTestCase {
         let layout = ControlDeckLayout.decode(from: Data(payload.utf8))
 
         // Their choices, untouched.
+        #if OPENBURNBAR_LAB
         XCTAssertEqual(layout.configs.first { $0.kind == .pets }?.isVisible, false)
+        #else
+        // Core builds have no .pets kind: the saved pets tile decodes as an
+        // unknown kind and is dropped (see test_unknownKindsAreDropped).
+        XCTAssertFalse(layout.configs.map(\.kind.rawValue).contains("pets"))
+        #endif
         XCTAssertEqual(layout.configs.first { $0.kind == .textExpansion }?.span, 1)
         XCTAssertEqual(layout.configs.first { $0.kind == .charts }?.span, 2)
 

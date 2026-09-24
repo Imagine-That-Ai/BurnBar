@@ -50,7 +50,9 @@ struct ControlTileView: View {
         case .charts: ChartsTile(model: model, onNavigate: onNavigate)
         case .alerts: AlertsTile(settingsManager: settingsManager, todaySpend: todaySpend, onOpenSettings: onOpenSettings)
         case .appearance: AppearanceTile(settingsManager: settingsManager, onOpenSettings: onOpenSettings)
+        #if OPENBURNBAR_LAB
         case .pets: PetsTile(model: model, onOpenSettings: onOpenSettings)
+        #endif
         case .updates: UpdatesTile(onOpenSettings: onOpenSettings)
         case .fleet: FleetTile(onNavigate: onNavigate)
         }
@@ -632,6 +634,7 @@ private struct AppearanceTile: View {
 // from `PetCompanionFeature.runtime`.** `runtime` is a `static let` whose first
 // touch builds the controller, the Carbon global hotkey, and the system
 // observers. Rendering a chip must not boot a subsystem.
+#if OPENBURNBAR_LAB
 private struct PetsTile: View {
     let model: ControlDeckModel
     let onOpenSettings: (String?) -> Void
@@ -680,6 +683,7 @@ private struct PetsTile: View {
         }
     }
 }
+#endif
 
 // MARK: - H-4 · Updates
 //

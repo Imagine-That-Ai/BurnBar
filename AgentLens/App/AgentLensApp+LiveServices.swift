@@ -311,12 +311,14 @@ extension OpenBurnBarApp {
                         accountManager: context.accountManager
                     )
                 }
+                #if OPENBURNBAR_LAB
                 StartupProfiler.interval("pet_companion_activate") {
                     PetCompanionFeature.activateIfEnabled(chat: context.chatController)
                     PetOnboardingWindowPresenter.openIfNeeded(
                         chatController: context.chatController
                     )
                 }
+                #endif
             }
 
             // The performance harness now has the real dashboard and backdrop

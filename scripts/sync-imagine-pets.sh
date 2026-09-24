@@ -43,7 +43,7 @@ const remoteFallback = "https://imaginethat-llc.onrender.com/pet-models";
 const sourceInput = process.env.IMAGINE_PETS_DIR || defaultPetsDir;
 const strictSync = /^(1|true|yes)$/i.test(process.env.IMAGINE_PETS_SYNC_STRICT || "");
 const allowRemoteSync = /^(1|true|yes)$/i.test(process.env.IMAGINE_PETS_SYNC_REMOTE || "");
-const modelsDir = path.join(repoRoot, "AgentLens", "PetCompanion", "Resources", "Models");
+const modelsDir = path.join(repoRoot, "AgentLens", "Lab", "PetCompanion", "Resources", "Models");
 
 function isURL(value) {
   return /^https?:\/\//.test(value);
