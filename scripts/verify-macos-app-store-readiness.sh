@@ -57,19 +57,20 @@ if [[ "${OPENBURNBAR_MAS_CLEAN:-1}" == "1" ]]; then
 fi
 mkdir -p "$(dirname "$log_path")"
 
+# Wave 2.7: build the ReleaseMAS configuration, whose base xcconfig carries
+# DISTRIBUTION_MAS. No command-line flag injection: this is the proof that a
+# MAS build without the script's help still excludes Path C.
 set -o pipefail
 xcodebuild build \
   -project OpenBurnBar.xcodeproj \
-  -scheme OpenBurnBar \
-  -configuration Release \
+  -scheme OpenBurnBarMAS \
+  -configuration ReleaseMAS \
   -destination "generic/platform=macOS" \
   -derivedDataPath "$derived_data" \
   ARCHS=arm64 \
   ONLY_ACTIVE_ARCH=YES \
   CODE_SIGNING_ALLOWED=NO \
   OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS="$entitlements" \
-  GCC_PREPROCESSOR_DEFINITIONS='$(inherited) DISTRIBUTION_MAS=1' \
-  OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' \
   2>&1 | tee "$log_path" | tail -120
 
 echo "Mac App Store readiness build passed."

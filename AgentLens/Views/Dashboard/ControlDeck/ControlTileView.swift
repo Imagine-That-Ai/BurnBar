@@ -308,10 +308,14 @@ private struct TextExpansionTile: View {
                 // the door and re-poll when the app comes back to the front.
                 // Routed through the ladder so a dashboard toggle cannot be the
                 // first thing a user hears about screen control.
+                // Unreachable on MAS (globalTextExpansionAvailable is false and
+                // hides this picker); the ladder itself compiles out there.
+                #if !DISTRIBUTION_MAS
                 Task { @MainActor in
                     await AppCommandRouter.shared.permissionLadder.request(.accessibility)
                     model.refreshSynchronousFacts()
                 }
+                #endif
             }
             model.refreshSynchronousFacts()
             Analytics.shared.track(.settingsChanged, [
@@ -337,8 +341,12 @@ private struct TextExpansionTile: View {
                 tint: DesignSystem.Colors.warning,
                 help: "Opens System Settings → Privacy & Security → Accessibility. macOS grants the permission, not OpenBurnBar."
             ) {
+                // The ladder compiles out on MAS (sandboxed apps cannot hold
+                // Accessibility); the tile still re-polls its synchronous facts.
                 Task { @MainActor in
+                    #if !DISTRIBUTION_MAS
                     await AppCommandRouter.shared.permissionLadder.request(.accessibility)
+                    #endif
                     model.refreshSynchronousFacts()
                 }
             }

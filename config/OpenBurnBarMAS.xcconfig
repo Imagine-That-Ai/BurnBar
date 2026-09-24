@@ -1,0 +1,10 @@
+// OpenBurnBarMAS.xcconfig — Mac App Store distribution flags (Wave 2.7).
+//
+// Assigned as the base configuration of the ReleaseMAS build configuration
+// (app target), so a MAS archive built WITHOUT the release script still
+// compiles Path C out. Previously these flags were injected on the
+// xcodebuild command line by scripts/build-macos-app-store-release.sh,
+// which meant any other invocation of the MAS configuration silently
+// shipped the unsandboxed feature set.
+GCC_PREPROCESSOR_DEFINITIONS = $(inherited) DISTRIBUTION_MAS=1
+OTHER_SWIFT_FLAGS = $(inherited) -D DISTRIBUTION_MAS

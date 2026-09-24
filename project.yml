@@ -1,4 +1,11 @@
 name: OpenBurnBar
+# Wave 2.7: ReleaseMAS is the Mac App Store configuration (release
+# optimizer + the MAS xcconfig, which compiles Path C out). The MAS
+# release lane archives with it instead of injecting compiler flags.
+configs:
+  Debug: debug
+  Release: release
+  ReleaseMAS: release
 options:
   bundleIdPrefix: com.openburnbar
   deploymentTarget:
@@ -96,6 +103,16 @@ packages:
     from: "1.18.0"
 
 schemes:
+  # Wave 2.7: the MAS scheme archives with ReleaseMAS, so
+  # `xcodebuild archive -scheme OpenBurnBarMAS` (no extra flags, no
+  # script) still excludes Path C via config/OpenBurnBarMAS.xcconfig.
+  OpenBurnBarMAS:
+    build:
+      targets:
+        OpenBurnBar: all
+    archive:
+      config: ReleaseMAS
+
   OpenBurnBarUITests:
     build:
       targets:
@@ -218,6 +235,12 @@ targets:
       # are NOT copied into the default Mac app bundle (diligence: 307 MB).
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
+    # Wave 2.7: ReleaseMAS base config. The MAS flag must live here —
+    # per-target settings would serialize under the SAME
+    # ReleaseMAS XCBuildConfiguration object created by `configs:`,
+    # so a settings-only approach collides.
+    configFiles:
+      ReleaseMAS: config/OpenBurnBarMAS.xcconfig
     preBuildScripts:
       - name: Sync Imagine 3D Pets
         script: |
@@ -478,6 +501,14 @@ targets:
       # stayed under its decomposition ceiling.
       - package: OpenBurnBarCore
         product: OpenBurnBarRecap
+      # Wave 2.2 single migrator: the AgentLens OpenBurnBarDatabase* mirror
+      # is gone, so the app links Data (migration registry + codecs) and
+      # MemoryExport directly. (Declared here in 2.7 — 2.2 only patched the
+      # pbxproj, which the xcodegen-drift gate forbids.)
+      - package: OpenBurnBarCore
+        product: OpenBurnBarData
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMemoryExport
       # AssistantModels: HermesAttachment, which MacAttachmentLandingService returns
       # to the Hermes transport. Linked explicitly rather than reached through the
       # umbrella so the file satisfies the core-decomposition umbrella-import ratchet.

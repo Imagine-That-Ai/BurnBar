@@ -1497,7 +1497,11 @@ let firstPartyTargetsBase: [Target] = [
                 // @testable — public API only); this dependency edge makes the module
                 // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
                 // OpenBurnBarCore, and a test target adding it introduces no product cycle.
-                "OpenBurnBarCoreCAbi"
+                "OpenBurnBarCoreCAbi",
+                // Wave 2.7 AE-TESTABLE: `CodexRolloutJailTests` builds a fixture
+                // Codex `threads` database with GRDB and drives the production
+                // `fetchThreadRows` expansion path through it.
+                .product(name: "GRDB", package: "GRDB-SQLCipher")
             ] + domainCoreDependencies + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes

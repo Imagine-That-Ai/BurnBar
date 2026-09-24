@@ -1,19 +1,18 @@
 # BurnBar master revision plan (62 → 10/10) — Waves 0–5
 
 Recovered 2026-09-24 from the working session log into this file so the
-wave definitions survive context compaction. Waves 0–1 and 2.1–2.5 are
+wave definitions survive context compaction. Waves 0–1 and 2.1–2.7 are
 done; what follows is the authoritative scope for the remaining work.
 
 ## Wave 2: One data spine (weeks 2–6) — remaining
 
 | # | Work | Done when |
 |---|---|---|
-| 2.6 | Growth caps: enable the usage-counter TTL, shard `usage_counter_totals`/`all_time` before 1 MiB, use `auto_vacuum=INCREMENTAL` on new DBs with a one-time guided VACUUM for old ones, and give `conversations` the same retention as usage | Load test: a synthetic heavy user stays under limits over 3 simulated years |
-| 2.7 | Jail Codex `rollout_path` under `~/.codex`. Move `DISTRIBUTION_MAS` from the build script into the xcconfig of the MAS scheme | Traversal test is red before and green after. A MAS archive without the script still excludes Path C |
 | 2.8 | Dashboard: materialized per-window rollups using the `WorkflowInsightRollupService` pattern. Point the perf budget at the live function, not dead `fetchAllUsage()` | Constant query count at 5 GB (fixture DB). Reload p95 recorded |
 
 Done: 2.1/2.1c single-writer cutovers, 2.2 single migrator, 2.3 generated
-schema docs, 2.4 daemon SQLCipher fail-closed, 2.5 cost unification.
+schema docs, 2.4 daemon SQLCipher fail-closed, 2.5 cost unification,
+2.6 growth caps, 2.7 Codex rollout jail + MAS xcconfig.
 
 ## Wave 3: Architecture decomposition (weeks 4–10)
 
