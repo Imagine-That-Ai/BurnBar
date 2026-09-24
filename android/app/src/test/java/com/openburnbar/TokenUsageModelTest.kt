@@ -9,6 +9,7 @@ import com.openburnbar.data.models.UsageDisplayMode
 import com.openburnbar.data.models.displayRemainingPercent
 import com.openburnbar.data.models.generated.FirestoreUsageEventDoc
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class TokenUsageModelTest {
@@ -17,7 +18,11 @@ class TokenUsageModelTest {
         val usage = TokenUsage()
         assertEquals("", usage.id)
         assertEquals(0, usage.totalTokens)
-        assertEquals(0.0, usage.cost, 0.001)
+        // Wave 2.5: cost spellings are nullable so absent falls through the rule.
+        assertNull(usage.costUSD)
+        assertNull(usage.costUsd)
+        assertNull(usage.cost)
+        assertEquals(0.0, usage.effectiveCost, 0.0)
     }
 
     @Test
@@ -123,17 +128,15 @@ class TokenUsageModelTest {
     }
 
     @Test
-    fun `effectiveCost prefers costUsd and falls back to cost`() {
-        // Case 1: Both present, costUsd is preferred
-        val usageBoth = TokenUsage(cost = 0.05, costUsd = 0.08)
-        assertEquals(0.08, usageBoth.effectiveCost, 0.0001)
-
-        // Case 2: Only costUsd present
-        val usageUsdOnly = TokenUsage(cost = 0.0, costUsd = 0.04)
-        assertEquals(0.04, usageUsdOnly.effectiveCost, 0.0001)
-
-        // Case 3: Only cost present (fallback)
-        val usageCostOnly = TokenUsage(cost = 0.03, costUsd = 0.0)
-        assertEquals(0.03, usageCostOnly.effectiveCost, 0.0001)
+    fun `effectiveCost follows the shared cost rule`() {
+        // Canon wins over legacy spellings.
+        assertEquals(1.25, TokenUsage(costUSD = 1.25, costUsd = 999.0, cost = 888.0).effectiveCost, 0.0)
+        // Absent canon falls through to costUsd, then cost.
+        assertEquals(0.04, TokenUsage(costUsd = 0.04).effectiveCost, 0.0)
+        assertEquals(0.03, TokenUsage(cost = 0.03).effectiveCost, 0.0)
+        // Zero is valid data and wins; negatives fall through.
+        assertEquals(0.0, TokenUsage(costUSD = 0.0, costUsd = 4.0).effectiveCost, 0.0)
+        assertEquals(0.25, TokenUsage(costUSD = -1.0, costUsd = 0.25).effectiveCost, 0.0)
+        assertEquals(0.0, TokenUsage(costUSD = -1.0, costUsd = -2.0, cost = -3.0).effectiveCost, 0.0)
     }
 }

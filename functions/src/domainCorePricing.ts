@@ -34,6 +34,8 @@ type LegacyKimiPricing = {
   isLegacy: boolean;
   model?: string;
   totalTokens?: number;
+  /** Canonical cost (Wave 2.5 dual-write; costUsd twin kept for old readers). */
+  costUSD?: number;
   costUsd?: number;
 };
 
@@ -204,6 +206,7 @@ export function priceLegacyKimiUsage(
         isLegacy: true,
         model: rustLegacyKimiModel,
         totalTokens: bigintToSafeNumber(result[0]),
+        costUSD: nanoUsdToUsd(result[1]),
         costUsd: nanoUsdToUsd(result[1]),
       };
     }

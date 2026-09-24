@@ -13,6 +13,7 @@ import { FieldValue, type DocumentData, type Firestore } from "firebase-admin/fi
 import type { UsageEventDoc, UsageRollupDoc } from "./types.js";
 import { coerceFirestoreDate, isRecord, recordOrUndefined, stripUndefinedObject } from "./guards.js";
 import { flushDomainCorePricingShadowEvidence, priceLegacyKimiEvent } from "./pricing.js";
+import { effectiveCostUSD } from "./costRule.js";
 
 export const ROLLUP_SCHEMA_VERSION = 3;
 export const COUNTER_SCHEMA_VERSION = 3;
@@ -105,9 +106,10 @@ function eventTokens(ev: UsageEventDoc): number {
 }
 
 function eventCost(ev: UsageEventDoc): number | undefined {
-  const v = ev.costUsd ?? ev.cost;
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  return undefined;
+  // Wave 2.5: one cost rule (costUSD first, legacy fallbacks, negatives and
+  // non-numbers skipped). Returns 0 — never undefined — for costless events;
+  // callers already coalesce (`metrics.cost ?? 0`), so the shape is unchanged.
+  return effectiveCostUSD(ev);
 }
 
 function eventMetrics(ev: UsageEventDoc): { tokens: number; cost?: number; model?: string } {
@@ -128,7 +130,7 @@ function eventMetrics(ev: UsageEventDoc): { tokens: number; cost?: number; model
 
   return {
     tokens: priced.totalTokens ?? 0,
-    cost: priced.costUsd,
+    cost: effectiveCostUSD(priced),
     model: priced.model,
   };
 }

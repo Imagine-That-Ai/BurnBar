@@ -8,6 +8,7 @@ import type {
   UsageEventDoc,
 } from "./types.js";
 import { demoProviderAccountIDPrefix } from "./providerAccountIsolation.js";
+import { effectiveCostUSD } from "./costRule.js";
 
 const DEMO_PREFIX = demoProviderAccountIDPrefix();
 const DEMO_SCHEMA_VERSION = 1;
@@ -312,6 +313,7 @@ function demoUsage(seed: DemoUsageSeed, now: Date): UsageEventDoc & Record<strin
     cacheReadTokens: seed.cacheReadTokens,
     reasoningTokens: seed.reasoningTokens,
     totalTokens,
+    costUSD: costUsd,
     costUsd,
     cost: costUsd,
     provenanceConfidence: "exact",
@@ -338,7 +340,7 @@ function projectSummaries(usages: Array<UsageEventDoc & Record<string, unknown>>
   for (const usage of usages) {
     const name = String(usage.project_name ?? "Demo project");
     const current = summaries.get(name) ?? { totalCost: 0, totalTokens: 0, totalSessions: 0 };
-    current.totalCost += typeof usage.costUsd === "number" ? usage.costUsd : 0;
+    current.totalCost += effectiveCostUSD(usage);
     current.totalTokens += typeof usage.totalTokens === "number" ? usage.totalTokens : 0;
     current.totalSessions += 1;
     summaries.set(name, current);

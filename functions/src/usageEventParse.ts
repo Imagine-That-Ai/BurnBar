@@ -132,6 +132,7 @@ function assignUsageEventNumberFields(doc: UsageEventDoc, raw: Record<string, un
   if (typeof raw.cacheReadTokens === "number") doc.cacheReadTokens = raw.cacheReadTokens;
   if (typeof raw.reasoningTokens === "number") doc.reasoningTokens = raw.reasoningTokens;
   if (typeof raw.totalTokens === "number") doc.totalTokens = raw.totalTokens;
+  if (typeof raw.costUSD === "number") doc.costUSD = raw.costUSD;
   if (typeof raw.costUsd === "number") doc.costUsd = raw.costUsd;
   if (typeof raw.cost === "number") doc.cost = raw.cost;
   if (typeof raw.provenanceConfidence === "string") doc.provenanceConfidence = raw.provenanceConfidence;

@@ -531,7 +531,7 @@ private fun LazyListScope.streamsCloudSearchItems(
 internal fun LazyListScope.streamsModelsItems(usages: List<TokenUsage>, isLoading: Boolean) {
     val modelSummaries =
         usages.groupBy { it.model }
-            .map { (model, rows) -> Triple(model, rows.size, rows.sumOf { it.cost }) }
+            .map { (model, rows) -> Triple(model, rows.size, rows.sumOf { it.effectiveCost }) }
             .sortedByDescending { it.third }
 
     if (isLoading && modelSummaries.isEmpty()) {
@@ -613,7 +613,7 @@ private fun UsageCardHeader(usage: TokenUsage) {
         }
         Column(horizontalAlignment = Alignment.End) {
             Text("Cost", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
-            Text(Formatting.formatCurrency(usage.cost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange, fontSize = 14.sp)
+            Text(Formatting.formatCurrency(usage.effectiveCost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange, fontSize = 14.sp)
         }
     }
 }

@@ -279,11 +279,14 @@ describe("shared domain-core pricing", () => {
       });
       expect(actual.isLegacy).toBe(vector.isLegacy);
       if (vector.expected) {
+        // Wave 2.5 dual-write: canon costUSD plus the legacy costUsd twin.
+        const cost = vector.expected.costNanoUsd / 1_000_000_000;
         expect(actual).toEqual({
           isLegacy: true,
           model: vector.expected.model,
           totalTokens: vector.expected.totalTokens,
-          costUsd: vector.expected.costNanoUsd / 1_000_000_000,
+          costUSD: cost,
+          costUsd: cost,
         });
       }
     }

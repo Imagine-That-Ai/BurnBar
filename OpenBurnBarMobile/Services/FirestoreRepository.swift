@@ -204,11 +204,9 @@ final class FirestoreRepository {
                     enriched["provider"] = provider.rawValue
                 }
             }
-            let cost = (enriched["cost"] as? Double) ?? (enriched["cost"] as? NSNumber)?.doubleValue
-            let costUsd = (enriched["costUsd"] as? Double) ?? (enriched["costUsd"] as? NSNumber)?.doubleValue
-            let effectiveCost = cost ?? costUsd ?? 0.0
-            enriched["cost"] = effectiveCost
-            enriched["costUsd"] = effectiveCost
+            // Wave 2.5: cost spellings pass through untouched; TokenUsage's
+            // decoder applies the shared cost rule (costUSD first). No merge
+            // here — merging would destroy the original spellings.
             // Project name is sealed at rest. Open it for the decoder, with a
             // legacy plaintext fallback for in-flight / pre-migration rows. The
             // decoder consumes plaintext `projectName`, so write the opened value

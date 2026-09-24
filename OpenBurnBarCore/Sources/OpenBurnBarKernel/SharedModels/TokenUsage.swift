@@ -545,7 +545,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, provider, sessionId, projectName, model
         case inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens
-        case totalTokens, cost, costUsd, startTime, endTime, createdAt, usageSource
+        case totalTokens, cost, costUsd, costUSD, startTime, endTime, createdAt, usageSource
         case executionSourceID, executionSourceName, executionSourceKind, executionSourceConfidence
         case deviceId, sourceDeviceId, sourceDeviceName, isRemote
         case providerID, providerAccountID, providerAccountLabel, providerAccountSource
@@ -577,9 +577,11 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
                 cacheRead: cacheReadTokens,
                 reasoning: reasoningTokens
             )
-        cost = try c.decodeIfPresent(Double.self, forKey: .cost)
-            ?? c.decodeIfPresent(Double.self, forKey: .costUsd)
-            ?? 0.0
+        cost = CostRule.effectiveCostUSD(
+            costUSD: try c.decodeIfPresent(Double.self, forKey: .costUSD),
+            costUsd: try c.decodeIfPresent(Double.self, forKey: .costUsd),
+            cost: try c.decodeIfPresent(Double.self, forKey: .cost)
+        )
         startTime = try c.decode(Date.self, forKey: .startTime)
         endTime = try c.decode(Date.self, forKey: .endTime)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
@@ -629,6 +631,8 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         try c.encode(cacheWriteTokens, forKey: .cacheWriteTokens)
         try c.encode(reasoningTokens, forKey: .reasoningTokens)
         try c.encode(totalTokens, forKey: .totalTokens)
+        // Wave 2.5 dual-write: canon costUSD plus the legacy cost twin.
+        try c.encode(cost, forKey: .costUSD)
         try c.encode(cost, forKey: .cost)
         try c.encode(startTime, forKey: .startTime)
         try c.encode(endTime, forKey: .endTime)

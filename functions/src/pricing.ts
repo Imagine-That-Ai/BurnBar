@@ -88,11 +88,13 @@ export function priceLegacyKimiEvent(
       if (!isLegacy) return { isLegacy: false };
       const inputTokens = Math.max(buckets.inputTokens - buckets.cacheCreationTokens - buckets.cacheReadTokens, 0);
       const normalizedBuckets = { ...buckets, inputTokens };
+      const cost = legacyTokenCost(LEGACY_KIMI_WIRE_PRICING, normalizedBuckets);
       return {
         isLegacy: true,
         model: LEGACY_KIMI_WIRE_MODEL,
         totalTokens: inputTokens + buckets.outputTokens + buckets.cacheCreationTokens + buckets.cacheReadTokens,
-        costUsd: legacyTokenCost(LEGACY_KIMI_WIRE_PRICING, normalizedBuckets),
+        costUSD: cost,
+        costUsd: cost,
       };
     },
     environment,

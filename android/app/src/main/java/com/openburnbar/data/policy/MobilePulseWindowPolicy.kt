@@ -1,5 +1,6 @@
 package com.openburnbar.data.policy
 
+import com.openburnbar.data.models.CostRule
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
@@ -121,9 +122,9 @@ object MobilePulseWindowPolicy {
 
     fun sortQuotaKeys(keys: List<String>): List<String> = keys.sortedWith(String.CASE_INSENSITIVE_ORDER)
 
-    fun pulseCost(costUsd: Double, costUSD: Double, cost: Double): Double {
-        val raw = sequenceOf(costUsd, costUSD, cost).firstOrNull { it != 0.0 } ?: 0.0
-        return max(0.0, raw)
+    fun pulseCost(costUsd: Double?, costUSD: Double?, cost: Double?): Double {
+        // Wave 2.5: one shared rule (canon first; zero wins; negatives skipped).
+        return CostRule.effectiveCostUSD(costUSD, costUsd, cost)
     }
 
     fun pulseTokens(totalTokens: Int, inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int, reasoningTokens: Int): Long {

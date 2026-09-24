@@ -457,6 +457,8 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             "executionSourceKind": usage.executionSourceKind.rawValue,
             "executionSourceConfidence": usage.executionSourceConfidence.rawValue,
             "totalTokens": usage.totalTokens,
+            // Wave 2.5 dual-write: canon costUSD plus the legacy cost twin.
+            "costUSD": usage.cost,
             "cost": usage.cost,
             "startTime": Timestamp(date: usage.startTime),
             "endTime": Timestamp(date: usage.endTime),
