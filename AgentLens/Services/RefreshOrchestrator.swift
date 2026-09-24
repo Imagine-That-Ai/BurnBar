@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 struct PostPersistenceResult {
     var apiUsages: [ProviderUsageRecord] = []
@@ -109,15 +110,36 @@ actor RefreshOrchestrator {
         do {
             let reapedJobs = try await dataStore.reapTerminalProjectionJobs(olderThan: terminalCutoff)
             let reapedUsage = try await dataStore.reapUsageOlderThan(usageCutoff)
-            if reapedJobs > 0 || reapedUsage > 0 {
+            // Wave 2.6: conversations keep the same retention as usage.
+            let reapedConversations = try await dataStore.reapConversationsOlderThan(usageCutoff)
+            if reapedJobs > 0 || reapedUsage > 0 || reapedConversations > 0 {
                 AppLogger.dataStore.info(
-                    "Retention purge reaped \(reapedJobs) terminal projection job(s) and \(reapedUsage) usage row(s); usage cutoff=\(usageCutoff.timeIntervalSince1970)"
+                    "Retention purge reaped \(reapedJobs) terminal projection job(s), \(reapedUsage) usage row(s) and \(reapedConversations) conversation(s); usage cutoff=\(usageCutoff.timeIntervalSince1970)"
                 )
                 try await dataStore.incrementalVacuum()
             }
             lastRetentionCompletedAt = now
         } catch {
             AppLogger.dataStore.silentFailure("Retention purge of terminal projection jobs failed", error: error)
+        }
+        // Wave 2.6: one-time guided VACUUM for pre-2.6 databases. Independent
+        // of the reaps above (a legacy database needs it even with nothing to
+        // reap), and its failure must never fail the purge — the next hourly
+        // tick retries, and the free-space guard defers when unsafe.
+        do {
+            let plan = try await dataStore.ensureIncrementalVacuumIfNeeded()
+            switch plan {
+            case .ready(let bytes):
+                AppLogger.dataStore.info(
+                    "One-time VACUUM migrated a \(bytes)-byte database to auto_vacuum=INCREMENTAL"
+                )
+            case .deferred(let reason):
+                AppLogger.dataStore.info("VACUUM migration deferred: \(reason)")
+            case .unneeded:
+                break
+            }
+        } catch {
+            AppLogger.dataStore.silentFailure("One-time VACUUM migration failed", error: error)
         }
     }
 

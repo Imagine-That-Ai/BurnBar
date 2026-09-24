@@ -9,7 +9,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { FieldValue, type DocumentData, type Firestore } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, type DocumentData, type Firestore } from "firebase-admin/firestore";
 import type { UsageEventDoc, UsageRollupDoc } from "./types.js";
 import { coerceFirestoreDate, isRecord, recordOrUndefined, stripUndefinedObject } from "./guards.js";
 import { flushDomainCorePricingShadowEvidence, priceLegacyKimiEvent } from "./pricing.js";
@@ -21,6 +21,55 @@ export const COUNTER_SCHEMA_VERSION = 3;
 /** Window keys in ascending granularity order. */
 export const WINDOW_KEYS = ["today", "7d", "30d", "90d", "all_time"] as const;
 export type WindowKey = (typeof WINDOW_KEYS)[number];
+
+/**
+ * Day-bucket retention in days (Wave 2.6). Mirrors Swift
+ * `UsageRetentionPolicy.defaultRetentionDays` (180): day docs older than this
+ * are never read by rollup compute (the 90d union + margin covers every live
+ * window) and are reaped by the counter sweeper with `recursiveDelete`, which
+ * also removes the per-day subcollections Firestore TTL would orphan.
+ */
+export const COUNTER_DAY_RETENTION_DAYS = 180;
+
+/**
+ * TTL backstop horizon in days (Wave 2.6). Every day doc carries
+ * `expireAt = start-of-day + this`, and the Firestore TTL policy on
+ * `usage_counter_days.expireAt` auto-deletes whatever the sweeper missed.
+ * The 10-day grace past retention lets the sweeper win the race on the
+ * normal path so subcollections die with their parent.
+ */
+export const COUNTER_DAY_TTL_DAYS = 190;
+
+/**
+ * Monthly shard prefix under `usage_counter_totals/` for the all_time daily
+ * maps (Wave 2.6). The rolling `dailyTokens` / `dailyProviderTokens` maps
+ * used to live on the `all_time` doc itself — one entry per lifetime day,
+ * unbounded toward the 1 MiB document limit. New entries land in
+ * `all_time_daily_YYYY-MM` shards (bounded: ~31 days each); the maps frozen
+ * on `all_time` stay readable as legacy. Readers merge legacy + shards.
+ */
+export const ALL_TIME_DAILY_SHARD_PREFIX = "all_time_daily_";
+
+/** `YYYY-MM-DD` day key → `YYYY-MM` shard month. */
+export function counterShardMonth(day: string): string {
+  return day.slice(0, 7);
+}
+
+/** Shard doc ID for a day key or month (`all_time_daily_YYYY-MM`). */
+export function allTimeDailyShardID(dayOrMonth: string): string {
+  return `${ALL_TIME_DAILY_SHARD_PREFIX}${dayOrMonth.slice(0, 7)}`;
+}
+
+/**
+ * TTL stamp for a day bucket: start-of-day UTC + the TTL horizon, or
+ * `undefined` when the day key is unparseable (the writer then omits the
+ * field and the sweeper still reaps by the `day` string).
+ */
+export function counterDayExpireAt(day: string): Timestamp | undefined {
+  const start = Date.parse(`${day}T00:00:00.000Z`);
+  if (!Number.isFinite(start)) return undefined;
+  return Timestamp.fromDate(new Date(start + COUNTER_DAY_TTL_DAYS * 24 * 60 * 60 * 1000));
+}
 
 export type UsageCounterContribution = {
   logicalKey: string;
@@ -445,20 +494,41 @@ export function addContribution(
   const dayRef = db.doc(`users/${uid}/usage_counter_days/${contribution.day}`);
   addContributionToBucket(writer, dayRef, contribution, direction, now, {
     day: contribution.day,
+    // Wave 2.6: TTL backstop stamp. The sweeper reaps by `day` well before
+    // this; the Firestore TTL policy on `expireAt` catches anything missed.
+    expireAt: counterDayExpireAt(contribution.day),
   });
 
   const allTimeRef = db.doc(`users/${uid}/usage_counter_totals/all_time`);
   addContributionToBucket(writer, allTimeRef, contribution, direction, now, {
     windowKey: "all_time",
-    // Rolling per-day token series: lets rollup reads derive the all_time
-    // dailyPoints map without scanning every usage_counter_days doc.
-    dailyTokens: { [contribution.day]: FieldValue.increment(direction * contribution.tokens) },
-    // Rolling per-day per-provider token map: same trick as dailyTokens, one
-    // level deeper, backing the all_time dailyProviderTokens heatmap split.
-    dailyProviderTokens: {
-      [contribution.day]: { [contribution.providerID]: FieldValue.increment(direction * contribution.tokens) },
-    },
+    // Wave 2.6: the rolling daily maps no longer grow here (1 MiB destiny).
+    // They land in the monthly shard below; the frozen legacy maps on this
+    // doc stay readable and readers merge legacy + shards.
   });
+
+  // Rolling per-day token series in the monthly shard: lets rollup reads
+  // derive the all_time dailyPoints map without scanning every
+  // usage_counter_days doc, while each shard stays bounded (~31 days).
+  const shardRef = db.doc(
+    `users/${uid}/usage_counter_totals/${allTimeDailyShardID(contribution.day)}`,
+  );
+  writer.set(
+    shardRef,
+    stripUndefinedDocument({
+      windowKey: "all_time",
+      shardMonth: counterShardMonth(contribution.day),
+      dailyTokens: { [contribution.day]: FieldValue.increment(direction * contribution.tokens) },
+      // Rolling per-day per-provider token map: same trick as dailyTokens,
+      // one level deeper, backing the all_time dailyProviderTokens heatmap.
+      dailyProviderTokens: {
+        [contribution.day]: { [contribution.providerID]: FieldValue.increment(direction * contribution.tokens) },
+      },
+      updatedAt: now,
+      schemaVersion: COUNTER_SCHEMA_VERSION,
+    }),
+    { merge: true },
+  );
 }
 
 function betterCounterCandidate(candidate: UsageCounterCandidate, existing: UsageCounterCandidate): boolean {

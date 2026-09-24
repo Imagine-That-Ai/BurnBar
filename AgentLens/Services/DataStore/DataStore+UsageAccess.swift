@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarData
 
 /// Per-session token + cost + timing facets used to enrich the encrypted session-log
 /// backup manifest with plaintext cockpit facets (bodies stay encrypted).
@@ -102,6 +103,11 @@ extension DataStore {
 
     func incrementalVacuum(pages: Int = 256) async throws {
         try await actor.usageStore.incrementalVacuum(pages: pages)
+    }
+
+    @discardableResult
+    func ensureIncrementalVacuumIfNeeded() async throws -> DatabaseVacuumPolicy.MigrationPlan {
+        try await actor.usageStore.ensureIncrementalVacuumIfNeeded()
     }
 
     /// Usage-table new-event marker (see `UsageTableWriteMarker`).

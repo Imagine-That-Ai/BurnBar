@@ -488,6 +488,9 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
                 throw OpenBurnBarDatabaseOpenError.codecUnavailable
             }
             if db.configuration.readonly == false {
+                // Wave 2.6: auto_vacuum FIRST — enabling WAL first seals a
+                // fresh header with NONE (see DatabaseVacuumPolicy).
+                try db.execute(sql: "PRAGMA auto_vacuum = INCREMENTAL")
                 try db.execute(sql: "PRAGMA foreign_keys = ON")
                 try db.execute(sql: "PRAGMA journal_mode = WAL")
                 try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")

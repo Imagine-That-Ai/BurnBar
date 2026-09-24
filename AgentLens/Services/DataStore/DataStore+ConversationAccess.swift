@@ -358,4 +358,11 @@ extension DataStore {
             limit: limit
         )
     }
+
+    /// Age retention for conversations (Wave 2.6): reaps rows older than the
+    /// usage cutoff with their search/summary rows. Returns rows reaped.
+    @discardableResult
+    func reapConversationsOlderThan(_ cutoff: Date) async throws -> Int {
+        try await actor.conversationStore.reapConversationsOlderThan(cutoff)
+    }
 }

@@ -132,9 +132,12 @@ extension BurnBarProjectCodeMemoryStore {
         // bootstrap for daemon-only fixtures and self-healing older installs, but
         // land new Project Code Memory tables/columns in the canonical migrator
         // before mirroring them here.
+        // Wave 2.6: auto_vacuum FIRST — the old order (WAL, then auto_vacuum)
+        // never took effect on fresh databases: enabling WAL seals the header
+        // with NONE and the later set is a silent no-op.
+        try execute("PRAGMA auto_vacuum = INCREMENTAL", [])
         try execute("PRAGMA journal_mode = WAL", [])
         try execute("PRAGMA foreign_keys = ON", [])
-        try execute("PRAGMA auto_vacuum = INCREMENTAL", [])
         try execute(
             """
             CREATE TABLE IF NOT EXISTS search_documents (

@@ -420,6 +420,14 @@ final class DataStoreCoordinator {
     /// startup PRAGMAs do not require post-open synchronous queue writes.
     nonisolated private static func installStartupPragmas(on config: inout Configuration) {
         config.prepareDatabase { @Sendable db in
+            // Wave 2.6: auto_vacuum FIRST — enabling WAL first seals a fresh
+            // header with NONE and this set becomes a silent no-op. Write
+            // connections only: the pragma mutates the header. On
+            // pre-existing databases this is a no-op until the one-time
+            // guided VACUUM (DatabaseVacuumPolicy) rebuilds them.
+            if db.configuration.readonly == false {
+                try db.execute(sql: "PRAGMA auto_vacuum = INCREMENTAL")
+            }
             try db.execute(sql: "PRAGMA journal_mode = WAL")
             try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")
             try db.execute(sql: "PRAGMA synchronous = NORMAL")

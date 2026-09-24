@@ -220,8 +220,11 @@ assert.equal(today.modelSummaries.find((m) => m.provider === "kimi")?.tokens, 1_
 assert.equal(today.totals.costUsd, 0.00361);
 assert.deepEqual(today.dailyPoints, { [dayKey]: 1_952 });
 assert.deepEqual(rollups.all_time.dailyPoints, { [dayKey]: 1_952 });
-// Full counter rebuilds regenerate the rolling dailyTokens map for free.
-assert.deepEqual(db.store.get("users/test-uid/usage_counter_totals/all_time").dailyTokens, { [dayKey]: 1_952 });
+// Full counter rebuilds regenerate the rolling dailyTokens map for free —
+// in the monthly shard (Wave 2.6), never on the base doc.
+const shardPath = `users/test-uid/usage_counter_totals/all_time_daily_${dayKey.slice(0, 7)}`;
+assert.deepEqual(db.store.get(shardPath).dailyTokens, { [dayKey]: 1_952 });
+assert.equal(db.store.get("users/test-uid/usage_counter_totals/all_time").dailyTokens, undefined);
 
 await applyUsageCounterDelta(db, "test-uid", "usage-1", usageDocs[1], undefined);
 const repairedThenUpdated = await computeUserRollupsFromCounters(db, "test-uid");
@@ -410,8 +413,8 @@ assert.equal(incrementalRollups.today.modelSummaries[0]?.model, "gpt-5.5");
 
 // crosscut-004 read-amplification regression: the counter compute fetches day
 // buckets through one documentId range query (zero per-day point gets) and
-// serves all_time dailyPoints from the rolling dailyTokens map on the totals
-// doc (zero unbounded usage_counter_days scans).
+// serves all_time dailyPoints from the monthly shard map (zero unbounded
+// usage_counter_days scans).
 incrementalDb.store.clear();
 incrementalDb.dayCollectionScans = 0;
 incrementalDb.dayDocPointGets = 0;
@@ -424,17 +427,23 @@ assert.equal(incrementalDb.dayDocPointGets, 0);
 assert.equal(incrementalDb.dayCollectionScans, 0);
 
 // Totals docs that predate the dailyTokens map fall back to one legacy scan
-// and persist the derived map, so the next compute is incremental again.
+// and persist the derived map into the monthly shard, so the next compute
+// is incremental again.
 const totalsPath = "users/test-uid/usage_counter_totals/all_time";
 const legacyTotals = { ...incrementalDb.store.get(totalsPath) };
 delete legacyTotals.dailyTokens;
 incrementalDb.store.set(totalsPath, legacyTotals);
+incrementalDb.store.delete(shardPath);
 perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
 assert.deepEqual(perfRollups.all_time.dailyPoints, { [dayKey]: 125 });
-assert.equal(incrementalDb.dayCollectionScans, 1);
-assert.deepEqual(incrementalDb.store.get(totalsPath).dailyTokens, { [dayKey]: 125 });
+// Two one-time scans (dailyTokens + dailyProviderTokens backfills — the old
+// suite only ever deleted one map, so it saw one; a fully pre-map doc always
+// scanned twice), then incremental forever.
+assert.equal(incrementalDb.dayCollectionScans, 2);
+assert.equal(incrementalDb.store.get(totalsPath).dailyTokens, undefined);
+assert.deepEqual(incrementalDb.store.get(shardPath).dailyTokens, { [dayKey]: 125 });
 perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
-assert.equal(incrementalDb.dayCollectionScans, 1);
+assert.equal(incrementalDb.dayCollectionScans, 2);
 
 // The backfill persist is skipped when a counter write lands mid-scan
 // (updatedAt mismatch), so an in-flight increment is never overwritten by the
@@ -442,6 +451,7 @@ assert.equal(incrementalDb.dayCollectionScans, 1);
 const racedTotals = { ...incrementalDb.store.get(totalsPath) };
 delete racedTotals.dailyTokens;
 incrementalDb.store.set(totalsPath, racedTotals);
+incrementalDb.store.delete(shardPath);
 const originalCollection = incrementalDb.collection;
 incrementalDb.collection = function collection(path) {
   const result = originalCollection(path);
@@ -462,16 +472,16 @@ incrementalDb.collection = function collection(path) {
 perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
 incrementalDb.collection = originalCollection;
 assert.deepEqual(perfRollups.all_time.dailyPoints, { [dayKey]: 125 });
-assert.equal(incrementalDb.store.get(totalsPath).dailyTokens, undefined);
+assert.equal(incrementalDb.store.get(shardPath), undefined);
 
 // The retry pass persists the map; removing the only event then decrements
 // the day's dailyTokens entry to zero, and zero entries are filtered from
 // dailyPoints output exactly like the legacy day-doc filter.
 perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
-assert.deepEqual(incrementalDb.store.get(totalsPath).dailyTokens, { [dayKey]: 125 });
+assert.deepEqual(incrementalDb.store.get(shardPath).dailyTokens, { [dayKey]: 125 });
 await applyUsageCounterDelta(incrementalDb, "test-uid", "codex-good", usageDocs[1], undefined);
 perfRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
-assert.deepEqual(incrementalDb.store.get(totalsPath).dailyTokens, { [dayKey]: 0 });
+assert.deepEqual(incrementalDb.store.get(shardPath).dailyTokens, { [dayKey]: 0 });
 assert.deepEqual(perfRollups.all_time.dailyPoints, {});
 assert.deepEqual(perfRollups.today.dailyPoints, {});
 

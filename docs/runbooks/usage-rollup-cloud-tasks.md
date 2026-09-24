@@ -59,3 +59,16 @@ gcloud tasks tasks list --queue=rollup-user-rebuilds --location=us-central1 --li
 ```
 
 Then inspect Cloud Logging for `rollup.rebuild_failed`, `rollup.full_rebuild_circuit_open`, and `rollup.task_enqueue_failed`.
+
+## Day-Bucket Retention (Wave 2.6)
+
+`usage_counter_days/{day}` docs older than 180 days (`COUNTER_DAY_RETENTION_DAYS`,
+mirroring Swift `UsageRetentionPolicy`) are dead weight — rollup compute only
+reads the trailing 90-day union. The daily `reapExpiredCounterDayBuckets`
+schedule `recursiveDelete`s them (subcollections included). Every day doc also
+carries `expireAt` (day + 190d), and the Firestore TTL policy on
+`usage_counter_days.expireAt` is the backstop for anything the sweeper misses
+(enabled 2026-09-24 on `burnbar` and `burnbar-staging`; verify with
+`gcloud firestore fields ttls list`). The all_time daily series lives in
+monthly `all_time_daily_YYYY-MM` shards, so reaping day buckets never truncates
+chart history — see `npm run test:counter-growth` for the 3-year proof.

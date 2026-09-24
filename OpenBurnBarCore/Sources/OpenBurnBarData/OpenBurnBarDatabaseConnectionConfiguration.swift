@@ -22,6 +22,15 @@ extension OpenBurnBarDatabase {
     /// WAL is automatically enabled by GRDB's DatabasePool, but we explicitly
     /// tune the checkpoint threshold for our workload.
     public static func configureWALMode(_ dbQueue: any DatabaseWriter) throws {
+        // Wave 2.6: auto_vacuum FIRST, before journal_mode creates the
+        // header — enabling WAL first seals the header with NONE and the
+        // auto_vacuum set becomes a silent no-op. Outside the transaction:
+        // SQLite refuses mode changes mid-txn. On pre-existing databases
+        // this is a no-op until the one-time guided VACUUM
+        // (DatabaseVacuumPolicy) rebuilds them.
+        try dbQueue.writeWithoutTransaction { db in
+            try db.execute(sql: "PRAGMA auto_vacuum = INCREMENTAL")
+        }
         try dbQueue.write { db in
             try db.execute(sql: "PRAGMA journal_mode = WAL")
             try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")

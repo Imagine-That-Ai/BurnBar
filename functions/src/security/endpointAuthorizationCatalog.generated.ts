@@ -3021,6 +3021,25 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
     highRiskComputerUse: false,
   },
   {
+    exportedName: "reapExpiredCounterDayBuckets",
+    trigger: "scheduled",
+    authMethod: "Cloud Scheduler / platform trigger",
+    appCheck: "not-applicable",
+    tenantSource: "job-owned collection scans",
+    objectIdsFromClient: [],
+    ownershipCheck: "server-side collection filters and per-document uid fields",
+    handlerModule: "scheduled/reapExpiredCounterDays.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "platform triggers are not client-callable",
+        kind: "platform-trigger",
+        covers: ["reapExpiredCounterDayBuckets"],
+      },
+    ],
+    highRiskComputerUse: false,
+  },
+  {
     exportedName: "reapHermesGatewayApprovals",
     trigger: "scheduled",
     authMethod: "Cloud Scheduler / platform trigger",

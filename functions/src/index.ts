@@ -89,6 +89,7 @@ export {
   appendCliAgentMissionEvent,
 } from "./callables/cliAgentMissions.js";
 export { reapBurnbarAttachments } from "./scheduled/reapBurnbarAttachments.js";
+export { reapExpiredCounterDayBuckets } from "./scheduled/reapExpiredCounterDays.js";
 export {
   beginBurnbarAttachment,
   mintBurnbarAttachmentPartURL,
