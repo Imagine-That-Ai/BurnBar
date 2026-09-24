@@ -908,7 +908,11 @@ extension UsageStore {
         return providers.compactMap { provider, accumulator in
             accumulator.summary(for: provider)
         }
-        .sorted { $0.totalCost > $1.totalCost }
+        // Cost ties break on the provider key: the fold iterates a
+        // dictionary (arbitrary order), so a cost-only sort would reshuffle
+        // tied providers between reloads and destabilize the snapshot
+        // fingerprint. Applies to every summary sort in this file.
+        .sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.provider.rawValue, rhsKey: $1.provider.rawValue) }
     }
 
     private static func makeCredentialSummaries(fromAggregateRows rows: [UsageAggregateRow]) -> [CredentialSummary] {
@@ -924,7 +928,7 @@ extension UsageStore {
         return groups.compactMap { key, accumulator in
             accumulator.summary(for: key.provider, accountID: key.accountID)
         }
-        .sorted { $0.totalCost > $1.totalCost }
+        .sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.stableKey, rhsKey: $1.stableKey) }
     }
 
     private static func makeProjectSpendSummaries(fromAggregateRows rows: [UsageAggregateRow]) -> [ProjectSpendSummary] {
@@ -936,7 +940,7 @@ extension UsageStore {
         return groups.compactMap { projectName, accumulator in
             accumulator.summary(projectName: projectName)
         }
-        .sorted { $0.totalCost > $1.totalCost }
+        .sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.projectName, rhsKey: $1.projectName) }
     }
 
     private static func makeModelSummaries(fromAggregateRows rows: [UsageAggregateRow]) -> [ModelSummary] {
@@ -947,6 +951,6 @@ extension UsageStore {
         }
         return models.values
             .map(\.summary)
-            .sorted { $0.totalCost > $1.totalCost }
+            .sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.modelName, rhsKey: $1.modelName) }
     }
 }

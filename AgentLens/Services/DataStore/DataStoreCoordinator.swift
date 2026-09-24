@@ -573,7 +573,10 @@ final class DataStoreCoordinator {
 
         do {
             let marker = await actor.usageTableWriteMarker
-            let snapshot = try await actor.fetchDashboardUsageSnapshot(loadedUsageLimit: Self.quickHydrationLimit)
+            let snapshot = try await DashboardRollupService(dataStore: self).snapshotAsync(
+                loadedUsageLimit: Self.quickHydrationLimit,
+                windowBoundary: nextWindowBoundary
+            )
             guard generation == refreshGeneration else { return }
             lastReloadedUsageWriteMarker = marker
             replaceUsageSnapshot(snapshot)
@@ -662,11 +665,12 @@ final class DataStoreCoordinator {
     /// O(total-history): an idle tick previously refetched + re-sorted +
     /// re-aggregated every `token_usage` row before the fingerprint gate
     /// could discard the result; now it performs one actor hop to read an
-    /// integer and returns. When content DID change, the reload uses the
-    /// same `fetchDashboardUsageSnapshot` path as init (`GROUP BY` window
-    /// totals + `quickHydrationLimit` covering rows) — not `SELECT *` /
-    /// `fetchAllUsage` — so displayed numbers stay SQL-accurate without
-    /// decoding the entire ledger.
+    /// integer and returns. When content DID change, the reload goes through
+    /// `DashboardRollupService` (Wave 2.8): a fresh materialized payload
+    /// serves one health read + the `quickHydrationLimit` covering scan, and
+    /// only a genuinely stale payload runs the `GROUP BY` fan-out once and
+    /// persists the new parts — never `SELECT *` / `fetchAllUsage` — so
+    /// displayed numbers stay SQL-accurate without decoding the ledger.
     func reloadUsagesIfChanged() async {
         let marker = await actor.usageTableWriteMarker
         let now = nowProvider()
@@ -701,8 +705,9 @@ final class DataStoreCoordinator {
             // may already be visible in the rows, and the next tick then
             // reloads once more. Never the reverse (stale rows recorded
             // under a newer marker).
-            let snapshot = try await actor.fetchDashboardUsageSnapshot(
-                loadedUsageLimit: Self.quickHydrationLimit
+            let snapshot = try await DashboardRollupService(dataStore: self).snapshotAsync(
+                loadedUsageLimit: Self.quickHydrationLimit,
+                windowBoundary: nextWindowBoundary
             )
             lastReloadedUsageWriteMarker = marker
             replaceUsageSnapshot(snapshot)

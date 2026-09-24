@@ -44,7 +44,7 @@ struct UsageTotals: Equatable, Sendable { // pure-move: was private
     )
 }
 
-struct UsageAggregateRow: Equatable { // pure-move: was private
+struct UsageAggregateRow: Codable, Equatable, Sendable { // pure-move: was private
     let provider: AgentProvider
     let model: String
     let executionSourceID: String
@@ -196,7 +196,10 @@ struct ProviderSummaryAccumulator { // pure-move: was private
             sessionCount: sessionCount,
             modelBreakdown: modelData.values
                 .map { $0.modelUsage(providerTotalCost: totalCost) }
-                .sorted { $0.cost > $1.cost },
+                // Cost ties break on the model key: `modelData` iterates in
+                // arbitrary dictionary order. Applies to every breakdown
+                // sort in this file.
+                .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.modelName, rhsKey: $1.modelName) },
             provenanceConfidence: dominantConfidence,
             provenanceMethod: dominantMethod,
             hasEstimatedContributions: hasAnyEstimated,
@@ -288,7 +291,7 @@ struct CredentialSummaryAccumulator {
             sessionCount: sessionCount,
             modelBreakdown: modelData.values
                 .map { $0.modelUsage(providerTotalCost: totalCost) }
-                .sorted { $0.cost > $1.cost },
+                .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.modelName, rhsKey: $1.modelName) },
             provenanceConfidence: dominantConfidence,
             provenanceMethod: dominantMethod,
             hasEstimatedContributions: hasAnyEstimated,
@@ -383,10 +386,10 @@ struct ProjectSpendSummaryAccumulator {
                     )
                 )
             }
-            .sorted { $0.cost > $1.cost },
+            .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.provider.rawValue, rhsKey: $1.provider.rawValue) },
             modelBreakdown: modelData.values
                 .map { $0.modelUsage(providerTotalCost: totalCost) }
-                .sorted { $0.cost > $1.cost },
+                .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.modelName, rhsKey: $1.modelName) },
             provenanceConfidence: dominantConfidence,
             provenanceMethod: dominantMethod,
             hasEstimatedContributions: hasAnyEstimated,
@@ -498,10 +501,10 @@ struct ModelSummaryAccumulator { // pure-move: was private
             sessionCount: sessionCount,
             providerBreakdown: providerData.values
                 .map { $0.providerUsage(modelTotalCost: totalCost) }
-                .sorted { $0.cost > $1.cost },
+                .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.provider.rawValue, rhsKey: $1.provider.rawValue) },
             executionSourceBreakdown: executionSourceData.values
                 .map { $0.usage(modelTotalCost: totalCost) }
-                .sorted { $0.cost > $1.cost },
+                .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.executionSourceID, rhsKey: $1.executionSourceID) },
             cacheEfficiency: CacheEfficiency(
                 inputTokens: totalInputTokens,
                 cacheCreationTokens: cacheCreationTokens,
@@ -622,9 +625,16 @@ struct DailySummaryAccumulator { // pure-move: was private
     var summary: DailyUsageSummary? {
         let date = dateOverride ?? OpenBurnBarDatabase.parseDateValue(dayString)
         guard let date else { return nil }
+        // Day provider is the (cents desc, key asc) winner: a raw-double
+        // `.max` over dictionary iteration order would flip the winner on
+        // cost ties between reloads. The swapped helper args express the
+        // same total order as `max(by:)`'s increasing-order predicate.
+        let dayProvider = providerCosts
+            .max { compareSummaryOrder(lhsCost: $1.value, rhsCost: $0.value, lhsKey: $1.key.rawValue, rhsKey: $0.key.rawValue) }?
+            .key ?? .factory
         return DailyUsageSummary(
             date: date,
-            provider: providerCosts.max { $0.value < $1.value }?.key ?? .factory,
+            provider: dayProvider,
             totalInputTokens: totalInputTokens,
             totalOutputTokens: totalOutputTokens,
             totalCacheCreationTokens: totalCacheCreationTokens,

@@ -7,7 +7,7 @@
 # billing reconcile uses a bounded-window baseline + SQL credential rollup,
 # and the cloud total uses a server-side SUM aggregation.
 #
-# This ratchet keeps that true with two counters:
+# This ratchet keeps that true with three counters:
 #   1. `fetchAllUsageCallSites` — production call sites of the unbounded
 #      `fetchAllUsage()` full-table load in AgentLens. New call sites put
 #      O(total-history) work back on some path; use a bounded window
@@ -19,6 +19,19 @@
 #      `UsageStore` mutators or `AtomicIngestionTransaction`), otherwise the
 #      marker-gated tick would render stale data until the next
 #      time-window boundary.
+#   3. `dashboardSnapshotBypassSites` — Wave 2.8 live-function budget.
+#      `fetchAllUsage()` is dead on the tick path (only its forwarder
+#      remains), so counting it no longer budgets anything live. The live
+#      reload is `DashboardRollupService.snapshotAsync`, which serves the
+#      materialized `dashboard_rollups` payload when fresh and runs the
+#      GROUP BY fan-out exactly once per stale recompute. Direct production
+#      calls of `fetchDashboardUsageSnapshot(` OUTSIDE the service plumbing
+#      (its `UsageStore` definition, the `DataStore`/`DataStoreActor`
+#      forwarders) bypass the materialized path and must stay at ZERO: route
+#      new reload consumers through the service instead. The constant-query
+#      proof itself lives in `DashboardRollupServiceTests`
+#      (`test_snapshotQueryCount_isIndependentOfUsageVolume` +
+#      `test_reload_queryCountConstantAtScaleAndRecordP95`).
 #
 # Lower budgets/usage-refresh-tick-baseline.json as call sites are removed.
 set -euo pipefail
@@ -59,9 +72,23 @@ fetch_all_total = 0
 fetch_all_by_file = {}
 raw_writer_total = 0
 raw_writer_by_file = {}
+bypass_total = 0
+bypass_by_file = {}
 
 fetch_all_pattern = re.compile(r"fetchAllUsage\(\)")
 raw_write_pattern = re.compile(r"\b(INSERT INTO|UPDATE|DELETE FROM)\s+token_usage\b")
+# `fetchDashboardUsageSnapshot(` with the paren: the WithParts variant
+# (`fetchDashboardUsageSnapshotWithParts(`) is the sanctioned materialize
+# path and must not match.
+bypass_pattern = re.compile(r"fetchDashboardUsageSnapshot\(")
+# Plumbing allowed to name the direct snapshot call: its definition file
+# plus the two forwarders. `DashboardRollupService` itself calls the
+# WithParts variant, and every reload consumer must go through the service.
+bypass_allowlist = {
+    "AgentLens/Services/DataStore/UsageStore+Refresh.swift",
+    "AgentLens/Services/DataStore/DataStore.swift",
+    "AgentLens/Services/DataStore/DataStore+UsageAccess.swift",
+}
 
 for path in sorted(agentlens_root.rglob("*.swift")):
     rel = path.relative_to(repo_root).as_posix()
@@ -69,6 +96,7 @@ for path in sorted(agentlens_root.rglob("*.swift")):
 
     fetch_count = 0
     raw_count = 0
+    bypass_count = 0
     for line in text.splitlines():
         if not is_code_line(line):
             continue
@@ -76,6 +104,8 @@ for path in sorted(agentlens_root.rglob("*.swift")):
             fetch_count += 1
         if raw_write_pattern.search(line):
             raw_count += 1
+        if bypass_pattern.search(line) and not line.strip().startswith("func "):
+            bypass_count += 1
 
     if fetch_count:
         fetch_all_by_file[rel] = fetch_count
@@ -90,12 +120,18 @@ for path in sorted(agentlens_root.rglob("*.swift")):
         raw_writer_by_file[rel] = raw_count
         raw_writer_total += raw_count
 
+    if bypass_count and rel not in bypass_allowlist:
+        bypass_by_file[rel] = bypass_count
+        bypass_total += bypass_count
+
 live = {
     "fetchAllUsageCallSites": fetch_all_total,
     "rawTokenUsageWriteStatements": raw_writer_total,
+    "dashboardSnapshotBypassSites": bypass_total,
     "details": {
         "fetchAllUsageCallSites": fetch_all_by_file,
         "rawTokenUsageWriteStatements": raw_writer_by_file,
+        "dashboardSnapshotBypassSites": bypass_by_file,
     },
 }
 
@@ -109,7 +145,22 @@ if not baseline_path.exists():
     sys.exit(1)
 
 baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-metric_names = ("fetchAllUsageCallSites", "rawTokenUsageWriteStatements")
+metric_names = ("fetchAllUsageCallSites", "rawTokenUsageWriteStatements", "dashboardSnapshotBypassSites")
+metric_advice = {
+    "fetchAllUsageCallSites": (
+        "New fetchAllUsage() call sites reintroduce O(total-history) tick work "
+        "(use a bounded fetchUsage(in:limit:) window, a SQL aggregate, or "
+        "reloadUsagesIfChanged())."
+    ),
+    "rawTokenUsageWriteStatements": (
+        "New raw token_usage writers must go through UsageStore so "
+        "UsageTableWriteMarker stays accurate."
+    ),
+    "dashboardSnapshotBypassSites": (
+        "New direct fetchDashboardUsageSnapshot() call sites bypass the "
+        "materialized dashboard rollups (use DashboardRollupService.snapshotAsync)."
+    ),
+}
 
 print(
     "Usage refresh-tick budget: "
@@ -121,10 +172,7 @@ for name in metric_names:
     if live[name] > baseline[name]:
         print(
             f"::error::Refresh-tick {name} rose from {baseline[name]} to {live[name]}. "
-            "New fetchAllUsage() call sites reintroduce O(total-history) tick work "
-            "(use a bounded fetchUsage(in:limit:) window, a SQL aggregate, or "
-            "reloadUsagesIfChanged()); new raw token_usage writers must go through "
-            "UsageStore so UsageTableWriteMarker stays accurate.",
+            + metric_advice[name],
             file=sys.stderr,
         )
         failed = True

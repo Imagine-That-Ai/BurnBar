@@ -397,7 +397,10 @@ final class DashboardUsageViewModel {
         return providers.compactMap { provider, accumulator in
             accumulator.summary(for: provider)
         }
-        .sorted { $0.totalCost > $1.totalCost }
+        // Cost ties break on the provider key: the fold iterates a
+        // dictionary (arbitrary order). Applies to every summary sort in
+        // this file.
+        .sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.provider.rawValue, rhsKey: $1.provider.rawValue) }
     }
 
     // MARK: - Model Summary Builder
@@ -428,7 +431,7 @@ final class DashboardUsageViewModel {
                     cacheEfficiency: CacheEfficiency.aggregate(providerUsages)
                 )
             }
-            .sorted { $0.cost > $1.cost }
+            .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.provider.rawValue, rhsKey: $1.provider.rawValue) }
 
             return ModelSummary(
                 modelName: key,
@@ -446,7 +449,7 @@ final class DashboardUsageViewModel {
                 cacheEfficiency: CacheEfficiency.aggregate(modelUsages)
             )
         }
-        .sorted { $0.totalCost > $1.totalCost }
+        .sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.modelName, rhsKey: $1.modelName) }
     }
 
     // MARK: - Credential Summary Builder
@@ -549,7 +552,7 @@ private struct ProviderAccumulator {
         let modelBreakdown = modelData.map { modelName, data in
             data.modelUsage(modelName: modelName, providerTotalCost: totalCost)
         }
-        .sorted { $0.cost > $1.cost }
+        .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.modelName, rhsKey: $1.modelName) }
 
         return ProviderSummary(
             provider: provider,

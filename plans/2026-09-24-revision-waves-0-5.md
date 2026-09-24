@@ -1,18 +1,17 @@
 # BurnBar master revision plan (62 → 10/10) — Waves 0–5
 
 Recovered 2026-09-24 from the working session log into this file so the
-wave definitions survive context compaction. Waves 0–1 and 2.1–2.7 are
+wave definitions survive context compaction. Waves 0–1 and 2.1–2.8 are
 done; what follows is the authoritative scope for the remaining work.
 
-## Wave 2: One data spine (weeks 2–6) — remaining
-
-| # | Work | Done when |
-|---|---|---|
-| 2.8 | Dashboard: materialized per-window rollups using the `WorkflowInsightRollupService` pattern. Point the perf budget at the live function, not dead `fetchAllUsage()` | Constant query count at 5 GB (fixture DB). Reload p95 recorded |
+## Wave 2: One data spine (weeks 2–6) — done
 
 Done: 2.1/2.1c single-writer cutovers, 2.2 single migrator, 2.3 generated
 schema docs, 2.4 daemon SQLCipher fail-closed, 2.5 cost unification,
-2.6 growth caps, 2.7 Codex rollout jail + MAS xcconfig.
+2.6 growth caps, 2.7 Codex rollout jail + MAS xcconfig, 2.8 materialized
+dashboard rollups (DashboardRollupService + dashboard_rollups health row;
+fresh reload 10 constant queries at 44,581 rows, p95 ~67ms; ratchet
+dashboardSnapshotBypassSites=0; deterministic cents+key summary ordering).
 
 ## Wave 3: Architecture decomposition (weeks 4–10)
 

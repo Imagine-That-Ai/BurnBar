@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Time Range
 
-enum TimeRange: String, CaseIterable, Identifiable {
+enum TimeRange: String, CaseIterable, Codable, Identifiable, Sendable {
     case today = "Today"
     case last7Days = "Last 7 Days"
     case last30Days = "Last 30 Days"

@@ -139,7 +139,21 @@ extension AgentProvider {
 
 // MARK: - Daily Summary
 
-struct DailyUsageSummary: Identifiable, Hashable {
+/// Deterministic summary ordering: whole cents descending, then `key`
+/// ascending. Costs accumulate floating-point in row order, so two folds of
+/// the same ledger (live SQL vs. materialized JSON, or two SQL executions
+/// with different GROUP BY row orders) can differ by a ULP; ordering on raw
+/// doubles would let that noise flip tied rows between reloads and
+/// destabilize the snapshot fingerprint. `key` must be unique per element
+/// (provider raw value, credential stable key, project/model name).
+func compareSummaryOrder(lhsCost: Double, rhsCost: Double, lhsKey: String, rhsKey: String) -> Bool {
+    let lhsCents = (lhsCost * 100).rounded()
+    let rhsCents = (rhsCost * 100).rounded()
+    if lhsCents != rhsCents { return lhsCents > rhsCents }
+    return lhsKey < rhsKey
+}
+
+struct DailyUsageSummary: Codable, Identifiable, Hashable, Sendable {
     let id = UUID()
     let date: Date
     let provider: AgentProvider
@@ -424,7 +438,9 @@ struct ExecutionSourceUsage: Identifiable, Hashable {
                     cacheEfficiency: CacheEfficiency.aggregate(rows)
                 )
             }
-            .sorted { $0.cost > $1.cost }
+            // Cost ties break on the source key: the grouping dictionary
+            // iterates in arbitrary order.
+            .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.executionSourceID, rhsKey: $1.executionSourceID) }
     }
 }
 

@@ -119,6 +119,13 @@ actor DataStoreActor {
         try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
     }
 
+    func fetchDashboardUsageSnapshotWithParts(
+        loadedUsageLimit: Int,
+        now: Date = Date()
+    ) async throws -> (snapshot: DashboardUsageSnapshot, parts: DashboardRollupParts) {
+        try await usageStore.fetchDashboardUsageSnapshotWithParts(loadedUsageLimit: loadedUsageLimit, now: now)
+    }
+
     func fetchQuickTodayUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
         try await usageStore.fetchQuickTodayUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
     }

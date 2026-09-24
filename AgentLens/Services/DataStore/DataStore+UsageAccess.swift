@@ -81,6 +81,13 @@ extension DataStore {
         try await actor.fetchDashboardUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
     }
 
+    func fetchDashboardUsageSnapshotWithParts(
+        loadedUsageLimit: Int,
+        now: Date = Date()
+    ) async throws -> (snapshot: DashboardUsageSnapshot, parts: DashboardRollupParts) {
+        try await actor.fetchDashboardUsageSnapshotWithParts(loadedUsageLimit: loadedUsageLimit, now: now)
+    }
+
     func fetchUsageCostBreakdown(in dateRange: ClosedRange<Date>, limit: Int = 20) async throws -> UsageCostBreakdown {
         try await actor.usageStore.fetchUsageCostBreakdown(in: dateRange, limit: limit)
     }

@@ -2369,3 +2369,69 @@ Reduce Motion, Reduce Transparency, hidden windows, and sleep/wake.
 Keep input fixtures fixed and do not claim differences within run-to-run
 noise. XCTest and parser differential checks establish correctness, not a
 production speedup or visual/accessibility sign-off.
+
+## 42. Materialized dashboard rollups (Wave 2.8)
+
+The dashboard reload no longer runs the multi-window GROUP BY fan-out every
+time content changes or a window boundary passes. The analytic core of
+`DashboardUsageSnapshot` — per-window aggregate rows, the trailing 8-day
+cost/token series, and the daily summaries (`DashboardRollupParts`) — is
+materialized as JSON in the `dashboard_rollups` retrieval-health row,
+following the `WorkflowInsightRollupService` pattern. `refresh()` and
+`reloadUsagesIfChanged()` both serve through
+`DashboardRollupService.snapshotAsync`.
+
+Freshness is a write-marker + window-boundary comparison: the payload
+serves while the ledger is unchanged (marker match) inside the same window
+edges (live boundary match) — the exact contract the coordinator gate
+enforces. The covering newest-N rows are NOT materialized: every read pairs
+its parts with a live index-backed covering scan, so session lists always
+reflect the current `loadedUsageLimit` window and totals stay SQL-accurate.
+A fresh reload is one health-row read + one covering scan — constant
+queries at any ledger size. A stale payload (content change, boundary
+pass, missing/corrupt row, schema mismatch) runs the full snapshot once
+and persists the new parts; the health write is single and gated on
+content change, so fresh reads never take the single-writer queue.
+Materialize failure records a failed health row and rethrows — no numbers
+are fabricated, and the coordinator keeps its previous state.
+
+The marker is in-process, so a payload from a previous launch always reads
+stale and recomputes once: cross-launch numbers can never serve as fresh.
+Payload validation (schema version, 8-entry day series, all five window
+keys) treats any short payload as stale, since assembly indexes the day
+series directly.
+
+The refresh-tick ratchet (`scripts/debt/check-usage-refresh-tick-budget.sh`)
+now budgets the live function instead of the dead one: `fetchAllUsage()`
+has no tick-path callers left (only its forwarder), so the new
+`dashboardSnapshotBypassSites` counter keeps direct production calls of
+`fetchDashboardUsageSnapshot(` at zero outside the service plumbing (its
+`UsageStore` definition plus the `DataStore`/`DataStoreActor` forwarders).
+The constant-query proof lives in the test suite, not the ratchet.
+
+### Measured at 5GB scale
+
+Scale fixture: 44,581 usage rows over ~120 days plus a long runner and
+recent rows — the August 2026 protected database's usage-row cardinality
+at ~5.49 GB. 21 fresh-path reloads (`loadedUsageLimit: 5_000`) ran an
+identical query count on every run (measured 2026-09-24, Debug build,
+Apple Silicon, worst of 3 runs):
+
+- Fresh reload: ~58 ms p50 / ~67 ms p95, 10 queries per reload.
+- Stale reload (full GROUP BY fan-out at the same scale): ~1070 ms, one run.
+
+Rerun `DashboardRollupServiceTests/
+test_reload_queryCountConstantAtScaleAndRecordP95` and update these numbers
+when the reload path changes; the test prints `DASHBOARD_ROLLUP_FRESH_RELOAD_MS`
+and `DASHBOARD_ROLLUP_STALE_RELOAD_MS` lines for capture.
+
+### Validation
+
+```sh
+./scripts/test-openburnbar-app.sh \
+  -only-testing:OpenBurnBarTests/DashboardRollupServiceTests \
+  -only-testing:OpenBurnBarTests/DashboardUsageViewModelTests \
+  -only-testing:OpenBurnBarTests/WorkflowInsightRollupServiceTests \
+  -only-testing:OpenBurnBarTests/BillingReconcileBoundedBaselineTests
+bash scripts/debt/check-usage-refresh-tick-budget.sh
+```
