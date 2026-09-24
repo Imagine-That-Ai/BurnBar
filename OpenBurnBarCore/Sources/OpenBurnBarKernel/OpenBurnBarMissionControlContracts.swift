@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarProviderModels
 
 public typealias BurnBarMetadata = [String: BurnBarJSONValue]
 

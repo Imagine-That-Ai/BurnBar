@@ -1,6 +1,6 @@
 {
   "note": "Per-consumer-root files importing the OpenBurnBarCore umbrella (docs/CORE_DECOMPOSITION_PROGRAM.md). Covers ALL Swift import-attribute forms including `@testable import OpenBurnBarCore` and `@_exported`/`@_spi(...)` prefixes (so no repoint can leave a hidden umbrella import). Shrink-only: no NEW file may import the umbrella in a tracked root. Privileged roots (OpenBurnBarDaemon, OpenBurnBarWidget, OpenBurnBarKeyboard) ratchet to zero after their repoint packets (S17/S18/S19); AgentLens/OpenBurnBarMobile keep the umbrella deliberately. Regenerate via scripts/debt/check-core-umbrella-imports-budget.sh --update.",
-  "total": 911,
+  "total": 908,
   "roots": {
     "OpenBurnBarDaemon": {
       "count": 0,
@@ -15,7 +15,7 @@
       "files": []
     },
     "AgentLens": {
-      "count": 531,
+      "count": 528,
       "files": [
         "AgentLens/App/AgentLensApp.swift",
         "AgentLens/App/AgentLensApp+Bootstrap.swift",
@@ -28,11 +28,11 @@
         "AgentLens/App/MenuBarLabel.swift",
         "AgentLens/App/OpenBurnBarWindowManager.swift",
         "AgentLens/App/SwarmWallpaperRuntime.swift",
+        "AgentLens/Lab/PetCompanion/Chat/PetChatBubble.swift",
         "AgentLens/Models/AgentProvider.swift",
         "AgentLens/Models/ConversationRecord.swift",
         "AgentLens/Models/HermesModelID.swift",
         "AgentLens/Models/ProviderBrand.swift",
-        "AgentLens/PetCompanion/Chat/PetChatBubble.swift",
         "AgentLens/Services/AccountManager.swift",
         "AgentLens/Services/AppCheckAttestationMonitor.swift",
         "AgentLens/Services/AppLogger.swift",
@@ -163,6 +163,7 @@
         "AgentLens/Services/DataStore/BudgetSettings.swift",
         "AgentLens/Services/DataStore/ControlPlaneStore.swift",
         "AgentLens/Services/DataStore/ControlPlaneStore+Memory.swift",
+        "AgentLens/Services/DataStore/ControlPlaneStore+MemoryAuthorityLane.swift",
         "AgentLens/Services/DataStore/ControlPlaneStore+MemoryEmbeddings.swift",
         "AgentLens/Services/DataStore/ControlPlaneStore+MemoryExtractionJobs.swift",
         "AgentLens/Services/DataStore/ControlPlaneStore+MemoryExtractionWorker.swift",
@@ -175,7 +176,9 @@
         "AgentLens/Services/DataStore/ConversationStore+CloudSync.swift",
         "AgentLens/Services/DataStore/ConversationStore+CRUD.swift",
         "AgentLens/Services/DataStore/ConversationStore+FTS.swift",
+        "AgentLens/Services/DataStore/ConversationStore+Retention.swift",
         "AgentLens/Services/DataStore/ConversationStore+TranscriptScan.swift",
+        "AgentLens/Services/DataStore/DatabaseAppCodecs.swift",
         "AgentLens/Services/DataStore/DataStore.swift",
         "AgentLens/Services/DataStore/DataStore+ArtifactAccess.swift",
         "AgentLens/Services/DataStore/DataStore+ControlPlaneAccess.swift",
@@ -189,11 +192,6 @@
         "AgentLens/Services/DataStore/DataStoreTypes.swift",
         "AgentLens/Services/DataStore/DeviceStore.swift",
         "AgentLens/Services/DataStore/FusionImpactLedger.swift",
-        "AgentLens/Services/DataStore/OpenBurnBarDatabase.swift",
-        "AgentLens/Services/DataStore/OpenBurnBarDatabase+Codecs.swift",
-        "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationsV1toV20.swift",
-        "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationsV21toV40.swift",
-        "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationsV41toV51.swift",
         "AgentLens/Services/DataStore/OpenBurnBarMemoryService.swift",
         "AgentLens/Services/DataStore/OpenBurnBarQueryTracer.swift",
         "AgentLens/Services/DataStore/ParserCheckpointStore.swift",
@@ -213,7 +211,6 @@
         "AgentLens/Services/DataStore/UsageStore+SessionLookup.swift",
         "AgentLens/Services/DataStore/UsageStore+Summaries.swift",
         "AgentLens/Services/DataStore/UsageStore+Upsert.swift",
-        "AgentLens/Services/DataStore/WorkingDirectoryBackfillService.swift",
         "AgentLens/Services/DirectDownloadUpdateService.swift",
         "AgentLens/Services/HermesInventoryImportService.swift",
         "AgentLens/Services/HermesRealtimeRelayHostClient.swift",

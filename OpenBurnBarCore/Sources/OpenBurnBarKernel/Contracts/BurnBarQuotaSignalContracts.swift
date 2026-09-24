@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarProviderModels
 
 public struct BurnBarQuotaSignalHeader: Codable, Hashable, Sendable {
     public let name: String

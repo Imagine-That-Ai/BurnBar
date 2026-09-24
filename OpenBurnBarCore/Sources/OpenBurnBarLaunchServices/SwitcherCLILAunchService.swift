@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarPlatformSupport
 
 // MARK: - CLI Launch Service (coordinator / invoker / store-coupled half)
 //

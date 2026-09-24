@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarVaultModels
 
 private struct MissionGroupPrivatePayload: Codable {
     var title: String?

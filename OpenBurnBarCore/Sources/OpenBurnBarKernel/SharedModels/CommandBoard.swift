@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarProviderModels
 
 /// Face C, the Command Board (§ The three faces of
 /// `plans/2026-08-17-war-room-master-plan.md`).

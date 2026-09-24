@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarHermesModels
+import OpenBurnBarProviderModels
 #if !os(Linux)
 import Observation
 #endif

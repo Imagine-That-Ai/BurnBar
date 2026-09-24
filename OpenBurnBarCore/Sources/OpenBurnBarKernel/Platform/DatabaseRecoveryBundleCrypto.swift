@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarPlatformSupport
 
 /// Cross-platform implementation of the explicit database recovery bundle
 /// format used by the macOS app's `DatabaseEncryptionService`.

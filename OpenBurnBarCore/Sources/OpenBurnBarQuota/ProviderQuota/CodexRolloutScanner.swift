@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 public enum CodexRolloutScanner {
     public static func scanCodexRateLimitEvents(

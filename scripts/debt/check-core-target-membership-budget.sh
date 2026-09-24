@@ -48,6 +48,12 @@ const siblingTargets = [
   "OpenBurnBarDomainCoreRuntime",
   "OpenBurnBarAssistantModels",
   "OpenBurnBarProjectCodeContracts",
+  "OpenBurnBarHermesModels",
+  "OpenBurnBarMobilePolicy",
+  "OpenBurnBarProviderModels",
+  "OpenBurnBarVaultModels",
+  "OpenBurnBarUsageModels",
+  "OpenBurnBarInboxModels",
   "OpenBurnBarKernel",
   "OpenBurnBarParserSupport",
   "OpenBurnBarSQLiteReader",
@@ -142,14 +148,34 @@ const PLANNED_CEILINGS = {
   // hundred more lines should have to argue for itself rather than turn the leaf
   // into the next dumping ground.
   OpenBurnBarProjectCodeContracts: { maxFiles: 2, maxLines: 1000 },
-  // Linux parity adds daemon-owned cloud/privacy/trusted-device/media contracts
-  // after the assistant-model extraction. Keep the ceiling below the next
-  // monolith while accounting for those cross-platform authority surfaces.
-  // 191, exactly the current count, for KeychainInteractionGate.swift — the gate
-  // that keeps the first-run keychain prompt from firing once per caller. No
-  // headroom on purpose: this target is supposed to dissolve, so the next file
-  // added to it should have to argue for itself.
-  OpenBurnBarKernel: { maxFiles: 191, maxLines: 54000 },
+  // Wave 3.2 (Kernel domain split): Kernel was 200 files / 54,951 lines —
+  // over this ceiling. 109 files moved out (91 to the five domain leaves
+  // below, 8 to InboxModels, 8 to UI, 2 utils to PlatformSupport) plus 6
+  // small type-extractions into ProviderModels, leaving 91 files / 25,774
+  // lines of root mission contracts, catalog/identity/platform, and bridge
+  // contracts. The ceiling is lowered to ~1.25x the new size; the leaves
+  // carry their own ceilings so none of them becomes the next god module.
+  OpenBurnBarKernel: { maxFiles: 115, maxLines: 32300 },
+  // Wave 3.2 HermesModels: Hermes Square realtime/relay/room/skill models +
+  // the war-room dispatch protocol (mutually dependent models — one domain)
+  // + the CLI distill record + the tier/gating contract. 33/9690 measured.
+  OpenBurnBarHermesModels: { maxFiles: 42, maxLines: 12200 },
+  // Wave 3.2 MobilePolicy: the 14 mobile policy contracts. Pure leaf.
+  OpenBurnBarMobilePolicy: { maxFiles: 18, maxLines: 2200 },
+  // Wave 3.2 ProviderModels: provider accounts/connections/routing/quotas +
+  // the agent/provider identity core + usage-accounting primitives. The base
+  // leaf: Hermes/Vault/Usage/LaunchServices all depend on it. 22/6083.
+  OpenBurnBarProviderModels: { maxFiles: 28, maxLines: 7700 },
+  // Wave 3.2 VaultModels: CloudVault crypto/adapters + escrow + the roaming
+  // profile payload. 15/5546 measured.
+  OpenBurnBarVaultModels: { maxFiles: 19, maxLines: 7000 },
+  // Wave 3.2 UsageModels: token usage, rollups, cost/budget/standing-order
+  // models + the quota plan-settings donor that brought Quota back under its
+  // ceiling. 14/2824 measured.
+  OpenBurnBarUsageModels: { maxFiles: 18, maxLines: 3600 },
+  // InboxModels predates the gate's sibling list (chat/inbox/record models);
+  // 3.2 grew it 3/1412 -> 12/3439. Ceilinged now so the growth is bounded.
+  OpenBurnBarInboxModels: { maxFiles: 15, maxLines: 4300 },
   OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1200 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   // The final local-parser catalog adds bounded corpus parsers for the Linux

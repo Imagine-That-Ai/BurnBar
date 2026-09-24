@@ -1,4 +1,5 @@
 import Foundation
+@testable import OpenBurnBarHermesModels
 @testable import OpenBurnBarKernel
 import XCTest
 

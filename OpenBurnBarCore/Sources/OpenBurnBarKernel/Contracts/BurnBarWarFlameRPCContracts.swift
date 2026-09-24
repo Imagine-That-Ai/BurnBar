@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarHermesModels
 
 // MARK: - RPC contract
 

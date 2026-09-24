@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarProviderModels
 
 public struct BurnBarApprovalRequest: Codable, Hashable, Sendable {
     public let approvalID: BurnBarApprovalID

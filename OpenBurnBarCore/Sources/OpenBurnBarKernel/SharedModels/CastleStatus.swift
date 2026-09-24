@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarProviderModels
 
 public enum CastleWorkerPhase: String, Codable, CaseIterable, Sendable {
     case fanoutWakes = "fanout_wakes"

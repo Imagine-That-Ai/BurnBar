@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarProviderModels
 
 public enum OpenBurnBarIdentity {
     public static let productName = "OpenBurnBar"

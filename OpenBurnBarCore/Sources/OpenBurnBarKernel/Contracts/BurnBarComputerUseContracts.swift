@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarHermesModels
+import OpenBurnBarProviderModels
 
 // MARK: - Daemon ⇄ Mac socket RPC for Computer Use
 //

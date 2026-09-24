@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarKernel
+@testable import OpenBurnBarUsageModels
 
 /// Persistence is where a schedule quietly becomes the wrong schedule. These
 /// pin that every cadence survives the round trip exactly, and that a row which

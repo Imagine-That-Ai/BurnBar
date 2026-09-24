@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+@testable import OpenBurnBarInboxModels
 @testable import OpenBurnBarKernel
 
 #if canImport(ObjectiveC)

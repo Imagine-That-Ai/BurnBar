@@ -1065,7 +1065,14 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
     ),
     .target(
         name: "OpenBurnBarLaunchServices",
-        dependencies: ["OpenBurnBarKernel"],
+        dependencies: [
+            "OpenBurnBarKernel",
+            // Wave 3.2: SwitcherProfile moved in from Kernel SharedModels;
+            // it references provider models. Locked (used for the CLI launch
+            // cache) moved to PlatformSupport.
+            "OpenBurnBarProviderModels",
+            "OpenBurnBarPlatformSupport"
+        ],
         exclude: openBurnBarLaunchServicesExcludes
     ),
     .target(
@@ -1150,7 +1157,16 @@ let firstPartyTargetsBase: [Target] = [
         // `import OpenBurnBarKernel` consumers keep the same public surface.
         .target(
             name: "OpenBurnBarInboxModels",
-            dependencies: ["OpenBurnBarPlatformSupport"]
+            dependencies: [
+                "OpenBurnBarPlatformSupport",
+                // Wave 3.2: chat/inbox/record models moved in from Kernel
+                // SharedModels; they reference Hermes/vault/provider models
+                // plus assistant attachments.
+                "OpenBurnBarAssistantModels",
+                "OpenBurnBarHermesModels",
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarVaultModels"
+            ]
         ),
         // Project-code intelligence wire contracts (index/search/symbols/refs/
         // call graph/diagnostics/ops/snapshot/watch/explore) as a Foundation-only
@@ -1163,6 +1179,63 @@ let firstPartyTargetsBase: [Target] = [
         // surface. Deps: Foundation only.
         .target(
             name: "OpenBurnBarProjectCodeContracts"
+        ),
+        // Wave 3.2 (Kernel domain split): the five model leaves carved out of
+        // `OpenBurnBarKernel/SharedModels/` (Kernel was 200 files / 54,951
+        // lines, over its ceiling). Each leaf is Kernel-independent; Kernel
+        // depends on and `@_exported import`s all five so existing
+        // `import OpenBurnBarKernel` consumers keep compiling with zero
+        // call-site changes (AssistantModels/InboxModels/ProjectCodeContracts
+        // precedent). Product-less (package-internal, like SQLiteReader): the
+        // Kernel/Engine/Core umbrellas re-expose them. DAG (acyclic):
+        // ProviderModels -> {FirestoreModels, PlatformSupport};
+        // HermesModels -> {ProviderModels, PlatformSupport,
+        // DomainCoreRuntime} + FFI;
+        // VaultModels -> {ProviderModels, PlatformSupport} + FFI;
+        // UsageModels -> {ProviderModels, HermesModels, FirestoreModels,
+        // PlatformSupport} + swift-crypto off-Apple;
+        // MobilePolicy -> {UsageModels} (pulse-window display formatting).
+        .target(
+            name: "OpenBurnBarHermesModels",
+            dependencies: [
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarPlatformSupport",
+                "OpenBurnBarAssistantModels",
+                "OpenBurnBarDomainCoreRuntime"
+            ] + domainCoreDependencies
+        ),
+        .target(
+            name: "OpenBurnBarMobilePolicy",
+            dependencies: [
+                // The pulse-window policy formats cost/token volume for
+                // display via UsageModels' Foundation extensions.
+                "OpenBurnBarUsageModels"
+            ]
+        ),
+        .target(
+            name: "OpenBurnBarProviderModels",
+            dependencies: [
+                "OpenBurnBarFirestoreModels",
+                "OpenBurnBarPlatformSupport"
+            ]
+        ),
+        .target(
+            name: "OpenBurnBarVaultModels",
+            dependencies: [
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarPlatformSupport",
+                "OpenBurnBarDomainCoreRuntime"
+            ] + domainCoreDependencies
+        ),
+        .target(
+            name: "OpenBurnBarUsageModels",
+            dependencies: [
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarHermesModels",
+                "OpenBurnBarFirestoreModels",
+                "OpenBurnBarPlatformSupport",
+                swiftCryptoNonAppleDependency
+            ]
         ),
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
@@ -1180,6 +1253,13 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarPlatformSupport",
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",
+                // Wave 3.2: the five SharedModels domain leaves (re-exported
+                // below in PlatformSupportReexport.swift).
+                "OpenBurnBarHermesModels",
+                "OpenBurnBarMobilePolicy",
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarVaultModels",
+                "OpenBurnBarUsageModels",
                 swiftCryptoNonAppleDependency
             ] + domainCoreDependencies,
             resources: [.process("Resources")]
@@ -1501,7 +1581,25 @@ let firstPartyTargetsBase: [Target] = [
                 // Wave 2.7 AE-TESTABLE: `CodexRolloutJailTests` builds a fixture
                 // Codex `threads` database with GRDB and drives the production
                 // `fetchThreadRows` expansion path through it.
-                .product(name: "GRDB", package: "GRDB-SQLCipher")
+                .product(name: "GRDB", package: "GRDB-SQLCipher"),
+                // Wave 3.2 AE-TESTABLE: `StandingOrderRowTests` reaches the
+                // INTERNAL `StandingOrderRow.decode`, which moved with the
+                // usage models into `OpenBurnBarUsageModels`. `@testable
+                // import OpenBurnBarUsageModels` (added in that test) needs
+                // the module as a test-target dependency.
+                "OpenBurnBarUsageModels",
+                // Wave 3.2 AE-TESTABLE: `AIInboxMirrorCodecCoercionTests`
+                // reaches INTERNAL `dateValue`/`intValue`, which moved with
+                // the inbox codec into `OpenBurnBarInboxModels`.
+                "OpenBurnBarInboxModels",
+                // Wave 3.2 AE-TESTABLE: `HermesDomainCoreAdapterBoundaryTests`
+                // drives the adapter's internals, which moved into
+                // `OpenBurnBarHermesModels`.
+                "OpenBurnBarHermesModels",
+                // Wave 3.2 AE-TESTABLE: the three CloudVault domain-core
+                // adapter test suites drive adapter internals, which moved
+                // into `OpenBurnBarVaultModels`.
+                "OpenBurnBarVaultModels"
             ] + domainCoreDependencies + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
