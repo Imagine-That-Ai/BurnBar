@@ -3,12 +3,12 @@
   "inventoryKind": "tracked-root-blobs-and-dirs",
   "measuredFrom": "git ls-files --stage (index): root blobs plus first segments of nested paths; gitlinks excluded",
   "initialRootBlobCount": 57,
-  "measuredRootBlobCount": 49,
-  "maxRootBlobCount": 49,
-  "initialRootDirCount": 61,
-  "measuredRootDirCount": 61,
-  "maxRootDirCount": 61,
-  "measurementNote": "The base checkout measured 57 root blobs, matching the plan. W0-11 moves eight reports and deletes one root image, so the committed inventory holds 48; W0-7 adds two toolchain pin files (global.json, .xcode-version) recorded as schema-v2 amendments below — the base freeze itself is untouched. The Linux DEB deletion is not a root-blob change. Wave-0 0.6 untracks .audit.out (stale npm-audit output; 50→49 blobs), moves reports/ to docs/diligence/, and adds the directory dimension: 61 top-level dirs inventoried, so a new root directory now fails the gate the same way a new root file does.",
+  "measuredRootBlobCount": 50,
+  "maxRootBlobCount": 50,
+  "initialRootDirCount": 64,
+  "measuredRootDirCount": 64,
+  "maxRootDirCount": 64,
+  "measurementNote": "The base checkout measured 57 root blobs, matching the plan. W0-11 moves eight reports and deletes one root image, so the committed inventory holds 48; W0-7 adds two toolchain pin files (global.json, .xcode-version) recorded as schema-v2 amendments below \u2014 the base freeze itself is untouched. The Linux DEB deletion is not a root-blob change. Wave-0 0.6 untracks .audit.out (stale npm-audit output; 50\u219249 blobs), moves reports/ to docs/diligence/, and adds the directory dimension: 61 top-level dirs inventoried, so a new root directory now fails the gate the same way a new root file does.",
   "historicalRootPaths": [
     ".audit.out",
     ".firebaserc",
@@ -129,7 +129,10 @@
     "tools",
     "Vendor",
     "website",
-    "windows"
+    "windows",
+    "functions-identity",
+    "functions-media",
+    "functions-sync"
   ],
   "paths": [
     {
@@ -327,6 +330,10 @@
     {
       "path": "storage.rules",
       "purpose": "Firebase Storage authorization rules."
+    },
+    {
+      "path": "UNIT_ECONOMICS_COST_MODEL.md",
+      "purpose": "Wave 5 Firestore unit-economics cost model (counter fan-out, session_logs indexes, trim options)."
     }
   ],
   "directories": [
@@ -573,18 +580,50 @@
     {
       "path": "windows",
       "purpose": "Windows port and C# binding sources."
+    },
+    {
+      "path": "functions-identity",
+      "purpose": "Wave 3.5 deploy codebase: identity/billing functions."
+    },
+    {
+      "path": "functions-media",
+      "purpose": "Wave 3.5 deploy codebase: media/relay functions."
+    },
+    {
+      "path": "functions-sync",
+      "purpose": "Wave 3.5 deploy codebase: sync/quota functions."
     }
   ],
   "amendments": [
     {
       "path": "global.json",
       "addedBy": "Wave-0 W0-7",
-      "reason": "The .NET SDK resolves global.json by walking up from the project directory — it must live at the root. Floor: 10.0, rollForward: latestFeature (54 csproj files still target net8.0)."
+      "reason": "The .NET SDK resolves global.json by walking up from the project directory \u2014 it must live at the root. Floor: 10.0, rollForward: latestFeature (54 csproj files still target net8.0)."
     },
     {
       "path": ".xcode-version",
       "addedBy": "Wave-0 W0-7",
       "reason": "The Xcode major/range pin file the openburnbar-test-matrix drift tripwire reads (dotfile convention alongside .nvmrc). ADR docs/architecture/011-toolchain-pins.md."
+    },
+    {
+      "path": "UNIT_ECONOMICS_COST_MODEL.md",
+      "addedBy": "Wave 5 diligence",
+      "reason": "Standalone cost-model doc the revision plan calls out by name; root placement matches the plan reference."
+    },
+    {
+      "path": "functions-identity",
+      "addedBy": "Wave 3.5",
+      "reason": "Independent deploy codebase (firebase.json functions[]); must be a root source dir for predeploy + runtime packaging."
+    },
+    {
+      "path": "functions-media",
+      "addedBy": "Wave 3.5",
+      "reason": "Independent deploy codebase (firebase.json functions[]); must be a root source dir for predeploy + runtime packaging."
+    },
+    {
+      "path": "functions-sync",
+      "addedBy": "Wave 3.5",
+      "reason": "Independent deploy codebase (firebase.json functions[]); must be a root source dir for predeploy + runtime packaging."
     }
   ]
 }

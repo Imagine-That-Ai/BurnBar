@@ -100,6 +100,11 @@ jobs:
             npm ci --prefix "$pkg"
           done
 
+      - name: Build functions-shared runtime package
+        # @openburnbar/functions-shared exports resolve to lib/ (tsc output,
+        # not committed). tsc/vitest/builds in every codebase need it built first.
+        run: bash scripts/build-functions-shared.sh
+
       - name: Build Signal envelope contracts
         run: bash scripts/build-signal-envelope-contracts.sh
 
@@ -1210,6 +1215,11 @@ jobs:
       - name: Build entitlements contracts
         run: bash scripts/build-entitlements.sh
 
+      - name: Build functions-shared runtime package
+        # @openburnbar/functions-shared exports resolve to lib/ (tsc output,
+        # not committed). tsc/vitest/builds in every codebase need it built first.
+        run: bash scripts/build-functions-shared.sh
+
       - name: Build Signal envelope contracts
         run: bash scripts/build-signal-envelope-contracts.sh
 
@@ -1542,6 +1552,11 @@ jobs:
 
       - name: Install functions dependencies
         run: npm ci --prefix functions
+
+      - name: Build functions-shared runtime package
+        # @openburnbar/functions-shared exports resolve to lib/ (tsc output,
+        # not committed). tsc/vitest/builds in every codebase need it built first.
+        run: bash scripts/build-functions-shared.sh
 
       - name: Build Signal envelope contracts
         run: bash scripts/build-signal-envelope-contracts.sh

@@ -87,10 +87,17 @@ function isRetiredProjectID(projectID) {
 function shouldSkip(relativePath) {
   const parts = relativePath.split(path.sep);
   const basename = parts.at(-1) ?? "";
+  // Dated diligence snapshots (docs/diligence/*_YYYY-MM-DD.md) are frozen audit
+  // evidence, not live runbooks: the Sep-01 reports quote the retired project
+  // id *as findings*. Scrubbing them would falsify the record; skipping them
+  // keeps the guard focused on live docs/scripts/workflows.
+  const isDatedDiligenceSnapshot =
+    parts.includes("diligence") && /_20\d\d-\d\d-\d\d\.md$/.test(basename);
   return (
     parts.includes("__tests__") ||
     basename.includes(".test.") ||
-    parts.includes("node_modules")
+    parts.includes("node_modules") ||
+    isDatedDiligenceSnapshot
   );
 }
 
