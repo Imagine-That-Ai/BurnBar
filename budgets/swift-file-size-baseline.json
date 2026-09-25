@@ -1,6 +1,6 @@
 {
   "target": 1500,
-  "total": 34,
+  "total": 33,
   "files": [
     {
       "path": "AgentLens/Services/SettingsManager.swift",
@@ -36,11 +36,11 @@
     },
     {
       "path": "AgentLens/Views/Popover/MenuBarPopoverView.swift",
-      "lines": 1826
+      "lines": 1806
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarProviderContracts.swift",
-      "lines": 1782
+      "lines": 1780
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/InsightAnalysisEngine.swift",
@@ -55,12 +55,12 @@
       "lines": 1749
     },
     {
-      "path": "AgentLens/Views/Dashboard/DashboardView.swift",
-      "lines": 1748
-    },
-    {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarAnthropicProviderExecutor.swift",
       "lines": 1734
+    },
+    {
+      "path": "AgentLens/Views/Dashboard/DashboardView.swift",
+      "lines": 1732
     },
     {
       "path": "AgentLens/Views/Inbox/InboxView.swift",
@@ -81,10 +81,6 @@
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Linux/OpenBurnBarHTTPGatewayServerLinux.swift",
       "lines": 1633
-    },
-    {
-      "path": "AgentLens/Views/Dashboard/Components/BurnBarTopRail.swift",
-      "lines": 1604
     },
     {
       "path": "AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift",
@@ -120,7 +116,11 @@
     },
     {
       "path": "AgentLens/Views/Settings/CloudStoreSettingsView.swift",
-      "lines": 1548
+      "lines": 1540
+    },
+    {
+      "path": "AgentLens/Views/Dashboard/Components/BurnBarTopRail.swift",
+      "lines": 1539
     },
     {
       "path": "OpenBurnBarMobile/Services/PiService.swift",
@@ -133,10 +133,6 @@
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ComputerUse/LinuxDaemonCloudCredentialAuthority.swift",
       "lines": 1509
-    },
-    {
-      "path": "AgentLens/Services/SmartHub/SmartHubBridgeController.swift",
-      "lines": 1501
     }
   ]
 }
