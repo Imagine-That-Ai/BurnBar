@@ -76,7 +76,7 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
 
     func testEnableToggleRunsRepairPath() async throws {
         let operations = InMemorySmartHubDisplayOperations(probeResult: .bound)
-        var persistedEnabled: Bool?
+        var persistedEnabled = false
         let model = SmartHubDisplaySettingsModel(
             enabled: false,
             initialConfig: .default,
@@ -87,7 +87,7 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         await model.setEnabledFromToggle(true)
 
         XCTAssertTrue(model.enabled)
-        XCTAssertTrue(persistedEnabled ?? false)
+        XCTAssertTrue(persistedEnabled)
         XCTAssertEqual(model.lastRepairStatus?.phase, .working)
         XCTAssertEqual(model.operationState.lastSucceededKind, .repair)
         XCTAssertEqual(operations.refreshCount, 1)
@@ -95,7 +95,7 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
 
     func testDisableToggleStopsBridgeAndPersistsOff() async throws {
         let operations = InMemorySmartHubDisplayOperations(probeResult: .bound)
-        var persistedEnabled: Bool?
+        var persistedEnabled = true
         let model = SmartHubDisplaySettingsModel(
             enabled: true,
             initialConfig: .default,
@@ -106,7 +106,7 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         await model.setEnabledFromToggle(false)
 
         XCTAssertFalse(model.enabled)
-        XCTAssertFalse(persistedEnabled ?? true)
+        XCTAssertFalse(persistedEnabled)
         XCTAssertEqual(operations.stopCount, 1)
         XCTAssertEqual(model.operationState.lastSucceededKind, .stop)
     }
