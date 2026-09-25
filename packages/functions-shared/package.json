@@ -37,6 +37,8 @@
   },
   "exports": {
     "./package.json": "./package.json",
-    "./*.js": "./lib/*.js"
+    "./*.js": "./lib/*.js",
+    "./*/*.js": "./lib/*/*.js",
+    "./*/*/*.js": "./lib/*/*/*.js"
   }
 }

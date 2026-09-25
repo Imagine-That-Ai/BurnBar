@@ -11,3 +11,7 @@ if [[ ! -x "$pkg/node_modules/.bin/tsc" ]]; then
 fi
 
 npm run build --prefix "$pkg"
+
+# tsc --noEmit / vitest jobs never run a codebase `prebuild`, so sync here:
+# postinstall's sync ran before this package was built and skipped it.
+node scripts/sync-functions-vendors.mjs

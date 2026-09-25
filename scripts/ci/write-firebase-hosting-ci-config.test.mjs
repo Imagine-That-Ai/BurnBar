@@ -75,7 +75,10 @@ test("portable Functions config resolves inside a distinct deploy artifact root"
   );
   try {
     const deployRoot = join(root, "deploy-runner", "prepared-artifact");
-    mkdirSync(join(deployRoot, "functions"), { recursive: true });
+    // Wave 3.5: every deploy codebase source is staged beside the config.
+    for (const codebase of ["functions", "functions-identity", "functions-sync", "functions-media"]) {
+      mkdirSync(join(deployRoot, codebase), { recursive: true });
+    }
     const output = join(deployRoot, "firebase-functions.ci.json");
     const result = generate([
       "--mode",
@@ -88,15 +91,18 @@ test("portable Functions config resolves inside a distinct deploy artifact root"
     assert.equal(result.status, 0, result.stderr || result.stdout);
 
     const config = JSON.parse(readFileSync(output, "utf8"));
-    assert.equal(config.functions.source, "functions");
-    assert.equal(
-      resolve(dirname(output), config.functions.source),
-      join(deployRoot, "functions"),
-    );
-    assert.notEqual(
-      resolve(dirname(output), config.functions.source),
-      resolve(dirname(generator), "../..", "functions"),
-    );
+    assert.ok(Array.isArray(config.functions));
+    assert.equal(config.functions.length, 4);
+    for (const entry of config.functions) {
+      assert.equal(
+        resolve(dirname(output), entry.source),
+        join(deployRoot, entry.source),
+      );
+      assert.notEqual(
+        resolve(dirname(output), entry.source),
+        resolve(dirname(generator), "../..", entry.source),
+      );
+    }
   } finally {
     rmSync(root, { force: true, recursive: true });
   }

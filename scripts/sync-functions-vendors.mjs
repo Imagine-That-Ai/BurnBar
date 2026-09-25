@@ -60,9 +60,16 @@ for (const packageName of PACKAGES) {
       }
     }
     // Deep-import-only runtime: map @scope/pkg/<path>.js onto lib/<path>.js
-    // so deployed code never spells the build output dir.
+    // so deployed code never spells the build output dir. Keep in sync with
+    // packages/functions-shared/package.json (nested callables/domains/
+    // providers/shared imports need the deeper levels).
     if (packageName === "functions-shared") {
-      out.exports = { "./package.json": "./package.json", "./*.js": "./lib/*.js" };
+      out.exports = {
+        "./package.json": "./package.json",
+        "./*.js": "./lib/*.js",
+        "./*/*.js": "./lib/*/*.js",
+        "./*/*/*.js": "./lib/*/*/*.js",
+      };
     }
     writeFileSync(join(targetRoot, "package.json"), `${JSON.stringify(out, null, 2)}\n`);
     cpSync(sourceLib, join(targetRoot, "lib"), {

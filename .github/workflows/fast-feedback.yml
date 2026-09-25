@@ -1567,6 +1567,13 @@ jobs:
       - name: Build functions
         run: npm run build --prefix functions
 
+      - name: Build functions-identity
+        # The billing harnesses import functions-identity/lib (App Store JWS
+        # verifier, rollups); it must be installed and built like functions.
+        run: |
+          npm ci --prefix functions-identity
+          npm run build --prefix functions-identity
+
       - name: App Store JWS verifier regression
         working-directory: functions
         run: node scripts/test-appstore.mjs
