@@ -1,6 +1,7 @@
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarAnalytics
 
 // MARK: - Memory cloud-sync domain (PR-E2 scheduling wiring, DEFAULT OFF)
 //

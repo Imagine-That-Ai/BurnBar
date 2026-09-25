@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import os
 import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Smart Hub Bridge Controller
 //

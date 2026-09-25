@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import OpenBurnBarKernel
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 // MARK: - Mission Console Window Controller (macOS)
 //

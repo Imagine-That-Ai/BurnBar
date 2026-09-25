@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarAnalytics
 
 /// Sync domain for downloading remote data from Firestore.
 ///

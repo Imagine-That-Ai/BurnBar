@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import OpenBurnBarKernel
+import OpenBurnBarAnalytics
 
 // MARK: - Settings Action Registry
 

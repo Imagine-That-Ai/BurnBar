@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarAnalytics
 
 /// The recorder is the one wrapper every instrumentation call goes through.
 /// These assert the three contract guarantees — silent before consent, correct

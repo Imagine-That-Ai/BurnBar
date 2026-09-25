@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
+import OpenBurnBarKernel
 
 // MARK: - Menu Bar Popover View
 

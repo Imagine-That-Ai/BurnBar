@@ -4,6 +4,7 @@ import OpenBurnBarInboxModels
 import OpenBurnBarKernel
 import OpenBurnBarQuota
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 /// Shared, observable cache of the per-runtime Mac model catalogs.
 ///

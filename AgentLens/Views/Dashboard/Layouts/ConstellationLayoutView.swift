@@ -1,6 +1,7 @@
 import OpenBurnBarKernel
 import OpenBurnBarUI
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Ask (storage id `constellation`)
 //

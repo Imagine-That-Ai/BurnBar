@@ -1,5 +1,6 @@
 import Foundation
 import ServiceManagement
+import OpenBurnBarKernel
 
 // MARK: - Behavior Settings
 

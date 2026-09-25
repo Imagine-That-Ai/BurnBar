@@ -1,4 +1,5 @@
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
 typealias AgentProvider = OpenBurnBar.AgentProvider
 typealias TokenUsage = OpenBurnBar.TokenUsage

@@ -6,6 +6,7 @@ import Foundation
 import GoogleSignIn
 import OpenBurnBarKernel
 import OSLog
+import OpenBurnBarAnalytics
 
 #if canImport(Sentry)
 import Sentry

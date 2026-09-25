@@ -2,6 +2,7 @@ import AppKit
 import OpenBurnBarCore
 import SwiftUI
 import WebKit
+import OpenBurnBarAnalytics
 
 // MARK: - Dashboard View
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarAnalytics
 
 /// Top-level workspace for the macOS Insights tab.
 ///

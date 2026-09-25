@@ -25,7 +25,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Kernel ids are parsed out of the KernelId union so this gate can never drift
 // from the registry (legibility-check.mjs hardcodes and has already drifted).
 async function kernelIds() {
-  const src = await readFile(resolve(__dirname, "../lib/gl/engine/types.ts"), "utf8");
+  const src = await readFile(
+    resolve(__dirname, "../../../packages/gl-engine/src/engine/types.ts"),
+    "utf8",
+  );
   const union = src.match(/export type KernelId =([\s\S]*?);/);
   if (!union) throw new Error("KernelId union not found in types.ts");
   return [...union[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);

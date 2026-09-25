@@ -4,6 +4,7 @@ import OpenBurnBarInsights
 import OpenBurnBarKernel
 import OpenBurnBarUI
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // Extracted verbatim from AgentLensApp.swift (audit wave 4, item 14).
 // Post-scene startup: installs the AppCommandRouter closures (dashboard,

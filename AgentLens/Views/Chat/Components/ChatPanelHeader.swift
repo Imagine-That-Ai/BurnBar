@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarComputerUseCore
+import OpenBurnBarAnalytics
 
 struct ChatPanelHeader: View {
     @Bindable var controller: ChatSessionController

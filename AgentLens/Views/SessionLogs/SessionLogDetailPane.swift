@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import OpenBurnBarKernel
 
 // MARK: - Transcript Role Filter
 

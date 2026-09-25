@@ -4,6 +4,7 @@ import OpenBurnBarKernel
 import OpenBurnBarLogParsers
 import OpenBurnBarQuota
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 // MARK: - General Settings View (iOS-style landing)
 

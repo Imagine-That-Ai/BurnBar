@@ -2,6 +2,7 @@ import AppKit
 import OpenBurnBarCore
 import OSLog
 import SwiftUI
+import OpenBurnBarAnalytics
 
 /// Single source of truth for "this process is hosting XCTest, not a real user."
 /// Keeps test hosts from starting heavyweight scene/bootstrap work before XCTest connects.

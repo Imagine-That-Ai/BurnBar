@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarAnalytics
 @testable import OpenBurnBar
 
 /// Shared analytics test doubles. The fake transport captures every send and

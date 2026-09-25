@@ -1,6 +1,7 @@
 import AppKit
 import AuthenticationServices
 import CryptoKit
+import OpenBurnBarAnalytics
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 import FirebaseFunctions

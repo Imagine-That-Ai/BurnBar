@@ -3,10 +3,11 @@ import GRDB
 import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
-private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
-private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot
-private typealias ProviderQuotaWindowKind = OpenBurnBar.ProviderQuotaWindowKind
+private typealias ProviderQuotaBucket = OpenBurnBarKernel.ProviderQuotaBucket
+private typealias ProviderQuotaSnapshot = OpenBurnBarKernel.ProviderQuotaSnapshot
+private typealias ProviderQuotaWindowKind = OpenBurnBarKernel.ProviderQuotaWindowKind
 
 @MainActor
 extension ProviderQuotaServiceTests {

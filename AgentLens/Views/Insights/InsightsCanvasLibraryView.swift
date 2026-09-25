@@ -4,6 +4,7 @@ import OpenBurnBarInsights
 import OpenBurnBarKernel
 import OpenBurnBarQuota
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 struct InsightsCanvasLibraryView: View {
 

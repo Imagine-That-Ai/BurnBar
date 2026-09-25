@@ -3,6 +3,7 @@ import SwiftUI
 import OpenBurnBarInsights
 import OpenBurnBarKernel
 import OpenBurnBarLogParsers
+import OpenBurnBarAnalytics
 
 /// Owns the verdict pipeline state on the macOS Insights tab.
 ///

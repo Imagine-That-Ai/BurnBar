@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarAnalytics
 
 @MainActor
 enum AnalyticsRuntime {
@@ -21,7 +22,9 @@ enum AnalyticsRuntime {
         if let consentStore {
             return consentStore
         }
-        let store = AnalyticsConsentStore()
+        // Pinned to .standard: the Core default is the shared App Group suite (iOS
+        // extensions), but macOS has always persisted consent in .standard.
+        let store = AnalyticsConsentStore(defaults: .standard)
         consentStore = store
         return store
     }
@@ -33,7 +36,9 @@ enum AnalyticsRuntime {
         let sessionId = UUID().uuidString
         let transport = AmplitudeTransport(
             apiKey: AnalyticsConfig.apiKey,
-            deviceId: AnalyticsIdentity.deviceId()
+            // Pinned to .standard: same as consent above — the macOS device id has
+            // always lived in .standard, not the iOS App Group suite.
+            deviceId: AnalyticsIdentity.deviceId(defaults: .standard)
         )
         let instance = Analytics(
             consent: consent,

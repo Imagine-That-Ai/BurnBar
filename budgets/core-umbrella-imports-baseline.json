@@ -1,6 +1,6 @@
 {
   "note": "Per-consumer-root files importing the OpenBurnBarCore umbrella (docs/CORE_DECOMPOSITION_PROGRAM.md). Covers ALL Swift import-attribute forms including `@testable import OpenBurnBarCore` and `@_exported`/`@_spi(...)` prefixes (so no repoint can leave a hidden umbrella import). Shrink-only: no NEW file may import the umbrella in a tracked root. Privileged roots (OpenBurnBarDaemon, OpenBurnBarWidget, OpenBurnBarKeyboard) ratchet to zero after their repoint packets (S17/S18/S19); wave 3.3 codemodded the apps to explicit imports, keeping a tail of module-qualified, high-fan-out, and size-capped files. History: budgets/umbrella-imports-trend.jsonl. Regenerate via scripts/debt/check-core-umbrella-imports-budget.sh --update.",
-  "total": 78,
+  "total": 76,
   "roots": {
     "OpenBurnBarDaemon": {
       "count": 0,
@@ -15,7 +15,7 @@
       "files": []
     },
     "AgentLens": {
-      "count": 72,
+      "count": 70,
       "files": [
         "AgentLens/App/AgentLensApp.swift",
         "AgentLens/App/AppDelegate+StatusItem.swift",
@@ -55,11 +55,9 @@
         "AgentLens/Services/LogParser/LiftedEngineTypeAliases.swift",
         "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonSocketClient.swift",
         "AgentLens/Services/OpenBurnBarStartupRecovery.swift",
-        "AgentLens/Services/ProviderQuota/AnthropicCredentialProbe.swift",
         "AgentLens/Services/ProviderQuota/ClaudeQuotaBridgeManager.swift",
         "AgentLens/Services/ProviderQuota/LiftedQuotaTypeAliases.swift",
         "AgentLens/Services/ProviderQuota/ProviderQuotaService.swift",
-        "AgentLens/Services/ProviderQuota/ProviderQuotaTypes.swift",
         "AgentLens/Services/ProviderUsageAPI/AnthropicUsageAPI.swift",
         "AgentLens/Services/ProviderUsageAPI/GitHubCopilotUsageAPI.swift",
         "AgentLens/Services/Search/RetrievalQueryTypes.swift",

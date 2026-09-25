@@ -1,6 +1,7 @@
 @preconcurrency import SwiftUI
 import AppKit
 import StoreKit
+import OpenBurnBarAnalytics
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 @preconcurrency import FirebaseFirestore

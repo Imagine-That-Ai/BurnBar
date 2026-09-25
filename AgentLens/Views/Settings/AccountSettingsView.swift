@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import OpenBurnBarAnalytics
 
 private enum AccountSettingsLegalURLs {
     static let privacy = URL(string: "https://burnbar.ai/legal/privacy-policy")!

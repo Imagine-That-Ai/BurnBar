@@ -5,6 +5,7 @@ import OpenBurnBarKernel
 import OpenBurnBarLogParsers
 import OpenBurnBarQuota
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 // MARK: - Provider Card
 

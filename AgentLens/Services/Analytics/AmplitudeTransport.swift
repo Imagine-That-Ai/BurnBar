@@ -1,5 +1,6 @@
 import Foundation
 import AmplitudeSwift
+import OpenBurnBarAnalytics
 
 /// Production `AnalyticsTransporting` backed by the Amplitude SDK. The recorder
 /// owns lifecycle: `start()` is called only after consent is granted, `stop()` on

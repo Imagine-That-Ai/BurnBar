@@ -47,6 +47,23 @@ public struct AnalyticsSuperProperties {
     }
 
     /// iPhone app surface (`platform: ios`).
+    /// macOS surface (`platform: macos`).
+    public static func macOS(
+        bundle: Bundle = .main,
+        locale: Locale = .current,
+        sessionId: String,
+        consentVersion: String = "1"
+    ) -> AnalyticsSuperProperties {
+        AnalyticsSuperProperties(
+            platform: "macos",
+            appVersion: bundle.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+            appBuild: bundle.infoDictionary?["CFBundleVersion"] as? String ?? "unknown",
+            locale: locale.identifier,
+            sessionId: sessionId,
+            consentVersion: consentVersion
+        )
+    }
+
     public static func iOS(
         bundle: Bundle = .main,
         locale: Locale = .current,

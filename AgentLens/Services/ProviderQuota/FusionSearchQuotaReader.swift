@@ -1,6 +1,7 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Fusion Search Quota Reader (macOS)
 //

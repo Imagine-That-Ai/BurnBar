@@ -7,6 +7,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Mac Copy
 

@@ -6,6 +6,7 @@ import OpenBurnBarPretext
 import OpenBurnBarQuota
 import OpenBurnBarUI
 import OpenBurnBarHermes
+import OpenBurnBarAnalytics
 
 // MARK: - Chat Panel
 

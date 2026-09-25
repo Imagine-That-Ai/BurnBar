@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
 /// Regression coverage for "Codex quota never resets after the 5h clock rolls
 /// over." The reset countdown advanced past a stale `resetsAt` (showing a fresh

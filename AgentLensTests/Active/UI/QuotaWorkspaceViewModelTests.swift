@@ -2,9 +2,10 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
-private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
-private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot
+private typealias ProviderQuotaBucket = OpenBurnBarKernel.ProviderQuotaBucket
+private typealias ProviderQuotaSnapshot = OpenBurnBarKernel.ProviderQuotaSnapshot
 
 @MainActor
 final class QuotaWorkspaceViewModelTests: XCTestCase {

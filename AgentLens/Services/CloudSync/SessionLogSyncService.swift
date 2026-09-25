@@ -1,5 +1,6 @@
 import FirebaseAuth
 import FirebaseFirestore
+import OpenBurnBarAnalytics
 @preconcurrency import FirebaseFunctions
 import Foundation
 import os

@@ -3,9 +3,11 @@ import GRDB
 import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarAnalytics
+import OpenBurnBarKernel
 
-private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
-private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot
+private typealias ProviderQuotaBucket = OpenBurnBarKernel.ProviderQuotaBucket
+private typealias ProviderQuotaSnapshot = OpenBurnBarKernel.ProviderQuotaSnapshot
 
 @MainActor
 final class UsageSyncRoundTripTests: XCTestCase {
@@ -1296,8 +1298,8 @@ final class UsageSyncRoundTripTests: XCTestCase {
         )
     }
 
-    private func makeQuotaSnapshot(accountID: String, sourceId: String, used: Double) -> OpenBurnBar.ProviderQuotaSnapshot {
-        OpenBurnBar.ProviderQuotaSnapshot(
+    private func makeQuotaSnapshot(accountID: String, sourceId: String, used: Double) -> OpenBurnBarKernel.ProviderQuotaSnapshot {
+        OpenBurnBarKernel.ProviderQuotaSnapshot(
             provider: .codex,
             providerID: .codex,
             accountID: accountID,
@@ -1310,7 +1312,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
             managementURL: "https://chatgpt.com/codex",
             statusMessage: "Codex quota.",
             buckets: [
-                OpenBurnBar.ProviderQuotaBucket(
+                OpenBurnBarKernel.ProviderQuotaBucket(
                     key: "quota",
                     label: "Usage",
                     windowKind: .rollingHours,

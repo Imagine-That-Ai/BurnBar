@@ -3,6 +3,7 @@ import OpenBurnBarInboxModels
 import OpenBurnBarKernel
 import OpenBurnBarQuota
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 // MARK: - Charts Page
 //

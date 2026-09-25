@@ -6,6 +6,7 @@ import OpenBurnBarKernel
 import OpenBurnBarQuota
 import OpenBurnBarUI
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Settings View
 

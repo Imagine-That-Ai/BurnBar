@@ -2,6 +2,7 @@ import Foundation
 import CoreTransferable
 import SwiftUI
 import UniformTypeIdentifiers
+import OpenBurnBarKernel
 
 struct PaneThreadDropPayload: Codable, Transferable {
     let threadID: String

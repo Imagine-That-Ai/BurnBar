@@ -3,6 +3,7 @@ import GRDB
 import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarAnalytics
 
 /// Wave 0.5 consent: cloud sync is off until the user turns it on, the choice
 /// persists across launches, and a closed gate means zero Firestore writes

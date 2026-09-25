@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarAnalytics
 
 /// Lifecycle of a one-shot orphaned-cloud-doc reconciliation request.
 ///

@@ -1,6 +1,7 @@
 import SwiftUI
 import OpenBurnBarKernel
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 struct DashboardModelLaneView: View {
     var models: [ModelSummary]

@@ -497,6 +497,10 @@ targets:
         embed: false
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+      # 3.4: app Analytics twins consolidated into the Core product (consent,
+      # identity, event registry, recorder); AmplitudeTransport stays in-app.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAnalytics
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
       - package: OpenBurnBarCore

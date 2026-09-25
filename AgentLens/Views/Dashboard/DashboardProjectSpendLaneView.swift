@@ -4,6 +4,7 @@ import OpenBurnBarKernel
 import OpenBurnBarQuota
 import OpenBurnBarUI
 import OpenBurnBarLogParsers
+import OpenBurnBarAnalytics
 
 // MARK: - Project Spend Lane
 

@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarAnalytics
 
 /// Governance: every macOS `AnalyticsEvent` must be registered in the canonical
 /// taxonomy (`docs/analytics/event-taxonomy.md`) — an off-taxonomy name fails CI.

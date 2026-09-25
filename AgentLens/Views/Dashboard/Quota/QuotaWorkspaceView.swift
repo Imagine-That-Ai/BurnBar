@@ -4,6 +4,7 @@ import OpenBurnBarKernel
 import OpenBurnBarLogParsers
 import OpenBurnBarQuota
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 #if canImport(AppKit)
 import AppKit

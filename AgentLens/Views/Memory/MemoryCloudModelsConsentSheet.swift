@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Memory Pro cloud-models consent (first enable)
 

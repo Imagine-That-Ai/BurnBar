@@ -3,6 +3,7 @@ import SwiftUI
 import OpenBurnBarKernel
 import OpenBurnBarLaunchServices
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 // MARK: - Plan Strategy
 

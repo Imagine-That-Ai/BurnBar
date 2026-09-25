@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarKernel
+import OpenBurnBarAnalytics
 
 // MARK: - Plasma model selector
 //

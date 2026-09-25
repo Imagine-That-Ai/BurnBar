@@ -1,6 +1,7 @@
 import AppKit
 import OpenBurnBarCore
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - BurnBarTopRail
 //

@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
+import OpenBurnBarAnalytics
 #if canImport(AppKit)
 import AppKit
 #endif

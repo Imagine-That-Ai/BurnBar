@@ -5,6 +5,7 @@ import OpenBurnBarLogParsers
 import OpenBurnBarUI
 import OpenBurnBarVectorKit
 import OpenBurnBarComputerUseCore
+import OpenBurnBarAnalytics
 #if canImport(AppKit)
 import AppKit
 #endif

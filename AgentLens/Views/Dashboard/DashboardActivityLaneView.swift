@@ -2,6 +2,7 @@ import SwiftUI
 import OpenBurnBarKernel
 import OpenBurnBarLogParsers
 import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 struct DashboardActivityLaneView: View {
     var usages: [TokenUsage]

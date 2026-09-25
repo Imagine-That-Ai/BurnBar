@@ -3,6 +3,7 @@ import IOKit.ps
 import OpenBurnBarKernel
 import OpenBurnBarUI
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // Extracted verbatim from AppDelegate.swift (audit wave 4, item 14).
 // Live desktop-wallpaper orchestration: settings/notification observers,

@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Alerts Settings View (iOS-style landing)
 

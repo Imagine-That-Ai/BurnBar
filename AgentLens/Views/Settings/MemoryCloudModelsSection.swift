@@ -1,5 +1,6 @@
 import OpenBurnBarKernel
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Memory Pro: cloud models for memory (Settings → Privacy)
 
