@@ -1581,7 +1581,6 @@ let firstPartyTargetsBase: [Target] = [
                 // Wave 2.7 AE-TESTABLE: `CodexRolloutJailTests` builds a fixture
                 // Codex `threads` database with GRDB and drives the production
                 // `fetchThreadRows` expansion path through it.
-                .product(name: "GRDB", package: "GRDB-SQLCipher"),
                 // Wave 3.2 AE-TESTABLE: `StandingOrderRowTests` reaches the
                 // INTERNAL `StandingOrderRow.decode`, which moved with the
                 // usage models into `OpenBurnBarUsageModels`. `@testable
@@ -1600,10 +1599,17 @@ let firstPartyTargetsBase: [Target] = [
                 // adapter test suites drive adapter internals, which moved
                 // into `OpenBurnBarVaultModels`.
                 "OpenBurnBarVaultModels"
-            ] + domainCoreDependencies + swiftTestingAppleDependencies,
+                // Boundary builds exclude the GRDB-SQLCipher package (see
+                // dependencies above), so the Wave 2.7 GRDB edge — and the
+                // GRDB-importing test file itself (see exclude:) — is
+                // Apple-full-graph-only.
+            ] + (buildForLinuxBoundary ? [] : [
+                .product(name: "GRDB", package: "GRDB-SQLCipher")
+            ]) + domainCoreDependencies + swiftTestingAppleDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
-                + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),
+                + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests")
+                + (buildForLinuxBoundary ? ["CodexRolloutJailTests.swift"] : []),
             sources: openBurnBarCoreOffAppleTestSources,
             resources: [
                 .process("Fixtures")
