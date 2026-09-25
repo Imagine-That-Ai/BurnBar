@@ -14,12 +14,8 @@ import { describe, expect, it } from "vitest";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
 import { usageContribution } from "../rollupCounters.js";
-import {
-  aggregateComboSummaries,
-  aggregateExecutionSourceSummaries,
-  computeUserRollupsFromCounters,
-  rebuildUserRollupCounters,
-} from "../rollupCompute.js";
+import { aggregateComboSummaries, aggregateExecutionSourceSummaries } from "../rollupAggregates.js";
+import { computeUserRollupsFromCounters, rebuildUserRollupCounters } from "../rollupCompute.js";
 import type { UsageEventDoc } from "../../../packages/functions-shared/src/types.js";
 
 type Doc = Record<string, unknown>;

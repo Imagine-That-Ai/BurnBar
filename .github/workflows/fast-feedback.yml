@@ -85,10 +85,20 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: functions/package-lock.json
+          cache-dependency-path: |
+            functions/package-lock.json
+            functions-identity/package-lock.json
+            functions-sync/package-lock.json
+            functions-media/package-lock.json
+            packages/functions-shared/package-lock.json
 
       - name: Install functions dependencies
-        run: npm ci --prefix functions
+        # All five codebases: the unified vitest suite aliases them together
+        # and ESLint (incl. the Wave 4 raw-fetch ban) runs in each one.
+        run: |
+          for pkg in functions functions-identity functions-sync functions-media packages/functions-shared; do
+            npm ci --prefix "$pkg"
+          done
 
       - name: Build Signal envelope contracts
         run: bash scripts/build-signal-envelope-contracts.sh
@@ -110,7 +120,14 @@ jobs:
         run: cd functions && npx tsc --noEmit
 
       - name: ESLint
-        run: npm run lint --prefix functions
+        # Every deploy codebase, not just functions: the fetch ban and max-lines
+        # floors must hold wherever Cloud Functions code ships (wave 4).
+        run: |
+          for pkg in functions functions-identity functions-sync functions-media packages/functions-shared; do
+            echo "::group::ESLint $pkg"
+            npm run lint --prefix "$pkg"
+            echo "::endgroup::"
+          done
 
       - name: Unit tests (vitest)
         run: npm run test:unit --prefix functions

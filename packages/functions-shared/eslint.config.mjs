@@ -24,6 +24,30 @@ export default [
       ...tsPlugin.configs.recommended.rules,
       "no-console": "error",
 
+      // Wave 4: raw fetch() bypasses the resilience helpers (retry, timeout,
+      // circuit breaking). All production HTTP MUST go through providerFetch,
+      // resilientFetch, or the *WithResilience wrappers.
+      // no-restricted-globals catches bare fetch(); no-restricted-properties
+      // catches the globalThis.fetch spelling the old regex missed. Tests and
+      // the canonical owner (resilienceHelpers.ts) are carved out below.
+      "no-restricted-globals": [
+        "error",
+        {
+          name: "fetch",
+          message:
+            "Use providerFetch/resilientFetch from resilienceHelpers.js — raw fetch() bypasses retry/timeout/circuit breaking.",
+        },
+      ],
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "globalThis",
+          property: "fetch",
+          message:
+            "Use providerFetch/resilientFetch from resilienceHelpers.js — raw globalThis.fetch() bypasses retry/timeout/circuit breaking.",
+        },
+      ],
+
       // F-RR09-002: the raw firebase-functions logger bypasses the PII/secret
       // scrubber in logging.ts. All production logging MUST go through
       // logInfo/logWarn/logError so UIDs, tokens, and path-embedded identifiers
@@ -102,6 +126,25 @@ export default [
     files: ["src/logging.ts"],
     rules: {
       "no-console": "off",
+    },
+  },
+  {
+    // Canonical fetch owner: resilienceHelpers.ts holds the one sanctioned
+    // raw fetch() all wrappers build on (asserted by
+    // scripts/ci/verify-resilience-wiring.sh).
+    files: ["src/resilienceHelpers.ts"],
+    rules: {
+      "no-restricted-globals": "off",
+      "no-restricted-properties": "off",
+    },
+  },
+  {
+    // Integration tests drive real endpoints; unit-test fetch stubs pass a
+    // string ('fetch'), which these rules do not flag.
+    files: ["src/__tests__/**/*.ts", "src/**/*.test.ts"],
+    rules: {
+      "no-restricted-globals": "off",
+      "no-restricted-properties": "off",
     },
   },
   // Must be last: turns off all ESLint rules that conflict with Prettier formatting
