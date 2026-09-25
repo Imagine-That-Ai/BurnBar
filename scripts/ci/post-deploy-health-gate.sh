@@ -198,7 +198,9 @@ for label, path in (("healthLive", live_path), ("healthReady", ready_path)):
     domain_core = document.get("domainCore")
     if not isinstance(domain_core, dict):
         raise SystemExit(f"FAIL: {label} omits domain-core runtime identity")
-    expected_loaded = {
+    # Decision 4 (wave 3.7): legacy deployments must serve loadedCore null --
+    # WASM never loads on the legacy path. Shadow/rust serve the exact tuple.
+    expected_loaded = None if pricing == "legacy" else {
         "version": version,
         "abiVersion": int(abi),
         "sourceSha256": source_sha,
@@ -213,7 +215,10 @@ for label, path in (("healthLive", live_path), ("healthReady", ready_path)):
             or domain_core.get("pricingMode") != pricing
             or domain_core.get("loadedCore") != expected_loaded
             or domain_core.get("artifactManifest") != expected_manifest):
-        raise SystemExit(f"FAIL: {label} does not serve the exact loaded domain-core artifact: {domain_core!r}")
+        detail = ("loadedCore null (legacy must not load WASM)"
+                  if pricing == "legacy"
+                  else "the exact loaded domain-core artifact")
+        raise SystemExit(f"FAIL: {label} does not serve {detail}: {domain_core!r}")
     runtime = domain_core.get("runtime")
     required = ("service", "revision", "configuration", "functionTarget")
     if not isinstance(runtime, dict) or any(not isinstance(runtime.get(key), str) or not runtime[key] for key in required):

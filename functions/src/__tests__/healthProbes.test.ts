@@ -20,6 +20,7 @@ vi.mock("../../../packages/functions-shared/src/domainCoreBuildProfile.js", () =
 
 vi.mock("../../../packages/functions-shared/src/domainCorePricing.js", () => ({
   loadedDomainCorePricingIdentity: vi.fn(),
+  resolveDomainCorePricingMode: vi.fn(),
   DomainCorePricingError: class DomainCorePricingError extends Error {},
 }));
 
@@ -46,12 +47,16 @@ vi.mock("firebase-admin/firestore", () => ({
 }));
 
 import { domainCoreDeploymentIdentity } from "../../../packages/functions-shared/src/domainCoreBuildProfile.js";
-import { loadedDomainCorePricingIdentity } from "../../../packages/functions-shared/src/domainCorePricing.js";
+import {
+  loadedDomainCorePricingIdentity,
+  resolveDomainCorePricingMode,
+} from "../../../packages/functions-shared/src/domainCorePricing.js";
 import { checkPublicHttpEndpointRateLimit } from "../../../packages/functions-shared/src/callables/publicRateLimit.js";
 import { getFirestore } from "firebase-admin/firestore";
 
 const mockDeploymentIdentity = vi.mocked(domainCoreDeploymentIdentity);
 const mockLoadedCore = vi.mocked(loadedDomainCorePricingIdentity);
+const mockResolveMode = vi.mocked(resolveDomainCorePricingMode);
 const mockRateLimit = vi.mocked(checkPublicHttpEndpointRateLimit);
 const mockGetFirestore = vi.mocked(getFirestore);
 
@@ -197,10 +202,14 @@ describe("health probes — liveness can never throttle as DOWN", () => {
     vi.resetModules();
     mockDeploymentIdentity.mockReset();
     mockLoadedCore.mockReset();
+    mockResolveMode.mockReset();
     mockRateLimit.mockReset();
     mockGetFirestore.mockReset();
     mockDeploymentIdentity.mockReturnValue(deploymentIdentity("shadow"));
     mockLoadedCore.mockReturnValue(LOADED_CORE);
+    // Effective mode matches the shadow deployment identity: the probe loads
+    // WASM, preserving the "loaded" expectations below (decision 4).
+    mockResolveMode.mockReturnValue("shadow");
     mockRateLimit.mockResolvedValue(undefined);
     mockFirestoreHealthy();
   });

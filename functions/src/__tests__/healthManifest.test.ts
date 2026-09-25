@@ -13,6 +13,8 @@
  *   - A valid manifest produces a real SHA-256 (not a placeholder).
  *   - A missing manifest yields artifactManifest: null (not a fabricated digest).
  *   - An unavailable WASM yields loadedCore: null (not a fabricated identity).
+ *   - Legacy mode never loads WASM: loadedCore is null and the loader is
+ *     never invoked (decision 4); shadow/rust still report the identity.
  *   - A missing deployment identity yields no fabricated profile/candidateIdentity/pricingMode.
  *   - A partial (malformed) deployment identity is served honestly — present
  *     fields pass through, absent fields are not fabricated.
@@ -41,6 +43,7 @@ vi.mock("../../../packages/functions-shared/src/domainCoreBuildProfile.js", () =
 
 vi.mock("../../../packages/functions-shared/src/domainCorePricing.js", () => ({
   loadedDomainCorePricingIdentity: vi.fn(),
+  resolveDomainCorePricingMode: vi.fn(),
   DomainCorePricingError: class DomainCorePricingError extends Error {},
 }));
 
@@ -77,10 +80,14 @@ vi.mock("firebase-admin/firestore", () => ({
 }));
 
 import { domainCoreDeploymentIdentity } from "../../../packages/functions-shared/src/domainCoreBuildProfile.js";
-import { loadedDomainCorePricingIdentity } from "../../../packages/functions-shared/src/domainCorePricing.js";
+import {
+  loadedDomainCorePricingIdentity,
+  resolveDomainCorePricingMode,
+} from "../../../packages/functions-shared/src/domainCorePricing.js";
 
 const mockDeploymentIdentity = vi.mocked(domainCoreDeploymentIdentity);
 const mockLoadedCore = vi.mocked(loadedDomainCorePricingIdentity);
+const mockResolveMode = vi.mocked(resolveDomainCorePricingMode);
 
 // ---------------------------------------------------------------------------
 // Manifest file management — the real readFileSync/createHash are used so
@@ -122,6 +129,16 @@ const VALID_LOADED_CORE = {
   abiVersion: 3,
   sourceSha256: "b".repeat(64),
   wasmSha256: "c".repeat(64),
+};
+
+const LEGACY_DEPLOYMENT_IDENTITY = {
+  ...VALID_DEPLOYMENT_IDENTITY,
+  pricingMode: "legacy" as const,
+};
+
+const SHADOW_DEPLOYMENT_IDENTITY = {
+  ...VALID_DEPLOYMENT_IDENTITY,
+  pricingMode: "shadow" as const,
 };
 
 function writeManifest(content: string = VALID_MANIFEST): void {
@@ -242,6 +259,10 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     vi.resetModules();
     mockDeploymentIdentity.mockReset();
     mockLoadedCore.mockReset();
+    mockResolveMode.mockReset();
+    // Default effective mode is rust (matches VALID_DEPLOYMENT_IDENTITY): the
+    // probe attempts the WASM load, preserving the expectations below.
+    mockResolveMode.mockReturnValue("rust");
     removeManifest();
   });
 
@@ -324,6 +345,42 @@ describe("health endpoint runtime artifact manifest and production identity", ()
     expect(dc).toBeDefined();
     // Null, not a fabricated identity.
     expect(dcField(dc, "loadedCore")).toBeNull();
+  });
+
+  // ---- Decision 4: legacy never loads WASM ----
+
+  it("never invokes the WASM loader when the effective pricing mode is legacy", async () => {
+    writeManifest();
+    mockDeploymentIdentity.mockReturnValue(LEGACY_DEPLOYMENT_IDENTITY);
+    mockResolveMode.mockReturnValue("legacy");
+    // Trap: if the probe loads WASM, the tuple would be served.
+    mockLoadedCore.mockReturnValue(VALID_LOADED_CORE);
+
+    const { healthLive } = await loadHealth();
+    const res = await driveHandler(healthLive);
+    const dc = domainCoreFromBody(res._body);
+
+    expect(res._status).toBe(200);
+    expect(dc).toBeDefined();
+    expect(dcField(dc, "loadedCore")).toBeNull();
+    expect(dcField(dc, "pricingMode")).toBe("legacy");
+    expect(mockLoadedCore).not.toHaveBeenCalled();
+  });
+
+  it("reports the loaded WASM identity when the effective pricing mode is shadow", async () => {
+    writeManifest();
+    mockDeploymentIdentity.mockReturnValue(SHADOW_DEPLOYMENT_IDENTITY);
+    mockResolveMode.mockReturnValue("shadow");
+    mockLoadedCore.mockReturnValue(VALID_LOADED_CORE);
+
+    const { healthLive } = await loadHealth();
+    const res = await driveHandler(healthLive);
+    const dc = domainCoreFromBody(res._body);
+
+    expect(res._status).toBe(200);
+    expect(dc).toBeDefined();
+    expect(dcField(dc, "loadedCore")).toEqual(VALID_LOADED_CORE);
+    expect(mockLoadedCore).toHaveBeenCalled();
   });
 
   // ---- Missing deployment identity → no fabricated profile/identity/pricingMode ----

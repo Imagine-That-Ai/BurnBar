@@ -46,10 +46,25 @@ cat > "$TMP/ready.json" <<EOF
 {"status":"ready","version":"v1.2.3","license":"AGPL-3.0-only","source":{"repository":"$repository","commit":"$commit","correspondingSource":"https://burnbar.ai/legal/source"},"domainCore":$domain_core,"sentry":{"enabled":true,"environment":"production"}}
 EOF
 
+domain_core_legacy="{\"profile\":\"public-production\",\"candidateIdentity\":{\"candidateCommit\":\"$commit\",\"coreVersion\":\"$core_version\",\"abiVersion\":3,\"sourceSha256\":\"$core_source\"},\"pricingMode\":\"legacy\",\"loadedCore\":null,\"artifactManifest\":{\"fileName\":\"domain-core-runtime-artifact-manifest.json\",\"sha256\":\"$manifest_sha\"},\"runtime\":{\"service\":\"health-live\",\"revision\":\"health-live-00042-abc\",\"configuration\":\"health-live\",\"functionTarget\":\"healthLive\"}}"
+cat > "$TMP/live-legacy.json" <<EOF
+{"status":"alive","license":"AGPL-3.0-only","source":{"repository":"$repository","commit":"$commit","correspondingSource":"https://burnbar.ai/legal/source"},"domainCore":$domain_core_legacy}
+EOF
+cat > "$TMP/ready-legacy.json" <<EOF
+{"status":"ready","version":"v1.2.3","license":"AGPL-3.0-only","source":{"repository":"$repository","commit":"$commit","correspondingSource":"https://burnbar.ai/legal/source"},"domainCore":$domain_core_legacy,"sentry":{"enabled":true,"environment":"production"}}
+EOF
+domain_core_legacy_loaded="{\"profile\":\"public-production\",\"candidateIdentity\":{\"candidateCommit\":\"$commit\",\"coreVersion\":\"$core_version\",\"abiVersion\":3,\"sourceSha256\":\"$core_source\"},\"pricingMode\":\"legacy\",\"loadedCore\":{\"version\":\"$core_version\",\"abiVersion\":3,\"sourceSha256\":\"$core_source\",\"wasmSha256\":\"$wasm_sha\"},\"artifactManifest\":{\"fileName\":\"domain-core-runtime-artifact-manifest.json\",\"sha256\":\"$manifest_sha\"},\"runtime\":{\"service\":\"health-live\",\"revision\":\"health-live-00042-abc\",\"configuration\":\"health-live\",\"functionTarget\":\"healthLive\"}}"
+cat > "$TMP/live-legacy-loaded.json" <<EOF
+{"status":"alive","license":"AGPL-3.0-only","source":{"repository":"$repository","commit":"$commit","correspondingSource":"https://burnbar.ai/legal/source"},"domainCore":$domain_core_legacy_loaded}
+EOF
+cat > "$TMP/ready-legacy-loaded.json" <<EOF
+{"status":"ready","version":"v1.2.3","license":"AGPL-3.0-only","source":{"repository":"$repository","commit":"$commit","correspondingSource":"https://burnbar.ai/legal/source"},"domainCore":$domain_core_legacy_loaded,"sentry":{"enabled":true,"environment":"production"}}
+EOF
+
 run_gate() {
   PATH="$TMP/bin:$PATH" \
-  HEALTH_TEST_LIVE="$TMP/live.json" \
-  HEALTH_TEST_READY="$TMP/ready.json" \
+  HEALTH_TEST_LIVE="${4:-$TMP/live.json}" \
+  HEALTH_TEST_READY="${5:-$TMP/ready.json}" \
   FUNCTIONS_HEALTH_LIVE_URL="https://example.test/healthLive" \
   FUNCTIONS_HEALTH_READY_URL="https://example.test/healthReady" \
   HEALTH_GATE_RETRIES=1 \
@@ -101,5 +116,23 @@ if HEALTH_TEST_EXPECTED_WASM_SHA="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
   exit 1
 fi
 test ! -e "$TMP/stale-wasm-health.json"
+
+# Decision 4: a legacy deployment serves loadedCore null (WASM never loads
+# on the legacy path) and the gate accepts it.
+run_gate "$commit" legacy "$TMP/legacy-health.json" "$TMP/live-legacy.json" "$TMP/ready-legacy.json" >/dev/null
+test -s "$TMP/legacy-health.json"
+jq -e '
+  .healthReady.domainCore.pricingMode == "legacy"
+  and .healthReady.domainCore.loadedCore == null
+' "$TMP/legacy-health.json" >/dev/null
+
+# Decision 4 violation: legacy expected and legacy served, but a loaded WASM
+# identity is present — the legacy path must not load WASM.
+rm -f "$TMP/legacy-loaded-health.json"
+if run_gate "$commit" legacy "$TMP/legacy-loaded-health.json" "$TMP/live-legacy-loaded.json" "$TMP/ready-legacy-loaded.json" >/dev/null 2>&1; then
+  echo "expected legacy deployment with loaded WASM to fail" >&2
+  exit 1
+fi
+test ! -e "$TMP/legacy-loaded-health.json"
 
 echo "post-deploy health identity tests passed"

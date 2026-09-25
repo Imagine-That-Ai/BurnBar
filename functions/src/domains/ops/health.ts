@@ -39,7 +39,10 @@ import { logInfo, logError, wrapRequestHandler } from "@openburnbar/functions-sh
 import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
 import { sourceMetadata } from "../../sourceMetadata.js";
 import { domainCoreDeploymentIdentity } from "@openburnbar/functions-shared/domainCoreBuildProfile.js";
-import { loadedDomainCorePricingIdentity } from "@openburnbar/functions-shared/domainCorePricing.js";
+import {
+  loadedDomainCorePricingIdentity,
+  resolveDomainCorePricingMode,
+} from "@openburnbar/functions-shared/domainCorePricing.js";
 import { sentryStatus } from "@openburnbar/functions-shared/sentry.js";
 import { setPublicJsonSecurityHeaders } from "@openburnbar/functions-shared/publicHttpSecurityHeaders.js";
 import {
@@ -101,10 +104,21 @@ function domainCoreDeploymentIdentityForHealth(): Record<string, unknown> {
   // loadedCore: real intrinsic/byte identity of the loaded domain-core WASM.
   // Absent (null) when the WASM package is unavailable — e.g. a source build
   // without the vendored package linked. Never fabricated.
-  try {
-    identity.loadedCore = loadedDomainCorePricingIdentity();
-  } catch {
+  //
+  // Decision 4 (wave 3.7): legacy mode never loads WASM at all — not even for
+  // observability. The pricing adapter already early-returns in legacy, so the
+  // health probe must not be the path that instantiates the module: loading
+  // here would cost cold-start and memory on every probe and violate the
+  // legacy contract ("legacy invokes only the existing implementation").
+  // Only shadow/rust, which actually execute WASM, report its identity.
+  if (resolveDomainCorePricingMode() === "legacy") {
     identity.loadedCore = null;
+  } else {
+    try {
+      identity.loadedCore = loadedDomainCorePricingIdentity();
+    } catch {
+      identity.loadedCore = null;
+    }
   }
 
   // artifactManifest: sha256 of the immutable runtime artifact manifest
@@ -209,6 +223,8 @@ async function probeFirestoreReadiness(timeoutMs = 3000): Promise<FirestoreReadi
  * `rust` pricing mode (production), where a missing core breaks pricing. In
  * every other mode the TypeScript fallback serves traffic, so the check is
  * informational — dev/source builds without the vendored WASM stay ready.
+ * Since decision 4, legacy deployments always report "unavailable": WASM is
+ * never loaded there, so that is the healthy steady state, not degradation.
  */
 function domainCoreReadiness(identity: Record<string, unknown>): {
   check: "loaded" | "unavailable";
