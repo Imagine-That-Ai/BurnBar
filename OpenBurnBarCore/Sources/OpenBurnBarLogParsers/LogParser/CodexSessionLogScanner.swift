@@ -377,7 +377,7 @@ public enum CodexSessionLogScanner {
     /// from the original parsers.
     static func reduceTokenLine(_ text: String, into accumulator: inout TokenAccumulator) {
         guard let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(per-line decode, skip)
             return
         }
         guard let info = TokenExtractionUtility.codexTokenCountInfo(from: json) else {
@@ -529,7 +529,7 @@ public enum CodexSessionLogScanner {
             }
             parserAutoReleasePool {
                 guard let data = line.text.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
+                      let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(per-line decode, skip)
                     return
                 }
                 if let extracted = Self.extractCodexMessage(from: json) {
@@ -1021,7 +1021,7 @@ public enum CodexSessionLogScanner {
 
     private static func executionSource(fromSessionMetadataLine line: String) -> UsageExecutionSource? {
         guard let data = line.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               json["type"] as? String == "session_meta",
               let payload = json["payload"] as? [String: Any] else { return nil }
 

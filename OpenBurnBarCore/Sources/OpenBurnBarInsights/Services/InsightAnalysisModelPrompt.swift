@@ -357,7 +357,7 @@ public enum InsightAnalysisModelDecoder {
     }
 
     private static func extractJSONObjectData(from data: Data, modelTag: InsightModelTag) throws -> Data {
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if let json = BurnBarJSONValue.dictionary(fromJSONData: data) {
             if json["executiveSummary"] != nil {
                 return data
             }

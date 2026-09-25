@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Z.ai Usage Probe
 
@@ -70,7 +71,7 @@ final class ZaiUsageProbe: ProviderUsageAPI, Sendable {
     }
 
     private func parseUsageResponse(_ data: Data, since: Date) -> [ProviderUsageRecord]? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(best-effort JSON decode)
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(best-effort JSON decode)
             return nil
         }
 
@@ -190,7 +191,7 @@ final class MiniMaxUsageProbe: ProviderUsageAPI, Sendable {
     }
 
     private func parseUsageResponse(_ data: Data, since: Date) -> [ProviderUsageRecord]? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(best-effort JSON decode)
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(best-effort JSON decode)
             return nil
         }
 

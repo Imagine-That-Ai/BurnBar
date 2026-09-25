@@ -500,7 +500,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         conversation: ClaudeConversationAccumulator?
     ) {
         guard let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skip)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skip)
             return
         }
 

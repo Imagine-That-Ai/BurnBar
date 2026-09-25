@@ -1263,7 +1263,7 @@ final class PiService {
         guard !trimmed.isEmpty else { return nil }
 
         if let data = trimmed.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let obj = BurnBarJSONValue.dictionary(fromJSONData: data) {
             for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
                 if let value = obj[key] as? String, !value.isEmpty {
                     return String(value.prefix(200))
@@ -1360,7 +1360,7 @@ final class PiService {
     }
 
     private static func parseModels(data: Data) -> [HermesRuntimeModelOption] {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data) else { return [] }
         let raw = (object["data"] as? [[String: Any]]) ?? []
         return raw.compactMap { entry in
             guard let id = entry["id"] as? String, !id.isEmpty else { return nil }

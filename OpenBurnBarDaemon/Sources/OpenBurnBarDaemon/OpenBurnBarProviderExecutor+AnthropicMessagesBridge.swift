@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 extension BurnBarOpenAICompatibleProviderExecutor {
 
@@ -311,7 +312,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             }
             guard !dataLines.isEmpty,
                   let payloadData = dataLines.joined(separator: "\n").data(using: .utf8),
-                  let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+                  let payload = BurnBarJSONValue.dictionary(fromJSONData: payloadData) else {
                 return nil
             }
             return ServerSentEvent(payload: payload)
@@ -513,7 +514,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
     private static func objectFromJSONString(_ value: String?) -> [String: Any]? {
         guard let value,
               let data = value.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
         return object

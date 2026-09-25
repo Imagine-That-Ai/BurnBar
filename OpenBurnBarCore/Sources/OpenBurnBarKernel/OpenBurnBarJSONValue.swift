@@ -90,3 +90,23 @@ extension Dictionary where Key == String, Value == BurnBarJSONValue {
         return value
     }
 }
+
+// MARK: - Untyped boundary choke points (wave 4)
+//
+// Two casts every JSON/callable consumer used to repeat inline. They live
+// here so the string-any boundary has named, countable entries instead of
+// hundreds of identical `as?` sites. Prefer `BurnBarJSONValue` / Codable
+// models for new code; reach for these only at established untyped seams
+// (callable results, schemaless payloads).
+
+extension BurnBarJSONValue {
+    /// `HTTPSCallableResult.data` (or any schemaless value) as a JSON dictionary.
+    public static func dictionary(from value: Any) -> [String: Any]? {
+        value as? [String: Any]
+    }
+
+    /// Data presumed to hold a JSON object, decoded without throwing.
+    public static func dictionary(fromJSONData data: Data) -> [String: Any]? {
+        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+}

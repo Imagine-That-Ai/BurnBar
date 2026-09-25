@@ -11,7 +11,7 @@ import OpenBurnBarKernel
 // The callable hub for the macOS Data & Privacy Control Center (governance
 // workbench). Mirrors `AccountManager`'s callable conventions
 // (`Functions.functions(region: "us-central1").httpsCallable(...).call(...)`,
-// `result.data as? [String: Any]`) and the CloudStore "user-facing error"
+// `BurnBarJSONValue.dictionary(from: result.data)`) and the CloudStore "user-facing error"
 // distillation so the workbench never leaks a raw Functions error string.
 //
 // The domain inventory is built from the generated registry
@@ -169,7 +169,7 @@ final class DataControlCenterViewModel {
         defer { isLoadingUsage = false }
         do {
             let result = try await functions().httpsCallable("getDataDomainUsage").call()
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
             applyUsage(dict)
@@ -263,7 +263,7 @@ final class DataControlCenterViewModel {
                 subjectId: "all",
                 payload: payload
             )
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
             return try JSONSerialization.data(
@@ -312,7 +312,7 @@ final class DataControlCenterViewModel {
                     "confirm": true
                 ]
             )
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
             let deleted = dict["deleted"] as? [String: Any]
@@ -337,7 +337,7 @@ final class DataControlCenterViewModel {
         defer { isLoadingRecovery = false }
         do {
             let result = try await functions().httpsCallable("listRecovery").call()
-            guard let dict = result.data as? [String: Any],
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data),
                   let methods = dict["methods"] as? [[String: Any]] else { return }
             recoveryMethods = methods.compactMap { entry in
                 guard let recoveryId = entry["recoveryId"] as? String,
@@ -372,7 +372,7 @@ final class DataControlCenterViewModel {
                 "payload": payload as NSDictionary
             ] as NSDictionary
             let result = try await functions().httpsCallable("setupRecovery").call(body)
-            guard let dict = result.data as? [String: Any],
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data),
                   let recoveryId = dict["recoveryId"] as? String else {
                 throw DataControlError.malformedResponse
             }
@@ -475,7 +475,7 @@ final class DataControlCenterViewModel {
                 subjectId: scope.rawValue,
                 payload: ["scope": scope.rawValue]
             )
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
             let revoked = dict["revoked"] as? [String: Any]
@@ -504,7 +504,7 @@ final class DataControlCenterViewModel {
             var payload: [String: Any] = ["limit": 100]
             if reset == false, let cursor = auditNextCursor { payload["cursor"] = cursor }
             let result = try await functions().httpsCallable("getAuditLog").call(payload as NSDictionary)
-            guard let dict = result.data as? [String: Any],
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data),
                   let events = dict["events"] as? [[String: Any]] else { return }
             let parsed = events.compactMap { Self.parseAuditEvent($0) }
             if reset { auditEvents = parsed } else { auditEvents.append(contentsOf: parsed) }
@@ -522,7 +522,7 @@ final class DataControlCenterViewModel {
         defer { isMutating = false }
         do {
             let result = try await functions().httpsCallable("verifyAuditLog").call()
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
             auditVerification = AuditVerification(

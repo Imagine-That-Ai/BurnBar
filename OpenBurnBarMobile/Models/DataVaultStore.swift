@@ -199,7 +199,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
                 "confirm": true
             ]
         )
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let deleted = dict["deleted"] as? [String: Any] else {
             throw DataVaultError.malformedResponse
         }
@@ -217,7 +217,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
 
     func verifyAuditLog() async throws -> (valid: Bool, brokenAt: Int?) {
         let result = try await functions.httpsCallable("verifyAuditLog").call([:])
-        guard let dict = result.data as? [String: Any] else { throw DataVaultError.malformedResponse }
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data) else { throw DataVaultError.malformedResponse }
         let valid = dict["valid"] as? Bool ?? false
         let brokenAt = (dict["brokenAt"] as? NSNumber)?.intValue
         return (valid, brokenAt)
@@ -225,7 +225,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
 
     func listRecovery() async throws -> [RecoveryMethod] {
         let result = try await functions.httpsCallable("listRecovery").call([:])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let methods = dict["methods"] else { throw DataVaultError.malformedResponse }
         return try Self.decode([RecoveryMethod].self, from: methods)
     }
@@ -235,7 +235,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
             "method": method,
             "payload": payload
         ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let recoveryId = dict["recoveryId"] as? String, !recoveryId.isEmpty else {
             throw DataVaultError.malformedResponse
         }
@@ -257,7 +257,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
             subjectId: scope,
             payload: ["scope": scope]
         )
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let revoked = dict["revoked"] else { throw DataVaultError.malformedResponse }
         return try Self.decode(RevokeAllResult.self, from: revoked)
     }
@@ -281,7 +281,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
 
     private func commitPreparedKnowledgeBatch(_ payload: sending [String: Any]) async throws -> Int {
         let result = try await functions.httpsCallable("commitKnowledgeBatch").call(payload)
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               dict["ok"] as? Bool != false else {
             throw DataVaultError.malformedResponse
         }
@@ -318,7 +318,7 @@ enum PensieveCommitQueueDrainer {
             guard url.pathExtension == "json",
                   (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
                   let data = try? Data(contentsOf: url),
-                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let payload = BurnBarJSONValue.dictionary(fromJSONData: data),
                   payload["sourceSlug"] is String,
                   payload["vectors"] is [[String: Any]] else {
                 return nil

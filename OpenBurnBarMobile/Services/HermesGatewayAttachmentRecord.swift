@@ -217,7 +217,7 @@ struct HermesGatewayAttachmentManifest: Hashable, Sendable {
     let destinationId: String
 
     init?(jsonData: Data) {
-        guard let object = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: jsonData),
               let fileName = HermesGatewayMessageRecord.string(object["fileName"]),
               let destinationId = HermesGatewayMessageRecord.string(object["destinationId"])
         else { return nil }

@@ -184,7 +184,7 @@ public struct ForgeQuotaAdapter: ProviderQuotaAdapter {
                 for row in metricRows {
                     guard let jsonStr = row.string("metrics"), !jsonStr.isEmpty else { continue }
                     if let data = jsonStr.data(using: .utf8),
-                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let json = BurnBarJSONValue.dictionary(fromJSONData: data),
                        let filesChanged = json["files_changed"] as? [String: [String: Any]] {
                         for (path, changes) in filesChanged {
                             uniqueFiles.insert(path)

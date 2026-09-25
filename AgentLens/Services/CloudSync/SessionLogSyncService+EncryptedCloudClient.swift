@@ -1,5 +1,6 @@
 import FirebaseFunctions
 import Foundation
+import OpenBurnBarKernel
 
 struct EncryptedSessionBlobUploadTicket {
     let storagePath: String
@@ -58,7 +59,7 @@ final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClie
             "encryptedByteCount": byteCount,
             "contentType": "application/octet-stream"
         ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let storagePath = dict["storagePath"] as? String,
               let uploadURLString = dict["uploadURL"] as? String,
               let uploadURL = URL(string: uploadURLString) else {
@@ -98,19 +99,19 @@ final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClie
 
     func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
         let result = try await functions.httpsCallable("getEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
-        return result.data as? [String: Any] ?? [:]
+        return BurnBarJSONValue.dictionary(from: result.data) ?? [:]
     }
 
     func deleteEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
         let result = try await functions.httpsCallable("deleteEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
-        return result.data as? [String: Any] ?? [:]
+        return BurnBarJSONValue.dictionary(from: result.data) ?? [:]
     }
 
     func downloadEncryptedBody(storagePath: String) async throws -> Data {
         let result = try await functions.httpsCallable("getEncryptedSessionBlobDownloadUrl").call([
             "storagePath": storagePath
         ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let raw = dict["downloadURL"] as? String,
               let url = URL(string: raw) else {
             throw URLError(.badServerResponse)

@@ -228,7 +228,7 @@ public final class CodexParser: LogParser, Sendable {
         let text = String(decoding: prefix, as: UTF8.self)
         for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
             guard let data = String(line).data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data),
                   json["type"] as? String == "session_meta",
                   let payload = json["payload"] as? [String: Any],
                   let source = payload["source"] as? [String: Any] else { continue }

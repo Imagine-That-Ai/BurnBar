@@ -5,6 +5,7 @@ import Darwin
 import Glibc
 #endif
 import Foundation
+import OpenBurnBarKernel
 
 /// Result of one local `codex exec` invocation: the raw exit code plus the
 /// captured stdout/stderr. Mirrors `FactoryDroidProcessResult` so the daemon's
@@ -484,7 +485,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty,
                   let data = trimmed.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 return
             }
             if let text = agentMessageText(from: object), !text.isEmpty {
@@ -518,7 +519,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty,
                   let data = trimmed.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data),
                   (object["type"] as? String) == "error" else {
                 return
             }

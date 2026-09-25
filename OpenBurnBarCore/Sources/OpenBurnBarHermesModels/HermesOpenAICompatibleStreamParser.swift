@@ -50,6 +50,9 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
             return HermesStreamParseResult(events: flushPendingToolCalls(), done: true, streamedText: false)
         }
 
+        // NOTE: Kernel lives above HermesModels in the module DAG (it
+        // re-exports this module), so this file cannot use the
+        // BurnBarJSONValue choke points — the inline cast stays.
         guard let data = payload.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return HermesStreamParseResult(events: [], done: false, streamedText: false)

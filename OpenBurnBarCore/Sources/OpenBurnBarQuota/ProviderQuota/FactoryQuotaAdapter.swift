@@ -884,7 +884,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
     private func readSessionFacts(from fileURL: URL, modifiedAt: Date?) -> FactorySessionQuotaFacts? {
         contentReadCount.withLock { $0 += 1 }
         guard let data = try? Data(contentsOf: fileURL), // try?-ok(skip unreadable session)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed json)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(skip malformed json)
               let usage = json["tokenUsage"] as? [String: Any] else {
             return nil
         }

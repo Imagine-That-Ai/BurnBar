@@ -77,7 +77,7 @@ final class DirectCLIStreamMirror: Sendable {
         guard line.first == "{",
               let data = line.data(using: .utf8),
               // try?-ok(optional jsonline parse)
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data),
               let type = object["type"] as? String
         else { return nil }
 

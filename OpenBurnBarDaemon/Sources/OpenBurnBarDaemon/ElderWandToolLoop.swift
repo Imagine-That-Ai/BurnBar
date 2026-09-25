@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 // MARK: - Elder Wand server-side tool loop
 //
@@ -115,7 +116,7 @@ struct ElderWandToolLoop: Sendable {
             let response = try await chat(bodyData)
             accumulated.add(response.usage)
 
-            let object = (try? JSONSerialization.jsonObject(with: response.body) as? [String: Any]) ?? [:]
+            let object = (BurnBarJSONValue.dictionary(fromJSONData: response.body)) ?? [:]
             let toolCalls = Self.extractToolCalls(from: object)
 
             if toolCalls.isEmpty || totalToolCalls >= budget {
@@ -175,7 +176,7 @@ struct ElderWandToolLoop: Sendable {
         let finalData = (try? JSONSerialization.data(withJSONObject: finalBody, options: [])) ?? Data("{}".utf8)
         let finalResponse = try await chat(finalData)
         accumulated.add(finalResponse.usage)
-        let finalObject = (try? JSONSerialization.jsonObject(with: finalResponse.body) as? [String: Any]) ?? [:]
+        let finalObject = (BurnBarJSONValue.dictionary(fromJSONData: finalResponse.body)) ?? [:]
         let content = Self.extractAssistantContent(from: finalObject) ?? ""
         return ElderWandToolLoopResult(
             text: content,

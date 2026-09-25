@@ -223,7 +223,7 @@ public final class ClineFormatParser: LogParser, Sendable {
                     if let say = msg["say"] as? String, say == "api_req_started" || say == "api_req_finished",
                        let text = msg["text"] as? String,
                        let textData = text.data(using: .utf8),
-                       let reqJson = try? JSONSerialization.jsonObject(with: textData) as? [String: Any] {
+                       let reqJson = BurnBarJSONValue.dictionary(fromJSONData: textData) {
                         if let tIn = reqJson["tokensIn"] as? Int { inputTokens += tIn }
                         if let tOut = reqJson["tokensOut"] as? Int { outputTokens += tOut }
                         if let cW = reqJson["cacheWrites"] as? Int { cacheCreationTokens += cW }

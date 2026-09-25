@@ -277,7 +277,7 @@ public final class FxParser: LogParser, Sendable {
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty { continue }
                 guard let data = trimmed.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                      let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                     continue // truncated/partial line — skip
                 }
                 if let date = Self.msDate(json["timestamp_ms"]) {

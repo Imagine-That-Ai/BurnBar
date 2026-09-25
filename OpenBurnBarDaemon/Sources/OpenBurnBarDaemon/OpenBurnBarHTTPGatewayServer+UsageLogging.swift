@@ -187,7 +187,7 @@ extension BurnBarHTTPGatewayServer {
     }
 
     static func providerReportedModelSlug(from body: Data) -> String? {
-        guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: body) else {
             return nil
         }
         if let model = object["model"] as? String {

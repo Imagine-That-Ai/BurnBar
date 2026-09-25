@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Chart Studio Rendering
 //
@@ -379,7 +380,7 @@ public enum ChartSpecRenderer {
             return .ascii(sanitizeAscii(bareAscii))
         }
         // Accept a bare Mermaid source string keyed by "mermaid".
-        if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if let dict = BurnBarJSONValue.dictionary(fromJSONData: data) {
             if let mermaidSource = dict["mermaid"] as? String {
                 return .mermaid(MermaidSpec(title: dict["title"] as? String, source: sanitizeMermaid(mermaidSource)))
             }

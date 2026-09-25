@@ -142,7 +142,7 @@ fileLoop: for fileURL in rolloutFiles {
                 return false
             }
             guard let data = line.text.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 return true
             }
             eventCount += 1

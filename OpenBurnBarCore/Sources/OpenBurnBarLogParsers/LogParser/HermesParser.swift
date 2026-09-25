@@ -617,7 +617,7 @@ public final class HermesParser: LogParser, Sendable {
         options: LogParseOptions
     ) throws -> ParseResult {
         guard let data = try? Data(contentsOf: indexURL),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let root = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -744,7 +744,7 @@ public final class HermesParser: LogParser, Sendable {
         options: LogParseOptions
     ) throws -> ParseResult {
         guard let data = try? Data(contentsOf: file), // try?-ok(optional snapshot read)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(JSON decode, guard-return)
             return ParseResult(usages: [], conversations: [])
         }
 

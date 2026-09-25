@@ -5,6 +5,7 @@ import Glibc
 #endif
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 // MARK: - ClaudeInteractiveHandoffService (Part B1)
 
@@ -528,7 +529,7 @@ struct ClaudeCodeJSONLUsageProbe: Sendable {
         var total = 0
         content.enumerateLines { line, _ in
             guard let data = line.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 return
             }
             guard let message = object["message"] as? [String: Any],

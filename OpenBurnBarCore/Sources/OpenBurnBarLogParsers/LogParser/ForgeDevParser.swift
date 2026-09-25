@@ -487,7 +487,7 @@ public final class ForgeDevParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed log line skip)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed log line skip)
                 continue
             }
 
@@ -709,7 +709,7 @@ public final class ForgeDevParser: LogParser, Sendable {
 
     private func jsonObject(from raw: String?) -> [String: Any]? {
         guard let raw, let data = raw.data(using: .utf8) else { return nil }
-        return try? JSONSerialization.jsonObject(with: data) as? [String: Any] // try?-ok(optional JSON decode)
+        return BurnBarJSONValue.dictionary(fromJSONData: data) // try?-ok(optional JSON decode)
     }
 
     private func stringValue(_ row: SQLiteRow, column: String) -> String? {

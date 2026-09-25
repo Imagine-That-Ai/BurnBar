@@ -952,7 +952,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     private static func objectFromJSONString(_ value: String?) -> [String: Any]? {
         guard let value,
               let data = value.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
         return object
@@ -1523,7 +1523,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             }
             guard !dataLines.isEmpty,
                   let payloadData = dataLines.joined(separator: "\n").data(using: .utf8),
-                  let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+                  let payload = BurnBarJSONValue.dictionary(fromJSONData: payloadData) else {
                 return nil
             }
             return ServerSentEvent(event: eventName, payload: payload)
@@ -1623,7 +1623,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             }
             guard !dataLines.isEmpty,
                   let payloadData = dataLines.joined(separator: "\n").data(using: .utf8),
-                  let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
+                  let payload = BurnBarJSONValue.dictionary(fromJSONData: payloadData) else {
                 return nil
             }
             return ServerSentEvent(event: eventName, payload: payload)
@@ -1710,7 +1710,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     /// `cache_read_input_tokens`). We surface them so the usage recorder gets
     /// the same shape it does for OpenAI-family proxies.
     private static func extractProxyUsage(responseBody: Data) -> BurnBarProviderProxyUsage? {
-        guard let json = try? JSONSerialization.jsonObject(with: responseBody, options: []) as? [String: Any] else {
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: responseBody) else {
             return nil
         }
         guard let usage = json["usage"] as? [String: Any] else {

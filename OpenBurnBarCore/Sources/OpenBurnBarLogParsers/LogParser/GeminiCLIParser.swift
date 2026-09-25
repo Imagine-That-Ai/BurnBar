@@ -159,7 +159,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional JSON decode, skip line)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(optional JSON decode, skip line)
                 continue
             }
             ingestLine(json, into: &acc, includeConversationBodies: includeConversationBodies)
@@ -194,7 +194,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
             }
         }
         // Try single object with messages array
-        else if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional JSON decode, fallback)
+        else if let obj = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional JSON decode, fallback)
                 let messages = obj["messages"] as? [[String: Any]] {
             for message in messages {
                 ingestLine(message, into: &acc, includeConversationBodies: includeConversationBodies)

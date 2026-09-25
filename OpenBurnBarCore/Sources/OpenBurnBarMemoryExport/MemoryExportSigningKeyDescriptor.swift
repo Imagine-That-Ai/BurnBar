@@ -23,6 +23,7 @@
 // its `signing_key_id`, is refused before it can mislabel a bundle.
 
 import Foundation
+import OpenBurnBarKernel
 #if canImport(CryptoKit)
 import CryptoKit
 #else
@@ -102,7 +103,7 @@ public struct MemoryExportSigningKeyDescriptor: Sendable {
     /// takes on the recipient side: an unverifiable handoff file is worse than
     /// none, because it LOOKS carried.
     public static func parse(descriptor data: Data) throws -> MemoryExportSigningKeyDescriptor {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             throw DescriptorError.malformed("the signing-key descriptor is not a JSON object")
         }
         guard let declaredID = object["signing_key_id"] as? String,

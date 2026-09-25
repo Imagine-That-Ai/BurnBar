@@ -13,6 +13,7 @@
 // which is classifier row 13 and must not be confused with an empty string.
 
 import Foundation
+import OpenBurnBarKernel
 
 /// One `agent_memories` row.
 public struct MemoryExportMemoryRow: Sendable, Equatable {
@@ -179,7 +180,7 @@ public struct MemoryExportBodySnapshotRow: Sendable, Equatable {
     /// `MemoryBodySnapshot` document, not a bare string.
     public var body: String? {
         guard let data = snapshotJSON.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
         return object["body"] as? String

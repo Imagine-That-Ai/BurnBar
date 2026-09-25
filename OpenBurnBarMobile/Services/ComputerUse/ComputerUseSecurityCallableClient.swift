@@ -325,7 +325,7 @@ enum ComputerUseSecurityCallableClient {
     static func issueHighRiskActionNonce() async throws -> String {
         _ = try requireSignedInUser()
         let result = try await functions.httpsCallable("issueHighRiskActionNonce").call([:])
-        guard let dict = result.data as? [String: Any], let nonce = dict["nonce"] as? String, !nonce.isEmpty else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data), let nonce = dict["nonce"] as? String, !nonce.isEmpty else {
             throw ClientError.invalidResponse("Could not obtain a high-risk action nonce.")
         }
         return nonce
@@ -481,7 +481,7 @@ enum ComputerUseSecurityCallableClient {
         }
         if let keyVersion { payload["keyVersion"] = keyVersion }
         let result = try await functions.httpsCallable("registerEscrowDevice").call(payload)
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data), dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device registration failed.")
         }
     }
@@ -508,7 +508,7 @@ enum ComputerUseSecurityCallableClient {
         ]
         payload["approverDeviceId"] = resolvedApproverDeviceId
         let result = try await functions.httpsCallable("approveEscrowDeviceTrust").call(payload)
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data), dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust approval failed.")
         }
     }
@@ -664,7 +664,7 @@ enum ComputerUseSecurityCallableClient {
             "deviceId": deviceId,
             "nonce": nonce
         ])
-        guard let dict = result.data as? [String: Any] else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
         }
         let revocation = try parseEscrowDeviceTrustRevocationResult(dict)
@@ -985,7 +985,7 @@ enum ComputerUseSecurityCallableClient {
             payload[key] = value
         }
         let result = try await functions.httpsCallable("publishRelaySenderKey").call(payload)
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data), dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Relay sender-key publication failed.")
         }
     }
@@ -1009,7 +1009,7 @@ enum ComputerUseSecurityCallableClient {
             payload["keyKind"] = keyKind.rawValue
         }
         let result = try await functions.httpsCallable("publishAgentGrantAuthority").call(payload)
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data), dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Agent grant authority publication failed.")
         }
     }
@@ -1232,7 +1232,7 @@ enum ComputerUseSecurityCallableClient {
                 "deviceId": deviceId
             ]
         )
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let id = dict["id"] as? String,
               let chunkCount = dict["chunkCount"] as? Int
         else {
@@ -1259,7 +1259,7 @@ enum ComputerUseSecurityCallableClient {
                 "deviceId": deviceId
             ]
         )
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let urlString = dict["url"] as? String,
               let url = URL(string: urlString)
         else {
@@ -1342,7 +1342,7 @@ enum ComputerUseSecurityCallableClient {
             subjectId: requestId,
             payload: sendableJSONPayload(payload.merging(["deviceId": deviceId]) { _, new in new })
         )
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               dict["ok"] as? Bool == true,
               let id = dict["requestId"] as? String
         else {
@@ -1360,7 +1360,7 @@ enum ComputerUseSecurityCallableClient {
             subjectId: groupId,
             payload: sendableJSONPayload(payload.merging(["deviceId": deviceId, "groupId": groupId]) { _, new in new })
         )
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               dict["ok"] as? Bool == true,
               let id = dict["groupId"] as? String
         else {
@@ -1385,7 +1385,7 @@ enum ComputerUseSecurityCallableClient {
                 "sealedStatePayload": sealedStatePayload
             ]
         )
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data), dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Mission cancel failed.")
         }
     }
@@ -1405,7 +1405,7 @@ enum ComputerUseSecurityCallableClient {
             ],
             approve: approve
         )
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data), dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Mission approval response failed.")
         }
     }
@@ -1427,7 +1427,7 @@ enum ComputerUseSecurityCallableClient {
             ],
             approve: approve
         )
-        guard let dict = result.data as? [String: Any], dict["ok"] as? Bool == true else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data), dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Gateway approval response failed.")
         }
     }

@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 /// First-launch installer + version check for the Playwright bridge.
 /// Phase 9. See `plans/2026-05-16-computer-use-master-plan.md` § B.3.
@@ -101,7 +102,7 @@ public actor OpenBurnBarPlaywrightLifecycle {
                 arguments: [bridgeScriptURL.path, "--probe-runtime"]
             )
             guard probe.exitCode == 0,
-                  let report = try? JSONSerialization.jsonObject(with: probe.stdout) as? [String: Any],
+                  let report = BurnBarJSONValue.dictionary(fromJSONData: probe.stdout),
                   report["ready"] as? Bool == true else {
                 let output = String(decoding: probe.stdout + probe.stderr, as: UTF8.self)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -138,7 +139,7 @@ public actor OpenBurnBarPlaywrightLifecycle {
             arguments: ["list", "-g", "--depth=0", "playwright", "--json"]
         )
         guard result.exitCode == 0 else { return nil }
-        guard let json = try? JSONSerialization.jsonObject(with: result.stdout) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: result.stdout),
               let dependencies = json["dependencies"] as? [String: Any],
               let playwright = dependencies["playwright"] as? [String: Any],
               let version = playwright["version"] as? String else {

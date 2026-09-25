@@ -575,7 +575,7 @@ public final class GooseParser: LogParser, Sendable {
 
         if let configJSON = stringValue(row, column: "model_config_json"),
            let data = configJSON.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(config JSON, model fallback)
+           let json = BurnBarJSONValue.dictionary(fromJSONData: data) { // try?-ok(config JSON, model fallback)
             let candidates = [
                 json["model_name"],
                 json["model"],
@@ -693,7 +693,7 @@ public final class GooseParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(log line JSON, skip)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(log line JSON, skip)
                 continue
             }
 

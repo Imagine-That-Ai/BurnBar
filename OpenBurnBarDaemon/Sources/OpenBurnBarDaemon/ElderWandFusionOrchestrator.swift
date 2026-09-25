@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 // MARK: - The Elder Wand — model-fusion orchestrator
 //
@@ -457,7 +458,7 @@ struct ElderWandFusionOrchestrator: Sendable {
     }
 
     private static func extractMaxTokens(from bodyData: Data) -> Int? {
-        guard let object = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: bodyData) else {
             return nil
         }
         for key in ["max_tokens", "max_completion_tokens", "max_output_tokens"] {
@@ -492,7 +493,7 @@ struct ElderWandFusionOrchestrator: Sendable {
     /// Extract `messages` from the raw request body. Returns `nil` when the body
     /// has no non-empty `messages` array.
     static func extractMessages(from bodyData: Data) -> ExtractedMessages? {
-        guard let object = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: bodyData),
               let rawMessages = object["messages"] as? [[String: Any]],
               !rawMessages.isEmpty else {
             return nil
@@ -598,7 +599,7 @@ struct ElderWandFusionOrchestrator: Sendable {
             "blind_spots"
         ]
         guard let data = text.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data),
               Set(object.keys) == requiredFields,
               object.values.allSatisfy({ $0 is String }) else {
             return nil

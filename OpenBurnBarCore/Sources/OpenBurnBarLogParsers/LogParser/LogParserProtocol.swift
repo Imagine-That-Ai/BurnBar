@@ -155,7 +155,7 @@ public struct ParserConversationCacheScrubber {
         }
 
         // Legacy JSON fallback for caches not yet re-persisted as binary plist.
-        guard var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(best-effort cache decode)
+        guard var root = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(best-effort cache decode)
               var entries = root["fileEntries"] as? [String: Any] else {
             return
         }

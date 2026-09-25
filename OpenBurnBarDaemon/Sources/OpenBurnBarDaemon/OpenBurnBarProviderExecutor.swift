@@ -1347,7 +1347,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let normalizedProviderID, !normalizedProviderID.isEmpty else { return nil }
         guard let data = try? Data(contentsOf: hermesCredentialPoolURL),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let root = BurnBarJSONValue.dictionary(fromJSONData: data),
               let pool = root["credential_pool"] as? [String: Any],
               let entries = pool[normalizedProviderID] as? [[String: Any]] else {
             return nil
@@ -1544,7 +1544,7 @@ private struct BurnBarClaudeOAuthRouteCredential {
 
     static func decode(_ storageSecret: String) -> BurnBarClaudeOAuthRouteCredential? {
         guard let data = storageSecret.data(using: .utf8),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let root = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
         let oauth = root["claudeAiOauth"] as? [String: Any] ?? root

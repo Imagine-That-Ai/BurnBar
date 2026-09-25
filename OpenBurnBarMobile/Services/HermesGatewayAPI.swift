@@ -539,7 +539,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         let callable = try functionsClient().httpsCallable("listHermesConnections")
         let result = try await callable.call([:])
         guard
-            let dict = result.data as? [String: Any],
+            let dict = BurnBarJSONValue.dictionary(from: result.data),
             let connections = dict["connections"]
         else {
             throw FunctionsError.decodingFailed

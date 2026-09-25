@@ -219,7 +219,7 @@ public final class GrokParser: LogParser, Sendable {
             for metadataDir in metadataDirs {
                 let metadataURL = metadataDir.appendingPathComponent("meta.json")
                 guard let data = try? Data(contentsOf: metadataURL), // try?-ok(incomplete child metadata skipped)
-                      let metadata = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(malformed metadata skipped)
+                      let metadata = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(malformed metadata skipped)
                       let childSessionID = (metadata["child_session_id"] as? String)?.nilIfEmpty else {
                     continue
                 }
@@ -250,7 +250,7 @@ public final class GrokParser: LogParser, Sendable {
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date // try?-ok(mtime falls back)
         guard let summaryData = try? Data(contentsOf: summaryURL), // try?-ok(missing summary skipped)
-              let summary = try? JSONSerialization.jsonObject(with: summaryData) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+              let summary = BurnBarJSONValue.dictionary(fromJSONData: summaryData) else { // try?-ok(malformed JSON skipped)
             return nil
         }
 
@@ -436,7 +436,7 @@ public final class GrokParser: LogParser, Sendable {
     private func loadSignals(at url: URL) -> GrokSignals? {
         guard FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url), // try?-ok(missing signals skipped)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed JSON skipped)
             return nil
         }
         return GrokSignals(
@@ -516,7 +516,7 @@ public final class GrokParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skipped)
                 continue
             }
             let params = json["params"] as? [String: Any]
@@ -574,7 +574,7 @@ public final class GrokParser: LogParser, Sendable {
         var maxTokens = 0
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skipped)
                 continue
             }
             if let meta = json["_meta"] as? [String: Any],
@@ -615,7 +615,7 @@ public final class GrokParser: LogParser, Sendable {
         var turns: [ChatTurn] = []
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skipped)
                 continue
             }
             let role = (json["type"] as? String)?.lowercased() ?? ""

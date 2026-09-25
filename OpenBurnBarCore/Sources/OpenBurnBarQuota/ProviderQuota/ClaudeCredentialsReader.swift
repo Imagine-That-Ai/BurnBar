@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Claude OAuth Credential Shapes
 
@@ -137,7 +138,7 @@ public enum ClaudeCredentialsReader {
     /// any schema deviation — better unavailable than a half-formed
     /// credential that 401s on every request.
     public static func decode(_ data: Data) -> ClaudeOAuthCredentials? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional decode guard)
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(optional decode guard)
             return nil
         }
         let oauth = json["claudeAiOauth"] as? [String: Any] ?? json

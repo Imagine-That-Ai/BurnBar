@@ -789,7 +789,7 @@ final class ConnectionsViewModel {
     }
 
     private static func gatewayErrorMessage(from data: Data) -> String? {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
         return object["error"] as? String

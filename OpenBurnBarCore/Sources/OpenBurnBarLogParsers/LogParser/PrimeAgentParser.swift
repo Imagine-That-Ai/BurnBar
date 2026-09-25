@@ -203,7 +203,7 @@ public final class PrimeAgentParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { continue }
             guard let type = json["type"] as? String else { continue }
 
             if type == "session" {

@@ -157,11 +157,11 @@ struct MobileICloudHermesLibraryReader: Sendable {
         if file.pathExtension.lowercased() == "jsonl" {
             for line in text.split(separator: "\n") {
                 guard let data = String(line).data(using: .utf8),
-                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                      let object = BurnBarJSONValue.dictionary(fromJSONData: data) else { continue }
                 appendMessage(from: object, to: &messages)
             }
         } else if let data = text.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data) {
             explicitTitle = object["title"] as? String
             explicitSessionId = object["session_id"] as? String ?? object["sessionId"] as? String
             if let updated = object["updated_at"] as? String {

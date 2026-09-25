@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 extension RoutingClientWiring {
 
@@ -27,7 +28,7 @@ extension RoutingClientWiring {
         if stripped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             object = [:]
         } else {
-            guard let parsed = try? JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? [String: Any] else { // try?-ok(guard rethrows explicit error)
+            guard let parsed = BurnBarJSONValue.dictionary(fromJSONData: Data(stripped.utf8)) else { // try?-ok(guard rethrows explicit error)
                 throw RoutingClientWiringError.configReadFailed(
                     path: url.path,
                     detail: "could not parse JSON"

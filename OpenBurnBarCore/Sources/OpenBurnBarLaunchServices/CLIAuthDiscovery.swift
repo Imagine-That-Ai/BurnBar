@@ -568,7 +568,7 @@ public enum CLIAuthDiscovery {
 
         guard fm.fileExists(atPath: authPath),
               let data = fm.contents(atPath: authPath),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             // No auth file — check if installed
             return fm.fileExists(atPath: configDirectory) ? .notAuthenticated : .notInstalled
         }
@@ -626,7 +626,7 @@ public enum CLIAuthDiscovery {
         let authPath = "\(dataDirectory)/auth.json"
         guard fm.fileExists(atPath: authPath),
               let data = fm.contents(atPath: authPath),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               !json.isEmpty else {
             return (fm.fileExists(atPath: dataDirectory) || fm.fileExists(atPath: configDirectory))
                 ? .notAuthenticated
@@ -703,7 +703,7 @@ public enum CLIAuthDiscovery {
     }
 
     static func extractCodexAccountDescription(fromAuthJSONData data: Data) -> String? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let tokens = json["tokens"] as? [String: Any] else {
             return nil
         }
@@ -735,7 +735,7 @@ public enum CLIAuthDiscovery {
     }
 
     private static func parseClaudeStatusJSON(_ data: Data) -> ClaudeStatusPayload? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
 
@@ -812,7 +812,7 @@ public enum CLIAuthDiscovery {
         guard case .authenticated = authState else { return nil }
         let authPath = "\(dataDirectory)/auth.json"
         guard let data = FileManager.default.contents(atPath: authPath),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               !json.isEmpty else {
             return nil
         }
@@ -887,7 +887,7 @@ public enum CLIAuthDiscovery {
         }
 
         guard let data = Data(base64Encoded: payload),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
 

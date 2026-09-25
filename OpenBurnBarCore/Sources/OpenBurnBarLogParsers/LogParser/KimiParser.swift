@@ -170,7 +170,7 @@ public final class KimiParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(skip malformed log line)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(skip malformed log line)
                 continue
             }
 
@@ -315,7 +315,7 @@ public final class KimiParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(skip malformed log line)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(skip malformed log line)
                 continue
             }
 

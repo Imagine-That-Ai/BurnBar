@@ -382,7 +382,7 @@ public final class MuseParser: LogParser, Sendable {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
             guard let data = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 continue // truncated/partial line — skip
             }
 
@@ -547,7 +547,7 @@ public final class MuseParser: LogParser, Sendable {
         for child in children {
             guard let raw = child["record_json"] as? String,
                   let data = raw.data(using: .utf8),
-                  let inner = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let inner = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 continue
             }
             out.append(contentsOf: expandEnvelopes(inner))

@@ -53,7 +53,7 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
                 )
             }
 
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON throws)
+            guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed JSON throws)
                 throw ProviderUsageAPIError.invalidResponse
             }
 

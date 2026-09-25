@@ -37,7 +37,7 @@ final class EntitlementsAPI: HostedQuotaEntitlementServicing {
         if let clientPlatform { payload["clientPlatform"] = clientPlatform }
         let result = try await callable.call(payload)
         guard
-            let dict = result.data as? [String: Any],
+            let dict = BurnBarJSONValue.dictionary(from: result.data),
             let token = dict["appAccountToken"] as? String,
             !token.isEmpty
         else {

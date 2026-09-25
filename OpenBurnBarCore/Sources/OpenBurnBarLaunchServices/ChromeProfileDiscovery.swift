@@ -66,7 +66,7 @@ public enum ChromeProfileDiscovery {
 
         guard fm.fileExists(atPath: localStatePath),
               let data = fm.contents(atPath: localStatePath),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let profile = json["profile"] as? [String: Any],
               let infoCache = profile["info_cache"] as? [String: [String: Any]] else {
             return []

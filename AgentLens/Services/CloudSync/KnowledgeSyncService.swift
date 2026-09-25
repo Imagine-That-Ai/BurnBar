@@ -125,7 +125,7 @@ public struct FirebaseKnowledgeSyncCallable: KnowledgeSyncCallable {
         var payload: [String: Any] = ["sourceKind": sourceKind]
         if let sourceSlug, !sourceSlug.isEmpty { payload["sourceSlug"] = sourceSlug }
         let result = try await callable.call(payload)
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let slug = dict["sourceSlug"] as? String, !slug.isEmpty else {
             throw KnowledgeSyncError.configureFailed
         }
@@ -135,7 +135,7 @@ public struct FirebaseKnowledgeSyncCallable: KnowledgeSyncCallable {
     public func commitKnowledgeBatch(_ payload: [String: Any]) async throws -> KnowledgeCommitResult {
         let callable = Functions.functions(region: "us-central1").httpsCallable("commitKnowledgeBatch")
         let result = try await callable.call(payload)
-        guard let dict = result.data as? [String: Any] else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
             throw KnowledgeSyncError.commitFailed("Malformed commitKnowledgeBatch response.")
         }
         return KnowledgeCommitResult(

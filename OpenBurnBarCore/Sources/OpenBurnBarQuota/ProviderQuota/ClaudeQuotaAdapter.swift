@@ -1305,7 +1305,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             return nil
         }
 
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed line)
+        guard let obj = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(skip malformed line)
               let type = obj["type"] as? String,
               type == "assistant",
               let message = obj["message"] as? [String: Any],

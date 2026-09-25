@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Memory Extraction LLM Client
 //
@@ -129,7 +130,7 @@ struct MemoryExtractionLLMClient: Sendable {
             return (nil, cooldown)
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(decode LLM JSON)
               let text = json["response"] as? String
         else {
             return (nil, false)

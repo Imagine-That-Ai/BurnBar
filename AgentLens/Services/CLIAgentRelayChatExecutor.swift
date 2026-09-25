@@ -463,7 +463,7 @@ struct CLIRuntimeModelCatalogDiscovery: Sendable {
         let settingsURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".gemini/antigravity-cli/settings.json")
         guard let data = try? Data(contentsOf: settingsURL), // try?-ok(optional settings read)
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional json parse)
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional json parse)
               let selectedModel = object["model"] as? String else {
             return nil
         }

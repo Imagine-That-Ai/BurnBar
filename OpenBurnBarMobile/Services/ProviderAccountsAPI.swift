@@ -164,7 +164,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -209,7 +209,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -250,7 +250,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -355,7 +355,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -390,7 +390,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -428,7 +428,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             throw FunctionsError.decodingFailed
         }
         let result = try await callable.call(payload)
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let responseData = try? JSONSerialization.data(withJSONObject: sanitized),
               let snap = try? JSONDecoder().decode(ProviderQuotaSnapshot.self, from: responseData) else {

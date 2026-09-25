@@ -132,7 +132,7 @@ final class PiPairingAPI: PiPairingServicing {
         let callable = try functionsClient().httpsCallable("listPiAgentConnections")
         let result = try await callable.call(["includeRevoked": includeRevoked])
         guard
-            let dict = result.data as? [String: Any],
+            let dict = BurnBarJSONValue.dictionary(from: result.data),
             let connections = dict["connections"]
         else {
             throw FunctionsError.decodingFailed

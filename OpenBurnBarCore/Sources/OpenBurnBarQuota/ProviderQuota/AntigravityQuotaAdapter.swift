@@ -352,7 +352,7 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
 
                 for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
                     guard let lineData = line.data(using: .utf8),
-                          let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { continue }
+                          let json = BurnBarJSONValue.dictionary(fromJSONData: lineData) else { continue }
 
                     let source = json["source"] as? String ?? ""
                     let type = json["type"] as? String ?? ""

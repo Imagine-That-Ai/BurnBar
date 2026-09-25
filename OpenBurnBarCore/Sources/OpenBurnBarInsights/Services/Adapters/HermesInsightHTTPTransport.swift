@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -90,7 +91,7 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
                         let payload = line.dropFirst("data: ".count)
                         if payload == "[DONE]" { return false }
                         guard let data = payload.data(using: .utf8),
-                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                             return true
                         }
                         if let delta = Self.deltaText(from: json), !delta.isEmpty {
@@ -243,7 +244,7 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
     }
 
     private static func usageFromJSON(_ data: Data) -> HermesInsightTokenUsage? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { return nil }
         return usage(from: json["usage"] as? [String: Any])
     }
 }

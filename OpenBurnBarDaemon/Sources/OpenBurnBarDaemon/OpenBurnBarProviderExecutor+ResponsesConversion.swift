@@ -1,5 +1,6 @@
 import OpenBurnBarEngine
 import Foundation
+import OpenBurnBarKernel
 
 // OpenAI Responses API <-> Chat Completions request/response/stream conversion.
 // Extracted from OpenBurnBarProviderExecutor.swift (god-type decomposition) — same module, same isolation, verbatim.
@@ -701,7 +702,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
     }
 
     static func extractResponsesUsage(responseBody: Data) -> BurnBarProviderProxyUsage? {
-        guard let object = try? JSONSerialization.jsonObject(with: responseBody) as? [String: Any],
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: responseBody),
               let usage = object["usage"] as? [String: Any] else {
             return nil
         }

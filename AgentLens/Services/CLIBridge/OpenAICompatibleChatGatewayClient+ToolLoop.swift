@@ -57,7 +57,7 @@ extension OpenAICompatibleChatGatewayClient {
                     return
                 }
 
-                let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:] // try?-ok(JSON parse fallback)
+                let obj = (BurnBarJSONValue.dictionary(fromJSONData: data)) ?? [:] // try?-ok(JSON parse fallback)
                 if let usage = OpenAICompatibleUsageParser.usage(from: obj) {
                     continuation.yield(.usage(usage))
                 }
@@ -176,7 +176,7 @@ extension OpenAICompatibleChatGatewayClient {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         if let data = trimmed.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(summary parse fallback)
+           let obj = BurnBarJSONValue.dictionary(fromJSONData: data) { // try?-ok(summary parse fallback)
             for key in ["path", "command", "url", "selector", "text", "key", "value"] {
                 if let value = obj[key] as? String, !value.isEmpty {
                     return String(value.prefix(160))

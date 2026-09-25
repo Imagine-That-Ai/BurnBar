@@ -137,7 +137,7 @@ enum MobileCloudVaultRevocationRotation {
                     let result = try await Functions.functions(region: "us-central1")
                         .httpsCallable("rotateCloudVaultKey")
                         .call(payload)
-                    guard let dict = result.data as? [String: Any] else {
+                    guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                         return [:]
                     }
                     return dict
@@ -267,7 +267,7 @@ enum MobileCloudVaultRevocationRotation {
         _ = try requireSignedInUser()
         let result = try await functions.httpsCallable("listPendingCloudVaultRotationRequirements")
             .call(listPendingCallablePayload(callerDeviceId: callerDeviceId))
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let rawRequirements = dict["requirements"] as? [[String: Any]] else {
             throw RotationError.invalidResponse("Could not list pending Cloud Vault rotation requirements.")
         }

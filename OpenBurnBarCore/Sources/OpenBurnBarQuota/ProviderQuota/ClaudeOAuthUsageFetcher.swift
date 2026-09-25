@@ -364,7 +364,7 @@ public struct ClaudeOAuthUsageFetcher {
         guard let (data, response) = try? await session.data(for: request), // try?-ok(network fetch skip)
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional refresh parse)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional refresh parse)
               let newAccess = quotaNonEmpty(json["access_token"] as? String) else {
             return nil
         }
@@ -482,7 +482,7 @@ public struct ClaudeOAuthUsageFetcher {
 
     private func readLastFetchAttempt() -> Date? {
         guard let data = try? Data(contentsOf: attemptMarkerURL), // try?-ok(best-effort marker read)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional marker parse)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional marker parse)
               let iso = json["lastAttempt"] as? String else { return nil }
         return ThreadSafeISO8601DateFormatter.parseBasic(iso)
     }
@@ -523,7 +523,7 @@ public struct ClaudeRateLimits: Sendable, Equatable {
     private let _rawJSON: Data
 
     var rawDictionary: [String: Any] {
-        (try? JSONSerialization.jsonObject(with: _rawJSON) as? [String: Any]) ?? [:] // try?-ok(optional decode fallback)
+        (BurnBarJSONValue.dictionary(fromJSONData: _rawJSON)) ?? [:] // try?-ok(optional decode fallback)
     }
 
     var isEmpty: Bool { windows.isEmpty }
@@ -552,7 +552,7 @@ public struct ClaudeRateLimits: Sendable, Equatable {
     /// `{"rate_limits": {...}}` or the bare `{...}` map — we accept
     /// both for forward-compatibility.
     init(from data: Data) {
-        guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional decode fallback)
+        guard let raw = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(optional decode fallback)
             self = .empty
             return
         }

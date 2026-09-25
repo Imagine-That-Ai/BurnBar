@@ -122,7 +122,7 @@ public enum FactoryDashboardScraper {
         guard !jsonStr.isEmpty,
               let jsonData = jsonStr.data(using: .utf8),
               // try?-ok(optional SSR decode)
-              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+              let json = BurnBarJSONValue.dictionary(fromJSONData: jsonData) else {
             return nil
         }
 
@@ -285,7 +285,7 @@ public enum FactoryDashboardScraper {
               let http = resp as? HTTPURLResponse,
               http.statusCode == 200,
               // try?-ok(optional usage decode)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
 
@@ -316,7 +316,7 @@ public enum FactoryDashboardScraper {
               let http = resp as? HTTPURLResponse,
               http.statusCode == 200,
               // try?-ok(optional usage decode)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
 

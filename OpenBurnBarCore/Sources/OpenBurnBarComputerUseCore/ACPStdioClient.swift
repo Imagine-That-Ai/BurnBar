@@ -1,4 +1,5 @@
 #if os(macOS)
+import OpenBurnBarKernel
 // Process-based stdio session runner: macOS only. Foundation.Process does
 // not exist on iOS; the sole consumer is AgentLens (macOS). #2362 shipped
 // this file unguarded, which broke the iOS archive the first time a release
@@ -183,7 +184,7 @@ public enum ACPStdioClient {
                 if !process.isRunning { break }
                 continue
             }
-            guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else {
+            guard let obj = BurnBarJSONValue.dictionary(fromJSONData: Data(line.utf8)) else {
                 continue
             }
             if let method = obj["method"] as? String, method == "session/set_mode" {

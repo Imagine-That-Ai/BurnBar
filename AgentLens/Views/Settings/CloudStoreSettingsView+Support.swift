@@ -671,7 +671,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
             "clientPlatform": "macos"
         ])
         guard
-            let dict = result.data as? [String: Any],
+            let dict = BurnBarJSONValue.dictionary(from: result.data),
             let rawToken = dict["appAccountToken"] as? String,
             let token = UUID(uuidString: rawToken)
         else {
@@ -1036,5 +1036,18 @@ struct MacRemoteMCPClientRow: View {
                     lineWidth: 0.6
                 )
         )
+    }
+}
+
+// MARK: - Backup elapsed-time formatting
+
+extension CloudStoreSettingsView {
+    func formatElapsed(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return String(format: "%.0fs", seconds)
+        }
+        let minutes = Int(seconds) / 60
+        let remainder = Int(seconds) % 60
+        return "\(minutes)m \(remainder)s"
     }
 }

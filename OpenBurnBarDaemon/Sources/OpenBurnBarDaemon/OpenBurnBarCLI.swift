@@ -1100,7 +1100,7 @@ public struct BurnBarCLIRunner {
 
     private static func normalizedClaudeOAuthStoragePayload(from raw: String) throws -> String? {
         guard let data = raw.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let root = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
         let oauth = root["claudeAiOauth"] as? [String: Any] ?? root

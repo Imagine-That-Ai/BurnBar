@@ -13,6 +13,7 @@
 // (narratives, recommendations, forecasts) that currently use sample data.
 
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Insights C-ABI contract
 
@@ -107,7 +108,7 @@ enum OBBCAbiLocalCanvasBuilder {
         // This is the deterministic, no-LLM path — the same rules the macOS
         // "Local rules · free, on-device" option uses.
         guard let data = digestJson.data(using: .utf8),
-              let digest = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let digest = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             throw OBBCAbiInsightError.invalidInput("digestJson is not valid JSON")
         }
 

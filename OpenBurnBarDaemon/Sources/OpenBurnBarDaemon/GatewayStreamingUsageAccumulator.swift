@@ -1,5 +1,6 @@
 import OpenBurnBarEngine
 import Foundation
+import OpenBurnBarKernel
 
 // remediation(gateway decomposition): relocated verbatim from
 // OpenBurnBarHTTPGatewayServer.swift (was `private` inside the actor) to shrink
@@ -39,7 +40,7 @@ final class GatewayStreamingUsageAccumulator {
             let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
             guard payload != "[DONE]",
                   let data = payload.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 continue
             }
             switch format {

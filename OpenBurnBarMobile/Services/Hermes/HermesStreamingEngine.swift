@@ -280,7 +280,7 @@ final class HermesStreamingEngine {
         }
 
         guard let jsonData = data.data(using: .utf8) else { return }
-        guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { return }
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: jsonData) else { return }
 
         // The Elder Wand emits a final SSE frame carrying the itemized fusion
         // session spend (after the synthesis stream's `[DONE]`), so iOS — which
@@ -649,7 +649,7 @@ final class HermesStreamingEngine {
         guard !trimmed.isEmpty else { return nil }
 
         if let data = trimmed.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let obj = BurnBarJSONValue.dictionary(fromJSONData: data) {
             for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
                 if let value = obj[key] as? String, !value.isEmpty {
                     return String(value.prefix(200))
