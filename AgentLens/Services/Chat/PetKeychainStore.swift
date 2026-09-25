@@ -138,7 +138,7 @@ struct PetKeychainStore: Sendable {
 
     /// Whether a non-empty secret is present for `slot`.
     func has(_ slot: Slot, account: String = defaultAccount) -> Bool {
-        ((try? get(slot, account: account)) ?? nil)?.isEmpty == false
+        ((try? get(slot, account: account)) ?? nil)?.isEmpty == false // try?-ok(existence probe; unreadable means absent)
     }
 
     // MARK: Private

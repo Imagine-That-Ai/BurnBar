@@ -258,7 +258,7 @@ enum PetChatFallback {
             let task = Task {
                 for tok in tokens {
                     if Task.isCancelled { break }
-                    if delay > .zero { try? await Task.sleep(for: delay) }
+                    if delay > .zero { try? await Task.sleep(for: delay) } // try?-ok(cancellation only; skips the delay)
                     continuation.yield(tok)
                 }
                 continuation.finish()
