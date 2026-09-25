@@ -98,7 +98,7 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
                             assembled += delta
                             continuation.yield(.delta(delta))
                         }
-                        if let usage = Self.usage(from: json["usage"] as? [String: Any]) {
+                        if let usage = Self.usage(from: json["usage"] as? InsightJSONObject) {
                             terminalUsage = usage
                         }
                         return true
@@ -154,7 +154,7 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
             urlRequest.addValue(authorizationHeader, forHTTPHeaderField: "Authorization")
         }
         let userText = String(data: request.userPayload, encoding: .utf8) ?? ""
-        var body: [String: Any] = [
+        var body: InsightJSONObject = [
             "model": request.modelID,
             "temperature": request.prefersAnswerLatency ? 0.3 : 0.2,
             "max_tokens": request.maxOutputTokens,
@@ -197,11 +197,11 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
         }
     }
 
-    private static func deltaText(from json: [String: Any]) -> String? {
+    private static func deltaText(from json: InsightJSONObject) -> String? {
         // OpenAI streaming: choices[0].delta.content
-        if let choices = json["choices"] as? [[String: Any]],
+        if let choices = json["choices"] as? [InsightJSONObject],
            let first = choices.first,
-           let delta = first["delta"] as? [String: Any],
+           let delta = first["delta"] as? InsightJSONObject,
            let content = delta["content"] as? String {
             return content
         }
@@ -212,16 +212,16 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
         return nil
     }
 
-    private static func usage(from raw: [String: Any]?) -> HermesInsightTokenUsage? {
+    private static func usage(from raw: InsightJSONObject?) -> HermesInsightTokenUsage? {
         guard let raw else { return nil }
         var input = (raw["prompt_tokens"] as? Int) ?? (raw["input_tokens"] as? Int) ?? 0
         let output = (raw["completion_tokens"] as? Int) ?? (raw["output_tokens"] as? Int) ?? 0
         let reasoning = (raw["reasoning_tokens"] as? Int)
-            ?? ((raw["completion_tokens_details"] as? [String: Any])?["reasoning_tokens"] as? Int)
+            ?? ((raw["completion_tokens_details"] as? InsightJSONObject)?["reasoning_tokens"] as? Int)
             ?? 0
         let exclusiveCacheRead = (raw["cache_read_input_tokens"] as? Int) ?? 0
-        let inclusiveCacheRead = ((raw["prompt_tokens_details"] as? [String: Any])?["cached_tokens"] as? Int)
-            ?? ((raw["input_tokens_details"] as? [String: Any])?["cached_tokens"] as? Int)
+        let inclusiveCacheRead = ((raw["prompt_tokens_details"] as? InsightJSONObject)?["cached_tokens"] as? Int)
+            ?? ((raw["input_tokens_details"] as? InsightJSONObject)?["cached_tokens"] as? Int)
             ?? (raw["input_cached_tokens"] as? Int)
             ?? (raw["cached_input_tokens"] as? Int)
             ?? 0
@@ -245,6 +245,6 @@ public struct HermesInsightHTTPTransport: HermesInsightTransport {
 
     private static func usageFromJSON(_ data: Data) -> HermesInsightTokenUsage? {
         guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { return nil }
-        return usage(from: json["usage"] as? [String: Any])
+        return usage(from: json["usage"] as? InsightJSONObject)
     }
 }

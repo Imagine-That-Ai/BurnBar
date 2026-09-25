@@ -19,7 +19,7 @@ enum BurnBarCLIComputerUseLiveSurface {
         let panic = try runPanicProof(baseURL: trimSlash(panicURL), auditHead: auditHead)
         let media = try runMediaProof(baseURL: trimSlash(mediaURL), auditHead: auditHead)
         let pass = (panic["status"] as? String) == "pass" && (media["status"] as? String) == "pass"
-        let payload: [String: Any] = [
+        let payload: DaemonJSONObject = [
             "generatedAt": ISO8601DateFormatter().string(from: Date()),
             "surface": "OpenBurnBarCLI computer-use live-surface-proof",
             "status": pass ? "pass" : "fail",
@@ -30,7 +30,7 @@ enum BurnBarCLIComputerUseLiveSurface {
         return BurnBarCLIInvocationResult(output: output, exitCode: pass ? 0 : 1)
     }
 
-    private static func runPanicProof(baseURL: String, auditHead: String) throws -> [String: Any] {
+    private static func runPanicProof(baseURL: String, auditHead: String) throws -> DaemonJSONObject {
         let session = try requestJSON(
             url: "\(baseURL)/session/start",
             body: [
@@ -45,7 +45,7 @@ enum BurnBarCLIComputerUseLiveSurface {
             ("mobile-remote", "mobile_remote"),
             ("global-system", "global_system_equivalent")
         ]
-        var rows: [[String: Any]] = []
+        var rows: [DaemonJSONObject] = []
         var allPassed = (session["resourcesActive"] as? Bool) == true
         for (path, source) in paths {
             let response = try requestJSON(
@@ -93,7 +93,7 @@ enum BurnBarCLIComputerUseLiveSurface {
         ]
     }
 
-    private static func runMediaProof(baseURL: String, auditHead: String) throws -> [String: Any] {
+    private static func runMediaProof(baseURL: String, auditHead: String) throws -> DaemonJSONObject {
         let negotiation = try requestJSON(
             url: "\(baseURL)/media/negotiate",
             body: [
@@ -146,7 +146,7 @@ enum BurnBarCLIComputerUseLiveSurface {
         ]
     }
 
-    private static func requestJSON(url: String, body: [String: Any]) throws -> [String: Any] {
+    private static func requestJSON(url: String, body: DaemonJSONObject) throws -> DaemonJSONObject {
         guard let curl = which("curl") else {
             throw BurnBarCLIError.invalidCommand("computer-use live-surface-proof requires curl")
         }
@@ -172,7 +172,7 @@ enum BurnBarCLIComputerUseLiveSurface {
             )
         }
         guard let data = result.stdout.data(using: .utf8),
-              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let json = try JSONSerialization.jsonObject(with: data) as? DaemonJSONObject else {
             throw BurnBarCLIError.invalidCommand("computer-use live-surface-proof returned non-JSON from \(url)")
         }
         var withTrace = json
@@ -238,7 +238,7 @@ enum BurnBarCLIComputerUseLiveSurface {
         return nil
     }
 
-    private static func jsonString(_ value: [String: Any], pretty: Bool) throws -> String {
+    private static func jsonString(_ value: DaemonJSONObject, pretty: Bool) throws -> String {
         let data = try JSONSerialization.data(
             withJSONObject: value,
             options: pretty ? [.prettyPrinted, .sortedKeys] : [.sortedKeys]
@@ -249,7 +249,7 @@ enum BurnBarCLIComputerUseLiveSurface {
         return output
     }
 
-    private static func jsonData(_ value: [String: Any]) throws -> Data {
+    private static func jsonData(_ value: DaemonJSONObject) throws -> Data {
         try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
     }
 

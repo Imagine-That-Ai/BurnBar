@@ -221,7 +221,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
            postInstallStatus.state == .ready,
            Self.isFreshStatuslineSnapshot(postInstallStatus.lastPayloadAt),
            let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL), // try?-ok(quota snapshot, skip path)
-           let rateLimitsDict = payload["rate_limits"] as? [String: Any] {
+           let rateLimitsDict = payload["rate_limits"] as? QuotaJSONObject {
             let rateLimits = ClaudeRateLimits(from: rateLimitsDict)
             let buckets = claudeQuotaBuckets(from: rateLimits, context: context)
             if !buckets.isEmpty {
@@ -456,7 +456,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
               let lastPayloadAt = status.lastPayloadAt,
               !Self.isFreshStatuslineSnapshot(lastPayloadAt),
               let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL), // try?-ok(quota snapshot, nil skip)
-              let rateLimitsDict = payload["rate_limits"] as? [String: Any] else {
+              let rateLimitsDict = payload["rate_limits"] as? QuotaJSONObject else {
             return nil
         }
 
@@ -920,8 +920,8 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         defaultStateURL: URL,
         quotaLogger: any QuotaLogger = NoOpQuotaLogger()
     ) -> Bool {
-        let profileState: [String: Any]?
-        let defaultState: [String: Any]?
+        let profileState: QuotaJSONObject?
+        let defaultState: QuotaJSONObject?
         do {
             profileState = try snapshotStore.readJSONObject(from: profileStateURL)
             defaultState = try snapshotStore.readJSONObject(from: defaultStateURL)
@@ -938,8 +938,8 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         return !profileIdentity.isDisjoint(with: defaultIdentity)
     }
 
-    private static func claudeAccountIdentity(from state: [String: Any]) -> Set<String> {
-        guard let account = state["oauthAccount"] as? [String: Any] else { return [] }
+    private static func claudeAccountIdentity(from state: QuotaJSONObject) -> Set<String> {
+        guard let account = state["oauthAccount"] as? QuotaJSONObject else { return [] }
         let candidates = [
             account["accountUuid"] as? String,
             account["emailAddress"] as? String,
@@ -1310,8 +1310,8 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         guard let obj = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(skip malformed line)
               let type = obj["type"] as? String,
               type == "assistant",
-              let message = obj["message"] as? [String: Any],
-              let usage = message["usage"] as? [String: Any] else {
+              let message = obj["message"] as? QuotaJSONObject,
+              let usage = message["usage"] as? QuotaJSONObject else {
             return nil
         }
 

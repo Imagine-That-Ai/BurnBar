@@ -120,18 +120,18 @@ public enum WarpAPIFetcher {
         request.setValue(osVersionString, forHTTPHeaderField: "x-warp-os-version")
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
-        let variables: [String: Any] = [
+        let variables: QuotaJSONObject = [
             "requestContext": [
-                "clientContext": [:] as [String: Any],
+                "clientContext": [:] as QuotaJSONObject,
                 "osContext": [
                     "category": "macOS",
                     "name": "macOS",
                     "version": osVersionString
-                ] as [String: Any]
-            ] as [String: Any]
+                ] as QuotaJSONObject
+            ] as QuotaJSONObject
         ]
 
-        let body: [String: Any] = [
+        let body: QuotaJSONObject = [
             "query": graphQLQuery,
             "variables": variables,
             "operationName": "GetRequestLimitInfo"
@@ -191,7 +191,7 @@ public enum WarpAPIFetcher {
         }
 
         // Check for GraphQL errors
-        if let errors = json["errors"] as? [[String: Any]], !errors.isEmpty {
+        if let errors = json["errors"] as? [QuotaJSONObject], !errors.isEmpty {
             let messages = errors.compactMap { err -> String? in
                 if let msg = err["message"] as? String { return msg }
                 return nil
@@ -199,13 +199,13 @@ public enum WarpAPIFetcher {
             throw QuotaServiceError.invalidResponse("Warp GraphQL error: \(messages)")
         }
 
-        guard let dataDict = json["data"] as? [String: Any],
-              let userObj = dataDict["user"] as? [String: Any] else {
+        guard let dataDict = json["data"] as? QuotaJSONObject,
+              let userObj = dataDict["user"] as? QuotaJSONObject else {
             throw QuotaServiceError.invalidResponse("Warp response missing data.user.")
         }
 
-        guard let innerUserObj = userObj["user"] as? [String: Any],
-              let limitInfo = innerUserObj["requestLimitInfo"] as? [String: Any] else {
+        guard let innerUserObj = userObj["user"] as? QuotaJSONObject,
+              let limitInfo = innerUserObj["requestLimitInfo"] as? QuotaJSONObject else {
             throw QuotaServiceError.invalidResponse("Unable to extract requestLimitInfo from response.")
         }
 
@@ -221,16 +221,16 @@ public enum WarpAPIFetcher {
         // Parse and combine bonus credits from user-level and workspace-level
         var bonusRemaining = 0
         var bonusTotal = 0
-        if let bonusGrants = innerUserObj["bonusGrants"] as? [[String: Any]] {
+        if let bonusGrants = innerUserObj["bonusGrants"] as? [QuotaJSONObject] {
             for grant in bonusGrants {
                 bonusTotal += grant["requestCreditsGranted"] as? Int ?? 0
                 bonusRemaining += grant["requestCreditsRemaining"] as? Int ?? 0
             }
         }
-        if let workspaces = innerUserObj["workspaces"] as? [[String: Any]] {
+        if let workspaces = innerUserObj["workspaces"] as? [QuotaJSONObject] {
             for workspace in workspaces {
-                if let info = workspace["bonusGrantsInfo"] as? [String: Any],
-                   let grants = info["grants"] as? [[String: Any]] {
+                if let info = workspace["bonusGrantsInfo"] as? QuotaJSONObject,
+                   let grants = info["grants"] as? [QuotaJSONObject] {
                     for grant in grants {
                         bonusTotal += grant["requestCreditsGranted"] as? Int ?? 0
                         bonusRemaining += grant["requestCreditsRemaining"] as? Int ?? 0

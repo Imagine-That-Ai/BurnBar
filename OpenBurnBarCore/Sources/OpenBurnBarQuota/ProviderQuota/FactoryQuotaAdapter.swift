@@ -12,7 +12,7 @@ import FoundationNetworking
 /// stays dictionary-based — but every site spells the type through this alias
 /// instead of repeating the raw untyped-dictionary literal, keeping the
 /// string-any boundary countable at one choke point.
-typealias QuotaJSONObject = [String: Any]
+public typealias QuotaJSONObject = [String: Any]
 
 // MARK: - Factory / Droid Quota Adapter
 

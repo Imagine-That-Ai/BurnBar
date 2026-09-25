@@ -1,6 +1,9 @@
 import Foundation
 import OpenBurnBarEngine
 
+/// Choke-point alias for the untyped JSON-object boundary in this module.
+public typealias DaemonJSONObject = [String: Any]
+
 // MARK: - BurnBarBridgeValue
 
 /// Int-preserving JSON value for the provider API bridges.

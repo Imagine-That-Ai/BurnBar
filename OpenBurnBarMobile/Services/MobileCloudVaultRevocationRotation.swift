@@ -57,7 +57,7 @@ enum MobileCloudVaultRevocationRotation {
         let currentVaultGeneration: Int
         let survivorDeviceIds: [String]
 
-        init(data: [String: Any], rotatingDeviceId: String) throws {
+        init(data: MobileJSONObject, rotatingDeviceId: String) throws {
             guard data["status"] as? String == "pending",
                   data["rotateCallable"] as? String == "rotateCloudVaultKey",
                   let currentVaultKeyID = data["currentVaultKeyID"] as? String,
@@ -86,13 +86,13 @@ enum MobileCloudVaultRevocationRotation {
     }
 
     struct RevocationCloudVaultRotationEnvironment {
-        let loadRequirement: (String) async throws -> [String: Any]?
+        let loadRequirement: (String) async throws -> MobileJSONObject?
         let loadCurrentKey: () async throws -> MobileCloudVaultResolvedKey?
         let loadLocalIdentity: () throws -> OpenBurnBarSignalIdentityKeypair
         let publishLocalIdentity: (OpenBurnBarSignalIdentityKeypair) async throws -> Void
         let verifiedTrustedDevice: (String, OpenBurnBarSignalIdentityKeypair) async throws -> MobileCloudVaultVerifiedTrustedDevice
         let issueNonce: () async throws -> String
-        let rotateCloudVaultKey: ([String: Any]) async throws -> [String: Any]
+        let rotateCloudVaultKey: (MobileJSONObject) async throws -> MobileJSONObject
         let saveNextKey: (Data) throws -> Void
         let runDocumentRewrap: (String, Data, Data, String, Int) async throws -> MobileCloudVaultRotationRewrapProgress
         let markRotationFailed: (String, Error) async -> Void
@@ -255,7 +255,7 @@ enum MobileCloudVaultRevocationRotation {
         return eligible
     }
 
-    static func listPendingCallablePayload(callerDeviceId: String) -> [String: Any] {
+    static func listPendingCallablePayload(callerDeviceId: String) -> MobileJSONObject {
         ["callerDeviceId": callerDeviceId.trimmingCharacters(in: .whitespacesAndNewlines)]
     }
 
@@ -268,13 +268,13 @@ enum MobileCloudVaultRevocationRotation {
         let result = try await functions.httpsCallable("listPendingCloudVaultRotationRequirements")
             .call(listPendingCallablePayload(callerDeviceId: callerDeviceId))
         guard let dict = BurnBarJSONValue.dictionary(from: result.data),
-              let rawRequirements = dict["requirements"] as? [[String: Any]] else {
+              let rawRequirements = dict["requirements"] as? [MobileJSONObject] else {
             throw RotationError.invalidResponse("Could not list pending Cloud Vault rotation requirements.")
         }
         return parsePendingRequirements(rawRequirements)
     }
 
-    static func parsePendingRequirements(_ raw: [[String: Any]]) -> [PendingCloudVaultRotationRequirement] {
+    static func parsePendingRequirements(_ raw: [MobileJSONObject]) -> [PendingCloudVaultRotationRequirement] {
         raw.compactMap { entry in
             guard let requirementId = (entry["requirementId"] as? String ?? entry["id"] as? String),
                   !requirementId.isEmpty else { return nil }
@@ -319,7 +319,7 @@ enum MobileCloudVaultRevocationRotation {
         let nextKey = try CloudVaultCrypto.generateVaultKey()
         let nextVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: nextKey)
         let nextVaultGeneration = rotationRequirement.currentVaultGeneration + 1
-        var survivorWrappers: [[String: Any]] = []
+        var survivorWrappers: [MobileJSONObject] = []
         for survivorDeviceId in rotationRequirement.survivorDeviceIds {
             let survivor = try await environment.verifiedTrustedDevice(survivorDeviceId, localIdentity)
             survivorWrappers.append(try survivorWrapper(
@@ -370,7 +370,7 @@ enum MobileCloudVaultRevocationRotation {
         nextVaultKeyID: String,
         rotatingDeviceId: String,
         survivor: MobileCloudVaultVerifiedTrustedDevice
-    ) throws -> [String: Any] {
+    ) throws -> MobileJSONObject {
         let wrapped = try CloudVaultCrypto.wrapVaultKey(
             nextKey,
             recipientPublicKey: survivor.escrowPublicKeyData
@@ -391,10 +391,10 @@ enum MobileCloudVaultRevocationRotation {
         currentVaultKeyID: String,
         nextVaultKeyID: String,
         nextVaultGeneration: Int,
-        survivorWrappers: [[String: Any]],
+        survivorWrappers: [MobileJSONObject],
         requirementId: String,
         nonce: String
-    ) -> [String: Any] {
+    ) -> MobileJSONObject {
         [
             "callerDeviceId": rotatingDeviceId,
             "currentVaultKeyID": currentVaultKeyID,

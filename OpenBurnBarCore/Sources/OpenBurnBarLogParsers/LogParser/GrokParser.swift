@@ -254,7 +254,7 @@ public final class GrokParser: LogParser, Sendable {
             return nil
         }
 
-        let info = summary["info"] as? [String: Any]
+        let info = summary["info"] as? LogParserJSONObject
         let sessionId = (info?["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             ?? sessionDir.lastPathComponent
         let cwd = (info?["cwd"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -519,10 +519,10 @@ public final class GrokParser: LogParser, Sendable {
                   let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skipped)
                 continue
             }
-            let params = json["params"] as? [String: Any]
-            let update = params?["update"] as? [String: Any] ?? json
+            let params = json["params"] as? LogParserJSONObject
+            let update = params?["update"] as? LogParserJSONObject ?? json
             guard (update["sessionUpdate"] as? String) == "turn_completed",
-                  let usage = update["usage"] as? [String: Any] else {
+                  let usage = update["usage"] as? LogParserJSONObject else {
                 continue
             }
 
@@ -577,18 +577,18 @@ public final class GrokParser: LogParser, Sendable {
                   let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skipped)
                 continue
             }
-            if let meta = json["_meta"] as? [String: Any],
+            if let meta = json["_meta"] as? LogParserJSONObject,
                let total = meta["totalTokens"] as? Int {
                 maxTokens = max(maxTokens, total)
             }
-            if let params = json["params"] as? [String: Any],
-               let meta = params["_meta"] as? [String: Any],
+            if let params = json["params"] as? LogParserJSONObject,
+               let meta = params["_meta"] as? LogParserJSONObject,
                let total = meta["totalTokens"] as? Int {
                 maxTokens = max(maxTokens, total)
             }
-            if let params = json["params"] as? [String: Any],
-               let update = params["update"] as? [String: Any],
-               let meta = update["_meta"] as? [String: Any],
+            if let params = json["params"] as? LogParserJSONObject,
+               let update = params["update"] as? LogParserJSONObject,
+               let meta = update["_meta"] as? LogParserJSONObject,
                let total = meta["totalTokens"] as? Int {
                 maxTokens = max(maxTokens, total)
             }
@@ -631,7 +631,7 @@ public final class GrokParser: LogParser, Sendable {
         if let text = value as? String {
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        if let parts = value as? [[String: Any]] {
+        if let parts = value as? [LogParserJSONObject] {
             return parts.compactMap { part in
                 (part["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             }.filter { !$0.isEmpty }.joined(separator: "\n")

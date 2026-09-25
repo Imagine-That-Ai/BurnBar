@@ -96,7 +96,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         let userPayload = try prompt.userPayload(for: request)
         let userText = String(data: userPayload, encoding: .utf8) ?? ""
 
-        var messages: [[String: Any]] = [
+        var messages: [InsightJSONObject] = [
             ["role": "user", "content": userText]
         ]
 
@@ -107,7 +107,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         var accumulatedCacheReadTokens = 0
 
         while true {
-            var body: [String: Any] = [
+            var body: InsightJSONObject = [
                 "model": request.selectedModel.modelID,
                 "max_tokens": budget.maxOutputTokens,
                 "system": systemPrompt + "\n\nSchema:\n" + InsightJSONSchema.analysisResultSchemaV1,
@@ -178,7 +178,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
             }
 
             // Dispatch each tool call through the broker and build result messages.
-            var resultContents: [[String: Any]] = []
+            var resultContents: [InsightJSONObject] = []
             for call in toolCalls {
                 toolCallCount += 1
                 let toolResult = await broker.dispatch(call)
@@ -219,7 +219,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         // Construct request body. We pass the schema as part of the system
         // prompt for JSON-object mode; strict-schema is enforced via
         // response_format on supported endpoints.
-        var body: [String: Any] = [
+        var body: InsightJSONObject = [
             "model": request.modelTag.modelID,
             "max_tokens": 4096,
             "system": systemPrompt + "\n\nSchema:\n" + InsightJSONSchema.canvasSchemaV1,
@@ -267,7 +267,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         }
         // First-pass: look for an Anthropic-shaped object with `content`.
         if let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-           let content = json["content"] as? [[String: Any]] {
+           let content = json["content"] as? [InsightJSONObject] {
             let text = content.compactMap { $0["text"] as? String }.joined()
             if let canvas = try? parseEmbedded(json: text, modelTag: modelTag) {
                 return canvas
@@ -317,7 +317,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         }
         let title = (obj["title"] as? String) ?? "Canvas"
         let summary = obj["summary"] as? String
-        let widgetsRaw = obj["widgets"] as? [[String: Any]] ?? []
+        let widgetsRaw = obj["widgets"] as? [InsightJSONObject] ?? []
         let widgets = widgetsRaw.compactMap(Self.simpleWidget)
         var canvas = InsightCanvas(title: title, summary: summary, theme: .aurora,
                                    filter: InsightFilter(),
@@ -329,7 +329,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
 
     /// Parse a simple "kind + title" widget shape into an InsightWidget
     /// with a sensible default binding.
-    public static func simpleWidget(_ obj: [String: Any]) -> InsightWidget? {
+    public static func simpleWidget(_ obj: InsightJSONObject) -> InsightWidget? {
         guard let kindRaw = obj["kind"] as? String,
               let kind = InsightWidgetKind(rawValue: kindRaw),
               let title = obj["title"] as? String else {
@@ -351,14 +351,14 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
 
     private func extractAnthropicToolCalls(from data: Data) -> [InsightToolCall]? {
         guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-              let content = json["content"] as? [[String: Any]] else {
+              let content = json["content"] as? [InsightJSONObject] else {
             return nil
         }
         let calls = content.compactMap { block -> InsightToolCall? in
             guard block["type"] as? String == "tool_use",
                   let id = block["id"] as? String,
                   let name = block["name"] as? String,
-                  let input = block["input"] as? [String: Any] else {
+                  let input = block["input"] as? InsightJSONObject else {
                 return nil
             }
             let arguments = parseToolArguments(name: name, input: input)
@@ -367,15 +367,15 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         return calls.isEmpty ? nil : calls
     }
 
-    private func buildAnthropicAssistantMessage(from data: Data) -> [String: Any] {
+    private func buildAnthropicAssistantMessage(from data: Data) -> InsightJSONObject {
         guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-              let content = json["content"] as? [[String: Any]] else {
+              let content = json["content"] as? [InsightJSONObject] else {
             return ["role": "assistant", "content": ""]
         }
         return ["role": "assistant", "content": content]
     }
 
-    private func parseToolArguments(name: String, input: [String: Any]) -> InsightToolArguments {
+    private func parseToolArguments(name: String, input: InsightJSONObject) -> InsightToolArguments {
         switch name {
         case "drilldown_search":
             return .drilldownSearch(
@@ -432,7 +432,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
 
     private func usageFrom(data: Data) -> (inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int)? {
         guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-              let usage = json["usage"] as? [String: Any] else {
+              let usage = json["usage"] as? InsightJSONObject else {
             return nil
         }
         let input = usage["input_tokens"] as? Int ?? 0
@@ -466,7 +466,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         completedAt: Date
     ) -> InsightTokenUsage? {
         guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-              let usage = json["usage"] as? [String: Any] else {
+              let usage = json["usage"] as? InsightJSONObject else {
             return nil
         }
         let input = usage["input_tokens"] as? Int ?? 0

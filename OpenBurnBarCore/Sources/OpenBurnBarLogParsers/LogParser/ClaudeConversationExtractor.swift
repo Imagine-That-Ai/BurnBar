@@ -52,18 +52,18 @@ public final class ClaudeConversationAccumulator {
         self.maxCredentialOverflowSnippetBytes = maxCredentialOverflowSnippetBytes
     }
 
-    public func ingest(jsonLine: [String: Any]) {
+    public func ingest(jsonLine: LogParserJSONObject) {
         applyTimeline(from: jsonLine)
 
         guard let type = jsonLine["type"] as? String else { return }
 
         switch type {
         case "user":
-            guard let message = jsonLine["message"] as? [String: Any],
+            guard let message = jsonLine["message"] as? LogParserJSONObject,
                   (message["role"] as? String) == "user" else { return }
             processMessageContent(message["content"], isAssistant: false)
         case "assistant":
-            guard let message = jsonLine["message"] as? [String: Any],
+            guard let message = jsonLine["message"] as? LogParserJSONObject,
                   (message["role"] as? String) == "assistant" else { return }
             processMessageContent(message["content"], isAssistant: true)
         default:
@@ -76,7 +76,7 @@ public final class ClaudeConversationAccumulator {
     }
 
     /// Picks up timestamps from several Factory / Claude JSONL shapes (string ISO8601, epoch seconds/ms, camelCase keys).
-    private func applyTimeline(from json: [String: Any]) {
+    private func applyTimeline(from json: LogParserJSONObject) {
         let keys = ["timestamp", "created_at", "createdAt"]
         for key in keys {
             if let s = json[key] as? String, let date = Self.parseFlexibleISO8601(s) {
@@ -127,13 +127,13 @@ public final class ClaudeConversationAccumulator {
             return
         }
 
-        if let blocks = rawContent as? [[String: Any]] {
+        if let blocks = rawContent as? [LogParserJSONObject] {
             processContentBlocks(blocks, isAssistant: isAssistant)
             return
         }
 
         if let items = rawContent as? [Any] {
-            let blocks = items.compactMap { $0 as? [String: Any] }
+            let blocks = items.compactMap { $0 as? LogParserJSONObject }
             if blocks.isEmpty == false {
                 processContentBlocks(blocks, isAssistant: isAssistant)
                 return
@@ -150,7 +150,7 @@ public final class ClaudeConversationAccumulator {
         }
     }
 
-    private func processContentBlocks(_ blocks: [[String: Any]], isAssistant: Bool) {
+    private func processContentBlocks(_ blocks: [LogParserJSONObject], isAssistant: Bool) {
         var sawText = false
         for block in blocks {
             let kind = block["type"] as? String ?? ""
@@ -163,7 +163,7 @@ public final class ClaudeConversationAccumulator {
             } else if kind == "tool_use" {
                 let name = block["name"] as? String ?? ""
                 if !name.isEmpty { toolSet.insert(name) }
-                guard let input = block["input"] as? [String: Any] else { continue }
+                guard let input = block["input"] as? LogParserJSONObject else { continue }
                 if let path = input["path"] as? String, !path.isEmpty {
                     fileSet.insert(path)
                 } else if let fp = input["file_path"] as? String, !fp.isEmpty {

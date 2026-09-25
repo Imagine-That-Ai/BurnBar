@@ -56,7 +56,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc? = nil
     ) async throws -> HermesGatewayClientRecord {
         let callable = try functionsClient().httpsCallable("approveHermesGatewayDeviceGrant")
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "userCode": userCode,
             "destinationId": destinationId,
             "scopes": scopes
@@ -221,7 +221,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
         let callable = try functionsClient().httpsCallable("enqueueHermesGatewayEvent")
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "destinationId": destinationId,
             "threadId": threadId,
             "senderId": "burnbar-ios"
@@ -254,7 +254,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         extraSealedFields: [String: String] = [:]
     ) async throws -> HermesGatewayQueuedEvent {
         let callable = try functionsClient().httpsCallable("enqueueHermesGatewayEvent")
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "destinationId": destinationId,
             "senderId": "burnbar-ios",
             "eventKind": kind ?? "message",
@@ -285,7 +285,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         senderDisplayName: String = "OpenBurnBar iPhone"
     ) async throws -> HermesGatewayQueuedEvent {
         let callable = try functionsClient().httpsCallable("enqueueHermesGatewayEvent")
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "destinationId": destinationId,
             "senderId": "burnbar-ios",
             "eventKind": "model_switch"
@@ -337,7 +337,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
     /// the server honors it as the doc id. If the target cannot seal, the call
     /// fails before constructing any plaintext cloud payload.
     private static func applyGatewayEventSeal(
-        into payload: inout [String: Any],
+        into payload: inout MobileJSONObject,
         text: String,
         senderDisplayName: String,
         threadId: String,
@@ -345,7 +345,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         targetClient: HermesGatewayClientRecord?,
         pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore(),
         kind: String? = nil,
-        extraSealedFields: [String: Any] = [:]
+        extraSealedFields: MobileJSONObject = [:]
     ) async throws {
         guard FirebaseApp.app() != nil,
               let uid = Auth.auth().currentUser?.uid,
@@ -395,9 +395,9 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         // oversight (to avoid relay-controlled flips) and only applies changes
         // delivered via pinned-sender sealed events. Build the envelope before
         // mutating the relay-visible doc so local key/pin failures fail cleanly.
-        var sealedOversightPayload: [String: Any]?
+        var sealedOversightPayload: MobileJSONObject?
         if let tc = targetClient, tc.canSealToAgent {
-            var payload: [String: Any] = [
+            var payload: MobileJSONObject = [
                 "destinationId": "burnbar:home",
                 "senderId": "burnbar-ios",
                 "threadId": "burnbar-ios-oversight"
@@ -405,7 +405,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
             if let rid = Self.trimmedClientID(tc.id) {
                 payload["targetClientId"] = rid
             }
-            let extra: [String: Any] = [
+            let extra: MobileJSONObject = [
                 "mode": mode,
                 "senderId": "burnbar-ios"
             ]
@@ -456,7 +456,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         // root of the sealed payload so the agent can dispatch to the special
         // _handle_sealed_approval_decision path (rather than treating it as chat
         // text). The legacy json-in-text path is retired for correctness.
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "destinationId": "burnbar:home",
             "senderId": "burnbar-ios",
             "threadId": "burnbar-ios-approval"
@@ -464,7 +464,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         if let resolvedTargetClientId = Self.trimmedClientID(targetClientId) ?? Self.trimmedClientID(targetClient?.id) {
             payload["targetClientId"] = resolvedTargetClientId
         }
-        let extra: [String: Any] = [
+        let extra: MobileJSONObject = [
             "actionId": approvalId,
             "choice": choice,
             "senderId": "burnbar-ios"
@@ -491,7 +491,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         displayName: String? = nil
     ) async throws -> HermesPairingSessionRecord {
         let callable = try functionsClient().httpsCallable("createHermesPairing")
-        var payload: [String: Any] = [:]
+        var payload: MobileJSONObject = [:]
         if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
         if let platform, !platform.isEmpty { payload["platform"] = platform }
         if let displayName, !displayName.isEmpty { payload["displayName"] = displayName }
@@ -583,12 +583,12 @@ final class HermesGatewayAPI: HermesGatewayRepository {
             return ISO8601DateFormatter().string(from: ts.dateValue())
         case let date as Date:
             return ISO8601DateFormatter().string(from: date)
-        case let dict as [String: Any]:
-            return dict.reduce(into: [String: Any]()) { result, entry in
+        case let dict as MobileJSONObject:
+            return dict.reduce(into: MobileJSONObject()) { result, entry in
                 result[entry.key] = sanitizeHermesGatewayJSON(entry.value)
             }
         case let dict as NSDictionary:
-            return dict.reduce(into: [String: Any]()) { result, entry in
+            return dict.reduce(into: MobileJSONObject()) { result, entry in
                 guard let key = entry.key as? String else { return }
                 result[key] = sanitizeHermesGatewayJSON(entry.value)
             }

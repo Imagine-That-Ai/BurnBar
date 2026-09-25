@@ -251,7 +251,7 @@ public final class FxParser: LogParser, Sendable {
         }
 
         if let manifest {
-            if let preferences = manifest["preferences"] as? [String: Any],
+            if let preferences = manifest["preferences"] as? LogParserJSONObject,
                let preferred = preferences["model"] as? String, !preferred.isEmpty {
                 fallbackModel = Self.normalizeModelName(preferred)
             }
@@ -285,21 +285,21 @@ public final class FxParser: LogParser, Sendable {
                     lastTime = date
                 }
                 guard let kind = json["kind"] as? String, kind == "history_turn_committed",
-                      let payload = json["payload"] as? [String: Any],
-                      let turn = payload["turn"] as? [String: Any] else {
+                      let payload = json["payload"] as? LogParserJSONObject,
+                      let turn = payload["turn"] as? LogParserJSONObject else {
                     continue
                 }
-                if let user = turn["user"] as? [String: Any],
+                if let user = turn["user"] as? LogParserJSONObject,
                    let text = user["text"] as? String, !text.isEmpty {
                     turns.append((isAssistant: false, text: text))
                 }
                 if let assistant = turn["assistant"] as? String, !assistant.isEmpty {
                     turns.append((isAssistant: true, text: assistant))
                 }
-                if let execution = turn["execution"] as? [String: Any] {
-                    if let steps = execution["tool_steps"] as? [[String: Any]] {
+                if let execution = turn["execution"] as? LogParserJSONObject {
+                    if let steps = execution["tool_steps"] as? [LogParserJSONObject] {
                         for step in steps {
-                            if let calls = step["tool_calls"] as? [[String: Any]] {
+                            if let calls = step["tool_calls"] as? [LogParserJSONObject] {
                                 for call in calls {
                                     if let name = call["name"] as? String, !name.isEmpty {
                                         toolNames.insert(name)
@@ -308,7 +308,7 @@ public final class FxParser: LogParser, Sendable {
                             }
                         }
                     }
-                    if let files = execution["files"] as? [[String: Any]] {
+                    if let files = execution["files"] as? [LogParserJSONObject] {
                         for file in files {
                             if let path = file["path"] as? String, !path.isEmpty {
                                 filePaths.insert(path)
@@ -461,7 +461,7 @@ public final class FxParser: LogParser, Sendable {
     /// ignored; a supported sidecar with no usable rows falls back to its
     /// session aggregate rather than inventing a model split.
     private static func modelUsages(in modelsValue: Any?) -> [FxModelUsage] {
-        guard let models = modelsValue as? [[String: Any]] else { return [] }
+        guard let models = modelsValue as? [LogParserJSONObject] else { return [] }
         return models.compactMap { entry in
             guard let raw = entry["model"] as? String else { return nil }
             let model = normalizeModelName(raw)
@@ -497,10 +497,10 @@ public final class FxParser: LogParser, Sendable {
         return Date(timeIntervalSince1970: Double(ms) / 1_000.0)
     }
 
-    private func readJSONObject(at url: URL) -> [String: Any]? {
+    private func readJSONObject(at url: URL) -> LogParserJSONObject? {
         guard fileManager.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url) else { return nil } // try?-ok(absent or unreadable file)
-        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] // try?-ok(malformed JSON skipped)
+        return (try? JSONSerialization.jsonObject(with: data)) as? LogParserJSONObject // try?-ok(malformed JSON skipped)
     }
 
     private func nonBlank(_ value: String?) -> String? {

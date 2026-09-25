@@ -78,7 +78,7 @@ final class ZaiUsageProbe: ProviderUsageAPI, Sendable {
         var records: [ProviderUsageRecord] = []
 
         // Try common response shapes
-        if let usage = json["usage"] as? [String: Any] ?? json["data"] as? [String: Any] {
+        if let usage = json["usage"] as? UntypedJSONObject ?? json["data"] as? UntypedJSONObject {
             let input = usage["total_tokens"] as? Int ?? usage["input_tokens"] as? Int ?? 0
             let output = usage["output_tokens"] as? Int ?? 0
             let cost = usage["total_cost"] as? Double ?? 0
@@ -99,7 +99,7 @@ final class ZaiUsageProbe: ProviderUsageAPI, Sendable {
         }
 
         // Try array of daily entries
-        if let entries = json["data"] as? [[String: Any]] ?? json["daily"] as? [[String: Any]] {
+        if let entries = json["data"] as? [UntypedJSONObject] ?? json["daily"] as? [UntypedJSONObject] {
             for entry in entries {
                 let dateStr = entry["date"] as? String ?? ""
                 let date = ISO8601DateFormatter().date(from: dateStr) ?? Date()
@@ -197,7 +197,7 @@ final class MiniMaxUsageProbe: ProviderUsageAPI, Sendable {
 
         var records: [ProviderUsageRecord] = []
 
-        if let usage = json["usage"] as? [String: Any] ?? json["data"] as? [String: Any] {
+        if let usage = json["usage"] as? UntypedJSONObject ?? json["data"] as? UntypedJSONObject {
             let input = usage["total_tokens"] as? Int ?? usage["input_tokens"] as? Int ?? 0
             let output = usage["output_tokens"] as? Int ?? 0
             let cost = usage["total_cost"] as? Double ?? 0
@@ -217,7 +217,7 @@ final class MiniMaxUsageProbe: ProviderUsageAPI, Sendable {
             }
         }
 
-        if let entries = json["data"] as? [[String: Any]] ?? json["daily"] as? [[String: Any]] {
+        if let entries = json["data"] as? [UntypedJSONObject] ?? json["daily"] as? [UntypedJSONObject] {
             for entry in entries {
                 let dateStr = entry["date"] as? String ?? ""
                 let date = ISO8601DateFormatter().date(from: dateStr) ?? Date()

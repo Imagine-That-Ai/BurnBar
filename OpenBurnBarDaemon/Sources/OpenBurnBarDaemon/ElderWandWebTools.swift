@@ -331,15 +331,15 @@ struct ElderWandWebTools: Sendable {
         guard (200..<300).contains(response.statusCode) else {
             return hostedSearchUnavailableMessage(data: data, statusCode: response.statusCode)
         }
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? DaemonJSONObject else {
             return hostedSearchUnavailableMessage()
         }
-        if root["error"] is [String: Any] {
+        if root["error"] is DaemonJSONObject {
             return hostedSearchUnavailableMessage(data: data, statusCode: response.statusCode)
         }
-        let resultObject = (root["result"] as? [String: Any]) ?? root
+        let resultObject = (root["result"] as? DaemonJSONObject) ?? root
         let provider = (resultObject["provider"] as? String) ?? "hosted"
-        let rawResults = (resultObject["results"] as? [[String: Any]]) ?? []
+        let rawResults = (resultObject["results"] as? [DaemonJSONObject]) ?? []
         let results = parseHostedSearchResults(rawResults)
         guard !results.isEmpty else {
             return "web_search: no hosted results for \"\(query)\"."
@@ -379,7 +379,7 @@ struct ElderWandWebTools: Sendable {
         let detail: String
         if let data,
            let root = BurnBarJSONValue.dictionary(fromJSONData: data),
-           let error = root["error"] as? [String: Any],
+           let error = root["error"] as? DaemonJSONObject,
            let message = error["message"] as? String,
            !message.isEmpty {
             detail = " \(String(message.prefix(180)))"
@@ -391,7 +391,7 @@ struct ElderWandWebTools: Sendable {
         return "web_search unavailable: hosted Fusion live-search quota is exhausted or unavailable.\(detail) Proceed without live web_search."
     }
 
-    private static func parseHostedSearchResults(_ rawResults: [[String: Any]]) -> [SearchResult] {
+    private static func parseHostedSearchResults(_ rawResults: [DaemonJSONObject]) -> [SearchResult] {
         rawResults.compactMap { item in
             guard let url = item["url"] as? String,
                   url.starts(with: "http://") || url.starts(with: "https://") else {
@@ -412,7 +412,7 @@ struct ElderWandWebTools: Sendable {
     }
 
     private static func hostedQuotaLine(from raw: Any?) -> String {
-        guard let quota = raw as? [String: Any],
+        guard let quota = raw as? DaemonJSONObject,
               let remaining = quota["remaining"] as? Int else {
             return ""
         }
@@ -430,7 +430,7 @@ struct ElderWandWebTools: Sendable {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-            let payload: [String: Any] = [
+            let payload: DaemonJSONObject = [
                 "query": query,
                 "max_results": 8
             ]
@@ -442,7 +442,7 @@ struct ElderWandWebTools: Sendable {
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-            let payload: [String: Any] = [
+            let payload: DaemonJSONObject = [
                 "query": query,
                 "search_depth": "basic",
                 "max_results": 8
@@ -464,8 +464,8 @@ struct ElderWandWebTools: Sendable {
         switch backend {
         case .perplexity:
             let results =
-                (object["results"] as? [[String: Any]])
-                ?? (object["search_results"] as? [[String: Any]])
+                (object["results"] as? [DaemonJSONObject])
+                ?? (object["search_results"] as? [DaemonJSONObject])
                 ?? []
             guard !results.isEmpty else { return [] }
             return results.compactMap { item in
@@ -478,7 +478,7 @@ struct ElderWandWebTools: Sendable {
                 return SearchResult(title: title, url: url, snippet: Self.condense(snippet))
             }
         case .tavily:
-            guard let results = object["results"] as? [[String: Any]] else { return [] }
+            guard let results = object["results"] as? [DaemonJSONObject] else { return [] }
             return results.compactMap { item in
                 guard let url = item["url"] as? String else { return nil }
                 let title = (item["title"] as? String) ?? url

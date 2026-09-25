@@ -10,7 +10,7 @@ import FoundationNetworking
 /// navigation stays dictionary-based — but every site spells the type through
 /// this alias instead of repeating the raw untyped-dictionary literal,
 /// keeping the string-any boundary countable at one choke point.
-typealias InsightJSONObject = [String: Any]
+public typealias InsightJSONObject = [String: Any]
 
 /// Adapter for OpenAI's Chat Completions API. Same shape as Anthropic
 /// modulo wire format. Uses strict JSON-Schema on `gpt-5*` and later.

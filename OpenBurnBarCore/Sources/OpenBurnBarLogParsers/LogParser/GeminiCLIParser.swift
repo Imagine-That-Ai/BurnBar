@@ -188,14 +188,14 @@ public final class GeminiCLIParser: LogParser, Sendable {
         var acc = GeminiSessionAccumulator()
 
         // Try array of messages
-        if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] { // try?-ok(optional JSON decode, fallback)
+        if let array = try? JSONSerialization.jsonObject(with: data) as? [LogParserJSONObject] { // try?-ok(optional JSON decode, fallback)
             for message in array {
                 ingestLine(message, into: &acc, includeConversationBodies: includeConversationBodies)
             }
         }
         // Try single object with messages array
         else if let obj = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional JSON decode, fallback)
-                let messages = obj["messages"] as? [[String: Any]] {
+                let messages = obj["messages"] as? [LogParserJSONObject] {
             for message in messages {
                 ingestLine(message, into: &acc, includeConversationBodies: includeConversationBodies)
             }
@@ -213,7 +213,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
     // MARK: - Shared Ingestion
 
     private func ingestLine(
-        _ json: [String: Any],
+        _ json: LogParserJSONObject,
         into acc: inout GeminiSessionAccumulator,
         includeConversationBodies: Bool
     ) {
@@ -237,21 +237,21 @@ public final class GeminiCLIParser: LogParser, Sendable {
             acc.model = TokenExtractionUtility.normalizeModelName(m)
         }
         // Token usage — check multiple locations
-        if let tokens = json["tokens"] as? [String: Any] {
+        if let tokens = json["tokens"] as? LogParserJSONObject {
             accumulateUsage(tokens, into: &acc)
         }
-        if let usage = json["usage"] as? [String: Any] {
+        if let usage = json["usage"] as? LogParserJSONObject {
             accumulateUsage(usage, into: &acc)
         }
-        if let usage = json["usageMetadata"] as? [String: Any] {
+        if let usage = json["usageMetadata"] as? LogParserJSONObject {
             accumulateUsage(usage, into: &acc)
         }
-        if let message = json["message"] as? [String: Any],
-           let usage = message["usage"] as? [String: Any] {
+        if let message = json["message"] as? LogParserJSONObject,
+           let usage = message["usage"] as? LogParserJSONObject {
             accumulateUsage(usage, into: &acc)
         }
         // Content for conversation record
-        let role = (json["role"] as? String ?? (json["message"] as? [String: Any])?["role"] as? String ?? json["type"] as? String ?? "").lowercased()
+        let role = (json["role"] as? String ?? (json["message"] as? LogParserJSONObject)?["role"] as? String ?? json["type"] as? String ?? "").lowercased()
         let content = extractContent(from: json)
 
         if !content.isEmpty {
@@ -283,7 +283,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
         }
     }
 
-    private func accumulateUsage(_ usage: [String: Any], into acc: inout GeminiSessionAccumulator) {
+    private func accumulateUsage(_ usage: LogParserJSONObject, into acc: inout GeminiSessionAccumulator) {
         // Gemini uses promptTokenCount/candidatesTokenCount or standard names
         let input = TokenExtractionUtility.firstIntValue(in: usage, paths: [
             ["input"], ["input_tokens"], ["prompt_tokens"], ["promptTokenCount"],
@@ -309,18 +309,18 @@ public final class GeminiCLIParser: LogParser, Sendable {
         }
     }
 
-    private func extractContent(from json: [String: Any]) -> String {
+    private func extractContent(from json: LogParserJSONObject) -> String {
         // Direct content field
         if let text = json["content"] as? String { return text }
         // Nested message.content
-        if let message = json["message"] as? [String: Any] {
+        if let message = json["message"] as? LogParserJSONObject {
             if let text = message["content"] as? String { return text }
-            if let parts = message["content"] as? [[String: Any]] {
+            if let parts = message["content"] as? [LogParserJSONObject] {
                 return parts.compactMap { $0["text"] as? String }.joined(separator: "\n")
             }
         }
         // Gemini parts format
-        if let parts = json["parts"] as? [[String: Any]] {
+        if let parts = json["parts"] as? [LogParserJSONObject] {
             return parts.compactMap { $0["text"] as? String }.joined(separator: "\n")
         }
         return ""

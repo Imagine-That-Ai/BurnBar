@@ -213,7 +213,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             let (data, response) = try await claudeOAuthRefreshSession.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode),
-                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let json = try JSONSerialization.jsonObject(with: data) as? DaemonJSONObject,
                   let newAccessToken = (json["access_token"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines),
                   !newAccessToken.isEmpty else {
@@ -245,7 +245,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 #if canImport(Security) && canImport(LocalAuthentication)
         let context = LAContext()
         context.interactionNotAllowed = true
-        let query: [String: Any] = [
+        let query: DaemonJSONObject = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
@@ -295,7 +295,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 
 #if canImport(Security) && canImport(LocalAuthentication)
         let account = "provider.\(providerID).apiKey"
-        let query: [String: Any] = [
+        let query: DaemonJSONObject = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
@@ -317,7 +317,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
                 SecItemAdd(createQuery as CFDictionary, nil)
             }
             if addStatus == errSecDuplicateItem {
-                let attributes: [String: Any] = [
+                let attributes: DaemonJSONObject = [
                     kSecValueData as String: data,
                     kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
                 ]
@@ -372,8 +372,8 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         guard let normalizedProviderID, !normalizedProviderID.isEmpty else { return nil }
         guard let data = try? Data(contentsOf: hermesCredentialPoolURL),
               let root = BurnBarJSONValue.dictionary(fromJSONData: data),
-              let pool = root["credential_pool"] as? [String: Any],
-              let entries = pool[normalizedProviderID] as? [[String: Any]] else {
+              let pool = root["credential_pool"] as? DaemonJSONObject,
+              let entries = pool[normalizedProviderID] as? [DaemonJSONObject] else {
             return nil
         }
 
@@ -571,7 +571,7 @@ private struct BurnBarClaudeOAuthRouteCredential {
               let root = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
-        let oauth = root["claudeAiOauth"] as? [String: Any] ?? root
+        let oauth = root["claudeAiOauth"] as? DaemonJSONObject ?? root
         guard let accessToken = (oauth["accessToken"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
               !accessToken.isEmpty else {
@@ -610,7 +610,7 @@ private struct BurnBarClaudeOAuthRouteCredential {
     }
 
     func encodedStorageSecret() -> String {
-        var oauth: [String: Any] = [
+        var oauth: DaemonJSONObject = [
             "accessToken": accessToken
         ]
         if let refreshToken { oauth["refreshToken"] = refreshToken }
@@ -619,7 +619,7 @@ private struct BurnBarClaudeOAuthRouteCredential {
         if let subscriptionType { oauth["subscriptionType"] = subscriptionType }
         if let rateLimitTier { oauth["rateLimitTier"] = rateLimitTier }
 
-        var root: [String: Any] = ["claudeAiOauth": oauth]
+        var root: DaemonJSONObject = ["claudeAiOauth": oauth]
         if let organizationUuid { root["organizationUuid"] = organizationUuid }
 
         guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys]),

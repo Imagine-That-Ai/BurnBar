@@ -64,19 +64,19 @@ final class GatewayStreamingUsageAccumulator {
         )
     }
 
-    private func consumeOpenAI(_ object: [String: Any]) {
-        guard let usage = object["usage"] as? [String: Any] else { return }
+    private func consumeOpenAI(_ object: DaemonJSONObject) {
+        guard let usage = object["usage"] as? DaemonJSONObject else { return }
         let prompt = Self.intValue(usage["prompt_tokens"])
         let completion = Self.intValue(usage["completion_tokens"])
         guard prompt != nil || completion != nil else { return }
         sawUsage = true
-        let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
+        let promptDetails = usage["prompt_tokens_details"] as? DaemonJSONObject
         let cached = Self.intValue(promptDetails?["cached_tokens"]) ?? 0
         let created = Self.intValue(usage["cache_creation_input_tokens"])
             ?? Self.intValue(promptDetails?["cache_creation_tokens"])
             ?? Self.intValue(promptDetails?["cache_creation_input_tokens"])
             ?? 0
-        let completionDetails = usage["completion_tokens_details"] as? [String: Any]
+        let completionDetails = usage["completion_tokens_details"] as? DaemonJSONObject
         let reasoning = Self.intValue(completionDetails?["reasoning_tokens"]) ?? 0
         // The final usage chunk is authoritative — overwrite rather than sum.
         inputTokens = max((prompt ?? 0) - cached, 0)
@@ -86,18 +86,18 @@ final class GatewayStreamingUsageAccumulator {
         reasoningTokens = reasoning
     }
 
-    private func consumeAnthropic(_ object: [String: Any]) {
+    private func consumeAnthropic(_ object: DaemonJSONObject) {
         let type = object["type"] as? String
         if type == "message_start",
-           let message = object["message"] as? [String: Any],
-           let usage = message["usage"] as? [String: Any] {
+           let message = object["message"] as? DaemonJSONObject,
+           let usage = message["usage"] as? DaemonJSONObject {
             sawUsage = true
             inputTokens = Self.intValue(usage["input_tokens"]) ?? inputTokens
             cacheCreationTokens = Self.intValue(usage["cache_creation_input_tokens"]) ?? cacheCreationTokens
             cacheReadTokens = Self.intValue(usage["cache_read_input_tokens"]) ?? cacheReadTokens
             outputTokens = Self.intValue(usage["output_tokens"]) ?? outputTokens
         } else if type == "message_delta",
-                  let usage = object["usage"] as? [String: Any] {
+                  let usage = object["usage"] as? DaemonJSONObject {
             sawUsage = true
             // output_tokens in message_delta is cumulative for the message.
             outputTokens = Self.intValue(usage["output_tokens"]) ?? outputTokens

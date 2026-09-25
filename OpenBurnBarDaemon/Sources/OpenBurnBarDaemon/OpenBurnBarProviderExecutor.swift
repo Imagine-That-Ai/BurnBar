@@ -654,9 +654,9 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     /// OpenRouter honors a per-request data-collection preference; Memory Pro
     /// treats OpenRouter as a no-retention provider only because every request
     /// carries it.
-    static func applyProviderPrivacyPreferences(to object: inout [String: Any], providerID: String?) {
+    static func applyProviderPrivacyPreferences(to object: inout DaemonJSONObject, providerID: String?) {
         guard providerID?.lowercased() == "openrouter" else { return }
-        var provider = (object["provider"] as? [String: Any]) ?? [:]
+        var provider = (object["provider"] as? DaemonJSONObject) ?? [:]
         provider["data_collection"] = "deny"
         object["provider"] = provider
     }
@@ -665,7 +665,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     public func proxyEmbeddings(body: Data, route: BurnBarProviderRoute) async throws -> BurnBarProviderProxyResponse {
         let baseURL = try BurnBarProviderExecutorError.validatedProviderBaseURL(route.baseURL)
         let json = try JSONSerialization.jsonObject(with: body)
-        guard var object = json as? [String: Any] else {
+        guard var object = json as? DaemonJSONObject else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
         object["model"] = route.resolvedModelID
@@ -723,7 +723,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         variant: BurnBarModelVariant? = nil
     ) throws -> Data {
         let json = try JSONSerialization.jsonObject(with: body)
-        guard var object = json as? [String: Any] else {
+        guard var object = json as? DaemonJSONObject else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
         object["model"] = modelID
@@ -744,7 +744,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         providerID: String? = nil
     ) throws -> Data {
         let json = try JSONSerialization.jsonObject(with: body)
-        guard var object = json as? [String: Any] else {
+        guard var object = json as? DaemonJSONObject else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
         object["model"] = modelID
@@ -755,7 +755,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
         if enableStreamUsage {
             object["stream"] = true
-            var streamOptions = (object["stream_options"] as? [String: Any]) ?? [:]
+            var streamOptions = (object["stream_options"] as? DaemonJSONObject) ?? [:]
             streamOptions["include_usage"] = true
             object["stream_options"] = streamOptions
         }
@@ -770,13 +770,13 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     /// the CLI default would otherwise send.
     static func applyOpenAIVariant(
         _ variant: BurnBarModelVariant,
-        to object: inout [String: Any],
+        to object: inout DaemonJSONObject,
         isResponsesShape: Bool,
         effortOnly: Bool = false
     ) {
         let effort = variant.thinkingLevel.openAIEffort
         if isResponsesShape {
-            var reasoning = (object["reasoning"] as? [String: Any]) ?? [:]
+            var reasoning = (object["reasoning"] as? DaemonJSONObject) ?? [:]
             reasoning["effort"] = effort
             object["reasoning"] = reasoning
             if let maxOutputTokens = variant.maxOutputTokens {
@@ -795,7 +795,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             }
         } else {
             object["reasoning_effort"] = effort
-            var reasoning = (object["reasoning"] as? [String: Any]) ?? [:]
+            var reasoning = (object["reasoning"] as? DaemonJSONObject) ?? [:]
             reasoning["effort"] = effort
             object["reasoning"] = reasoning
             if let maxOutputTokens = variant.maxOutputTokens {
@@ -827,8 +827,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         return min(callerMax, variantMax)
     }
 
-    static func normalizeOpenAICompatibleMessages(in object: inout [String: Any]) {
-        guard let messages = object["messages"] as? [[String: Any]] else { return }
+    static func normalizeOpenAICompatibleMessages(in object: inout DaemonJSONObject) {
+        guard let messages = object["messages"] as? [DaemonJSONObject] else { return }
         object["messages"] = messages.map { message in
             var normalized = message
             if normalized["content"] is NSNull {
@@ -911,7 +911,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     }
 
     static func openAICompatibleErrorBody(message: String, code: String) -> String {
-        let body: [String: Any] = [
+        let body: DaemonJSONObject = [
             "error": [
                 "message": message,
                 "type": "upstream_invalid_response",

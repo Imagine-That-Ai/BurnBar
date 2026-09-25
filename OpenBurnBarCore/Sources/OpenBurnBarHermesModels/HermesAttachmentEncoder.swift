@@ -81,8 +81,8 @@ public enum HermesAttachmentEncoder {
         messages: [Message],
         capabilities: HermesBackendCapabilities = .default,
         workspaceAbsolutePath: ((HermesAttachment) -> String)? = nil
-    ) -> [[String: Any]] {
-        var output: [[String: Any]] = []
+    ) -> [HermesJSONObject] {
+        var output: [HermesJSONObject] = []
 
         let trimmedSystem = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedSystem.isEmpty {
@@ -121,17 +121,17 @@ public enum HermesAttachmentEncoder {
             // OpenAI-compatible relays reject an empty string for an
             // assistant message that carries `tool_calls`.
             if message.role == .assistant, !message.assistantToolCalls.isEmpty {
-                let toolCalls: [[String: Any]] = message.assistantToolCalls.map { call in
+                let toolCalls: [HermesJSONObject] = message.assistantToolCalls.map { call in
                     [
                         "id": call.id,
                         "type": "function",
                         "function": [
                             "name": call.name,
                             "arguments": call.arguments
-                        ] as [String: Any]
-                    ] as [String: Any]
+                        ] as HermesJSONObject
+                    ] as HermesJSONObject
                 }
-                var entry: [String: Any] = [
+                var entry: HermesJSONObject = [
                     "role": "assistant",
                     "tool_calls": toolCalls
                 ]
@@ -189,8 +189,8 @@ public enum HermesAttachmentEncoder {
         message: Message,
         capabilities: HermesBackendCapabilities,
         workspaceAbsolutePath: ((HermesAttachment) -> String)?
-    ) -> [[String: Any]] {
-        var parts: [[String: Any]] = []
+    ) -> [HermesJSONObject] {
+        var parts: [HermesJSONObject] = []
         let trimmedText = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
         var pendingTextSuffix: [String] = []
 
@@ -277,7 +277,7 @@ public enum HermesAttachmentEncoder {
     private static func imageURLPart(
         for attachment: HermesAttachment,
         bytes providedBytes: Data?
-    ) -> [String: Any]? {
+    ) -> HermesJSONObject? {
         guard let bytes = providedBytes else { return nil }
         return imagePart(name: attachment.displayName, mime: attachment.mimeType, bytes: bytes)
     }
@@ -286,7 +286,7 @@ public enum HermesAttachmentEncoder {
         name: String,
         mime: String,
         bytes: Data
-    ) -> [String: Any]? {
+    ) -> HermesJSONObject? {
         guard !bytes.isEmpty else { return nil }
         let resolvedMime = mime.isEmpty ? "application/octet-stream" : mime
         let base64 = bytes.base64EncodedString()
@@ -304,7 +304,7 @@ public enum HermesAttachmentEncoder {
         bytes: Data,
         mime: String,
         name: String
-    ) -> [String: Any]? {
+    ) -> HermesJSONObject? {
         guard !bytes.isEmpty else { return nil }
         let format: String
         let lower = mime.lowercased()

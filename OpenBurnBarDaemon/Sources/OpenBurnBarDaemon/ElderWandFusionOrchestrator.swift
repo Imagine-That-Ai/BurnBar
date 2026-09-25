@@ -368,8 +368,8 @@ struct ElderWandFusionOrchestrator: Sendable {
             ))
         }
 
-        var synthesisMessages: [[String: Any]] = []
-        if let decoded = try? JSONSerialization.jsonObject(with: originatingMessagesJSON) as? [[String: Any]] {
+        var synthesisMessages: [DaemonJSONObject] = []
+        if let decoded = try? JSONSerialization.jsonObject(with: originatingMessagesJSON) as? [DaemonJSONObject] {
             synthesisMessages.append(contentsOf: decoded)
         }
         synthesisMessages.append([
@@ -494,7 +494,7 @@ struct ElderWandFusionOrchestrator: Sendable {
     /// has no non-empty `messages` array.
     static func extractMessages(from bodyData: Data) -> ExtractedMessages? {
         guard let object = BurnBarJSONValue.dictionary(fromJSONData: bodyData),
-              let rawMessages = object["messages"] as? [[String: Any]],
+              let rawMessages = object["messages"] as? [DaemonJSONObject],
               !rawMessages.isEmpty else {
             return nil
         }
@@ -507,14 +507,14 @@ struct ElderWandFusionOrchestrator: Sendable {
     }
 
     /// The most recent user message text (for the judge's "original request").
-    static func lastUserText(from messages: [[String: Any]]) -> String {
+    static func lastUserText(from messages: [DaemonJSONObject]) -> String {
         for message in messages.reversed() {
             guard (message["role"] as? String) == "user" else { continue }
             if let content = message["content"] as? String {
                 return content
             }
             // Multimodal content arrays: collect text parts.
-            if let parts = message["content"] as? [[String: Any]] {
+            if let parts = message["content"] as? [DaemonJSONObject] {
                 let texts = parts.compactMap { $0["text"] as? String }
                 if !texts.isEmpty { return texts.joined(separator: "\n") }
             }
@@ -523,7 +523,7 @@ struct ElderWandFusionOrchestrator: Sendable {
     }
 
     /// Serialize an OpenAI `messages` array to `Sendable` JSON `Data`.
-    static func encodeMessages(_ messages: [[String: Any]]) -> Data {
+    static func encodeMessages(_ messages: [DaemonJSONObject]) -> Data {
         (try? JSONSerialization.data(withJSONObject: messages, options: [])) ?? Data("[]".utf8)
     }
 
@@ -532,11 +532,11 @@ struct ElderWandFusionOrchestrator: Sendable {
     /// fusion plugin can never re-trigger fusion if it re-enters the gateway).
     static func encodeChatBody(
         model: String,
-        messages: [[String: Any]],
+        messages: [DaemonJSONObject],
         stream: Bool,
         maxTokens: Int?
     ) -> Data {
-        var body: [String: Any] = [
+        var body: DaemonJSONObject = [
             "model": model,
             "stream": stream,
             "messages": messages
