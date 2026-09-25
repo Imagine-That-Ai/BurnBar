@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Injects the Amplitude ingestion API key into the macOS/iOS app source before
+# Injects the Amplitude ingestion API key into the macOS app source before
 # Xcode compiles it. The placeholder '__AMPLITUDE_API_KEY__' in
-# AgentLens/Services/Analytics/AnalyticsConfig.swift is replaced with the real
+# OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsConfig.swift (Wave 3.4:
+# the macOS/iOS twins were consolidated into Core) is replaced with the real
 # key so it is baked into the compiled binary.
 #
 # Amplitude client-side keys are write-only ingestion identifiers (like a Sentry
@@ -19,7 +20,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-TARGET="AgentLens/Services/Analytics/AnalyticsConfig.swift"
+TARGET="OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsConfig.swift"
 KEY="${BURNBAR_AMPLITUDE_API_KEY:-}"
 
 if [[ -z "$KEY" ]]; then

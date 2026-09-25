@@ -981,6 +981,11 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
         link: false
+      # Wave 3.4 transport twins: AnalyticsConfig moved into Core, so
+      # AmplitudeTransportTests imports the narrow product directly.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAnalytics
+        link: false
       - package: ViewInspector
         product: ViewInspector
       - package: SnapshotTesting

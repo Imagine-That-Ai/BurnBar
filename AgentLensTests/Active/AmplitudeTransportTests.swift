@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarAnalytics
 
 /// The transport is the SDK adapter; its send path is verified via real ingestion,
 /// not unit tests. What we DO assert here is the critical no-key safety: with no

@@ -25,7 +25,7 @@ enum MobileAnalytics {
     static let shared: Analytics = {
         let sessionId = UUID().uuidString
         let transport = AmplitudeTransport(
-            apiKey: AnalyticsConfig.apiKey(),
+            apiKey: AnalyticsConfig.apiKeyFromBundle(),
             deviceId: AnalyticsIdentity.deviceId()
         )
         return Analytics(
