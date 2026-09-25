@@ -143,19 +143,18 @@ check_pair() {
   fi
 }
 
-check_pair "BudgetEnforcement" \
-  "AgentLens/Services/DataStore/BudgetEnforcement.swift" \
-  "OpenBurnBarMobile/Models/BudgetEnforcement.swift" \
-  "This pair is intentionally forked but expected to stay near-parallel; new one-sided edits are usually parity bugs."
+# BudgetEnforcement was de-forked in wave 3.4 (single implementation in
+# OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget/); the pair and its baseline
+# were removed with the de-fork.
 
 check_pair "BudgetSettings" \
-  "AgentLens/Services/DataStore/BudgetSettings.swift" \
-  "OpenBurnBarMobile/Models/BudgetSettings.swift" \
+  "AgentLens/Services/DataStore/BudgetSettings+AgentLens.swift" \
+  "OpenBurnBarMobile/Models/BudgetSettings+Mobile.swift" \
   "This pair is intentionally forked but expected to stay near-parallel; new one-sided edits are usually parity bugs."
 
 check_pair "BudgetLedger" \
-  "AgentLens/Services/DataStore/BudgetLedger.swift" \
-  "OpenBurnBarMobile/Models/BudgetLedger.swift" \
+  "AgentLens/Services/DataStore/GRDBBudgetLedger.swift" \
+  "OpenBurnBarMobile/Models/RollupBudgetLedger.swift" \
   "This pair is ARCHITECTURALLY divergent (macOS reads SQL token_usage; iOS reads synced rollups). The gate exists so NEW drift is a conscious, reviewed act — not to force convergence."
 
 if [[ "$UPDATE" -eq 1 ]]; then

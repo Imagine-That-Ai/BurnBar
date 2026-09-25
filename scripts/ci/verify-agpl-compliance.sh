@@ -111,7 +111,7 @@ if [[ "$stale_rust_license" -ne 0 ]]; then
 fi
 
 grep -q 'AGPL-3.0-only' website/src/data/site.ts || fail "website SITE.license is not AGPL"
-grep -q 'sourceMetadata' functions/src/health.ts || fail "Functions health endpoint does not expose source metadata"
+grep -q 'sourceMetadata' functions/src/domains/ops/health.ts || fail "Functions health endpoint does not expose source metadata"
 grep -q 'sourceMetadata' services/hosted-mcp/src/server.ts || fail "hosted MCP health endpoint does not expose source metadata"
 grep -q 'sourceMetadata' services/hermes-realtime-relay/src/server.ts || fail "Hermes relay health endpoint does not expose source metadata"
 grep -q 'legal/source' website/src/pages/health.ts || fail "website health endpoint does not expose corresponding source URL"
