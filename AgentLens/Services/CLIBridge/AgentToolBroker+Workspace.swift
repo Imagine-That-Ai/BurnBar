@@ -14,7 +14,7 @@ extension AgentToolBroker {
         case write
     }
 
-    func readWorkspaceFile(arguments: [String: Any]) throws -> AgentToolExecutionPayload {
+    func readWorkspaceFile(arguments: UntypedJSONObject) throws -> AgentToolExecutionPayload {
         let path = try requiredString("path", in: arguments)
         let url = try workspaceFileURL(path, mode: .read)
         let data = try Data(contentsOf: url)
@@ -27,11 +27,11 @@ extension AgentToolBroker {
         ], detail: path)
     }
 
-    func listWorkspaceFiles(arguments: [String: Any]) throws -> AgentToolExecutionPayload {
+    func listWorkspaceFiles(arguments: UntypedJSONObject) throws -> AgentToolExecutionPayload {
         let path = (arguments["path"] as? String) ?? "."
         let limit = max(1, min((arguments["limit"] as? Int) ?? 200, 500))
         let root = try workspaceFileURL(path, mode: .read)
-        var rows: [[String: Any]] = []
+        var rows: [UntypedJSONObject] = []
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .fileSizeKey]
         if let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: Array(keys)) {
             for case let fileURL as URL in enumerator {
@@ -47,7 +47,7 @@ extension AgentToolBroker {
         return jsonPayload(["ok": true, "root": path, "files": rows], detail: "\(rows.count) files")
     }
 
-    func writeWorkspaceFile(arguments: [String: Any]) throws -> AgentToolExecutionPayload {
+    func writeWorkspaceFile(arguments: UntypedJSONObject) throws -> AgentToolExecutionPayload {
         let path = try requiredString("path", in: arguments)
         guard let content = arguments["content"] as? String else {
             throw NSError(domain: "AgentToolBroker", code: 3, userInfo: [NSLocalizedDescriptionKey: "Missing required string: content"])
@@ -70,7 +70,7 @@ extension AgentToolBroker {
         return jsonPayload(["ok": true, "path": path, "bytesWritten": data.count], detail: path)
     }
 
-    func exportDesktopFile(arguments: [String: Any]) throws -> AgentToolExecutionPayload {
+    func exportDesktopFile(arguments: UntypedJSONObject) throws -> AgentToolExecutionPayload {
         let sourcePath = try requiredString("sourcePath", in: arguments)
         let sourceURL = try workspaceFileURL(sourcePath, mode: .read)
         var isDirectory: ObjCBool = false
@@ -157,7 +157,7 @@ extension AgentToolBroker {
         return current
     }
 
-    func requiredString(_ key: String, in object: [String: Any]) throws -> String {
+    func requiredString(_ key: String, in object: UntypedJSONObject) throws -> String {
         guard let value = object[key] as? String, !value.isEmpty else {
             throw NSError(domain: "AgentToolBroker", code: 3, userInfo: [NSLocalizedDescriptionKey: "Missing required string: \(key)"])
         }
@@ -166,7 +166,7 @@ extension AgentToolBroker {
 
     /// Human-readable, one-line description of a privileged tool call, shown to
     /// the operator in the approval prompt so consent is informed (not blind).
-    static func approvalSummary(tool: String, arguments: [String: Any]) -> String {
+    static func approvalSummary(tool: String, arguments: UntypedJSONObject) -> String {
         switch tool {
         case "shell_run":
             let command = (arguments["command"] as? String) ?? "(missing command)"
@@ -191,7 +191,7 @@ extension AgentToolBroker {
         jsonPayload(["ok": false, "tool": name, "status": "error", "error": error], detail: error)
     }
 
-    func jsonPayload(_ object: [String: Any], detail: String?) -> AgentToolExecutionPayload {
+    func jsonPayload(_ object: UntypedJSONObject, detail: String?) -> AgentToolExecutionPayload {
         let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) // try?-ok(JSON encode fallback)
             ?? Data("{}".utf8)
         return AgentToolExecutionPayload(content: String(decoding: data, as: UTF8.self), detail: detail)

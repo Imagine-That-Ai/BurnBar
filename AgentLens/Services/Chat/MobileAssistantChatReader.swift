@@ -202,7 +202,7 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
         }
     }
 
-    static func decodeThread(documentID: String, data: [String: Any], vaultKey: Data? = nil) -> MobileAssistantChatThread? {
+    static func decodeThread(documentID: String, data: UntypedJSONObject, vaultKey: Data? = nil) -> MobileAssistantChatThread? {
         if data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil {
             guard let vaultKey,
                   let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]) else {
@@ -223,7 +223,7 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
         let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? createdAt
         let messageCount = (data["messageCount"] as? Int) ?? ((data["messages"] as? [Any])?.count ?? 0)
-        let messages = (data["messages"] as? [[String: Any]] ?? []).compactMap(decodeMessage)
+        let messages = (data["messages"] as? [UntypedJSONObject] ?? []).compactMap(decodeMessage)
         return MobileAssistantChatThread(
             id: id,
             runtime: runtime,
@@ -237,17 +237,17 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
         )
     }
 
-    static func decodeMessage(_ raw: [String: Any]) -> MobileAssistantChatMessage? {
+    static func decodeMessage(_ raw: UntypedJSONObject) -> MobileAssistantChatMessage? {
         guard let role = raw["role"] as? String,
               let text = raw["text"] as? String else { return nil }
         let id = (raw["id"] as? String) ?? UUID().uuidString
         let timestamp = (raw["timestamp"] as? Timestamp)?.dateValue() ?? Date()
         let modelName = raw["modelName"] as? String
         let isError = (raw["isError"] as? Bool) ?? false
-        let attachments = (raw["attachments"] as? [[String: Any]] ?? []).compactMap(decodeAttachment)
-        let hermes = raw["hermes"] as? [String: Any]
-        let toolCalls = (hermes?["toolCalls"] as? [[String: Any]] ?? []).compactMap(decodeToolCall)
-        let usage = (hermes?["usage"] as? [String: Any]).flatMap(decodeUsage)
+        let attachments = (raw["attachments"] as? [UntypedJSONObject] ?? []).compactMap(decodeAttachment)
+        let hermes = raw["hermes"] as? UntypedJSONObject
+        let toolCalls = (hermes?["toolCalls"] as? [UntypedJSONObject] ?? []).compactMap(decodeToolCall)
+        let usage = (hermes?["usage"] as? UntypedJSONObject).flatMap(decodeUsage)
         return MobileAssistantChatMessage(
             id: id,
             role: role,
@@ -261,7 +261,7 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
         )
     }
 
-    static func decodeAttachment(_ raw: [String: Any]) -> MobileAssistantChatAttachment? {
+    static func decodeAttachment(_ raw: UntypedJSONObject) -> MobileAssistantChatAttachment? {
         guard let id = raw["id"] as? String,
               let kind = raw["kind"] as? String,
               let displayName = raw["displayName"] as? String,
@@ -279,14 +279,14 @@ final class MobileAssistantChatFirestoreSource: MobileAssistantChatRemoteSource 
         )
     }
 
-    static func decodeToolCall(_ raw: [String: Any]) -> MobileAssistantChatToolCall? {
+    static func decodeToolCall(_ raw: UntypedJSONObject) -> MobileAssistantChatToolCall? {
         guard let id = raw["id"] as? String,
               let name = raw["name"] as? String,
               let status = raw["status"] as? String else { return nil }
         return MobileAssistantChatToolCall(id: id, name: name, status: status)
     }
 
-    static func decodeUsage(_ raw: [String: Any]) -> MobileAssistantChatTokenUsage? {
+    static func decodeUsage(_ raw: UntypedJSONObject) -> MobileAssistantChatTokenUsage? {
         let outputTokens = raw["outputTokens"] as? Int
         let totalTokens = raw["totalTokens"] as? Int
         let source = raw["source"] as? String

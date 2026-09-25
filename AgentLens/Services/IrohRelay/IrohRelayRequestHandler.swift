@@ -1151,7 +1151,7 @@ final class IrohRelayRequestHandler: Sendable {
         for dataPayload in sseDataPayloads(from: event) {
             guard let data = dataPayload.data(using: .utf8),
                   let object = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(best-effort SSE parse)
-                  let choices = object["choices"] as? [[String: Any]] else {
+                  let choices = object["choices"] as? [UntypedJSONObject] else {
                 continue
             }
             if choices.contains(where: { choice in
@@ -1276,8 +1276,8 @@ final class IrohRelayRequestHandler: Sendable {
         return values
     }
 
-    nonisolated private static func errorMessage(fromJSONObject object: [String: Any]) -> String? {
-        if let error = object["error"] as? [String: Any] {
+    nonisolated private static func errorMessage(fromJSONObject object: UntypedJSONObject) -> String? {
+        if let error = object["error"] as? UntypedJSONObject {
             return stringValue(error["message"])
                 ?? stringValue(error["error"])
                 ?? stringValue(error["description"])
@@ -1286,8 +1286,8 @@ final class IrohRelayRequestHandler: Sendable {
             ?? stringValue(object["message"])
     }
 
-    nonisolated private static func hermesFailureMessage(fromJSONObject object: [String: Any]) -> String? {
-        guard let hermes = object["hermes"] as? [String: Any],
+    nonisolated private static func hermesFailureMessage(fromJSONObject object: UntypedJSONObject) -> String? {
+        guard let hermes = object["hermes"] as? UntypedJSONObject,
               boolValue(hermes["failed"]) == true
                 || boolValue(hermes["completed"]) == false && stringValue(hermes["error"]) != nil else {
             return nil
@@ -1297,8 +1297,8 @@ final class IrohRelayRequestHandler: Sendable {
             ?? "Hermes reported that the upstream model request failed."
     }
 
-    nonisolated private static func terminalChoiceErrorMessage(fromJSONObject object: [String: Any]) -> String? {
-        guard let choices = object["choices"] as? [[String: Any]] else {
+    nonisolated private static func terminalChoiceErrorMessage(fromJSONObject object: UntypedJSONObject) -> String? {
+        guard let choices = object["choices"] as? [UntypedJSONObject] else {
             return nil
         }
         for choice in choices {
@@ -1316,12 +1316,12 @@ final class IrohRelayRequestHandler: Sendable {
         return nil
     }
 
-    nonisolated private static func choiceVisibleContent(_ choice: [String: Any]) -> String? {
-        if let message = choice["message"] as? [String: Any],
+    nonisolated private static func choiceVisibleContent(_ choice: UntypedJSONObject) -> String? {
+        if let message = choice["message"] as? UntypedJSONObject,
            let content = visibleContentValue(message["content"]) {
             return content
         }
-        if let delta = choice["delta"] as? [String: Any],
+        if let delta = choice["delta"] as? UntypedJSONObject,
            let content = visibleContentValue(delta["content"]) {
             return content
         }
@@ -1332,7 +1332,7 @@ final class IrohRelayRequestHandler: Sendable {
         if let value = raw as? String {
             return stringValue(value)
         }
-        if let object = raw as? [String: Any] {
+        if let object = raw as? UntypedJSONObject {
             return visibleContentValue(object["text"])
                 ?? visibleContentValue(object["value"])
                 ?? visibleContentValue(object["content"])
@@ -1340,7 +1340,7 @@ final class IrohRelayRequestHandler: Sendable {
         if let array = raw as? [Any] {
             let joined = array.compactMap { part -> String? in
                 if let text = part as? String { return text }
-                guard let object = part as? [String: Any] else { return nil }
+                guard let object = part as? UntypedJSONObject else { return nil }
                 return visibleContentValue(object["text"])
                     ?? visibleContentValue(object["value"])
                     ?? visibleContentValue(object["content"])

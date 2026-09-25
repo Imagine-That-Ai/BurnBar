@@ -107,7 +107,7 @@ final class CursorConnectorManager {
             .appendingPathComponent(".factory/settings.json")
         guard let data = try? Data(contentsOf: factoryURL), // try?-ok(missing file guard-return)
               let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(malformed guard-return)
-              let customModels = json["customModels"] as? [[String: Any]] else {
+              let customModels = json["customModels"] as? [UntypedJSONObject] else {
             lastError = "Factory settings were not found."
             return
         }
@@ -443,7 +443,7 @@ final class CursorConnectorManager {
             _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
             sessionToken = bytes.map { String(format: "%02x", $0) }.joined()
         }
-        let payload: [String: Any] = [
+        let payload: UntypedJSONObject = [
             "port": Int(config.preferredPort),
             "session_token": sessionToken,
             // Bearer token for proxy auth — required on all non-health endpoints.
@@ -612,8 +612,8 @@ final class CursorConnectorManager {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw NSError(domain: "CursorConnector", code: 5, userInfo: [NSLocalizedDescriptionKey: "Public endpoint verification failed (authenticated)"])
         }
-        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let modelObjects = object?["data"] as? [[String: Any]] ?? []
+        let object = try JSONSerialization.jsonObject(with: data) as? UntypedJSONObject
+        let modelObjects = object?["data"] as? [UntypedJSONObject] ?? []
         let ids = modelObjects.compactMap { $0["id"] as? String }
         for model in config.exposedModels where !ids.contains(model) {
             throw NSError(domain: "CursorConnector", code: 6, userInfo: [NSLocalizedDescriptionKey: "Model \(model) was not exposed by the public endpoint"])
@@ -631,8 +631,8 @@ final class CursorConnectorManager {
 
         let currentJSON = try Self.readSQLiteValue(db: db, key: key)
         let currentAuth = try Self.readSQLiteValue(db: db, key: "cursorAuth/openAIKey", allowMissing: true)
-        let parsed = try JSONSerialization.jsonObject(with: Data(currentJSON.utf8)) as? [String: Any] ?? [:]
-        let ai = parsed["aiSettings"] as? [String: Any] ?? [:]
+        let parsed = try JSONSerialization.jsonObject(with: Data(currentJSON.utf8)) as? UntypedJSONObject ?? [:]
+        let ai = parsed["aiSettings"] as? UntypedJSONObject ?? [:]
 
         config.cursorSnapshot = CursorSetupSnapshot(
             useOpenAIKey: parsed["useOpenAIKey"] as? Bool,
@@ -663,8 +663,8 @@ final class CursorConnectorManager {
         defer { sqlite3_close(db) }
 
         let currentJSON = try Self.readSQLiteValue(db: db, key: key)
-        var parsed = try JSONSerialization.jsonObject(with: Data(currentJSON.utf8)) as? [String: Any] ?? [:]
-        var ai = parsed["aiSettings"] as? [String: Any] ?? [:]
+        var parsed = try JSONSerialization.jsonObject(with: Data(currentJSON.utf8)) as? UntypedJSONObject ?? [:]
+        var ai = parsed["aiSettings"] as? UntypedJSONObject ?? [:]
         parsed["useOpenAIKey"] = snapshot.useOpenAIKey
         parsed["openAIBaseUrl"] = snapshot.openAIBaseUrl
         ai["userAddedModels"] = snapshot.userAddedModels

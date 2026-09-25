@@ -17,7 +17,7 @@ final class AgentCapabilityGrantQueueListener {
     /// `DocumentReference`. `requestPath` is used only for log correlation.
     typealias ReceiptPayloadWriter = @MainActor @Sendable (
         _ requestPath: String,
-        _ payload: [String: Any]
+        _ payload: UntypedJSONObject
     ) async throws -> Void
     typealias DaemonPinProvisioner = @Sendable (
         _ request: DaemonPhoneControlPinProvisionRequest
@@ -111,7 +111,7 @@ final class AgentCapabilityGrantQueueListener {
     /// failure is the error log. This never falls open: the receipt is already
     /// a denial; a missing write withholds approval, it never grants it.
     func writeDenialReceipt(
-        forData data: [String: Any],
+        forData data: UntypedJSONObject,
         message: String,
         to requestPath: String
     ) async {
@@ -223,14 +223,14 @@ final class AgentCapabilityGrantQueueListener {
         return value.lowercased()
     }
 
-    private func decodeWireRequest(from data: [String: Any]) throws -> HermesRealtimeRelayAgentGrantRequest {
+    private func decodeWireRequest(from data: UntypedJSONObject) throws -> HermesRealtimeRelayAgentGrantRequest {
         let keys = [
             "requestId", "runtime", "threadId", "preset", "capabilities",
             "trustMode", "deliveryMode", "requestedAt", "expiresAt",
             "grantDurationSeconds", "sourceDeviceId", "clientIntentId",
             "localAuthenticationSatisfied", "localAuthProof", "authority"
         ]
-        var payload: [String: Any] = [:]
+        var payload: UntypedJSONObject = [:]
         for key in keys {
             if let value = data[key] {
                 payload[key] = value
@@ -244,7 +244,7 @@ final class AgentCapabilityGrantQueueListener {
         receipt: AgentCapabilityGrantReceipt,
         to requestPath: String
     ) async throws {
-        let payload: [String: Any] = [
+        let payload: UntypedJSONObject = [
             "status": receipt.status.rawValue,
             "receipt": try jsonObject(from: receipt.wire()),
             "updatedAt": Timestamp(date: Date())
@@ -253,7 +253,7 @@ final class AgentCapabilityGrantQueueListener {
     }
 
     private func fallbackReceipt(
-        from data: [String: Any],
+        from data: UntypedJSONObject,
         message: String
     ) -> AgentCapabilityGrantReceipt {
         let runtime = (data["runtime"] as? String).flatMap(AssistantRuntimeID.init(rawValue:)) ?? .hermes
@@ -273,11 +273,11 @@ final class AgentCapabilityGrantQueueListener {
         )
     }
 
-    private func jsonObject<T: Encodable>(from value: T) throws -> [String: Any] {
+    private func jsonObject<T: Encodable>(from value: T) throws -> UntypedJSONObject {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)
-        return (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        return (try JSONSerialization.jsonObject(with: data)) as? UntypedJSONObject ?? [:]
     }
 
     enum QueueError: Error {

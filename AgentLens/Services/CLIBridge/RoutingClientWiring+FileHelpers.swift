@@ -5,15 +5,15 @@ extension RoutingClientWiring {
 
     // MARK: - JSON file helpers
 
-    func readJSONObject(at url: URL) throws -> [String: Any] {
+    func readJSONObject(at url: URL) throws -> UntypedJSONObject {
         guard fileManager.fileExists(atPath: url.path) else { return [:] }
         let data = try Data(contentsOf: url)
         let stripped = stripJSONComments(String(decoding: data, as: UTF8.self))
         guard !stripped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [:] }
-        return (try JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? [String: Any]) ?? [:]
+        return (try JSONSerialization.jsonObject(with: Data(stripped.utf8)) as? UntypedJSONObject) ?? [:]
     }
 
-    func loadJSONObjectWithBackup(at url: URL) throws -> (root: [String: Any], backupURL: URL?) {
+    func loadJSONObjectWithBackup(at url: URL) throws -> (root: UntypedJSONObject, backupURL: URL?) {
         guard fileManager.fileExists(atPath: url.path) else {
             return ([:], nil)
         }
@@ -24,7 +24,7 @@ extension RoutingClientWiring {
             throw RoutingClientWiringError.configReadFailed(path: url.path, detail: error.localizedDescription)
         }
         let stripped = stripJSONComments(String(decoding: data, as: UTF8.self))
-        let object: [String: Any]
+        let object: UntypedJSONObject
         if stripped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             object = [:]
         } else {
@@ -40,7 +40,7 @@ extension RoutingClientWiring {
         return (object, backupURL)
     }
 
-    func writeJSONObject(_ object: [String: Any], to url: URL) throws {
+    func writeJSONObject(_ object: UntypedJSONObject, to url: URL) throws {
         try ensureParentDirectory(of: url)
         do {
             let data = try JSONSerialization.data(
@@ -162,7 +162,7 @@ extension RoutingClientWiring {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func removeVibeProxyEnvironmentKeys(from env: inout [String: Any]) {
+    func removeVibeProxyEnvironmentKeys(from env: inout UntypedJSONObject) {
         for key in Array(env.keys) {
             let normalizedKey = key.uppercased()
             let value = (env[key] as? String)?.lowercased() ?? ""
@@ -175,7 +175,7 @@ extension RoutingClientWiring {
         }
     }
 
-    func removeVibeProxyOpenCodeProviders(from providers: inout [String: Any]) {
+    func removeVibeProxyOpenCodeProviders(from providers: inout UntypedJSONObject) {
         for key in Array(providers.keys) {
             guard isVibeProxyOpenCodeProvider(id: key, value: providers[key]) else { continue }
             providers.removeValue(forKey: key)
@@ -187,7 +187,7 @@ extension RoutingClientWiring {
         if lowercasedID.contains("vibeproxy") || lowercasedID.contains("cli-proxy") {
             return true
         }
-        guard let dictionary = value as? [String: Any] else { return false }
+        guard let dictionary = value as? UntypedJSONObject else { return false }
         let lowercased = lowercasedJSONText(dictionary)
         return lowercased.contains("vibeproxy")
             || lowercased.contains("cli-proxy-api")

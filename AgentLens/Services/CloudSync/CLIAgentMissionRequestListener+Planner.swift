@@ -83,7 +83,7 @@ enum CLIAgentMissionRuntimePlanner {
         title: String,
         prompt: String,
         backend: CLIAgentMissionBackend,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) -> String {
         let source = (data["source"] as? String) ?? "mobile-insights"
         let targetProject = (data["targetProject"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -127,7 +127,7 @@ enum CLIAgentMissionRuntimePlanner {
         """
     }
 
-    static func presentationMode(from data: [String: Any]) -> CLIAgentChatPresentationMode {
+    static func presentationMode(from data: UntypedJSONObject) -> CLIAgentChatPresentationMode {
         let raw = (data["presentationMode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         return raw.flatMap(CLIAgentChatPresentationMode.init(rawValue:)) ?? .nativeChat
     }
@@ -152,7 +152,7 @@ enum CLIAgentMissionRuntimePlanner {
         }
     }
 
-    static func mobileChatClientThreadID(from data: [String: Any]) -> String? {
+    static func mobileChatClientThreadID(from data: UntypedJSONObject) -> String? {
         let source = ((data["source"] as? String) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -178,7 +178,7 @@ enum CLIAgentMissionRuntimePlanner {
         title: String,
         prompt: String,
         backend: CLIAgentMissionBackend,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) -> CLIAgentMissionDirectLaunchPlan? {
         let hostPrompt = Self.prompt(title: title, prompt: prompt, backend: backend, data: data)
         let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -405,7 +405,7 @@ enum CLIAgentMissionRuntimePlanner {
         title: String,
         prompt: String,
         backend: CLIAgentMissionBackend,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) -> CLIAgentMissionDirectLaunchPlan? {
         let hostPrompt = Self.prompt(title: title, prompt: prompt, backend: backend, data: data)
         let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -501,7 +501,7 @@ enum CLIAgentMissionRuntimePlanner {
     }
     static func capabilityGrant(
         for backend: CLIAgentMissionBackend,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) -> AgentCapabilityGrant {
         let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
         let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
@@ -560,7 +560,7 @@ enum CLIAgentMissionRuntimePlanner {
         }
     }
 
-    static func workingDirectoryPath(from data: [String: Any]) -> String? {
+    static func workingDirectoryPath(from data: UntypedJSONObject) -> String? {
         guard let rawPath = (data["targetProject"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
@@ -644,7 +644,7 @@ final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChe
         mergeOnly: Bool = false
     ) async throws {
         let now = FieldValue.serverTimestamp()
-        var payload: [String: Any] = [
+        var payload: UntypedJSONObject = [
             "deviceId": deviceID,
             "platform": "macOS",
             "deviceName": Host.current().localizedName ?? "OpenBurnBar Mac",

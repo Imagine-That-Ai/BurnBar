@@ -94,7 +94,7 @@ public protocol KnowledgeSyncCallable: Sendable {
         rootPath: String?,
         sourceSlug: String?
     ) async throws -> String
-    func commitKnowledgeBatch(_ payload: [String: Any]) async throws -> KnowledgeCommitResult
+    func commitKnowledgeBatch(_ payload: UntypedJSONObject) async throws -> KnowledgeCommitResult
 }
 
 /// Vault-key access seam (the same protocol SessionLogSyncService uses).
@@ -122,7 +122,7 @@ public struct FirebaseKnowledgeSyncCallable: KnowledgeSyncCallable {
         sourceSlug: String?
     ) async throws -> String {
         let callable = Functions.functions(region: "us-central1").httpsCallable("configureKnowledgeSource")
-        var payload: [String: Any] = ["sourceKind": sourceKind]
+        var payload: UntypedJSONObject = ["sourceKind": sourceKind]
         if let sourceSlug, !sourceSlug.isEmpty { payload["sourceSlug"] = sourceSlug }
         let result = try await callable.call(payload)
         guard let dict = BurnBarJSONValue.dictionary(from: result.data),
@@ -132,7 +132,7 @@ public struct FirebaseKnowledgeSyncCallable: KnowledgeSyncCallable {
         return slug
     }
 
-    public func commitKnowledgeBatch(_ payload: [String: Any]) async throws -> KnowledgeCommitResult {
+    public func commitKnowledgeBatch(_ payload: UntypedJSONObject) async throws -> KnowledgeCommitResult {
         let callable = Functions.functions(region: "us-central1").httpsCallable("commitKnowledgeBatch")
         let result = try await callable.call(payload)
         guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
@@ -276,7 +276,7 @@ public final class KnowledgeSyncService: Sendable {
     }
 
     @discardableResult
-    public func syncPreparedBatchPayloads(_ payloads: [[String: Any]]) async throws -> KnowledgeCommitResult? {
+    public func syncPreparedBatchPayloads(_ payloads: [UntypedJSONObject]) async throws -> KnowledgeCommitResult? {
         guard !payloads.isEmpty else { return nil }
         guard uidProvider() != nil else { throw KnowledgeSyncError.notSignedIn }
         guard Self.processGate.tryEnter() else { return nil }
@@ -319,14 +319,14 @@ public final class KnowledgeSyncService: Sendable {
     /// Sends the vault-keyed `slugHmac` (opaque filter column) instead of any
     /// cleartext slug side channel; each vector carries `dedupHash` and NO
     /// cleartext `contentHash`/`sourcePath` (B-SEC-2).
-    public static func encode(_ batch: PensieveKnowledgeBatch) -> [String: Any] {
+    public static func encode(_ batch: PensieveKnowledgeBatch) -> UntypedJSONObject {
         encode(batch, signalEnvelopeForVector: { _ in nil })
     }
 
     public static func encode(
         _ batch: PensieveKnowledgeBatch,
-        signalEnvelopeForVector: (PensieveKnowledgeVector) throws -> [String: Any]?
-    ) rethrows -> [String: Any] {
+        signalEnvelopeForVector: (PensieveKnowledgeVector) throws -> UntypedJSONObject?
+    ) rethrows -> UntypedJSONObject {
         let vectors = try batch.vectors.map { vector in
             try encode(vector, signalEnvelope: signalEnvelopeForVector(vector))
         }
@@ -340,9 +340,9 @@ public final class KnowledgeSyncService: Sendable {
 
     private static func encode(
         _ vector: PensieveKnowledgeVector,
-        signalEnvelope: [String: Any]?
-    ) -> [String: Any] {
-        var encoded: [String: Any] = [
+        signalEnvelope: UntypedJSONObject?
+    ) -> UntypedJSONObject {
+        var encoded: UntypedJSONObject = [
             "vectorId": vector.vectorId,
             "cloakedVector": vector.cloakedVector,
             "sealedCiphertext": encode(vector.sealedCiphertext),
@@ -361,7 +361,7 @@ public final class KnowledgeSyncService: Sendable {
     private static func encode(
         _ batch: PensieveKnowledgeBatch,
         signalContext: PensieveSignalSealContext?
-    ) throws -> [String: Any] {
+    ) throws -> UntypedJSONObject {
         guard let signalContext else {
             return encode(batch)
         }
@@ -373,7 +373,7 @@ public final class KnowledgeSyncService: Sendable {
     private static func signalEnvelopeDictionary(
         for vector: PensieveKnowledgeVector,
         context: PensieveSignalSealContext
-    ) throws -> [String: Any] {
+    ) throws -> UntypedJSONObject {
         let plaintext = try CloudVaultCrypto.openText(vector.sealedCiphertext, keyData: context.vaultKey)
         let binding = CloudVaultSignalBinding(
             uid: context.uid,
@@ -452,8 +452,8 @@ public final class KnowledgeSyncService: Sendable {
         }
     }
 
-    private static func encode(_ sealed: CloudVaultSealedText) -> [String: Any] {
-        var dict: [String: Any] = [
+    private static func encode(_ sealed: CloudVaultSealedText) -> UntypedJSONObject {
+        var dict: UntypedJSONObject = [
             "algorithm": sealed.algorithm,
             "keyVersion": sealed.keyVersion,
             "nonce": sealed.nonce,
@@ -805,7 +805,7 @@ final class MemoryCloudSyncService: Sendable {
         engineScope: String? = nil,
         previousBodyHash: String? = nil,
         writerDevice: String? = nil
-    ) throws -> (docID: String, data: [String: Any]) {
+    ) throws -> (docID: String, data: UntypedJSONObject) {
         let identity = documentIdentity ?? memory.id
         let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-fact:\(identity)", keyData: vaultKey)
         let payload = MemoryCloudFactPayload(
@@ -876,7 +876,7 @@ final class MemoryCloudSyncService: Sendable {
         uid: String,
         vaultKey: Data,
         now: Date
-    ) throws -> (docID: String, sourceRefHmac: String, data: [String: Any]) {
+    ) throws -> (docID: String, sourceRefHmac: String, data: UntypedJSONObject) {
         let sourceRefHmac = try Self.sourceRefHmac(
             threadLogicalID: tombstone.threadLogicalID,
             messageID: tombstone.messageID,
@@ -904,7 +904,7 @@ final class MemoryCloudSyncService: Sendable {
         uid: String,
         vaultKey: Data,
         now: Date
-    ) throws -> (docID: String, data: [String: Any]) {
+    ) throws -> (docID: String, data: UntypedJSONObject) {
         let docID = try CloudVaultCrypto.pensieveSlugHmac("memory-forget:\(tombstone.id)", keyData: vaultKey)
         let memoryIDHmac = try CloudVaultCrypto.pensieveSlugHmac("memory-id:\(tombstone.memoryID)", keyData: vaultKey)
         let rawSourceRefHmacs = try tombstone.sourceRefs.map {

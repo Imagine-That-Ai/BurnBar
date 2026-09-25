@@ -17,12 +17,12 @@ protocol SessionLogEncryptedCloudClient: Sendable {
     func commitEncryptedSearchIndex(
         deviceId: String,
         indexVersion: Int,
-        document: [String: Any],
-        chunks: [[String: Any]]
+        document: UntypedJSONObject,
+        chunks: [UntypedJSONObject]
     ) async throws
-    func commitEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws
-    func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any]
-    func deleteEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any]
+    func commitEncryptedProjectMemorySnapshot(_ payload: UntypedJSONObject) async throws
+    func getEncryptedProjectMemorySnapshot(_ payload: UntypedJSONObject) async throws -> UntypedJSONObject
+    func deleteEncryptedProjectMemorySnapshot(_ payload: UntypedJSONObject) async throws -> UntypedJSONObject
     func downloadEncryptedBody(storagePath: String) async throws -> Data
     /// Deletes the encrypted session body blob from Cloud Storage for a single
     /// session-log document. Used by tombstone GC after the retention window so
@@ -82,8 +82,8 @@ final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClie
     func commitEncryptedSearchIndex(
         deviceId: String,
         indexVersion: Int,
-        document: [String: Any],
-        chunks: [[String: Any]]
+        document: UntypedJSONObject,
+        chunks: [UntypedJSONObject]
     ) async throws {
         _ = try await functions.httpsCallable("commitEncryptedSearchIndexBatch").call([
             "deviceId": deviceId,
@@ -93,16 +93,16 @@ final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClie
         ])
     }
 
-    func commitEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws {
+    func commitEncryptedProjectMemorySnapshot(_ payload: UntypedJSONObject) async throws {
         _ = try await functions.httpsCallable("commitEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
     }
 
-    func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
+    func getEncryptedProjectMemorySnapshot(_ payload: UntypedJSONObject) async throws -> UntypedJSONObject {
         let result = try await functions.httpsCallable("getEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
         return BurnBarJSONValue.dictionary(from: result.data) ?? [:]
     }
 
-    func deleteEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
+    func deleteEncryptedProjectMemorySnapshot(_ payload: UntypedJSONObject) async throws -> UntypedJSONObject {
         let result = try await functions.httpsCallable("deleteEncryptedProjectMemorySnapshot").call(payload as NSDictionary)
         return BurnBarJSONValue.dictionary(from: result.data) ?? [:]
     }

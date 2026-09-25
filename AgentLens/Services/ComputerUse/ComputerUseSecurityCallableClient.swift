@@ -100,7 +100,7 @@ enum ComputerUseSecurityCallableClient {
         let currentVaultGeneration: Int
         let survivorDeviceIds: [String]
 
-        init(data: [String: Any], rotatingDeviceId: String) throws {
+        init(data: UntypedJSONObject, rotatingDeviceId: String) throws {
             guard data["status"] as? String == "pending",
                   data["rotateCallable"] as? String == "rotateCloudVaultKey",
                   let currentVaultKeyID = data["currentVaultKeyID"] as? String,
@@ -199,7 +199,7 @@ enum ComputerUseSecurityCallableClient {
             nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
         }
         // cov:ignore-end
-        var payload: [String: Any] = [
+        var payload: UntypedJSONObject = [
             "deviceId": deviceId,
             "deviceName": deviceName,
             "platform": platform,
@@ -240,7 +240,7 @@ enum ComputerUseSecurityCallableClient {
             nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
         }
         // cov:ignore-end
-        var payload: [String: Any] = [
+        var payload: UntypedJSONObject = [
             "deviceId": deviceId,
             "nonce": nonce,
             "trustChain": trustChain
@@ -256,7 +256,7 @@ enum ComputerUseSecurityCallableClient {
         uid: String,
         targetDeviceId: String,
         approverDeviceId: String
-    ) async throws -> [String: Any] {
+    ) async throws -> UntypedJSONObject {
         let userRef = Firestore.firestore().collection("users").document(uid)
         let approverIdentity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(
             uid: uid,
@@ -479,7 +479,7 @@ enum ComputerUseSecurityCallableClient {
         }
     }
 
-    static func listPendingCallablePayload(callerDeviceId: String) -> [String: Any] {
+    static func listPendingCallablePayload(callerDeviceId: String) -> UntypedJSONObject {
         ["callerDeviceId": callerDeviceId.trimmingCharacters(in: .whitespacesAndNewlines)]
     }
 
@@ -497,7 +497,7 @@ enum ComputerUseSecurityCallableClient {
         let result = try await functions.httpsCallable("listPendingCloudVaultRotationRequirements")
             .call(listPendingCallablePayload(callerDeviceId: callerDeviceId))
         guard let dict = BurnBarJSONValue.dictionary(from: result.data),
-              let rawRequirements = dict["requirements"] as? [[String: Any]] else {
+              let rawRequirements = dict["requirements"] as? [UntypedJSONObject] else {
             throw ClientError.invalidResponse("Could not list pending Cloud Vault rotation requirements.")
         }
         return parsePendingRequirements(rawRequirements)
@@ -506,7 +506,7 @@ enum ComputerUseSecurityCallableClient {
     /// Pure decoder for S1's `listPendingCloudVaultRotationRequirements` payload.
     /// Accepts either `requirementId` or `id` for the requirement key (S1 may
     /// name it either way; flagged for cross-check) and trims/filters survivors.
-    static func parsePendingRequirements(_ raw: [[String: Any]]) -> [PendingCloudVaultRotationRequirement] {
+    static func parsePendingRequirements(_ raw: [UntypedJSONObject]) -> [PendingCloudVaultRotationRequirement] {
         raw.compactMap { entry in
             guard let requirementId = (entry["requirementId"] as? String ?? entry["id"] as? String),
                   !requirementId.isEmpty else { return nil }
@@ -521,7 +521,7 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func parseEscrowDeviceTrustRevocationResult(
-        _ dict: [String: Any]
+        _ dict: UntypedJSONObject
     ) throws -> EscrowDeviceTrustRevocationResult {
         guard dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
@@ -540,13 +540,13 @@ enum ComputerUseSecurityCallableClient {
     }
 
     struct RevocationCloudVaultRotationEnvironment {
-        let loadRequirement: (String) async throws -> [String: Any]?
+        let loadRequirement: (String) async throws -> UntypedJSONObject?
         let loadCurrentKey: () async throws -> CloudVaultResolvedKey?
         let loadLocalIdentity: () throws -> OpenBurnBarSignalIdentityKeypair
         let publishLocalIdentity: (OpenBurnBarSignalIdentityKeypair) async throws -> Void
         let verifiedTrustedDevice: (String, OpenBurnBarSignalIdentityKeypair) async throws -> CloudVaultVerifiedTrustedDevice
         let issueNonce: () async throws -> String
-        let rotateCloudVaultKey: ([String: Any]) async throws -> [String: Any]
+        let rotateCloudVaultKey: (UntypedJSONObject) async throws -> UntypedJSONObject
         let saveNextKey: (Data) throws -> Void
         let runDocumentRewrap: (String, Data, Data, String, Int) async throws -> CloudVaultRotationRewrapProgress
         let markRotationFailed: (String, Error) async -> Void
@@ -664,7 +664,7 @@ enum ComputerUseSecurityCallableClient {
         let nextKey = try CloudVaultCrypto.generateVaultKey()
         let nextVaultKeyID = try CloudVaultCrypto.vaultKeyID(for: nextKey)
         let nextVaultGeneration = rotationRequirement.currentVaultGeneration + 1
-        var survivorWrappers: [[String: Any]] = []
+        var survivorWrappers: [UntypedJSONObject] = []
         for survivorDeviceId in rotationRequirement.survivorDeviceIds {
             let survivor = try await environment.verifiedTrustedDevice(survivorDeviceId, localIdentity)
             survivorWrappers.append(try survivorWrapper(
@@ -715,7 +715,7 @@ enum ComputerUseSecurityCallableClient {
         nextVaultKeyID: String,
         rotatingDeviceId: String,
         survivor: CloudVaultVerifiedTrustedDevice
-    ) throws -> [String: Any] {
+    ) throws -> UntypedJSONObject {
         let wrapped = try CloudVaultCrypto.wrapVaultKey(
             nextKey,
             recipientPublicKey: survivor.escrowPublicKeyData
@@ -736,10 +736,10 @@ enum ComputerUseSecurityCallableClient {
         currentVaultKeyID: String,
         nextVaultKeyID: String,
         nextVaultGeneration: Int,
-        survivorWrappers: [[String: Any]],
+        survivorWrappers: [UntypedJSONObject],
         requirementId: String,
         nonce: String
-    ) -> [String: Any] {
+    ) -> UntypedJSONObject {
         [
             "callerDeviceId": rotatingDeviceId,
             "currentVaultKeyID": currentVaultKeyID,
@@ -789,7 +789,7 @@ enum ComputerUseSecurityCallableClient {
             nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
         }
         // cov:ignore-end
-        var payload: [String: Any] = [
+        var payload: UntypedJSONObject = [
             "deviceId": deviceId,
             "connectionId": record.connectionId,
             "nodeId": record.nodeId,
@@ -1064,14 +1064,14 @@ enum ComputerUseSecurityCallableClient {
 
     /// Narrows an untyped JSON object to a provably `Sendable` one.
     ///
-    /// Mission payloads arrive from Firestore as `[String: Any]`, but
+    /// Mission payloads arrive from Firestore as `UntypedJSONObject`, but
     /// `callHighRiskOwnerAction` deliberately requires `Sendable` (tightened by the
     /// high-risk-owner-action security work). `as? any Sendable` cannot express that --
     /// `Sendable` is a marker protocol and Swift rejects it in a conditional cast -- so
     /// recognise the JSON value types instead. Anything unrecognised is dropped rather
     /// than force-cast: a payload reaching the wire while carrying a non-Sendable
     /// reference is exactly the race the requirement exists to prevent.
-    static func sendableJSONPayload(_ object: [String: Any]) -> [String: any Sendable] {
+    static func sendableJSONPayload(_ object: UntypedJSONObject) -> [String: any Sendable] {
         object.reduce(into: [String: any Sendable]()) { result, entry in
             if let value = sendableJSONValue(entry.value) {
                 result[entry.key] = value
@@ -1088,7 +1088,7 @@ enum ComputerUseSecurityCallableClient {
         case let value as NSNumber: return value.doubleValue
         case is NSNull: return nil
         case let value as [Any]: return value.compactMap(sendableJSONValue)
-        case let value as [String: Any]: return sendableJSONPayload(value)
+        case let value as UntypedJSONObject: return sendableJSONPayload(value)
         default: return nil
         }
     }
@@ -1237,7 +1237,7 @@ enum ComputerUseSecurityCallableClient {
         deviceId: String,
         status: String,
         hostWriteNonce: String,
-        // `any Sendable` values: callers hold `[String: Any]` mission state that
+        // `any Sendable` values: callers hold `UntypedJSONObject` mission state that
         // crosses into this async call; requiring provably-Sendable values here
         // (via `sendableJSONPayload`) is what satisfies Swift 6 region isolation.
         sealedStatePayload: [String: any Sendable],

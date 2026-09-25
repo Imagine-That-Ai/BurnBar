@@ -105,7 +105,7 @@ final class SmartDisplayActionsListener {
             return
         }
 
-        if let configData = data["pixelClock"] as? [String: Any] {
+        if let configData = data["pixelClock"] as? UntypedJSONObject {
             guard let config = decodePixelClockConfig(configData) else {
                 await fail(document: document, message: "invalid Pixel Clock target")
                 return
@@ -113,7 +113,7 @@ final class SmartDisplayActionsListener {
             settingsManager.pixelClockConfig = config
         }
 
-        if let displayData = data["displayConfig"] as? [String: Any],
+        if let displayData = data["displayConfig"] as? UntypedJSONObject,
            let display = SmartDisplayConfigCodec.decode(displayData) {
             settingsManager.smartHubDisplayConfig = display
         }
@@ -132,7 +132,7 @@ final class SmartDisplayActionsListener {
                 ])
             case "pixel_clock_prepare":
                 let result = try await pixelClockController.preparePixelClock()
-                var extra: [String: Any] = [
+                var extra: UntypedJSONObject = [
                     "probeStatus": result.probeStatus.rawValue,
                     "setupMode": result.mode.rawValue,
                     "message": result.message
@@ -258,7 +258,7 @@ final class SmartDisplayActionsListener {
         return SmartHubBridgeServer.shared.queueVoiceRefresh()
     }
 
-    private func decodePixelClockConfig(_ data: [String: Any]) -> PixelClockConfig? {
+    private func decodePixelClockConfig(_ data: UntypedJSONObject) -> PixelClockConfig? {
         let updatedAt: Date = {
             if let raw = data["updatedAt"] as? String,
                let parsed = ISO8601DateFormatter().date(from: raw) {
@@ -299,14 +299,14 @@ final class SmartDisplayActionsListener {
         )
     }
 
-    private func complete(document: QueryDocumentSnapshot, extra: [String: Any] = [:]) async {
+    private func complete(document: QueryDocumentSnapshot, extra: UntypedJSONObject = [:]) async {
         var payload = extra
         payload["status"] = PixelClockActionStatus.completed.rawValue
         payload["completedAt"] = ISO8601DateFormatter().string(from: Date())
         try? await document.reference.setData(payload, merge: true) // try?-ok(pending re-fires on loss)
     }
 
-    private func fail(document: QueryDocumentSnapshot, message: String, extra: [String: Any] = [:]) async {
+    private func fail(document: QueryDocumentSnapshot, message: String, extra: UntypedJSONObject = [:]) async {
         var payload = extra
         payload.merge([
             "status": PixelClockActionStatus.failed.rawValue,
@@ -341,8 +341,8 @@ final class SmartDisplayActionsListener {
         ], merge: true)
     }
 
-    private func encode(_ report: SmartDisplayRepairReport) -> [String: Any] {
-        var payload: [String: Any] = [
+    private func encode(_ report: SmartDisplayRepairReport) -> UntypedJSONObject {
+        var payload: UntypedJSONObject = [
             "startedAt": ISO8601DateFormatter().string(from: report.startedAt)
         ]
         if let completedAt = report.completedAt {
@@ -357,8 +357,8 @@ final class SmartDisplayActionsListener {
         return payload
     }
 
-    private func encode(_ status: SmartDisplayDeviceRepairStatus) -> [String: Any] {
-        var payload: [String: Any] = [
+    private func encode(_ status: SmartDisplayDeviceRepairStatus) -> UntypedJSONObject {
+        var payload: UntypedJSONObject = [
             "kind": status.kind.rawValue,
             "phase": status.phase.rawValue,
             "message": status.message,

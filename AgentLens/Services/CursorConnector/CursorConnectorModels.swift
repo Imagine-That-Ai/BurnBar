@@ -281,8 +281,8 @@ struct RoutedClientConfigSyncService {
         let urls = factoryGatewayConfigURLs()
         let settingsRoot = (try? loadJSONObject(at: urls.settings)) ?? [:] // try?-ok(presence check fallback)
         let configRoot = (try? loadJSONObject(at: urls.config)) ?? [:] // try?-ok(presence check fallback)
-        let settingsModels = settingsRoot["customModels"] as? [[String: Any]] ?? []
-        let configModels = configRoot["custom_models"] as? [[String: Any]] ?? []
+        let settingsModels = settingsRoot["customModels"] as? [UntypedJSONObject] ?? []
+        let configModels = configRoot["custom_models"] as? [UntypedJSONObject] ?? []
         return settingsModels.contains(where: isOpenBurnBarFactoryEntry)
             || configModels.contains(where: isOpenBurnBarFactoryEntry)
     }
@@ -299,7 +299,7 @@ struct RoutedClientConfigSyncService {
         let configURL = homeDirectory
             .appendingPathComponent(".config/opencode/opencode.json")
         var root = try loadJSONObject(at: configURL)
-        var providers = root["provider"] as? [String: Any] ?? [:]
+        var providers = root["provider"] as? UntypedJSONObject ?? [:]
         providers["openburnbar"] = openCodeProviderObject(config: config, models: models)
         root["provider"] = providers
         if root["model"] == nil {
@@ -315,12 +315,12 @@ struct RoutedClientConfigSyncService {
         models: [String]
     ) throws {
         var root = try loadJSONObject(at: url)
-        var customModels = root["customModels"] as? [[String: Any]] ?? []
+        var customModels = root["customModels"] as? [UntypedJSONObject] ?? []
         let preserved = preservedExtraArgs(in: customModels, key: "extraArgs")
         customModels.removeAll(where: isOpenBurnBarFactoryEntry)
         let startIndex = customModels.count
         customModels.append(contentsOf: models.enumerated().map { offset, model in
-            var entry: [String: Any] = [
+            var entry: UntypedJSONObject = [
                 "model": model,
                 "id": factoryCustomModelID(for: model, index: startIndex + offset),
                 "index": startIndex + offset,
@@ -345,11 +345,11 @@ struct RoutedClientConfigSyncService {
         models: [String]
     ) throws {
         var root = try loadJSONObject(at: url)
-        var customModels = root["custom_models"] as? [[String: Any]] ?? []
+        var customModels = root["custom_models"] as? [UntypedJSONObject] ?? []
         let preserved = preservedExtraArgs(in: customModels, key: "extra_args")
         customModels.removeAll(where: isOpenBurnBarFactoryEntry)
         customModels.append(contentsOf: models.map { model in
-            var entry: [String: Any] = [
+            var entry: UntypedJSONObject = [
                 "model_display_name": "OpenBurnBar \(model)",
                 "model": model,
                 "base_url": config.baseURL,
@@ -374,20 +374,20 @@ struct RoutedClientConfigSyncService {
     /// which is where a model's reasoning level lives, so silently dropping it
     /// changes how the model answers rather than just how it is labelled.
     private func preservedExtraArgs(
-        in entries: [[String: Any]],
+        in entries: [UntypedJSONObject],
         key: String
-    ) -> [String: [String: Any]] {
-        var preserved: [String: [String: Any]] = [:]
+    ) -> [String: UntypedJSONObject] {
+        var preserved: [String: UntypedJSONObject] = [:]
         for entry in entries where isOpenBurnBarFactoryEntry(entry) {
             guard let model = entry["model"] as? String,
-                  let extraArgs = entry[key] as? [String: Any],
+                  let extraArgs = entry[key] as? UntypedJSONObject,
                   !extraArgs.isEmpty else { continue }
             preserved[model] = extraArgs
         }
         return preserved
     }
 
-    private func isOpenBurnBarFactoryEntry(_ entry: [String: Any]) -> Bool {
+    private func isOpenBurnBarFactoryEntry(_ entry: UntypedJSONObject) -> Bool {
         let provider = (entry["provider"] as? String)?.lowercased()
         let id = (entry["id"] as? String)?.lowercased()
         let displayName = ((entry["displayName"] as? String) ?? (entry["model_display_name"] as? String))?
@@ -433,13 +433,13 @@ struct RoutedClientConfigSyncService {
     private func openCodeProviderObject(
         config: RoutedClientGatewayConfig,
         models: [String]
-    ) -> [String: Any] {
-        var options: [String: Any] = ["baseURL": config.baseURL]
+    ) -> UntypedJSONObject {
+        var options: UntypedJSONObject = ["baseURL": config.baseURL]
         if !config.effectiveAPIKey.isEmpty {
             options["apiKey"] = config.effectiveAPIKey
         }
         let modelMap = Dictionary(uniqueKeysWithValues: models.map { model in
-            (model, ["name": model] as [String: Any])
+            (model, ["name": model] as UntypedJSONObject)
         })
         return [
             "npm": "@ai-sdk/openai-compatible",
@@ -460,14 +460,14 @@ struct RoutedClientConfigSyncService {
         }
     }
 
-    private func loadJSONObject(at url: URL) throws -> [String: Any] {
+    private func loadJSONObject(at url: URL) throws -> UntypedJSONObject {
         guard fileManager.fileExists(atPath: url.path) else {
             return [:]
         }
         let data = try Data(contentsOf: url)
         let stripped = stripJSONComments(String(decoding: data, as: UTF8.self))
         guard let strippedData = stripped.data(using: .utf8),
-              let object = try JSONSerialization.jsonObject(with: strippedData) as? [String: Any] else {
+              let object = try JSONSerialization.jsonObject(with: strippedData) as? UntypedJSONObject else {
             throw NSError(domain: "RoutedClientConfigSync", code: 3, userInfo: [
                 NSLocalizedDescriptionKey: "Could not parse \(url.lastPathComponent) as JSON."
             ])
@@ -476,7 +476,7 @@ struct RoutedClientConfigSyncService {
     }
 
     private func writeJSONObject(
-        _ object: [String: Any],
+        _ object: UntypedJSONObject,
         to url: URL,
         backupExisting: Bool
     ) throws {

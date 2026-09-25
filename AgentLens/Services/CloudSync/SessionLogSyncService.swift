@@ -34,7 +34,7 @@ private final class SessionLogSyncProcessGate: Sendable {
 /// Gated separately on `sessionLogCloudBackupEnabled`.
 /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
 final class SessionLogSyncService: CloudSyncDomain, Sendable {
-    private typealias FirestoreWrite = (data: [String: Any], document: CloudSyncDocumentGateway, merge: Bool)
+    private typealias FirestoreWrite = (data: UntypedJSONObject, document: CloudSyncDocumentGateway, merge: Bool)
     private enum FirestoreBatchOperation {
         case set(FirestoreWrite)
         case delete(CloudSyncDocumentGateway)
@@ -339,7 +339,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         )
                     )
 
-                    var manifest: [String: Any] = [
+                    var manifest: UntypedJSONObject = [
                         "id": record.id,
                         "deviceId": deviceId,
                         "provider": record.provider.rawValue,
@@ -380,7 +380,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         (manifest, manifestRef, false)
                     ]
 
-                    var cloudSearchChunks: [[String: Any]] = []
+                    var cloudSearchChunks: [UntypedJSONObject] = []
                     for (idx, chunk) in chunks.enumerated() {
                         let snippet = chunk
                             .replacingOccurrences(of: "\n", with: " ")
@@ -535,8 +535,8 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private static func sessionLogTombstoneFields(for record: OpenBurnBarInboxModels.ConversationRecord, deviceId: String, deletedAt: Date) -> [String: Any] {
-        var fields: [String: Any] = [
+    private static func sessionLogTombstoneFields(for record: OpenBurnBarInboxModels.ConversationRecord, deviceId: String, deletedAt: Date) -> UntypedJSONObject {
+        var fields: UntypedJSONObject = [
             "id": record.id,
             "deviceId": deviceId,
             "provider": record.provider.rawValue,
@@ -649,7 +649,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         "workingDirectory"
     ]
 
-    private static func legacyPlaintextFieldDeletes() -> [String: Any] {
+    private static func legacyPlaintextFieldDeletes() -> UntypedJSONObject {
         Dictionary(uniqueKeysWithValues: legacyPlaintextFields.map { ($0, FieldValue.delete()) })
     }
 
@@ -732,8 +732,8 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         for record: OpenBurnBarInboxModels.ConversationRecord,
         facets: SessionUsageFacets?,
         model: String
-    ) -> [String: Any] {
-        var fields: [String: Any] = [
+    ) -> UntypedJSONObject {
+        var fields: UntypedJSONObject = [
             "facetSchemaVersion": facetSchemaVersion,
             "model": model,
             "messageCount": record.messageCount,

@@ -6,7 +6,7 @@ import os
 
 /// In-memory fake Firestore backend for deterministic CloudSync testing.
 ///
-/// - Stores documents as `[path: [String: Any]]`.
+/// - Stores documents as `[path: UntypedJSONObject]`.
 /// - Supports batch writes, collection queries, ordering, limits, and simple filtering.
 /// - Replaces `FieldValue.serverTimestamp()` with `Date()` at write time and
 ///   applies `FieldValue.delete()` to merged writes.
@@ -90,13 +90,13 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
     }
 
     /// Direct access to stored document data for test assertions.
-    func documentData(at path: String) -> [String: Any]? {
+    func documentData(at path: String) -> UntypedJSONObject? {
         store.documentData(at: path)
     }
 
     /// Direct access to all documents under a collection path. Inspection only —
     /// it does not count as a gateway read (see `queryCount(under:)`).
-    func documents(under collectionPath: String) -> [String: [String: Any]] {
+    func documents(under collectionPath: String) -> [String: UntypedJSONObject] {
         store.documents(under: collectionPath)
     }
 
@@ -108,7 +108,7 @@ final class CloudSyncFirestoreFakeGateway: CloudSyncFirestoreGateway, Sendable {
     }
 
     /// Write a document directly (bypassing gateway) to simulate remote changes.
-    func setDocumentData(_ data: [String: Any], at path: String) {
+    func setDocumentData(_ data: UntypedJSONObject, at path: String) {
         store.setDocumentData(normalizeFieldValues(data), at: path)
     }
 
@@ -193,7 +193,7 @@ private final class CloudSyncFirestoreFakeGatewayState: Sendable {
 // MARK: - Fake Document Store
 
 private final class FakeDocumentStore: Sendable {
-    private let box = OSAllocatedUnfairLock<[String: [String: Any]]>(uncheckedState: [:])
+    private let box = OSAllocatedUnfairLock<[String: UntypedJSONObject]>(uncheckedState: [:])
     private let aggregateSumErrorBox = OSAllocatedUnfairLock<Error?>(uncheckedState: nil)
     private let queriedCollectionPathsBox = OSAllocatedUnfairLock<[String]>(uncheckedState: [])
     private let beforeNextWriteBox = OSAllocatedUnfairLock<(@Sendable () -> Void)?>(uncheckedState: nil)
@@ -219,14 +219,14 @@ private final class FakeDocumentStore: Sendable {
         set { aggregateSumErrorBox.withLockUnchecked { $0 = newValue } }
     }
 
-    func documentData(at path: String) -> [String: Any]? {
+    func documentData(at path: String) -> UntypedJSONObject? {
         box.withLockUnchecked { $0[path] }
     }
 
-    func documents(under collectionPath: String) -> [String: [String: Any]] {
+    func documents(under collectionPath: String) -> [String: UntypedJSONObject] {
         box.withLockUnchecked { documents in
             let prefix = collectionPath + "/"
-            var result: [String: [String: Any]] = [:]
+            var result: [String: UntypedJSONObject] = [:]
             for (path, data) in documents where path.hasPrefix(prefix) {
                 // Only direct children of this collection.
                 let remainder = String(path.dropFirst(prefix.count))
@@ -281,12 +281,12 @@ private final class FakeDocumentStore: Sendable {
         hook?()
     }
 
-    func setDocumentData(_ data: [String: Any], at path: String) {
+    func setDocumentData(_ data: UntypedJSONObject, at path: String) {
         consumeBeforeNextWrite()
         box.withLockUnchecked { $0[path] = data }
     }
 
-    func mergeDocumentData(_ data: [String: Any], at path: String) {
+    func mergeDocumentData(_ data: UntypedJSONObject, at path: String) {
         consumeBeforeNextWrite()
         box.withLockUnchecked { documents in
             var existing = documents[path] ?? [:]
@@ -301,7 +301,7 @@ private final class FakeDocumentStore: Sendable {
         }
     }
 
-    func applyWrites(_ writes: [(path: String, data: [String: Any], merge: Bool)]) {
+    func applyWrites(_ writes: [(path: String, data: UntypedJSONObject, merge: Bool)]) {
         box.withLockUnchecked { documents in
             for write in writes {
                 if write.merge {
@@ -457,12 +457,12 @@ private final class CloudSyncDocumentFakeGateway: CloudSyncDocumentGateway, Send
         CloudSyncCollectionFakeGateway(store: store, path: "\(path)/\(collectionPath)", nextError: nextError)
     }
 
-    func getData() async throws -> [String: Any]? {
+    func getData() async throws -> UntypedJSONObject? {
         if let error = nextError() { throw error }
         return store.documentData(at: path)
     }
 
-    func setData(_ data: [String: Any], merge: Bool) async throws {
+    func setData(_ data: UntypedJSONObject, merge: Bool) async throws {
         if let error = nextError() { throw error }
         await store.consumeBeforeNextAsyncWrite()
         let normalized = normalizeFieldValues(data)
@@ -709,16 +709,16 @@ private final class CloudSyncQuerySnapshotFakeGateway: CloudSyncQuerySnapshotGat
 
 private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnapshotGateway, Sendable {
     let documentID: String
-    // [String: Any] is not Sendable; the immutable snapshot lives in an
+    // UntypedJSONObject is not Sendable; the immutable snapshot lives in an
     // OSAllocatedUnfairLock so the gateway is plainly Sendable.
-    private let storedData: OSAllocatedUnfairLock<[String: Any]>
+    private let storedData: OSAllocatedUnfairLock<UntypedJSONObject>
 
-    init(documentID: String, data: [String: Any]) {
+    init(documentID: String, data: UntypedJSONObject) {
         self.documentID = documentID
         self.storedData = OSAllocatedUnfairLock(uncheckedState: data)
     }
 
-    func data() -> [String: Any] {
+    func data() -> UntypedJSONObject {
         storedData.withLockUnchecked { $0 }
     }
 }
@@ -727,7 +727,7 @@ private final class CloudSyncDocumentSnapshotFakeGateway: CloudSyncDocumentSnaps
 
 private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, Sendable {
     private enum PendingOperation {
-        case set(path: String, data: [String: Any], merge: Bool)
+        case set(path: String, data: UntypedJSONObject, merge: Bool)
         case delete(path: String)
     }
 
@@ -755,7 +755,7 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
         self.onCommitSuccess = onCommitSuccess
     }
 
-    func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) {
+    func setData(_ data: UntypedJSONObject, forDocument document: CloudSyncDocumentGateway, merge: Bool) {
         guard let fakeDoc = document as? CloudSyncDocumentFakeGateway else {
             AppLogger.sync.error(
                 "cloud_sync_gateway_implementation_mismatch",
@@ -813,7 +813,7 @@ private final class CloudSyncWriteBatchFakeGateway: CloudSyncWriteBatchGateway, 
 }
 
 private final class CloudSyncTransactionFakeGateway: CloudSyncTransactionGateway {
-    private typealias PendingWrite = (path: String, data: [String: Any], merge: Bool)
+    private typealias PendingWrite = (path: String, data: UntypedJSONObject, merge: Bool)
 
     private let store: FakeDocumentStore
     private let pending = OSAllocatedUnfairLock<[PendingWrite]>(uncheckedState: [])
@@ -822,14 +822,14 @@ private final class CloudSyncTransactionFakeGateway: CloudSyncTransactionGateway
         self.store = store
     }
 
-    func getData(forDocument document: CloudSyncDocumentGateway) throws -> [String: Any]? {
+    func getData(forDocument document: CloudSyncDocumentGateway) throws -> UntypedJSONObject? {
         guard let fakeDoc = document as? CloudSyncDocumentFakeGateway else {
             throw CloudSyncGatewayError.documentImplementationMismatch(expected: "CloudSyncDocumentFakeGateway")
         }
         return store.documentData(at: fakeDoc.path)
     }
 
-    func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) throws {
+    func setData(_ data: UntypedJSONObject, forDocument document: CloudSyncDocumentGateway, merge: Bool) throws {
         guard let fakeDoc = document as? CloudSyncDocumentFakeGateway else {
             throw CloudSyncGatewayError.documentImplementationMismatch(expected: "CloudSyncDocumentFakeGateway")
         }
@@ -859,7 +859,7 @@ private enum QueryPredicate: @unchecked Sendable {
     case whereDocumentIDIsGreaterThan(String)
     case whereDocumentIDIsLessThan(String)
 
-    func matches(documentID: String, data: [String: Any]) -> Bool {
+    func matches(documentID: String, data: UntypedJSONObject) -> Bool {
         switch self {
         case .whereFieldIsGreaterThan(let field, let value):
             guard let fieldValue = data[field] else { return false }
@@ -884,8 +884,8 @@ private enum FakeQueryEngine {
     /// Compares two documents across a CHAIN of sort descriptors, as Firestore
     /// does: the first descriptor that separates them decides.
     static func compareOrdered(
-        lhs: (String, [String: Any]),
-        rhs: (String, [String: Any]),
+        lhs: (String, UntypedJSONObject),
+        rhs: (String, UntypedJSONObject),
         sorts: [SortDescriptor]
     ) -> Int {
         for sort in sorts {
@@ -906,7 +906,7 @@ private enum FakeQueryEngine {
     /// cursor value at that position is compared against the id.
     static func compareToCursor(
         documentID: String,
-        data: [String: Any],
+        data: UntypedJSONObject,
         cursor: [Any],
         sorts: [SortDescriptor]
     ) -> Int {
@@ -921,7 +921,7 @@ private enum FakeQueryEngine {
         return 0
     }
 
-    static func compare(lhs: [String: Any], rhs: [String: Any], field: String) -> Int {
+    static func compare(lhs: UntypedJSONObject, rhs: UntypedJSONObject, field: String) -> Int {
         guard let l = lhs[field], let r = rhs[field] else { return 0 }
         return compare(lhs: l, rhs: r)
     }
@@ -949,8 +949,8 @@ private enum FakeQueryEngine {
 // MARK: - Field Value Normalization
 
 /// Replaces Firestore field transforms with deterministic fake behavior.
-private func normalizeFieldValues(_ data: [String: Any]) -> [String: Any] {
-    var result: [String: Any] = [:]
+private func normalizeFieldValues(_ data: UntypedJSONObject) -> UntypedJSONObject {
+    var result: UntypedJSONObject = [:]
     for (key, value) in data {
         if let transform = fakeFieldTransform(value) {
             switch transform {
@@ -959,9 +959,9 @@ private func normalizeFieldValues(_ data: [String: Any]) -> [String: Any] {
             case .serverTimestamp:
                 result[key] = Date()
             }
-        } else if let dict = value as? [String: Any] {
+        } else if let dict = value as? UntypedJSONObject {
             result[key] = normalizeFieldValues(dict)
-        } else if let array = value as? [[String: Any]] {
+        } else if let array = value as? [UntypedJSONObject] {
             result[key] = array.map { normalizeFieldValues($0) }
         } else {
             result[key] = value
