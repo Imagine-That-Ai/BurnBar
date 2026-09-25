@@ -22,6 +22,16 @@ function dayPath(day: string): string {
   return `users/${UID}/usage_counter_days/${day}`;
 }
 
+// Fake paths are always built by dayPath/docRef, so a missing trailing
+// segment is a test bug, not an optional: fail loudly instead of `!`.
+function lastPathSegment(path: string): string {
+  const segment = path.split("/").at(-1);
+  if (segment === undefined || segment === "") {
+    throw new Error(`fake path has no trailing segment: ${path}`);
+  }
+  return segment;
+}
+
 class FakeDocRef {
   constructor(
     private readonly fake: FakeFirestore,
@@ -86,9 +96,9 @@ class FakeFirestore {
               )
               .map(([path]) => path)
               .sort()
-              .filter((path) => startAfterIds.every((id) => path.split("/").at(-1)! > id))
+              .filter((path) => startAfterIds.every((id) => lastPathSegment(path) > id))
               .slice(0, limitCount)
-              .map((path) => ({ id: path.split("/").at(-1)!, ref: docRef(path) }));
+              .map((path) => ({ id: lastPathSegment(path), ref: docRef(path) }));
             return { empty: docs.length === 0, docs };
           },
         };
@@ -106,7 +116,9 @@ class FakeFirestore {
   }
 
   asFirestore(): Firestore {
-    return this as unknown as Firestore;
+    // The sweeper takes the nominal admin Firestore class, while this test
+    // fake is intentionally structural (same pattern as rollupDailyProvider.test.ts).
+    return Object.create(this);
   }
 }
 

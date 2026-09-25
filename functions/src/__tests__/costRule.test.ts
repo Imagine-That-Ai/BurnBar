@@ -10,6 +10,53 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { effectiveCostUSD, totalCostUSD } from "../costRule.js";
+import { requireRecordArray } from "@openburnbar/functions-shared/shared/validators.js";
+
+interface CostRuleFixtureEvent {
+  id: string;
+  costUSD?: unknown;
+  costUsd?: unknown;
+  cost?: unknown;
+  expectedEffective: number;
+}
+
+interface CostRuleFixture {
+  version: number;
+  expectedTotal: number;
+  events: CostRuleFixtureEvent[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// The pinned cross-client fixture is trusted shape-wise, but JSON.parse
+// returns `any`: decode it through validators instead of asserting.
+function parseCostRuleFixture(raw: unknown): CostRuleFixture {
+  if (!isRecord(raw)) {
+    throw new Error("cost-rule fixture must be an object");
+  }
+  const { version, expectedTotal, events } = raw;
+  if (typeof version !== "number" || typeof expectedTotal !== "number") {
+    throw new Error("cost-rule fixture needs numeric version/expectedTotal");
+  }
+  return {
+    version,
+    expectedTotal,
+    events: requireRecordArray(events, "events", 1000).map((event, index) => {
+      if (typeof event.id !== "string" || typeof event.expectedEffective !== "number") {
+        throw new Error(`cost-rule fixture event ${index} needs a string id and numeric expectedEffective`);
+      }
+      return {
+        id: event.id,
+        costUSD: event.costUSD,
+        costUsd: event.costUsd,
+        cost: event.cost,
+        expectedEffective: event.expectedEffective,
+      };
+    }),
+  };
+}
 
 describe("effectiveCostUSD", () => {
   it("prefers costUSD over legacy spellings", () => {
@@ -48,17 +95,7 @@ describe("effectiveCostUSD", () => {
 describe("cost-rule fixture (cross-client)", () => {
   it("produces the pinned per-event values and total", () => {
     const fixturePath = join(process.cwd(), "..", "tests", "fixtures", "cost-rule", "v1.json");
-    const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as {
-      version: number;
-      expectedTotal: number;
-      events: Array<{
-        id: string;
-        costUSD?: unknown;
-        costUsd?: unknown;
-        cost?: unknown;
-        expectedEffective: number;
-      }>;
-    };
+    const fixture = parseCostRuleFixture(JSON.parse(readFileSync(fixturePath, "utf8")));
     expect(fixture.version).toBe(1);
     for (const event of fixture.events) {
       expect(effectiveCostUSD(event)).toBe(event.expectedEffective);

@@ -60,10 +60,10 @@ async function fetchExpiredDayPage(
 ): Promise<QueryDocumentSnapshot<DocumentData>[]> {
   let query: Query<DocumentData> = db
     .collectionGroup("usage_counter_days")
-    .where("day", "<", cutoffDay) as Query<DocumentData>;
+    .where("day", "<", cutoffDay);
   if (lastDoc) query = query.startAfter(lastDoc);
   const snapshot = await query.limit(batchSize).get();
-  return snapshot.docs as QueryDocumentSnapshot<DocumentData>[];
+  return snapshot.docs;
 }
 
 export async function reapExpiredCounterDays(
