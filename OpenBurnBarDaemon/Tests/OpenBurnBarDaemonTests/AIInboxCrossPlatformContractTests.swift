@@ -75,18 +75,19 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
     // environment cannot reach the repo); an UNPARSABLE file fails via
     // XCTUnwrap at the call site — a committed contract that no longer
     // parses is a regression, not a missing environment.
-    private static func requireRules() throws -> String {
-        guard let rules = try Self.source("firestore.rules") else {
-            throw XCTSkip("firestore.rules is not reachable from this environment.") // env-guard: repo sources reachable (firestore.rules)
+    private static func requireSource(_ relativePath: String, displayName: String) throws -> String {
+        guard let content = try Self.source(relativePath) else {
+            throw XCTSkip("\(displayName) is not reachable from this environment.") // env-guard: repo sources reachable
         }
-        return rules
+        return content
+    }
+
+    private static func requireRules() throws -> String {
+        try Self.requireSource("firestore.rules", displayName: "firestore.rules")
     }
 
     private static func requireAndroidSource(_ relativePath: String) throws -> String {
-        guard let kotlin = try Self.source(relativePath) else {
-            throw XCTSkip("The Android contract is not reachable from this environment.") // env-guard: repo sources reachable (Android contract)
-        }
-        return kotlin
+        try Self.requireSource(relativePath, displayName: "The Android contract")
     }
 
     /// Isolates `validAIInboxMirror()` so a `kind in [...]` list elsewhere in the

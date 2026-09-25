@@ -549,12 +549,17 @@ final class AppStoreReviewComplianceTests: XCTestCase {
     }
 
     private func skipSourceInspectionInSimulatorAppHost() throws {
+        // One site for both app-host conditions (was: a simulator-only throw
+        // plus a workspace-missing throw): the simulator never mounts the Mac
+        // workspace, and a physical host skips only when it is unmounted.
         #if targetEnvironment(simulator)
-        throw XCTSkip("Source-inspection compliance checks read host workspace files and are not reliable inside the simulator app-host process.") // env-guard: Mac workspace mounted (not the simulator app-host)
-        #endif
+        let workspaceMounted = false
+        #else
         let projectURL = repoRoot().appendingPathComponent("OpenBurnBar.xcodeproj")
-        if !FileManager.default.fileExists(atPath: projectURL.path) {
-            throw XCTSkip("Source-inspection compliance checks require the Mac workspace, which is not mounted inside the physical iPhone app-host process.") // env-guard: Mac workspace mounted in the app-host process
+        let workspaceMounted = FileManager.default.fileExists(atPath: projectURL.path)
+        #endif
+        guard workspaceMounted else {
+            try skipSourceInspectionWorkspaceUnmounted("compliance checks")
         }
     }
 

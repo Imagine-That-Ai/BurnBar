@@ -1485,8 +1485,10 @@ final class BurnBarDaemonServerTests: XCTestCase {
     private func openUsageHistoryDatabase(at databaseURL: URL) throws -> OpaquePointer {
         var database: OpaquePointer?
         XCTAssertEqual(sqlite3_open(databaseURL.path, &database), SQLITE_OK)
-        guard let database else { throw XCTSkip("SQLite is unavailable") } // env-guard: SQLite open succeeds
-        return database
+        // sqlite3_open on a freshly created tmp URL cannot fail unless the
+        // host is broken — and the assertion above already recorded that
+        // failure — so a nil handle must fail loudly, never a silent skip.
+        return try XCTUnwrap(database, "SQLite is unavailable")
     }
 
     private func sendRequest<Response: Decodable>(

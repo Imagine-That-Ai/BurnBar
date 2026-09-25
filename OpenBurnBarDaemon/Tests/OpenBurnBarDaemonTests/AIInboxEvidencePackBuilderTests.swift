@@ -234,9 +234,7 @@ final class AIInboxEvidencePackBuilderTests: XCTestCase {
     // MARK: - Remote phase
 
     func test_buildFetchesRepositorySnapshotsOnTheRemotePhase() async throws {
-        guard BurnBarAIInboxProcessRunner.locate("gh") != nil else {
-            throw XCTSkip("The availability probe requires a gh binary on this machine") // env-guard: gh binary on PATH
-        }
+        try requireGHBinaryForAvailabilityProbe()
         let now = Date()
         try seedConversation(id: "conv-remote", endedAt: now.addingTimeInterval(-300), fullText: "Pushed the fix.")
         // The keys must pin the subcommand, not just the state flag: the
@@ -365,11 +363,7 @@ final class AIInboxEvidencePackBuilderTests: XCTestCase {
         let probeDirectory = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(root, isDirectory: true)
             .appendingPathComponent("burnbar-coverage-\(UUID().uuidString)", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: probeDirectory, withIntermediateDirectories: true)
-        } catch {
-            throw XCTSkip("The home directory is not writable in this environment") // env-guard: home directory writable
-        }
+        try createDirectoryOrSkipWhenHomeUnwritable(at: probeDirectory)
         defer { try? FileManager.default.removeItem(at: probeDirectory) }
         try "probe".write(
             to: probeDirectory.appendingPathComponent("session.jsonl"),

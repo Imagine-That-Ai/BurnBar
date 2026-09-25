@@ -70,13 +70,12 @@ final class ParserOutputContractGoldenTests: XCTestCase {
         try emitCandidateCorpus(golden: genA, to: outputDir)
         print("[parser-contract] Candidate corpus + golden written to \(outputDir.path)")
 
-        // (3) Validate against the COMMITTED (bundled) golden.
-        guard let committedURL = bundledGoldenURL() else {
-            throw XCTSkip( // revive-by: 2026-10-31 - copy candidate corpus into the committed golden
-                "No committed parser-output golden bundled yet. Copy \(outputDir.path)/ParserContract/* into "
-                + "AgentLensTests/Fixtures/ParserContract/, regenerate the project, and re-run."
-            )
-        }
+        // (3) Validate against the COMMITTED (bundled) golden. The golden is
+        // committed at AgentLensTests/Fixtures/ParserContract/ and bundled as
+        // an OpenBurnBarTests resource — a missing golden is a packaging
+        // regression that must fail loudly, never a silent skip.
+        let committedURL = try XCTUnwrap(bundledGoldenURL(),
+            "No committed parser-output golden bundled. Copy \(outputDir.path)/ParserContract/* into AgentLensTests/Fixtures/ParserContract/, regenerate the project, and re-run.")
         let committed = try ParserOutputContract.decode(Data(contentsOf: committedURL))
 
         XCTAssertEqual(
@@ -117,9 +116,9 @@ final class ParserOutputContractGoldenTests: XCTestCase {
             case .builders:
                 artifacts = ParserContractCorpus.builderArtifacts(for: fixture)
             case .committedFiles(let bundle):
-                guard let committed = try ParserContractCorpus.committedArtifacts(for: fixture, bundle: bundle) else {
-                    throw XCTSkip("Committed fixture files for \(fixture.id) are not bundled yet.") // revive-by: 2026-10-31 - copy candidate corpus into the committed golden
-                }
+                let committedOpt = try ParserContractCorpus.committedArtifacts(for: fixture, bundle: bundle)
+                let committed = try XCTUnwrap(committedOpt,
+                    "Committed fixture files for \(fixture.id) are not bundled — regenerate the project so AgentLensTests/Fixtures/ParserContract/* bundles as test resources.")
                 artifacts = committed
             }
             fixtures.append(try await ParserContractCorpus.contract(for: fixture, artifacts: artifacts))

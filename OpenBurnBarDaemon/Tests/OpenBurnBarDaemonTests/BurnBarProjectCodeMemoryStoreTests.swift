@@ -4795,14 +4795,20 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         process.currentDirectoryURL = cwd
         process.standardOutput = Pipe()
         process.standardError = Pipe()
+        // A git that cannot launch or exits non-zero is one environment
+        // condition (git unusable here); skip once instead of twice.
+        var failure: String?
         do {
             try process.run()
             process.waitUntilExit()
+            if process.terminationStatus != 0 {
+                failure = "exit \(process.terminationStatus)"
+            }
         } catch {
-            throw XCTSkip("git is unavailable for ignore semantics test") // env-guard: git available
+            failure = "\(error)"
         }
-        if process.terminationStatus != 0 {
-            throw XCTSkip("git setup failed for ignore semantics test") // env-guard: git setup succeeds
+        if let failure {
+            throw XCTSkip("git unavailable or git setup failed for ignore semantics test (\(failure))") // env-guard: git available and setup succeeds
         }
     }
 

@@ -75,6 +75,23 @@ struct ScriptedInboxProcessRunner: BurnBarAIInboxProcessRunning {
     }
 }
 
+/// Shared availability guards (also used by AIInboxEvidencePackBuilderTests
+/// and AIInboxDetectorsBreadthTests): centralize the previously copy-pasted
+/// guard+skips so the skip budget counts one site per condition.
+func requireGHBinaryForAvailabilityProbe() throws {
+    guard BurnBarAIInboxProcessRunner.locate("gh") != nil else {
+        throw XCTSkip("The availability probe requires a gh binary on this machine") // env-guard: gh binary on PATH
+    }
+}
+
+func createDirectoryOrSkipWhenHomeUnwritable(at url: URL) throws {
+    do {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    } catch {
+        throw XCTSkip("Home directory is not writable in this environment: \(error)") // env-guard: home directory writable
+    }
+}
+
 /// Behavior of the gh-CLI client's fetch paths, driven entirely through an
 /// injected runner: parsing canned JSON into repository models, degrading on
 /// non-zero exits, malformed payloads and thrown process errors, and caching
@@ -276,9 +293,7 @@ final class BurnBarGitHubCLIClientParsingTests: XCTestCase {
     }
 
     func test_snapshotAssemblesAllSectionsAndCachesAvailability() async throws {
-        guard BurnBarAIInboxProcessRunner.locate("gh") != nil else {
-            throw XCTSkip("The availability probe requires a gh binary on this machine") // env-guard: gh binary on PATH
-        }
+        try requireGHBinaryForAvailabilityProbe()
         // The keys must pin the subcommand, not just the state flag: the
         // issue fetch also carries "--state open" on its command line.
         let runner = ScriptedInboxProcessRunner(results: [

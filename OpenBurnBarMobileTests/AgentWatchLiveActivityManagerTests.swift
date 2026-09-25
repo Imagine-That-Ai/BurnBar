@@ -10,7 +10,14 @@ final class AgentWatchLiveActivityManagerTests: XCTestCase {
     // every method. Tests needing newer OSes keep their own finer guards.
     override nonisolated func setUpWithError() throws {
         try super.setUpWithError()
-        guard #available(iOS 16.1, *) else { throw XCTSkip("ActivityKit requires iOS 16.1+") } // env-guard: iOS 16.1+
+        guard #available(iOS 16.1, *) else { try skipActivityKitUnavailable() }
+    }
+
+    /// Shared iOS 17 intents skip for the three intent tests below (was: an
+    /// identical guard+skip in each). The `guard #available` stays at the call
+    /// site so availability narrowing is preserved; only the throw moves here.
+    private func skipLiveActivityIntentsUnavailable() throws -> Never {
+        throw XCTSkip("Live Activity intents require iOS 17+") // env-guard: iOS 17+
     }
 
     func test_startUpdateEnd_routesThroughBackendAndSkipsDuplicateStart() throws {
@@ -206,7 +213,7 @@ final class AgentWatchLiveActivityManagerTests: XCTestCase {
     }
 
     func test_liveActivityIntentRouterQueuesCommandUntilAppHandlerIsInstalled() async throws {
-        guard #available(iOS 17.0, *) else { throw XCTSkip("Live Activity intents require iOS 17+") } // env-guard: iOS 17+
+        guard #available(iOS 17.0, *) else { try skipLiveActivityIntentsUnavailable() }
         AgentWatchLiveActivityIntentRouter.resetForTesting()
         defer { AgentWatchLiveActivityIntentRouter.resetForTesting() }
 
@@ -224,7 +231,7 @@ final class AgentWatchLiveActivityManagerTests: XCTestCase {
     }
 
     func test_liveActivityIntentRouterPreservesCommandsAddedWhileQueueDrains() async throws {
-        guard #available(iOS 17.0, *) else { throw XCTSkip("Live Activity intents require iOS 17+") } // env-guard: iOS 17+
+        guard #available(iOS 17.0, *) else { try skipLiveActivityIntentsUnavailable() }
         AgentWatchLiveActivityIntentRouter.resetForTesting()
         defer { AgentWatchLiveActivityIntentRouter.resetForTesting() }
 
@@ -246,7 +253,7 @@ final class AgentWatchLiveActivityManagerTests: XCTestCase {
     }
 
     func test_liveActivityIntentAuthenticationPolicyRequiresUnlockForDecisionsOnly() throws {
-        guard #available(iOS 17.0, *) else { throw XCTSkip("Live Activity intents require iOS 17+") } // env-guard: iOS 17+
+        guard #available(iOS 17.0, *) else { try skipLiveActivityIntentsUnavailable() }
 
         XCTAssertEqual(
             AgentApproveIntent.authenticationPolicy,

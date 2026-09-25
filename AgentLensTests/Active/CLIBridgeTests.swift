@@ -2671,9 +2671,7 @@ final class CLIBridgeTests: XCTestCase {
     }
 
     func test_restrictedShellSandboxProfile_enforcesNetworkAndSecretDenial() throws {
-        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec") else {
-            throw XCTSkip("sandbox-exec unavailable") // env-guard: /usr/bin/sandbox-exec executable
-        }
+        try throwIfSandboxExecUnavailable()
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("obb-sbx-\(UUID().uuidString)", isDirectory: true)
         let home = base.appendingPathComponent("home", isDirectory: true)

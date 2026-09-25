@@ -3,13 +3,20 @@ import XCTest
 @testable import OpenBurnBarMobile
 import OpenBurnBarCore
 
+/// Shared ActivityKit-floor skip (also used by AgentWatchLiveActivityManagerTests).
+/// The `guard #available` stays at the call site so availability narrowing is
+/// preserved; only the throw moves here.
+func skipActivityKitUnavailable() throws -> Never {
+    throw XCTSkip("ActivityKit requires iOS 16.1+") // env-guard: iOS 16.1+
+}
+
 @MainActor
 final class LiveActivityManagerTests: XCTestCase {
     // Wave 4: one class-wide ActivityKit floor instead of a per-test guard in
     // every method.
     override nonisolated func setUpWithError() throws {
         try super.setUpWithError()
-        guard #available(iOS 16.1, *) else { throw XCTSkip("ActivityKit requires iOS 16.1+") } // env-guard: iOS 16.1+
+        guard #available(iOS 16.1, *) else { try skipActivityKitUnavailable() }
     }
 
     func test_startUpdateEnd_routesThroughBackend() async throws {

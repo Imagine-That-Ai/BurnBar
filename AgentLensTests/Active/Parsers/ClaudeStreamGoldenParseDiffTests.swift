@@ -50,19 +50,17 @@ final class ClaudeStreamGoldenParseDiffTests: XCTestCase {
     func test_liveStreamGolden_reparsesToCommittedEvents() throws {
         let bundle = Bundle(for: StreamGoldenBundleMarker.self)
 
-        guard let rawURL = StreamParseContract.bundledURL(
+        // The RAW stream golden is committed at AgentLensTests/Fixtures/StreamGolden
+        // and bundled as an OpenBurnBarTests resource — a missing golden is a
+        // packaging regression that must fail loudly, never a silent skip.
+        let rawURL = try XCTUnwrap(StreamParseContract.bundledURL(
             resource: StreamParseContract.rawResourceName, ext: "jsonl", bundle: bundle
-        ) else {
-            throw XCTSkip("Committed RAW stream golden not bundled yet — regenerate the project so " // revive-by: 2026-10-31 - bundle StreamGolden fixtures via project regen
-                + "AgentLensTests/Fixtures/StreamGolden/*.jsonl bundles as a test resource.")
-        }
+        ), "Committed RAW stream golden not bundled — regenerate the project so AgentLensTests/Fixtures/StreamGolden/*.jsonl bundles as a test resource.")
         let raw = try String(contentsOf: rawURL, encoding: .utf8)
 
-        guard let eventsURL = StreamParseContract.bundledURL(
+        let eventsURL = try XCTUnwrap(StreamParseContract.bundledURL(
             resource: StreamParseContract.eventsResourceName, ext: "json", bundle: bundle
-        ) else {
-            throw XCTSkip("Committed events golden not bundled yet.") // revive-by: 2026-10-31 - bundle StreamGolden fixtures via project regen
-        }
+        ), "Committed events golden not bundled — regenerate the project so AgentLensTests/Fixtures/StreamGolden/*.json bundles as a test resource.")
         let committedData = try Data(contentsOf: eventsURL)
         let committed = try StreamParseContract.decode(committedData)
 
@@ -156,11 +154,9 @@ final class ClaudeStreamGoldenParseDiffTests: XCTestCase {
 
     private func loadCommittedGolden() throws -> StreamParseGolden {
         let bundle = Bundle(for: StreamGoldenBundleMarker.self)
-        guard let url = StreamParseContract.bundledURL(
+        let url = try XCTUnwrap(StreamParseContract.bundledURL(
             resource: StreamParseContract.eventsResourceName, ext: "json", bundle: bundle
-        ) else {
-            throw XCTSkip("Committed events golden not bundled yet.") // revive-by: 2026-10-31 - bundle StreamGolden fixtures via project regen
-        }
+        ), "Committed events golden not bundled — regenerate the project so AgentLensTests/Fixtures/StreamGolden/*.json bundles as a test resource.")
         return try StreamParseContract.decode(Data(contentsOf: url))
     }
 

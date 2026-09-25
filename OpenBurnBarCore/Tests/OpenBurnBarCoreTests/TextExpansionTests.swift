@@ -118,10 +118,11 @@ final class TextExpansionTests: XCTestCase {
     }
 
     func testCGEventCharacterExtractionPrefersUnicodePayload() throws {
-        guard let source = CGEventSource(stateID: .hidSystemState),
-              let event = CGEvent(keyboardEventSource: source, virtualKey: 26, keyDown: true) else {
-            throw XCTSkip("CGEvent creation unavailable in this environment") // env-guard: CGEvent creation permitted
-        }
+        // Creating a local key event requires no entitlement (only posting it
+        // or installing a global tap does), so a nil source/event is a broken
+        // test host that must fail loudly, never a silent skip.
+        let source = try XCTUnwrap(CGEventSource(stateID: .hidSystemState))
+        let event = try XCTUnwrap(CGEvent(keyboardEventSource: source, virtualKey: 26, keyDown: true))
         event.flags = .maskShift
         var unicode: [UniChar] = Array("&".utf16)
         event.keyboardSetUnicodeString(stringLength: unicode.count, unicodeString: &unicode)

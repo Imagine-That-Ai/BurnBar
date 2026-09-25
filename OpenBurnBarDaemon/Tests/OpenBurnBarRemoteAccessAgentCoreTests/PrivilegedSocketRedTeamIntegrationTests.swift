@@ -9,6 +9,11 @@ import XCTest
 final class PrivilegedSocketRedTeamIntegrationTests: XCTestCase {
     private static let virtualHIDSocket = "/var/run/openburnbar-virtual-hid.sock"
 
+    private enum RedTeamSetupError: Error {
+        case socketMissing(String)
+        case probeMissing(String)
+    }
+
     func test_redTeamProbe_rejectsVirtualHIDInput_whenSocketLive() throws {
         try runRedTeamProbeIfSocketLive(socket: Self.virtualHIDSocket)
     }
@@ -17,8 +22,13 @@ final class PrivilegedSocketRedTeamIntegrationTests: XCTestCase {
         guard ProcessInfo.processInfo.environment["RUN_PRIVILEGED_SOCKET_REDTEAM"] == "1" else {
             throw XCTSkip("Set RUN_PRIVILEGED_SOCKET_REDTEAM=1 after rebuilding privileged daemons") // env-guard: RUN_PRIVILEGED_SOCKET_REDTEAM=1
         }
+        // Past the opt-in gate the operator asserted the environment is ready
+        // (the nightly CI job boots the bridge and builds the probe first), so
+        // a missing socket/probe is a broken setup that must fail loudly with
+        // an actionable message, never a silent skip.
         guard FileManager.default.fileExists(atPath: socket) else {
-            throw XCTSkip("Privileged socket not present at \(socket)") // env-guard: privileged socket present
+            XCTFail("RUN_PRIVILEGED_SOCKET_REDTEAM=1 is set but the privileged socket is not present at \(socket) — rebuild privileged daemons from a P0+ build and restart them")
+            throw RedTeamSetupError.socketMissing(socket)
         }
 
         let probeURL: URL
@@ -34,7 +44,8 @@ final class PrivilegedSocketRedTeamIntegrationTests: XCTestCase {
         }
 
         guard FileManager.default.isExecutableFile(atPath: probeURL.path) else {
-            throw XCTSkip("Build OpenBurnBarPrivilegedSocketRedTeamProbe first; expected executable at \(probeURL.path)") // env-guard: OpenBurnBarPrivilegedSocketRedTeamProbe built
+            XCTFail("RUN_PRIVILEGED_SOCKET_REDTEAM=1 is set but the red-team probe is not built; expected executable at \(probeURL.path)")
+            throw RedTeamSetupError.probeMissing(probeURL.path)
         }
 
         let process = Process()

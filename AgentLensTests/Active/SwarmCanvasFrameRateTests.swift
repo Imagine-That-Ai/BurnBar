@@ -7,16 +7,25 @@ import XCTest
 // required (the OpenBurnBar app target now links OpenBurnBarUI explicitly for this).
 @testable import OpenBurnBarUI
 
+// MARK: - Shared sandboxed-runner guard
+
+/// Throws `XCTSkip` when the tests run inside the sandboxed app-test runner
+/// (host path contains `/openburnbar-app-tests/`), which cannot reach repo
+/// sources for file-validation tests. Centralizes the previously copy-pasted
+/// guard+skip so the skip budget counts one site instead of six.
+func throwIfSandboxedAppTestRunner(_ validation: String) throws {
+    if Bundle.main.bundlePath.contains("/openburnbar-app-tests/") {
+        throw XCTSkip("Skipping \(validation) in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
+    }
+}
+
 final class SwarmCanvasFrameRateTests: XCTestCase {
 
     // MARK: - Stateful Canvas isolation
 
     func testStatefulCanvasRenderers_doNotRenderAsynchronously() throws {
-        let mainBundlePath = Bundle.main.bundlePath
-        if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping source code validation in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
-        }
-        
+        try throwIfSandboxedAppTestRunner("source code validation")
+
         let statefulCanvasSources = [
             "AgentLens/Views/Dashboard/DashboardBracketSwarmBackground.swift",
             "AgentLens/Views/Dashboard/Components/EasterEggEventCanvas.swift"
@@ -187,10 +196,7 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
     }
 
     func testWebsiteBackgroundEditorial_capsFrameRateAt30() throws {
-        let mainBundlePath = Bundle.main.bundlePath
-        if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping source code validation in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
-        }
+        try throwIfSandboxedAppTestRunner("source code validation")
         let source = try Self.loadSource("OpenBurnBarMobile/Views/Aurora/WebsiteBackgroundView.swift")
         XCTAssertTrue(
             source.contains("streamingThrottledFrameRate(30)"),
@@ -199,10 +205,7 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
     }
 
     func testDecorativeLoadersAndHeroes_capFrameRateAt30() throws {
-        let mainBundlePath = Bundle.main.bundlePath
-        if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping source code validation in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
-        }
+        try throwIfSandboxedAppTestRunner("source code validation")
         let cooking = try Self.loadSource("OpenBurnBarCore/Sources/OpenBurnBarUI/Views/CookingLoader.swift")
         XCTAssertTrue(cooking.contains("minimumInterval: 1.0 / 30"), "Cooking loader is decorative; 30 fps is enough.")
         XCTAssertFalse(cooking.contains("1.0 / 60"))

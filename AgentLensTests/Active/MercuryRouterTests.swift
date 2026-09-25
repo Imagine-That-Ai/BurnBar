@@ -2570,9 +2570,18 @@ final class MercuryRouterTests: XCTestCase {
     }
 
     private func extractStreaming(from phase: MercuryRouter.Phase) throws -> String {
-        if case let .streaming(id, _) = phase { return id }
-        if case let .starting(id) = phase { return id }
-        throw XCTSkip("phase not streaming/starting") // env-guard: router reaches streaming/starting phase
+        // Every caller drives the router into streaming/starting
+        // deterministically and asserts the request id — any other phase is a
+        // router regression that must fail loudly, never a silent skip.
+        let id: String?
+        if case let .streaming(streamingID, _) = phase {
+            id = streamingID
+        } else if case let .starting(startingID) = phase {
+            id = startingID
+        } else {
+            id = nil
+        }
+        return try XCTUnwrap(id, "Expected router phase streaming/starting, got \(phase)")
     }
 }
 

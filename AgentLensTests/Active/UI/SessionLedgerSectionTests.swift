@@ -102,11 +102,8 @@ final class SessionLedgerSupportTests: XCTestCase {
     }
 
     func test_entryRow_preservesButtonSemanticsForKeyboardActivation() throws {
-        let mainBundlePath = Bundle.main.bundlePath
-        if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping host file validation in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
-        }
-        
+        try throwIfSandboxedAppTestRunner("host file validation")
+
         let testURL = URL(fileURLWithPath: #filePath)
         let repositoryRoot = testURL
             .deletingLastPathComponent() // UI

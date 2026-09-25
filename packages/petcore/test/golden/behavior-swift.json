@@ -1,0 +1,28 @@
+{
+  "seed": 1,
+  "graph": {
+    "initial": "idle",
+    "transitions": [
+      { "from": "idle", "to": "listen", "when": "cursorNear", "weight": 100 },
+      { "from": "idle", "to": "wander", "when": "cooldownElapsed", "weight": 12 },
+      { "from": "idle", "to": "react", "when": "special", "weight": 1 },
+      { "from": "listen", "to": "think", "when": "sendPressed" },
+      { "from": "think", "to": "speak", "when": "streamStart" },
+      { "from": "think", "to": "listen", "when": "special", "weight": 95 },
+      { "from": "think", "to": "react", "when": "special", "weight": 5 },
+      { "from": "speak", "to": "react", "when": "fallbackFired" }
+    ]
+  },
+  "steps": [
+    { "trigger": "cursorNear", "expected": "listen" },
+    { "trigger": "cursorNear", "expected": null },
+    { "trigger": "sendPressed", "expected": "think" },
+    { "trigger": "cursorNear", "expected": null },
+    { "trigger": "special", "expected": "listen" },
+    { "trigger": "sendPressed", "expected": "think" },
+    { "trigger": "streamStart", "expected": "speak" },
+    { "trigger": "streamToken", "expected": null },
+    { "trigger": "fallbackFired", "expected": "react" },
+    { "trigger": "cooldownElapsed", "expected": null }
+  ]
+}

@@ -34,23 +34,27 @@ final class AIInboxSchemaParityTests: XCTestCase {
         return nil
     }
 
-    private static func source(at relativePath: String) throws -> String? {
-        guard let root = repositoryRoot() else { return nil }
-        let url = root.appendingPathComponent(relativePath)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            XCTFail("Missing migration file: \(relativePath)")
-            return nil
-        }
-        return try String(contentsOf: url, encoding: .utf8)
+    private enum MigrationSourceError: Error {
+        case missingFile(String)
     }
 
     // MARK: - Wave 4: single guarded loader (was: an identical guard+skip in
-    // every migration-file test).
-    private static func requireSource(at relativePath: String) throws -> String {
-        guard let dataSource = try Self.source(at: relativePath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.") // env-guard: repo sources reachable (migration files)
+    // every migration-file test). The repository-root skip lives here alone;
+    // both the file loader and the mirror-deleted test route through it.
+    private static func requireRepositoryRoot() throws -> URL {
+        guard let root = repositoryRoot() else {
+            throw XCTSkip("Repository sources are not reachable from this test environment.") // env-guard: repo sources reachable
         }
-        return dataSource
+        return root
+    }
+
+    private static func requireSource(at relativePath: String) throws -> String {
+        let url = try Self.requireRepositoryRoot().appendingPathComponent(relativePath)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            XCTFail("Missing migration file: \(relativePath)")
+            throw MigrationSourceError.missingFile(relativePath)
+        }
+        return try String(contentsOf: url, encoding: .utf8)
     }
 
     private static func statementsBlock(from source: String, marker: String) -> String? {
@@ -64,9 +68,7 @@ final class AIInboxSchemaParityTests: XCTestCase {
 
     /// The v58 / v59 DDL lives in exactly one file each now.
     func test_agentLensMirrorStaysDeleted() throws {
-        guard let root = Self.repositoryRoot() else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.") // env-guard: repo sources reachable (repository root)
-        }
+        let root = try Self.requireRepositoryRoot()
         for relativePath in [Self.deletedAppMigrationPath, Self.deletedAppFounderLensMigrationPath] {
             try MemorySchemaSource.assertAgentLensMirrorDeleted(relativePath, under: root)
         }
