@@ -188,7 +188,9 @@ const PLANNED_CEILINGS = {
   // Raised for FxParser.swift (fx harness). 40/18500 leaves room for ~4 more
   // harnesses before this needs re-examining.
   OpenBurnBarLogParsers: { maxFiles: 40, maxLines: 18500 },
-  OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
+  // Wave 4 string-any tail added net +8 lines of typed Codable conversions
+  // (measured 13,004); ceiling raised just above measured.
+  OpenBurnBarQuota: { maxFiles: 55, maxLines: 13100 },
   // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers
   // SearchContracts too.

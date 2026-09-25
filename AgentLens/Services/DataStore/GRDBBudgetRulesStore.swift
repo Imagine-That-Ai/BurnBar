@@ -5,12 +5,16 @@ import OpenBurnBarKernel
 import OpenBurnBarData
 
 /// SQLite CRUD against `budget_rules` and `budget_events`. The `BudgetSettings` observable
-/// store wraps this; `BudgetLedger` reads via this; Hermes / MCP write through this.
+/// store wraps this; `GRDBBudgetLedger` reads via this; Hermes / MCP write through this.
 ///
 /// All operations route through the canonical `OpenBurnBarDatabase` queue so concurrency
 /// matches every other table in the project. The store keeps no in-memory state — that's
 /// `BudgetSettings`'s job.
-final class BudgetRulesStore: Sendable {
+///
+/// The GRDB-backed macOS rules backend. It satisfies the shared `BudgetRulesStoring`
+/// contract and keeps its macOS-only seams: scoped fetches plus `markEventSynced` for
+/// `CloudBudgetService`.
+final class GRDBBudgetRulesStore: Sendable, BudgetRulesStoring {
     private let dbQueue: any DatabaseWriter
 
     init(dbQueue: any DatabaseWriter) {
@@ -27,7 +31,7 @@ final class BudgetRulesStore: Sendable {
 
     func deleteRule(id: String) async throws {
         _ = try await dbQueue.write { db in
-            try BudgetRulesStore.deleteRule(id: id, in: db)
+            try Self.deleteRule(id: id, in: db)
         }
     }
 
@@ -132,13 +136,7 @@ final class BudgetRulesStore: Sendable {
     // MARK: - Private helpers
 
     private static func upsert(rule: BudgetRule, in db: Database) throws {
-        let fallbackJSON: String?
-        if rule.fallbackCredentialIDs.isEmpty {
-            fallbackJSON = nil
-        } else {
-            let data = try JSONEncoder().encode(rule.fallbackCredentialIDs)
-            fallbackJSON = String(data: data, encoding: .utf8)
-        }
+        let fallbackJSON = try BudgetRuleFallbackIDs.encode(rule.fallbackCredentialIDs)
         try db.execute(
             sql: """
                 INSERT INTO budget_rules (
@@ -227,12 +225,7 @@ final class BudgetRulesStore: Sendable {
         let updatedAt = OpenBurnBarDatabase.parseDateValue(row["updatedAt"]) ?? createdAt
         let isEnabled: Bool = row["isEnabled"] ?? true
 
-        var fallbacks: [String] = []
-        if let json = row["fallbackCredentialIDsJSON"] as? String,
-           let data = json.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String].self, from: data) { // try?-ok(decode fallback empty)
-            fallbacks = decoded
-        }
+        let fallbacks = BudgetRuleFallbackIDs.decode(row["fallbackCredentialIDsJSON"] as? String)
 
         return BudgetRule(
             id: id,

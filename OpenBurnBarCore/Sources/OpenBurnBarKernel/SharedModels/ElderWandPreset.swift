@@ -98,4 +98,91 @@ extension Array where Element == ElderWandPreset {
             preset.withIsDefault(index == defaultIndex)
         }
     }
+
+    // MARK: - Store mutations (shared by the macOS / iOS ElderWandSettings twins)
+
+    /// Inserts or replaces `preset` by `id`, preserving default-ness: a preset that
+    /// replaces the current default stays the default, and an incoming default clears
+    /// every other. The result is re-sanitized so exactly one preset stays default.
+    public func upserting(_ preset: ElderWandPreset) -> [ElderWandPreset] {
+        var next = self
+        let existingWasDefault: Bool
+        if let index = next.firstIndex(where: { $0.id == preset.id }) {
+            existingWasDefault = next[index].isDefault
+            next[index] = preset.withIsDefault(preset.isDefault || existingWasDefault)
+        } else {
+            existingWasDefault = false
+            next.append(preset)
+        }
+        if preset.isDefault || existingWasDefault {
+            return next.map { $0.withIsDefault($0.id == preset.id) }
+        }
+        return next.presetsSanitized()
+    }
+
+    /// Removes the preset with `id`. The remainder is re-sanitized so a new default is
+    /// promoted when the deleted preset was it.
+    public func removingPreset(id: String) -> [ElderWandPreset] {
+        filter { $0.id != id }.presetsSanitized()
+    }
+
+    /// Marks the preset with `id` as the single default. Returns `self` unchanged when
+    /// the id is unknown.
+    public func settingDefaultPreset(id: String) -> [ElderWandPreset] {
+        guard contains(where: { $0.id == id }) else { return self }
+        return map { $0.withIsDefault($0.id == id) }.presetsSanitized()
+    }
+
+    /// Renames the preset with `id`. Returns `self` unchanged when the id is unknown.
+    public func renamingPreset(id: String, to name: String) -> [ElderWandPreset] {
+        guard let index = firstIndex(where: { $0.id == id }) else { return self }
+        let existing = self[index]
+        var next = self
+        next[index] = ElderWandPreset(
+            id: existing.id,
+            name: name,
+            analysisModelIDs: existing.analysisModelIDs,
+            judgeModelID: existing.judgeModelID,
+            maxToolCalls: existing.maxToolCalls,
+            isDefault: existing.isDefault
+        )
+        return next.presetsSanitized()
+    }
+}
+
+// MARK: - Fusion payload (shared by the macOS / iOS ElderWandSettings twins)
+
+extension ElderWandPreset {
+    /// Whether the preset is usable for fusion: at least one non-blank analysis model
+    /// and a non-blank judge model, matching the OpenRouter Fusion contract.
+    public var isFusionUsable: Bool {
+        let analysisModels = analysisModelIDs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return !analysisModels.isEmpty
+            && !judgeModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Lowers the preset into the OpenRouter "Fusion"-compatible `plugins` array the
+    /// daemon gateway reads. Returns `nil` when the preset is not fusion-usable,
+    /// signalling "no fusion for this request".
+    public func fusionPluginsPayload(pluginID: String = "fusion") -> [[String: any Sendable]]? {
+        guard isFusionUsable else { return nil }
+        let analysisModels = analysisModelIDs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let judge = judgeModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !analysisModels.isEmpty, !judge.isEmpty else { return nil }
+        let clampedToolCalls = min(
+            max(maxToolCalls, ElderWandPreset.maxToolCallsRange.lowerBound),
+            ElderWandPreset.maxToolCallsRange.upperBound
+        )
+        return [[
+            "id": pluginID,
+            "enabled": true,
+            "analysis_models": analysisModels,
+            "model": judge,
+            "max_tool_calls": clampedToolCalls
+        ]]
+    }
 }

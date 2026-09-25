@@ -16,14 +16,14 @@ final class CloudBudgetService {
     private let dataStore: DataStore
     private let accountManager: AccountManager
     private let budgetSettings: BudgetSettings
-    private let budgetRulesStore: BudgetRulesStore
+    private let budgetRulesStore: GRDBBudgetRulesStore
     private let vaultKeyProvider: any ConversationCloudVaultKeyProviding
 
     init(
         dataStore: DataStore,
         accountManager: AccountManager,
         budgetSettings: BudgetSettings,
-        budgetRulesStore: BudgetRulesStore,
+        budgetRulesStore: GRDBBudgetRulesStore,
         vaultKeyProvider: any ConversationCloudVaultKeyProviding = MacConversationCloudVaultKeyProvider()
     ) {
         self.dataStore = dataStore
@@ -174,7 +174,7 @@ final class CloudBudgetService {
 
     private func encodeRule(_ rule: BudgetRule, vaultKey: Data) throws -> [String: Any] {
         // Encode the fallback credential set the same way the local store does
-        // (BudgetRulesStore.upsert): an empty set is intentionally absent, but a real
+        // (GRDBBudgetRulesStore.upsert): an empty set is intentionally absent, but a real
         // encode failure must NOT silently drop the set — a budget rule that syncs to
         // other seats WITHOUT its fallback credentials would route spend to the wrong
         // credential. Let the throw propagate so the upload fails closed and retries

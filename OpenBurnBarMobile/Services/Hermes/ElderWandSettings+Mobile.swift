@@ -16,6 +16,10 @@ import OpenBurnBarKernel
 /// The "active" preset is the user's default (`isDefault == true`). With no
 /// presets saved, fusion is off and every accessor returns `nil`/empty, so
 /// the chat path behaves exactly as before.
+///
+/// The iOS preset backend. List mutations and the wire payload live in
+/// OpenBurnBarKernel (`Array<ElderWandPreset>` / `ElderWandPreset`), shared with the
+/// macOS backend; the `UserDefaults` data persistence stays here.
 @Observable
 @MainActor
 final class ElderWandSettings {
@@ -55,11 +59,7 @@ final class ElderWandSettings {
     /// judge model, matching the OpenRouter Fusion contract.
     var isFusionActive: Bool {
         guard let preset = activePreset else { return false }
-        let analysisModels = preset.analysisModelIDs
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        return !analysisModels.isEmpty
-            && !preset.judgeModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return preset.isFusionUsable
     }
 
     /// The OpenRouter Fusion `plugins` block for the active preset, or `nil`
@@ -67,26 +67,8 @@ final class ElderWandSettings {
     /// `[{ "id":"fusion", "analysis_models":[…], "model":<judge>,
     ///    "max_tool_calls":<n> }]`.
     func elderWandPluginsPayload() -> [[String: any Sendable]]? {
-        guard isFusionActive, let preset = activePreset else { return nil }
-        let analysisModels = preset.analysisModelIDs.filter {
-            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }.map {
-            $0.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        guard !analysisModels.isEmpty else { return nil }
-        let judge = preset.judgeModelID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let clampedToolCalls = min(
-            max(preset.maxToolCalls, ElderWandPreset.maxToolCallsRange.lowerBound),
-            ElderWandPreset.maxToolCallsRange.upperBound
-        )
-        let plugin: [String: any Sendable] = [
-            "id": Self.fusionPluginID,
-            "enabled": true,
-            "analysis_models": analysisModels,
-            "model": judge,
-            "max_tool_calls": clampedToolCalls
-        ]
-        return [plugin]
+        guard let preset = activePreset else { return nil }
+        return preset.fusionPluginsPayload(pluginID: Self.fusionPluginID)
     }
 
     // MARK: - Mutation
@@ -99,33 +81,19 @@ final class ElderWandSettings {
 
     /// Inserts or updates a preset by `id` (sanitizes + persists).
     func upsert(_ preset: ElderWandPreset) {
-        var updated = presets
-        let existingWasDefault: Bool
-        if let index = updated.firstIndex(where: { $0.id == preset.id }) {
-            existingWasDefault = updated[index].isDefault
-            updated[index] = preset.withIsDefault(preset.isDefault || existingWasDefault)
-        } else {
-            existingWasDefault = false
-            updated.append(preset)
-        }
-        if preset.isDefault || existingWasDefault {
-            apply(updated.map { $0.withIsDefault($0.id == preset.id) })
-        } else {
-            apply(updated)
-        }
+        apply(presets.upserting(preset))
     }
 
     /// Removes a preset by `id` (sanitizes + persists).
     func remove(id: String) {
-        apply(presets.filter { $0.id != id })
+        apply(presets.removingPreset(id: id))
     }
 
     /// Promotes the preset with `id` to the single default (sanitizes +
     /// persists). No-op when the id is unknown.
     func setDefault(id: String) {
         guard presets.contains(where: { $0.id == id }) else { return }
-        let updated = presets.map { $0.withIsDefault($0.id == id) }
-        apply(updated)
+        apply(presets.settingDefaultPreset(id: id))
     }
 
     private func apply(_ newPresets: [ElderWandPreset]) {

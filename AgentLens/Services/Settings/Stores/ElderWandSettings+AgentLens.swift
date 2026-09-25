@@ -16,6 +16,10 @@ import OpenBurnBarKernel
 // `plugins` block the daemon gateway expects:
 // `[{ "id":"fusion", "analysis_models":[...], "model":<judge>, "max_tool_calls":n }]`
 // — `nil` when no preset is configured, which means "no fusion this request".
+//
+// The macOS preset backend. List mutations and the wire payload live in
+// OpenBurnBarKernel (`Array<ElderWandPreset>` / `ElderWandPreset`), shared with the
+// iOS backend; the `SettingsPersistenceCoordinator` string persistence stays here.
 
 @Observable
 @MainActor
@@ -53,51 +57,25 @@ final class ElderWandSettings {
     /// Saves a new preset or replaces an existing one with the same `id`. The
     /// list is re-sanitized so exactly one preset stays the default.
     func save(_ preset: ElderWandPreset) {
-        var next = presets
-        let existingWasDefault: Bool
-        if let index = next.firstIndex(where: { $0.id == preset.id }) {
-            existingWasDefault = next[index].isDefault
-            next[index] = preset.withIsDefault(preset.isDefault || existingWasDefault)
-        } else {
-            existingWasDefault = false
-            next.append(preset)
-        }
-
-        if preset.isDefault || existingWasDefault {
-            presets = next.map { $0.withIsDefault($0.id == preset.id) }
-        } else {
-            presets = next.presetsSanitized()
-        }
+        presets = presets.upserting(preset)
     }
 
     /// Renames the preset with the given `id`. No-op when the id is unknown.
     func rename(id: String, to name: String) {
-        guard let index = presets.firstIndex(where: { $0.id == id }) else { return }
-        let existing = presets[index]
-        var next = presets
-        next[index] = ElderWandPreset(
-            id: existing.id,
-            name: name,
-            analysisModelIDs: existing.analysisModelIDs,
-            judgeModelID: existing.judgeModelID,
-            maxToolCalls: existing.maxToolCalls,
-            isDefault: existing.isDefault
-        )
-        presets = next.presetsSanitized()
+        guard presets.contains(where: { $0.id == id }) else { return }
+        presets = presets.renamingPreset(id: id, to: name)
     }
 
     /// Deletes the preset with the given `id`. The remaining list is
     /// re-sanitized so a new default is promoted if the deleted one was it.
     func delete(id: String) {
-        let next = presets.filter { $0.id != id }
-        presets = next.presetsSanitized()
+        presets = presets.removingPreset(id: id)
     }
 
     /// Marks the preset with the given `id` as the default. No-op when unknown.
     func setDefault(id: String) {
         guard presets.contains(where: { $0.id == id }) else { return }
-        let next = presets.map { $0.withIsDefault($0.id == id) }
-        presets = next.presetsSanitized()
+        presets = presets.settingDefaultPreset(id: id)
     }
 
     /// Replaces the entire preset list (used by the configurator's batch save).
@@ -112,22 +90,7 @@ final class ElderWandSettings {
     /// configured, signalling "no fusion for this request".
     func elderWandPluginsPayload() -> [[String: any Sendable]]? {
         guard let preset = activePreset else { return nil }
-        let analysisModels = preset.analysisModelIDs
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let judge = preset.judgeModelID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !analysisModels.isEmpty, !judge.isEmpty else { return nil }
-        let clampedToolCalls = min(
-            max(preset.maxToolCalls, ElderWandPreset.maxToolCallsRange.lowerBound),
-            ElderWandPreset.maxToolCallsRange.upperBound
-        )
-        return [[
-            "id": "fusion",
-            "enabled": true,
-            "analysis_models": analysisModels,
-            "model": judge,
-            "max_tool_calls": clampedToolCalls
-        ]]
+        return preset.fusionPluginsPayload()
     }
 
     // MARK: - Persistence

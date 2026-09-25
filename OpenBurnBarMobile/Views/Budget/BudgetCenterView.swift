@@ -15,7 +15,7 @@ struct BudgetCenterView: View {
     let dashboardStore: DashboardStore
 
     @State private var spendByRule: [String: Double] = [:]
-    @State private var forecasts: [String: BudgetForecast.Projection] = [:]
+    @State private var forecasts: [String: BudgetForecastProjection] = [:]
     @State private var recentEvents: [BudgetEvent] = []
     @State private var isLoading = true
     @State private var animateRing = false
@@ -98,11 +98,11 @@ struct BudgetCenterView: View {
     // MARK: - Data Loading
 
     private func loadData() async {
-        let ledger = BudgetLedger(dataSource: dashboardStore)
-        let forecastEngine = BudgetForecast(dataSource: dashboardStore)
+        let ledger = RollupBudgetLedger(dataSource: dashboardStore)
+        let forecastEngine = RollupBudgetForecast(dataSource: dashboardStore)
 
         var newSpend: [String: Double] = [:]
-        var newForecasts: [String: BudgetForecast.Projection] = [:]
+        var newForecasts: [String: BudgetForecastProjection] = [:]
 
         // Query spend and forecast for all rules
         for rule in budgetSettings.rules {
@@ -317,7 +317,7 @@ struct BudgetCenterView: View {
     }
 
     @ViewBuilder
-    private func forecastChip(for rule: BudgetRule, projection: BudgetForecast.Projection) -> some View {
+    private func forecastChip(for rule: BudgetRule, projection: BudgetForecastProjection) -> some View {
         let hitDate = projection.projectedHitDate()
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
@@ -326,7 +326,7 @@ struct BudgetCenterView: View {
                     .foregroundStyle(MobileTheme.textPrimary)
                     .lineLimit(1)
 
-                if projection.usedPercent >= 1.0 {
+                if (projection.usedPercent ?? 1.0) >= 1.0 {
                     Text("Limit Breached")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(MobileTheme.error)
@@ -352,8 +352,8 @@ struct BudgetCenterView: View {
                         Capsule()
                             .fill(MobileTheme.borderSubtle.opacity(0.4))
                         Capsule()
-                            .fill(projection.usedPercent >= 1.0 ? MobileTheme.error : (projection.usedPercent >= 0.8 ? MobileTheme.warning : MobileTheme.success))
-                            .frame(width: geo.size.width * CGFloat(min(projection.usedPercent, 1.0)))
+                            .fill((projection.usedPercent ?? 1.0) >= 1.0 ? MobileTheme.error : ((projection.usedPercent ?? 1.0) >= 0.8 ? MobileTheme.warning : MobileTheme.success))
+                            .frame(width: geo.size.width * CGFloat(min(projection.usedPercent ?? 1.0, 1.0)))
                     }
                 }
                 .frame(width: 44, height: 4)
@@ -613,7 +613,7 @@ struct BudgetCenterView: View {
 struct BudgetRuleCard: View {
     let rule: BudgetRule
     let spend: Double
-    let projection: BudgetForecast.Projection?
+    let projection: BudgetForecastProjection?
 
     let onEdit: () -> Void
     let onPause: () -> Void

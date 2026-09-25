@@ -102,7 +102,7 @@ final class DatabaseRowDecodingTests: XCTestCase {
     /// `pausedUntil` is the one field that turns enforcement off, so a nil
     /// decode means a rule the user paused keeps blocking spend.
     func test_budgetRuleKeepsItsDates() async throws {
-        let store = BudgetRulesStore(dbQueue: try makeQueue())
+        let store = GRDBBudgetRulesStore(dbQueue: try makeQueue())
         let created = Date(timeIntervalSince1970: 1_754_000_000)
         let paused = Date(timeIntervalSince1970: 1_756_000_000)
         try await store.upsertRule(

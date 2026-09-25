@@ -338,19 +338,21 @@ struct AgentInsightsTabScreen: View {
         await budgetDashboard.load()
 
         if budgetSettings == nil {
-            let rulesStore = BudgetRulesStore()
+            let rulesStore = FirestoreBudgetRulesStore()
             let settings = BudgetSettings(store: rulesStore)
             budgetSettings = settings
 
             if !BudgetEnforcement.shared.isConfigured {
-                let ledger = BudgetLedger(dataSource: budgetDashboard)
+                let ledger = RollupBudgetLedger(dataSource: budgetDashboard)
                 let gate = BudgetGate(settings: settings, ledger: ledger)
                 let notifications = BudgetNotificationCenter()
-                let forecast = BudgetForecast(dataSource: budgetDashboard)
+                let forecast = RollupBudgetForecast(dataSource: budgetDashboard)
                 BudgetEnforcement.shared.configure(
                     gate: gate,
                     notifications: notifications,
-                    forecast: forecast
+                    forecast: forecast,
+                    costEstimator: FlatRateBudgetCostEstimator.mobileDefault,
+                    contextSpendFallback: .limit
                 )
             }
         }

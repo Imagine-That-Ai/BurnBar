@@ -20,7 +20,7 @@ import os.log
 /// This is the **single writer-of-record per direction**: the iOS sink writes
 /// both the `iosToMac` (sent) and `macToIos` (received) rows it observes, and
 /// the rule pins the doc with `allow update: if false`, so a shared `manifestId`
-/// is written exactly once. Mirrors the `BudgetRulesStore` seal pattern
+/// is written exactly once. Mirrors the `FirestoreBudgetRulesStore` seal pattern
 /// (`sealedProjectName`/`sealedLabel`) — reuse `CloudVaultCrypto`, never invent
 /// crypto.
 ///

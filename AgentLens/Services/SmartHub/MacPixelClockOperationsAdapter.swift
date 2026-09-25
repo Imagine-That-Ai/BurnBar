@@ -54,9 +54,7 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
     func flashPixelClockFirmware(config: PixelClockConfig, wifiCredentials: PixelClockWiFiCredentials?) async throws -> PixelClockSetupResult {
         persist(config)
         guard let controller = resolvedController() else {
-            throw NSError(domain: "PixelClock", code: 6, userInfo: [
-                NSLocalizedDescriptionKey: "Pixel Clock controller is unavailable."
-            ])
+            throw PixelClockOperationError.failure(code: 6, message: "Pixel Clock controller is unavailable.")
         }
         let hasUSBSetupPort = await PixelClockFirmwareFlasher.hasSetupCandidateSerialDevice()
         guard hasUSBSetupPort else {
@@ -64,10 +62,11 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
             let setupNetworkGuidance = visibleSetupSSID.map {
                 " OpenBurnBar can see setup Wi-Fi \($0), but it will not send Wi-Fi credentials to a setup network unless it was just bound to this Mac by USB flashing."
             } ?? ""
-            throw NSError(domain: "PixelClock", code: 5, userInfo: [
-                NSLocalizedDescriptionKey: "No Pixel Clock setup path found. The TC001 can be powered by its battery or a charge-only cable without exposing USB data to the Mac. " +
+            throw PixelClockOperationError.failure(
+                code: 5,
+                message: "No Pixel Clock setup path found. The TC001 can be powered by its battery or a charge-only cable without exposing USB data to the Mac. " +
                     "Put the clock on Wi-Fi or connect it directly with a data-capable USB cable.\(setupNetworkGuidance)"
-            ])
+            )
         }
         let credentials = try wifiCredentials ?? Self.promptForWiFiCredentials()
         return try await controller.flashPixelClockFirmware(wifiCredentials: credentials)
@@ -76,9 +75,7 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
     func testPixelClock(config: PixelClockConfig) async throws {
         persist(config)
         guard let controller = resolvedController() else {
-            throw NSError(domain: "PixelClock", code: 6, userInfo: [
-                NSLocalizedDescriptionKey: "Pixel Clock controller is unavailable."
-            ])
+            throw PixelClockOperationError.failure(code: 6, message: "Pixel Clock controller is unavailable.")
         }
         try await controller.testPixelClock()
     }
@@ -86,9 +83,7 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
     func pushPixelClockNow(config: PixelClockConfig) async throws {
         persist(config)
         guard let controller = resolvedController() else {
-            throw NSError(domain: "PixelClock", code: 6, userInfo: [
-                NSLocalizedDescriptionKey: "Pixel Clock controller is unavailable."
-            ])
+            throw PixelClockOperationError.failure(code: 6, message: "Pixel Clock controller is unavailable.")
         }
         try await controller.pushPixelClockNow()
     }
@@ -96,9 +91,7 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
     func removePixelClockApp(config: PixelClockConfig) async throws {
         persist(config)
         guard let controller = resolvedController() else {
-            throw NSError(domain: "PixelClock", code: 6, userInfo: [
-                NSLocalizedDescriptionKey: "Pixel Clock controller is unavailable."
-            ])
+            throw PixelClockOperationError.failure(code: 6, message: "Pixel Clock controller is unavailable.")
         }
         try await controller.removePixelClockApp()
     }
@@ -150,11 +143,11 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
         alert.accessoryView = stack
 
         guard alert.runModal() == .alertFirstButtonReturn else {
-            throw NSError(domain: "PixelClock", code: 3, userInfo: [NSLocalizedDescriptionKey: "Pixel Clock setup was cancelled."])
+            throw PixelClockOperationError.failure(code: 3, message: "Pixel Clock setup was cancelled.")
         }
         let trimmedSSID = ssid.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSSID.isEmpty, !password.stringValue.isEmpty else {
-            throw NSError(domain: "PixelClock", code: 4, userInfo: [NSLocalizedDescriptionKey: "Wi-Fi name and password are required to finish Pixel Clock setup."])
+            throw PixelClockOperationError.failure(code: 4, message: "Wi-Fi name and password are required to finish Pixel Clock setup.")
         }
         return PixelClockWiFiCredentials(ssid: trimmedSSID, password: password.stringValue)
     }

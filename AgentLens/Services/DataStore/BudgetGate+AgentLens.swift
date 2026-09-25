@@ -10,17 +10,17 @@ import OpenBurnBarKernel
 
 extension BudgetSettings: BudgetRuleProviding {}
 
-// `BudgetLedger.currentSpend(forRule:reference:)` already matches the protocol requirement
+// `GRDBBudgetLedger.currentSpend(forRule:reference:)` already matches the protocol requirement
 // (its `reference` default arg is irrelevant to witness matching), so the conformance is
 // satisfied by the existing actor method with no shim.
-extension BudgetLedger: BudgetLedgerReading {}
+extension GRDBBudgetLedger: BudgetLedgerReading {}
 
 extension BudgetGate {
     /// Production initializer for the AgentLens plane. Preserves the pre-de-fork logging
     /// pipeline: ledger read failures are reported through `AppLogger.dataStore` as
     /// `budget_gate_ledger_read_failed` / `budget_gate_fallback_ledger_read_failed` with
     /// ruleScope / ruleBehavior / errorClass metadata.
-    convenience init(settings: BudgetSettings, ledger: BudgetLedger, warningThreshold: Double = 0.8) {
+    convenience init(settings: BudgetSettings, ledger: GRDBBudgetLedger, warningThreshold: Double = 0.8) {
         self.init(
             ruleProvider: settings,
             ledger: ledger,

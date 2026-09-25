@@ -322,7 +322,7 @@ final class ApprovalPolicyStore {
     /// Synchronous local-keychain read of the Cloud Vault key for use inside the
     /// snapshot-listener callback (which cannot await). Returns `nil` if the key
     /// is not present locally yet; callers then fall back to any legacy plaintext
-    /// field. Mirrors `BudgetRulesStore.cachedVaultKey()`.
+    /// field. Mirrors `FirestoreBudgetRulesStore.cachedVaultKey()`.
     private func cachedVaultKey(uid: String) -> Data? {
         try? CloudVaultKeyStore().loadKey(uid: uid)
     }

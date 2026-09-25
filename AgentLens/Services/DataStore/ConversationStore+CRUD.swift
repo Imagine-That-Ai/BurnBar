@@ -87,7 +87,7 @@ extension ConversationStore {
                 // 60s refresh tick. ON CONFLICT performs an UPDATE in place, so the
                 // existing conversations_au AFTER UPDATE trigger maintains the FTS index
                 // (delete-then-insert for the same rowid). This matches the established
-                // upsert idiom in BudgetRulesStore, ProjectionStore, UsageStore, and
+                // upsert idiom in GRDBBudgetRulesStore, ProjectionStore, UsageStore, and
                 // ProviderAccountStore. Columns absent from the SET clause (deletedAt,
                 // version) intentionally retain their existing values, preserving
                 // tombstones across re-indexing rather than resurrecting them.

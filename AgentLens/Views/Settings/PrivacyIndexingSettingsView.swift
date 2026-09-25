@@ -60,8 +60,7 @@ struct PrivacyIndexingSettingsView: View {
         Binding(
             get: { AnalyticsConsentStore.shared.isGranted },
             set: { isOn in
-                if isOn { AnalyticsConsentStore.shared.grant() } else { AnalyticsConsentStore.shared.revoke() }
-                Analytics.shared.consentDidChange()
+                Analytics.shared.setConsent(granted: isOn)
             }
         )
     }

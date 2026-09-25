@@ -528,7 +528,7 @@ final class BudgetGateMattersTests: XCTestCase {
         )
         let gate = BudgetGate(
             ruleProvider: FakeRuleProvider(rules: [organization]),
-            ledger: BudgetLedger(dbQueue: queue),
+            ledger: GRDBBudgetLedger(dbQueue: queue),
             warningThreshold: 0.8
         )
 

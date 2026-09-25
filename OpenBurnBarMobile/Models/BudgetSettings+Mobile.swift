@@ -4,17 +4,21 @@ import OpenBurnBarKernel
 import SwiftUI
 import UIKit
 
-/// Observable façade over `BudgetRulesStore` for the iOS budget UI. Settings views bind
+/// Observable façade over `FirestoreBudgetRulesStore` for the iOS budget UI. Settings views bind
 /// to this; `BudgetGate` reads through it; Hermes / MCP write through it.
 ///
 /// Pattern mirrors the macOS `BudgetSettings` (`@Observable @MainActor final class`) but
-/// is backed by Firestore via `BudgetRulesStore` rather than SQLite. The in-memory `rules`
+/// is backed by Firestore via `FirestoreBudgetRulesStore` rather than SQLite. The in-memory `rules`
 /// cache is kept fresh by a Firestore snapshot listener started on `init`.
+///
+/// The iOS settings backend. Rule filtering comes from `BudgetRuleProviding` defaults in
+/// OpenBurnBarKernel; the listener lifecycle, legacy migration, and Firestore refresh
+/// stay here.
 @Observable
 @MainActor
 final class BudgetSettings {
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "BudgetSettings")
-    private let store: BudgetRulesStore
+    private let store: FirestoreBudgetRulesStore
     private let legacyBudgetDefaults: UserDefaults
     private let migrateLegacyBudget: Bool
 
@@ -26,11 +30,11 @@ final class BudgetSettings {
     /// every write operation.
     private(set) var rules: [BudgetRule] = []
 
-    /// Creates a new `BudgetSettings` backed by the given `BudgetRulesStore`.
+    /// Creates a new `BudgetSettings` backed by the given `FirestoreBudgetRulesStore`.
     /// Immediately starts a Firestore listener for live rule updates and kicks off
     /// the legacy AppStorage migration check.
     init(
-        store: BudgetRulesStore,
+        store: FirestoreBudgetRulesStore,
         legacyBudgetDefaults: UserDefaults = .standard,
         migrateLegacyBudget: Bool = true
     ) {
@@ -87,7 +91,7 @@ final class BudgetSettings {
                 source: source,
                 amountAtEvent: 0,
                 limitAtEvent: stamped.amountUSD,
-                detailJSON: encodeDetail(["label": stamped.displayLabel, "period": stamped.period.rawValue])
+                detailJSON: BudgetEventDetail.encode(["label": stamped.displayLabel, "period": stamped.period.rawValue])
             ))
             await refresh()
         } catch {
@@ -109,7 +113,7 @@ final class BudgetSettings {
                 source: source,
                 amountAtEvent: 0,
                 limitAtEvent: existing.amountUSD,
-                detailJSON: encodeDetail(["label": existing.displayLabel])
+                detailJSON: BudgetEventDetail.encode(["label": existing.displayLabel])
             ))
             await refresh()
         } catch {
@@ -129,7 +133,7 @@ final class BudgetSettings {
             source: source,
             amountAtEvent: 0,
             limitAtEvent: rule.amountUSD,
-            detailJSON: encodeDetail(["pausedUntil": ISO8601DateFormatter().string(from: resumeAt)])
+            detailJSON: BudgetEventDetail.encode(["pausedUntil": ISO8601DateFormatter().string(from: resumeAt)])
         ))
     }
 
@@ -148,35 +152,10 @@ final class BudgetSettings {
     }
 
     // MARK: - Reads (filtered from in-memory cache)
-
-    /// Every credential-scope rule for the given `(providerID, accountID)` pair.
-    func rules(forCredential providerID: String, accountID: String?) -> [BudgetRule] {
-        rules.filter {
-            guard $0.scope == .credential, $0.providerID == providerID else { return false }
-            if let accountID {
-                return $0.accountID == accountID
-            }
-            return $0.accountID == nil || $0.accountID?.isEmpty == true
-        }
-    }
-
-    /// Every project-scope rule for the given free-text project name.
-    func rules(forProject projectName: String) -> [BudgetRule] {
-        rules.filter { $0.scope == .project && $0.projectName == projectName }
-    }
-
-    /// The most permissive global rule (the largest amount). Used by `BudgetGate` when
-    /// no credential- or project-scope rule matches a request.
-    var primaryGlobalRule: BudgetRule? {
-        rules
-            .filter { $0.scope == .global }
-            .max(by: { $0.amountUSD < $1.amountUSD })
-    }
-
-    var globalRules: [BudgetRule] { rules.filter { $0.scope == .global } }
-    var credentialRules: [BudgetRule] { rules.filter { $0.scope == .credential } }
-    var projectRules: [BudgetRule] { rules.filter { $0.scope == .project } }
-    var organizationRules: [BudgetRule] { rules.filter { $0.scope == .organization } }
+    //
+    // Rule filtering (`rules(forCredential:)`, `rules(forProject:)`, `primaryGlobalRule`,
+    // and the per-scope collections) comes from the `BudgetRuleProviding` defaults in
+    // OpenBurnBarKernel, shared with the macOS facade.
 
     /// Recent audit events. Wraps the store so views don't need to know about Firestore.
     func recentEvents(forRule ruleID: String? = nil, limit: Int = 100) async -> [BudgetEvent] {
@@ -211,12 +190,5 @@ final class BudgetSettings {
         )
         await upsertRule(migrated, source: "legacy_migration")
         legacyBudgetDefaults.removeObject(forKey: key)
-    }
-
-    // MARK: - Helpers
-
-    private func encodeDetail(_ detail: [String: String]) -> String? {
-        guard let data = try? JSONEncoder().encode(detail) else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 }

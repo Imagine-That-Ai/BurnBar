@@ -33,18 +33,22 @@ enum BudgetLedgerReadError: Error, LocalizedError, Equatable, Sendable {
     }
 }
 
-// MARK: - BudgetLedger
+// MARK: - RollupBudgetLedger
 
 /// Computes running spend for a budget rule against Firestore usage rollups.
 ///
-/// iOS equivalent of the macOS `BudgetLedger` which queries raw `token_usage` rows via
+/// iOS equivalent of the macOS `GRDBBudgetLedger` which queries raw `token_usage` rows via
 /// SQL. On mobile we use pre-computed `UsageRollupDoc` data from `DashboardStore` (or any
 /// `BudgetSpendDataSource`) and supplement with a local session accumulator for sub-cycle
 /// accuracy.
 ///
 /// `BudgetGate` calls into this actor on every request to ask: "if I let this request
 /// through at an estimated cost of $X, will rule R's running total cross its limit?"
-actor BudgetLedger {
+///
+/// The rollup-backed iOS ledger backend. Rollup spend reads and the session accumulator
+/// stay here; the fail-closed batch `snapshot` loop lives on `BudgetLedgerReading` in
+/// OpenBurnBarKernel, shared with the macOS GRDB backend.
+actor RollupBudgetLedger {
     private struct SessionSpendKey: Hashable, Sendable {
         let providerID: String
         let accountID: String?
@@ -99,11 +103,7 @@ actor BudgetLedger {
     /// rule ID. A successful read is present even when the value is `0`; a failed read is
     /// omitted so callers can distinguish "definitely zero" from "unknown, fail closed".
     func snapshot(forRules rules: [BudgetRule], reference: Date = Date()) async -> [String: Double] {
-        var result: [String: Double] = [:]
-        for rule in rules {
-            result[rule.id] = try? await currentSpend(forRule: rule, reference: reference)
-        }
-        return result
+        await (self as any BudgetLedgerReading).snapshot(forRules: rules, reference: reference)
     }
 
     // MARK: - Session accumulator

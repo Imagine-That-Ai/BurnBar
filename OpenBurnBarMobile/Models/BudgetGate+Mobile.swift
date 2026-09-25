@@ -13,17 +13,17 @@ private let budgetGateLogger = Logger(subsystem: "com.openburnbar.mobile", categ
 
 extension BudgetSettings: BudgetRuleProviding {}
 
-// `BudgetLedger.currentSpend(forRule:reference:)` already matches the protocol requirement
+// `RollupBudgetLedger.currentSpend(forRule:reference:)` already matches the protocol requirement
 // (its `reference` default arg is irrelevant to witness matching), so the conformance is
 // satisfied by the existing actor method with no shim.
-extension BudgetLedger: BudgetLedgerReading {}
+extension RollupBudgetLedger: BudgetLedgerReading {}
 
 extension BudgetGate {
     /// Production initializer for the mobile plane. Preserves the pre-de-fork logging
     /// pipeline: ledger read failures are reported through the mobile `os.Logger` as
     /// `budget_gate_ledger_read_failed` / `budget_gate_fallback_ledger_read_failed` with
     /// scope= behavior= error= fields.
-    convenience init(settings: BudgetSettings, ledger: BudgetLedger, warningThreshold: Double = 0.8) {
+    convenience init(settings: BudgetSettings, ledger: RollupBudgetLedger, warningThreshold: Double = 0.8) {
         self.init(
             ruleProvider: settings,
             ledger: ledger,

@@ -66,20 +66,22 @@ struct AuthGateView: View {
             guard let uid = authStore.currentIdentity?.uid, !uid.isEmpty else { return }
             BudgetEnforcement.shared.resetIfConfiguredForDifferentUser(uid)
             if !BudgetEnforcement.shared.isConfigured(forUserID: uid) {
-                let rulesStore = BudgetRulesStore()
+                let rulesStore = FirestoreBudgetRulesStore()
                 let settings = BudgetSettings(store: rulesStore)
                 let budgetDashboard = DashboardStore()
                 await budgetDashboard.load()
                 guard !Task.isCancelled, authStore.currentIdentity?.uid == uid else { return }
-                let ledger = BudgetLedger(dataSource: budgetDashboard)
+                let ledger = RollupBudgetLedger(dataSource: budgetDashboard)
                 let gate = BudgetGate(settings: settings, ledger: ledger)
                 let notifications = BudgetNotificationCenter()
-                let forecast = BudgetForecast(dataSource: budgetDashboard)
+                let forecast = RollupBudgetForecast(dataSource: budgetDashboard)
                 BudgetEnforcement.shared.configure(
                     userID: uid,
                     gate: gate,
                     notifications: notifications,
-                    forecast: forecast
+                    forecast: forecast,
+                    costEstimator: FlatRateBudgetCostEstimator.mobileDefault,
+                    contextSpendFallback: .limit
                 )
             }
         }

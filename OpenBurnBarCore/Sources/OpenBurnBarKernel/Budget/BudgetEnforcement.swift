@@ -1,50 +1,84 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 import Foundation
-import OpenBurnBarKernel
+import OpenBurnBarUsageModels
+
+// MARK: - BudgetContextSpendFallback
+
+/// Spend assumed by `budgetContextSection()` when a rule's ledger read fails.
+/// The twins diverged here: macOS rendered unknown spend as `$0`, iOS rendered it
+/// as the rule limit (fail-closed display). Backends pass their historical value at
+/// `configure` time so the context prompt each plane injects is byte-identical to
+/// before the consolidation.
+public enum BudgetContextSpendFallback: Sendable {
+    /// Render unknown spend as `$0` (macOS historical behavior).
+    case zero
+    /// Render unknown spend as the rule limit (iOS historical behavior).
+    case limit
+}
+
+// MARK: - BudgetEnforcement
 
 /// Process-wide entry point that gate-aware call sites use without restructuring their
-/// initializers. The mobile Hermes chat path and any daemon-proxied gateway both reach
-/// `BudgetEnforcement.shared.evaluate(...)` to ask the gate for a decision.
+/// initializers. The AgentLens chat client, the mobile Hermes chat path, and the daemon
+/// HTTP gateway all reach `BudgetEnforcement.shared.evaluate(...)` to ask the gate for
+/// a decision.
 ///
-/// At app launch, the runtime calls `configure(gate:)` once; until then `evaluate`
+/// Unified from the macOS and iOS `BudgetEnforcement` twins. The twins shared their
+/// evaluate/notify/context-section logic and differed only in injected backends, which
+/// are now `configure` parameters: the notification center (`BudgetNotificationEmitting`,
+/// implemented per-platform over `UNUserNotificationCenter`), the forecast backend
+/// (`BudgetForecasting`, GRDB on macOS / rollups on iOS), the cost estimator
+/// (`BudgetCostEstimating`, per-model pricing on macOS / flat rate on iOS), and the
+/// context-section ledger fallback. The user-scoped configuration tracking is the iOS
+/// twin's (macOS passes no user ID and never calls the user-scoped queries).
+///
+/// At app launch, the runtime calls `configure(...)` once; until then `evaluate`
 /// returns `.allow` so test harnesses and detached subprocesses keep working.
 @MainActor
-final class BudgetEnforcement {
-    static let shared = BudgetEnforcement()
+public final class BudgetEnforcement {
+    public static let shared = BudgetEnforcement()
 
     private var gate: BudgetGate?
-    private var notificationCenter: BudgetNotificationCenter?
-    private var forecast: BudgetForecast?
+    private var notificationCenter: (any BudgetNotificationEmitting)?
+    private var forecast: (any BudgetForecasting)?
+    private var costEstimator: any BudgetCostEstimating = FlatRateBudgetCostEstimator.mobileDefault
+    private var contextSpendFallback: BudgetContextSpendFallback = .zero
     private var configuredUserID: String?
 
     private init() {}
 
-    /// Wire the gate built at App startup. Safe to call multiple times — the latest gate
-    /// wins (handy when a sign-out flow rebuilds the database queue or the signed-in user changes).
-    func configure(
+    /// Wire the gate built at app startup. Safe to call multiple times — the latest gate
+    /// wins (handy when a sign-out flow rebuilds the database queue or the signed-in
+    /// user changes).
+    public func configure(
         userID: String? = nil,
         gate: BudgetGate,
-        notifications: BudgetNotificationCenter? = nil,
-        forecast: BudgetForecast? = nil
+        notifications: (any BudgetNotificationEmitting)? = nil,
+        forecast: (any BudgetForecasting)? = nil,
+        costEstimator: any BudgetCostEstimating,
+        contextSpendFallback: BudgetContextSpendFallback
     ) {
         self.gate = gate
         self.notificationCenter = notifications
         self.forecast = forecast
+        self.costEstimator = costEstimator
+        self.contextSpendFallback = contextSpendFallback
         self.configuredUserID = userID
         notifications?.requestAuthorizationIfNeeded()
     }
 
-    var isConfigured: Bool { gate != nil }
+    public var isConfigured: Bool { gate != nil }
 
-    func isConfigured(forUserID userID: String) -> Bool {
+    public func isConfigured(forUserID userID: String) -> Bool {
         gate != nil && configuredUserID == userID
     }
 
-    func resetIfConfiguredForDifferentUser(_ userID: String) {
+    public func resetIfConfiguredForDifferentUser(_ userID: String) {
         guard gate != nil, configuredUserID != userID else { return }
         reset()
     }
 
-    func resetForTesting() {
+    public func resetForTesting() {
         reset()
     }
 
@@ -56,9 +90,9 @@ final class BudgetEnforcement {
     }
 
     /// Exposed for views that want live forecast projections.
-    var forecastService: BudgetForecast? { forecast }
+    public var forecastService: (any BudgetForecasting)? { forecast }
 
-    func evaluate(
+    public func evaluate(
         credential: BudgetCredentialIdentity,
         projectName: String? = nil,
         estimatedCost: Double,
@@ -79,7 +113,7 @@ final class BudgetEnforcement {
     /// current spend, forecast, and any active block. Injected into Hermes system prompts
     /// by the context builder so the assistant can answer "where is my spend?" without
     /// making a tool call when the context already has the answer.
-    func budgetContextSection() async -> String? {
+    public func budgetContextSection() async -> String? {
         guard let gate else { return nil }
         let rules = gate.rulesForContext()
         guard !rules.isEmpty else { return nil }
@@ -88,7 +122,12 @@ final class BudgetEnforcement {
         var activeBlocks: [String] = []
         let now = Date()
         for rule in rules.prefix(8) {
-            let used = (try? await gate.ledgerSpend(forRule: rule, reference: now)) ?? rule.amountUSD
+            let fallbackSpend: Double
+            switch contextSpendFallback {
+            case .zero: fallbackSpend = 0
+            case .limit: fallbackSpend = rule.amountUSD
+            }
+            let used = (try? await gate.ledgerSpend(forRule: rule, reference: now)) ?? fallbackSpend // try?-ok(context-prompt display only)
             let limit = rule.amountUSD
             let percent = limit > 0 ? Int((used / limit) * 100) : 0
             let label = rule.displayLabel
@@ -140,53 +179,13 @@ final class BudgetEnforcement {
     /// Rough cost estimate for a request. Approximates input tokens from total character
     /// count (≈4 chars/token) and assumes a typical output budget of 1024 tokens. The gate
     /// uses this as a forward-looking delta — once the request completes, the canonical
-    /// `token_usage` insert refines the ledger to exact pricing.
-    ///
-    /// Uses a simplified pricing table ($3/MTok input, $15/MTok output — Claude 3.5 Sonnet
-    /// ballpark) since the mobile app doesn't ship `ModelPricing.lookup()`. This is a
-    /// conservative estimate; the daemon refines with exact per-model pricing.
-    nonisolated static func estimateCost(model: String, inputCharacters: Int, assumedOutputTokens: Int = 1024) -> Double {
-        let inputTokens = max(0, inputCharacters) / 4
-        // Simplified pricing: $3/MTok input, $15/MTok output (Claude 3.5 Sonnet ballpark)
-        // This is a conservative estimate — the daemon refines with exact pricing
-        let inputUSD = Double(inputTokens) * 3.0 / 1_000_000.0
-        let outputUSD = Double(assumedOutputTokens) * 15.0 / 1_000_000.0
-        return inputUSD + outputUSD
-    }
-}
-
-/// Stable credential identity for mobile-plane requests. Hashes the bearer token so the
-/// raw secret never leaves the call frame; the resulting slot ID lines up with what the
-/// usage row would store under `providerAccountID`.
-enum MobileCredentialIdentity {
-    static func make(
-        providerHint: String,
-        bearerToken: String?,
-        displayLabel: String,
-        providerAccountID: String? = nil,
-        providerAccountLabel: String? = nil
-    ) -> BudgetCredentialIdentity {
-        let secret = bearerToken ?? ""
-        let mode = BudgetCredentialIdentity.billingMode(forSecretPrefix: secret)
-        let slotID = secret.isEmpty ? "default" : hashedSlotID(secret)
-        return BudgetCredentialIdentity(
-            providerID: providerHint,
-            slotID: slotID,
-            displayLabel: displayLabel,
-            providerAccountID: providerAccountID,
-            providerAccountLabel: providerAccountLabel,
-            billingMode: mode
+    /// usage insert refines the ledger to exact pricing. Priced by the estimator injected
+    /// at `configure` time (per-model pricing on macOS, flat rate on iOS).
+    public func estimateCost(model: String, inputCharacters: Int, assumedOutputTokens: Int = 1024) -> Double {
+        costEstimator.estimateCost(
+            model: model,
+            inputCharacters: inputCharacters,
+            assumedOutputTokens: assumedOutputTokens
         )
-    }
-
-    private static func hashedSlotID(_ secret: String) -> String {
-        // FNV-1a hash — cheap stable hash. Collisions are acceptable for slot identity
-        // since the user labels their credentials.
-        var hash: UInt64 = 14695981039346656037
-        for byte in secret.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= 1099511628211
-        }
-        return String(hash, radix: 36, uppercase: false)
     }
 }

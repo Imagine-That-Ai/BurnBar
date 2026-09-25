@@ -6,15 +6,18 @@ import OpenBurnBarKernel
 
 /// Firestore-backed CRUD layer for budget rules and audit events on iOS.
 ///
-/// Mirrors the macOS `BudgetRulesStore` API surface (which is GRDB-backed) but persists
+/// Mirrors the macOS `GRDBBudgetRulesStore` API surface (which is GRDB-backed) but persists
 /// directly to Firestore at `users/{uid}/budgetRules/{ruleId}` and
 /// `users/{uid}/budgetEvents/{eventId}`. The `BudgetSettings` observable store wraps this;
-/// `BudgetLedger` reads via this; Hermes / MCP write through this.
+/// `RollupBudgetLedger` reads via this; Hermes / MCP write through this.
 ///
 /// **This is intentionally NOT `@Observable`** — it's a raw CRUD layer. Observable state
 /// lives in `BudgetSettings`.
+///
+/// The Firestore-backed iOS rules backend. It satisfies the shared `BudgetRulesStoring`
+/// contract and keeps its iOS-only seams: the snapshot listener and DEBUG mock mode.
 @MainActor
-final class BudgetRulesStore {
+final class FirestoreBudgetRulesStore: BudgetRulesStoring {
     private var listener: ListenerRegistration?
 
     #if DEBUG
@@ -307,12 +310,7 @@ final class BudgetRulesStore {
             return nil
         }
 
-        var fallbacks: [String] = []
-        if let json = data["fallbackCredentialIDsJSON"] as? String,
-           let jsonData = json.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String].self, from: jsonData) {
-            fallbacks = decoded
-        }
+        let fallbacks = BudgetRuleFallbackIDs.decode(data["fallbackCredentialIDsJSON"] as? String)
 
         // Open sealed project name/label; fall back to legacy plaintext for
         // pre-migration peers that still write the cleartext fields.
@@ -404,8 +402,6 @@ final class BudgetRulesStore {
 
     /// Encodes fallback credential IDs to a JSON string, or returns `nil` if empty.
     private func encodeFallbackIDs(_ ids: [String]) -> String? {
-        guard !ids.isEmpty,
-              let data = try? JSONEncoder().encode(ids) else { return nil }
-        return String(data: data, encoding: .utf8)
+        try? BudgetRuleFallbackIDs.encode(ids)
     }
 }

@@ -182,9 +182,9 @@ Exactly one preset is the default, enforced by `Array.presetsSanitized()` (the s
 one-default invariant `AgentPersona` uses). Presets persist local-first via the
 platform settings store (`elderWand.presets.v1`):
 
-- macOS: `AgentLens/Services/Settings/Stores/ElderWandSettings.swift` (via
+- macOS: `AgentLens/Services/Settings/Stores/ElderWandSettings+AgentLens.swift` (via
   `SettingsPersistenceCoordinator`), surfaced on `SettingsManager.elderWand`.
-- iOS: `OpenBurnBarMobile/Services/Hermes/ElderWandSettings.swift` (`.shared`).
+- iOS: `OpenBurnBarMobile/Services/Hermes/ElderWandSettings+Mobile.swift` (`.shared`).
 
 `elderWandPluginsPayload()` lowers the active preset into the `plugins` block on the
 outgoing request; it returns `nil` (no fusion) when no preset is active or the

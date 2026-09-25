@@ -56,8 +56,7 @@ enum MobileAnalytics {
 
     /// Flip consent + notify the recorder in one call (used by the prompt + toggle).
     static func setConsent(granted: Bool) {
-        if granted { AnalyticsConsentStore.shared.grant() } else { AnalyticsConsentStore.shared.revoke() }
-        shared.consentDidChange()
+        shared.setConsent(granted: granted)
     }
 
     static func trackSessionStartIfConsented() {

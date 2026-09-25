@@ -53,10 +53,9 @@ final class MobilePixelClockOperationsAdapter: PixelClockOperations {
     }
 
     func flashPixelClockFirmware(config: PixelClockConfig, wifiCredentials: PixelClockWiFiCredentials?) async throws -> PixelClockSetupResult {
-        throw NSError(
-            domain: "PixelClock",
+        throw PixelClockOperationError.failure(
             code: 2,
-            userInfo: [NSLocalizedDescriptionKey: "Finish Pixel Clock Wi-Fi setup from the Mac. The Mac has to briefly join the AWTRIX setup network."]
+            message: "Finish Pixel Clock Wi-Fi setup from the Mac. The Mac has to briefly join the AWTRIX setup network."
         )
     }
 
@@ -103,7 +102,7 @@ final class MobilePixelClockOperationsAdapter: PixelClockOperations {
 
     private static func throwIfFailed(_ outcome: SmartHubStore.WizardActionStatus) throws {
         if case .failed(let message) = outcome {
-            throw NSError(domain: "PixelClock", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+            throw PixelClockOperationError.failure(code: 1, message: message)
         }
     }
 

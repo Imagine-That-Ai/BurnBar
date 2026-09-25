@@ -381,21 +381,23 @@ struct OpenBurnBarApp: App {
         // Phase 4 — wire BudgetSettings + BudgetGate so `BudgetEnforcement.shared.evaluate`
         // returns real decisions for AgentLens-plane requests. The daemon plane reads the
         // same `budget_rules` table directly (Phase 4 Part B).
-        let budgetRulesStore = BudgetRulesStore(dbQueue: initializedStore.actor.dbQueue)
+        let budgetRulesStore = GRDBBudgetRulesStore(dbQueue: initializedStore.actor.dbQueue)
         let budgetSettings = BudgetSettings(
             store: budgetRulesStore,
             alertSettings: settings.alerts,
             deviceID: ProcessInfo.processInfo.globallyUniqueString
         )
-        let budgetLedger = BudgetLedger(dbQueue: initializedStore.actor.dbQueue)
+        let budgetLedger = GRDBBudgetLedger(dbQueue: initializedStore.actor.dbQueue)
         let budgetGate = BudgetGate(settings: budgetSettings, ledger: budgetLedger)
         let budgetNotifications = BudgetNotificationCenter()
-        let budgetForecast = BudgetForecast(dbQueue: initializedStore.actor.dbQueue)
+        let budgetForecast = GRDBBudgetForecast(dbQueue: initializedStore.actor.dbQueue)
         StartupProfiler.interval("budget_enforcement_configure") {
             BudgetEnforcement.shared.configure(
                 gate: budgetGate,
                 notifications: budgetNotifications,
-                forecast: budgetForecast
+                forecast: budgetForecast,
+                costEstimator: ModelPricingBudgetCostEstimator(),
+                contextSpendFallback: .zero
             )
         }
 

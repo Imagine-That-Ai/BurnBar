@@ -108,12 +108,12 @@ final class CLIAgentRelayChatTransport: CLIAgentRelayChatTransporting {
         // Budget gate: evaluate before dispatching so spending limits are
         // enforced even when the Mac daemon isn't running its own gate.
         if BudgetEnforcement.shared.isConfigured {
-            let credential = MobileCredentialIdentity.make(
+            let credential = BudgetCredentialIdentityBuilder.make(
                 providerHint: runtimeRawValue,
                 bearerToken: nil,
                 displayLabel: runtimeRawValue
             )
-            let estimatedCost = BudgetEnforcement.estimateCost(
+            let estimatedCost = BudgetEnforcement.shared.estimateCost(
                 model: modelID ?? runtimeRawValue,
                 inputCharacters: prompt.count
             )
