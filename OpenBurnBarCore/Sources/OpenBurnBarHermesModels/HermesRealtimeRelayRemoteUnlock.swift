@@ -6,7 +6,6 @@
 // Behavior (computed members, factories) lives in HermesRealtimeRelayTypes+Behavior.swift.
 
 import Foundation
-import OpenBurnBarProviderModels
 
 public enum HermesRealtimeRelayMacLockState: String, Codable, CaseIterable, Sendable, Hashable {
     case unlocked
