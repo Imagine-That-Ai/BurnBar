@@ -29,11 +29,11 @@
 
 import { randomUUID } from "node:crypto";
 import { type DocumentData, type Firestore } from "firebase-admin/firestore";
-import type { UsageEventDoc } from "./types.js";
-import { isRecord, parseRollupJobDoc, recordOrUndefined } from "./guards.js";
-import { logInfo } from "./logging.js";
+import type { UsageEventDoc } from "@openburnbar/functions-shared/types.js";
+import { isRecord, parseRollupJobDoc, recordOrUndefined } from "@openburnbar/functions-shared/guards.js";
+import { logInfo } from "@openburnbar/functions-shared/logging.js";
 import { isFreshFullRebuildInFlight } from "./rollupRebuildInFlight.js";
-import { flushDomainCorePricingShadowEvidence } from "./pricing.js";
+import { flushDomainCorePricingShadowEvidence } from "@openburnbar/functions-shared/pricing.js";
 import {
   COUNTER_SCHEMA_VERSION,
   addContribution,

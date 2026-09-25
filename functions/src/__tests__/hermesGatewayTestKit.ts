@@ -5,7 +5,7 @@ import {
   HERMES_GATEWAY_RATCHET_PROTOCOL_VERSION,
   type GatewayRelayEnvelopeDoc,
   type GatewayRatchetEnvelopeDoc,
-} from "../hermesGateway.js";
+} from "../../../packages/functions-shared/src/hermesGateway.js";
 
 // A base64 X9.63 uncompressed P-256 public key: 65 bytes, first byte 0x04.
 export const RELAY_PUBKEY_B64 = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 7)]).toString("base64");

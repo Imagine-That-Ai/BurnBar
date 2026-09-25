@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { recomputeQuotaUsageForUid } from "../mediaQuota.js";
+import { recomputeQuotaUsageForUid } from "../../../functions-sync/src/domains/usage/mediaQuota.js";
 
 type FakeMediaDoc = {
   data: Record<string, unknown>;

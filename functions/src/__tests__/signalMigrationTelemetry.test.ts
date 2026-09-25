@@ -12,8 +12,8 @@ vi.mock("firebase-functions/v2/firestore", () => ({
   onDocumentWritten: vi.fn((options: unknown, handler: unknown) => ({ options, handler })),
 }));
 
-vi.mock("../logging.js", () => ({ logInfo: vi.fn() }));
-vi.mock("../scheduledOps.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({ logInfo: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/scheduledOps.js", () => ({
   runFirestoreTrigger: vi.fn(async (_name: string, handler: () => Promise<void>) => handler()),
 }));
 
@@ -22,7 +22,7 @@ import {
   classifySignalMigrationProducer,
   classifySignalMigrationWrite,
   signalMigrationCounterWrite,
-} from "../signalMigrationTelemetry.js";
+} from "../../../functions-sync/src/domains/telemetry/signalMigrationTelemetry.js";
 
 describe("aggregate-only Signal migration telemetry", () => {
   beforeEach(() => vi.clearAllMocks());

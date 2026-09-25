@@ -17,7 +17,7 @@
  */
 import assert from "node:assert/strict";
 import { applyUsageCounterDelta, computeUserRollupsFromCounters } from "../lib/rollups.js";
-import { reapExpiredCounterDays } from "../lib/scheduled/reapExpiredCounterDays.js";
+import { reapExpiredCounterDays } from "../lib/domains/scheduled/reapExpiredCounterDays.js";
 import {
   ALL_TIME_DAILY_SHARD_PREFIX,
   COUNTER_DAY_RETENTION_DAYS,

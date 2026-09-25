@@ -1,0 +1,155 @@
+import { createHmac, createPrivateKey, randomBytes, sign as signDetached } from "node:crypto";
+import { Timestamp } from "firebase-admin/firestore";
+import { HttpsError } from "firebase-functions/v2/https";
+import {
+  createRemoteMcpGrant,
+  hashRemoteMcpSecret,
+  type RemoteMcpGrantMode,
+  type RemoteMcpScope,
+  upsertRemoteMcpClient,
+} from "@openburnbar/functions-shared/remoteMcpGrant.js";
+
+interface RemoteMcpAccessClaims {
+  sub: string;
+  aud: string;
+  client_id: string;
+  scopes: RemoteMcpScope[];
+  entitlement_family: "burnbar_pro" | "hosted_quota_sync";
+  grant_mode: RemoteMcpGrantMode;
+  exp: number;
+  jti: string;
+}
+
+export const REMOTE_MCP_DEFAULT_GRANT_SCOPES: readonly RemoteMcpScope[] = [
+  "search:read",
+  "conversation:read",
+  "usage:read",
+  "index:status",
+] as const;
+
+interface RemoteMcpGrantIssuerWriter {
+  doc(path: string): {
+    set(data: object, options?: { merge?: boolean }): Promise<unknown>;
+  };
+}
+
+function privateKeyFromBase64PEM(value: string) {
+  return createPrivateKey(Buffer.from(value, "base64").toString("utf8"));
+}
+
+function signRemoteMcpAccessToken(
+  claims: RemoteMcpAccessClaims,
+  secret?: string,
+  ed25519PrivateKeyBase64PEM?: string,
+): { token: string; algorithm: "ed25519" | "hmac-sha256" } {
+  const body = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  if (ed25519PrivateKeyBase64PEM) {
+    const sig = signDetached(null, Buffer.from(body), privateKeyFromBase64PEM(ed25519PrivateKeyBase64PEM)).toString(
+      "base64url",
+    );
+    return { token: `ed25519.${body}.${sig}`, algorithm: "ed25519" };
+  }
+  if (!secret) {
+    throw new HttpsError("failed-precondition", "Remote MCP token signer is not configured.");
+  }
+  const sig = createHmac("sha256", secret).update(body).digest("base64url");
+  return { token: `${body}.${sig}`, algorithm: "hmac-sha256" };
+}
+
+export async function issueRemoteMcpGrantForSignedInUser(
+  db: RemoteMcpGrantIssuerWriter,
+  uid: string,
+  input: {
+    clientId?: string;
+    displayName?: string;
+    clientType?: string;
+    installFingerprint?: string;
+    scopes?: RemoteMcpScope[];
+    grantMode?: RemoteMcpGrantMode;
+    entitlementFamily: "burnbar_pro" | "hosted_quota_sync";
+    entitlementExpiresAt?: string;
+    tokenSecret?: string;
+    tokenEd25519PrivateKeyBase64PEM?: string;
+    audience: string;
+  },
+) {
+  assertRemoteMcpIssuerTokenPosture({
+    tokenSecret: input.tokenSecret,
+    tokenEd25519PrivateKeyBase64PEM: input.tokenEd25519PrivateKeyBase64PEM,
+  });
+  const clientId = input.clientId?.trim() || `obbc_${randomBytes(12).toString("hex")}`;
+  const scopes: RemoteMcpScope[] = input.scopes?.length ? input.scopes : [...REMOTE_MCP_DEFAULT_GRANT_SCOPES];
+  const grantMode = input.grantMode ?? "local_decrypt_shim";
+  await upsertRemoteMcpClient(db, uid, {
+    clientId,
+    displayName: input.displayName?.trim() || "OpenBurnBar MCP client",
+    clientType: input.clientType?.trim() || "generic",
+    installFingerprint: input.installFingerprint,
+    allowedScopes: scopes,
+    grantMode,
+  });
+  const { grant, refreshToken } = await createRemoteMcpGrant(db, uid, {
+    clientId,
+    scopes,
+    entitlementFamily: input.entitlementFamily,
+    entitlementExpiresAt: input.entitlementExpiresAt,
+  });
+  const signedAccessToken = signRemoteMcpAccessToken(
+    {
+      sub: uid,
+      aud: input.audience,
+      client_id: clientId,
+      scopes,
+      entitlement_family: input.entitlementFamily,
+      grant_mode: grantMode,
+      exp: Math.floor(Date.now() / 1000) + 15 * 60,
+      jti: `mcp_${randomBytes(16).toString("hex")}`,
+    },
+    input.tokenSecret,
+    input.tokenEd25519PrivateKeyBase64PEM,
+  );
+  await db.doc(`users/${uid}/remote_mcp_audit_events/${Date.now()}_${grant.grantId}`).set({
+    eventKind: "grant_issued",
+    hashedClientID: hashRemoteMcpSecret(clientId),
+    scopes,
+    entitlementSource: input.entitlementFamily,
+    createdAt: Timestamp.now(),
+    schemaVersion: 1,
+  });
+  return {
+    tokenType: "Bearer",
+    accessToken: signedAccessToken.token,
+    tokenSigningAlgorithm: signedAccessToken.algorithm,
+    expiresIn: 15 * 60,
+    refreshToken,
+    clientId,
+    scopes,
+    grantMode,
+  };
+}
+
+export function isRemoteMcpProductionIssuerRuntime(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.REMOTE_MCP_RUNTIME_ENVIRONMENT === "production") return true;
+  if (env.NODE_ENV === "test") return false;
+  return typeof env.K_SERVICE === "string" && env.K_SERVICE.length > 0;
+}
+
+export function shouldBindRemoteMcpHmacSecretForRuntime(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return !isRemoteMcpProductionIssuerRuntime(env);
+}
+
+export function assertRemoteMcpIssuerTokenPosture(
+  config: { tokenSecret?: string; tokenEd25519PrivateKeyBase64PEM?: string },
+  env: Record<string, string | undefined> = process.env,
+): void {
+  if (isRemoteMcpProductionIssuerRuntime(env)) {
+    if (config.tokenSecret) {
+      throw new Error("REMOTE_MCP_TOKEN_HMAC_SECRET must not be used in production. Ed25519 signing is required.");
+    }
+    if (!config.tokenEd25519PrivateKeyBase64PEM) {
+      throw new Error("REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 must be set in production.");
+    }
+  }
+}

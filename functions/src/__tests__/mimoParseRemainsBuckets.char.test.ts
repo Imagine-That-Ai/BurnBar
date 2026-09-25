@@ -4,11 +4,11 @@ const mocks = vi.hoisted(() => ({
   providerFetch: vi.fn(),
 }));
 
-vi.mock("../providers/httpClient.js", () => ({
+vi.mock("../../../packages/functions-shared/src/providers/httpClient.js", () => ({
   providerFetch: mocks.providerFetch,
 }));
 
-import { mimoAdapter } from "../providers/mimo.js";
+import { mimoAdapter } from "../../../packages/functions-shared/src/providers/mimo.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

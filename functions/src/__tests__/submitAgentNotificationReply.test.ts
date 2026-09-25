@@ -86,8 +86,8 @@ vi.mock("firebase-functions/logger", () => ({
   debug: vi.fn(),
 }));
 
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return {
     ...actual,
     logInfo: vi.fn(),
@@ -95,9 +95,9 @@ vi.mock("../logging.js", async () => {
   };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(state.rateLimitStore) }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(state.rateLimitStore) }));
 
-import { submitAgentNotificationReply } from "../callables/agentNotifications.js";
+import { submitAgentNotificationReply } from "../../../functions-sync/src/domains/notify/agentNotifications.js";
 
 function timestamp(): typeof import("firebase-admin/firestore").Timestamp {
   if (!state.Timestamp) {

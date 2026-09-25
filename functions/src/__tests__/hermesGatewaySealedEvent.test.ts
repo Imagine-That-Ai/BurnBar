@@ -23,14 +23,14 @@ vi.mock("firebase-functions/logger", () => ({
   warn: vi.fn(),
   debug: vi.fn(),
 }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 
 // Real validators (requireGatewayRelayEnvelope, sanitizers, boundedTrimmedString,
 // …) but the three entitlement predicates the gateway gate consults are forced
 // true so the callable runs without seeded entitlement docs.
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     isActiveHostedQuotaEntitlement: () => true,
@@ -85,7 +85,7 @@ const dbMock = {
   },
 };
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -202,7 +202,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
   afterEach(() => vi.clearAllMocks());
 
   it("forwards the relayEnvelope opaquely and persists NO plaintext body", async () => {
-    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const { enqueueHermesGatewayEvent } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);
 
     const res = await run(
@@ -240,7 +240,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
   });
 
   it("(R9) rejects a replayed eventId: no clobber, no sequence re-bump", async () => {
-    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const { enqueueHermesGatewayEvent } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);
     const cursorsPath = `users/${UID}/hermes_gateway_state/cursors`;
 
@@ -275,7 +275,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
   });
 
   it("rejects a relay-capable client that sends plaintext text with no envelope", async () => {
-    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const { enqueueHermesGatewayEvent } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);
     await expect(
       run(
@@ -293,7 +293,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
   });
 
   it("rejects a malformed relayEnvelope (wrong algorithm constant)", async () => {
-    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const { enqueueHermesGatewayEvent } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);
     await expect(
       run(
@@ -306,7 +306,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
   });
 
   it("rejects staged Signal envelopes until the libsignal runtime readiness gate is complete", async () => {
-    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const { enqueueHermesGatewayEvent } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);
     await expect(
       run(
@@ -322,7 +322,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
   });
 
   it("requires a sealed relayEnvelope for a model_switch on a relay-capable client", async () => {
-    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const { enqueueHermesGatewayEvent } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);
     // An unsealed model_switch (plaintext command, no envelope) is rejected: the
     // server no longer reads/validates the model command in cleartext.
@@ -340,7 +340,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
   });
 
   it("does NOT require cleartext modelId for a sealed model_switch (agent decides)", async () => {
-    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const { enqueueHermesGatewayEvent } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);
     // The seeded client advertises only "minimax-m2.7". A sealed switch carries
     // the private model command inside the envelope, so the server must not need
@@ -359,7 +359,7 @@ describe("enqueueHermesGatewayEvent — sealed-only wire (schema 2)", () => {
   });
 
   it("stores a sealed model_switch with only the envelope and public routing fields", async () => {
-    const { enqueueHermesGatewayEvent } = await import("../callables/hermesGateway.js");
+    const { enqueueHermesGatewayEvent } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRun(enqueueHermesGatewayEvent);
     await run(
       request({

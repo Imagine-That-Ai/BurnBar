@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { DATA_DOMAIN_PATHS, isSealedEnvelope, sealAwareSerializeDoc } from "../callables/dataExport.js";
-import { UNDELETABLE_DOMAINS } from "../callables/dataDeletion.js";
+import { DATA_DOMAIN_PATHS, isSealedEnvelope, sealAwareSerializeDoc } from "../domains/compliance/dataExport.js";
+import { UNDELETABLE_DOMAINS } from "../domains/compliance/dataDeletion.js";
 import {
   HERMES_GATEWAY_SIGNAL_AT_REST_ENCRYPTION,
   HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
   HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION,
   HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
-} from "../hermesGateway.js";
-import type { GatewaySignalEnvelopeDoc } from "../types/generated/hermes-gateway.js";
+} from "../../../packages/functions-shared/src/hermesGateway.js";
+import type { GatewaySignalEnvelopeDoc } from "../../../packages/functions-shared/src/types/generated/hermes-gateway.js";
 
 // vitest runs from the functions/ package root; the registry is a sibling package.
 const registry: {

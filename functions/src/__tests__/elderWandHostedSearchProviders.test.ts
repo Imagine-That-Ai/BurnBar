@@ -14,11 +14,11 @@ vi.mock("firebase-functions/params", () => ({
   }),
 }));
 
-vi.mock("../providers/httpClient.js", () => ({
+vi.mock("../../../packages/functions-shared/src/providers/httpClient.js", () => ({
   providerFetch: mocks.providerFetch,
 }));
 
-import { normalizeProviderResults, performProviderSearch } from "../elderWandHostedSearchProviders.js";
+import { normalizeProviderResults, performProviderSearch } from "../../../functions-sync/src/elderWandHostedSearchProviders.js";
 
 describe("elderWandHostedSearchProviders", () => {
   beforeEach(() => {

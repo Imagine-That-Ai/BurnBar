@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const captureException = vi.fn();
 const setSentryUser = vi.fn();
 
-vi.mock("../sentry.js", () => ({
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({
   captureException,
   setSentryUser,
 }));
@@ -23,7 +23,7 @@ describe("callable Sentry capture", () => {
   });
 
   it("withCallableLogging captures exceptions with callable context", async () => {
-    const { withCallableLogging } = await import("../logging.js");
+    const { withCallableLogging } = await import("../../../packages/functions-shared/src/logging.js");
     await expect(
       withCallableLogging("testCallable", { rawRequest: { headers: {} } }, "uid123456789012345678901234", async () => {
         throw new Error("callable blew up");
@@ -41,7 +41,7 @@ describe("callable Sentry capture", () => {
   });
 
   it("wrapRequestHandler captures exceptions with request context", async () => {
-    const { wrapRequestHandler } = await import("../logging.js");
+    const { wrapRequestHandler } = await import("../../../packages/functions-shared/src/logging.js");
     const wrapped = wrapRequestHandler("stripeBurnBarProWebhook", async () => {
       throw new Error("webhook blew up");
     });
@@ -62,7 +62,7 @@ describe("callable Sentry capture", () => {
 
   it("wrapRequestHandler logs success when the handler returns", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { wrapRequestHandler } = await import("../logging.js");
+    const { wrapRequestHandler } = await import("../../../packages/functions-shared/src/logging.js");
     const wrapped = wrapRequestHandler("healthLive", async (_req, res) => {
       res.status(200).json({ status: "alive" });
     });

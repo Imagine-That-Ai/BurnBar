@@ -26,7 +26,7 @@ import {
   type PendingCounterDelta,
   type UsageCounterCandidate,
 } from "../rollups.js";
-import type { UsageEventDoc } from "../types.js";
+import type { UsageEventDoc } from "../../../packages/functions-shared/src/types.js";
 
 const T0 = "2026-06-09T00:00:00.000Z";
 

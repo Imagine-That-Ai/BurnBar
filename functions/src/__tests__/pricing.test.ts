@@ -24,7 +24,7 @@ import {
   LEGACY_KIMI_WIRE_PRICING,
   estimateTokenCost,
   priceLegacyKimiEvent,
-} from "../pricing.js";
+} from "../../../packages/functions-shared/src/pricing.js";
 import {
   calculateTokenCost,
   configureDomainCorePricingShadowEvidenceSink,
@@ -32,8 +32,8 @@ import {
   flushDomainCorePricingShadowEvidence,
   loadedDomainCorePricingIdentity,
   resolveDomainCorePricingMode,
-} from "../domainCorePricing.js";
-import { isRecord } from "../guards.js";
+} from "../../../packages/functions-shared/src/domainCorePricing.js";
+import { isRecord } from "../../../packages/functions-shared/src/guards.js";
 
 // Core-decomposition: catalog.json moved from the Core monolith's Resources into
 // OpenBurnBarKernel/Resources (git mv). Repointed after the train ← main merge.

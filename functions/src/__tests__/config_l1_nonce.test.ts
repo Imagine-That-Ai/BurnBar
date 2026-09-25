@@ -40,14 +40,14 @@ describe("L1 high-risk nonce production fail-closed default", () => {
 
   it("defaults requireHighRiskNonce ON for a production project (the secure default)", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true);
   });
 
   it("honours the explicit REQUIRE_HIGH_RISK_NONCE=false escape hatch in production", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.REQUIRE_HIGH_RISK_NONCE = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     // App Check stays enforced (its prod fail-closed default is untouched).
     expect(getConfig().enforceAppCheck).toBe(true);
     expect(getConfig().requireHighRiskNonce).toBe(false);
@@ -56,20 +56,20 @@ describe("L1 high-risk nonce production fail-closed default", () => {
   it("defaults requireHighRiskNonce OFF in the emulator (local dev)", async () => {
     process.env.FUNCTIONS_EMULATOR = "true";
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(false);
   });
 
   it("defaults requireHighRiskNonce OFF for demo/test projects (CI)", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(false);
   });
 
   it("allows an operator to force the nonce ON in a non-prod project", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.REQUIRE_HIGH_RISK_NONCE = "true";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true);
   });
 });

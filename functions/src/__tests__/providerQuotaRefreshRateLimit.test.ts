@@ -8,12 +8,12 @@ const mocks = vi.hoisted(() => ({
   refreshUserProviderQuota: vi.fn(),
 }));
 
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
 }));
-vi.mock("../quota.js", () => ({
+vi.mock("../../../packages/functions-shared/src/quota.js", () => ({
   refreshUserProviderAccountQuota: mocks.refreshUserProviderAccountQuota,
   refreshUserProviderQuota: mocks.refreshUserProviderQuota,
 }));
@@ -42,7 +42,7 @@ function seedProviderAccount(
 }
 
 async function runAccountRefresh(accountID = ACCOUNT_ID): Promise<unknown> {
-  const mod = await import("../callables/providerAccounts.js");
+  const mod = await import("../../../functions-identity/src/domains/identity/providerAccounts.js");
   return callableRunner(mod.refreshProviderAccountQuota)(callableRequest(ALICE_UID, { accountID }));
 }
 

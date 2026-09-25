@@ -5,9 +5,12 @@
     "src/types/generatedParity.ts",
     "src/hermesGatewayComplianceSurface.ts",
     "scripts/test-*.mjs",
-    "scripts/test-firestore-rules.mjs"
+    "scripts/test-firestore-rules.mjs",
+    "src/testing.ts"
   ],
-  "project": ["src/**/*.ts"],
+  "project": [
+    "src/**/*.ts"
+  ],
   "ignore": [
     "lib/**",
     "node_modules/**",
@@ -16,12 +19,16 @@
     ".dependency-cruiser.cjs"
   ],
   "ignoreIssues": {
-    "src/types/legacy/{connections,insights-digest,insights-spec,media,quota-usage}.ts": ["exports", "types"]
+    "src/types/legacy/{connections,insights-digest,insights-spec,media,quota-usage}.ts": [
+      "exports",
+      "types"
+    ]
   },
   "ignoreDependencies": [
     "@openburnbar/domain-core-wasm",
     "@openburnbar/entitlements",
     "@openburnbar/signal-envelope-contracts",
-    "openburnbar-brace-expansion-cjs"
+    "openburnbar-brace-expansion-cjs",
+    "@openburnbar/functions-shared"
   ]
 }

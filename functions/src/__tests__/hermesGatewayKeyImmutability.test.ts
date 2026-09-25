@@ -20,11 +20,11 @@ vi.mock("firebase-functions/logger", () => ({
   warn: vi.fn(),
   debug: vi.fn(),
 }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     isActiveHostedQuotaEntitlement: () => true,
@@ -96,7 +96,7 @@ const dbMock = {
   },
 };
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -306,8 +306,8 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
   afterEach(() => vi.clearAllMocks());
 
   it("REFUSES to overwrite an already-pinned agentRelayPublicKey (no MITM swap)", async () => {
-    const { burnBarHermesGateway } = await import("../callables/hermesGateway.js");
-    const { hashHermesGatewayBearerToken } = await import("../hermesGateway.js");
+    const { burnBarHermesGateway } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
+    const { hashHermesGatewayBearerToken } = await import("../../../packages/functions-shared/src/hermesGateway.js");
     const tokenHash = hashHermesGatewayBearerToken(TOKEN);
     await seedPairedClient(tokenHash, PINNED_AGENT_KEY);
 
@@ -328,8 +328,8 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
   });
 
   it("REFUSES to rotate the pinned official-libsignal identity through /runtime", async () => {
-    const { burnBarHermesGateway } = await import("../callables/hermesGateway.js");
-    const { hashHermesGatewayBearerToken } = await import("../hermesGateway.js");
+    const { burnBarHermesGateway } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
+    const { hashHermesGatewayBearerToken } = await import("../../../packages/functions-shared/src/hermesGateway.js");
     const tokenHash = hashHermesGatewayBearerToken(TOKEN);
     await seedPairedClient(tokenHash, PINNED_AGENT_KEY);
     const pinnedBundle = signalPrekeyBundle(1);
@@ -349,8 +349,8 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
   });
 
   it("ESTABLISHES the agent key on first pairing when none is pinned yet (TOFU)", async () => {
-    const { burnBarHermesGateway } = await import("../callables/hermesGateway.js");
-    const { hashHermesGatewayBearerToken } = await import("../hermesGateway.js");
+    const { burnBarHermesGateway } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
+    const { hashHermesGatewayBearerToken } = await import("../../../packages/functions-shared/src/hermesGateway.js");
     const tokenHash = hashHermesGatewayBearerToken(TOKEN);
     await seedPairedClient(tokenHash, undefined); // no agent key yet
 
@@ -365,8 +365,8 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
   });
 
   it("treats a re-publish of the SAME pinned key as a harmless no-op", async () => {
-    const { burnBarHermesGateway } = await import("../callables/hermesGateway.js");
-    const { hashHermesGatewayBearerToken } = await import("../hermesGateway.js");
+    const { burnBarHermesGateway } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
+    const { hashHermesGatewayBearerToken } = await import("../../../packages/functions-shared/src/hermesGateway.js");
     const tokenHash = hashHermesGatewayBearerToken(TOKEN);
     await seedPairedClient(tokenHash, PINNED_AGENT_KEY);
 
@@ -378,9 +378,9 @@ describe("burnBarHermesGateway /runtime — relay-key immutability (pin-only TOF
   });
 
   it("returns pairing-rooted uid/clientId and phone E2EE material from approved device polls", async () => {
-    const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+    const { dispatchHermesGatewayRequest } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const { Timestamp } = await import("firebase-admin/firestore");
-    const { hashHermesGatewayBearerToken, hashHermesGatewayDeviceSecret } = await import("../hermesGateway.js");
+    const { hashHermesGatewayBearerToken, hashHermesGatewayDeviceSecret } = await import("../../../packages/functions-shared/src/hermesGateway.js");
     const accessToken = `obb_hgw_${"B".repeat(20)}`;
     const tokenHash = hashHermesGatewayBearerToken(accessToken);
     const deviceCode = "hgd_poll_identity";

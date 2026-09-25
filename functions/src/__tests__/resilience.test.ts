@@ -9,19 +9,19 @@ import {
   wrap,
 } from "cockatiel";
 
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logError: vi.fn(),
   logInfo: vi.fn(),
 }));
 
-import { logError } from "../logging.js";
+import { logError } from "../../../packages/functions-shared/src/logging.js";
 import {
   googlePlayConsumePolicy,
   isGooglePlayPurchaseNotOwnedError,
   isRetryableError,
   stripePolicy,
   withResilience,
-} from "../resilience.js";
+} from "../../../packages/functions-shared/src/resilience.js";
 
 describe("resilience", () => {
   beforeEach(() => {

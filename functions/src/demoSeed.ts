@@ -6,8 +6,8 @@ import type {
   ProviderID,
   QuotaSnapshotDoc,
   UsageEventDoc,
-} from "./types.js";
-import { demoProviderAccountIDPrefix } from "./providerAccountIsolation.js";
+} from "@openburnbar/functions-shared/types.js";
+import { demoProviderAccountIDPrefix } from "@openburnbar/functions-shared/providerAccountIsolation.js";
 import { effectiveCostUSD } from "./costRule.js";
 
 const DEMO_PREFIX = demoProviderAccountIDPrefix();

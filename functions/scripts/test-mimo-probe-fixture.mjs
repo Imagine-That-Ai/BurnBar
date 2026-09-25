@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mimoAdapter } from "../lib/providers/mimo.js";
+import { mimoAdapter } from "../../packages/functions-shared/lib/providers/mimo.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturePath = join(__dirname, "fixtures", "mimo-api-probe.fixture.json");

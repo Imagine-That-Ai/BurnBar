@@ -33,15 +33,15 @@ vi.mock("firebase-functions/logger", () => ({
   warn: vi.fn(),
   debug: vi.fn(),
 }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
 // App Check / ownership enforced via env elsewhere; no-op for the in-process call.
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 
 // Real validators (requireHexDigest, boundedTrimmedString, …) — only the Cloud
 // Pro entitlement gate and the Ultra-tier lookup are stubbed so the call runs
 // without Firestore entitlement docs.
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
@@ -68,7 +68,7 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../adminRuntime.js", async () => {
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", async () => {
   const { makeDb } = await import("./knowledgeDedupTestHarness.js");
   return { db: makeDb(), auth: {} };
 });
@@ -80,7 +80,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
   afterEach(() => vi.clearAllMocks());
 
   it("searchKnowledge floors dedupHashVersion==1: a seeded v0 row is NOT served", async () => {
-    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
+    const { searchKnowledge } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSearch.js");
     const run = callableRun(searchKnowledge);
 
     // A legacy v0 row whose doc id is the cleartext SHA-256 oracle, on the old tag.
@@ -103,7 +103,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
   });
 
   it("searchKnowledge returns an optional Signal envelope alongside the legacy sealed fields", async () => {
-    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
+    const { searchKnowledge } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSearch.js");
     const run = callableRun(searchKnowledge);
 
     seedVector("userSearchSignal", "v1-signal", {
@@ -133,7 +133,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
   });
 
   it("searchKnowledge at the new tag never returns a v0 row even on the retired tag", async () => {
-    const { searchKnowledge } = await import("../callables/knowledgeSearch.js");
+    const { searchKnowledge } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSearch.js");
     const run = callableRun(searchKnowledge);
 
     // Only a v0 row exists, on the retired tag. Searching the new tag returns nothing.
@@ -146,7 +146,7 @@ describe("dedup-v0 flag-day — search never serves v0, purge deletes it", () =>
   });
 
   it("purgeLegacyKnowledgeVectors deletes v0 + retired-tag rows, keeps v1", async () => {
-    const { purgeLegacyKnowledgeVectors } = await import("../callables/knowledgeMemory.js");
+    const { purgeLegacyKnowledgeVectors } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(purgeLegacyKnowledgeVectors);
     const uid = "userPurge";
 
@@ -188,7 +188,7 @@ describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ing
   afterEach(() => vi.clearAllMocks());
 
   it("a near-cap user whose usage is ALL orphaned v0 rows can still re-ingest a v1 chunk", async () => {
-    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
     const uid = "userReingest";
 
@@ -202,7 +202,7 @@ describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ing
   });
 
   it("real v1 usage at the cap STILL blocks a new chunk (no undercount of live data)", async () => {
-    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
     const uid = "userAtCapV1";
 
@@ -215,7 +215,7 @@ describe("commitKnowledgeBatch — cap aggregate excludes legacy v0 rows (re-ing
   });
 
   it("same-doc legacy rewrites are charged against live chunk and byte caps", async () => {
-    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch, PENSIEVE_LIMITS } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
     const request = (uid: string, fill: number, byteCount?: number) => {
       const req = commitRequestForUser(uid, Buffer.alloc(32, fill));

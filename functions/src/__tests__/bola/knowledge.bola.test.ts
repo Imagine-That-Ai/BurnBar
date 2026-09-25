@@ -9,7 +9,7 @@ import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callab
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {
@@ -18,15 +18,15 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../appCheckAttestation.js", async () => {
-  const actual = await vi.importActual<typeof import("../../appCheckAttestation.js")>("../../appCheckAttestation.js");
+vi.mock("../../../../packages/functions-shared/src/appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/appCheckAttestation.js")>("../../../../packages/functions-shared/src/appCheckAttestation.js");
   return {
     ...actual,
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
@@ -42,7 +42,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — knowledge", () => {
   it("commitKnowledgeBatch rejects cross-user object access", async () => {
-    const mod = await import("../../callables/knowledgeMemory.js");
+    const mod = await import("../../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const exported = mod.commitKnowledgeBatch;
     if (!exported) throw new Error("missing export commitKnowledgeBatch");
     const run = callableRunner(exported);
@@ -56,7 +56,7 @@ describe("BOLA — knowledge", () => {
   });
 
   it("configureKnowledgeSource rejects cross-user object access", async () => {
-    const mod = await import("../../callables/knowledgeMemory.js");
+    const mod = await import("../../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const exported = mod.configureKnowledgeSource;
     if (!exported) throw new Error("missing export configureKnowledgeSource");
     const run = callableRunner(exported);
@@ -70,7 +70,7 @@ describe("BOLA — knowledge", () => {
   });
 
   it("deleteKnowledgeSource rejects cross-user object access", async () => {
-    const mod = await import("../../callables/knowledgeMemory.js");
+    const mod = await import("../../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const exported = mod.deleteKnowledgeSource;
     if (!exported) throw new Error("missing export deleteKnowledgeSource");
     const run = callableRunner(exported);
@@ -84,7 +84,7 @@ describe("BOLA — knowledge", () => {
   });
 
   it("connectKnowledgeRepo rejects cross-user object access", async () => {
-    const mod = await import("../../callables/knowledgeSync.js");
+    const mod = await import("../../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     const exported = mod.connectKnowledgeRepo;
     if (!exported) throw new Error("missing export connectKnowledgeRepo");
     const run = callableRunner(exported);
@@ -98,7 +98,7 @@ describe("BOLA — knowledge", () => {
   });
 
   it("disconnectKnowledgeRepo rejects cross-user object access", async () => {
-    const mod = await import("../../callables/knowledgeSync.js");
+    const mod = await import("../../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     const exported = mod.disconnectKnowledgeRepo;
     if (!exported) throw new Error("missing export disconnectKnowledgeRepo");
     const run = callableRunner(exported);

@@ -13,13 +13,13 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hashHermesGatewayBearerToken } from "../hermesGateway.js";
+import { hashHermesGatewayBearerToken } from "../../../packages/functions-shared/src/hermesGateway.js";
 
 vi.mock("firebase-functions/logger", () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     isActiveHostedQuotaEntitlement: () => true,
@@ -83,7 +83,7 @@ const dbMock = {
     return fn(tx);
   },
 };
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -277,7 +277,7 @@ async function call(opts: {
   signedQuery?: Record<string, unknown>;
   fixedNonce?: string;
 }): Promise<Captured> {
-  const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+  const { dispatchHermesGatewayRequest } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
   const { res, captured } = makeRes();
   await dispatchHermesGatewayRequest(makeReq(opts), res);
   return captured;
@@ -408,7 +408,7 @@ describe("L2 — gateway PoP v2 query binding", () => {
       }),
     };
 
-    const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+    const { dispatchHermesGatewayRequest } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const dispatch = dispatchHermesGatewayRequest;
     const { res, captured } = makeRes();
     const req = {

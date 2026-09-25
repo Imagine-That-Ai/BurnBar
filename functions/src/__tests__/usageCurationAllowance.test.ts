@@ -21,9 +21,9 @@ vi.mock("firebase-admin/remote-config", () => ({
   }),
 }));
 
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
 
-import { monthKeyForDate } from "../cloudProAllowanceCore.js";
+import { monthKeyForDate } from "../../../packages/functions-shared/src/cloudProAllowanceCore.js";
 import {
   reserveUsageCurationTokens,
   settleUsageCurationTokens,
@@ -31,7 +31,7 @@ import {
   type UsageCurationReservationStatus,
   type UsageCurationReserveResult,
   type UsageCurationSettleResult,
-} from "../usageCuration/allowance.js";
+} from "../../../functions-sync/src/usageCuration/allowance.js";
 import {
   DEFAULT_USAGE_CURATION_LIMITS_CONFIG,
   dayKeyForDate,
@@ -43,14 +43,14 @@ import {
   usageCurationLaneLimits,
   type UsageCurationLimitsConfig,
   type UsageCurationReservationEvaluation,
-} from "../usageCuration/limits.js";
+} from "../../../functions-sync/src/usageCuration/limits.js";
 import {
   buildUsageCurationUserPrompt,
   USAGE_CURATION_FENCE_BEGIN,
   USAGE_CURATION_FENCE_END,
   USAGE_CURATION_PROMPT_PREFIX,
   USAGE_CURATION_PROMPT_VERSION,
-} from "../usageCuration/prompt.js";
+} from "../../../functions-sync/src/usageCuration/prompt.js";
 
 const NOW = new Date("2026-08-15T12:00:00.000Z");
 const MONTH_KEY = monthKeyForDate(NOW);

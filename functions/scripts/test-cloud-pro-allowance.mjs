@@ -18,7 +18,7 @@ import {
   normalizeCloudProAllowanceConfig,
   monthKeyForDate,
   unitsForCloudProTopUp,
-} from "../lib/cloudProAllowanceCore.js";
+} from "../../packages/functions-shared/lib/cloudProAllowanceCore.js";
 
 const monthKey = monthKeyForDate(new Date("2026-05-30T12:00:00Z"));
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");

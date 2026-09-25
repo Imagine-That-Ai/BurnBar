@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Timestamp } from "firebase-admin/firestore";
 
-import { __testing__ } from "../computerUseQuota.js";
+import { __testing__ } from "../../../functions-sync/src/domains/computer-use/computerUseQuota.js";
 
 describe("computer use quota recompute", () => {
   it("derives active-user uid from the session document path", () => {

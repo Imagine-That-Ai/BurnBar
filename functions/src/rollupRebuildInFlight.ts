@@ -6,7 +6,7 @@
  * be applied onto docs the rebuild is about to delete.
  */
 
-import type { RollupJobDoc } from "./types.js";
+import type { RollupJobDoc } from "@openburnbar/functions-shared/types.js";
 
 /**
  * An in-flight marker older than this is a killed attempt. Must exceed

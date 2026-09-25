@@ -13,14 +13,14 @@ const { mockCreate, mockGet, mockSet, mockDoc } = vi.hoisted(() => {
   return { mockCreate, mockGet, mockSet, mockDoc };
 });
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: { doc: mockDoc },
 }));
 
 import {
   GOOGLE_PLAY_TOKEN_CLAIMS_COLLECTION,
   claimGooglePlayPurchaseToken,
-} from "../callables/googlePlayTokenClaims.js";
+} from "../../../functions-identity/src/callables/googlePlayTokenClaims.js";
 
 describe("googlePlayTokenClaims", () => {
   beforeEach(() => {

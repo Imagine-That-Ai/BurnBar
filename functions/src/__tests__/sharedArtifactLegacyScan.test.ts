@@ -4,7 +4,7 @@ import {
   isLegacyPlaintextArtifactData,
   scanLegacyPlaintextArtifactsForUser,
   type LegacyScanDb,
-} from "../callables/sharedArtifactLegacyScan.js";
+} from "../domains/ops/sharedArtifactLegacyScan.js";
 
 class FakeArtifactDoc {
   readonly ref: { readonly path: string };

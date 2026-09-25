@@ -7,10 +7,10 @@ const store: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
 }));
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: pathKeyedFirestore(store),
 }));
 
@@ -23,7 +23,7 @@ function path(id = TRANSFER_ID): string {
 }
 
 async function moduleUnderTest() {
-  return import("../callables/credentialTransfer.js");
+  return import("../../../functions-identity/src/domains/identity/credentialTransfer.js");
 }
 
 async function runCallable(exported: "createCredentialTransfer" | "consumeCredentialTransfer" | "completeCredentialTransfer" | "cancelCredentialTransfer", data: Record<string, unknown>, uid = ALICE_UID) {

@@ -29,6 +29,13 @@ const trusted = readFileSync(trustedPath, "utf8");
 const requireText = (source, needle, message) => {
   if (!source.includes(needle)) failures.push(message);
 };
+// Loop-nested blocks keep exact command tokens but indent one level deeper.
+// Strip leading whitespace per line so the invariant survives loop nesting
+// without re-pinning whitespace.
+const dedent = (text) => text.split("\n").map((line) => line.trimStart()).join("\n");
+const requireBlock = (source, needle, message) => {
+  if (!dedent(source).includes(dedent(needle))) failures.push(message);
+};
 const reject = (source, pattern, message) => {
   if (pattern.test(source)) failures.push(message);
 };
@@ -141,7 +148,7 @@ requireText(
 );
 requireText(
   caller,
-  'cp -R functions/vendor "$destination/vendor"',
+  'cp -R "$codebase/vendor" "$destination/vendor"',
   "candidate Functions artifact must include its locked local package dependencies",
 );
 requireText(
@@ -171,7 +178,7 @@ reject(
   /staging-(?:rules|hosting|functions)-\$\{\{\s*github\.sha\s*\}\}/u,
   "candidate artifact identities must not fall back to the dispatch workflow SHA",
 );
-requireText(
+requireBlock(
   caller,
   `          find "$destination/lib" -type f \\
             \\( -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete`,
@@ -179,7 +186,7 @@ requireText(
 );
 requireText(
   caller,
-  '          rm -f "$destination/lib/appstore/certs/README.md"',
+  '          rm -f "$destination/lib/domains/billing/appstore/certs/README.md"',
   "candidate Functions artifact must remove non-runtime certificate documentation",
 );
 requireText(
@@ -217,7 +224,7 @@ requireText(
 );
 requireText(
   trusted,
-  'npm ci --prefix "$deploy_root/functions" --omit=dev --ignore-scripts',
+  'npm ci --prefix "$deploy_root/$dir" --omit=dev --ignore-scripts',
   "candidate package lifecycle scripts must remain disabled",
 );
 requireText(
@@ -254,7 +261,7 @@ requireText(
   '--only "$deploy_scope"',
   "validated Functions deployment scope must remain one quoted argument",
 );
-requireText(
+requireBlock(
   trusted,
   `          env_temp="$(mktemp "$RUNNER_TEMP/staging-functions-env.XXXXXX")"
           trap 'rm -f "$env_temp"' EXIT
@@ -262,7 +269,7 @@ requireText(
             cat "$functions_dir/.env.burnbar-staging"`,
   "trusted Functions deployment must stage the reviewed dotenv through a temporary file before replacing the project dotenv",
 );
-requireText(
+requireBlock(
   trusted,
   `          } > "$env_temp"
           mv "$env_temp" "$env_file"

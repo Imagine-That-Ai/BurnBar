@@ -9,15 +9,18 @@ const { enforceHighRiskComputerUseCallableWithNonce, requireTrustedDeviceActionP
     auditActorLabel: vi.fn(),
   }));
 
-vi.mock("../appCheckAttestation.js", () => ({
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce,
 }));
 
-vi.mock("../callables/computerUseSecurity.js", () => ({
+vi.mock("../../../functions-sync/src/domains/computer-use/computerUseSecurity.js", () => ({
+  requireTrustedDeviceActionProof,
+}));
+vi.mock("../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof,
 }));
 
-vi.mock("../callables/auditLog.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/auditLog.js", () => ({
   appendAuditEventRequired,
   auditActorLabel,
   AUDIT_ACTIONS: {
@@ -25,7 +28,7 @@ vi.mock("../callables/auditLog.js", () => ({
   },
 }));
 
-import { enforceHighRiskOwnerAction } from "../callables/highRiskOwnerAction.js";
+import { enforceHighRiskOwnerAction } from "../../../packages/functions-shared/src/callables/highRiskOwnerAction.js";
 
 function inertRawRequest(): CallableRequest["rawRequest"] {
   return Object.create(null);

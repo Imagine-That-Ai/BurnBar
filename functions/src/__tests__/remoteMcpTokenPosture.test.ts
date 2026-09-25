@@ -6,7 +6,7 @@ import {
   isRemoteMcpProductionIssuerRuntime,
   REMOTE_MCP_DEFAULT_GRANT_SCOPES,
   shouldBindRemoteMcpHmacSecretForRuntime,
-} from "../remoteMcpOAuth.js";
+} from "../../../functions-identity/src/remoteMcpOAuth.js";
 import { pathKeyedFirestore } from "./bola/callableBolaHarness.js";
 
 function decodeHmacAccessToken(token: string): { scopes?: unknown } {

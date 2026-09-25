@@ -97,9 +97,9 @@ vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return { ...actual, getFirestore: () => arenaFirestore(mocks.store, mocks.reads) };
 });
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
 
-import { arenaMatchup, arenaVote } from "../arenaVote.js";
+import { arenaMatchup, arenaVote } from "../../../functions-sync/src/domains/telemetry/arenaVote.js";
 
 const run = callableRunner(arenaVote);
 const runMatchup = callableRunner(arenaMatchup);

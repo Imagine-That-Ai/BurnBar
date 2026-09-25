@@ -6,8 +6,8 @@ import {
   nextVoIPRetryDelayMs,
   processStuckVoIPPush,
   sweepStuckVoIPPushes,
-} from "../apnsSender.js";
-import type { SendResult } from "../apnsSender.js";
+} from "../../../functions-media/src/domains/push/apnsSender.js";
+import type { SendResult } from "../../../functions-media/src/domains/push/apnsSender.js";
 
 // `firebase-functions/logger` calls `console.*` under the hood; silence it so a
 // rejected/swept document does not spam the test reporter.

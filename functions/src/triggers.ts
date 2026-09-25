@@ -9,14 +9,14 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { getFirestore } from "firebase-admin/firestore";
 import { enqueueUsageCounterDelta } from "./rollups.js";
-import { errorMessage } from "./guards.js";
+import { errorMessage } from "@openburnbar/functions-shared/guards.js";
 import { parseUsageEventDoc } from "./usageEventParse.js";
-import { logError } from "./logging.js";
-import { runFirestoreTrigger } from "./scheduledOps.js";
-import { FUNCTIONS_REGION } from "./runtimeOptions.js";
+import { logError } from "@openburnbar/functions-shared/logging.js";
+import { runFirestoreTrigger } from "@openburnbar/functions-shared/scheduledOps.js";
+import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
 import { markRollupJobDirty, type RollupDirtyStore } from "./rollupJobDirty.js";
 import type { PendingDeltaStore } from "./rollupPendingDeltas.js";
-import type { UsageEventDoc } from "./types.js";
+import type { UsageEventDoc } from "@openburnbar/functions-shared/types.js";
 
 /**
  * Firestore trigger: whenever a usage event is created, updated, or deleted,

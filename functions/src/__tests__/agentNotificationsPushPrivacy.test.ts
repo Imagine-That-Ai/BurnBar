@@ -14,7 +14,7 @@ vi.mock("firebase-functions/logger", () => ({
   debug: vi.fn(),
 }));
 
-import { buildFcmMessage } from "../agentNotifications.js";
+import { buildFcmMessage } from "../../../functions-sync/src/domains/notify/agentNotificationTriggers.js";
 
 type BuildFcmMessageArgs = Parameters<typeof buildFcmMessage>[0];
 type AgentReplyNotificationEvent = BuildFcmMessageArgs["event"];

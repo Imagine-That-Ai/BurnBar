@@ -14,13 +14,13 @@ import { resolve } from "node:path";
 
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
-import { ConsentSignal } from "../analytics/consent.js";
-import { EVENT } from "../analytics/events.js";
-import { ServerAnalytics, type AnalyticsEnvelope, type ServerAnalyticsTransport } from "../analytics/recorder.js";
-import { AmplitudeHttpTransport } from "../analytics/amplitudeTransport.js";
+import { ConsentSignal } from "../../../functions-identity/src/analytics/consent.js";
+import { EVENT } from "../../../functions-identity/src/analytics/events.js";
+import { ServerAnalytics, type AnalyticsEnvelope, type ServerAnalyticsTransport } from "../../../functions-identity/src/analytics/recorder.js";
+import { AmplitudeHttpTransport } from "../../../functions-identity/src/analytics/amplitudeTransport.js";
 
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logError: vi.fn(), logInfo: vi.fn(), logWarn: vi.fn() };
 });
 

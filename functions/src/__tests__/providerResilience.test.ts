@@ -6,19 +6,19 @@ const mocks = vi.hoisted(() => ({
   logInfo: vi.fn(),
 }));
 
-vi.mock("../ssrfGuard.js", () => ({
+vi.mock("../../../packages/functions-shared/src/ssrfGuard.js", () => ({
   assertOutboundFetchTargetResolved: mocks.assertOutboundFetchTargetResolved,
 }));
 
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logError: mocks.logError,
   logInfo: mocks.logInfo,
   logWarn: vi.fn(),
 }));
 
-import { providerFetch } from "../providers/httpClient.js";
+import { providerFetch } from "../../../packages/functions-shared/src/providers/httpClient.js";
 import { mapWithConcurrency } from "../quotaRefreshSweep.js";
-import { resetProviderApiPoliciesForTests } from "../resilience.js";
+import { resetProviderApiPoliciesForTests } from "../../../packages/functions-shared/src/resilience.js";
 
 type ProviderJob = {
   provider: string;

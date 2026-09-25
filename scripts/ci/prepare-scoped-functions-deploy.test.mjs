@@ -19,18 +19,27 @@ const repoRoot = join(scriptDir, "..", "..");
 const root = mkdtempSync(join(tmpdir(), "openburnbar-scoped-functions-"));
 const functionsDir = join(root, "functions");
 const libDir = join(functionsDir, "lib");
+const syncDir = join(root, "functions-sync");
+const syncLibDir = join(syncDir, "lib");
+
+function writePackage(dir, name) {
+  writeFileSync(
+    join(dir, "package.json"),
+    `{"name":"${name}","main":"lib/index.js"}\n`,
+  );
+  writeFileSync(
+    join(dir, "package-lock.json"),
+    '{"name":"fixture","lockfileVersion":3,"requires":true,"packages":{"":{"name":"fixture"}}}\n',
+  );
+}
 
 function resetFixture(manifestOverrides = {}) {
   rmSync(functionsDir, { recursive: true, force: true });
+  rmSync(syncDir, { recursive: true, force: true });
   mkdirSync(join(libDir, "callables"), { recursive: true });
-  writeFileSync(
-    join(functionsDir, "package.json"),
-    '{"name":"fixture","main":"lib/index.js"}\n',
-  );
-  writeFileSync(
-    join(functionsDir, "package-lock.json"),
-    '{"name":"fixture","lockfileVersion":3,"requires":true,"packages":{"":{"name":"fixture"}}}\n',
-  );
+  mkdirSync(join(syncLibDir, "domains"), { recursive: true });
+  writePackage(functionsDir, "fixture");
+  writePackage(syncDir, "fixture-sync");
   writeFileSync(
     join(libDir, "callables", "selected.js"),
     "exports.selected = () => 'selected';\n",
@@ -40,15 +49,29 @@ function resetFixture(manifestOverrides = {}) {
     "throw new Error('unrelated module loaded');\n",
   );
   writeFileSync(
+    join(syncLibDir, "domains", "synced.js"),
+    "exports.synced = () => 'synced';\n",
+  );
+  writeFileSync(
     join(functionsDir, "staging-deploy-targets.json"),
     `${JSON.stringify(
       {
-        schemaVersion: "openburnbar.staging-function-targets.v1",
+        schemaVersion: "openburnbar.staging-function-targets.v2",
         targets: {
-          selected: { module: "./callables/selected.js", export: "selected" },
+          selected: {
+            codebase: "admin",
+            module: "./callables/selected.js",
+            export: "selected",
+          },
           unrelated: {
+            codebase: "admin",
             module: "./callables/unrelated.js",
             export: "unrelated",
+          },
+          synced: {
+            codebase: "sync",
+            module: "./domains/synced.js",
+            export: "synced",
           },
           ...manifestOverrides,
         },
@@ -106,7 +129,10 @@ try {
       "generated entrypoint did not isolate the requested export",
     );
   }
-  if (readResolvedTargets() !== "function_targets=functions:selected\n") {
+  if (
+    readResolvedTargets() !==
+    "function_targets=functions:selected\ninvolved_codebases=functions\n"
+  ) {
     throw new Error(
       "explicit selection did not emit its resolved deploy selectors",
     );
@@ -133,6 +159,15 @@ try {
     missing: { module: "./callables/missing.js", export: "missing" },
   });
   expectFailure("missing compiled module", "functions:missing");
+
+  resetFixture({
+    badCodebase: {
+      codebase: "unknown",
+      module: "./callables/selected.js",
+      export: "selected",
+    },
+  });
+  expectFailure("unknown codebase", "functions:badCodebase");
 
   resetFixture();
   writeFileSync(
@@ -170,9 +205,27 @@ try {
       "blank target input did not export exactly the reviewed staging manifest",
     );
   }
+  const reviewedSyncEntrypoint = join(syncLibDir, "staging-scoped-index.cjs");
+  delete require.cache[require.resolve(reviewedSyncEntrypoint)];
+  const reviewedSyncExports = require(reviewedSyncEntrypoint);
+  if (
+    reviewedSyncExports.synced() !== "synced" ||
+    Object.keys(reviewedSyncExports).join(",") !== "synced"
+  ) {
+    throw new Error(
+      "blank target input did not scope the reviewed sync codebase entrypoint",
+    );
+  }
+  if (
+    JSON.parse(readFileSync(join(syncDir, "package.json"), "utf8")).main !==
+    "lib/staging-scoped-index.cjs"
+  ) {
+    throw new Error("reviewed-default mode did not scope the sync package main");
+  }
   if (
     readResolvedTargets() !==
-    "function_targets=functions:selected,functions:unrelated\n"
+    "function_targets=functions:selected,functions:unrelated,functions:synced\n" +
+      "involved_codebases=functions,functions-sync\n"
   ) {
     throw new Error(
       "blank target input did not emit the resolved manifest deploy selectors",
@@ -208,6 +261,7 @@ try {
     const entry = productionManifest.targets?.[target];
     if (
       !entry ||
+      typeof entry.codebase !== "string" ||
       typeof entry.module !== "string" ||
       typeof entry.export !== "string"
     ) {

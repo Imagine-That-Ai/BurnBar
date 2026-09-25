@@ -61,11 +61,11 @@ const firestoreState = vi.hoisted(() => {
   return { db, docs };
 });
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: firestoreState.db,
 }));
 
-import { reconcileCloudProTopUpReversal } from "../callables/shared/entitlements.js";
+import { reconcileCloudProTopUpReversal } from "../../../packages/functions-shared/src/shared/entitlements.js";
 
 const UID = "google-play-user";
 

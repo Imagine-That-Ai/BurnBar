@@ -1,0 +1,807 @@
+/**
+ * @fileoverview Entitlement reconciler.
+ *
+ * Single writer for `users/{uid}/entitlements/hosted_quota_sync`. Every
+ * trust path (client callable, S2S webhook, daily scheduled job) flows
+ * through this module so the entitlement document is always derived
+ * from the same verification pipeline.
+ *
+ * Pipeline:
+ *
+ *   1. Verify the supplied JWS via `AppleJWSVerifier`.
+ *   2. Resolve the Firebase UID:
+ *      - Prefer `appAccountToken` ⇒ lookup `entitlement_bindings`.
+ *      - Else require an existing entitlement already owned by the supplied
+ *        `claimedUid` or by a single server-known entitlement doc.
+ *      - Mismatch ⇒ reject with `binding_mismatch`.
+ *   3. Pull live state from `getAllSubscriptionStatuses` to catch
+ *      revocations / renewals not yet on the supplied JWS.
+ *   4. Re-verify every JWS in the live response.
+ *   5. Pick the highest-watermark transaction (max signedDate, max
+ *      transactionId tiebreak) for the configured productId.
+ *   6. Build a fresh `HostedQuotaEntitlementDoc` and write
+ *      transactionally, rejecting monotonicity violations.
+ *   7. Append an `EntitlementEventDoc` to the audit collection.
+ *
+ * Everything is idempotent. The same `(originalTransactionId, signedDate)`
+ * tuple cannot produce divergent doc state, regardless of how many
+ * times Apple retries the webhook.
+ */
+
+import { createHash, randomUUID } from "node:crypto";
+import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
+
+import type { JWSTransactionDecodedPayload } from "@apple/app-store-server-library";
+
+import type {
+  AppStoreConfig,
+  EntitlementBindingDoc,
+  EntitlementOwnershipType,
+  HostedQuotaEntitlementDoc,
+  HostedQuotaEntitlementSource,
+} from "@openburnbar/functions-shared/types.js";
+
+import { appendEntitlementEvent } from "./audit.js";
+import { fetchLiveSubscriptionStatus } from "./client.js";
+import { type AppleJWSVerifier, type DecodedTransaction, getAppleJWSVerifier } from "./verifier.js";
+import { getConfig } from "@openburnbar/functions-shared/config.js";
+import {
+  errorMessage,
+  isRecord,
+  parseEntitlementBindingDoc,
+  parseHostedQuotaEntitlementDoc,
+  stripUndefinedObject,
+} from "@openburnbar/functions-shared/guards.js";
+import { logWarn } from "@openburnbar/functions-shared/logging.js";
+
+const ENTITLEMENT_SCHEMA_VERSION = 2;
+const VERIFICATION_VERSION = 2;
+const BINDING_SCHEMA_VERSION = 1;
+const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
+const BURNBAR_PRO_MAX_ENTITLEMENT_ID = "burnbar_pro_max";
+const BURNBAR_ULTRA_ENTITLEMENT_ID = "burnbar_ultra";
+const HOSTED_QUOTA_ENTITLEMENT_ID = "hosted_quota_sync";
+const ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT = 50;
+
+interface AppStoreEntitlementTarget {
+  sourceEntitlementID: string;
+  mirrorEntitlementID: string;
+}
+
+interface ReconcileInput {
+  /** The signed transaction JWS the caller provided. Required. */
+  signedTransactionJWS: string;
+  /** Optional renewal info JWS, when present (e.g. from S2S notifications). */
+  signedRenewalInfoJWS?: string;
+  /** Optional notification UUID — used as the audit idempotency key. */
+  notificationUUID?: string;
+  /** Optional notification type/subtype, surfaced in the audit log. */
+  notificationType?: string;
+  notificationSubtype?: string;
+  /** Caller-asserted UID. Used only to scope binding or legacy entitlement lookups. */
+  claimedUid?: string;
+  /** Trust path that originated the call. */
+  source: "client_callable" | "apple_s2s" | "scheduled_reconcile";
+  /**
+   * StoreKit product ID this entitlement gates. Defaults to
+   * `cfg.hostedQuotaProductID` from the global config. Pass through the
+   * caller for clarity.
+   */
+  productID?: string;
+}
+
+interface ReconcileResult {
+  uid: string;
+  entitlement: HostedQuotaEntitlementDoc;
+  /** True iff the doc was actually rewritten (vs. monotonicity skip). */
+  changed: boolean;
+}
+
+/**
+ * Test-only override hooks. Production callers leave both undefined and
+ * the reconciler resolves the real `AppleJWSVerifier` + ASC client via
+ * `getAppleJWSVerifier(cfg)` / `fetchLiveSubscriptionStatus(cfg, …)`.
+ */
+interface ReconcileOverrides {
+  verifier?: AppleJWSVerifier;
+  fetchLive?: typeof fetchLiveSubscriptionStatus;
+}
+
+export class EntitlementReconcileError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) {
+    super(`${code}: ${message}`);
+    this.name = "EntitlementReconcileError";
+    this.code = code;
+  }
+}
+
+export function assertConfiguredAppStoreEnvironment(
+  cfg: AppStoreConfig,
+  environment: AppStoreConfig["environment"],
+  source: string,
+): void {
+  if (environment !== cfg.environment) {
+    throw new EntitlementReconcileError(
+      "environment_mismatch",
+      `${source} App Store environment ${environment} does not match configured environment ${cfg.environment}.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+export async function reconcileEntitlement(
+  db: Firestore,
+  cfg: AppStoreConfig,
+  input: ReconcileInput,
+  overrides: ReconcileOverrides = {},
+): Promise<ReconcileResult> {
+  const verifier = overrides.verifier ?? getAppleJWSVerifier(cfg);
+  const fetchLive = overrides.fetchLive ?? fetchLiveSubscriptionStatus;
+
+  // 1) Verify the supplied JWS.
+  const seedTx = await verifier.verifyTransaction(input.signedTransactionJWS);
+  assertBundle(cfg, seedTx);
+  assertConfiguredAppStoreEnvironment(cfg, seedTx.environment, "seed transaction");
+
+  if (input.signedRenewalInfoJWS) {
+    // We don't currently use renewal info for the entitlement decision —
+    // expiresDate on the transaction is authoritative — but verifying it
+    // guarantees the webhook is not pairing a real transaction JWS with
+    // a forged renewal info.
+    const renewal = await verifier.verifyRenewalInfo(input.signedRenewalInfoJWS, seedTx.environment);
+    assertConfiguredAppStoreEnvironment(cfg, renewal.environment, "renewal info");
+  }
+
+  const productID = input.productID ?? requireString(seedTx.payload.productId, "productId");
+  const target = appStoreEntitlementTarget(productID);
+
+  // 2) Resolve UID.
+  const uid = await resolveUid(db, input, seedTx, target);
+
+  // 3+4) Live truth: re-verify every JWS Apple returns.
+  const live = await fetchLiveStatusVerified(verifier, cfg, seedTx, fetchLive);
+
+  // 5) Best-of all transactions for the productId.
+  const candidate = pickWinning([seedTx, ...live], productID);
+  if (!candidate) {
+    throw new EntitlementReconcileError(
+      "no_active_transaction",
+      `No verified transaction matched productId ${productID}.`,
+    );
+  }
+
+  // 6) Build & persist.
+  const docPath = `users/${uid}/entitlements/${target.sourceEntitlementID}`;
+  const docRef = db.doc(docPath);
+
+  const next = buildEntitlementDoc({
+    entitlementID: target.sourceEntitlementID,
+    productID,
+    candidate,
+    notificationUUID: input.notificationUUID,
+  });
+
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(docRef);
+    const existing = snap.exists ? parseHostedQuotaEntitlementDoc(snap.data()) : undefined;
+
+    if (existing && !shouldOverwrite(existing, next)) {
+      writeEntitlementMirrorOnly(tx, db, uid, existing, target);
+      return { changed: false, entitlement: existing };
+    }
+
+    const merged = mergeWithExisting(existing, next);
+    writeEntitlementDocs(tx, db, uid, merged, target);
+    return { changed: true, entitlement: merged };
+  });
+
+  // 7) Audit (best-effort; never gates the entitlement write).
+  const eventId = auditEventId(input, candidate.payload);
+  try {
+    await appendEntitlementEvent(db, {
+      uid,
+      eventId,
+      source: input.source,
+      notificationType: input.notificationType,
+      notificationSubtype: input.notificationSubtype,
+      transactionId: requireString(candidate.payload.transactionId, "transactionId"),
+      originalTransactionId: requireString(candidate.payload.originalTransactionId, "originalTransactionId"),
+      productId: requireString(candidate.payload.productId, "productId"),
+      environment: candidate.environment,
+      expiresAt: result.entitlement.expiresAt,
+      revokedAt: result.entitlement.revokedAt,
+      revocationReason: result.entitlement.revocationReason,
+      rawJWS: candidate.raw,
+      decoded: redactPayload(candidate.payload),
+    });
+  } catch (err) {
+    logWarn({
+      event: "appstore.entitlement.audit_append_failed",
+      error: errorMessage(err),
+    });
+  }
+
+  return { uid, entitlement: result.entitlement, changed: result.changed };
+}
+
+/**
+ * A verified Apple lifecycle replaces the mutable entitlement snapshot.
+ * Remove operator-only provenance left by a temporary support bridge so the
+ * document cannot claim both provider verification and an active operator
+ * grant at the same time (the same cleanup `writeBurnBarProEntitlement`
+ * applies on the Stripe/Google Play path). Mirror docs re-assert their own
+ * sourceEntitlementID/sourceProductID after this cleanup is spread first.
+ */
+function operatorProvenanceCleanup(): Record<string, FieldValue> {
+  return {
+    operatorGrant: FieldValue.delete(),
+    operatorGrantedAt: FieldValue.delete(),
+    operatorGrantReason: FieldValue.delete(),
+    sourceEntitlementID: FieldValue.delete(),
+    sourceProductID: FieldValue.delete(),
+  };
+}
+
+/**
+ * The writers below are typed against the minimal transactional surface they
+ * actually use (`Ref` is inferred from the paired doc resolver), so unit tests
+ * can drive the exact production write path with a plain in-memory fake
+ * instead of an unsafe `Firestore`/`Transaction` cast. Production callers pass
+ * the real `Transaction`/`Firestore` pair unchanged.
+ */
+export function writeEntitlementMirrorOnly<Ref>(
+  tx: { set(ref: Ref, data: Record<string, unknown>, options: { merge: true }): unknown },
+  db: { doc(path: string): Ref },
+  uid: string,
+  entitlement: HostedQuotaEntitlementDoc,
+  target: AppStoreEntitlementTarget,
+): void {
+  if (target.sourceEntitlementID === target.mirrorEntitlementID) return;
+  const { mirrorDoc } = buildAppStoreEntitlementWritePayloads(entitlement, target);
+  if (!mirrorDoc) return;
+  tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
+}
+
+export function writeEntitlementDocs<Ref>(
+  tx: { set(ref: Ref, data: Record<string, unknown>, options: { merge: true }): unknown },
+  db: { doc(path: string): Ref },
+  uid: string,
+  entitlement: HostedQuotaEntitlementDoc,
+  target: AppStoreEntitlementTarget,
+): void {
+  const sourceRef = db.doc(`users/${uid}/entitlements/${target.sourceEntitlementID}`);
+  const { sourceDoc, mirrorDoc } = buildAppStoreEntitlementWritePayloads(entitlement, target);
+  tx.set(sourceRef, sourceDoc, { merge: true });
+  if (mirrorDoc) {
+    tx.set(db.doc(`users/${uid}/entitlements/${target.mirrorEntitlementID}`), mirrorDoc, { merge: true });
+  }
+}
+
+/** Builds the exact source and mirror payloads consumed by the writer. */
+export function buildAppStoreEntitlementWritePayloads(
+  entitlement: HostedQuotaEntitlementDoc,
+  target: AppStoreEntitlementTarget,
+) {
+  const sourceDoc = { ...operatorProvenanceCleanup(), ...stripUndefinedObject(entitlement) };
+  const mirrorDoc = { ...operatorProvenanceCleanup(), ...buildBurnBarEntitlementMirror(entitlement, target) };
+  if (target.sourceEntitlementID === target.mirrorEntitlementID) {
+    return { sourceDoc: stripUndefinedObject({ ...sourceDoc, ...mirrorDoc }) };
+  }
+  return { sourceDoc, mirrorDoc };
+}
+
+function buildBurnBarEntitlementMirror(
+  hosted: HostedQuotaEntitlementDoc,
+  target: AppStoreEntitlementTarget,
+): Record<string, unknown> {
+  const cloudPro = target.mirrorEntitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID;
+  return {
+    id: target.mirrorEntitlementID,
+    active: hosted.active,
+    productID: hosted.productID,
+    sourceProductID: hosted.productID,
+    entitlementFamily: target.mirrorEntitlementID,
+    features: {
+      hostedQuota: true,
+      hostedLLM: true,
+      encryptedSessionLogBackup: true,
+      cloudConversationSearch: true,
+      ...(cloudPro ? { floo: true, agentControl: true } : {}),
+    },
+    expiresAt: hosted.expiresAt,
+    expireAt: hosted.expireAt,
+    environment: hosted.environment,
+    source: hosted.source,
+    sourceEntitlementID: hosted.id,
+    updatedAt: hosted.updatedAt,
+    schemaVersion: 1,
+  };
+}
+
+export function appStoreEntitlementTarget(productID: string): AppStoreEntitlementTarget {
+  const cfg = getConfig();
+  if (productID === cfg.hostedQuotaProductID) {
+    return {
+      sourceEntitlementID: HOSTED_QUOTA_ENTITLEMENT_ID,
+      mirrorEntitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+    };
+  }
+  if (productID === cfg.burnBarProProductID || productID === cfg.burnBarProAnnualProductID) {
+    return {
+      sourceEntitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+      mirrorEntitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+    };
+  }
+  if (
+    productID === cfg.burnBarProMaxProductID ||
+    productID === cfg.burnBarProMaxAnnualProductID ||
+    productID === "com.openburnbar.proMax.bundle.monthly"
+  ) {
+    return {
+      sourceEntitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+      mirrorEntitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+    };
+  }
+  if (
+    productID === cfg.burnBarUltraProductID ||
+    productID === cfg.burnBarUltraAnnualProductID ||
+    productID === "com.openburnbar.ultra.annual"
+  ) {
+    // Ultra writes its own source doc AND mirrors proMax, so it inherits every
+    // Cloud Pro gate automatically; only the Pensieve LIMIT lookup branches on
+    // the burnbar_ultra doc. (source !== mirror triggers the dual-write.)
+    return {
+      sourceEntitlementID: BURNBAR_ULTRA_ENTITLEMENT_ID,
+      mirrorEntitlementID: BURNBAR_PRO_MAX_ENTITLEMENT_ID,
+    };
+  }
+  throw new EntitlementReconcileError("unsupported_product", `Unsupported App Store productId ${productID}.`);
+}
+
+// ---------------------------------------------------------------------------
+// Binding & UID resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Mint and persist a fresh `appAccountToken` for the signed-in user
+ * before they call `Product.purchase()`. The reconciler later uses this
+ * token to bind incoming JWS payloads to the correct UID without
+ * trusting the in-flight callable.
+ */
+export async function beginBinding(
+  db: Firestore,
+  uid: string,
+  productID: string,
+  clientPlatform?: EntitlementBindingDoc["clientPlatform"],
+): Promise<{ appAccountToken: string }> {
+  if (!uid) throw new Error("uid is required");
+  const token = uuid();
+  const doc: EntitlementBindingDoc = {
+    id: token,
+    uid,
+    appAccountToken: token,
+    productID,
+    createdAt: new Date().toISOString(),
+    clientPlatform,
+    schemaVersion: BINDING_SCHEMA_VERSION,
+  };
+  await db.doc(`users/${uid}/entitlement_bindings/${token}`).create(stripUndefinedObject(doc));
+  return { appAccountToken: token };
+}
+
+async function resolveUid(
+  db: Firestore,
+  input: ReconcileInput,
+  tx: DecodedTransaction,
+  target: AppStoreEntitlementTarget,
+): Promise<string> {
+  const tokenRaw = tx.payload.appAccountToken;
+  const token = typeof tokenRaw === "string" ? tokenRaw.toLowerCase() : "";
+
+  if (token) {
+    const bindingUid = await consumeBindingByToken(db, token, input.claimedUid);
+    if (input.claimedUid && bindingUid !== input.claimedUid) {
+      throw new EntitlementReconcileError(
+        "binding_mismatch",
+        `appAccountToken ${redactToken(token)} is bound to a different user.`,
+      );
+    }
+    return bindingUid;
+  }
+
+  // No appAccountToken on the JWS. Two legitimate cases:
+  //   - Pre-binding migration: existing user restoring a server-known entitlement.
+  //   - S2S notification for a legacy purchase pre-migration.
+  const originalTransactionId = requireString(tx.payload.originalTransactionId, "originalTransactionId");
+  if (input.claimedUid) {
+    if (await claimedUidHasMatchingEntitlement(db, input.claimedUid, target, originalTransactionId)) {
+      return input.claimedUid;
+    }
+    const existingUid = await findUidByOriginalTransaction(db, originalTransactionId);
+    if (existingUid === input.claimedUid) return input.claimedUid;
+    if (!existingUid) {
+      throw new EntitlementReconcileError(
+        "binding_unknown",
+        "JWS has no appAccountToken and no existing server entitlement for this original transaction.",
+      );
+    }
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "JWS has no appAccountToken and the original transaction is already owned by a different user.",
+    );
+  }
+
+  // Last resort: look up the entitlement doc that already references this
+  // originalTransactionId; if exactly one user owns it, attribute there.
+  const fallbackUid = await findUidByOriginalTransaction(db, originalTransactionId);
+  if (!fallbackUid) {
+    throw new EntitlementReconcileError(
+      "uid_unresolved",
+      "JWS has no appAccountToken and no caller UID; cannot attribute.",
+    );
+  }
+  return fallbackUid;
+}
+
+/**
+ * Find a binding by `appAccountToken`. We can't use a collectionGroup
+ * read because Firestore rules restrict it; instead we require the
+ * caller to also pass `claimedUid` so we read at a deterministic path.
+ *
+ * If no caller is known (S2S path), we fall back to a collection-group
+ * search across `entitlement_bindings`. The collection is server-only
+ * (rules deny clients), so this is safe.
+ */
+export async function consumeBindingByToken(db: Firestore, token: string, claimedUid?: string): Promise<string> {
+  if (claimedUid) {
+    const ref = db.doc(`users/${claimedUid}/entitlement_bindings/${token}`);
+    const snap = await ref.get();
+    if (snap.exists) {
+      const d = parseEntitlementBindingDoc(snap.data());
+      if (!d) {
+        throw new EntitlementReconcileError("binding_mismatch", "binding doc is invalid");
+      }
+      if (d.uid !== claimedUid) {
+        throw new EntitlementReconcileError("binding_mismatch", "binding doc uid does not match caller");
+      }
+      if (!d.consumedAt) {
+        await ref.set({ consumedAt: new Date().toISOString() }, { merge: true });
+      }
+      return d.uid;
+    }
+    // The caller signed in but never minted a binding for this token —
+    // someone else's token replayed under their UID.
+    throw new EntitlementReconcileError("binding_mismatch", "caller has no binding for this appAccountToken");
+  }
+
+  // S2S path: collection-group lookup.
+  const cg = await db.collectionGroup("entitlement_bindings").where("id", "==", token).limit(1).get();
+  const doc = cg.docs[0];
+  if (!doc) {
+    throw new EntitlementReconcileError("binding_unknown", `No binding for appAccountToken ${redactToken(token)}.`);
+  }
+  const d = parseEntitlementBindingDoc(doc.data());
+  if (!d) {
+    throw new EntitlementReconcileError("binding_mismatch", "binding doc is invalid");
+  }
+  if (!d.consumedAt) {
+    await doc.ref.set({ consumedAt: new Date().toISOString() }, { merge: true });
+  }
+  return d.uid;
+}
+
+async function claimedUidHasMatchingEntitlement(
+  db: Firestore,
+  claimedUid: string,
+  target: AppStoreEntitlementTarget,
+  originalTransactionId: string,
+): Promise<boolean> {
+  const snap = await db.doc(`users/${claimedUid}/entitlements/${target.sourceEntitlementID}`).get();
+  if (!snap.exists) return false;
+  const existingOriginalTransactionId = entitlementOriginalTransactionId(snap.data());
+  return existingOriginalTransactionId === originalTransactionId;
+}
+
+function entitlementOriginalTransactionId(raw: unknown): string | undefined {
+  const parsed = parseHostedQuotaEntitlementDoc(raw);
+  if (parsed) return parsed.originalTransactionID;
+  if (!isRecord(raw)) return undefined;
+  const original = raw.originalTransactionID;
+  return typeof original === "string" && original ? original : undefined;
+}
+
+async function findUidByOriginalTransaction(db: Firestore, originalTransactionId: string): Promise<string | undefined> {
+  const cg = await db
+    .collectionGroup("entitlements")
+    .where("originalTransactionID", "==", originalTransactionId)
+    .limit(ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT)
+    .get();
+  const uids = new Set<string>();
+  for (const doc of cg.docs) {
+    const m = doc.ref.path.match(/^users\/([^/]+)\//);
+    if (!m?.[1]) {
+      throw new EntitlementReconcileError(
+        "binding_mismatch",
+        "JWS has no appAccountToken and a matching entitlement is not user-scoped.",
+      );
+    }
+    uids.add(m[1]);
+  }
+  if (cg.docs.length >= ORIGINAL_TRANSACTION_OWNER_LOOKUP_LIMIT) {
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "JWS has no appAccountToken and the original transaction owner lookup is too broad.",
+    );
+  }
+  if (uids.size > 1) {
+    throw new EntitlementReconcileError(
+      "binding_mismatch",
+      "JWS has no appAccountToken and the original transaction is owned by multiple users.",
+    );
+  }
+  return uids.values().next().value;
+}
+
+// ---------------------------------------------------------------------------
+// Live ASC reconciliation
+// ---------------------------------------------------------------------------
+
+async function fetchLiveStatusVerified(
+  verifier: AppleJWSVerifier,
+  cfg: AppStoreConfig,
+  seed: DecodedTransaction,
+  fetchLive: typeof fetchLiveSubscriptionStatus,
+): Promise<DecodedTransaction[]> {
+  const original = seed.payload.originalTransactionId;
+  if (!original) return [];
+
+  // The seed environment drives which ASC base URL we hit.
+  let live;
+  try {
+    live = await fetchLive(cfg, seed.environment, original);
+  } catch (err) {
+    throw new EntitlementReconcileError(
+      "asc_live_status_unavailable",
+      `App Store live subscription status unavailable: ${err instanceof Error ? err.message : "unknown ASC error"}`,
+    );
+  }
+
+  const verified: DecodedTransaction[] = [];
+  for (const pair of live.pairs) {
+    try {
+      const tx = await verifier.verifyTransaction(pair.signedTransactionInfo, seed.environment);
+      assertBundle(cfg, tx);
+      assertConfiguredAppStoreEnvironment(cfg, tx.environment, "live transaction");
+      verified.push(tx);
+    } catch (err) {
+      logWarn({
+        event: "appstore.reconciler.asc_jws_rejected",
+        error: errorMessage(err),
+      });
+    }
+  }
+  return verified;
+}
+
+// ---------------------------------------------------------------------------
+// Selection
+// ---------------------------------------------------------------------------
+
+function pickWinning(candidates: DecodedTransaction[], productID: string): DecodedTransaction | undefined {
+  let best: DecodedTransaction | undefined;
+  for (const c of candidates) {
+    if (c.payload.productId !== productID) continue;
+    if (!best) {
+      best = c;
+      continue;
+    }
+    if (compareTransactions(c, best) > 0) {
+      best = c;
+    }
+  }
+  return best;
+}
+
+/** Order: most recent signedDate wins, then Apple's monotonic transactionId. */
+function compareTransactions(a: DecodedTransaction, b: DecodedTransaction): number {
+  const signedDateDelta = signedDateMs(a) - signedDateMs(b);
+  if (signedDateDelta !== 0) return signedDateDelta;
+  return compareTransactionIDs(payloadTransactionId(a), payloadTransactionId(b));
+}
+
+function signedDateMs(c: DecodedTransaction): number {
+  return c.payload.signedDate ?? 0;
+}
+
+function payloadTransactionId(c: DecodedTransaction): string {
+  return typeof c.payload.transactionId === "string" ? c.payload.transactionId : "";
+}
+
+function compareTransactionIDs(a: string | undefined, b: string | undefined): number {
+  const left = a ?? "";
+  const right = b ?? "";
+  if (left === right) return 0;
+
+  if (/^\d+$/.test(left) && /^\d+$/.test(right)) {
+    const numericLeft = BigInt(left);
+    const numericRight = BigInt(right);
+    if (numericLeft !== numericRight) {
+      return numericLeft > numericRight ? 1 : -1;
+    }
+  }
+
+  return left.localeCompare(right);
+}
+
+// ---------------------------------------------------------------------------
+// Entitlement doc construction
+// ---------------------------------------------------------------------------
+
+interface BuildArgs {
+  entitlementID?: string;
+  productID: string;
+  candidate: DecodedTransaction;
+  notificationUUID?: string;
+}
+
+function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
+  const { candidate, productID, notificationUUID } = args;
+  const p = candidate.payload;
+  const now = new Date();
+  const expiresMs = typeof p.expiresDate === "number" ? p.expiresDate : undefined;
+  const revokedMs = typeof p.revocationDate === "number" ? p.revocationDate : undefined;
+  const active = revokedMs === undefined && typeof expiresMs === "number" && expiresMs > now.getTime();
+
+  const ownership: EntitlementOwnershipType | undefined =
+    p.inAppOwnershipType === "PURCHASED" || p.inAppOwnershipType === "FAMILY_SHARED" ? p.inAppOwnershipType : undefined;
+
+  const source: HostedQuotaEntitlementSource = "apple_jws_verified";
+  const doc: HostedQuotaEntitlementDoc = {
+    id: args.entitlementID ?? HOSTED_QUOTA_ENTITLEMENT_ID,
+    active,
+    productID,
+    transactionID: requireString(p.transactionId, "transactionId"),
+    originalTransactionID: requireString(p.originalTransactionId, "originalTransactionId"),
+    environment: candidate.environment,
+    signedTransactionHash: createHash("sha256").update(candidate.raw).digest("hex"),
+    lastVerifiedAt: now.toISOString(),
+    source,
+    verificationVersion: VERIFICATION_VERSION,
+    schemaVersion: ENTITLEMENT_SCHEMA_VERSION,
+    updatedAt: now.toISOString(),
+  };
+  if (expiresMs !== undefined) {
+    doc.expiresAt = new Date(expiresMs).toISOString();
+    doc.expireAt = Timestamp.fromMillis(expiresMs);
+  }
+  if (revokedMs !== undefined) {
+    doc.revokedAt = new Date(revokedMs).toISOString();
+  }
+  if (typeof p.revocationReason === "number") {
+    doc.revocationReason = p.revocationReason;
+  }
+  if (ownership !== undefined) {
+    doc.ownershipType = ownership;
+  }
+  if (typeof p.appAccountToken === "string" && p.appAccountToken) {
+    doc.appAccountToken = p.appAccountToken.toLowerCase();
+  }
+  if (typeof p.signedDate === "number") {
+    doc.signedDateMs = Math.floor(p.signedDate);
+  }
+  if (notificationUUID !== undefined) {
+    doc.lastNotificationUUID = notificationUUID;
+  }
+  return doc;
+}
+
+/** Reject stale events: never let an older Apple transaction watermark revive a newer doc. */
+function shouldOverwrite(existing: HostedQuotaEntitlementDoc, next: HostedQuotaEntitlementDoc): boolean {
+  // Prefer Apple's transaction watermark over local wall-clock time.
+  // `lastVerifiedAt` is still useful for operator observability, but
+  // replay protection must key off the signed payload date plus transactionId
+  // so a stale event processed later cannot revive an expired or revoked state.
+  if (typeof existing.signedDateMs === "number" && typeof next.signedDateMs === "number") {
+    if (next.signedDateMs !== existing.signedDateMs) {
+      return next.signedDateMs > existing.signedDateMs;
+    }
+    return compareTransactionIDs(next.transactionID, existing.transactionID) >= 0;
+  }
+  if (!existing.lastVerifiedAt) return true;
+  return next.lastVerifiedAt >= existing.lastVerifiedAt;
+}
+
+function mergeWithExisting(
+  existing: HostedQuotaEntitlementDoc | undefined,
+  next: HostedQuotaEntitlementDoc,
+): HostedQuotaEntitlementDoc {
+  if (!existing) return next;
+  // Carry forward fields that legitimately change rarely (appAccountToken,
+  // ownershipType) when the new JWS does not include them.
+  return {
+    ...existing,
+    ...next,
+    appAccountToken: next.appAccountToken ?? existing.appAccountToken,
+    ownershipType: next.ownershipType ?? existing.ownershipType,
+    environment: next.environment ?? existing.environment,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function assertBundle(cfg: AppStoreConfig, tx: DecodedTransaction): void {
+  if (tx.payload.bundleId && tx.payload.bundleId !== cfg.bundleId) {
+    throw new EntitlementReconcileError("bundle_id_mismatch", `JWS bundleId ${tx.payload.bundleId} != ${cfg.bundleId}`);
+  }
+}
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== "string" || !value) {
+    throw new EntitlementReconcileError("missing_field", `JWS payload is missing ${field}`);
+  }
+  return value;
+}
+
+function auditEventId(input: ReconcileInput, payload: JWSTransactionDecodedPayload): string {
+  if (input.notificationUUID) return `n_${input.notificationUUID}`;
+  return `t_${payload.transactionId}_${payload.signedDate ?? 0}`;
+}
+
+/**
+ * Trim PII / locale fields from the decoded payload before persisting it
+ * to the audit log. Storefront, currency, and price are dropped because
+ * they leak the buyer's region and price tier; `appAccountToken` is
+ * replaced with its SHA-256 because raw UUIDs are sensitive PII.
+ */
+const REDACTED_PAYLOAD_FIELDS = new Set(["storefront", "storefrontId", "currency", "price"]);
+
+function redactPayload(payload: JWSTransactionDecodedPayload): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (REDACTED_PAYLOAD_FIELDS.has(k)) continue;
+    if (k === "appAccountToken") continue;
+    out[k] = v;
+  }
+  const appAccountToken = payload.appAccountToken;
+  if (typeof appAccountToken === "string" && appAccountToken) {
+    out.appAccountTokenHash = createHash("sha256").update(appAccountToken).digest("hex");
+  }
+  return out;
+}
+
+function redactToken(token: string): string {
+  if (token.length <= 8) return "***";
+  return `${token.slice(0, 4)}…${token.slice(-4)}`;
+}
+
+function uuid(): string {
+  return randomUUID();
+}
+
+// ---------------------------------------------------------------------------
+// Test-only exports
+// ---------------------------------------------------------------------------
+
+/**
+ * Internals reachable from `scripts/test-appstore.mjs`. Not part of the
+ * public surface — do not import outside tests.
+ */
+export const __testing__ = {
+  pickWinning,
+  buildEntitlementDoc,
+  mergeWithExisting,
+  shouldOverwrite,
+  redactPayload,
+  redactToken,
+  auditEventId,
+  appStoreEntitlementTarget,
+  ENTITLEMENT_SCHEMA_VERSION,
+  VERIFICATION_VERSION,
+  BINDING_SCHEMA_VERSION,
+};

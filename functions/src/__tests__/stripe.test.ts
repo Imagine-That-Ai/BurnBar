@@ -54,7 +54,7 @@ vi.mock("googleapis", () => {
   };
 });
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     doc: (path: string) => ({
       get: async () => ({
@@ -66,8 +66,8 @@ vi.mock("../adminRuntime.js", () => ({
     }),
   },
 }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: state.enforceMock }));
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: state.enforceMock }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({
     enforceAppCheck: false,
     googlePlayPackageName: "ai.openburnbar.app",
@@ -94,45 +94,56 @@ vi.mock("../config.js", () => ({
     elderWandSearches500ProductID: "elder_wand_searches_500",
   }),
 }));
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   externalApiWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
   googlePlayConsumeWithResilience: vi.fn(async <T>(fn: () => Promise<T>) => fn()),
   stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
 }));
-vi.mock("../callables/googlePlayTokenClaims.js", () => ({ claimGooglePlayPurchaseToken: state.claimMock }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../functions-identity/src/callables/googlePlayTokenClaims.js", () => ({ claimGooglePlayPurchaseToken: state.claimMock }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: vi.fn(), logError: vi.fn(), logWarn: vi.fn() };
 });
 // Typed fake of the shared billing helpers: the Firestore/Stripe-touching
 // functions are stubs wired to the hoisted state; the pure helpers mirror the
 // real contracts closely enough for the handlers' happy paths.
-vi.mock("../callables/shared.js", async () => {
-  const { createHash: hash } = await import("node:crypto");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
   return {
     BURNBAR_PRO_ENTITLEMENT_ID: "burnbar_pro",
     BURNBAR_PRO_MAX_ENTITLEMENT_ID: "burnbar_pro_max",
     BURNBAR_ULTRA_ENTITLEMENT_ID: "burnbar_ultra",
+    assertActiveBurnBarCloudProEntitlement: state.assertActiveMock,
+    creditCloudProTopUp: state.creditMock,
+    writeBurnBarProEntitlement: state.writeEntitlementMock,
+  };
+});
+vi.mock("../../../functions-identity/src/shared/stripe.js", async () => {
+  return {
     STRIPE_API_SECRETS: [],
     STRIPE_WEBHOOK_SECRETS: [],
+    requireConfiguredStripe: vi.fn(),
+    requireConfiguredStripeWebhookSecret: vi.fn(),
+    getOrCreateStripeCustomer: vi.fn(),
+    applyStripeCheckoutSession: vi.fn(),
+    applyStripeSubscription: vi.fn(),
+    reconcileStripeInvoice: vi.fn(),
+    reconcileStripeCharge: vi.fn(),
+    reconcileStripeRefund: vi.fn(),
+    reconcileStripeDispute: vi.fn(),
+    reconcileStripeCreditNote: vi.fn(),
+    deactivateStripeCustomerEntitlements: vi.fn(),
+    assertStripeCustomerCanStartSubscriptionCheckout: vi.fn(),
+    findReusableStripeSubscriptionCheckoutSession: vi.fn(),
+  };
+});
+vi.mock("../../../functions-identity/src/shared/googlePlay.js", async () => {
+  return {
     GOOGLE_PLAY_ACTIVE_STATES: new Set([
       "SUBSCRIPTION_STATE_ACTIVE",
       "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
       "SUBSCRIPTION_STATE_CANCELED",
     ]),
-    nowISO: () => new Date().toISOString(),
-    boundedTrimmedString: (raw: unknown, fieldName: string, _maxLength: number, required?: boolean) => {
-      if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
-      if (required) throw new Error(`${fieldName} is required.`);
-      return undefined;
-    },
-    sha256Hex: (text: string) => hash("sha256").update(text).digest("hex"),
-    requireConfiguredStripe: vi.fn(),
-    requireConfiguredStripeWebhookSecret: vi.fn(),
-    boundedHttpsURL: vi.fn(),
-    assertActiveBurnBarCloudProEntitlement: state.assertActiveMock,
-    getOrCreateStripeCustomer: vi.fn(),
     selectGooglePlaySubscriptionLineItem: (
       purchase: { lineItems?: Array<{ productId?: unknown; expiryTime?: unknown }> },
       preferredProductIDs: string[],
@@ -152,22 +163,23 @@ vi.mock("../callables/shared.js", async () => {
         expiresAtMillis: typeof lineItem.expiryTime === "string" ? Date.parse(lineItem.expiryTime) : 0,
       };
     },
-    applyStripeCheckoutSession: vi.fn(),
-    applyStripeSubscription: vi.fn(),
-    reconcileStripeInvoice: vi.fn(),
-    reconcileStripeCharge: vi.fn(),
-    reconcileStripeRefund: vi.fn(),
-    reconcileStripeDispute: vi.fn(),
-    reconcileStripeCreditNote: vi.fn(),
-    deactivateStripeCustomerEntitlements: vi.fn(),
-    assertStripeCustomerCanStartSubscriptionCheckout: vi.fn(),
-    findReusableStripeSubscriptionCheckoutSession: vi.fn(),
-    creditCloudProTopUp: state.creditMock,
-    writeBurnBarProEntitlement: state.writeEntitlementMock,
+  };
+});
+vi.mock("../../../packages/functions-shared/src/shared/validators.js", async () => {
+  const { createHash: hash } = await import("node:crypto");
+  return {
+    nowISO: () => new Date().toISOString(),
+    boundedTrimmedString: (raw: unknown, fieldName: string, _maxLength: number, required?: boolean) => {
+      if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+      if (required) throw new Error(`${fieldName} is required.`);
+      return undefined;
+    },
+    sha256Hex: (text: string) => hash("sha256").update(text).digest("hex"),
+    boundedHttpsURL: vi.fn(),
   };
 });
 
-import { verifyGooglePlayBurnBarProSubscription, verifyGooglePlayCloudProTopUp } from "../callables/stripe.js";
+import { verifyGooglePlayBurnBarProSubscription, verifyGooglePlayCloudProTopUp } from "../../../functions-identity/src/domains/billing/stripe.js";
 
 const UID = "user-billing-1";
 const SUBSCRIPTION_TOKEN = "gp-subscription-token-1";
@@ -238,7 +250,7 @@ describe("lazy googleapis loading", () => {
   });
 
   it("keeps exactly the two deferred import sites and no top-level value import", () => {
-    const source = readFileSync(resolve(__dirname, "../callables/stripe.ts"), "utf8");
+    const source = readFileSync(resolve(__dirname, "../../../functions-identity/src/domains/billing/stripe.ts"), "utf8");
     const eagerImport = /^import\s+(?!type\b)[^;]*?from\s+["']googleapis["']|^import\s*["']googleapis["']/mu;
 
     expect(eagerImport.test(source)).toBe(false);

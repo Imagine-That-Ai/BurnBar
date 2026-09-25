@@ -16,7 +16,7 @@ import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { applyUsageCounterDelta, COUNTER_SCHEMA_VERSION } from "../rollupCounters.js";
 import { computeUserRollupsFromCounters, rebuildUserRollupCounters } from "../rollupCompute.js";
 import { drainPendingCounterDeltas, enqueueUsageCounterDelta } from "../rollupPendingDeltas.js";
-import type { UsageEventDoc } from "../types.js";
+import type { UsageEventDoc } from "../../../packages/functions-shared/src/types.js";
 
 type Doc = Record<string, unknown>;
 

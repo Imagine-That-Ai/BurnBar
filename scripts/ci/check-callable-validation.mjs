@@ -5,7 +5,8 @@
  * Firebase `onCall` / `onCallProduction` handlers receive arbitrary
  * client-supplied JSON on `request.data`. A handler that reads that payload
  * without validating it (bounds, shape, allowed values) is the classic
- * injection / abuse surface. This guard scans `functions/src` for callable
+ * injection / abuse surface. This guard scans the four 3.5 Functions codebase
+ * `src` trees for callable
  * definitions, flags any that read `request.data` but do not run it through a
  * recognized input validator, and compares that set against a checked-in
  * baseline of pre-existing offenders.
@@ -13,7 +14,7 @@
  * The baseline is SHRINK-ONLY:
  *   - A new unvalidated callable that is NOT in the baseline → fail (add
  *     validation — ideally `parseCallableInput` from
- *     `functions/src/validation/callableSchema.ts`).
+ *     `@openburnbar/functions-shared/validation/callableSchema.js`).
  *   - A baseline entry that is now validated (or was deleted) → fail asking you
  *     to remove it, so the accepted set can only get smaller over time.
  *
@@ -38,7 +39,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SRC_DIR = path.join(REPO_ROOT, "functions", "src");
+// 3.5 deploy codebases plus the shared runtime. Validators live in
+// @openburnbar/functions-shared now; helper names are unioned from every
+// walked file, so shared must be walked or delegation to a shared validator
+// reads as unvalidated. Shared ships no callables, so it only feeds pass 1.
+const SRC_DIRS = [
+  ...["functions", "functions-identity", "functions-sync", "functions-media"].map((codebase) =>
+    path.join(REPO_ROOT, codebase, "src"),
+  ),
+  path.join(REPO_ROOT, "packages", "functions-shared", "src"),
+];
 const BASELINE_PATH = path.join(REPO_ROOT, "scripts", "ci", "callable-validation-baseline.json");
 const SKIP_DIRS = new Set(["__tests__", "node_modules", "types"]);
 
@@ -46,7 +56,7 @@ const SKIP_DIRS = new Set(["__tests__", "node_modules", "types"]);
  *  using any of these on its payload is treated as validated. Grouped by
  *  source module for maintenance; extend as new validators are introduced. */
 export const INPUT_VALIDATOR_TOKENS = [
-  // The declarative schema layer (functions/src/validation/callableSchema.ts).
+  // The declarative schema layer (@openburnbar/functions-shared/validation/callableSchema.js).
   "parseCallableInput",
   // callables/shared/validators.ts
   "assertProvider",
@@ -482,7 +492,7 @@ async function walk(dir) {
 
 /** Scan the tree and return offenders (callables that read input unvalidated). */
 export async function computeUnvalidatedCallables() {
-  const files = (await walk(SRC_DIR)).sort();
+  const files = (await Promise.all(SRC_DIRS.map((dir) => walk(dir)))).flat().sort();
   // Pass 1: read every file once and union its validating helper names so
   // cross-file delegation (e.g. stripe.ts → stripeInputSchemas.ts) is resolved.
   const sources = new Map();
@@ -531,7 +541,7 @@ async function writeBaseline(keys) {
       "SHRINK-ONLY baseline for scripts/ci/check-callable-validation.mjs. Each entry is a " +
       "pre-existing callable that reads request.data without a recognized input validator. " +
       "Do not add entries; add validation (parseCallableInput from " +
-      "functions/src/validation/callableSchema.ts) and remove the entry instead. Regenerate " +
+      "@openburnbar/functions-shared/validation/callableSchema.js) and remove the entry instead. Regenerate " +
       "with: node scripts/ci/check-callable-validation.mjs --write",
     unvalidatedCallables: [...keys].sort((a, b) => a.localeCompare(b)),
   };
@@ -566,7 +576,7 @@ async function main() {
     }
     console.error(
       "\nValidate the payload with parseCallableInput() from " +
-        "functions/src/validation/callableSchema.ts (preferred) or an existing shared/validators.ts helper.\n" +
+        "@openburnbar/functions-shared/validation/callableSchema.js (preferred) or an existing shared/validators.ts helper.\n" +
         "If the handler genuinely takes no client input, this is a false positive — refactor so it does not " +
         "reference request.data, or (discouraged, requires review) baseline it with --write.",
     );

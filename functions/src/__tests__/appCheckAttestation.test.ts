@@ -50,14 +50,14 @@ const { store, dbMock, FakeTimestamp } = vi.hoisted(() => {
   return { store, dbMock, FakeTimestamp };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 vi.mock("firebase-admin/firestore", () => ({ Timestamp: FakeTimestamp }));
 
 // Stub the auth assertions so `enforceHighRiskComputerUseCallableWithNonce`
 // reaches the nonce-branch logic without a real auth/App-Check context. The
 // staged-rollout decision under test is driven purely by config + the supplied
 // nonce, not by these guards (covered separately).
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   assertAuth: vi.fn(),
   assertAppCheck: vi.fn(),
   assertOwnership: vi.fn(),
@@ -72,7 +72,7 @@ const { configMock } = vi.hoisted(() => ({
     windowsAppCheckAppID: "1:000000000000:windows:0000000000000000placeholder",
   },
 }));
-vi.mock("../config.js", () => ({ getConfig: () => configMock }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => configMock }));
 
 import {
   APP_CHECK_ATTESTATION_CLAIM_KEY,
@@ -86,7 +86,7 @@ import {
   issueHighRiskNonceForUid,
   readAppCheckAttestationClaim,
   readAppIdFromCallableRequest,
-} from "../appCheckAttestation.js";
+} from "../../../packages/functions-shared/src/appCheckAttestation.js";
 
 // A request that satisfies `assertAppAttestBoundClaims`: live App Check app id
 // plus a fresh, matching bound claim. The auth assertions are mocked to no-ops;

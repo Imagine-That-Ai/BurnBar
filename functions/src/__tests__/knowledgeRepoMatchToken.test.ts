@@ -22,12 +22,12 @@ vi.mock("firebase-functions/logger", () => ({
   warn: vi.fn(),
   debug: vi.fn(),
 }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
-vi.mock("../providers/httpClient.js", () => ({ providerFetch: providerFetchMock }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/providers/httpClient.js", () => ({ providerFetch: providerFetchMock }));
 
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     assertActiveBurnBarCloudProEntitlement: assertCloudProMock,
@@ -102,7 +102,7 @@ function makeDb() {
   };
 }
 
-vi.mock("../adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
 
 const MATCH_KEY = "test-repo-match-secret-0123456789";
 const WEBHOOK_SECRET = "test-github-webhook-secret";
@@ -237,7 +237,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   });
 
   it("stores repoMatchToken + sealed name, never the cleartext repoFullName", async () => {
-    const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
+    const { connectKnowledgeRepo } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     mockGitHubRepoAccess();
 
     const res = expectRepoResponse(
@@ -288,13 +288,13 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   });
 
   it("exports the installation-bound match-token helper for regression tests", async () => {
-    const { __testing__ } = await import("../callables/knowledgeSync.js");
+    const { __testing__ } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
 
     expect(__testing__.repoInstallationMatchTokenFor(REPO, "98765")).toBe(expectedInstallationToken(REPO, "98765"));
   });
 
   it("is case-insensitive: differently-cased full names map to the SAME token", async () => {
-    const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
+    const { connectKnowledgeRepo } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     mockGitHubRepoAccess("Owner/Repo");
     mockGitHubRepoAccess("owner/repo");
 
@@ -320,7 +320,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   });
 
   it("re-connect strips pre-existing sourceSlug/sourceSlugToken and re-keys to sourceManifestId", async () => {
-    const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
+    const { connectKnowledgeRepo } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     mockGitHubRepoAccess();
 
     const token = expectedToken(REPO);
@@ -362,7 +362,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   });
 
   it("rejects repo registration when the GitHub App installation cannot access the repo", async () => {
-    const { connectKnowledgeRepo } = await import("../callables/knowledgeSync.js");
+    const { connectKnowledgeRepo } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     providerFetchMock.mockResolvedValueOnce(githubJson({ message: "not found" }, 404));
 
     await expect(
@@ -383,7 +383,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   });
 
   it("webhook flags only repos bound to the GitHub installation in the signed payload", async () => {
-    const { onKnowledgeRepoPush } = await import("../callables/knowledgeSync.js");
+    const { onKnowledgeRepoPush } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     const repoToken = expectedToken(REPO);
     const matchingManifest = "ab".repeat(32);
     const otherManifest = "cd".repeat(32);
@@ -412,7 +412,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   });
 
   it("webhook keeps legacy repo-token rows live only when their stored installation matches", async () => {
-    const { onKnowledgeRepoPush } = await import("../callables/knowledgeSync.js");
+    const { onKnowledgeRepoPush } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     const repoToken = expectedToken(REPO);
     const matchingManifest = "ef".repeat(32);
     const wrongInstallManifest = "12".repeat(32);
@@ -447,7 +447,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   });
 
   it("webhook does not fall back to repo-name-only matching when installation is missing", async () => {
-    const { onKnowledgeRepoPush } = await import("../callables/knowledgeSync.js");
+    const { onKnowledgeRepoPush } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     const repoToken = expectedToken(REPO);
     stored.set(`users/userA/knowledge_repos/${repoToken}`, {
       repoMatchToken: repoToken,
@@ -463,7 +463,7 @@ describe("connectKnowledgeRepo — server-keyed opaque match token, no cleartext
   });
 
   it("requires the Cloud Pro gate before queueing repo resync work", async () => {
-    const { requestKnowledgeResync } = await import("../callables/knowledgeSync.js");
+    const { requestKnowledgeResync } = await import("../../../functions-sync/src/domains/knowledge/knowledgeSync.js");
     const sourceManifestId = "ab".repeat(32);
     stored.set("users/userA/knowledge_repos/repo-a", { sourceManifestId });
     assertCloudProMock.mockRejectedValueOnce(new Error("cloud pro suspended"));

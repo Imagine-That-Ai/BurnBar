@@ -5,11 +5,11 @@ const mocks = vi.hoisted(() => ({
     vi.fn<(provider: string, operation: string, url: string | URL, init?: RequestInit) => Promise<Response>>(),
 }));
 
-vi.mock("../providers/httpClient.js", () => ({
+vi.mock("../../../packages/functions-shared/src/providers/httpClient.js", () => ({
   providerFetch: mocks.providerFetch,
 }));
 
-import { zaiAdapter } from "../providers/zai.js";
+import { zaiAdapter } from "../../../packages/functions-shared/src/providers/zai.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

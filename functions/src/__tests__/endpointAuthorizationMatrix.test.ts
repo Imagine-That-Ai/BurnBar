@@ -30,7 +30,7 @@ describe("endpoint authorization matrix", () => {
       (entry) => entry.exportedName === "issuePhoneControlEnrollmentGrant",
     );
     expect(enrollmentGrant).toMatchObject({
-      handlerModule: "callables/phoneControlCallables.ts",
+      handlerModule: "functions-sync/src/callables/phoneControlCallables.ts",
       objectIdsFromClient: ["hostDeviceId", "connectionId", "controllerDeviceId", "controllerPeerNodeId"],
     });
 

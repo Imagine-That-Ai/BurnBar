@@ -13,11 +13,11 @@
  */
 
 import assert from "node:assert/strict";
-import { minimaxAdapter, __testing__ as minimaxTesting } from "../lib/providers/minimax.js";
-import { zaiAdapter, __testing__ as zaiTesting } from "../lib/providers/zai.js";
-import { factoryAdapter, __testing__ as factoryTesting } from "../lib/providers/factory.js";
-import { xaiAdapter, __testing__ as xaiTesting } from "../lib/providers/xai.js";
-import { mimoAdapter } from "../lib/providers/mimo.js";
+import { minimaxAdapter, __testing__ as minimaxTesting } from "../../packages/functions-shared/lib/providers/minimax.js";
+import { zaiAdapter, __testing__ as zaiTesting } from "../../packages/functions-shared/lib/providers/zai.js";
+import { factoryAdapter, __testing__ as factoryTesting } from "../../packages/functions-shared/lib/providers/factory.js";
+import { xaiAdapter, __testing__ as xaiTesting } from "../../packages/functions-shared/lib/providers/xai.js";
+import { mimoAdapter } from "../../packages/functions-shared/lib/providers/mimo.js";
 
 const realFetch = globalThis.fetch;
 const calls = [];

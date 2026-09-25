@@ -22,13 +22,13 @@
  */
 
 import { getRemoteConfig } from "firebase-admin/remote-config";
-import { remoteConfigStringValue } from "./remoteConfigGuards.js";
+import { remoteConfigStringValue } from "@openburnbar/functions-shared/remoteConfigGuards.js";
 import {
   HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL,
   HERMES_GATEWAY_SUPPORTED_SIGNAL_ENVELOPE_VERSIONS,
   gatewaySignalEnvelopeV4Disabled,
   productionGatewaySignalEnvelopeVersions,
-} from "./hermesGateway.js";
+} from "@openburnbar/functions-shared/hermesGateway.js";
 
 // The Remote Config parameter that gates whether v4 may be advertised/enabled as a
 // NEW production version. Mirrors the computer_use_kill_switch naming convention.

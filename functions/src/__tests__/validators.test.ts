@@ -10,7 +10,7 @@ import {
   boundedHttpsURL,
   requireRoamingProfileEnvelope,
   roamingProfileAADContext,
-} from "../callables/shared/validators.js";
+} from "../../../packages/functions-shared/src/shared/validators.js";
 
 describe("boundedHttpsURL", () => {
   it("accepts plain HTTPS URLs", () => {

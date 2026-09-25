@@ -8,25 +8,25 @@ import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callab
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../../callables/shared.js")>("../../callables/shared.js");
+vi.mock("../../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/shared/entitlements.js")>("../../../../packages/functions-shared/src/shared/entitlements.js");
   return { ...actual, assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined) };
 });
-vi.mock("../../appCheckAttestation.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
 }));
-vi.mock("../../callables/computerUseSecurityFirestore.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof: vi.fn(async () => ({ deviceId: "dev", platform: "iOS" })),
   appendComputerUseAuditEvent: vi.fn(async () => undefined),
 }));
-vi.mock("../../callables/publicRateLimit.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
   recordCallableApprovalFailure: vi.fn(async () => undefined),
   assertCallableApprovalNotLocked: vi.fn(async () => undefined),
 }));
@@ -38,7 +38,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — missionApprovalAnswers", () => {
   it("publishMissionApprovalCeiling rejects cross-user object access", async () => {
-    const mod = await import("../../callables/missionApprovalAnswers.js");
+    const mod = await import("../../../../functions-sync/src/domains/missions/missionApprovalAnswers.js");
     const run = callableRunner(mod.publishMissionApprovalCeiling);
     await tier2CallableProof(bolaStore, {
       exportedName: "publishMissionApprovalCeiling",
@@ -49,7 +49,7 @@ describe("BOLA — missionApprovalAnswers", () => {
   });
 
   it("redeemMissionApprovalAnswer rejects cross-user object access", async () => {
-    const mod = await import("../../callables/missionApprovalAnswers.js");
+    const mod = await import("../../../../functions-sync/src/domains/missions/missionApprovalAnswers.js");
     const run = callableRunner(mod.redeemMissionApprovalAnswer);
     await tier2CallableProof(bolaStore, {
       exportedName: "redeemMissionApprovalAnswer",

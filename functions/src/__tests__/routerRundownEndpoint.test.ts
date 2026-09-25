@@ -37,14 +37,14 @@ vi.mock("firebase-admin/firestore", () => ({
   }),
 }));
 
-vi.mock("../callables/publicRateLimit.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
   checkPublicHttpEndpointRateLimit: vi.fn(),
   clientIpFromHttpRequest: () => "127.0.0.1",
   isPublicRateLimitExceeded: (err: unknown) =>
     typeof err === "object" && err !== null && Reflect.get(err, "code") === "resource-exhausted",
 }));
 
-import { checkPublicHttpEndpointRateLimit } from "../callables/publicRateLimit.js";
+import { checkPublicHttpEndpointRateLimit } from "../../../packages/functions-shared/src/callables/publicRateLimit.js";
 
 // An Express/Node-response double sufficient for the firebase-functions
 // onRequest wrapper: the cors middleware (cors:true) reads/sets headers and

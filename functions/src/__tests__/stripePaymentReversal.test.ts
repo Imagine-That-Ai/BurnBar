@@ -84,12 +84,12 @@ const firestoreState = vi.hoisted(() => {
   return { docs, db };
 });
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   auth: {},
   db: firestoreState.db,
 }));
 
-vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
+vi.mock("../../../packages/functions-shared/src/cloudProAllowanceRemoteConfig.js", () => ({
   loadCloudProAllowanceConfig: vi.fn(async () => ({
     includedHostedActionsMonthly: 500,
     includedRelayGBMonthly: 50,
@@ -106,20 +106,15 @@ vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
   })),
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
 }));
 
 import type Stripe from "stripe";
 
-import {
-  BURNBAR_PRO_ENTITLEMENT_ID,
-  BURNBAR_PRO_MAX_ENTITLEMENT_ID,
-  BURNBAR_ULTRA_ENTITLEMENT_ID,
-  reconcileStripeCharge,
-  writeBurnBarProEntitlement,
-} from "../callables/shared.js";
-import { reconcileStripeTopUpCharge } from "../callables/shared/stripeTopUps.js";
+import { BURNBAR_PRO_ENTITLEMENT_ID, BURNBAR_PRO_MAX_ENTITLEMENT_ID, BURNBAR_ULTRA_ENTITLEMENT_ID, writeBurnBarProEntitlement } from "../../../packages/functions-shared/src/shared/entitlements.js";
+import { reconcileStripeCharge } from "../../../functions-identity/src/shared/stripe.js";
+import { reconcileStripeTopUpCharge } from "../../../functions-identity/src/shared/stripeTopUps.js";
 
 function stripeStub<T>(stub: object = {}): T {
   // @ts-expect-error reason: the stub implements the Stripe surface these reversal tests exercise

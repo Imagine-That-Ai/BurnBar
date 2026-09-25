@@ -191,11 +191,26 @@ jobs:
               --check
           fi
           if [[ "$DEPLOY_FUNCTIONS" == "true" ]]; then
-            cp -R "$RUNNER_TEMP/candidate-functions/functions" "$deploy_root/functions"
-            npm ci --prefix "$deploy_root/functions" --omit=dev --ignore-scripts
-            cat > "$deploy_root/firebase-functions.json" <<'JSON'
-          {"functions":[{"source":"functions","codebase":"default","ignore":["node_modules/.cache",".git","firebase-debug.log","firebase-debug.*.log"]}]}
-          JSON
+            entries=""
+            for dir in functions functions-identity functions-sync functions-media; do
+              if [[ ! -d "$RUNNER_TEMP/candidate-functions/$dir" ]]; then
+                continue
+              fi
+              case "$dir" in
+                functions) codebase="admin" ;;
+                functions-identity) codebase="identity" ;;
+                functions-sync) codebase="sync" ;;
+                functions-media) codebase="media" ;;
+              esac
+              cp -R "$RUNNER_TEMP/candidate-functions/$dir" "$deploy_root/$dir"
+              npm ci --prefix "$deploy_root/$dir" --omit=dev --ignore-scripts
+              entries="${entries:+"$entries",}{\"source\":\"$dir\",\"codebase\":\"$codebase\",\"ignore\":[\"node_modules/.cache\",\".git\",\"firebase-debug.log\",\"firebase-debug.*.log\"]}"
+            done
+            if [[ -z "$entries" ]]; then
+              echo "::error::Functions artifact contains no reviewed codebase dir."
+              exit 1
+            fi
+            printf '{"functions":[%s]}' "$entries" > "$deploy_root/firebase-functions.json"
           fi
           for config in "$deploy_root"/firebase-*.json; do
             if grep -q '"predeploy"' "$config"; then
@@ -251,20 +266,25 @@ jobs:
           SENTRY_DSN: ${{ secrets.STAGING_SENTRY_DSN_FUNCTIONS }}
         run: |
           set -euo pipefail
-          functions_dir="$RUNNER_TEMP/staging-deploy/functions"
-          env_file="$functions_dir/.env.${FIREBASE_PROJECT}"
-          env_temp="$(mktemp "$RUNNER_TEMP/staging-functions-env.XXXXXX")"
-          trap 'rm -f "$env_temp"' EXIT
-          {
-            cat "$functions_dir/.env.burnbar-staging"
-            printf '\nFUNCTION_VERSION=staging-%s\n' "$CANDIDATE_SHA"
-            printf 'OPENBURNBAR_SOURCE_COMMIT=%s\n' "$CANDIDATE_SHA"
-            if [[ -n "${SENTRY_DSN:-}" ]]; then
-              printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=staging\n' "$SENTRY_DSN"
+          for dir in functions functions-identity functions-sync functions-media; do
+            functions_dir="$RUNNER_TEMP/staging-deploy/$dir"
+            if [[ ! -d "$functions_dir" ]]; then
+              continue
             fi
-          } > "$env_temp"
-          mv "$env_temp" "$env_file"
-          trap - EXIT
+            env_file="$functions_dir/.env.${FIREBASE_PROJECT}"
+            env_temp="$(mktemp "$RUNNER_TEMP/staging-functions-env.XXXXXX")"
+            trap 'rm -f "$env_temp"' EXIT
+            {
+              cat "$functions_dir/.env.burnbar-staging"
+              printf '\nFUNCTION_VERSION=staging-%s\n' "$CANDIDATE_SHA"
+              printf 'OPENBURNBAR_SOURCE_COMMIT=%s\n' "$CANDIDATE_SHA"
+              if [[ -n "${SENTRY_DSN:-}" ]]; then
+                printf 'SENTRY_DSN=%s\nSENTRY_ENVIRONMENT=staging\n' "$SENTRY_DSN"
+              fi
+            } > "$env_temp"
+            mv "$env_temp" "$env_file"
+            trap - EXIT
+          done
           deploy_scope="$FUNCTION_TARGETS"
           "$FIREBASE_TOOLS_BIN" deploy \
             --only "$deploy_scope" \

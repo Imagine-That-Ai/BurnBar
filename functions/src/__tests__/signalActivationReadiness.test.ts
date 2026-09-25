@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { __testing__ } from "../callables/signalActivationReadiness.js";
+import { __testing__ } from "../../../functions-identity/src/domains/devices/signalActivationReadiness.js";
 
 const { computeSignalActivationReadiness } = __testing__;
 

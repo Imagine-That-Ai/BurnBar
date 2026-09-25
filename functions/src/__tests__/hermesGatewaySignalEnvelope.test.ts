@@ -18,8 +18,8 @@ import {
   sanitizeGatewayRelayEnvelopeCapabilities,
   sanitizeGatewaySignalEnvelope,
   serializeHermesGatewayEvent,
-} from "../hermesGateway.js";
-import type { GatewaySignalEnvelopeDoc } from "../types/generated/hermes-gateway.js";
+} from "../../../packages/functions-shared/src/hermesGateway.js";
+import type { GatewaySignalEnvelopeDoc } from "../../../packages/functions-shared/src/types/generated/hermes-gateway.js";
 
 function signalEnvelope(): GatewaySignalEnvelopeDoc {
   return {

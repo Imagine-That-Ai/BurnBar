@@ -46,7 +46,7 @@ import {
   shouldCoalesceHermesGatewayLastSeen,
   tokenPreview,
   HERMES_GATEWAY_LAST_SEEN_COALESCE_MS,
-} from "../lib/hermesGateway.js";
+} from "../../packages/functions-shared/lib/hermesGateway.js";
 
 function assertCallable(source, exportName) {
   assert.match(source, new RegExp(`export const ${exportName}\\b`), `${exportName} must exist`);

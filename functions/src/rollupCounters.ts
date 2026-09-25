@@ -10,9 +10,9 @@
 
 import { createHash } from "node:crypto";
 import { FieldValue, Timestamp, type DocumentData, type Firestore } from "firebase-admin/firestore";
-import type { UsageEventDoc, UsageRollupDoc } from "./types.js";
-import { coerceFirestoreDate, isRecord, recordOrUndefined, stripUndefinedObject } from "./guards.js";
-import { flushDomainCorePricingShadowEvidence, priceLegacyKimiEvent } from "./pricing.js";
+import type { UsageEventDoc, UsageRollupDoc } from "@openburnbar/functions-shared/types.js";
+import { coerceFirestoreDate, isRecord, recordOrUndefined, stripUndefinedObject } from "@openburnbar/functions-shared/guards.js";
+import { flushDomainCorePricingShadowEvidence, priceLegacyKimiEvent } from "@openburnbar/functions-shared/pricing.js";
 import { effectiveCostUSD } from "./costRule.js";
 
 export const ROLLUP_SCHEMA_VERSION = 3;
@@ -65,7 +65,7 @@ export function allTimeDailyShardID(dayOrMonth: string): string {
  * `undefined` when the day key is unparseable (the writer then omits the
  * field and the sweeper still reaps by the `day` string).
  */
-export function counterDayExpireAt(day: string): Timestamp | undefined {
+function counterDayExpireAt(day: string): Timestamp | undefined {
   const start = Date.parse(`${day}T00:00:00.000Z`);
   if (!Number.isFinite(start)) return undefined;
   return Timestamp.fromDate(new Date(start + COUNTER_DAY_TTL_DAYS * 24 * 60 * 60 * 1000));

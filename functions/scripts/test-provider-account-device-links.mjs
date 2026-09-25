@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { deviceLinkId, deviceLinkPath, isDeviceLinkCapability } from "../lib/domains/device-links/index.js";
+import { deviceLinkId, deviceLinkPath, isDeviceLinkCapability } from "../../packages/functions-shared/lib/domains/device-links/index.js";
 import {
   assertConsolidatedServerOnlyCollection,
   firestoreFunctionBlock,

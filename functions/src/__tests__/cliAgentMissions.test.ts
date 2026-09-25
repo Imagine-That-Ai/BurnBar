@@ -89,17 +89,17 @@ const hoisted = vi.hoisted(() => {
 });
 const store = hoisted.store;
 
-vi.mock("../adminRuntime.js", () => ({ db: hoisted.db }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: hoisted.db }));
 
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ enforceAppCheck: false, requireHighRiskNonce: false }),
 }));
 
-vi.mock("../appCheckAttestation.js", () => ({
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: false })),
 }));
 
-vi.mock("../callables/computerUseSecurityFirestore.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof: vi.fn(async (args: {
     deviceId: string;
     allowedPlatforms: ReadonlySet<string>;
@@ -112,7 +112,7 @@ vi.mock("../callables/computerUseSecurityFirestore.js", () => ({
   appendComputerUseAuditEvent: vi.fn(),
 }));
 
-import { cloudVaultAADContext } from "../callables/shared.js";
+import { cloudVaultAADContext } from "../../../packages/functions-shared/src/shared/validators.js";
 import {
   appendCliAgentMissionEvent,
   cancelCliAgentMission,
@@ -120,9 +120,9 @@ import {
   createCliAgentMission,
   isLegalHostStatusTransition,
   updateCliAgentMissionStatus,
-} from "../callables/cliAgentMissions.js";
-import { writeSignalAtRestDocument } from "../callables/writeSignalAtRestDocument.js";
-import { requireTrustedDeviceActionProof } from "../callables/computerUseSecurityFirestore.js";
+} from "../../../functions-sync/src/domains/missions/cliAgentMissions.js";
+import { writeSignalAtRestDocument } from "../../../functions-identity/src/domains/devices/writeSignalAtRestDocument.js";
+import { requireTrustedDeviceActionProof } from "../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js";
 
 const VAULT = `v1_${"ab".repeat(16)}`;
 const SEALED_BOX = Buffer.from("sealed-box").toString("base64");

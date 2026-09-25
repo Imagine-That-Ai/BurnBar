@@ -45,7 +45,7 @@ function cliLinkFirestore() {
   };
 }
 
-vi.mock("../adminRuntime.js", () => ({ db: cliLinkFirestore() }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: cliLinkFirestore() }));
 vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {
@@ -53,24 +53,35 @@ vi.mock("firebase-admin/firestore", async () => {
     getFirestore: () => pathKeyedFirestore(cliLinkStore),
   };
 });
-vi.mock("../appCheckAttestation.js", async () => {
-  const actual = await vi.importActual<typeof import("../appCheckAttestation.js")>("../appCheckAttestation.js");
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/appCheckAttestation.js")>("../../../packages/functions-shared/src/appCheckAttestation.js");
   return {
     ...actual,
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   };
 });
-vi.mock("../cloudFeatureSuspensions.js", () => ({
+vi.mock("../../../packages/functions-shared/src/cloudFeatureSuspensions.js", () => ({
   assertCloudFeatureNotSuspended: assertCloudFeatureNotSuspendedMock,
 }));
-vi.mock("../callables/shared.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", () => ({
   assertActiveBurnBarProEntitlement: vi.fn(async () => undefined),
-  REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64: { value: () => "" },
-  REMOTE_MCP_TOKEN_HMAC_SECRET: { value: () => "test-hmac-secret" },
 }));
-vi.mock("../callables/publicRateLimit.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/publicRateLimit.js")>(
-    "../callables/publicRateLimit.js",
+vi.mock("../../../functions-identity/src/callables/remoteMcpSigningSecrets.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../functions-identity/src/callables/remoteMcpSigningSecrets.js")>(
+    "../../../functions-identity/src/callables/remoteMcpSigningSecrets.js",
+  );
+  return {
+    ...actual,
+    REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64: { value: () => "" },
+    REMOTE_MCP_TOKEN_HMAC_SECRET: { value: () => "test-hmac-secret" },
+    // The real accessor closes over the module-local consts, so it must be
+    // stubbed directly for the "secret configured" path.
+    remoteMcpTokenHmacSecretValueForRuntime: () => "test-hmac-secret",
+  };
+});
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/callables/publicRateLimit.js")>(
+    "../../../packages/functions-shared/src/callables/publicRateLimit.js",
   );
   return {
     ...actual,
@@ -78,7 +89,7 @@ vi.mock("../callables/publicRateLimit.js", async () => {
     recordCallableApprovalFailure: vi.fn(async () => undefined),
   };
 });
-vi.mock("../remoteMcpOAuth.js", () => ({
+vi.mock("../../../functions-identity/src/remoteMcpOAuth.js", () => ({
   issueRemoteMcpGrantForSignedInUser: issueGrantMock,
   shouldBindRemoteMcpHmacSecretForRuntime: () => true,
 }));
@@ -135,7 +146,7 @@ describe("CLI link credential delivery", () => {
   it("seals credentials to the polling client's delivery key", async () => {
     const delivery = createECDH("prime256v1");
     delivery.generateKeys();
-    const { sealCliLinkCredentialsForDelivery } = await import("../callables/cliLink.js");
+    const { sealCliLinkCredentialsForDelivery } = await import("../../../functions-identity/src/domains/devices/cliLink.js");
 
     const envelope = sealCliLinkCredentialsForDelivery(
       {
@@ -198,7 +209,7 @@ describe("CLI link credential delivery", () => {
     };
     const res = new FakeRes();
 
-    const { startCliLink } = await import("../callables/cliLink.js");
+    const { startCliLink } = await import("../../../functions-identity/src/domains/devices/cliLink.js");
     await runHttpHandler(startCliLink, req, res);
 
     expect(res.statusCode).toBe(200);
@@ -245,7 +256,7 @@ describe("CLI link credential delivery", () => {
     };
     const res = new FakeRes();
 
-    const { pollCliLink } = await import("../callables/cliLink.js");
+    const { pollCliLink } = await import("../../../functions-identity/src/domains/devices/cliLink.js");
     await runHttpHandler(pollCliLink, req, res);
 
     expect(res.statusCode).toBe(200);
@@ -285,7 +296,7 @@ describe("CLI link credential delivery", () => {
     };
     const res = new FakeRes();
 
-    const { pollCliLink } = await import("../callables/cliLink.js");
+    const { pollCliLink } = await import("../../../functions-identity/src/domains/devices/cliLink.js");
     await runHttpHandler(pollCliLink, req, res);
 
     expect(res.statusCode).toBe(200);
@@ -312,7 +323,7 @@ describe("CLI link credential delivery", () => {
       },
     });
 
-    const { completeCliLink } = await import("../callables/cliLink.js");
+    const { completeCliLink } = await import("../../../functions-identity/src/domains/devices/cliLink.js");
     const run = callableRunner(completeCliLink);
 
     await expect(
@@ -343,7 +354,7 @@ describe("CLI link credential delivery", () => {
       },
     });
 
-    const { completeCliLink } = await import("../callables/cliLink.js");
+    const { completeCliLink } = await import("../../../functions-identity/src/domains/devices/cliLink.js");
     const run = callableRunner(completeCliLink);
 
     await expect(run(callableRequest("alice-uid", { userCode, nonce: "nonce-2" }))).rejects.toMatchObject({

@@ -10,7 +10,7 @@
  */
 
 /** A usage event's cost spellings as read from Firestore (all optional). */
-export interface CostSpellings {
+interface CostSpellings {
   costUSD?: unknown;
   costUsd?: unknown;
   cost?: unknown;

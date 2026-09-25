@@ -6,8 +6,8 @@ import {
   appCheckAttestationDigestHex,
   isAppCheckAttestationClaimFresh,
   readAppCheckAttestationClaim,
-} from "../appCheckAttestation.js";
-import { COMPUTER_USE_PHONE_CONTROL_ATTESTATION_REQUIRED_PARAM } from "../computerUseRemoteConfig.js";
+} from "../../../packages/functions-shared/src/appCheckAttestation.js";
+import { COMPUTER_USE_PHONE_CONTROL_ATTESTATION_REQUIRED_PARAM } from "../../../functions-sync/src/computerUseRemoteConfig.js";
 
 describe("appCheckAttestation binding", () => {
   it("parses obb_app_check claim from auth token", () => {

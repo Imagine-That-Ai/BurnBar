@@ -10,7 +10,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isRecord } from "../guards.js";
+import { isRecord } from "../../../packages/functions-shared/src/guards.js";
 
 function lastWarnJson(spy: ReturnType<typeof vi.spyOn>): Record<string, unknown> {
   const call = spy.mock.calls.at(-1);
@@ -39,13 +39,13 @@ describe("sentry quota-exhaustion log mirror", () => {
   });
 
   it("pins the documented log-event name used by the GCP alert filter", async () => {
-    const { QUOTA_EXHAUSTION_LOG_EVENT } = await import("../sentry.js");
+    const { QUOTA_EXHAUSTION_LOG_EVENT } = await import("../../../packages/functions-shared/src/sentry.js");
     expect(QUOTA_EXHAUSTION_LOG_EVENT).toBe("quota_exhaustion_dropped_from_sentry");
     expect(logSpy).toHaveBeenCalled();
   });
 
   it("drops status-429 events and mirrors a structured WARNING log", async () => {
-    const { sentryBeforeSend } = await import("../sentry.js");
+    const { sentryBeforeSend } = await import("../../../packages/functions-shared/src/sentry.js");
 
     // @ts-expect-error reason: partial ErrorEvent fixture for drop-path test
     const result = sentryBeforeSend({ message: "callable failed", extra: { statusCode: 429 } });
@@ -61,7 +61,7 @@ describe("sentry quota-exhaustion log mirror", () => {
   });
 
   it("drops RESOURCE_EXHAUSTED message events with a resource_exhausted reason", async () => {
-    const { sentryBeforeSend } = await import("../sentry.js");
+    const { sentryBeforeSend } = await import("../../../packages/functions-shared/src/sentry.js");
 
     // @ts-expect-error reason: partial ErrorEvent fixture for drop-path test
     const result = sentryBeforeSend({ message: "9 RESOURCE_EXHAUSTED: quota exceeded" });
@@ -75,7 +75,7 @@ describe("sentry quota-exhaustion log mirror", () => {
   });
 
   it("drops rate-limit message events with a rate_limit_message reason", async () => {
-    const { sentryBeforeSend } = await import("../sentry.js");
+    const { sentryBeforeSend } = await import("../../../packages/functions-shared/src/sentry.js");
 
     // @ts-expect-error reason: partial ErrorEvent fixture for drop-path test
     const result = sentryBeforeSend({ message: "outer rate limit hit on token refresh" });
@@ -86,7 +86,7 @@ describe("sentry quota-exhaustion log mirror", () => {
   });
 
   it("never mirrors PII: the dropped event message is not logged", async () => {
-    const { sentryBeforeSend } = await import("../sentry.js");
+    const { sentryBeforeSend } = await import("../../../packages/functions-shared/src/sentry.js");
 
     // @ts-expect-error reason: partial ErrorEvent fixture for drop-path test
     const result = sentryBeforeSend({ message: "RESOURCE_EXHAUSTED for alice@example.com from 10.0.0.9" });
@@ -99,7 +99,7 @@ describe("sentry quota-exhaustion log mirror", () => {
   });
 
   it("passes non-noise events through sanitized without mirroring", async () => {
-    const { sentryBeforeSend } = await import("../sentry.js");
+    const { sentryBeforeSend } = await import("../../../packages/functions-shared/src/sentry.js");
 
     const rawEvent = {
       message: "genuine bug",
@@ -116,7 +116,7 @@ describe("sentry quota-exhaustion log mirror", () => {
   });
 
   it("classifies quota noise by status code and message text", async () => {
-    const { isRateLimitNoiseEvent } = await import("../sentry.js");
+    const { isRateLimitNoiseEvent } = await import("../../../packages/functions-shared/src/sentry.js");
 
     // @ts-expect-error reason: partial ErrorEvent fixtures for predicate test
     expect(isRateLimitNoiseEvent({ extra: { statusCode: 429 } })).toBe(true);

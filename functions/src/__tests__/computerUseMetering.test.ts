@@ -2,7 +2,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import type { DocumentData } from "firebase-admin/firestore";
 import { describe, expect, it } from "vitest";
 
-import { __testing__ } from "../computerUseMetering.js";
+import { __testing__ } from "../../../functions-sync/src/domains/computer-use/computerUseMetering.js";
 
 describe("computer use immediate metering", () => {
   it("applies a source delta exactly once in one transaction", async () => {

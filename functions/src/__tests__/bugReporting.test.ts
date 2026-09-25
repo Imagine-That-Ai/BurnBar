@@ -14,21 +14,21 @@ const mocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   resilientFetch: mocks.resilientFetch,
 }));
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ enforceAppCheck: false }),
 }));
-vi.mock("../linear/linearClient.js", () => ({
+vi.mock("../../../functions-sync/src/linear/linearClient.js", () => ({
   LinearClient: class {
     createIssue = mocks.createIssue;
     formatMarkdownDescription = vi.fn(() => "Formatted markdown");
   },
 }));
 
-import { submitBugReport } from "../callables/bugReporting.js";
+import { submitBugReport } from "../../../functions-sync/src/domains/support/bugReporting.js";
 
 const run = callableRunner(submitBugReport);
 

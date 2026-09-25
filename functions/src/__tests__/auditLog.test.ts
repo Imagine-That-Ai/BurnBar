@@ -9,7 +9,7 @@ import {
   AUDIT_GENESIS_PREV_HASH,
   type AuditEventCore,
   type AuditHead,
-} from "../callables/auditLog.js";
+} from "../../../packages/functions-shared/src/shared/auditLog.js";
 
 /** Build a valid, self-consistent chain of `length` events (seq 0..length-1). */
 function buildChain(length: number): Array<AuditEventCore & { hash: string }> {

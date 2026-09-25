@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { googlePlayBillingRecordPath } from "../callables/googlePlayBillingPaths.js";
+import { googlePlayBillingRecordPath } from "../../../functions-identity/src/callables/googlePlayBillingPaths.js";
 
 describe("googlePlayBillingRecordPath", () => {
   it("builds valid nested Firestore document paths for Google Play audit records", () => {

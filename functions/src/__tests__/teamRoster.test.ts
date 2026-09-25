@@ -20,13 +20,13 @@ import { Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { assertActiveBurnBarCloudProEntitlement } from "../callables/shared/entitlements.js";
+import { assertActiveBurnBarCloudProEntitlement } from "../../../packages/functions-shared/src/shared/entitlements.js";
 import {
   MAX_TEAM_MEMBER_DEVICES,
   TeamRosterService,
   isEscrowPublicKeyFingerprint,
   requiredTeamKeyEnvelopeIds,
-} from "../teamRoster.js";
+} from "../../../functions-identity/src/teamRoster.js";
 import {
   ADMIN_UID,
   DEVICE,
@@ -50,14 +50,14 @@ import {
 // The mock factory runs during THIS file's import phase, before its top-level
 // statements, so the double is reached through an async import of the module
 // that owns it rather than through a binding this file has not initialised yet.
-vi.mock("../adminRuntime.js", async () => {
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", async () => {
   const { rosterHarness } = await import("./teamRosterHarness.js");
   return { db: rosterHarness.db, auth: rosterHarness.auth };
 });
-vi.mock("../callables/shared/entitlements.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", () => ({
   assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
 }));
-vi.mock("../callables/publicRateLimit.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
   checkTeamRosterMutationRateLimit: vi.fn(async () => undefined),
   checkTeamInviteRateLimit: vi.fn(async () => undefined),
   checkTeamInviteAcceptRateLimit: vi.fn(async () => undefined),
@@ -327,9 +327,9 @@ describe("team roster authority", () => {
     // envelopes for it. Key material comes only from the member's own
     // rules-protected users/{uid}/escrow_public_keys namespace.
     const source = [
-      readFileSync(resolve(__dirname, "../teamRoster.ts"), "utf8"),
-      readFileSync(resolve(__dirname, "../teamKeyEnvelopes.ts"), "utf8"),
-      readFileSync(resolve(__dirname, "../callables/teamRosterCallables.ts"), "utf8"),
+      readFileSync(resolve(__dirname, "../../../functions-identity/src/teamRoster.ts"), "utf8"),
+      readFileSync(resolve(__dirname, "../../../functions-identity/src/teamKeyEnvelopes.ts"), "utf8"),
+      readFileSync(resolve(__dirname, "../../../functions-identity/src/domains/identity/teamRosterCallables.ts"), "utf8"),
     ].join("\n");
     expect(source).not.toMatch(/escrowPublicKey/u);
     expect(source).not.toMatch(/publicKeyData/u);

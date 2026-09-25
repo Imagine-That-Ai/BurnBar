@@ -49,7 +49,7 @@ function write(path: string, data: Record<string, unknown>, merge = false): void
   store.set(path, merge ? { ...(store.get(path) ?? {}), ...data } : { ...data });
 }
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     doc(path: string) {
       return {
@@ -120,27 +120,27 @@ vi.mock("firebase-admin/firestore", () => ({
 
 const APP_ID = "1:123:linux:production";
 
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ enforceAppCheck: true, linuxAppCheckAppID: "1:123:linux:production" }),
 }));
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logInfo: vi.fn(),
   onCallProduction: (_name: string, _options: unknown, handler: (request: unknown) => Promise<unknown>) => ({
     run: handler,
   }),
 }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
-vi.mock("../appCheckAttestation.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   appCheckTrustClassForAppId: (appId: string | undefined) =>
     appId?.includes(":ios:") ? "apple_attested" : appId?.includes(":android:") ? "android_play_integrity" : "unknown",
   enforceHighRiskComputerUseCallableWithNonce: highRisk,
   readAppIdFromCallableRequest: (request: { app?: { appId?: string } }) => request.app?.appId,
 }));
-vi.mock("../callables/computerUseSecurityFirestore.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof: actionProof,
   requireTrustedEscrowDevice: trustedDevice,
 }));
-vi.mock("../callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: rateLimit }));
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: rateLimit }));
 
 import {
   approveLinuxAppCheckDevice,
@@ -150,12 +150,12 @@ import {
   registerLinuxAppCheckDevice,
   requireApprovedLinuxAppCheckIrohHost,
   revokeLinuxAppCheckDevice,
-} from "../callables/linuxAppCheckDevices.js";
+} from "../../../functions-identity/src/domains/app-check/linuxAppCheckDevices.js";
 import {
   LINUX_APP_CHECK_ENROLLMENT_DOMAIN,
   deriveLinuxAppCheckDeviceId,
   linuxAppCheckEnrollmentPayload,
-} from "../callables/linuxAppCheckDeviceCrypto.js";
+} from "../../../functions-identity/src/callables/linuxAppCheckDeviceCrypto.js";
 import { BOB_UID, callableRunner, tier2CallableProof } from "./bola/callableBolaHarness.js";
 
 const UID = "linux-owner";

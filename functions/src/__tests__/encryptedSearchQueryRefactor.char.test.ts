@@ -16,14 +16,14 @@ import { describe, expect, it, vi } from "vitest";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 
 // Spy so the short-circuit assertion can prove no chunk collection read occurs.
 const collectionSpy = vi.fn(() => {
   throw new Error("db.collection must not be called on the empty-hashes short-circuit");
 });
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     collection: collectionSpy,
     doc: vi.fn(() => ({
@@ -33,8 +33,8 @@ vi.mock("../adminRuntime.js", () => ({
 }));
 
 // Keep every validation helper real; neutralize only the entitlement gate (a Firestore read).
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     assertActiveBurnBarProEntitlement: vi.fn(async () => undefined),
@@ -72,7 +72,7 @@ function callableRequest(uid: string | undefined, data: Record<string, unknown>)
 
 describe("searchEncryptedConversationIndex characterization (U8 split)", () => {
   it("rejects an unauthenticated request before any Firestore access", async () => {
-    const mod = await import("../callables/encryptedSearch.js");
+    const mod = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     const target = asRunnable(mod.searchEncryptedConversationIndex);
 
     let thrown: unknown;
@@ -91,7 +91,7 @@ describe("searchEncryptedConversationIndex characterization (U8 split)", () => {
   });
 
   it("short-circuits to an empty hit list when no token or semantic hashes are supplied", async () => {
-    const mod = await import("../callables/encryptedSearch.js");
+    const mod = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     const target = asRunnable(mod.searchEncryptedConversationIndex);
 
     const result = await target.run(

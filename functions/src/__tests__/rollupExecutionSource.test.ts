@@ -20,7 +20,7 @@ import {
   computeUserRollupsFromCounters,
   rebuildUserRollupCounters,
 } from "../rollupCompute.js";
-import type { UsageEventDoc } from "../types.js";
+import type { UsageEventDoc } from "../../../packages/functions-shared/src/types.js";
 
 type Doc = Record<string, unknown>;
 

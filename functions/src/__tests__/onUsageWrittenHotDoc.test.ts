@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 
 import { applyUsageWrittenSideEffects } from "../triggers.js";
 import { ROLLUP_DIRTY_COALESCE_MS } from "../rollupJobDirty.js";
-import type { UsageEventDoc } from "../types.js";
+import type { UsageEventDoc } from "../../../packages/functions-shared/src/types.js";
 
 type Doc = Record<string, unknown>;
 

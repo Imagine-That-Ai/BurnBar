@@ -14,20 +14,20 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onTaskDispatched } from "firebase-functions/v2/tasks";
 import { HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
-import { getConfig } from "./config.js";
-import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
+import { getConfig } from "@openburnbar/functions-shared/config.js";
+import { HOSTED_RUNNER_SECRETS } from "@openburnbar/functions-shared/hostedRunnerConfig.js";
 import { MODEL_LANDSCAPE_SECRETS, resolveModelLandscapeEnv } from "./modelLandscapeSecrets.js";
 import { processRollupUserRebuild } from "./rollups.js";
 import { enqueueRollupUserRebuildTasks, parseRollupUserRebuildTaskData } from "./rollupTaskQueue.js";
-import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "./quota.js";
+import { refreshUserProviderAccountQuota, refreshUserProviderQuota } from "@openburnbar/functions-shared/quota.js";
 import { runQuotaRefreshSweep } from "./quotaRefreshSweep.js";
 import { collectModelLandscapeBenchmarks, writeModelLandscapeBenchmarks } from "./modelLandscape.js";
 import { buildAndPersistRouterRundown } from "./routerRundown.js";
-import { anchorAuditHeads } from "./callables/auditLog.js";
-import { errorMessage, parseProvider, parseRollupJobDoc } from "./guards.js";
-import { logError } from "./logging.js";
-import { runScheduledJob, scheduledFirestore } from "./scheduledOps.js";
-import { FUNCTIONS_REGION, FULL_USAGE_REBUILD_RUNTIME } from "./runtimeOptions.js";
+import { anchorAuditHeads } from "@openburnbar/functions-shared/shared/auditLog.js";
+import { errorMessage, parseProvider, parseRollupJobDoc } from "@openburnbar/functions-shared/guards.js";
+import { logError } from "@openburnbar/functions-shared/logging.js";
+import { runScheduledJob, scheduledFirestore } from "@openburnbar/functions-shared/scheduledOps.js";
+import { FUNCTIONS_REGION, FULL_USAGE_REBUILD_RUNTIME } from "@openburnbar/functions-shared/runtimeOptions.js";
 
 type RollupUserRebuildQueueJob = NonNullable<ReturnType<typeof parseRollupUserRebuildTaskData>>;
 

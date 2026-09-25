@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  entitlementExpiryMillis,
-  isActiveBurnBarCloudProEntitlement,
-  isActiveBurnBarUltraEntitlement,
-  isActiveHostedQuotaEntitlement,
-  isActivePremiumEntitlement,
-} from "../callables/shared.js";
+import { entitlementExpiryMillis, isActiveBurnBarCloudProEntitlement, isActiveBurnBarUltraEntitlement, isActiveHostedQuotaEntitlement, isActivePremiumEntitlement } from "../../../packages/functions-shared/src/shared/entitlements.js";
 
 const FAR_FUTURE = "2999-01-01T00:00:00.000Z";
 

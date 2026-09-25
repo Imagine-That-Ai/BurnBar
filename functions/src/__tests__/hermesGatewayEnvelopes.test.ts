@@ -11,7 +11,7 @@ import {
   HERMES_GATEWAY_RELAY_KEY_VERSION,
   HERMES_GATEWAY_PRODUCTION_RELAY_KEY_VERSIONS,
   HERMES_GATEWAY_SUPPORTED_RELAY_KEY_VERSIONS,
-} from "../hermesGateway.js";
+} from "../../../packages/functions-shared/src/hermesGateway.js";
 
 import {
   SENDER_PUBKEY_B64,

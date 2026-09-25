@@ -4,7 +4,7 @@ const { pushWithResilience } = vi.hoisted(() => ({
   pushWithResilience: vi.fn(async (_label: string, fn: () => Promise<unknown>) => fn()),
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   pushWithResilience,
 }));
 
@@ -14,7 +14,7 @@ describe("push resilience wiring", () => {
   });
 
   it("pushAndroidFcm uses pushWithResilience", async () => {
-    const { pushAndroidFcm } = await import("../fcmAndroidSender.js");
+    const { pushAndroidFcm } = await import("../../../functions-media/src/domains/push/fcmAndroidSender.js");
     const result = await pushAndroidFcm({
       fcmToken: "token",
       documentId: "doc-1",
@@ -27,7 +27,7 @@ describe("push resilience wiring", () => {
   });
 
   it("pushToAPNs uses pushWithResilience", async () => {
-    const { pushToAPNs } = await import("../apnsSender.js");
+    const { pushToAPNs } = await import("../../../functions-media/src/domains/push/apnsSender.js");
     const result = await pushToAPNs({
       deviceTokenHex: "a".repeat(64),
       documentId: "doc-1",
@@ -40,7 +40,7 @@ describe("push resilience wiring", () => {
   });
 
   it("pushToAPNs labels Live Activity sends separately from VoIP", async () => {
-    const { pushToAPNs } = await import("../apnsSender.js");
+    const { pushToAPNs } = await import("../../../functions-media/src/domains/push/apnsSender.js");
     const result = await pushToAPNs({
       deviceTokenHex: "a".repeat(64),
       documentId: "doc-1",

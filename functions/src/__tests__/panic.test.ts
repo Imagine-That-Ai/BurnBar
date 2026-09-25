@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { __testing__ } from "../callables/panic.js";
+import { __testing__ } from "../domains/ops/panic.js";
 
 const { drainCollection, PAGE_LIMIT } = __testing__;
 

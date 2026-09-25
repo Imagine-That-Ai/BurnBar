@@ -61,32 +61,32 @@ vi.mock("firebase-admin/remote-config", () => ({
   }),
 }));
 
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   assertAppCheck: vi.fn(),
   assertAuth: vi.fn(),
   enforceAuthAndAppCheck: vi.fn(),
 }));
-vi.mock("../cloudFeatureSuspensions.js", () => ({
+vi.mock("../../../packages/functions-shared/src/cloudFeatureSuspensions.js", () => ({
   assertCloudFeatureNotSuspended: vi.fn(async () => undefined),
 }));
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => mocks.config,
 }));
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   modelInferenceFetch: mocks.fetch,
 }));
 
-import { monthKeyForDate } from "../cloudProAllowanceCore.js";
-import { usageCurationAllowanceDocPath, usageCurationReservationDocPath } from "../usageCuration/allowance.js";
-import { dayKeyForDate, nextMonthlyResetISO } from "../usageCuration/limits.js";
-import { USAGE_CURATION_MULTIMODAL_MODEL, USAGE_CURATION_TEXT_MODEL } from "../usageCuration/openrouterClient.js";
+import { monthKeyForDate } from "../../../packages/functions-shared/src/cloudProAllowanceCore.js";
+import { usageCurationAllowanceDocPath, usageCurationReservationDocPath } from "../../../functions-sync/src/usageCuration/allowance.js";
+import { dayKeyForDate, nextMonthlyResetISO } from "../../../functions-sync/src/usageCuration/limits.js";
+import { USAGE_CURATION_MULTIMODAL_MODEL, USAGE_CURATION_TEXT_MODEL } from "../../../functions-sync/src/usageCuration/openrouterClient.js";
 import {
   USAGE_CURATION_FENCE_BEGIN,
   USAGE_CURATION_PROMPT_PREFIX,
   USAGE_CURATION_PROMPT_VERSION,
-} from "../usageCuration/prompt.js";
-import { curateUsageMemoryBatch, __testing__ } from "../callables/usageCuration.js";
+} from "../../../functions-sync/src/usageCuration/prompt.js";
+import { curateUsageMemoryBatch, __testing__ } from "../../../functions-sync/src/domains/usage/usageCuration.js";
 
 function seedEntitlement(uid: string, docId: string, productID: string): void {
   seedDoc(mocks.store, `users/${uid}/entitlements/${docId}`, {

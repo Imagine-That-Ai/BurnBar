@@ -42,7 +42,7 @@
  * admin-SDK objects satisfy them directly (zero casts, production and tests).
  */
 
-import { isDemoProviderAccountID, providerAccountIDFromPath } from "./providerAccountIsolation.js";
+import { isDemoProviderAccountID, providerAccountIDFromPath } from "@openburnbar/functions-shared/providerAccountIsolation.js";
 
 /** Subset of `DocumentReference` the sweep touches on account docs. */
 type SweepAccountDocRef = {

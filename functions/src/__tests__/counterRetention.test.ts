@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import type { Firestore } from "firebase-admin/firestore";
 
 import { COUNTER_DAY_RETENTION_DAYS } from "../rollupCounters.js";
-import { counterDayCutoff, reapExpiredCounterDays } from "../scheduled/reapExpiredCounterDays.js";
+import { counterDayCutoff, reapExpiredCounterDays } from "../domains/scheduled/reapExpiredCounterDays.js";
 
 type Doc = Record<string, unknown>;
 
@@ -41,7 +41,8 @@ class FakeFirestore {
   }
 
   collectionGroup(name: string) {
-    const fake = this;
+    const { store } = this;
+    const docRef = (path: string): FakeDocRef => this.doc(path);
     return {
       where(_field: string, _op: string, _value: unknown) {
         void _field;
@@ -66,7 +67,7 @@ class FakeFirestore {
             return api;
           },
           async get() {
-            const docs = [...fake.store.entries()]
+            const docs = [...store.entries()]
               .filter(([path]) => {
                 const segments = path.split("/");
                 // users/{uid}/usage_counter_days/{day}: collection docs only.
@@ -87,7 +88,7 @@ class FakeFirestore {
               .sort()
               .filter((path) => startAfterIds.every((id) => path.split("/").at(-1)! > id))
               .slice(0, limitCount)
-              .map((path) => ({ id: path.split("/").at(-1)!, ref: new FakeDocRef(fake, path) }));
+              .map((path) => ({ id: path.split("/").at(-1)!, ref: docRef(path) }));
             return { empty: docs.length === 0, docs };
           },
         };

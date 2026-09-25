@@ -3,13 +3,13 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("firebase-functions/v2/scheduler", () => ({ onSchedule: (_options: unknown, handler: unknown) => handler }));
-vi.mock("../adminRuntime.js", () => ({ db: {}, auth: {} }));
-vi.mock("../accountDeletion.js", () => ({ eraseUserAccount: vi.fn(), isAccountErasureResumable: vi.fn() }));
-vi.mock("../logging.js", () => ({ logError: vi.fn(), logInfo: vi.fn() }));
-vi.mock("../runtimeOptions.js", () => ({ FUNCTIONS_REGION: "us-central1" }));
-vi.mock("../secrets.js", () => ({ destroyCredential: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: {}, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/accountDeletion.js", () => ({ eraseUserAccount: vi.fn(), isAccountErasureResumable: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({ logError: vi.fn(), logInfo: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/runtimeOptions.js", () => ({ FUNCTIONS_REGION: "us-central1" }));
+vi.mock("../../../packages/functions-shared/src/secrets.js", () => ({ destroyCredential: vi.fn() }));
 
-import { reconcilePendingAccountErasures } from "../accountDeletionReconciler.js";
+import { reconcilePendingAccountErasures } from "../domains/lifecycle/accountDeletionReconciler.js";
 
 function tombstone(id: string, attemptCount = 0) {
   const patches: Record<string, unknown>[] = [];

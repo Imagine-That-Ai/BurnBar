@@ -79,24 +79,24 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
   return { store, dbMock, FieldValueMock, FakeTimestamp };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 vi.mock("firebase-admin/firestore", () => ({ FieldValue: FieldValueMock, Timestamp: FakeTimestamp }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
-vi.mock("../appCheckAttestation.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
 }));
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ enforceAppCheck: true }),
 }));
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: vi.fn() };
 });
 
 import {
   issueTrustedSignalIdentityRepairChallenge,
   repairTrustedSignalIdentity,
-} from "../callables/signalIdentityRepair.js";
+} from "../../../functions-sync/src/callables/signalIdentityRepair.js";
 
 const UID = "legacy-user";
 const DEVICE_ID = "legacy-ipad";

@@ -12,7 +12,7 @@ import {
   optionalString,
   parseCallableInput,
   requiredString,
-} from "../validation/callableSchema.js";
+} from "../../../packages/functions-shared/src/validation/callableSchema.js";
 
 /** Capture the HttpsError a validator throws, or fail if it does not throw. */
 function caughtHttpsError(action: () => unknown): HttpsError {

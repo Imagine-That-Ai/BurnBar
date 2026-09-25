@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { __testing__ } from "../callables/webAppCheck.js";
+import { __testing__ } from "../../../functions-identity/src/domains/app-check/webAppCheck.js";
 
 const { parsePublicKeyJwk, ESCROW_WEB_PLATFORM } = __testing__;
 

@@ -14,8 +14,8 @@ import type {
   ModelBenchmarkSourceStatusDoc,
   ModelBenchmarkTaskCategory,
   ProviderID,
-} from "./types.js";
-import { errorMessage, isRecord } from "./guards.js";
+} from "@openburnbar/functions-shared/types.js";
+import { errorMessage, isRecord } from "@openburnbar/functions-shared/guards.js";
 
 const SNAPSHOT_SCHEMA_VERSION = 1;
 const STATUS_SCHEMA_VERSION = 1;
@@ -374,7 +374,7 @@ async function fetchJSON(
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const { resilientFetch } = await import("./resilienceHelpers.js");
+      const { resilientFetch } = await import("@openburnbar/functions-shared/resilienceHelpers.js");
       const response = await resilientFetch(`model-landscape.${attempt}`, url, {
         method: "GET",
         headers: { Accept: "application/json", ...headers },

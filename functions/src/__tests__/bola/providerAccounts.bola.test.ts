@@ -6,12 +6,12 @@
 import { describe, it, vi, expect } from "vitest";
 import { ALICE_UID, BOB_UID, callableRequest, callableRunner, pathKeyedFirestore, seedDoc, tier2CallableProof, snapshotTenantPaths, expectTenantPathsUnchanged } from "./callableBolaHarness.js";
 
-import { providerAccountSecretRefPath } from "../../quota.js";
+import { providerAccountSecretRefPath } from "../../../../packages/functions-shared/src/quota.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {
@@ -20,21 +20,21 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../appCheckAttestation.js", async () => {
-  const actual = await vi.importActual<typeof import("../../appCheckAttestation.js")>("../../appCheckAttestation.js");
+vi.mock("../../../../packages/functions-shared/src/appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/appCheckAttestation.js")>("../../../../packages/functions-shared/src/appCheckAttestation.js");
   return {
     ...actual,
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   };
 });
-vi.mock("../../secrets.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/secrets.js", () => ({
   destroyCredential: vi.fn(async () => undefined),
   storeCredential: vi.fn(async () => "projects/test/secrets/x/versions/1"),
 }));
@@ -52,7 +52,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — providerAccounts", () => {
   it("connectProviderAccount rejects cross-user object access", async () => {
-    const mod = await import("../../callables/providerAccounts.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/providerAccounts.js");
     const exported = mod.connectProviderAccount;
     if (!exported) throw new Error("missing export connectProviderAccount");
     const run = callableRunner(exported);
@@ -66,7 +66,7 @@ describe("BOLA — providerAccounts", () => {
   });
 
   it("connectHostedQuotaAccount rejects cross-user object access", async () => {
-    const mod = await import("../../callables/providerAccounts.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/providerAccounts.js");
     const exported = mod.connectHostedQuotaAccount;
     if (!exported) throw new Error("missing export connectHostedQuotaAccount");
     const run = callableRunner(exported);
@@ -80,7 +80,7 @@ describe("BOLA — providerAccounts", () => {
   });
 
   it("connectSelfHostedQuotaAccount rejects cross-user object access", async () => {
-    const mod = await import("../../callables/providerAccounts.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/providerAccounts.js");
     const exported = mod.connectSelfHostedQuotaAccount;
     if (!exported) throw new Error("missing export connectSelfHostedQuotaAccount");
     const run = callableRunner(exported);
@@ -94,7 +94,7 @@ describe("BOLA — providerAccounts", () => {
   });
 
   it("uploadProviderQuotaSnapshot rejects cross-user object access", async () => {
-    const mod = await import("../../callables/providerAccounts.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/providerAccounts.js");
     const exported = mod.uploadProviderQuotaSnapshot;
     if (!exported) throw new Error("missing export uploadProviderQuotaSnapshot");
     const run = callableRunner(exported);
@@ -108,7 +108,7 @@ describe("BOLA — providerAccounts", () => {
   });
 
   it("deleteHostedQuotaCredentials rejects cross-user object access", async () => {
-    const mod = await import("../../callables/providerAccounts.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/providerAccounts.js");
     const exported = mod.deleteHostedQuotaCredentials;
     if (!exported) throw new Error("missing export deleteHostedQuotaCredentials");
     const run = callableRunner(exported);
@@ -122,7 +122,7 @@ describe("BOLA — providerAccounts", () => {
   });
 
   it("updateProviderAccount rejects cross-user object access", async () => {
-    const mod = await import("../../callables/providerAccounts.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/providerAccounts.js");
     const exported = mod.updateProviderAccount;
     if (!exported) throw new Error("missing export updateProviderAccount");
     const run = callableRunner(exported);
@@ -136,7 +136,7 @@ describe("BOLA — providerAccounts", () => {
   });
 
   it("deleteProviderAccount rejects cross-user object access", async () => {
-    const mod = await import("../../callables/providerAccounts.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/providerAccounts.js");
     const exported = mod.deleteProviderAccount;
     if (!exported) throw new Error("missing export deleteProviderAccount");
     const run = callableRunner(exported);
@@ -164,7 +164,7 @@ describe("BOLA — providerAccounts", () => {
     });
     const bobBefore = snapshotTenantPaths(bolaStore, BOB_UID);
 
-    const mod = await import("../../callables/providerAccounts.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/providerAccounts.js");
     const run = callableRunner(mod.deleteProviderCredential);
     await run(callableRequest(ALICE_UID, { provider: "openai" }));
 
@@ -174,7 +174,7 @@ describe("BOLA — providerAccounts", () => {
   });
 
   it("refreshProviderAccountQuota rejects cross-user object access", async () => {
-    const mod = await import("../../callables/providerAccounts.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/providerAccounts.js");
     const exported = mod.refreshProviderAccountQuota;
     if (!exported) throw new Error("missing export refreshProviderAccountQuota");
     const run = callableRunner(exported);

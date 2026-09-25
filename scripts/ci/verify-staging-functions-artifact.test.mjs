@@ -40,15 +40,20 @@ function walkFiles(root, directory = root) {
   return files.sort();
 }
 
+const CODEBASE_FIXTURE_DIRS = ["functions", "functions-identity"];
+
 function writeManifest(root) {
-  const functionsRoot = join(root, "functions");
-  const lines = walkFiles(functionsRoot).map((path) => {
-    const digest = createHash("sha256")
-      .update(readFileSync(path))
-      .digest("hex");
-    return `${digest}  functions/${relative(functionsRoot, path)}`;
-  });
-  writeFileSync(join(root, "SHA256SUMS"), `${lines.join("\n")}\n`);
+  const lines = [];
+  for (const dir of CODEBASE_FIXTURE_DIRS) {
+    const codebaseRoot = join(root, dir);
+    for (const path of walkFiles(codebaseRoot)) {
+      const digest = createHash("sha256")
+        .update(readFileSync(path))
+        .digest("hex");
+      lines.push(`${digest}  ${dir}/${relative(codebaseRoot, path)}`);
+    }
+  }
+  writeFileSync(join(root, "SHA256SUMS"), `${lines.sort().join("\n")}\n`);
 }
 
 function createFixture(label) {
@@ -74,16 +79,60 @@ function createFixture(label) {
   write(join(root, "functions", "lib", "index.js"), "export {};\n");
   write(join(root, "functions", "lib", "index.js.map"), "{}\n");
   write(join(root, "functions", "lib", "scoped.cjs"), "module.exports = {};\n");
+  write(
+    join(root, "functions-identity", "package.json"),
+    `${JSON.stringify({ main: "lib/staging-scoped-index.cjs", scripts: {} }, null, 2)}\n`,
+  );
+  write(
+    join(root, "functions-identity", "package-lock.json"),
+    `${JSON.stringify(
+      {
+        lockfileVersion: 3,
+        packages: { "": {} },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  write(
+    join(root, "functions-identity", ".env.burnbar-staging"),
+    "STAGING=true\n",
+  );
+  write(
+    join(root, "functions-identity", "lib", "staging-scoped-index.cjs"),
+    "module.exports = {};\n",
+  );
   for (const certificate of [
     "AppleIncRootCertificate.cer",
     "AppleRootCA-G2.cer",
     "AppleRootCA-G3.cer",
   ]) {
     write(
-      join(root, "functions", "lib", "appstore", "certs", certificate),
+      join(
+        root,
+        "functions-identity",
+        "lib",
+        "domains",
+        "billing",
+        "appstore",
+        "certs",
+        certificate,
+      ),
       certificate,
     );
   }
+  write(
+    join(
+      root,
+      "functions-identity",
+      "vendor",
+      "openburnbar",
+      "functions-shared",
+      "lib",
+      "validators.js",
+    ),
+    "export {};\n",
+  );
   write(
     join(
       root,
@@ -143,13 +192,13 @@ try {
   });
   expectFailure("certificate-readme", (root) => {
     write(
-      join(root, "functions", "lib", "appstore", "certs", "README.md"),
+      join(root, "functions-identity", "lib", "domains", "billing", "appstore", "certs", "README.md"),
       "not runtime data\n",
     );
   });
   expectFailure("unreviewed-certificate", (root) => {
     write(
-      join(root, "functions", "lib", "appstore", "certs", "Unknown.cer"),
+      join(root, "functions-identity", "lib", "domains", "billing", "appstore", "certs", "Unknown.cer"),
       "unknown\n",
     );
   });
@@ -287,6 +336,9 @@ try {
   });
   expectFailure("unexpected-top-level-entry", (root) => {
     write(join(root, "EXTRA"), "unexpected\n");
+  });
+  expectFailure("unreviewed-codebase-dir", (root) => {
+    write(join(root, "functions-evil", "lib", "index.js"), "export {};\n");
   });
   expectFailure(
     "unmanifested-runtime-file",

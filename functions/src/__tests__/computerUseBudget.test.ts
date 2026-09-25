@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { __testing__ } from "../computerUseBudget.js";
+import { __testing__ } from "../../../functions-sync/src/domains/computer-use/computerUseBudget.js";
 
 describe("computer use budget spend accounting", () => {
   it("uses capped envelope spend for global kill-switch projection", () => {

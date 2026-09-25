@@ -14,7 +14,7 @@ import {
 } from "./callableBolaHarness.js";
 
 import { Timestamp } from "firebase-admin/firestore";
-import { sha256Hex } from "../../callables/shared.js";
+import { sha256Hex } from "../../../../packages/functions-shared/src/shared/validators.js";
 
 const TRANSFER_ID = `ct_${"b".repeat(24)}`;
 const CLAIM_ID = "11111111-1111-4111-8111-111111111111";
@@ -22,10 +22,10 @@ const store: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map());
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
 }));
-vi.mock("../../adminRuntime.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: pathKeyedFirestore(store),
 }));
 
@@ -67,7 +67,7 @@ describe("BOLA — credentialTransfer", () => {
     seedReadyTransfer();
     const before = store.get(`credential_transfers/${TRANSFER_ID}`);
 
-    const mod = await import("../../callables/credentialTransfer.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/credentialTransfer.js");
     const run = callableRunner(mod.createCredentialTransfer);
     await expectCallableDenial(
       run,
@@ -84,7 +84,7 @@ describe("BOLA — credentialTransfer", () => {
     store.clear();
     seedReadyTransfer();
 
-    const mod = await import("../../callables/credentialTransfer.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/credentialTransfer.js");
     const run = callableRunner(mod.consumeCredentialTransfer);
     await expectCallableDenial(run, callableRequest(ALICE_UID, { transferId: TRANSFER_ID }), "permission-denied");
   });
@@ -93,7 +93,7 @@ describe("BOLA — credentialTransfer", () => {
     store.clear();
     seedClaimedTransfer();
 
-    const mod = await import("../../callables/credentialTransfer.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/credentialTransfer.js");
     const run = callableRunner(mod.completeCredentialTransfer);
     await expectCallableDenial(
       run,
@@ -106,7 +106,7 @@ describe("BOLA — credentialTransfer", () => {
     store.clear();
     seedClaimedTransfer();
 
-    const mod = await import("../../callables/credentialTransfer.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/credentialTransfer.js");
     const run = callableRunner(mod.cancelCredentialTransfer);
     await expectCallableDenial(
       run,
@@ -123,7 +123,7 @@ describe("BOLA — credentialTransfer", () => {
       payload: "v1.test",
     });
 
-    const mod = await import("../../callables/credentialTransfer.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/credentialTransfer.js");
     const run = callableRunner(mod.consumeCredentialTransfer);
     await expectCallableDenial(
       run,

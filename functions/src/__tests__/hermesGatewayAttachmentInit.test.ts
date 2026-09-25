@@ -21,7 +21,7 @@ import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:cryp
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hashHermesGatewayBearerToken } from "../hermesGateway.js";
+import { hashHermesGatewayBearerToken } from "../../../packages/functions-shared/src/hermesGateway.js";
 
 // All imports of ../callables/hermesGateway.js are LAZY (await import inside a
 // test) so the vi.mock factories below (which capture the in-memory doubles) are
@@ -39,13 +39,13 @@ vi.mock("firebase-functions/logger", () => ({
   warn: vi.fn(),
   debug: vi.fn(),
 }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 
 // Real validators, but force the three entitlement predicates the gateway gate
 // consults so the call runs without seeded entitlement docs.
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     isActiveHostedQuotaEntitlement: () => true,
@@ -142,7 +142,7 @@ const dbMock = {
   },
 };
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -302,7 +302,7 @@ const ID_CAP = 160;
 async function callGateway(path: string, body: Record<string, unknown>): Promise<CapturedResponse> {
   // Drive the inner dispatcher (no onRequest/CORS plumbing) — the exact seam
   // production calls; the wrapped burnBarHermesGateway only adds CORS middleware.
-  const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+  const { dispatchHermesGatewayRequest } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
   const { res, captured } = makeRes();
   await dispatchHermesGatewayRequest(makeReq(path, body), res);
   return captured;
@@ -467,7 +467,7 @@ describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", 
   }
 
   it("mints a read URL only after uid, client, status, path, and object checks pass", async () => {
-    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../callables/hermesGateway.js");
+    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const manifest = seedUploadedAttachment();
 
     const result = await handleHermesGatewayAttachmentDownloadUrl(
@@ -486,7 +486,7 @@ describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", 
   });
 
   it("does not mint a URL for another user namespace", async () => {
-    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../callables/hermesGateway.js");
+    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const manifest = seedUploadedAttachment();
 
     await expect(
@@ -501,7 +501,7 @@ describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", 
   });
 
   it("does not mint a URL for pending uploads, missing objects, or client mismatches", async () => {
-    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../callables/hermesGateway.js");
+    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const manifest = seedUploadedAttachment("att_download_0002");
     const manifestPath = `users/${UID}/hermes_gateway_attachments/${manifest.id}`;
     stored.set(manifestPath, { ...manifest, status: "pending_upload" });
@@ -545,7 +545,7 @@ describe("getHermesGatewayAttachmentDownloadUrl — owner-scoped signed reads", 
   });
 
   it("does not mint a read URL when the finalized object size or generation changed", async () => {
-    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../callables/hermesGateway.js");
+    const { handleHermesGatewayAttachmentDownloadUrl } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const manifest = seedUploadedAttachment("att_download_0003");
 
     storageObjects.set(String(manifest.storagePath), {
@@ -594,7 +594,7 @@ describe("adoptedGatewayDocId — init↔finalize id symmetry", () => {
   const fallback = () => FALLBACK;
 
   it("adopts a well-formed client id and that id passes the finalize validator", async () => {
-    const { adoptedGatewayDocId, requiredHttpIdentifier } = await import("../callables/hermesGateway.js");
+    const { adoptedGatewayDocId, requiredHttpIdentifier } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const clientId = "att_1234567890abcdef";
     const adopted = adoptedGatewayDocId(clientId, fallback);
     expect(adopted).toBe(clientId);
@@ -603,7 +603,7 @@ describe("adoptedGatewayDocId — init↔finalize id symmetry", () => {
   });
 
   it("adopts the full canonical charset (letters, digits, _ . : -) verbatim", async () => {
-    const { adoptedGatewayDocId, requiredHttpIdentifier } = await import("../callables/hermesGateway.js");
+    const { adoptedGatewayDocId, requiredHttpIdentifier } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const clientId = "Att.0-9_x:Y";
     const adopted = adoptedGatewayDocId(clientId, fallback);
     expect(adopted).toBe(clientId);
@@ -612,7 +612,7 @@ describe("adoptedGatewayDocId — init↔finalize id symmetry", () => {
 
   it("falls back (does NOT clamp) when the client id exceeds the finalize cap", async () => {
     const { adoptedGatewayDocId, requiredHttpIdentifier, HERMES_GATEWAY_HTTP_ID_MAX_LENGTH } =
-      await import("../callables/hermesGateway.js");
+      await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const overLong = "a".repeat(HERMES_GATEWAY_HTTP_ID_MAX_LENGTH + 1);
     // requiredHttpIdentifier would reject the over-long id outright...
     expect(() => requiredHttpIdentifier(overLong, "attachmentId")).toThrow();
@@ -624,7 +624,7 @@ describe("adoptedGatewayDocId — init↔finalize id symmetry", () => {
 
   it("adopts an id at exactly the cap length", async () => {
     const { adoptedGatewayDocId, requiredHttpIdentifier, HERMES_GATEWAY_HTTP_ID_MAX_LENGTH } =
-      await import("../callables/hermesGateway.js");
+      await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const atCap = "a".repeat(HERMES_GATEWAY_HTTP_ID_MAX_LENGTH);
     const adopted = adoptedGatewayDocId(atCap, fallback);
     expect(adopted).toBe(atCap);
@@ -632,7 +632,7 @@ describe("adoptedGatewayDocId — init↔finalize id symmetry", () => {
   });
 
   it("falls back for out-of-charset, whitespace-only, empty, and non-string ids", async () => {
-    const { adoptedGatewayDocId } = await import("../callables/hermesGateway.js");
+    const { adoptedGatewayDocId } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     // Each of these is rejected by the canonical charset / non-string guard, so
     // init mints a fresh id instead. (Note: "." and ".." ARE in the canonical
     // charset and are adopted verbatim — finalize accepts them too, so the rule
@@ -655,7 +655,7 @@ describe("adoptedGatewayDocId — init↔finalize id symmetry", () => {
   });
 
   it("trims surrounding whitespace before adopting (matches boundedTrimmedString)", async () => {
-    const { adoptedGatewayDocId, requiredHttpIdentifier } = await import("../callables/hermesGateway.js");
+    const { adoptedGatewayDocId, requiredHttpIdentifier } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const adopted = adoptedGatewayDocId("  att_padded  ", fallback);
     expect(adopted).toBe("att_padded");
     expect(requiredHttpIdentifier(adopted, "attachmentId")).toBe("att_padded");

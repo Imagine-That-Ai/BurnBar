@@ -8,10 +8,10 @@
 
 import { createHash } from "node:crypto";
 import type { protos } from "@google-cloud/tasks";
-import { getConfig } from "./config.js";
-import { isRecord } from "./guards.js";
-import { logInfo, logWarn } from "./logging.js";
-import { FUNCTIONS_REGION } from "./runtimeOptions.js";
+import { getConfig } from "@openburnbar/functions-shared/config.js";
+import { isRecord } from "@openburnbar/functions-shared/guards.js";
+import { logInfo, logWarn } from "@openburnbar/functions-shared/logging.js";
+import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
 
 const ROLLUP_USER_REBUILD_TASK_FUNCTION = "rollupUserRebuild";
 export const ROLLUP_USER_REBUILD_TASK_QUEUE_ID = "rollup-user-rebuilds";

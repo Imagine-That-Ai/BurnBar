@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { eraseUserCloudData } from "../accountDeletion.js";
+import { eraseUserCloudData } from "../../../packages/functions-shared/src/accountDeletion.js";
 
 const FULL_UID = "AbCdEf0123456789AbCdEf012345"; // 28-char Firebase-style UID
 

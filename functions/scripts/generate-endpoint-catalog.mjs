@@ -10,23 +10,30 @@ import { resolve } from "node:path";
 import { parseGeneratedLiteral } from "./generated-literal-parser.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
-const indexPath = resolve(repoRoot, "functions/src/index.ts");
+const indexPaths = [
+  "functions/src/index.ts",
+  "functions-identity/src/index.ts",
+  "functions-sync/src/index.ts",
+  "functions-media/src/index.ts",
+].map((rel) => resolve(repoRoot, rel));
 const outPath = resolve(repoRoot, "functions/src/security/endpointAuthorizationCatalog.generated.ts");
 const expectedCodesPath = resolve(repoRoot, "functions/src/__tests__/bola/bolaExpectedCodes.generated.ts");
 
 function exportedNames() {
-  const source = readFileSync(indexPath, "utf8");
   const names = [];
-  for (const match of source.matchAll(/export\s+\{([\s\S]*?)\}\s+from\s+"[^"]+";/g)) {
-    for (const part of match[1].split(",")) {
-      const raw = part.trim();
-      if (!raw) continue;
-      names.push(
-        raw
-          .split(/\s+as\s+/u)
-          .pop()
-          ?.trim() ?? raw,
-      );
+  for (const indexPath of indexPaths) {
+    const source = readFileSync(indexPath, "utf8");
+    for (const match of source.matchAll(/export\s+\{([\s\S]*?)\}\s+from\s+"[^"]+";/g)) {
+      for (const part of match[1].split(",")) {
+        const raw = part.trim();
+        if (!raw) continue;
+        names.push(
+          raw
+            .split(/\s+as\s+/u)
+            .pop()
+            ?.trim() ?? raw,
+        );
+      }
     }
   }
   return [...new Set(names)].sort((a, b) => a.localeCompare(b));
@@ -41,7 +48,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid",
     objectIdsFromClient: [],
     ownershipCheck: "handler derives uid from request.auth.uid only",
-    handlerModule: "callables/bugReporting.ts",
+    handlerModule: "functions-sync/src/domains/support/bugReporting.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -61,7 +68,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid",
     objectIdsFromClient: [],
     ownershipCheck: "handler derives uid from request.auth.uid only",
-    handlerModule: "callables/knowledgeSearch.ts",
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeSearch.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -82,7 +89,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "handler derives uid from request.auth.uid only; the allowance ledger and reservation paths are built server-side from that uid and candidate payloads carry no cross-tenant object ids",
-    handlerModule: "callables/usageCuration.ts",
+    handlerModule: "functions-sync/src/domains/usage/usageCuration.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -104,7 +111,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "trigger accepts only Pub/Sub delivery, validates the BurnBar package, hashes the purchase token, resolves the server-owned claim, and reconciles against the Google Play Developer API before updating that claim's uid",
-    handlerModule: "googlePlayRtdn.ts",
+    handlerModule: "functions-identity/src/domains/billing/googlePlayRtdn.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -124,7 +131,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "scheduled job lists only the configured BurnBar package, hashes each transient purchase token, resolves the server-owned claim, and routes reconciliation through the same provider-verified RTDN processor",
-    handlerModule: "googlePlayVoidedPurchaseReconciler.ts",
+    handlerModule: "functions-identity/src/domains/billing/googlePlayVoidedPurchaseReconciler.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -143,7 +150,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["hostDeviceId", "connectionId", "controllerDeviceId", "controllerPeerNodeId"],
     ownershipCheck:
       "handler scopes every path to request.auth.uid, verifies the caller is the pairing's trusted publishing host and the target is a trusted mobile device, then writes a pairing-scoped short-lived single-use enrollment grant",
-    handlerModule: "callables/phoneControlCallables.ts",
+    handlerModule: "functions-sync/src/callables/phoneControlCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/phoneControlPairingBinding.test.ts",
@@ -163,7 +170,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["sourceDeviceId", "connectionId", "authorityPeerNodeId", "transportNodeId"],
     ownershipCheck:
       "handler scopes every document path to request.auth.uid and transactionally joins the signed pairing, trusted host, matching authorized controller device, and key-derived controller authority before issuing a one-minute challenge",
-    handlerModule: "callables/irohControllerRouteCallables.ts",
+    handlerModule: "functions-sync/src/callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
@@ -184,7 +191,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["challengeId"],
     ownershipCheck:
       "handler loads the challenge only below request.auth.uid, verifies its transport-key signature, then revalidates the same-user trust graph before atomically consuming it and rotating the route generation",
-    handlerModule: "callables/irohControllerRouteCallables.ts",
+    handlerModule: "functions-sync/src/callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
@@ -204,7 +211,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["sourceDeviceId", "connectionId"],
     ownershipCheck:
       "handler derives the tenant from request.auth.uid and only advances the generation of the route bound to the requesting authorized controller device",
-    handlerModule: "callables/irohControllerRouteCallables.ts",
+    handlerModule: "functions-sync/src/callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
@@ -224,7 +231,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["connectionId"],
     ownershipCheck:
       "handler reads only request.auth.uid paths and returns one route only after revalidating pairing freshness/signature, host and controller trust, exact authority derivation, route generation, TTL, and revocation state",
-    handlerModule: "callables/irohControllerRouteCallables.ts",
+    handlerModule: "functions-sync/src/callables/irohControllerRouteCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/irohControllerRouteCallables.test.ts",
@@ -247,7 +254,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "trigger derives uid from the Firestore event path and meters only the immutable source document in that user namespace",
-    handlerModule: "computerUseMetering.ts",
+    handlerModule: "functions-sync/src/domains/computer-use/computerUseMetering.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -266,7 +273,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "trigger derives uid from the Firestore event path and meters only the source session in that user namespace",
-    handlerModule: "computerUseMetering.ts",
+    handlerModule: "functions-sync/src/domains/computer-use/computerUseMetering.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -285,7 +292,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "trigger derives uid from the Firestore event path and meters only the source session in that user namespace",
-    handlerModule: "computerUseMetering.ts",
+    handlerModule: "functions-sync/src/domains/computer-use/computerUseMetering.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -304,7 +311,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "trigger derives uid from the Firestore event path and pushes only to devices in that user namespace whose liveActivitySessionId matches the action session",
-    handlerModule: "liveActivityPush.ts",
+    handlerModule: "functions-media/src/domains/push/liveActivityPush.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -323,7 +330,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "trigger derives uid from the Firestore event path and pushes only to devices in that user namespace whose liveActivitySessionId matches the session",
-    handlerModule: "liveActivityPush.ts",
+    handlerModule: "functions-media/src/domains/push/liveActivityPush.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -342,7 +349,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "scheduled job reads nonterminal server-owned receipts and resumes cleanup using the receipt uid; no client input is accepted",
-    handlerModule: "accountDeletionReconciler.ts",
+    handlerModule: "functions/src/domains/lifecycle/accountDeletionReconciler.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -383,7 +390,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "handler derives every replica and idempotency document path from request.auth.uid and never accepts a client uid",
-    handlerModule: "callables/linuxCloudReplica.ts",
+    handlerModule: "functions-sync/src/domains/support/linuxCloudReplica.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -403,7 +410,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "handler reads only the authenticated user's linux_cloud_replicas collection and never accepts a client uid",
-    handlerModule: "callables/linuxCloudReplica.ts",
+    handlerModule: "functions-sync/src/domains/support/linuxCloudReplica.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -426,7 +433,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["deviceId"],
     ownershipCheck:
       "handler derives the tenant from request.auth.uid and binds that uid into the signed enrollment bytes; deviceId is recomputed from the submitted Ed25519 public key",
-    handlerModule: "callables/linuxAppCheckDevices.ts",
+    handlerModule: "functions-identity/src/domains/app-check/linuxAppCheckDevices.ts",
     bolaCoverage: [{
       file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
       test: "registers only a fresh self-signed key-derived pending identity without granting escrow trust",
@@ -447,7 +454,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["deviceId"],
     ownershipCheck:
       "handler resolves the approved install only below request.auth.uid and persists a short-lived random challenge in that same namespace",
-    handlerModule: "callables/linuxAppCheckDevices.ts",
+    handlerModule: "functions-identity/src/domains/app-check/linuxAppCheckDevices.ts",
     bolaCoverage: [{
       file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
       test: "issues an opaque challenge only to approved keys and atomically consumes a valid signature once",
@@ -466,7 +473,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["approverDeviceId"],
     ownershipCheck:
       "handler proves the manager is a trusted native escrow device below request.auth.uid and lists only public enrollment review material from that same user namespace",
-    handlerModule: "callables/linuxAppCheckDevices.ts",
+    handlerModule: "functions-identity/src/domains/app-check/linuxAppCheckDevices.ts",
     bolaCoverage: [{
       file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
       test: "lists public review material and revokes without ever returning private material",
@@ -485,7 +492,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["deviceId", "approverDeviceId"],
     ownershipCheck:
       "handler scopes target and approver below request.auth.uid, verifies a nonce-bound native device action signature, and transactionally promotes only a pending key-derived identity",
-    handlerModule: "callables/linuxAppCheckDevices.ts",
+    handlerModule: "functions-identity/src/domains/app-check/linuxAppCheckDevices.ts",
     bolaCoverage: [{
       file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
       test: "rejects cross-user App Check device operations without victim side effects",
@@ -504,7 +511,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["deviceId", "approverDeviceId"],
     ownershipCheck:
       "handler scopes target and approver below request.auth.uid, verifies a nonce-bound native device action signature, and transactionally makes revocation irreversible",
-    handlerModule: "callables/linuxAppCheckDevices.ts",
+    handlerModule: "functions-identity/src/domains/app-check/linuxAppCheckDevices.ts",
     bolaCoverage: [{
       file: "functions/src/__tests__/linuxAppCheckDevices.test.ts",
       test: "rejects cross-user App Check device operations without victim side effects",
@@ -545,7 +552,7 @@ const CATALOG_OVERRIDES = {
       "Bootstrap that precedes custom App Check minting, so it cannot require App Check. It returns a short-lived nonce only after Firebase Auth and exact server-configured app-id binding.",
     tenantSource: "request.auth.uid",
     objectIdsFromClient: [],
-    handlerModule: "callables/windowsAppCheck.ts",
+    handlerModule: "functions-identity/src/domains/app-check/windowsAppCheck.ts",
     ownershipCheck:
       "handler derives uid from request.auth.uid and accepts only the exact server-configured, allowlisted Windows app id",
     bolaCoverage: [
@@ -564,7 +571,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["deviceId"],
     ownershipCheck:
       "handler derives uid from request.auth.uid and reads only that user's trusted device and pinned escrow public key",
-    handlerModule: "callables/signalIdentityRepair.ts",
+    handlerModule: "functions-sync/src/callables/signalIdentityRepair.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -581,7 +588,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["deviceId", "challengeId", "identityKeyId"],
     ownershipCheck:
       "handler derives uid from request.auth.uid and transactionally consumes only that user's one-time challenge, trusted device, escrow key, and Signal identity",
-    handlerModule: "callables/signalIdentityRepair.ts",
+    handlerModule: "functions-sync/src/callables/signalIdentityRepair.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/computerUse.bola.test.ts",
@@ -600,7 +607,7 @@ const CATALOG_OVERRIDES = {
     appCheck: "required",
     tenantSource: "request.auth.uid; response contains global safety flags only",
     objectIdsFromClient: [],
-    handlerModule: "callables/windowsRuntimeSafetyConfig.ts",
+    handlerModule: "functions-identity/src/domains/app-check/windowsRuntimeSafetyConfig.ts",
     ownershipCheck:
       "handler requires Auth and App Check, accepts no object ids, and returns only bounded global Remote Config booleans",
     bolaCoverage: [
@@ -638,7 +645,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "handler validates the optional date key against a plausible calendar window and reads only public router_rundowns documents",
-    handlerModule: "routerRundown.ts",
+    handlerModule: "functions/src/routerRundown.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/routerRundownEndpoint.test.ts",
@@ -659,7 +666,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "handler verifies the GitHub HMAC before reading payload fields, then maps the signed repo and installation id through server-stored match tokens",
-    handlerModule: "callables/knowledgeSync.ts",
+    handlerModule: "functions-sync/src/domains/knowledge/knowledgeSync.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/knowledgeRepoMatchToken.test.ts",
@@ -672,7 +679,7 @@ const CATALOG_OVERRIDES = {
   },
   consumeCredentialTransfer: {
     objectIdsFromClient: ["transferId"],
-    handlerModule: "callables/credentialTransfer.ts",
+    handlerModule: "functions-identity/src/domains/identity/credentialTransfer.ts",
     ownershipCheck:
       "handler derives uid from request.auth.uid, rejects legacy code/full-token inputs before lookup, and validates ownerUid on credential_transfers/{transferId}",
     bolaCoverage: [
@@ -688,7 +695,7 @@ const CATALOG_OVERRIDES = {
   },
   completeCredentialTransfer: {
     objectIdsFromClient: ["transferId"],
-    handlerModule: "callables/credentialTransfer.ts",
+    handlerModule: "functions-identity/src/domains/identity/credentialTransfer.ts",
     ownershipCheck:
       "handler derives uid from request.auth.uid and requires ownerUid plus matching claim hash before consuming credential_transfers/{transferId}",
     bolaCoverage: [
@@ -704,7 +711,7 @@ const CATALOG_OVERRIDES = {
   },
   cancelCredentialTransfer: {
     objectIdsFromClient: ["transferId"],
-    handlerModule: "callables/credentialTransfer.ts",
+    handlerModule: "functions-identity/src/domains/identity/credentialTransfer.ts",
     ownershipCheck:
       "handler derives uid from request.auth.uid and requires ownerUid plus matching claim hash before releasing or cancelling credential_transfers/{transferId}",
     bolaCoverage: [
@@ -720,7 +727,7 @@ const CATALOG_OVERRIDES = {
   },
   createCredentialTransfer: {
     objectIdsFromClient: ["transferId"],
-    handlerModule: "callables/credentialTransfer.ts",
+    handlerModule: "functions-identity/src/domains/identity/credentialTransfer.ts",
     ownershipCheck:
       "handler derives ownerUid from request.auth.uid, rejects secret-bearing legacy fields, and creates only fresh credential_transfers/{transferId}",
     bolaCoverage: [
@@ -753,7 +760,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["deviceCode"],
     ownershipCheck:
       "poll requires a matching device-secret verifier for the deviceCode session and returns only a client-sealed credential envelope",
-    handlerModule: "callables/cliLink.ts",
+    handlerModule: "functions-identity/src/domains/devices/cliLink.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/pairing.bola.test.ts",
@@ -768,7 +775,7 @@ const CATALOG_OVERRIDES = {
   performElderWandHostedSearch: {
     objectIdsFromClient: [],
     ownershipCheck: "handler derives uid from request.auth.uid only",
-    handlerModule: "elderWandHostedSearch.ts",
+    handlerModule: "functions-sync/src/domains/search/elderWandHostedSearch.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -806,7 +813,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["docID"],
     ownershipCheck:
       "handler derives uid from request.auth.uid and deletes only users/{uid}/project_memory_snapshots/{docID}; tombstone is content-free",
-    handlerModule: "callables/encryptedProjectMemory.ts",
+    handlerModule: "functions-sync/src/callables/encryptedProjectMemory.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/encryptedSearch.bola.test.ts",
@@ -864,7 +871,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "creates ephemeral cli_link_sessions with a verifier hash and credential-delivery public key; no cross-tenant reads",
-    handlerModule: "callables/cliLink.ts",
+    handlerModule: "functions-identity/src/domains/devices/cliLink.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -883,7 +890,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "handler maps the Play-signed purchase token to an existing server-owned claim before touching any uid-scoped document",
-    handlerModule: "googlePlayRtdn.ts",
+    handlerModule: "functions-identity/src/domains/billing/googlePlayRtdn.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -904,7 +911,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "trigger derives uid from the Firestore event path and fans out only to that user's device docs; the item body stays sealed and never enters the push payload",
-    handlerModule: "aiInboxNotifications.ts",
+    handlerModule: "functions-sync/src/domains/notify/aiInboxNotifications.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -922,7 +929,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "trigger document path and server-side uid field",
     objectIdsFromClient: [],
     ownershipCheck: "trigger fires only on server-written fcm_outbound docs scoped by uid",
-    handlerModule: "fcmAndroidSender.ts",
+    handlerModule: "functions-media/src/domains/push/fcmAndroidSender.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -939,7 +946,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "trigger document path and server-side uid field",
     objectIdsFromClient: [],
     ownershipCheck: "trigger fires only on server-written voip_outbound docs scoped by uid",
-    handlerModule: "apnsSender.ts",
+    handlerModule: "functions-media/src/domains/push/apnsSender.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -957,7 +964,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "worker accepts only scheduler-created dirty epochs and re-reads the server-side rollup job before rebuilding",
-    handlerModule: "scheduled.ts",
+    handlerModule: "functions/src/scheduled.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -971,7 +978,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "handler derives uid from request.auth.uid and scans only workspaces/workspace-${uid}/teams/*/artifacts; response contains IDs and metadata flags only",
-    handlerModule: "callables/sharedArtifactLegacyScan.ts",
+    handlerModule: "functions/src/domains/ops/sharedArtifactLegacyScan.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -987,7 +994,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["sampleId"],
     ownershipCheck:
       "handler requires Auth, App Check, and a matching server-issued rollout-channel claim; writes immutable uid-free samples to a global TTL collection",
-    handlerModule: "callables/domainCoreShadowEvidence.ts",
+    handlerModule: "functions-sync/src/domains/support/domainCoreShadowEvidence.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/domainCoreShadowEvidence.bola.test.ts",
@@ -1006,7 +1013,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: [],
     ownershipCheck:
       "handler derives the founding admin from request.auth.uid only and mints a fresh server-side team id",
-    handlerModule: "callables/teamRosterCallables.ts",
+    handlerModule: "functions-identity/src/domains/identity/teamRosterCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -1026,7 +1033,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
     objectIdsFromClient: ["teamId"],
     ownershipCheck: "handler requires an ACTIVE ADMIN row at team_rosters/{teamId}/members/{request.auth.uid} before resolving the invitee uid or writing an invite",
-    handlerModule: "callables/teamRosterCallables.ts",
+    handlerModule: "functions-identity/src/domains/identity/teamRosterCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
@@ -1046,7 +1053,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
     objectIdsFromClient: ["teamId"],
     ownershipCheck: "handler requires a verified email claim and an invite whose server-stored inviteeUid equals request.auth.uid; escrow key fingerprints are read from the caller's own namespace",
-    handlerModule: "callables/teamRosterCallables.ts",
+    handlerModule: "functions-identity/src/domains/identity/teamRosterCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
@@ -1066,7 +1073,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
     objectIdsFromClient: ["teamId", "uid"],
     ownershipCheck: "handler requires an ACTIVE ADMIN row for request.auth.uid on that team, and verifies key envelope coverage addressed to the named member before activating it",
-    handlerModule: "callables/teamRosterCallables.ts",
+    handlerModule: "functions-identity/src/domains/identity/teamRosterCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
@@ -1086,7 +1093,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
     objectIdsFromClient: ["teamId", "targetUid"],
     ownershipCheck: "handler allows self-leave, otherwise requires an ACTIVE ADMIN row for request.auth.uid on that team",
-    handlerModule: "callables/teamRosterCallables.ts",
+    handlerModule: "functions-identity/src/domains/identity/teamRosterCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
@@ -1107,7 +1114,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["teamId"],
     ownershipCheck:
       "handler requires an ACTIVE ADMIN row for request.auth.uid on that team, and burns only the next unclaimed key version, only when it is neither active nor retained and an envelope for it exists",
-    handlerModule: "callables/teamRosterCallables.ts",
+    handlerModule: "functions-identity/src/domains/identity/teamRosterCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
@@ -1127,7 +1134,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
     objectIdsFromClient: ["teamId"],
     ownershipCheck: "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and refuses any key version but the roster's current activeKeyVersion",
-    handlerModule: "callables/teamRosterCallables.ts",
+    handlerModule: "functions-identity/src/domains/identity/teamRosterCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
@@ -1148,7 +1155,7 @@ const CATALOG_OVERRIDES = {
     objectIdsFromClient: ["teamId"],
     ownershipCheck:
       "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and records the founding slug-key fingerprint write-once, refusing any second, different value",
-    handlerModule: "teamSlugKeyRecord.ts",
+    handlerModule: "functions-identity/src/teamSlugKeyRecord.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
@@ -1168,7 +1175,7 @@ const CATALOG_OVERRIDES = {
     tenantSource: "request.auth.uid resolved against team_rosters/{teamId}/members/{uid}",
     objectIdsFromClient: ["teamId"],
     ownershipCheck: "handler requires an ACTIVE ADMIN row for request.auth.uid on that team and refuses any key version but activeKeyVersion + 1",
-    handlerModule: "callables/teamRosterCallables.ts",
+    handlerModule: "functions-identity/src/domains/identity/teamRosterCallables.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/teamRoster.bola.test.ts",
@@ -1284,7 +1291,7 @@ for (const exportedName of SIGNAL_MIGRATION_TRIGGER_NAMES) {
     tenantSource: "trigger document path and server-side uid field",
     objectIdsFromClient: [],
     ownershipCheck: "trigger reads only the user-scoped source document and writes aggregate migration telemetry",
-    handlerModule: "signalMigrationTelemetry.ts",
+    handlerModule: "functions-sync/src/domains/telemetry/signalMigrationTelemetry.ts",
     bolaCoverage: [
       {
         file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -1305,7 +1312,7 @@ CATALOG_OVERRIDES.benchAssistant = {
   objectIdsFromClient: [],
   ownershipCheck:
     "handler rejects missing auth before any OpenRouter HTTP, validates the payload, enforces IP rate limits, and proxies the caller-supplied public BurnBench digest",
-  handlerModule: "benchAssistant.ts",
+  handlerModule: "functions-sync/src/domains/telemetry/benchAssistant.ts",
   bolaCoverage: [
     {
       file: "functions/src/__tests__/benchAssistant.test.ts",
@@ -1328,7 +1335,7 @@ CATALOG_OVERRIDES.arenaVote = {
   objectIdsFromClient: [],
   ownershipCheck:
     "handler requires Firebase Auth, validates the payload (serveId is required; a client-sent servedSwap is parsed and discarded), enforces the uid-keyed rate limits before any write, redeems the single-use arena_serves/{serveId} ticket — rejecting a ticket that names a different matchupId, was issued to a different uid, was already consumed, or has expired — and takes the served left/right orientation from that server-written ticket rather than from the request, resolves the matchup registry entry, normalizes the choice and rubric verdicts into stored left_cell/right_cell orientation, writes the vote with a deterministic {uid}__{matchupId} doc id via create() (race-proof dedup), and only then reveals competitor identities, in the orientation the voter actually saw",
-  handlerModule: "arenaVote.ts",
+  handlerModule: "functions-sync/src/domains/telemetry/arenaVote.ts",
   bolaCoverage: [
     {
       file: "functions/src/__tests__/arenaVote.test.ts",
@@ -1380,7 +1387,7 @@ CATALOG_OVERRIDES.arenaMatchup = {
   objectIdsFromClient: [],
   ownershipCheck:
     "handler reads arena_matchups (a collection Firestore rules deny to all clients) with a BOUNDED read — a random cursor into the id-ordered registry, a select() projection that deliberately omits left_cell/right_cell so identities are never loaded on the serving path, limit 12, plus one wrap-around page — skips matchups the caller already judged, picks the left/right orientation with a CSPRNG, records that orientation in a single-use arena_serves/{serveId} ticket bound to the matchup and (when signed in) to the uid, and returns only content-hash bundle ids, sanitized entry paths, the matchupId, and the opaque serveId — never the competitor cell identities and never the orientation itself",
-  handlerModule: "arenaVote.ts",
+  handlerModule: "functions-sync/src/domains/telemetry/arenaVote.ts",
   bolaCoverage: [
     {
       file: "functions/src/__tests__/arenaVote.test.ts",
@@ -1422,7 +1429,7 @@ CATALOG_OVERRIDES.writeSignalAtRestDocument = {
   tenantSource: "request.auth.uid",
   objectIdsFromClient: [],
   ownershipCheck: "handler derives the user path from request.auth.uid, allows only approved collections, and atomically writes validated Signal envelopes",
-  handlerModule: "callables/writeSignalAtRestDocument.ts",
+  handlerModule: "functions-identity/src/domains/devices/writeSignalAtRestDocument.ts",
   bolaCoverage: [
     {
       file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -1469,7 +1476,7 @@ for (const name of [
     name,
     "functions/src/__tests__/bola/burnbarAttachments.bola.test.ts",
     `${name} rejects cross-user object access`,
-    { objectIdsFromClient: ["id"], handlerModule: "callables/burnbarAttachments.ts" },
+    { objectIdsFromClient: ["id"], handlerModule: "functions-media/src/domains/attachments/burnbarAttachments.ts" },
   );
 }
 
@@ -1484,7 +1491,7 @@ for (const [name, ids] of [
     name,
     "functions/src/__tests__/bola/cliAgentMissions.bola.test.ts",
     `${name} rejects cross-user object access`,
-    { objectIdsFromClient: ids, handlerModule: "callables/cliAgentMissions.ts" },
+    { objectIdsFromClient: ids, handlerModule: "functions-sync/src/domains/missions/cliAgentMissions.ts" },
   );
 }
 
@@ -1510,20 +1517,20 @@ CATALOG_OVERRIDES.createCliAgentMissionGroup = {
   ],
   highRiskComputerUse: true,
   objectIdsFromClient: ["groupId"],
-  handlerModule: "callables/cliAgentMissions.ts",
+  handlerModule: "functions-sync/src/domains/missions/cliAgentMissions.ts",
 };
 
 CATALOG_OVERRIDES.publishMissionApprovalCeiling = runtimeOwned(
   "publishMissionApprovalCeiling",
   "functions/src/__tests__/bola/missionApprovalAnswers.bola.test.ts",
   "publishMissionApprovalCeiling rejects cross-user object access",
-  { objectIdsFromClient: ["requestId"], handlerModule: "callables/missionApprovalAnswers.ts" },
+  { objectIdsFromClient: ["requestId"], handlerModule: "functions-sync/src/domains/missions/missionApprovalAnswers.ts" },
 );
 CATALOG_OVERRIDES.redeemMissionApprovalAnswer = runtimeOwned(
   "redeemMissionApprovalAnswer",
   "functions/src/__tests__/bola/missionApprovalAnswers.bola.test.ts",
   "redeemMissionApprovalAnswer rejects cross-user object access",
-  { objectIdsFromClient: ["requestId"], handlerModule: "callables/missionApprovalAnswers.ts" },
+  { objectIdsFromClient: ["requestId"], handlerModule: "functions-sync/src/domains/missions/missionApprovalAnswers.ts" },
 );
 
 CATALOG_OVERRIDES.reapBurnbarAttachments = {
@@ -1533,7 +1540,7 @@ CATALOG_OVERRIDES.reapBurnbarAttachments = {
   tenantSource: "job-owned collection scans",
   objectIdsFromClient: [],
   ownershipCheck: "server-side collection filters and per-document uid fields",
-  handlerModule: "scheduled/reapBurnbarAttachments.ts",
+  handlerModule: "functions-media/src/domains/attachments/reapBurnbarAttachments.ts",
   bolaCoverage: [
     {
       file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -1552,7 +1559,7 @@ CATALOG_OVERRIDES.reapExpiredCounterDayBuckets = {
   tenantSource: "job-owned collection scans",
   objectIdsFromClient: [],
   ownershipCheck: "server-side collection filters and per-document uid fields",
-  handlerModule: "scheduled/reapExpiredCounterDays.ts",
+  handlerModule: "functions/src/domains/scheduled/reapExpiredCounterDays.ts",
   bolaCoverage: [
     {
       file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
@@ -1573,7 +1580,7 @@ function defaultEntry(exportedName) {
     tenantSource: "request.auth.uid",
     objectIdsFromClient: ["accountID"],
     ownershipCheck: "handler derives uid from request.auth.uid and validates object path before Admin SDK access",
-    handlerModule: "callables/shared.ts",
+    handlerModule: "",
     bolaCoverage: [
       {
         file: `functions/src/__tests__/bola/${exportedName}.bola.test.ts`,

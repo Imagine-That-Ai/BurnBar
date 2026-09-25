@@ -14,7 +14,7 @@ import { BOB_UID, callableRunner, pathKeyedFirestore, tier2CallableProof } from 
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map<string, Record<string, unknown>>());
-vi.mock("../../adminRuntime.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: pathKeyedFirestore(bolaStore),
   auth: {
     // Never reached: the roster check runs before any directory lookup. If it
@@ -24,7 +24,7 @@ vi.mock("../../adminRuntime.js", () => ({
     }),
   },
 }));
-vi.mock("../../callables/publicRateLimit.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
   checkTeamRosterMutationRateLimit: vi.fn(async () => undefined),
   checkTeamInviteRateLimit: vi.fn(async () => undefined),
   checkTeamInviteAcceptRateLimit: vi.fn(async () => undefined),
@@ -46,7 +46,7 @@ export const BOLA_MANIFEST = {
 } as const;
 
 async function teamRosterCallables() {
-  return import("../../callables/teamRosterCallables.js");
+  return import("../../../../functions-identity/src/domains/identity/teamRosterCallables.js");
 }
 
 describe("BOLA - team roster authority", () => {

@@ -206,7 +206,12 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: functions/package-lock.json
+          cache-dependency-path: |
+            functions/package-lock.json
+            functions-identity/package-lock.json
+            functions-sync/package-lock.json
+            functions-media/package-lock.json
+            packages/functions-shared/package-lock.json
 
       - name: Validate, test, and scope candidate Functions without credentials
         id: scope-functions
@@ -217,32 +222,48 @@ jobs:
             echo "::error::function_targets must contain only explicit Firebase Functions selectors."
             exit 1
           fi
-          npm ci --prefix functions
-          npm run build --prefix functions
+          for dir in packages/functions-shared functions functions-identity functions-sync functions-media; do
+            npm ci --prefix "$dir"
+          done
+          bash scripts/build-functions-all.sh
           npm run test:security --prefix functions
           node scripts/ci/prepare-scoped-functions-deploy.mjs \
             --targets "$FUNCTION_TARGETS" \
             --functions-dir functions
-          test -f functions/.env.burnbar-staging
+          for dir in functions functions-identity functions-sync functions-media; do
+            test -f "$dir/.env.burnbar-staging"
+          done
 
       - name: Package bounded Functions data
         env:
           CANDIDATE_SHA: ${{ needs.resolve-candidate.outputs.candidate_sha }}
+          INVOLVED_CODEBASES: ${{ steps.scope-functions.outputs.involved_codebases }}
         run: |
           set -euo pipefail
-          destination="$RUNNER_TEMP/staging-functions/functions"
-          mkdir -p "$destination"
-          cp -R functions/lib "$destination/lib"
-          find "$destination/lib" -type f \
-            \( -name '*.d.ts' -o -name '*.d.ts.map' \) -delete
-          rm -f "$destination/lib/appstore/certs/README.md"
-          cp -R functions/vendor "$destination/vendor"
-          test -f "$destination/vendor/openburnbar/brace-expansion-cjs.tgz"
-          rm -rf "$destination/vendor/openburnbar/brace-expansion-cjs"
-          cp functions/package.json functions/package-lock.json functions/.env.burnbar-staging "$destination/"
+          if [[ -z "${INVOLVED_CODEBASES:-}" ]]; then
+            echo "::error::prepare-scoped-functions-deploy did not emit involved_codebases."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/staging-functions"
+          for codebase in ${INVOLVED_CODEBASES//,/ }; do
+            case "$codebase" in
+              functions|functions-identity|functions-sync|functions-media) ;;
+              *) echo "::error::unreviewed codebase dir: $codebase"; exit 1 ;;
+            esac
+            destination="$RUNNER_TEMP/staging-functions/$codebase"
+            mkdir -p "$destination"
+            cp -R "$codebase/lib" "$destination/lib"
+            find "$destination/lib" -type f \
+              \( -name '*.d.ts' -o -name '*.d.ts.map' \) -delete
+            rm -f "$destination/lib/domains/billing/appstore/certs/README.md"
+            cp -R "$codebase/vendor" "$destination/vendor"
+            test -f "$destination/vendor/openburnbar/brace-expansion-cjs.tgz"
+            rm -rf "$destination/vendor/openburnbar/brace-expansion-cjs"
+            cp "$codebase/package.json" "$codebase/package-lock.json" "$codebase/.env.burnbar-staging" "$destination/"
+          done
           (
             cd "$RUNNER_TEMP/staging-functions"
-            find functions -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+            find functions functions-identity functions-sync functions-media -type f -print0 2>/dev/null | sort -z | xargs -0 sha256sum > SHA256SUMS
             printf '%s\n' "$CANDIDATE_SHA" > CANDIDATE_SHA
           )
 

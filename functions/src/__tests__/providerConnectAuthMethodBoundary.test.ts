@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeCloudConnectAuthMethodID } from "../callables/shared.js";
+import { normalizeCloudConnectAuthMethodID } from "../../../packages/functions-shared/src/shared/providerConnect.js";
 
 describe("provider account cloud auth method boundary", () => {
   it("allows known methods and legacy missing metadata", () => {

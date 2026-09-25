@@ -4,7 +4,7 @@ import {
   decodeWindowsRuntimeSafetyConfig,
   getWindowsRuntimeSafetyConfig,
   readWindowsRuntimeSafetyConfig,
-} from "../callables/windowsRuntimeSafetyConfig.js";
+} from "../../../functions-identity/src/domains/app-check/windowsRuntimeSafetyConfig.js";
 
 function template(values: Record<string, string>): Parameters<typeof decodeWindowsRuntimeSafetyConfig>[0] {
   return {

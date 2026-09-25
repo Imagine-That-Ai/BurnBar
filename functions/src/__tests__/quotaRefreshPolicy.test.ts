@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { QuotaRefreshPolicy, QuotaSignalTier } from "../quotaRefreshPolicy.js";
+import { QuotaRefreshPolicy, QuotaSignalTier } from "../../../packages/functions-shared/src/quotaRefreshPolicy.js";
 
 type QuotaRefreshWindowKind =
   | "rollingHours"

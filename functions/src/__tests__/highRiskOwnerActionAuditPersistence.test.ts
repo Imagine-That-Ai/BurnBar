@@ -85,12 +85,12 @@ vi.mock("firebase-functions/logger", () => ({
   debug: vi.fn(),
 }));
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: dbMock,
   auth: {},
 }));
 
-import { appendAuditEventRequired, AUDIT_ACTIONS, verifyAuditChain } from "../callables/auditLog.js";
+import { appendAuditEventRequired, AUDIT_ACTIONS, verifyAuditChain } from "../../../packages/functions-shared/src/shared/auditLog.js";
 
 function writeEvidenceArtifact(value: unknown) {
   const directory = process.env.OPENBURNBAR_LINUX_SECURITY_EVIDENCE_DIR;

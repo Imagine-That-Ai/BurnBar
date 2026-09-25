@@ -24,7 +24,7 @@
 import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hashHermesGatewayBearerToken } from "../hermesGateway.js";
+import { hashHermesGatewayBearerToken } from "../../../packages/functions-shared/src/hermesGateway.js";
 
 // All imports of ../callables/hermesGateway.js are LAZY (await import inside a
 // test) so the vi.mock factories below are fully initialized before the module —
@@ -36,8 +36,8 @@ vi.mock("firebase-functions/logger", () => ({
   warn: vi.fn(),
   debug: vi.fn(),
 }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 
 // Controls which uid `assertActiveBurnBarCloudProEntitlement` accepts. The base
 // gateway entitlement is forced true for every uid (so both the Pro and non-Pro
@@ -45,8 +45,8 @@ vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 // real assert seam the production code calls — switched per test by uid.
 const PRO_UIDS = new Set<string>();
 
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     // Base Hermes Gateway entitlement: pass for everyone so the request is not
@@ -130,7 +130,7 @@ const dbMock = {
   },
 };
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -279,7 +279,7 @@ function record(value: unknown, label = "value"): Record<string, unknown> {
 async function callGateway(path: string, body: Record<string, unknown>): Promise<CapturedResponse> {
   // Drive the inner dispatcher (no onRequest/CORS plumbing) — the exact seam
   // production calls.
-  const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+  const { dispatchHermesGatewayRequest } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
   const { res, captured } = makeRes();
   await dispatchHermesGatewayRequest(makeReq(path, body), res);
   return captured;

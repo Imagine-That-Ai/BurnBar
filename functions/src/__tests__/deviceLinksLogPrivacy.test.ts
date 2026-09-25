@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { deviceLinkLogFields } from "../domains/device-links/store.js";
+import { deviceLinkLogFields } from "../../../packages/functions-shared/src/domains/device-links/store.js";
 
 const LOG_HASH_VERSION = "openburnbar:device-link-log:v1";
 

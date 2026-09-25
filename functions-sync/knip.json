@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": [
+    "src/index.ts",
+    "src/testing.ts"
+  ],
+  "project": [
+    "src/**/*.ts"
+  ],
+  "ignoreDependencies": [
+    "@openburnbar/entitlements",
+    "@openburnbar/signal-envelope-contracts",
+    "@openburnbar/functions-shared",
+    "@openburnbar/domain-core-wasm"
+  ]
+}

@@ -3,34 +3,34 @@
  */
 
 import { describe, it, vi } from "vitest";
-import { cloudVaultAADContext } from "../../callables/shared/validators.js";
+import { cloudVaultAADContext } from "../../../../packages/functions-shared/src/shared/validators.js";
 import { ALICE_UID, callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callableBolaHarness.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../../callables/shared.js")>("../../callables/shared.js");
+vi.mock("../../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/shared/entitlements.js")>("../../../../packages/functions-shared/src/shared/entitlements.js");
   return { ...actual, assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined) };
 });
-vi.mock("../../appCheckAttestation.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
 }));
-vi.mock("../../callables/computerUseSecurityFirestore.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof: vi.fn(async () => ({
     deviceId: "dev",
     platform: "iOS",
     signalIdentityKeyId: "s",
   })),
 }));
-vi.mock("../../callables/publicRateLimit.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
   checkMissionCreateRateLimit: vi.fn(async () => undefined),
   recordCallableApprovalFailure: vi.fn(async () => undefined),
   assertCallableApprovalNotLocked: vi.fn(async () => undefined),
@@ -78,7 +78,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — cliAgentMissions", () => {
   it("createCliAgentMission rejects cross-user object access", async () => {
-    const mod = await import("../../callables/cliAgentMissions.js");
+    const mod = await import("../../../../functions-sync/src/domains/missions/cliAgentMissions.js");
     const run = callableRunner(mod.createCliAgentMission);
     await tier2CallableProof(bolaStore, {
       exportedName: "createCliAgentMission",
@@ -89,7 +89,7 @@ describe("BOLA — cliAgentMissions", () => {
   });
 
   it("createCliAgentMissionGroup rejects cross-user object access", async () => {
-    const mod = await import("../../callables/cliAgentMissions.js");
+    const mod = await import("../../../../functions-sync/src/domains/missions/cliAgentMissions.js");
     const run = callableRunner(mod.createCliAgentMissionGroup);
     await tier2CallableProof(bolaStore, {
       exportedName: "createCliAgentMissionGroup",
@@ -100,7 +100,7 @@ describe("BOLA — cliAgentMissions", () => {
   });
 
   it("cancelCliAgentMission rejects cross-user object access", async () => {
-    const mod = await import("../../callables/cliAgentMissions.js");
+    const mod = await import("../../../../functions-sync/src/domains/missions/cliAgentMissions.js");
     const run = callableRunner(mod.cancelCliAgentMission);
     await tier2CallableProof(bolaStore, {
       exportedName: "cancelCliAgentMission",
@@ -111,7 +111,7 @@ describe("BOLA — cliAgentMissions", () => {
   });
 
   it("claimCliAgentMission rejects cross-user object access", async () => {
-    const mod = await import("../../callables/cliAgentMissions.js");
+    const mod = await import("../../../../functions-sync/src/domains/missions/cliAgentMissions.js");
     const run = callableRunner(mod.claimCliAgentMission);
     await tier2CallableProof(bolaStore, {
       exportedName: "claimCliAgentMission",
@@ -122,7 +122,7 @@ describe("BOLA — cliAgentMissions", () => {
   });
 
   it("appendCliAgentMissionEvent rejects cross-user object access", async () => {
-    const mod = await import("../../callables/cliAgentMissions.js");
+    const mod = await import("../../../../functions-sync/src/domains/missions/cliAgentMissions.js");
     const run = callableRunner(mod.appendCliAgentMissionEvent);
     await tier2CallableProof(bolaStore, {
       exportedName: "appendCliAgentMissionEvent",
@@ -133,7 +133,7 @@ describe("BOLA — cliAgentMissions", () => {
   });
 
   it("updateCliAgentMissionStatus rejects cross-user object access", async () => {
-    const mod = await import("../../callables/cliAgentMissions.js");
+    const mod = await import("../../../../functions-sync/src/domains/missions/cliAgentMissions.js");
     const run = callableRunner(mod.updateCliAgentMissionStatus);
     await tier2CallableProof(bolaStore, {
       exportedName: "updateCliAgentMissionStatus",

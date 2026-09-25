@@ -7,7 +7,7 @@ import {
   isSecretVersionAlreadyErased,
   providerSecretRefDocumentID,
   userWorkspaceID,
-} from "../lib/accountDeletion.js";
+} from "../../packages/functions-shared/lib/accountDeletion.js";
 
 class FakeDocument {
   constructor(path, data = {}, exists = false) {

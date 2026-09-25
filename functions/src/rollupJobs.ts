@@ -6,10 +6,10 @@
 
 import { randomUUID } from "node:crypto";
 import { FieldValue, type DocumentData, type Firestore } from "firebase-admin/firestore";
-import type { RollupJobDoc, UsageRollupDoc } from "./types.js";
-import { errorMessage, parseRollupJobDoc } from "./guards.js";
-import { getConfig } from "./config.js";
-import { logError } from "./logging.js";
+import type { RollupJobDoc, UsageRollupDoc } from "@openburnbar/functions-shared/types.js";
+import { errorMessage, parseRollupJobDoc } from "@openburnbar/functions-shared/guards.js";
+import { getConfig } from "@openburnbar/functions-shared/config.js";
+import { logError } from "@openburnbar/functions-shared/logging.js";
 import { WINDOW_KEYS, stripUndefinedDocument, type WindowKey } from "./rollupCounters.js";
 import { computeUserRollups, computeUserRollupsFromCounters } from "./rollupCompute.js";
 import { drainPendingCounterDeltas, PendingDeltaDrainInFlightError } from "./rollupPendingDeltas.js";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FieldValue } from "firebase-admin/firestore";
 
-import { missionApprovalResolutionWrite } from "../callables/agentGrantCallables.js";
+import { missionApprovalResolutionWrite } from "../../../functions-sync/src/callables/agentGrantCallables.js";
 
 describe("missionApprovalResolutionWrite (respondMissionApproval persist contract)", () => {
   it("keeps Approve parked in waiting_for_approval so the Mac listener can claim it", () => {

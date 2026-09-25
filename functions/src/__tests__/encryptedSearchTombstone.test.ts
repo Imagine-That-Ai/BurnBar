@@ -112,7 +112,7 @@ const dbMock = {
   getAll: async (...refs: FakeDocumentRef[]) => Promise.all(refs.map((ref) => ref.get())),
 };
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock }));
 vi.mock("firebase-admin/storage", () => ({
   getStorage: () => ({
     bucket: () => ({
@@ -123,10 +123,10 @@ vi.mock("firebase-admin/storage", () => ({
     }),
   }),
 }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     assertActiveBurnBarProEntitlement: vi.fn(async () => undefined),
@@ -180,7 +180,7 @@ describe("searchEncryptedConversationIndex tombstone filtering", () => {
       updatedAt: "2026-06-24T00:10:00.000Z",
     });
 
-    const mod = await import("../callables/encryptedSearch.js");
+    const mod = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     const target = asRunnable(mod.queryConversations);
     const result = await target.run(
       callableRequest("alice", {
@@ -206,7 +206,7 @@ describe("searchEncryptedConversationIndex tombstone filtering", () => {
       deletedAt: new Date("2026-06-24T00:00:00.000Z"),
     });
 
-    const mod = await import("../callables/encryptedSearch.js");
+    const mod = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     const target = asRunnable(mod.getEncryptedSessionBlobDownloadUrl);
 
     await expect(target.run(callableRequest("alice", { storagePath }))).rejects.toMatchObject({ code: "not-found" });
@@ -268,7 +268,7 @@ describe("searchEncryptedConversationIndex tombstone filtering", () => {
       id: "live",
     });
 
-    const mod = await import("../callables/encryptedSearch.js");
+    const mod = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     const target = asRunnable(mod.searchEncryptedConversationIndex);
     const result = await target.run(
       callableRequest("alice", {
@@ -333,7 +333,7 @@ describe("searchEncryptedConversationIndex tombstone filtering", () => {
       id: "live",
     });
 
-    const mod = await import("../callables/encryptedSearch.js");
+    const mod = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     const target = asRunnable(mod.searchEncryptedConversationIndex);
     const result = await target.run(
       callableRequest("alice", {

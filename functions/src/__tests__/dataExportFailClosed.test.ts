@@ -22,7 +22,7 @@ process.env.ENFORCE_APP_CHECK = "false";
 const emptyCollection = {
   limit: () => ({ get: async () => ({ docs: [] }) }),
 };
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     collection: () => emptyCollection,
     doc: () => ({ get: async () => ({ exists: false }) }),
@@ -42,17 +42,17 @@ const { appendAuditEventRequired } = vi.hoisted(() => ({
     throw new Error("audit append failed");
   }),
 }));
-vi.mock("../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../callables/auditLog.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/auditLog.js", () => ({
   appendAuditEventRequired,
   appendAuditEvent: vi.fn(async () => undefined),
   auditActorLabel: () => "user",
   AUDIT_ACTIONS: { dataExport: "data.export" },
 }));
 
-import { exportUserData } from "../callables/dataExport.js";
+import { exportUserData } from "../domains/compliance/dataExport.js";
 
 function authedRequest() {
   return {

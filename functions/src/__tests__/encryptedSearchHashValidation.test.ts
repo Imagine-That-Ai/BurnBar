@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { requireOptionalSearchHashes, requireTokenHashes } from "../callables/shared.js";
+import { requireOptionalSearchHashes, requireTokenHashes } from "../../../packages/functions-shared/src/shared/validators.js";
 import {
   MAX_CLOUD_SEARCH_INDEX_CLEANUP_WRITES_PER_COMMIT,
   MAX_CLOUD_SEARCH_INDEX_WRITES_PER_COMMIT,
@@ -11,7 +11,7 @@ import {
   assertCloudSearchIndexCleanupWriteBudget,
   assertCloudSearchIndexWriteBudget,
   buildCloudSearchPostingEdges,
-} from "../callables/encryptedSearchIndex.js";
+} from "../../../functions-sync/src/callables/encryptedSearchIndex.js";
 
 describe("encrypted search hash validation", () => {
   it("rejects plaintext-like token and semantic hash entries", () => {
@@ -66,7 +66,7 @@ describe("encrypted search hash validation", () => {
   });
 
   it("keeps the callable wired to same-commit chunk binding and write-budget enforcement", () => {
-    const source = readFileSync(path.join(process.cwd(), "src/callables/encryptedSearch.ts"), "utf8");
+    const source = readFileSync(path.join(process.cwd(), "../functions-sync/src/domains/search/encryptedSearch.ts"), "utf8");
 
     expect(source).toContain("chunk.documentID must reference a document in the same commit");
     expect(source).toContain("assertCloudSearchIndexWriteBudget(writeCount + 1)");
@@ -74,7 +74,7 @@ describe("encrypted search hash validation", () => {
   });
 
   it("keeps callable fallback queries isolated per hash", () => {
-    const source = readFileSync(path.join(process.cwd(), "src/callables/encryptedSearchQuery.ts"), "utf8");
+    const source = readFileSync(path.join(process.cwd(), "../functions-sync/src/callables/encryptedSearchQuery.ts"), "utf8");
 
     expect(source).toContain("SEARCH_FALLBACK_SCAN_BATCH_LIMIT");
     expect(source).toContain("startAfter(cursor)");

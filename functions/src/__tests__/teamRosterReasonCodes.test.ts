@@ -27,9 +27,9 @@ import { resolve } from "node:path";
 import { Timestamp } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { assertActiveBurnBarCloudProEntitlement } from "../callables/shared/entitlements.js";
-import { TeamRosterService, requiredTeamKeyEnvelopeIds } from "../teamRoster.js";
-import { TEAM_ROSTER_REASON } from "../teamRosterReasons.js";
+import { assertActiveBurnBarCloudProEntitlement } from "../../../packages/functions-shared/src/shared/entitlements.js";
+import { TeamRosterService, requiredTeamKeyEnvelopeIds } from "../../../functions-identity/src/teamRoster.js";
+import { TEAM_ROSTER_REASON } from "../../../functions-identity/src/teamRosterReasons.js";
 import {
   ADMIN_UID,
   DEVICE,
@@ -48,14 +48,14 @@ import {
   storedDoc,
 } from "./teamRosterHarness.js";
 
-vi.mock("../adminRuntime.js", async () => {
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", async () => {
   const { rosterHarness } = await import("./teamRosterHarness.js");
   return { db: rosterHarness.db, auth: rosterHarness.auth };
 });
-vi.mock("../callables/shared/entitlements.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", () => ({
   assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
 }));
-vi.mock("../callables/publicRateLimit.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
   checkTeamRosterMutationRateLimit: vi.fn(async () => undefined),
   checkTeamInviteRateLimit: vi.fn(async () => undefined),
   checkTeamInviteAcceptRateLimit: vi.fn(async () => undefined),
@@ -67,8 +67,8 @@ const ADMIN_EMAIL = "admin@example.test";
 const MEMBER_EMAIL = "member@example.test";
 const INVITE_TOKEN = `inv_${"a".repeat(40)}`;
 
-async function callables(): Promise<typeof import("../callables/teamRosterCallables.js")> {
-  return import("../callables/teamRosterCallables.js");
+async function callables(): Promise<typeof import("../../../functions-identity/src/domains/identity/teamRosterCallables.js")> {
+  return import("../../../functions-identity/src/domains/identity/teamRosterCallables.js");
 }
 
 /** Drive one exported callable the way `onCallProduction` hands it a request. */

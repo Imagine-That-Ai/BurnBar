@@ -73,7 +73,7 @@ describe("buildConfig characterization (via getConfig)", () => {
 
   it("returns all typed defaults for a demo project with no overrides", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     const cfg = getConfig();
 
     // Identity + security posture (non-production => fail-open defaults).
@@ -156,7 +156,7 @@ describe("buildConfig characterization (via getConfig)", () => {
   it("throws the fail-closed Error for a production project with App Check disabled", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.ENFORCE_APP_CHECK = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).toThrow(
       '[security] App Check enforcement is DISABLED for production project "openburnbar-prod". ' +
         "Refusing to start: ENFORCE_APP_CHECK must be true in production (set ENFORCE_APP_CHECK=true " +
@@ -176,7 +176,7 @@ describe("buildConfig characterization (via getConfig)", () => {
     process.env.APP_STORE_ENV = "Production";
     process.env.APP_STORE_APPLE_APP_ID = "1234567890";
     process.env.APP_STORE_BUNDLE_ID = "com.example.override";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     const cfg = getConfig();
 
     expect(cfg.kmsKeyName).toBe("projects/p/locations/l/keyRings/r/cryptoKeys/k");

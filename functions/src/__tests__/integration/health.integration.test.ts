@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { FUNCTIONS_REGION } from "../../runtimeOptions.js";
+import { FUNCTIONS_REGION } from "../../../../packages/functions-shared/src/runtimeOptions.js";
 
 const EMULATOR_HOST = process.env.FUNCTIONS_EMULATOR_HOST ?? "localhost:5001";
 const PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "openburnbar-dev";

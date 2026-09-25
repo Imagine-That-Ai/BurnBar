@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { __testing__ as minimaxTesting } from "../providers/minimax.js";
-import { QUOTA_PAYLOAD_MAX_BUCKETS, QUOTA_PAYLOAD_MAX_LABEL_LENGTH } from "../providers/quotaPayloadWalker.js";
-import { __testing__ as zaiTesting } from "../providers/zai.js";
+import { __testing__ as minimaxTesting } from "../../../packages/functions-shared/src/providers/minimax.js";
+import { QUOTA_PAYLOAD_MAX_BUCKETS, QUOTA_PAYLOAD_MAX_LABEL_LENGTH } from "../../../packages/functions-shared/src/providers/quotaPayloadWalker.js";
+import { __testing__ as zaiTesting } from "../../../packages/functions-shared/src/providers/zai.js";
 
 function deeplyNestedPayload(depth: number): Record<string, unknown> {
   const root: Record<string, unknown> = {};

@@ -3,9 +3,11 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "outDir": "lib",
-    "rootDir": "src",
+    "rootDir": "../..",
     "sourceMap": true,
     "strict": true,
     "esModuleInterop": true,
@@ -16,6 +18,11 @@
     "declarationMap": true
   },
   "compileOnSave": true,
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "lib"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "lib"
+  ]
 }

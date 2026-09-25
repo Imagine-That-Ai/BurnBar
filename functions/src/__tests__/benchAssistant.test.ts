@@ -29,8 +29,8 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
-vi.mock("../providers/httpClient.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
+vi.mock("../../../packages/functions-shared/src/providers/httpClient.js", () => ({
   providerFetch: mocks.fetch,
 }));
 
@@ -42,8 +42,8 @@ import {
   benchAssistant,
   executeBenchAssistant,
   sanitizeBenchChartSpec,
-} from "../benchAssistant.js";
-import { checkBenchAssistantRateLimit, isPublicRateLimitExceeded } from "../callables/publicRateLimit.js";
+} from "../../../functions-sync/src/domains/telemetry/benchAssistant.js";
+import { checkBenchAssistantRateLimit, isPublicRateLimitExceeded } from "../../../packages/functions-shared/src/callables/publicRateLimit.js";
 
 const run = callableRunner(benchAssistant);
 

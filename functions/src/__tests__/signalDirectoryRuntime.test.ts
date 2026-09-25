@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sessionInvolvesDevice } from "../signalDirectoryRuntime.js";
+import { sessionInvolvesDevice } from "../../../packages/functions-shared/src/signalDirectoryRuntime.js";
 
 describe("sessionInvolvesDevice", () => {
   it("matches sessions the device owns", () => {

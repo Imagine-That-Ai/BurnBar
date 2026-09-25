@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { quotaAccountRefreshMetadata } from "../quotaSnapshotMetadata.js";
-import type { QuotaSnapshotDoc } from "../types.js";
+import { quotaAccountRefreshMetadata } from "../../../packages/functions-shared/src/quotaSnapshotMetadata.js";
+import type { QuotaSnapshotDoc } from "../../../packages/functions-shared/src/types.js";
 
 function snapshot(window: string): QuotaSnapshotDoc {
   return {

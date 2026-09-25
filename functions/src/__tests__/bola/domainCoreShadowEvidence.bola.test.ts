@@ -2,13 +2,13 @@
 import { describe, it, vi } from "vitest";
 
 import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callableBolaHarness.js";
-import { isRecord } from "../../guards.js";
+import { isRecord } from "../../../../packages/functions-shared/src/guards.js";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map<string, Record<string, unknown>>());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
 }));
@@ -19,7 +19,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA - domain-core shadow evidence", () => {
   it("submitDomainCoreShadowSamples preserves victim tenant data", async () => {
-    const mod = await import("../../callables/domainCoreShadowEvidence.js");
+    const mod = await import("../../../../functions-sync/src/domains/support/domainCoreShadowEvidence.js");
     const rawRun = callableRunner(mod.submitDomainCoreShadowSamples);
     const run = (request: unknown) => {
       if (!isRecord(request) || !isRecord(request.auth) || !isRecord(request.auth.token)) {

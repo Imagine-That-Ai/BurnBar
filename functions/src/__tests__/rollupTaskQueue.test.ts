@@ -1,6 +1,6 @@
 import type { protos } from "@google-cloud/tasks";
 import { describe, expect, it, vi } from "vitest";
-import { parseRollupJobDoc } from "../guards.js";
+import { parseRollupJobDoc } from "../../../packages/functions-shared/src/guards.js";
 import {
   buildRollupUserRebuildTask,
   enqueueRollupUserRebuildTasks,
@@ -10,14 +10,14 @@ import {
   rollupUserRebuildTaskId,
 } from "../rollupTaskQueue.js";
 import { shouldProcessRollupUserRebuildTask } from "../rollups.js";
-import type { RollupJobDoc } from "../types.js";
+import type { RollupJobDoc } from "../../../packages/functions-shared/src/types.js";
 
 type RollupTaskBuildArgs = Parameters<typeof buildRollupUserRebuildTask>[0];
 type CloudTasksClientLike = RollupTaskBuildArgs["client"];
 type RollupTaskQueueConfig = RollupTaskBuildArgs["config"];
 
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: vi.fn(), logWarn: vi.fn() };
 });
 

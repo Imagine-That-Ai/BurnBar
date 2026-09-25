@@ -5,7 +5,7 @@ import {
   parseIrohAuditEventForRollup,
   summarizeIrohAuditEvents,
   utcDayWindow,
-} from "../irohMonitoring.js";
+} from "../../../functions-media/src/domains/relay/irohMonitoring.js";
 
 const EVENT_PATH = "users/user-1/iroh_audit_events/event-1";
 

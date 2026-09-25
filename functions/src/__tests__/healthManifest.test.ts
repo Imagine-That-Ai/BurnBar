@@ -35,20 +35,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // presence/absence and byte-level hashing are exercised end-to-end.
 // ---------------------------------------------------------------------------
 
-vi.mock("../domainCoreBuildProfile.js", () => ({
+vi.mock("../../../packages/functions-shared/src/domainCoreBuildProfile.js", () => ({
   domainCoreDeploymentIdentity: vi.fn(),
 }));
 
-vi.mock("../domainCorePricing.js", () => ({
+vi.mock("../../../packages/functions-shared/src/domainCorePricing.js", () => ({
   loadedDomainCorePricingIdentity: vi.fn(),
   DomainCorePricingError: class DomainCorePricingError extends Error {},
 }));
 
-vi.mock("../sentry.js", () => ({
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({
   sentryStatus: () => ({ enabled: false, environment: "test" }),
 }));
 
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logInfo: vi.fn(),
   logError: vi.fn(),
   logWarn: vi.fn(),
@@ -59,7 +59,7 @@ vi.mock("../logging.js", () => ({
     (_name: string, handler: (req: unknown, res: unknown) => unknown) => handler,
 }));
 
-vi.mock("../callables/publicRateLimit.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
   checkPublicHttpEndpointRateLimit: vi.fn(),
   clientIpFromHttpRequest: () => "127.0.0.1",
   isPublicRateLimitExceeded: (err: unknown) =>
@@ -76,8 +76,8 @@ vi.mock("firebase-admin/firestore", () => ({
   }),
 }));
 
-import { domainCoreDeploymentIdentity } from "../domainCoreBuildProfile.js";
-import { loadedDomainCorePricingIdentity } from "../domainCorePricing.js";
+import { domainCoreDeploymentIdentity } from "../../../packages/functions-shared/src/domainCoreBuildProfile.js";
+import { loadedDomainCorePricingIdentity } from "../../../packages/functions-shared/src/domainCorePricing.js";
 
 const mockDeploymentIdentity = vi.mocked(domainCoreDeploymentIdentity);
 const mockLoadedCore = vi.mocked(loadedDomainCorePricingIdentity);
@@ -197,8 +197,8 @@ function makeReq(path = "/healthLive"): Record<string, unknown> {
 // Dynamic import is required here: each test exercises the module-load boundary
 // (manifest file presence/absence changes what happens at import time), so the
 // module must be re-imported fresh after vi.resetModules() per test case.
-async function loadHealth(): Promise<typeof import("../health.js")> {
-  return await import("../health.js");
+async function loadHealth(): Promise<typeof import("../domains/ops/health.js")> {
+  return await import("../domains/ops/health.js");
 }
 
 async function driveHandler(

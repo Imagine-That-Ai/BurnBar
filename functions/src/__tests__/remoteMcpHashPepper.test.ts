@@ -1,7 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
-import { createRemoteMcpGrant, hashRemoteMcpSecret, upsertRemoteMcpClient } from "../remoteMcpGrant.js";
+import { createRemoteMcpGrant, hashRemoteMcpSecret, upsertRemoteMcpClient } from "../../../packages/functions-shared/src/remoteMcpGrant.js";
 import { pathKeyedFirestore } from "./bola/callableBolaHarness.js";
 
 const HASH_CONTEXT_V1 = "remote-mcp-secret-hash-v1";

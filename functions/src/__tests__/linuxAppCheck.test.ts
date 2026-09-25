@@ -5,8 +5,8 @@ import {
   type AppCheckTokenMinter,
   type LinuxAttestationClaim,
   type LinuxAttestationVerifier,
-} from "../callables/linuxAppCheck.js";
-import { PLACEHOLDER_LINUX_APP_CHECK_APP_ID } from "../config.js";
+} from "../../../functions-identity/src/domains/app-check/linuxAppCheck.js";
+import { PLACEHOLDER_LINUX_APP_CHECK_APP_ID } from "../../../packages/functions-shared/src/config.js";
 
 const {
   buildLinuxAttestationVerifiers,

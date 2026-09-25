@@ -4,8 +4,8 @@ import {
   resolveDomainCoreCandidateIdentity,
   resolveDomainCoreEvidenceChannel,
   resolveDomainCoreRuntimeMode,
-} from "../domainCoreBuildProfile.js";
-import { DOMAIN_CORE_CANDIDATE_RECEIPT } from "../generated/domainCoreCandidateReceipt.js";
+} from "../../../packages/functions-shared/src/domainCoreBuildProfile.js";
+import { DOMAIN_CORE_CANDIDATE_RECEIPT } from "../../../packages/functions-shared/src/generated/domainCoreCandidateReceipt.js";
 
 const CANDIDATE_COMMIT = "a".repeat(40);
 const SOURCE_SHA256 = "b".repeat(64);

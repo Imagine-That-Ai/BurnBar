@@ -45,9 +45,9 @@ import type {
   HermesGatewayEventDoc,
   HermesGatewayMessageDoc,
   HermesGatewayModelOptionDoc,
-} from "../hermesGateway.js";
+} from "@openburnbar/functions-shared/hermesGateway.js";
 
-import type * as Generated from "./generated/hermes-gateway.js";
+import type * as Generated from "@openburnbar/functions-shared/types/generated/hermes-gateway.js";
 
 /** True only when A and B are exactly the same type. */
 type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;

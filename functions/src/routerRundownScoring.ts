@@ -13,7 +13,7 @@
  * snapshots or the rundown output.
  */
 
-import type { ModelBenchmarkSnapshotDoc, ModelBenchmarkSource } from "./types.js";
+import type { ModelBenchmarkSnapshotDoc, ModelBenchmarkSource } from "@openburnbar/functions-shared/types.js";
 import {
   ROUTER_RUNDOWN_SCHEMA_VERSION,
   TASK_CATEGORIES,

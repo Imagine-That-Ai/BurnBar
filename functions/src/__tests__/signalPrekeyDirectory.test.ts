@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { __testing__ } from "../callables/signalPrekeyDirectory.js";
+import { __testing__ } from "../../../functions-identity/src/domains/devices/signalPrekeyDirectory.js";
 
 const {
   parseSignalBase64,

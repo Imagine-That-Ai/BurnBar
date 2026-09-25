@@ -7,7 +7,7 @@ import {
   cloudFeatureSuspensionDeniesSurface,
   cloudFeatureSuspensionPath,
   parseCloudFeatureSuspension,
-} from "../cloudFeatureSuspensions.js";
+} from "../../../packages/functions-shared/src/cloudFeatureSuspensions.js";
 
 describe("cloudFeatureSuspensions", () => {
   it("uses the launch-plan suspension document path", () => {

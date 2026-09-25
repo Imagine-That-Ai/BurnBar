@@ -7,14 +7,14 @@
 import { describe, expect, it } from "vitest";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 
-import type { HostedQuotaEntitlementDoc } from "../types.js";
+import type { HostedQuotaEntitlementDoc } from "../../../packages/functions-shared/src/types.js";
 import {
   appStoreEntitlementTarget,
   buildAppStoreEntitlementWritePayloads,
   writeEntitlementDocs,
   writeEntitlementMirrorOnly,
-} from "../appstore/reconciler.js";
-import { getConfig } from "../config.js";
+} from "../../../functions-identity/src/domains/billing/appstore/reconciler.js";
+import { getConfig } from "../../../packages/functions-shared/src/config.js";
 
 type Doc = Record<string, unknown>;
 

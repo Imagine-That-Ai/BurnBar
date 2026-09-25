@@ -59,17 +59,17 @@ vi.mock("firebase-admin/firestore", () => ({ getFirestore: () => firestoreMock, 
 // Kill-switch sync publishes to Remote Config; stub so the test stays hermetic
 // and we can assert the level it was handed.
 const { syncKillSwitchMock } = vi.hoisted(() => ({ syncKillSwitchMock: vi.fn(async () => {}) }));
-vi.mock("../computerUseRemoteConfig.js", () => ({ syncKillSwitchForBudgetLevel: syncKillSwitchMock }));
+vi.mock("../../../functions-sync/src/computerUseRemoteConfig.js", () => ({ syncKillSwitchForBudgetLevel: syncKillSwitchMock }));
 
 // Sentry is loaded via dynamic import on the failure path; mock it so we can
 // assert the RC outage is actually captured (observable, not swallowed).
 const { captureExceptionMock } = vi.hoisted(() => ({ captureExceptionMock: vi.fn() }));
-vi.mock("../sentry.js", () => ({ captureException: captureExceptionMock, setSentryUser: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ captureException: captureExceptionMock, setSentryUser: vi.fn() }));
 
 const { getTemplateMock } = vi.hoisted(() => ({ getTemplateMock: vi.fn() }));
 vi.mock("firebase-admin/remote-config", () => ({ getRemoteConfig: () => ({ getTemplate: getTemplateMock }) }));
 
-import { evaluateComputerUseBudgetOnce } from "../computerUseBudget.js";
+import { evaluateComputerUseBudgetOnce } from "../../../functions-sync/src/domains/computer-use/computerUseBudget.js";
 
 describe("evaluateComputerUseBudget — R-L3 fail-closed on Remote Config failure", () => {
   beforeEach(() => {

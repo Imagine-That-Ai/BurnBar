@@ -16,7 +16,7 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
 
 import {
   checkAgentNotificationReplyRateLimit,
@@ -24,7 +24,7 @@ import {
   checkMissionCreateRateLimit,
   checkVoIPCallRateLimit,
   isPublicRateLimitExceeded,
-} from "../callables/publicRateLimit.js";
+} from "../../../packages/functions-shared/src/callables/publicRateLimit.js";
 
 describe("checkVoIPCallRateLimit", () => {
   beforeEach(() => {

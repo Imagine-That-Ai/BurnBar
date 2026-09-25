@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { StreamingPercentileSketch } from "../streamingPercentiles.js";
+import { StreamingPercentileSketch } from "../../../functions-sync/src/streamingPercentiles.js";
 
 function decodeSketch(summary: ReturnType<StreamingPercentileSketch["summary"]>): {
   kind: string;

@@ -12,10 +12,18 @@ import { validateEndpointBolaCoverage } from "../security/bolaCoverageValidators
 
 const REPO_ROOT = resolve(__dirname, "../../..");
 
+const CODEBASE_INDEXES = [
+  "functions/src/index.ts",
+  "functions-identity/src/index.ts",
+  "functions-sync/src/index.ts",
+  "functions-media/src/index.ts",
+];
+
 function exportedFunctionNames(): string[] {
-  const indexSource = readFileSync(resolve(REPO_ROOT, "functions/src/index.ts"), "utf8");
   const names: string[] = [];
-  for (const match of indexSource.matchAll(/export\s+\{([\s\S]*?)\}\s+from\s+"[^"]+";/g)) {
+  for (const rel of CODEBASE_INDEXES) {
+    const indexSource = readFileSync(resolve(REPO_ROOT, rel), "utf8");
+    for (const match of indexSource.matchAll(/export\s+\{([\s\S]*?)\}\s+from\s+"[^"]+";/g)) {
     for (const part of match[1].split(",")) {
       const raw = part.trim();
       if (!raw) continue;
@@ -26,8 +34,9 @@ function exportedFunctionNames(): string[] {
           ?.trim() ?? raw,
       );
     }
+    }
   }
-  return names.sort((left, right) => left.localeCompare(right));
+  return [...new Set(names)].sort((left, right) => left.localeCompare(right));
 }
 
 /** Endpoints with handler-level cross-tenant proofs (not scaffold smoke). */
@@ -135,7 +144,7 @@ describe("bola coverage registry", () => {
       if (entry.objectIdsFromClient.length === 0) continue;
       expect(entry.handlerModule, entry.exportedName).toBeTruthy();
       expect(
-        existsSync(resolve(REPO_ROOT, "functions/src", entry.handlerModule!)),
+        existsSync(resolve(REPO_ROOT, entry.handlerModule!)),
         `${entry.exportedName} handler missing`,
       ).toBe(true);
     }

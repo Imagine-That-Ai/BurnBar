@@ -13,7 +13,7 @@ import {
   persistDomainCoreShadowSamples,
   storedDomainCoreShadowSample,
   storedDomainCoreShadowSampleMatches,
-} from "../domainCoreShadowEvidence.js";
+} from "../../../packages/functions-shared/src/domainCoreShadowEvidence.js";
 
 type DomainCoreShadowStore = Parameters<typeof persistDomainCoreShadowSamples>[0];
 

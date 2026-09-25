@@ -5,7 +5,7 @@ import {
   SignalAtRestWriteError,
   validateSignalAtRestEnvelopeForWrite,
   type SignalAtRestExpectedBinding,
-} from "../signalAtRestWrite.js";
+} from "../../../functions-sync/src/signalAtRestWrite.js";
 
 const b64 = (s: string): string => Buffer.from(s, "utf8").toString("base64");
 const fixedB64 = (length: number, value = 7): string => Buffer.alloc(length, value).toString("base64");

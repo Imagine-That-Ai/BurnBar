@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createRemoteMcpGrant, hashRemoteMcpSecret, upsertRemoteMcpClient } from "../remoteMcpGrant.js";
+import { createRemoteMcpGrant, hashRemoteMcpSecret, upsertRemoteMcpClient } from "../../../packages/functions-shared/src/remoteMcpGrant.js";
 import { pathKeyedFirestore } from "./bola/callableBolaHarness.js";
 
 describe("Remote MCP grant storage", () => {

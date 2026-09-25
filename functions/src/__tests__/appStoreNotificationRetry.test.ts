@@ -5,9 +5,9 @@ import {
   appStoreNotificationReconcileFailureResponse,
   appStoreNotificationVerifyFailureResponse,
   respondToAppStoreNotificationVerifyFailure,
-} from "../appstore/notifications.js";
-import { EntitlementReconcileError } from "../appstore/reconciler.js";
-import { JWSVerificationFailure } from "../appstore/verifier.js";
+} from "../../../functions-identity/src/domains/billing/appstore/notifications.js";
+import { EntitlementReconcileError } from "../../../functions-identity/src/domains/billing/appstore/reconciler.js";
+import { JWSVerificationFailure } from "../../../functions-identity/src/domains/billing/appstore/verifier.js";
 
 /** Structural responder slice the production responder accepts. */
 type NotificationHttpResponder = Parameters<typeof respondToAppStoreNotificationVerifyFailure>[0];

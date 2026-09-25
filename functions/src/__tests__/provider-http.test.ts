@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const providerResilientFetch = vi.fn(async () => new Response("{}"));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   providerResilientFetch,
 }));
 
@@ -12,7 +12,7 @@ describe("providerFetch", () => {
   });
 
   it("delegates to providerResilientFetch with the provider key and operation label", async () => {
-    const { providerFetch } = await import("../providers/httpClient.js");
+    const { providerFetch } = await import("../../../packages/functions-shared/src/providers/httpClient.js");
     await providerFetch("openai", "models", "https://api.openai.com/v1/models");
     expect(providerResilientFetch).toHaveBeenCalledWith(
       "openai",

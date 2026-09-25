@@ -10,7 +10,7 @@ import {
   sanitizePiAgentInstances,
   sanitizePiAgentModels,
   validatePiAgentEndpointURL,
-} from "../lib/piAgent.js";
+} from "../../functions-identity/lib/piAgent.js";
 import {
   assertConsolidatedServerOnlyCollection,
   firestoreFunctionBlock,

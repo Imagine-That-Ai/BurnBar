@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { Timestamp } from "firebase-admin/firestore";
 
-import { buildTierCogsDailyDoc, tierCogsDailyDocPath, TIER_COGS_UNIT_COSTS } from "../lib/tierCogs.js";
+import { buildTierCogsDailyDoc, tierCogsDailyDocPath, TIER_COGS_UNIT_COSTS } from "../../functions-identity/lib/domains/billing/tierCogs.js";
 
 const doc = buildTierCogsDailyDoc(
   {

@@ -481,7 +481,7 @@ export function validateEndpointBolaCoverage(
   }
 
   if (entry.handlerModule && entry.objectIdsFromClient.length > 0) {
-    const handlerPath = resolve(repoRoot, "functions/src", entry.handlerModule);
+    const handlerPath = resolve(repoRoot, entry.handlerModule);
     if (existsSync(handlerPath)) {
       const handlerSource = readFileSync(handlerPath, "utf8");
       errors.push(...validateHandlerUserNamespaceBinding(entry, handlerSource));

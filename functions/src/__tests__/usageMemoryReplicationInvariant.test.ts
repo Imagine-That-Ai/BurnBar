@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { __testing__ } from "../callables/knowledgeMemory.js";
+import { __testing__ } from "../../../functions-sync/src/domains/knowledge/knowledgeMemory.js";
 
 const { SOURCE_KINDS, requireSourceKind, requireChatMemoryProvenance } = __testing__;
 

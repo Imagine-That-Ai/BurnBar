@@ -8,7 +8,7 @@ import {
   serializeHermesGatewayEvent,
   HERMES_GATEWAY_RELAY_ENCRYPTION,
   type HermesGatewayClientDoc,
-} from "../hermesGateway.js";
+} from "../../../packages/functions-shared/src/hermesGateway.js";
 
 import {
   RELAY_PUBKEY_B64,

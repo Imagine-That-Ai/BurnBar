@@ -8,19 +8,19 @@ vi.mock("firebase-functions/logger", () => ({
   debug: vi.fn(),
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   firestoreWithResilience: async (_label: string, fn: () => Promise<unknown>) => fn(),
   pushWithResilience: async (_label: string, fn: () => Promise<unknown>) => fn(),
 }));
 
-import { DEFAULT_LIVEACTIVITY_APNS_TOPIC } from "../apnsSender.js";
+import { DEFAULT_LIVEACTIVITY_APNS_TOPIC } from "../../../functions-media/src/domains/push/apnsSender.js";
 import {
   buildLiveActivityApsPayload,
   fanoutLiveActivityUpdate,
   liveActivityChangeFromAction,
   liveActivityChangeFromSession,
   selectLiveActivityDevices,
-} from "../liveActivityPush.js";
+} from "../../../functions-media/src/domains/push/liveActivityPush.js";
 
 type LiveActivityPushArgs = Parameters<NonNullable<Parameters<typeof fanoutLiveActivityUpdate>[0]["push"]>>[0];
 
