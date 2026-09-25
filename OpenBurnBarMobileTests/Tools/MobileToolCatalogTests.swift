@@ -186,7 +186,7 @@ final class MobileToolCatalogTests: XCTestCase {
             properties: ["foo": MobileToolJSONSchema.string(description: "bar")],
             required: ["foo"],
             description: "Test object"
-        )
+        ).wireDictionary()
         XCTAssertEqual(schema["type"] as? String, "object")
         XCTAssertEqual(schema["description"] as? String, "Test object")
         XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
@@ -195,7 +195,7 @@ final class MobileToolCatalogTests: XCTestCase {
     }
 
     func test_integerSchema_honoursBounds() {
-        let schema = MobileToolJSONSchema.integer(description: "x", minimum: 1, maximum: 50)
+        let schema = MobileToolJSONSchema.integer(description: "x", minimum: 1, maximum: 50).wireDictionary()
         XCTAssertEqual(schema["type"] as? String, "integer")
         XCTAssertEqual(schema["minimum"] as? Int, 1)
         XCTAssertEqual(schema["maximum"] as? Int, 50)

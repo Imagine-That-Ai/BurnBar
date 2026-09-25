@@ -22,7 +22,7 @@ enum HermesWireValueParsing {
         return nil
     }
 
-    static func modelNameValue(item: [String: Any]) -> String? {
+    static func modelNameValue(item: MobileJSONObject) -> String? {
         stringValue(item["model"])
             ?? stringValue(item["model_id"])
             ?? stringValue(item["modelId"])
@@ -86,11 +86,11 @@ enum HermesWireValueParsing {
 
     static func parseSessions(from data: Data) -> [HermesSessionSummary] {
         guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
-        let rawSessions: [[String: Any]]
-        if let array = object as? [[String: Any]] {
+        let rawSessions: [MobileJSONObject]
+        if let array = object as? [MobileJSONObject] {
             rawSessions = array
-        } else if let dict = object as? [String: Any],
-                  let array = dict["sessions"] as? [[String: Any]] {
+        } else if let dict = object as? MobileJSONObject,
+                  let array = dict["sessions"] as? [MobileJSONObject] {
             rawSessions = array
         } else {
             rawSessions = []
@@ -119,13 +119,13 @@ enum HermesWireValueParsing {
 
     static func parseSessionMessages(from data: Data) -> [HermesChatMessage] {
         guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
-        let rawMessages: [[String: Any]]
-        if let array = object as? [[String: Any]] {
+        let rawMessages: [MobileJSONObject]
+        if let array = object as? [MobileJSONObject] {
             rawMessages = array
-        } else if let dict = object as? [String: Any] {
-            rawMessages = (dict["messages"] as? [[String: Any]])
-                ?? (dict["turns"] as? [[String: Any]])
-                ?? (dict["events"] as? [[String: Any]])
+        } else if let dict = object as? MobileJSONObject {
+            rawMessages = (dict["messages"] as? [MobileJSONObject])
+                ?? (dict["turns"] as? [MobileJSONObject])
+                ?? (dict["events"] as? [MobileJSONObject])
                 ?? []
         } else {
             rawMessages = []
@@ -165,11 +165,11 @@ enum HermesWireValueParsing {
 
     static func parseProfiles(from data: Data) -> [HermesRuntimeProfile] {
         guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
-        let rawProfiles: [[String: Any]]
-        if let array = object as? [[String: Any]] {
+        let rawProfiles: [MobileJSONObject]
+        if let array = object as? [MobileJSONObject] {
             rawProfiles = array
-        } else if let dict = object as? [String: Any],
-                  let array = dict["profiles"] as? [[String: Any]] {
+        } else if let dict = object as? MobileJSONObject,
+                  let array = dict["profiles"] as? [MobileJSONObject] {
             rawProfiles = array
         } else {
             rawProfiles = []
@@ -188,11 +188,11 @@ enum HermesWireValueParsing {
 
     static func parseJobs(from data: Data) -> [HermesRuntimeJob] {
         guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
-        let rawJobs: [[String: Any]]
-        if let array = object as? [[String: Any]] {
+        let rawJobs: [MobileJSONObject]
+        if let array = object as? [MobileJSONObject] {
             rawJobs = array
-        } else if let dict = object as? [String: Any],
-                  let array = dict["jobs"] as? [[String: Any]] {
+        } else if let dict = object as? MobileJSONObject,
+                  let array = dict["jobs"] as? [MobileJSONObject] {
             rawJobs = array
         } else {
             rawJobs = []

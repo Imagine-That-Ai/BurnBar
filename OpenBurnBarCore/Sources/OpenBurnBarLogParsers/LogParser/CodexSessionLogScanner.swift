@@ -428,7 +428,7 @@ public enum CodexSessionLogScanner {
         // VAL-TOKEN-002: only accumulate delta events until cumulative totals
         // appear; this prevents additive double-counting.
         if !accumulator.foundCumulative,
-           let lastUsage = info["last_token_usage"] as? [String: Any] {
+           let lastUsage = info["last_token_usage"] as? LogParserJSONObject {
             let deltaInput = lastUsage["input_tokens"] as? Int ?? 0
             let deltaCacheRead = lastUsage["cached_input_tokens"] as? Int
                 ?? lastUsage["cache_read_input_tokens"] as? Int
@@ -450,7 +450,7 @@ public enum CodexSessionLogScanner {
         }
     }
 
-    private static func codexEventDate(from json: [String: Any]) -> Date? {
+    private static func codexEventDate(from json: LogParserJSONObject) -> Date? {
         guard let timestamp = json["timestamp"] as? String else { return nil }
         return ThreadSafeISO8601DateFormatter.parse(timestamp)
     }
@@ -610,10 +610,10 @@ public enum CodexSessionLogScanner {
             .nonEmpty
     }
 
-    public static func extractCodexMessage(from json: [String: Any]) -> (role: String, text: String)? {
-        let item = (json["item"] as? [String: Any])
-            ?? (json["payload"] as? [String: Any])?["item"] as? [String: Any]
-            ?? (json["msg"] as? [String: Any])?["item"] as? [String: Any]
+    public static func extractCodexMessage(from json: LogParserJSONObject) -> (role: String, text: String)? {
+        let item = (json["item"] as? LogParserJSONObject)
+            ?? (json["payload"] as? LogParserJSONObject)?["item"] as? LogParserJSONObject
+            ?? (json["msg"] as? LogParserJSONObject)?["item"] as? LogParserJSONObject
         guard let item,
               let role = item["role"] as? String,
               role == "user" || role == "assistant" else {
@@ -631,7 +631,7 @@ public enum CodexSessionLogScanner {
 
     public static func extractText(from raw: Any?) -> String? {
         if let string = raw as? String { return string }
-        if let pieces = raw as? [[String: Any]] {
+        if let pieces = raw as? [LogParserJSONObject] {
             let text = pieces.compactMap { piece -> String? in
                 if let text = piece["text"] as? String { return text }
                 if let text = piece["content"] as? String { return text }
@@ -642,10 +642,10 @@ public enum CodexSessionLogScanner {
         return nil
     }
 
-    public static func extractCodexTool(from json: [String: Any]) -> (name: String, detail: String?)? {
-        let item = (json["item"] as? [String: Any])
-            ?? (json["payload"] as? [String: Any])?["item"] as? [String: Any]
-            ?? (json["msg"] as? [String: Any])?["item"] as? [String: Any]
+    public static func extractCodexTool(from json: LogParserJSONObject) -> (name: String, detail: String?)? {
+        let item = (json["item"] as? LogParserJSONObject)
+            ?? (json["payload"] as? LogParserJSONObject)?["item"] as? LogParserJSONObject
+            ?? (json["msg"] as? LogParserJSONObject)?["item"] as? LogParserJSONObject
         guard let item else { return nil }
         let name = (item["name"] as? String)
             ?? (item["tool_name"] as? String)
@@ -1023,7 +1023,7 @@ public enum CodexSessionLogScanner {
         guard let data = line.data(using: .utf8),
               let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               json["type"] as? String == "session_meta",
-              let payload = json["payload"] as? [String: Any] else { return nil }
+              let payload = json["payload"] as? LogParserJSONObject else { return nil }
 
         if let originator = payload["originator"] as? String,
            let source = UsageExecutionSourceResolver.fromClientMarker(originator) {

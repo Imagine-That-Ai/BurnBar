@@ -1,5 +1,14 @@
 import Foundation
 
+/// Untyped JSON object at the schemaless Hermes stream-chunk boundary.
+///
+/// Stream chunks arrive from OpenAI-compatible vendors with variant field
+/// shapes, so navigation stays dictionary-based — but every site spells the
+/// type through this module-local alias (Kernel sits above HermesModels in
+/// the module DAG, so the `BurnBarJSONValue` choke points are unreachable
+/// here), keeping the string-any boundary countable at one choke point.
+public typealias HermesJSONObject = [String: Any]
+
 public struct HermesStreamParseResult: Sendable, Equatable {
     public var events: [HermesStreamEvent]
     public var done: Bool
@@ -52,19 +61,20 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
 
         // NOTE: Kernel lives above HermesModels in the module DAG (it
         // re-exports this module), so this file cannot use the
-        // BurnBarJSONValue choke points — the inline cast stays.
+        // BurnBarJSONValue choke points — the module-local HermesJSONObject
+        // alias is the choke point here instead.
         guard let data = payload.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let obj = try? JSONSerialization.jsonObject(with: data) as? HermesJSONObject else {
             return HermesStreamParseResult(events: [], done: false, streamedText: false)
         }
         return events(fromJSONObject: obj)
     }
 
-    public mutating func events(fromJSONObject obj: [String: Any]) -> HermesStreamParseResult {
+    public mutating func events(fromJSONObject obj: HermesJSONObject) -> HermesStreamParseResult {
         var events: [HermesStreamEvent] = []
         var streamedText = false
 
-        if let usage = Self.tokenUsageStats(from: obj["usage"] as? [String: Any] ?? obj),
+        if let usage = Self.tokenUsageStats(from: obj["usage"] as? HermesJSONObject ?? obj),
            usage.outputTokens != nil
                 || usage.totalTokens != nil
                 || usage.promptTokens != nil
@@ -78,7 +88,7 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
             return HermesStreamParseResult(events: events, done: false, streamedText: false)
         }
 
-        guard let choices = obj["choices"] as? [[String: Any]],
+        guard let choices = obj["choices"] as? [HermesJSONObject],
               let choice = choices.first else {
             if let text = Self.visibleContentValue(obj["content"])
                 ?? Self.visibleContentValue(obj["output_text"])
@@ -89,8 +99,8 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
             return HermesStreamParseResult(events: events, done: false, streamedText: streamedText)
         }
 
-        let delta = choice["delta"] as? [String: Any]
-        let finalMessage = choice["message"] as? [String: Any]
+        let delta = choice["delta"] as? HermesJSONObject
+        let finalMessage = choice["message"] as? HermesJSONObject
 
         if let refusal = Self.refusalContent(from: delta) ?? Self.refusalContent(from: finalMessage),
            !refusal.isEmpty {
@@ -125,11 +135,11 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
         return HermesStreamParseResult(events: events, done: false, streamedText: streamedText)
     }
 
-    private mutating func ingestToolCalls(_ rawToolCalls: [[String: Any]]) -> [HermesStreamEvent] {
+    private mutating func ingestToolCalls(_ rawToolCalls: [HermesJSONObject]) -> [HermesStreamEvent] {
         var events: [HermesStreamEvent] = []
         for raw in rawToolCalls {
             let index = Self.intValue(raw["index"]) ?? 0
-            let function = raw["function"] as? [String: Any] ?? [:]
+            let function = raw["function"] as? HermesJSONObject ?? [:]
             let idFragment = Self.stringValue(raw["id"])
             let nameFragment = Self.stringValue(function["name"]) ?? Self.stringValue(raw["name"])
             let argsFragment = Self.stringValue(function["arguments"]) ?? Self.stringValue(raw["arguments"]) ?? ""
@@ -182,7 +192,7 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
             }
     }
 
-    public static func tokenUsageStats(from usage: [String: Any]) -> HermesTokenUsageStats? {
+    public static func tokenUsageStats(from usage: HermesJSONObject) -> HermesTokenUsageStats? {
         let promptTokens = intValue(usage["prompt_tokens"])
             ?? intValue(usage["promptTokens"])
             ?? intValue(usage["input_tokens"])
@@ -243,27 +253,27 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
         )
     }
 
-    private static func toolCalls(from item: [String: Any]?) -> [[String: Any]]? {
+    private static func toolCalls(from item: HermesJSONObject?) -> [HermesJSONObject]? {
         guard let item else { return nil }
-        if let calls = item["tool_calls"] as? [[String: Any]], !calls.isEmpty { return calls }
-        if let calls = item["toolCalls"] as? [[String: Any]], !calls.isEmpty { return calls }
-        if let single = item["function_call"] as? [String: Any] { return [single] }
+        if let calls = item["tool_calls"] as? [HermesJSONObject], !calls.isEmpty { return calls }
+        if let calls = item["toolCalls"] as? [HermesJSONObject], !calls.isEmpty { return calls }
+        if let single = item["function_call"] as? HermesJSONObject { return [single] }
         return nil
     }
 
-    private static func visibleContent(from item: [String: Any]?) -> String? {
+    private static func visibleContent(from item: HermesJSONObject?) -> String? {
         guard let item else { return nil }
         return visibleContentValue(item["content"])
             ?? visibleContentValue(item["text"])
             ?? visibleContentValue(item["output_text"])
     }
 
-    private static func refusalContent(from item: [String: Any]?) -> String? {
+    private static func refusalContent(from item: HermesJSONObject?) -> String? {
         guard let item else { return nil }
         return visibleContentValue(item["refusal"])
     }
 
-    private static func reasoningContent(from item: [String: Any]?) -> String? {
+    private static func reasoningContent(from item: HermesJSONObject?) -> String? {
         guard let item else { return nil }
         return visibleContentValue(item["reasoning_content"])
             ?? visibleContentValue(item["reasoningContent"])
@@ -278,7 +288,7 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
         case let array as [Any]:
             let joined = array.compactMap(visibleContentValue).joined()
             return joined.isEmpty ? nil : joined
-        case let object as [String: Any]:
+        case let object as HermesJSONObject:
             return visibleContentValue(object["text"])
                 ?? visibleContentValue(object["value"])
                 ?? visibleContentValue(object["content"])
@@ -287,8 +297,8 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
         }
     }
 
-    private static func errorMessage(from obj: [String: Any]) -> String? {
-        if let error = obj["error"] as? [String: Any] {
+    private static func errorMessage(from obj: HermesJSONObject) -> String? {
+        if let error = obj["error"] as? HermesJSONObject {
             return stringValue(error["message"])
                 ?? stringValue(error["error"])
                 ?? stringValue(error["detail"])
@@ -297,7 +307,7 @@ public struct HermesOpenAICompatibleStreamParser: Sendable {
             ?? stringValue(obj["message_error"])
     }
 
-    private static func durationSecondsFromUsage(_ usage: [String: Any], keys: [String]) -> TimeInterval? {
+    private static func durationSecondsFromUsage(_ usage: HermesJSONObject, keys: [String]) -> TimeInterval? {
         for key in keys {
             guard let raw = usage[key] else { continue }
             let value: Double?

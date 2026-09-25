@@ -9,6 +9,19 @@ import OpenBurnBarQuota
 import OpenBurnBarUI
 import OSLog
 
+/// Untyped JSON/Firestore dictionary at the schemaless mobile boundary.
+///
+/// Firestore documents, callable payloads, and gateway wire shapes carry
+/// variant fields, so navigation stays dictionary-based — but every site
+/// spells the type through this alias instead of repeating the raw
+/// untyped-dictionary literal, keeping the string-any boundary countable at
+/// one choke point. Prefer Codable models / `BurnBarJSONValue` for new shapes.
+///
+/// Public (not internal) so the pre-existing `public` members that traffic
+/// in these dictionaries (`toolsWireArray()`, the schema wire edge) keep
+/// their exact visibility — pure type-motion, no API-surface change.
+public typealias MobileJSONObject = [String: Any]
+
 private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "FirestoreRepository")
 
 struct StreamSessionLogManifest: Identifiable, Hashable, Sendable {
@@ -133,8 +146,8 @@ final class FirestoreRepository {
                 return date.timeIntervalSinceReferenceDate
             }
             return s
-        case let dict as [String: Any]:
-            return dict.reduce(into: [String: Any]()) { result, entry in
+        case let dict as MobileJSONObject:
+            return dict.reduce(into: MobileJSONObject()) { result, entry in
                 result[entry.key] = sanitizeForJSON(
                     entry.value,
                     preservingStringValues: preservingStringValues || entry.key == "meta"
@@ -153,7 +166,7 @@ final class FirestoreRepository {
 
     /// Injects the Firestore document ID as `id` when the payload lacks it,
     /// remaps `deviceId` → `sourceDeviceId`, sanitizes for JSON, then decodes.
-    nonisolated func decodeWithDocID<T: Decodable>(_ type: T.Type, from data: [String: Any], docID: String) -> T? {
+    nonisolated func decodeWithDocID<T: Decodable>(_ type: T.Type, from data: MobileJSONObject, docID: String) -> T? {
         decodeWithDocID(type, from: data, docID: docID, projectNameOpener: nil)
     }
 
@@ -162,7 +175,7 @@ final class FirestoreRepository {
     /// per-listener `(docID, updatedAt)` memo, so a MODIFIED delivery that
     /// only advances token totals skips the AEAD open.
     nonisolated func decodeTokenUsage(
-        from data: [String: Any],
+        from data: MobileJSONObject,
         docID: String,
         updatedAtMillis: Int64,
         projectNames: SealedProjectNameCache
@@ -193,9 +206,9 @@ final class FirestoreRepository {
 
     nonisolated private func decodeWithDocID<T: Decodable>(
         _ type: T.Type,
-        from data: [String: Any],
+        from data: MobileJSONObject,
         docID: String,
-        projectNameOpener: (([String: Any]) -> String?)?
+        projectNameOpener: ((MobileJSONObject) -> String?)?
     ) -> T? {
         var enriched = data
         if enriched["id"] == nil {
@@ -230,7 +243,7 @@ final class FirestoreRepository {
         if enriched["deviceId"] != nil && enriched["sourceDeviceId"] == nil {
             enriched["sourceDeviceId"] = enriched["deviceId"]
         }
-        let sanitized = Self.sanitizeForJSON(enriched) as? [String: Any] ?? enriched
+        let sanitized = Self.sanitizeForJSON(enriched) as? MobileJSONObject ?? enriched
         guard let jsonData = try? JSONSerialization.data(withJSONObject: sanitized) else {
             logger.warning("Failed to serialize Firestore data for document \(docID, privacy: .public): \(String(describing: T.self), privacy: .public)")
             return nil
@@ -243,11 +256,11 @@ final class FirestoreRepository {
         }
     }
 
-    nonisolated func decodeQuotaSnapshot(from data: [String: Any], docID: String) -> ProviderQuotaSnapshot? {
+    nonisolated func decodeQuotaSnapshot(from data: MobileJSONObject, docID: String) -> ProviderQuotaSnapshot? {
         decodeWithDocID(ProviderQuotaSnapshot.self, from: normalizeQuotaSnapshotData(data, docID: docID), docID: docID)
     }
 
-    nonisolated func normalizeQuotaSnapshotData(_ data: [String: Any], docID: String) -> [String: Any] {
+    nonisolated func normalizeQuotaSnapshotData(_ data: MobileJSONObject, docID: String) -> MobileJSONObject {
         var result = data
         result["id"] = result["id"] ?? docID
 
@@ -286,14 +299,14 @@ final class FirestoreRepository {
             result["confidence"] = "stale"
         }
 
-        if let buckets = result["buckets"] as? [[String: Any]] {
+        if let buckets = result["buckets"] as? [MobileJSONObject] {
             result["buckets"] = buckets.compactMap(normalizeQuotaBucketData)
         }
 
         return result
     }
 
-    nonisolated private func normalizeQuotaBucketData(_ bucket: [String: Any]) -> [String: Any]? {
+    nonisolated private func normalizeQuotaBucketData(_ bucket: MobileJSONObject) -> MobileJSONObject? {
         var meta = normalizedQuotaBucketMeta(bucket["meta"])
 
         let rawUnit = stringValue(bucket["unit"]) ?? meta["unit"]
@@ -381,7 +394,7 @@ final class FirestoreRepository {
 
         guard let used, let limit, let remaining else { return nil }
 
-        var normalized: [String: Any] = [
+        var normalized: MobileJSONObject = [
             "name": name,
             "used": used,
             "limit": limit,
@@ -401,7 +414,7 @@ final class FirestoreRepository {
     }
 
     nonisolated private func normalizedQuotaBucketMeta(_ raw: Any?) -> [String: String] {
-        guard let raw = raw as? [String: Any] else { return [:] }
+        guard let raw = raw as? MobileJSONObject else { return [:] }
         return raw.reduce(into: [String: String]()) { result, entry in
             if let string = entry.value as? String {
                 result[entry.key] = string
@@ -447,7 +460,7 @@ final class FirestoreRepository {
     /// - `id` and `windowKey` are the document ID, not in the payload
     /// - `dailyPoints` is `{ "YYYY-MM-DD": number }` but Swift expects `[{id, date, value}]`
     /// - Nested arrays (`providerSummaries`, etc.) lack `id` fields
-    nonisolated func decodeUsageRollup(from data: [String: Any], docID: String) -> UsageRollupDoc? {
+    nonisolated func decodeUsageRollup(from data: MobileJSONObject, docID: String) -> UsageRollupDoc? {
         var enriched = normalizeRollupData(data, docID: docID)
         if enriched["id"] == nil {
             enriched["id"] = docID
@@ -464,7 +477,7 @@ final class FirestoreRepository {
                 return nil
             }
         }
-        let sanitized = Self.sanitizeForJSON(enriched) as? [String: Any] ?? enriched
+        let sanitized = Self.sanitizeForJSON(enriched) as? MobileJSONObject ?? enriched
         guard let jsonData = try? JSONSerialization.data(withJSONObject: sanitized) else {
             logger.warning("Failed to serialize rollup data for document \(docID)")
             return nil
@@ -478,14 +491,14 @@ final class FirestoreRepository {
     }
 
     /// Normalizes a rollup document to match what the Swift Codable types expect.
-    nonisolated func normalizeRollupData(_ data: [String: Any], docID: String) -> [String: Any] {
+    nonisolated func normalizeRollupData(_ data: MobileJSONObject, docID: String) -> MobileJSONObject {
         var result = data
 
         // dailyPoints: dict → array
-        if let pointsDict = result["dailyPoints"] as? [String: Any] {
+        if let pointsDict = result["dailyPoints"] as? MobileJSONObject {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withFullDate]
-            var pointsArray: [[String: Any]] = []
+            var pointsArray: [MobileJSONObject] = []
             for (dateStr, rawValue) in pointsDict {
                 let value: Double
                 if let d = rawValue as? Double { value = d } else if let i = rawValue as? Int { value = Double(i) } else if let n = rawValue as? NSNumber { value = n.doubleValue } else { continue }
@@ -501,12 +514,12 @@ final class FirestoreRepository {
         }
 
         // providerSummaries: inject id from provider
-        if let providers = result["providerSummaries"] as? [[String: Any]] {
+        if let providers = result["providerSummaries"] as? [MobileJSONObject] {
             result["providerSummaries"] = providers.map { var p = $0; if p["id"] == nil { p["id"] = p["provider"] }; return p }
         }
 
         // accountSummaries: inject id from accountID, or the unattributed provider bucket.
-        if let accounts = result["accountSummaries"] as? [[String: Any]] {
+        if let accounts = result["accountSummaries"] as? [MobileJSONObject] {
             result["accountSummaries"] = accounts.map {
                 var account = $0
                 if account["id"] == nil {
@@ -517,12 +530,12 @@ final class FirestoreRepository {
         }
 
         // modelSummaries: inject id from "provider:model"
-        if let models = result["modelSummaries"] as? [[String: Any]] {
+        if let models = result["modelSummaries"] as? [MobileJSONObject] {
             result["modelSummaries"] = models.map { var m = $0; if m["id"] == nil { m["id"] = "\(m["provider"] ?? ""):\(m["model"] ?? "")" }; return m }
         }
 
         // deviceSummaries: inject id from deviceId
-        if let devices = result["deviceSummaries"] as? [[String: Any]] {
+        if let devices = result["deviceSummaries"] as? [MobileJSONObject] {
             result["deviceSummaries"] = devices.map { var d = $0; if d["id"] == nil { d["id"] = d["deviceId"] }; return d }
         }
 
@@ -662,7 +675,7 @@ final class FirestoreRepository {
         }
     }
 
-    nonisolated private func decodeQuotaDocuments(_ documents: [(id: String, data: [String: Any])]) -> ([ProviderQuotaSnapshot], [String]) {
+    nonisolated private func decodeQuotaDocuments(_ documents: [(id: String, data: MobileJSONObject)]) -> ([ProviderQuotaSnapshot], [String]) {
         var results: [ProviderQuotaSnapshot] = []
         var failedIDs: [String] = []
         for document in documents {
@@ -1084,7 +1097,7 @@ final class FirestoreRepository {
     }
 
     private static func hostedQuotaEntitlementResponse(
-        from data: [String: Any],
+        from data: MobileJSONObject,
         fallbackProductID: String
     ) -> HostedQuotaEntitlementResponse {
         let active = data["active"] as? Bool ?? false
@@ -1159,9 +1172,9 @@ enum CloudVaultProjectSealError: Error {
 
 extension CloudVaultCrypto {
     /// Serializes a `Codable` sealed envelope into a Firestore-native dictionary.
-    static func dictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
+    static func dictionary<T: Encodable>(_ value: T) throws -> MobileJSONObject {
         let data = try JSONEncoder().encode(value)
-        guard let dictionary = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let dictionary = try JSONSerialization.jsonObject(with: data) as? MobileJSONObject else {
             throw CloudVaultProjectSealError.encodingFailed
         }
         return dictionary
@@ -1187,7 +1200,7 @@ extension CloudVaultCrypto {
     /// Opens a sealed project name from a Firestore document, falling back to the
     /// legacy plaintext `projectName` field for in-flight / pre-migration docs.
     static func openSealedProjectName(
-        from data: [String: Any],
+        from data: MobileJSONObject,
         sealedField: String = "sealedProjectName",
         legacyField: String = "projectName",
         keyData: Data?

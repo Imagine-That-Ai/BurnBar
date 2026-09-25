@@ -705,7 +705,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             vaultKeyID: resolvedKey.vaultKeyID,
             aadContext: aadContext
         )
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "id": thread.id,
             "runtime": thread.runtime,
             "createdAt": Timestamp(date: thread.createdAt),
@@ -769,7 +769,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         uid: String,
         vaultKey: Data,
         vaultKeyID: String
-    ) throws -> [String: Any] {
+    ) throws -> MobileJSONObject {
         let cloudThread = threadForCloud(thread)
         let payloadData = try cloudPayloadEncoder.encode(cloudThread)
         let aadContext = try CloudVaultAADContext(
@@ -811,8 +811,8 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         return copy
     }
 
-    static func encodeMessageForCloud(_ message: MobileChatMessage) -> [String: Any] {
-        var payload: [String: Any] = [
+    static func encodeMessageForCloud(_ message: MobileChatMessage) -> MobileJSONObject {
+        var payload: MobileJSONObject = [
             "id": message.id,
             "role": message.role,
             "text": message.text,
@@ -832,8 +832,8 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         return payload
     }
 
-    static func encodeToolCallForCloud(_ tc: MobileChatToolCall) -> [String: Any] {
-        var entry: [String: Any] = [
+    static func encodeToolCallForCloud(_ tc: MobileChatToolCall) -> MobileJSONObject {
+        var entry: MobileJSONObject = [
             "id": tc.id,
             "name": tc.name,
             "status": tc.status
@@ -847,8 +847,8 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
     /// Strips the (possibly large) PNG thumbnail before sending to Firestore.
     /// The thumbnail lives in the local cache; cross-device sync renders a
     /// kind-based placeholder if the receiving device doesn't have the file.
-    static func encodeAttachmentForCloud(_ attachment: MobileChatAttachment) -> [String: Any] {
-        var dict: [String: Any] = [
+    static func encodeAttachmentForCloud(_ attachment: MobileChatAttachment) -> MobileJSONObject {
+        var dict: MobileJSONObject = [
             "id": attachment.id,
             "kind": attachment.kind,
             "displayName": attachment.displayName,
@@ -862,13 +862,13 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         return dict
     }
 
-    static func encodeHermesMetadataForCloud(_ metadata: MobileChatHermesMetadata) -> [String: Any] {
-        var dict: [String: Any] = [:]
+    static func encodeHermesMetadataForCloud(_ metadata: MobileChatHermesMetadata) -> MobileJSONObject {
+        var dict: MobileJSONObject = [:]
         if let requested = metadata.requestedModelID { dict["requestedModelID"] = requested }
         if let response = metadata.responseModelID { dict["responseModelID"] = response }
         if !metadata.toolCalls.isEmpty {
-            dict["toolCalls"] = metadata.toolCalls.map { tc -> [String: Any] in
-                var entry: [String: Any] = [
+            dict["toolCalls"] = metadata.toolCalls.map { tc -> MobileJSONObject in
+                var entry: MobileJSONObject = [
                     "id": tc.id,
                     "name": tc.name,
                     "status": tc.status
@@ -880,7 +880,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             }
         }
         if let usage = metadata.usage {
-            var usageDict: [String: Any] = [:]
+            var usageDict: MobileJSONObject = [:]
             if let v = usage.outputTokens { usageDict["outputTokens"] = v }
             if let v = usage.totalTokens { usageDict["totalTokens"] = v }
             if let v = usage.source { usageDict["source"] = v }
@@ -932,7 +932,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
 
     static func decodeThread(
         documentID: String,
-        data: [String: Any],
+        data: MobileJSONObject,
         uid: String? = nil,
         vaultKey: Data? = nil,
         signalIdentity: OpenBurnBarSignalIdentityKeypair? = nil,
@@ -1009,7 +1009,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         let modelName = data["modelName"] as? String
         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
         let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? createdAt
-        let rawMessages = (data["messages"] as? [[String: Any]]) ?? []
+        let rawMessages = (data["messages"] as? [MobileJSONObject]) ?? []
         let messages = rawMessages.compactMap(decodeMessage)
 
         let customTitle = data["customTitle"] as? String
@@ -1046,7 +1046,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         return decoder
     }
 
-    static func decodeMessage(_ raw: [String: Any]) -> MobileChatMessage? {
+    static func decodeMessage(_ raw: MobileJSONObject) -> MobileChatMessage? {
         guard let role = raw["role"] as? String,
               let text = raw["text"] as? String else {
             return nil
@@ -1055,9 +1055,9 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         let timestamp = (raw["timestamp"] as? Timestamp)?.dateValue() ?? Date()
         let modelName = raw["modelName"] as? String
         let isError = (raw["isError"] as? Bool) ?? false
-        let attachments = (raw["attachments"] as? [[String: Any]] ?? []).compactMap(decodeAttachment)
-        let topLevelToolCalls = decodeToolCalls(raw["toolCalls"] as? [[String: Any]])
-        let hermes = (raw["hermes"] as? [String: Any]).flatMap(decodeHermesMetadata)
+        let attachments = (raw["attachments"] as? [MobileJSONObject] ?? []).compactMap(decodeAttachment)
+        let topLevelToolCalls = decodeToolCalls(raw["toolCalls"] as? [MobileJSONObject])
+        let hermes = (raw["hermes"] as? MobileJSONObject).flatMap(decodeHermesMetadata)
         // Prefer the top-level toolCalls list; fall back to hermes.toolCalls
         // for threads written by older builds that only knew about the Hermes
         // metadata block.
@@ -1077,7 +1077,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         )
     }
 
-    private static func decodeToolCalls(_ raw: [[String: Any]]?) -> [MobileChatToolCall] {
+    private static func decodeToolCalls(_ raw: [MobileJSONObject]?) -> [MobileChatToolCall] {
         (raw ?? []).compactMap { dict -> MobileChatToolCall? in
             guard let id = dict["id"] as? String,
                   let name = dict["name"] as? String,
@@ -1091,7 +1091,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         }
     }
 
-    static func decodeAttachment(_ raw: [String: Any]) -> MobileChatAttachment? {
+    static func decodeAttachment(_ raw: MobileJSONObject) -> MobileChatAttachment? {
         guard let id = raw["id"] as? String,
               let kind = raw["kind"] as? String,
               let displayName = raw["displayName"] as? String,
@@ -1112,10 +1112,10 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         )
     }
 
-    static func decodeHermesMetadata(_ raw: [String: Any]) -> MobileChatHermesMetadata? {
+    static func decodeHermesMetadata(_ raw: MobileJSONObject) -> MobileChatHermesMetadata? {
         let requested = raw["requestedModelID"] as? String
         let response = raw["responseModelID"] as? String
-        let toolCalls = (raw["toolCalls"] as? [[String: Any]] ?? []).compactMap { dict -> MobileChatToolCall? in
+        let toolCalls = (raw["toolCalls"] as? [MobileJSONObject] ?? []).compactMap { dict -> MobileChatToolCall? in
             guard let id = dict["id"] as? String,
                   let name = dict["name"] as? String,
                   let status = dict["status"] as? String else { return nil }
@@ -1127,7 +1127,7 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             )
         }
         var usage: MobileChatTokenUsage?
-        if let usageDict = raw["usage"] as? [String: Any] {
+        if let usageDict = raw["usage"] as? MobileJSONObject {
             usage = MobileChatTokenUsage(
                 outputTokens: usageDict["outputTokens"] as? Int,
                 totalTokens: usageDict["totalTokens"] as? Int,

@@ -301,14 +301,14 @@ public final class WarpParser: LogParser, Sendable {
     // MARK: - Body Parsing
 
     private func parseBodyObject(
-        _ object: [String: Any],
+        _ object: LogParserJSONObject,
         sourceFile: URL,
         fileModifiedAt: Date?
     ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
-        if let batch = object["batch"] as? [[String: Any]] {
+        if let batch = object["batch"] as? [LogParserJSONObject] {
             for item in batch {
                 let parsed = try parseEventDictionary(item, sourceFile: sourceFile, fileModifiedAt: fileModifiedAt)
                 usages.append(contentsOf: parsed.usages)
@@ -324,7 +324,7 @@ public final class WarpParser: LogParser, Sendable {
     }
 
     private func parseEventDictionary(
-        _ event: [String: Any],
+        _ event: LogParserJSONObject,
         sourceFile: URL,
         fileModifiedAt: Date?
     ) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
@@ -369,7 +369,7 @@ public final class WarpParser: LogParser, Sendable {
     }
 
     private func collectExactUsages(
-        in dictionary: [String: Any],
+        in dictionary: LogParserJSONObject,
         context: WarpParseContext
     ) throws -> [TokenUsage] {
         var records: [TokenUsage] = []
@@ -378,7 +378,7 @@ public final class WarpParser: LogParser, Sendable {
     }
 
     private func collectExactUsages(
-        in dictionary: [String: Any],
+        in dictionary: LogParserJSONObject,
         context: WarpParseContext,
         records: inout [TokenUsage]
     ) throws {
@@ -405,9 +405,9 @@ public final class WarpParser: LogParser, Sendable {
         }
 
         for value in dictionary.values {
-            if let nested = value as? [String: Any] {
+            if let nested = value as? LogParserJSONObject {
                 try collectExactUsages(in: nested, context: mergedContext, records: &records)
-            } else if let array = value as? [[String: Any]] {
+            } else if let array = value as? [LogParserJSONObject] {
                 for item in array {
                     try collectExactUsages(in: item, context: mergedContext, records: &records)
                 }
@@ -418,7 +418,7 @@ public final class WarpParser: LogParser, Sendable {
     private func makeExactUsage(
         from extracted: ExtractedTokenUsage,
         context: WarpParseContext,
-        source: [String: Any]
+        source: LogParserJSONObject
     ) throws -> TokenUsage {
         let timestamp = context.timestamp ?? Date()
         let model = context.model ?? "warp"
@@ -530,12 +530,12 @@ public final class WarpParser: LogParser, Sendable {
 
     // MARK: - JSON Body Extraction
 
-    public static func extractBodyJSONObjects(from content: String) -> [[String: Any]] {
+    public static func extractBodyJSONObjects(from content: String) -> [LogParserJSONObject] {
         extractBodyJSONScan(from: content).objects
     }
 
-    static func extractBodyJSONScan(from content: String) -> (objects: [[String: Any]], endUTF8Offset: Int) {
-        var objects: [[String: Any]] = []
+    static func extractBodyJSONScan(from content: String) -> (objects: [LogParserJSONObject], endUTF8Offset: Int) {
+        var objects: [LogParserJSONObject] = []
         var searchStart = content.startIndex
         var lastCompleteUTF8Offset = 0
 
@@ -557,9 +557,9 @@ public final class WarpParser: LogParser, Sendable {
             let jsonText = String(content[index...end])
             if let data = jsonText.data(using: .utf8),
                let json = try? JSONSerialization.jsonObject(with: data) { // try?-ok(skip malformed JSON)
-                if let dictionary = json as? [String: Any] {
+                if let dictionary = json as? LogParserJSONObject {
                     objects.append(dictionary)
-                } else if let array = json as? [[String: Any]] {
+                } else if let array = json as? [LogParserJSONObject] {
                     objects.append(contentsOf: array)
                 }
             }
@@ -614,9 +614,9 @@ public final class WarpParser: LogParser, Sendable {
 
     // MARK: - Usage Field Helpers
 
-    private static func usageDictionary(from dictionary: [String: Any]) -> [String: Any]? {
+    private static func usageDictionary(from dictionary: LogParserJSONObject) -> LogParserJSONObject? {
         for key in ["usage", "token_usage", "tokenUsage", "token_counts", "tokenCounts"] {
-            if let usage = dictionary[key] as? [String: Any],
+            if let usage = dictionary[key] as? LogParserJSONObject,
                containsUsageKeys(usage) {
                 return usage
             }
@@ -624,7 +624,7 @@ public final class WarpParser: LogParser, Sendable {
         return nil
     }
 
-    private static func containsUsageKeys(_ dictionary: [String: Any]) -> Bool {
+    private static func containsUsageKeys(_ dictionary: LogParserJSONObject) -> Bool {
         let keys = Set(dictionary.keys.map { $0.lowercased() })
         return !keys.isDisjoint(with: [
             "input_tokens",
@@ -706,7 +706,7 @@ private struct WarpParseContext {
         !assistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    static func from(_ dictionary: [String: Any]) -> WarpParseContext {
+    static func from(_ dictionary: LogParserJSONObject) -> WarpParseContext {
         var context = WarpParseContext()
         let event = Self.string(in: dictionary, keys: ["event", "type", "operationName"])
         context.isAgentRelated = event.map(Self.isAgentEvent(_:)) ?? false
@@ -716,8 +716,8 @@ private struct WarpParseContext {
             "request_id", "requestId", "trace_id", "traceId", "terminal_session_id", "terminalSessionId"
         ])
         if context.sessionId == nil,
-           let integrations = dictionary["integrations"] as? [String: Any],
-           let amplitude = integrations["Amplitude"] as? [String: Any] {
+           let integrations = dictionary["integrations"] as? LogParserJSONObject,
+           let amplitude = integrations["Amplitude"] as? LogParserJSONObject {
             context.sessionId = Self.string(in: amplitude, keys: ["session_id", "sessionId"])
         }
 
@@ -737,13 +737,13 @@ private struct WarpParseContext {
         context.userText = userText ?? ""
         context.assistantText = assistantText ?? ""
 
-        if let properties = dictionary["properties"] as? [String: Any] {
+        if let properties = dictionary["properties"] as? LogParserJSONObject {
             context = context.merging(Self.from(properties))
         }
-        if let payload = dictionary["payload"] as? [String: Any] {
+        if let payload = dictionary["payload"] as? LogParserJSONObject {
             context = context.merging(Self.from(payload))
         }
-        if let variables = dictionary["variables"] as? [String: Any] {
+        if let variables = dictionary["variables"] as? LogParserJSONObject {
             context = context.merging(Self.from(variables))
         }
 
@@ -773,7 +773,7 @@ private struct WarpParseContext {
         return agentEventPattern?.firstMatch(in: event, range: range) != nil
     }
 
-    private static func string(in dictionary: [String: Any], keys: [String]) -> String? {
+    private static func string(in dictionary: LogParserJSONObject, keys: [String]) -> String? {
         for key in keys {
             if let value = dictionary[key] {
                 if let string = value as? String {
@@ -788,7 +788,7 @@ private struct WarpParseContext {
         return nil
     }
 
-    private static func text(in dictionary: [String: Any], keys: [String]) -> String? {
+    private static func text(in dictionary: LogParserJSONObject, keys: [String]) -> String? {
         guard let text = string(in: dictionary, keys: keys) else { return nil }
         let lower = text.lowercased()
         if lower.hasPrefix("v0.20") || lower.hasPrefix("http://") || lower.hasPrefix("https://") {
@@ -797,14 +797,14 @@ private struct WarpParseContext {
         return text
     }
 
-    private static func projectName(from dictionary: [String: Any]) -> String? {
+    private static func projectName(from dictionary: LogParserJSONObject) -> String? {
         if let cwd = string(in: dictionary, keys: ["cwd", "workspace", "workspace_path", "workspacePath", "project_path", "projectPath"]) {
             return URL(fileURLWithPath: cwd).lastPathComponent.nilIfEmpty ?? cwd
         }
         return string(in: dictionary, keys: ["project", "project_name", "projectName", "repo", "repository"])
     }
 
-    private static func date(in dictionary: [String: Any], keys: [String]) -> Date? {
+    private static func date(in dictionary: LogParserJSONObject, keys: [String]) -> Date? {
         for key in keys {
             guard let value = dictionary[key] else { continue }
             if let string = value as? String {

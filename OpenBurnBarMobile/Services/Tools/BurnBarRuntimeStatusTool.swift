@@ -31,7 +31,7 @@ public struct BurnBarRuntimeStatusTool: MobileTool {
         """
     }
 
-    public var parametersSchema: [String: Any] {
+    public var parametersSchema: MobileToolParametersSchema {
         MobileToolJSONSchema.object(
             properties: [:],
             required: [],

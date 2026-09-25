@@ -3,6 +3,14 @@ import Foundation
 import WebKit
 import OSLog
 
+/// Untyped JSON object at the schemaless Pretext JS-bridge boundary.
+///
+/// Bridge payloads cross to/from the bundled JS shell without a stable
+/// schema, so navigation stays dictionary-based — but every site spells the
+/// type through this alias instead of repeating the raw untyped-dictionary
+/// literal, keeping the string-any boundary countable at one choke point.
+typealias PretextJSONObject = [String: Any]
+
 // MARK: - Pretext Engine
 //
 // Single offscreen `WKWebView` running our bundled `Pretext` shell. Lives in
@@ -174,7 +182,7 @@ public final class PretextEngine: NSObject {
             "maxWidth": Double(maxWidth),
             "lineHeight": Double(lineHeight)
         ])
-        guard let dict = value as? [String: Any],
+        guard let dict = value as? PretextJSONObject,
               let height = (dict["height"] as? NSNumber)?.doubleValue,
               let lineCount = (dict["lineCount"] as? NSNumber)?.intValue else {
             throw PretextError.invalidResponse
@@ -193,10 +201,10 @@ public final class PretextEngine: NSObject {
             "maxWidth": Double(maxWidth),
             "lineHeight": Double(lineHeight)
         ])
-        guard let dict = value as? [String: Any],
+        guard let dict = value as? PretextJSONObject,
               let height = (dict["height"] as? NSNumber)?.doubleValue,
               let lineCount = (dict["lineCount"] as? NSNumber)?.intValue,
-              let rawLines = dict["lines"] as? [[String: Any]] else {
+              let rawLines = dict["lines"] as? [PretextJSONObject] else {
             throw PretextError.invalidResponse
         }
         let lines = rawLines.compactMap { entry -> PretextLine? in
@@ -216,7 +224,7 @@ public final class PretextEngine: NSObject {
             "handle": handle.id,
             "maxWidth": Double(maxWidth)
         ])
-        guard let dict = value as? [String: Any],
+        guard let dict = value as? PretextJSONObject,
               let lineCount = (dict["lineCount"] as? NSNumber)?.intValue,
               let maxW = (dict["maxLineWidth"] as? NSNumber)?.doubleValue else {
             throw PretextError.invalidResponse
@@ -230,7 +238,7 @@ public final class PretextEngine: NSObject {
         let value = try await call("measureNaturalWidth", params: [
             "handle": handle.id
         ])
-        guard let dict = value as? [String: Any],
+        guard let dict = value as? PretextJSONObject,
               let width = (dict["width"] as? NSNumber)?.doubleValue else {
             throw PretextError.invalidResponse
         }
@@ -239,8 +247,8 @@ public final class PretextEngine: NSObject {
 
     /// `prepareRichInline(items)` for mixed-font inline layout.
     public func prepareRichInline(items: [PretextRichInlineItem]) async throws -> PretextRichHandle {
-        let payload = items.map { item -> [String: Any] in
-            var entry: [String: Any] = [
+        let payload = items.map { item -> PretextJSONObject in
+            var entry: PretextJSONObject = [
                 "text": item.text,
                 "font": item.font,
                 "extraWidth": Double(item.extraWidth)
@@ -249,7 +257,7 @@ public final class PretextEngine: NSObject {
             return entry
         }
         let value = try await call("prepareRichInline", params: ["items": payload])
-        guard let dict = value as? [String: Any],
+        guard let dict = value as? PretextJSONObject,
               let id = (dict["handle"] as? NSNumber)?.intValue else {
             throw PretextError.invalidResponse
         }
@@ -267,13 +275,13 @@ public final class PretextEngine: NSObject {
             "handle": handle.id,
             "maxWidth": Double(maxWidth)
         ])
-        guard let dict = value as? [String: Any],
-              let rawLines = dict["lines"] as? [[String: Any]] else {
+        guard let dict = value as? PretextJSONObject,
+              let rawLines = dict["lines"] as? [PretextJSONObject] else {
             throw PretextError.invalidResponse
         }
         return rawLines.compactMap { line -> PretextRichLine? in
             guard let width = (line["width"] as? NSNumber)?.doubleValue,
-                  let frags = line["fragments"] as? [[String: Any]] else { return nil }
+                  let frags = line["fragments"] as? [PretextJSONObject] else { return nil }
             let fragments = frags.compactMap { f -> PretextRichFragment? in
                 guard let text = f["text"] as? String,
                       let idx = (f["itemIndex"] as? NSNumber)?.intValue else { return nil }
@@ -325,7 +333,7 @@ public final class PretextEngine: NSObject {
     // MARK: Internal — bridge plumbing
 
     fileprivate func handleBridgeMessage(_ body: Any) {
-        guard let dict = body as? [String: Any],
+        guard let dict = body as? PretextJSONObject,
               let id = (dict["id"] as? NSNumber)?.intValue else { return }
 
         // Readiness heartbeat (id == 0).
@@ -340,18 +348,18 @@ public final class PretextEngine: NSObject {
         guard let cont = pendingRequests.removeValue(forKey: id) else { return }
         let okFlag = (dict["ok"] as? NSNumber)?.boolValue ?? false
         if okFlag {
-            cont.resume(returning: PretextBridgeValue(dict["value"] ?? [String: Any]()))
+            cont.resume(returning: PretextBridgeValue(dict["value"] ?? PretextJSONObject()))
         } else {
             let msg = (dict["error"] as? String) ?? "unknown"
             cont.resume(throwing: PretextError.bridgeError(msg))
         }
     }
 
-    private func call(_ method: String, params: [String: Any]) async throws -> Any {
+    private func call(_ method: String, params: PretextJSONObject) async throws -> Any {
         try await awaitReady()
         let id = nextRequestID
         nextRequestID += 1
-        let payload: [String: Any] = ["id": id, "method": method, "params": params]
+        let payload: PretextJSONObject = ["id": id, "method": method, "params": params]
         let json = try JSONSerialization.data(withJSONObject: payload, options: [])
         guard let jsonString = String(data: json, encoding: .utf8) else {
             throw PretextError.invalidResponse
@@ -379,17 +387,17 @@ public final class PretextEngine: NSObject {
         return boxed.value
     }
 
-    private func callForHandle(_ method: String, params: [String: Any]) async throws -> PretextHandle {
+    private func callForHandle(_ method: String, params: PretextJSONObject) async throws -> PretextHandle {
         let value = try await call(method, params: params)
-        guard let dict = value as? [String: Any],
+        guard let dict = value as? PretextJSONObject,
               let id = (dict["handle"] as? NSNumber)?.intValue else {
             throw PretextError.invalidResponse
         }
         return PretextHandle(id: id)
     }
 
-    private func optionsJSON(_ options: PretextOptions) -> [String: Any] {
-        var dict: [String: Any] = [:]
+    private func optionsJSON(_ options: PretextOptions) -> PretextJSONObject {
+        var dict: PretextJSONObject = [:]
         if let ws = options.whiteSpace { dict["whiteSpace"] = ws.rawValue }
         if let wb = options.wordBreak { dict["wordBreak"] = wb.rawValue }
         if let ls = options.letterSpacing { dict["letterSpacing"] = ls }

@@ -2,6 +2,15 @@ import Foundation
 import OpenBurnBarVaultModels
 import OpenBurnBarAssistantModels
 
+/// Untyped Firestore document body at the CLI-session mirror boundary.
+///
+/// The codec below navigates schemaless Firestore dictionaries (with
+/// `Date`→`Timestamp` handling `JSONEncoder` round-trips cannot express), so
+/// navigation stays dictionary-based — but every site spells the type through
+/// this alias instead of repeating the raw untyped-dictionary literal,
+/// keeping the string-any boundary countable at one choke point.
+public typealias InboxJSONObject = [String: Any]
+
 // MARK: - CLI Agent Session Mirror
 //
 // Shared data model used by both the macOS writer
@@ -315,7 +324,7 @@ public struct CLIAgentTokenUsage: Codable, Hashable, Sendable {
 
 // MARK: - Firestore Codec
 
-/// Plain `[String: Any]` codec for `CLIAgentSessionRecord`. We avoid
+/// Plain `InboxJSONObject` codec for `CLIAgentSessionRecord`. We avoid
 /// `JSONEncoder/Decoder` round-tripping at the call site because Firestore's
 /// SDK already accepts dictionary payloads and rejects unsupported types
 /// (e.g. `Date` becomes `Timestamp`). Tests use the same codec to verify
@@ -330,7 +339,7 @@ public enum CLIAgentSessionCodec {
     /// forward-tolerant when the Mac writer ships a new runtime first.
     public static func decode(
         documentID: String,
-        data: [String: Any],
+        data: InboxJSONObject,
         timestampDecoder: (Any?) -> Date? = defaultTimestampDecoder
     ) -> CLIAgentSessionRecord? {
         let schemaVersion = (data["schemaVersion"] as? Int) ?? 1
@@ -351,10 +360,10 @@ public enum CLIAgentSessionCodec {
         let createdAt = timestampDecoder(data["createdAt"]) ?? Date()
         let updatedAt = timestampDecoder(data["updatedAt"]) ?? createdAt
         let endedAt = timestampDecoder(data["endedAt"])
-        let rawMessages = data["messages"] as? [[String: Any]] ?? []
+        let rawMessages = data["messages"] as? [InboxJSONObject] ?? []
         let messages = rawMessages.compactMap { decodeMessage($0, timestampDecoder: timestampDecoder) }
-        let tokenUsage = (data["tokenUsage"] as? [String: Any]).flatMap(decodeTokenUsage)
-        let resumeHandle = (data["resumeHandle"] as? [String: Any]).flatMap(decodeResumeHandle)
+        let tokenUsage = (data["tokenUsage"] as? InboxJSONObject).flatMap(decodeTokenUsage)
+        let resumeHandle = (data["resumeHandle"] as? InboxJSONObject).flatMap(decodeResumeHandle)
         let encryptedTranscriptAvailable = (data["encryptedTranscriptAvailable"] as? Bool) ?? false
         let customTitle = (data["customTitle"] as? String).flatMap(nonBlank)
         let labelColorHex = (data["labelColorHex"] as? String).flatMap(nonBlank)
@@ -386,7 +395,7 @@ public enum CLIAgentSessionCodec {
     public static func decodeSealed(
         documentID: String,
         uid: String,
-        data: [String: Any],
+        data: InboxJSONObject,
         vaultKey: Data
     ) -> CLIAgentSessionRecord? {
         guard let envelope = CloudVaultCrypto.sealedPayload(from: data[sealedPayloadField]) else {
@@ -422,8 +431,8 @@ public enum CLIAgentSessionCodec {
     /// Encode a `CLIAgentSessionRecord` to the dictionary form
     /// Firestore's SDK accepts. Dates stay as `Date` values; the SDK
     /// converts them to `Timestamp` at the boundary.
-    public static func encode(_ record: CLIAgentSessionRecord) -> [String: Any] {
-        var dict: [String: Any] = [
+    public static func encode(_ record: CLIAgentSessionRecord) -> InboxJSONObject {
+        var dict: InboxJSONObject = [
             "id": record.id,
             "agent": record.agent.rawValue,
             "sourceKind": record.sourceKind.rawValue,
@@ -471,7 +480,7 @@ public enum CLIAgentSessionCodec {
         vaultKeyID: String,
         uid: String,
         documentID: String
-    ) throws -> [String: Any] {
+    ) throws -> InboxJSONObject {
         let payload = try encodePrivatePayload(record)
         let aadContext = try CloudVaultAADContext(
             uid: uid,
@@ -485,7 +494,7 @@ public enum CLIAgentSessionCodec {
             vaultKeyID: vaultKeyID,
             aadContext: aadContext
         )
-        var dict: [String: Any] = [
+        var dict: InboxJSONObject = [
             "id": documentID,
             "agent": record.agent.rawValue,
             "sourceKind": record.sourceKind.rawValue,
@@ -523,7 +532,7 @@ public enum CLIAgentSessionCodec {
         return dict
     }
 
-    public static func encodeMessage(_ message: CLIAgentMessage) -> [String: Any] {
+    public static func encodeMessage(_ message: CLIAgentMessage) -> InboxJSONObject {
         [
             "id": message.id,
             "role": message.role.rawValue,
@@ -534,8 +543,8 @@ public enum CLIAgentSessionCodec {
         ]
     }
 
-    public static func encodeToolUse(_ tool: CLIAgentToolUse) -> [String: Any] {
-        var dict: [String: Any] = [
+    public static func encodeToolUse(_ tool: CLIAgentToolUse) -> InboxJSONObject {
+        var dict: InboxJSONObject = [
             "id": tool.id,
             "name": tool.name,
             "status": tool.status,
@@ -547,7 +556,7 @@ public enum CLIAgentSessionCodec {
         return dict
     }
 
-    public static func encodeTokenUsage(_ usage: CLIAgentTokenUsage) -> [String: Any] {
+    public static func encodeTokenUsage(_ usage: CLIAgentTokenUsage) -> InboxJSONObject {
         [
             "inputTokens": usage.inputTokens,
             "outputTokens": usage.outputTokens,
@@ -557,8 +566,8 @@ public enum CLIAgentSessionCodec {
         ]
     }
 
-    public static func encodeResumeHandle(_ handle: CLIAgentResumeHandle) -> [String: Any] {
-        var dict: [String: Any] = [
+    public static func encodeResumeHandle(_ handle: CLIAgentResumeHandle) -> InboxJSONObject {
+        var dict: InboxJSONObject = [
             "providerSessionID": handle.providerSessionID,
             "canResume": handle.canResume,
             "canFork": handle.canFork,
@@ -574,7 +583,7 @@ public enum CLIAgentSessionCodec {
     }
 
     public static func decodeMessage(
-        _ raw: [String: Any],
+        _ raw: InboxJSONObject,
         timestampDecoder: (Any?) -> Date? = defaultTimestampDecoder
     ) -> CLIAgentMessage? {
         guard let id = raw["id"] as? String,
@@ -585,7 +594,7 @@ public enum CLIAgentSessionCodec {
         }
         let timestamp = timestampDecoder(raw["timestamp"]) ?? Date()
         let isError = (raw["isError"] as? Bool) ?? false
-        let rawTools = raw["toolUses"] as? [[String: Any]] ?? []
+        let rawTools = raw["toolUses"] as? [InboxJSONObject] ?? []
         let toolUses = rawTools.compactMap { decodeToolUse($0, timestampDecoder: timestampDecoder) }
         return CLIAgentMessage(
             id: id,
@@ -598,7 +607,7 @@ public enum CLIAgentSessionCodec {
     }
 
     public static func decodeToolUse(
-        _ raw: [String: Any],
+        _ raw: InboxJSONObject,
         timestampDecoder: (Any?) -> Date? = defaultTimestampDecoder
     ) -> CLIAgentToolUse? {
         guard let id = raw["id"] as? String,
@@ -617,7 +626,7 @@ public enum CLIAgentSessionCodec {
         )
     }
 
-    public static func decodeTokenUsage(_ raw: [String: Any]) -> CLIAgentTokenUsage {
+    public static func decodeTokenUsage(_ raw: InboxJSONObject) -> CLIAgentTokenUsage {
         CLIAgentTokenUsage(
             inputTokens: intValue(raw["inputTokens"]),
             outputTokens: intValue(raw["outputTokens"]),
@@ -627,7 +636,7 @@ public enum CLIAgentSessionCodec {
         )
     }
 
-    public static func decodeResumeHandle(_ raw: [String: Any]) -> CLIAgentResumeHandle? {
+    public static func decodeResumeHandle(_ raw: InboxJSONObject) -> CLIAgentResumeHandle? {
         guard let providerSessionID = raw["providerSessionID"] as? String,
               !providerSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil

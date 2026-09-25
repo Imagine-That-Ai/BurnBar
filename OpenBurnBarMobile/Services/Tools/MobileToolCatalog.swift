@@ -93,7 +93,7 @@ public enum MobileToolError: Error, Equatable, Sendable, LocalizedError {
     /// deliberately small and predictable so the model can pattern-match
     /// on it across providers.
     public var wireContent: String {
-        let payload: [String: Any] = [
+        let payload: MobileJSONObject = [
             "error": errorDescription ?? "tool failed"
         ]
         if let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
@@ -131,9 +131,9 @@ public protocol MobileTool: Sendable {
     var description: String { get }
 
     /// JSON Schema describing `function.parameters`. Used verbatim in the
-    /// wire-format tools array. Use `MobileToolJSONSchema` helpers to keep
-    /// schemas consistent across tools.
-    var parametersSchema: [String: Any] { get }
+    /// wire-format tools array (via `wireDictionary()`). Use the
+    /// `MobileToolJSONSchema` helpers to keep schemas consistent across tools.
+    var parametersSchema: MobileToolParametersSchema { get }
 
     /// Decode the streamed arguments JSON and run the tool. Always returns
     /// a `String` body suitable for a `role: "tool"` message. Throws only
@@ -150,14 +150,14 @@ public extension MobileTool {
     /// to `function`-typed; override in a tool to produce a different
     /// schema family later (e.g. Anthropic-style) without touching the
     /// service layer.
-    var descriptor: [String: Any] {
+    var descriptor: MobileJSONObject {
         [
             "type": "function",
             "function": [
                 "name": Self.name,
                 "description": description,
-                "parameters": parametersSchema
-            ] as [String: Any]
+                "parameters": parametersSchema.wireDictionary()
+            ] as MobileJSONObject
         ]
     }
 
@@ -169,7 +169,7 @@ public extension MobileTool {
         guard !trimmed.isEmpty else { return nil }
         guard let data = trimmed.data(using: .utf8),
               let object = (try? JSONSerialization.jsonObject(with: data, options: []))
-                as? [String: Any] else {
+                as? MobileJSONObject else {
             throw MobileToolError.invalidArguments(
                 "expected a JSON object, got \(trimmed.prefix(80))"
             )
@@ -199,7 +199,7 @@ public struct MobileToolCatalog: Sendable {
     /// the request entirely so they don't surprise providers that reject
     /// empty arrays.
     @MainActor
-    public func toolsWireArray() -> [[String: Any]] {
+    public func toolsWireArray() -> [MobileJSONObject] {
         tools.map { $0.descriptor }
     }
 
@@ -816,7 +816,7 @@ public struct BurnBarProjectMemoryListTool: MobileTool {
         """
     }
 
-    public var parametersSchema: [String: Any] {
+    public var parametersSchema: MobileToolParametersSchema {
         MobileToolJSONSchema.object(
             properties: [
                 "limit": MobileToolJSONSchema.integer(
@@ -872,12 +872,12 @@ public struct BurnBarProjectMemoryListTool: MobileTool {
         return try encodeJSON(payload)
     }
 
-    private func parseArguments(_ arguments: String) throws -> [String: Any] {
+    private func parseArguments(_ arguments: String) throws -> MobileJSONObject {
         let trimmed = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [:] }
         guard let data = trimmed.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data, options: []),
-              let dict = object as? [String: Any] else {
+              let dict = object as? MobileJSONObject else {
             throw MobileToolError.invalidArguments(
                 "expected a JSON object, got \(trimmed.prefix(80))"
             )
@@ -913,7 +913,7 @@ public struct BurnBarProjectMemoryWikiTool: MobileTool {
         """
     }
 
-    public var parametersSchema: [String: Any] {
+    public var parametersSchema: MobileToolParametersSchema {
         MobileToolJSONSchema.object(
             properties: [
                 "project_id": MobileToolJSONSchema.string(
@@ -982,12 +982,12 @@ public struct BurnBarProjectMemoryWikiTool: MobileTool {
         return try encodeJSON(payload)
     }
 
-    private func parseArguments(_ arguments: String) throws -> [String: Any] {
+    private func parseArguments(_ arguments: String) throws -> MobileJSONObject {
         let trimmed = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [:] }
         guard let data = trimmed.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data, options: []),
-              let dict = object as? [String: Any] else {
+              let dict = object as? MobileJSONObject else {
             throw MobileToolError.invalidArguments(
                 "expected a JSON object, got \(trimmed.prefix(80))"
             )
@@ -995,7 +995,7 @@ public struct BurnBarProjectMemoryWikiTool: MobileTool {
         return dict
     }
 
-    private func stringValue(forKeys keys: [String], object: [String: Any]) -> String? {
+    private func stringValue(forKeys keys: [String], object: MobileJSONObject) -> String? {
         for key in keys {
             if let value = object[key] as? String {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1104,6 +1104,93 @@ public struct PendingToolCall: Sendable, Equatable {
     }
 }
 
+// MARK: - JSON Schema Wire Models
+
+/// Typed JSON Schema object for a tool's `parametersSchema`.
+///
+/// Wire models + thin conversion: tools build this struct (via the
+/// `MobileToolJSONSchema` helpers), and the single `wireDictionary()` edge
+/// renders the exact dictionary the OpenAI-compatible `tools` array has
+/// always carried (`required`/`description` omitted when empty, same keys).
+public struct MobileToolParametersSchema: Codable, Sendable, Equatable {
+    public var type: String = "object"
+    public var properties: [String: MobileToolSchemaField]
+    public var required: [String]?
+    public var description: String?
+    public var additionalProperties: Bool = false
+
+    public init(
+        properties: [String: MobileToolSchemaField],
+        required: [String]? = nil,
+        description: String? = nil
+    ) {
+        self.properties = properties
+        self.required = required
+        self.description = description
+    }
+
+    /// The verbatim wire dictionary. Renders only the keys the legacy
+    /// dictionary builders emitted — no more, no fewer.
+    public func wireDictionary() -> MobileJSONObject {
+        var schema: MobileJSONObject = [
+            "type": type,
+            "properties": properties.mapValues { $0.wireDictionary() },
+            "additionalProperties": additionalProperties
+        ]
+        if let required, !required.isEmpty {
+            schema["required"] = required
+        }
+        if let description {
+            schema["description"] = description
+        }
+        return schema
+    }
+}
+
+/// One typed JSON Schema property field.
+public struct MobileToolSchemaField: Codable, Sendable, Equatable {
+    public var type: String
+    public var description: String?
+    public var enumeration: [String]?
+    public var minimum: Int?
+    public var maximum: Int?
+
+    public init(
+        type: String,
+        description: String? = nil,
+        enumeration: [String]? = nil,
+        minimum: Int? = nil,
+        maximum: Int? = nil
+    ) {
+        self.type = type
+        self.description = description
+        self.enumeration = enumeration
+        self.minimum = minimum
+        self.maximum = maximum
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case description
+        case enumeration = "enum"
+        case minimum
+        case maximum
+    }
+
+    public func wireDictionary() -> MobileJSONObject {
+        var field: MobileJSONObject = ["type": type]
+        if let description {
+            field["description"] = description
+        }
+        if let enumeration, !enumeration.isEmpty {
+            field["enum"] = enumeration
+        }
+        if let minimum { field["minimum"] = minimum }
+        if let maximum { field["maximum"] = maximum }
+        return field
+    }
+}
+
 // MARK: - JSON Schema Helpers
 
 /// Tiny builder helpers for the JSON Schema fragments tools emit in
@@ -1112,37 +1199,27 @@ public struct PendingToolCall: Sendable, Equatable {
 public enum MobileToolJSONSchema {
     /// `{"type": "object", "properties": {...}, "required": [...], "additionalProperties": false}`.
     public static func object(
-        properties: [String: [String: Any]],
+        properties: [String: MobileToolSchemaField],
         required: [String] = [],
         description: String? = nil
-    ) -> [String: Any] {
-        var schema: [String: Any] = [
-            "type": "object",
-            "properties": properties,
-            "additionalProperties": false
-        ]
-        if !required.isEmpty {
-            schema["required"] = required
-        }
-        if let description {
-            schema["description"] = description
-        }
-        return schema
+    ) -> MobileToolParametersSchema {
+        MobileToolParametersSchema(
+            properties: properties,
+            required: required.isEmpty ? nil : required,
+            description: description
+        )
     }
 
     /// `{"type": "string", "description": "..."}` with optional enum.
     public static func string(
         description: String,
         enumeration: [String]? = nil
-    ) -> [String: Any] {
-        var field: [String: Any] = [
-            "type": "string",
-            "description": description
-        ]
-        if let enumeration, !enumeration.isEmpty {
-            field["enum"] = enumeration
-        }
-        return field
+    ) -> MobileToolSchemaField {
+        MobileToolSchemaField(
+            type: "string",
+            description: description,
+            enumeration: enumeration?.isEmpty == false ? enumeration : nil
+        )
     }
 
     /// `{"type": "integer", "description": "..."}` with optional bounds.
@@ -1150,18 +1227,17 @@ public enum MobileToolJSONSchema {
         description: String,
         minimum: Int? = nil,
         maximum: Int? = nil
-    ) -> [String: Any] {
-        var field: [String: Any] = [
-            "type": "integer",
-            "description": description
-        ]
-        if let minimum { field["minimum"] = minimum }
-        if let maximum { field["maximum"] = maximum }
-        return field
+    ) -> MobileToolSchemaField {
+        MobileToolSchemaField(
+            type: "integer",
+            description: description,
+            minimum: minimum,
+            maximum: maximum
+        )
     }
 
     /// `{"type": "boolean", "description": "..."}`.
-    public static func boolean(description: String) -> [String: Any] {
-        ["type": "boolean", "description": description]
+    public static func boolean(description: String) -> MobileToolSchemaField {
+        MobileToolSchemaField(type: "boolean", description: description)
     }
 }

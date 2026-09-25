@@ -178,7 +178,7 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
     }
 
     static func rewrap(
-        data: [String: Any],
+        data: CloudVaultJSONObject,
         uid: String,
         collection: String,
         docID: String,
@@ -213,7 +213,7 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
     }
 
     static func rewrap(
-        data: [String: Any],
+        data: CloudVaultJSONObject,
         uid: String,
         collection: String,
         docID: String,
@@ -344,7 +344,7 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
     }
 
     private static func rustRewrap(
-        data: [String: Any],
+        data: CloudVaultJSONObject,
         uid: String,
         collection: String,
         docID: String,
@@ -396,14 +396,14 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
         )
     }
 
-    private static func lowerEnvelopes(_ data: [String: Any]) throws -> [Envelope] {
+    private static func lowerEnvelopes(_ data: CloudVaultJSONObject) throws -> [Envelope] {
         try data.compactMap { field, value -> Envelope? in
-            guard let raw = value as? [String: Any] else { return nil }
+            guard let raw = value as? CloudVaultJSONObject else { return nil }
             return try lowerEnvelope(field: field, raw: raw)
         }.sorted { $0.fieldName < $1.fieldName }
     }
 
-    private static func lowerEnvelope(field: String, raw: [String: Any]) throws -> Envelope? {
+    private static func lowerEnvelope(field: String, raw: CloudVaultJSONObject) throws -> Envelope? {
         let rawKeys = Set(raw.keys)
         let payloadCandidate = rawKeys.contains("vaultKeyID")
         let textCandidate = !rawKeys.isDisjoint(with: ["nonce", "ciphertext", "tag"])
@@ -514,12 +514,12 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
     }
 
     private static func makeLegacyNoncePlan(
-        data: [String: Any],
+        data: CloudVaultJSONObject,
         newVaultKeyID: String,
         generator: () throws -> Data
     ) rethrows -> [CloudVaultDocumentRewrapNonce] {
         try data.keys.sorted().compactMap { field in
-            guard let raw = data[field] as? [String: Any] else { return nil }
+            guard let raw = data[field] as? CloudVaultJSONObject else { return nil }
             if let payload = CloudVaultCrypto.sealedPayload(from: raw) {
                 guard payload.vaultKeyID != newVaultKeyID else { return nil }
                 return CloudVaultDocumentRewrapNonce(fieldName: field, bytes: try generator())
@@ -534,7 +534,7 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
 
     private static func apply(
         _ result: NativeResult,
-        to data: [String: Any],
+        to data: CloudVaultJSONObject,
         request: Request,
         newVaultKeyID: String
     ) throws -> CloudVaultDocumentRewrapResult {
@@ -639,9 +639,9 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
             updated[field] = envelopeMap(output)
         }
         for intent in result.preservedMemberIntents {
-            guard let sourceMap = data[intent.sourceFieldName] as? [String: Any],
+            guard let sourceMap = data[intent.sourceFieldName] as? CloudVaultJSONObject,
                   let preserved = sourceMap[intent.memberName],
-                  var outputMap = updated[intent.sourceFieldName] as? [String: Any] else {
+                  var outputMap = updated[intent.sourceFieldName] as? CloudVaultJSONObject else {
                 throw CloudVaultDocumentRewrapAdapterError.invalidResult
             }
             outputMap[intent.memberName] = preserved
@@ -733,8 +733,8 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
         return data
     }
 
-    private static func envelopeMap(_ envelope: Envelope) -> [String: Any] {
-        var map: [String: Any] = [
+    private static func envelopeMap(_ envelope: Envelope) -> CloudVaultJSONObject {
+        var map: CloudVaultJSONObject = [
             "algorithm": envelope.algorithm,
             "keyVersion": Int(envelope.keyVersion)
         ]
@@ -759,7 +759,7 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
     }
 
     private static func valuesEqual(_ left: Any, _ right: Any) -> Bool {
-        if let left = left as? [String: Any], let right = right as? [String: Any] {
+        if let left = left as? CloudVaultJSONObject, let right = right as? CloudVaultJSONObject {
             guard left.keys == right.keys else { return false }
             return left.allSatisfy { key, value in
                 guard let other = right[key] else { return false }
@@ -819,26 +819,26 @@ enum CloudVaultDocumentRewrapDomainCoreAdapter {
         return exact
     }
 
-    private static func requiredString(_ raw: [String: Any], _ name: String) throws -> String {
+    private static func requiredString(_ raw: CloudVaultJSONObject, _ name: String) throws -> String {
         guard let value = raw[name] as? String else {
             throw CloudVaultDocumentRewrapAdapterError.invalidInput
         }
         return value
     }
 
-    private static func optionalString(_ raw: [String: Any], _ name: String) throws -> String? {
+    private static func optionalString(_ raw: CloudVaultJSONObject, _ name: String) throws -> String? {
         guard raw.keys.contains(name) else { return nil }
         return try requiredString(raw, name)
     }
 
-    private static func requiredUInt32(_ raw: [String: Any], _ name: String) throws -> UInt32 {
+    private static func requiredUInt32(_ raw: CloudVaultJSONObject, _ name: String) throws -> UInt32 {
         guard let value = try optionalUInt32(raw, name) else {
             throw CloudVaultDocumentRewrapAdapterError.invalidInput
         }
         return value
     }
 
-    private static func optionalUInt32(_ raw: [String: Any], _ name: String) throws -> UInt32? {
+    private static func optionalUInt32(_ raw: CloudVaultJSONObject, _ name: String) throws -> UInt32? {
         guard let rawValue = raw[name] else { return nil }
         guard let number = rawValue as? NSNumber,
               !isBoolean(number) else {

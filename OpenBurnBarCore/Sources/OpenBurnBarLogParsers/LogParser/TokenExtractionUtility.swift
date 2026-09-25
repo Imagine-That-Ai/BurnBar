@@ -1,6 +1,14 @@
 import Foundation
 import OpenBurnBarKernel
 
+/// Untyped JSON object at the schemaless vendor-log boundary.
+///
+/// Vendor logs have no stable schema, so navigation stays dictionary-based — but
+/// every site spells the type through this alias instead of repeating the raw
+/// untyped-dictionary literal, keeping the string-any boundary countable at one
+/// choke point. Prefer `BurnBarJSONValue` / Codable models for new shapes.
+public typealias LogParserJSONObject = [String: Any]
+
 // MARK: - Shared Token Extraction Utilities
 
 /// Extracted token usage fields from a provider's usage dictionary.
@@ -85,7 +93,7 @@ public enum TokenExtractionUtility {
     /// - Returns: An `ExtractedTokenUsage` with all explicit buckets preserved. The caller should check
     ///   `hasNoExplicitBuckets` to determine if fallback estimation is needed.
     public static func extractUsageTokens(
-        _ usage: [String: Any],
+        _ usage: LogParserJSONObject,
         inputHint: Int = 0,
         outputHint: Int = 0
     ) -> ExtractedTokenUsage {
@@ -262,7 +270,7 @@ public enum TokenExtractionUtility {
                 reasoning += nested.reasoningChars
             }
             return (visible, reasoning)
-        case let dictionary as [String: Any]:
+        case let dictionary as LogParserJSONObject:
             var visible = 0
             var reasoning = 0
             for (nestedKey, nestedValue) in dictionary {
@@ -475,7 +483,7 @@ public enum TokenExtractionUtility {
                 }
             }
             return nil
-        case let dictionary as [String: Any]:
+        case let dictionary as LogParserJSONObject:
             for (_, nestedValue) in dictionary {
                 if let found = detectModelHint(from: nestedValue) {
                     return found
@@ -552,7 +560,7 @@ public enum TokenExtractionUtility {
 
     // MARK: - JSON Helpers
 
-    public static func firstIntValue(in dictionary: [String: Any], paths: [[String]]) -> Int? {
+    public static func firstIntValue(in dictionary: LogParserJSONObject, paths: [[String]]) -> Int? {
         for path in paths {
             if let value = nestedValue(in: dictionary, path: path),
                let intValue = parseInt(value) {
@@ -562,10 +570,10 @@ public enum TokenExtractionUtility {
         return nil
     }
 
-    public static func nestedValue(in dictionary: [String: Any], path: [String]) -> Any? {
+    public static func nestedValue(in dictionary: LogParserJSONObject, path: [String]) -> Any? {
         var cursor: Any = dictionary
         for key in path {
-            guard let dict = cursor as? [String: Any], let next = dict[key] else {
+            guard let dict = cursor as? LogParserJSONObject, let next = dict[key] else {
                 return nil
             }
             cursor = next
@@ -609,21 +617,21 @@ public enum TokenExtractionUtility {
     ///   2. `{"event_msg":{…}}` — legacy nested envelope.
     ///   3. `{"token_count":{…}}` — direct token_count payload.
     ///   4. `{"input_tokens":…, "output_tokens":…}` — root-level usage payload.
-    public static func codexTokenCountInfo(from json: [String: Any]) -> [String: Any]? {
+    public static func codexTokenCountInfo(from json: LogParserJSONObject) -> LogParserJSONObject? {
         // Current format: {"type":"event_msg","payload":{"type":"token_count","info":{…}}}
         if let type = json["type"] as? String,
            type == "event_msg",
-           let payload = json["payload"] as? [String: Any],
+           let payload = json["payload"] as? LogParserJSONObject,
            (payload["type"] as? String) == "token_count",
-           let info = payload["info"] as? [String: Any] {
+           let info = payload["info"] as? LogParserJSONObject {
             return info
         }
         // Legacy nested event_msg structure
-        if let eventMsg = json["event_msg"] as? [String: Any] {
+        if let eventMsg = json["event_msg"] as? LogParserJSONObject {
             return eventMsg
         }
         // Handle direct token_count payload
-        if json["token_count"] is [String: Any] {
+        if json["token_count"] is LogParserJSONObject {
             return json
         }
         // Return the json as-is if it contains token usage fields
@@ -644,10 +652,10 @@ public enum TokenExtractionUtility {
     /// The returned `input` is the *raw* inclusive prompt size (as reported by Codex),
     /// which already contains the `cacheRead` (cached input) portion. The parser is
     /// responsible for subtracting cacheRead before storing on `TokenUsage`.
-    public static func codexCumulativeTotalsFromTokenCountInfo(_ info: [String: Any]) -> (input: Int, output: Int, cacheRead: Int)? {
+    public static func codexCumulativeTotalsFromTokenCountInfo(_ info: LogParserJSONObject) -> (input: Int, output: Int, cacheRead: Int)? {
         // VAL-TOKEN-010: Current Codex rollout logs use `total_token_usage` for cumulative
         // counts. Check this first so authoritative totals win over ambiguous delta events.
-        if let totalUsage = info["total_token_usage"] as? [String: Any],
+        if let totalUsage = info["total_token_usage"] as? LogParserJSONObject,
            let input = totalUsage["input_tokens"] as? Int,
            let output = totalUsage["output_tokens"] as? Int {
             let cacheRead = totalUsage["cached_input_tokens"] as? Int
@@ -656,7 +664,7 @@ public enum TokenExtractionUtility {
             return (input, output, cacheRead)
         }
         // Look for cumulative totals in legacy `token_count` envelope.
-        if let tokenCount = info["token_count"] as? [String: Any] {
+        if let tokenCount = info["token_count"] as? LogParserJSONObject {
             // VAL-TOKEN-010: Require explicit input_tokens AND output_tokens to treat as cumulative.
             // Partial/placeholder token_count maps (missing these required fields) must not
             // suppress delta parsing, as returning (0,0,0) would zero out valid accumulated deltas.

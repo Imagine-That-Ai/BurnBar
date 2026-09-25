@@ -351,12 +351,12 @@ public final class ForgeDevParser: LogParser, Sendable {
         var summary = ForgeSummary()
 
         for entry in messages {
-            guard let json = entry as? [String: Any] else { continue }
-            let message = json["message"] as? [String: Any]
-            let text = message?["text"] as? [String: Any]
-            let tool = message?["tool"] as? [String: Any]
+            guard let json = entry as? LogParserJSONObject else { continue }
+            let message = json["message"] as? LogParserJSONObject
+            let text = message?["text"] as? LogParserJSONObject
+            let tool = message?["tool"] as? LogParserJSONObject
 
-            if let usageJSON = json["usage"] as? [String: Any] {
+            if let usageJSON = json["usage"] as? LogParserJSONObject {
                 let prompt = nestedActualInt(in: usageJSON, path: ["prompt_tokens"])
                 let completion = nestedActualInt(in: usageJSON, path: ["completion_tokens"])
                 let cached = nestedActualInt(in: usageJSON, path: ["cached_tokens"])
@@ -412,13 +412,13 @@ public final class ForgeDevParser: LogParser, Sendable {
         return (max(adjustedPrompt, 0), max(completion, 0), max(cached, 0))
     }
 
-    private func nestedActualInt(in dictionary: [String: Any], path: [String]) -> Int {
+    private func nestedActualInt(in dictionary: LogParserJSONObject, path: [String]) -> Int {
         var current: Any? = dictionary
         for key in path {
-            current = (current as? [String: Any])?[key]
+            current = (current as? LogParserJSONObject)?[key]
         }
 
-        if let nested = current as? [String: Any] {
+        if let nested = current as? LogParserJSONObject {
             if let actual = nested["actual"] as? Int { return actual }
             if let actual = nested["actual"] as? Double { return Int(actual.rounded()) }
             if let actual = nested["actual"] as? String { return Int(actual) ?? 0 }
@@ -430,7 +430,7 @@ public final class ForgeDevParser: LogParser, Sendable {
         return 0
     }
 
-    private func inferProjectPath(from metricsJSON: [String: Any]?) -> String? {
+    private func inferProjectPath(from metricsJSON: LogParserJSONObject?) -> String? {
         let filePaths = collectFilePaths(from: metricsJSON)
         guard !filePaths.isEmpty else { return nil }
 
@@ -455,11 +455,11 @@ public final class ForgeDevParser: LogParser, Sendable {
         return (firstPath as NSString).deletingLastPathComponent
     }
 
-    private func collectFilePaths(from metricsJSON: [String: Any]?) -> [String] {
+    private func collectFilePaths(from metricsJSON: LogParserJSONObject?) -> [String] {
         guard let metricsJSON else { return [] }
 
         var paths: [String] = []
-        if let filesChanged = metricsJSON["files_changed"] as? [String: Any] {
+        if let filesChanged = metricsJSON["files_changed"] as? LogParserJSONObject {
             paths.append(contentsOf: filesChanged.keys)
         }
         if let filesAccessed = metricsJSON["files_accessed"] as? [String] {
@@ -492,7 +492,7 @@ public final class ForgeDevParser: LogParser, Sendable {
                 continue
             }
 
-            let message = json["message"] as? [String: Any]
+            let message = json["message"] as? LogParserJSONObject
             let role = ((message?["role"] as? String) ?? (json["role"] as? String) ?? "").lowercased()
             let content = ((message?["content"] as? String) ?? (json["content"] as? String) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -507,7 +507,7 @@ public final class ForgeDevParser: LogParser, Sendable {
                 summary.model = model
             }
 
-            if let usageJSON = (message?["usage"] as? [String: Any]) ?? (json["usage"] as? [String: Any]) {
+            if let usageJSON = (message?["usage"] as? LogParserJSONObject) ?? (json["usage"] as? LogParserJSONObject) {
                 let extracted = TokenExtractionUtility.extractUsageTokens(usageJSON)
                 summary.inputTokens += extracted.input
                 summary.outputTokens += extracted.output
@@ -708,7 +708,7 @@ public final class ForgeDevParser: LogParser, Sendable {
         return candidates
     }
 
-    private func jsonObject(from raw: String?) -> [String: Any]? {
+    private func jsonObject(from raw: String?) -> LogParserJSONObject? {
         guard let raw, let data = raw.data(using: .utf8) else { return nil }
         return BurnBarJSONValue.dictionary(fromJSONData: data) // try?-ok(optional JSON decode)
     }

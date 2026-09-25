@@ -127,22 +127,22 @@ public enum FactoryDashboardScraper {
         }
 
         // Navigate: props → pageProps → ...
-        let props = json["props"] as? [String: Any] ?? [:]
-        let pageProps = props["pageProps"] as? [String: Any] ?? [:]
+        let props = json["props"] as? QuotaJSONObject ?? [:]
+        let pageProps = props["pageProps"] as? QuotaJSONObject ?? [:]
 
         // Try common Next.js data shapes
-        let billing = pageProps["billing"] as? [String: Any]
-            ?? pageProps["usage"] as? [String: Any]
-            ?? pageProps["subscription"] as? [String: Any]
+        let billing = pageProps["billing"] as? QuotaJSONObject
+            ?? pageProps["usage"] as? QuotaJSONObject
+            ?? pageProps["subscription"] as? QuotaJSONObject
             ?? pageProps
 
-        let planName = (billing["plan"] as? [String: Any])?["name"] as? String
+        let planName = (billing["plan"] as? QuotaJSONObject)?["name"] as? String
             ?? billing["planName"] as? String
             ?? billing["tier"] as? String
 
         let tokensUsed = (billing["tokensUsed"] as? NSNumber)?.doubleValue
-            ?? (billing["usage"] as? [String: Any]).flatMap { u in
-                ((u["standard"] as? [String: Any])?["userTokens"] as? NSNumber)?.doubleValue
+            ?? (billing["usage"] as? QuotaJSONObject).flatMap { u in
+                ((u["standard"] as? QuotaJSONObject)?["userTokens"] as? NSNumber)?.doubleValue
             }
 
         let tokensLimit = (billing["tokensLimit"] as? NSNumber)?.doubleValue
@@ -159,7 +159,7 @@ public enum FactoryDashboardScraper {
         }()
 
         let email = billing["email"] as? String
-            ?? (pageProps["user"] as? [String: Any])?["email"] as? String
+            ?? (pageProps["user"] as? QuotaJSONObject)?["email"] as? String
 
         guard tokensUsed != nil || usedPercent != nil || planName != nil else {
             return nil
@@ -325,10 +325,10 @@ public enum FactoryDashboardScraper {
 
     // MARK: - Response Parsing
 
-    private static func parseUsageJSON(_ json: [String: Any]) -> DashboardUsage {
-        let usage = json["usage"] as? [String: Any] ?? json
-        let standard = usage["standard"] as? [String: Any]
-        let premium = usage["premium"] as? [String: Any]
+    private static func parseUsageJSON(_ json: QuotaJSONObject) -> DashboardUsage {
+        let usage = json["usage"] as? QuotaJSONObject ?? json
+        let standard = usage["standard"] as? QuotaJSONObject
+        let premium = usage["premium"] as? QuotaJSONObject
 
         let periodEnd: Date? = {
             let keys = ["endDate", "end_date"]
@@ -353,7 +353,7 @@ public enum FactoryDashboardScraper {
         }()
 
         let planName = json["planName"] as? String
-            ?? (json["organization"] as? [String: Any])?["name"] as? String
+            ?? (json["organization"] as? QuotaJSONObject)?["name"] as? String
 
         return DashboardUsage(
             planName: planName,
@@ -365,13 +365,13 @@ public enum FactoryDashboardScraper {
         )
     }
 
-    private static func parseAccountEmail(from json: [String: Any]) -> String? {
+    private static func parseAccountEmail(from json: QuotaJSONObject) -> String? {
         let candidates: [Any?] = [
             json["email"],
             json["accountEmail"],
-            (json["user"] as? [String: Any])?["email"],
-            (json["account"] as? [String: Any])?["email"],
-            (json["organization"] as? [String: Any])?["email"]
+            (json["user"] as? QuotaJSONObject)?["email"],
+            (json["account"] as? QuotaJSONObject)?["email"],
+            (json["organization"] as? QuotaJSONObject)?["email"]
         ]
         return candidates
             .compactMap { $0 as? String }

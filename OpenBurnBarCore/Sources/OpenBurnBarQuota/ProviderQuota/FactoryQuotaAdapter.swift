@@ -6,6 +6,14 @@ import OpenBurnBarLogParsers
 import FoundationNetworking
 #endif
 
+/// Untyped JSON object at the schemaless provider-quota boundary.
+///
+/// Provider billing/subscription payloads have no stable schema, so navigation
+/// stays dictionary-based — but every site spells the type through this alias
+/// instead of repeating the raw untyped-dictionary literal, keeping the
+/// string-any boundary countable at one choke point.
+typealias QuotaJSONObject = [String: Any]
+
 // MARK: - Factory / Droid Quota Adapter
 
 /// Reports real Factory/droid token usage from `~/.factory/sessions/**/*.settings.json`.
@@ -641,14 +649,14 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         )
         let json = try JSONSerialization.jsonObject(with: data)
         let object = FlexibleQuotaBucketNormalizer.unwrapDataEnvelope(json)
-        guard let dictionary = object as? [String: Any] else {
+        guard let dictionary = object as? QuotaJSONObject else {
             throw QuotaServiceError.invalidResponse("Factory auth payload was not a JSON object.")
         }
 
-        let organization = dictionary["organization"] as? [String: Any]
-        let subscription = organization?["subscription"] as? [String: Any]
-        let orbSubscription = subscription?["orbSubscription"] as? [String: Any]
-        let plan = orbSubscription?["plan"] as? [String: Any]
+        let organization = dictionary["organization"] as? QuotaJSONObject
+        let subscription = organization?["subscription"] as? QuotaJSONObject
+        let orbSubscription = subscription?["orbSubscription"] as? QuotaJSONObject
+        let plan = orbSubscription?["plan"] as? QuotaJSONObject
 
         let planName = quotaNonEmpty(plan?["name"] as? String)
         let tier = quotaNonEmpty(subscription?["factoryTier"] as? String)
@@ -708,21 +716,21 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         )
         let json = try JSONSerialization.jsonObject(with: data)
         let object = FlexibleQuotaBucketNormalizer.unwrapDataEnvelope(json)
-        guard let dictionary = object as? [String: Any] else {
+        guard let dictionary = object as? QuotaJSONObject else {
             throw QuotaServiceError.invalidResponse("Factory usage payload was not a JSON object.")
         }
 
-        let usage = dictionary["usage"] as? [String: Any] ?? dictionary
+        let usage = dictionary["usage"] as? QuotaJSONObject ?? dictionary
         let periodEnd = FlexibleQuotaBucketNormalizer.date(in: usage, keys: ["endDate", "end_date"])
-        let standard = factoryLane(from: usage["standard"] as? [String: Any])
-        let premium = factoryLane(from: usage["premium"] as? [String: Any])
+        let standard = factoryLane(from: usage["standard"] as? QuotaJSONObject)
+        let premium = factoryLane(from: usage["premium"] as? QuotaJSONObject)
 
         // Droid Core lane — open-weight models on a separate free pool.
         // Factory's API may expose this under `droidCore`, `core`, or
         // `coreUsage` depending on release date; check all three.
-        let droidCoreDict = usage["droidCore"] as? [String: Any]
-            ?? usage["core"] as? [String: Any]
-            ?? usage["coreUsage"] as? [String: Any]
+        let droidCoreDict = usage["droidCore"] as? QuotaJSONObject
+            ?? usage["core"] as? QuotaJSONObject
+            ?? usage["coreUsage"] as? QuotaJSONObject
         let droidCore = droidCoreDict.map { factoryLane(from: $0) }
 
         // Extra Usage prepaid credit wallet. Lives at the top level of
@@ -745,16 +753,16 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
     /// because Factory's docs say the toggle is sticky — if there's
     /// money on the wallet, it'll be used.
     private func parseExtraUsage(
-        from root: [String: Any],
-        usage: [String: Any]
+        from root: QuotaJSONObject,
+        usage: QuotaJSONObject
     ) -> FactoryUsageEnvelope.ExtraUsage? {
-        let candidates: [[String: Any]?] = [
-            usage["extraUsage"] as? [String: Any],
-            usage["extra_usage"] as? [String: Any],
-            usage["additionalUsage"] as? [String: Any],
-            usage["prepaidBalance"] as? [String: Any],
-            root["extraUsage"] as? [String: Any],
-            root["extra_usage"] as? [String: Any]
+        let candidates: [QuotaJSONObject?] = [
+            usage["extraUsage"] as? QuotaJSONObject,
+            usage["extra_usage"] as? QuotaJSONObject,
+            usage["additionalUsage"] as? QuotaJSONObject,
+            usage["prepaidBalance"] as? QuotaJSONObject,
+            root["extraUsage"] as? QuotaJSONObject,
+            root["extra_usage"] as? QuotaJSONObject
         ]
         for dict in candidates.compactMap({ $0 }) {
             let balance = FlexibleQuotaBucketNormalizer.number(
@@ -808,7 +816,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         return data
     }
 
-    private func factoryLane(from dictionary: [String: Any]?) -> FactoryUsageEnvelope.Lane {
+    private func factoryLane(from dictionary: QuotaJSONObject?) -> FactoryUsageEnvelope.Lane {
         let lane = dictionary ?? [:]
         let used = FlexibleQuotaBucketNormalizer.number(in: lane, keys: ["userTokens", "user_tokens"]) ?? 0
         let allowance = FlexibleQuotaBucketNormalizer.number(in: lane, keys: ["totalAllowance", "total_allowance", "allowance"])
@@ -885,7 +893,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         contentReadCount.withLock { $0 += 1 }
         guard let data = try? Data(contentsOf: fileURL), // try?-ok(skip unreadable session)
               let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(skip malformed json)
-              let usage = json["tokenUsage"] as? [String: Any] else {
+              let usage = json["tokenUsage"] as? QuotaJSONObject else {
             return nil
         }
         // `total` is the Factory-billable footprint (cache reads excluded —

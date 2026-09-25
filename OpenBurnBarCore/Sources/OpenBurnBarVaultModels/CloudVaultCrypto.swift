@@ -4,6 +4,14 @@ import OpenBurnBarPlatformSupport
 import Security
 #endif
 
+/// Untyped dictionary at the schemaless cloud-vault boundary.
+///
+/// Sealed-payload envelopes and Firestore document bodies have variant field
+/// shapes, so navigation stays dictionary-based — but every site spells the
+/// type through this alias instead of repeating the raw untyped-dictionary
+/// literal, keeping the string-any boundary countable at one choke point.
+public typealias CloudVaultJSONObject = [String: Any]
+
 /// Fault-level fallback log for the non-throwing vault accessors below
 /// (`CloudVaultAADContext.stringValue`, `legacyV1StringValue`,
 /// `CloudVaultCrypto.sha256Hex`).
@@ -262,14 +270,14 @@ public struct CloudVaultSealedPayload: Codable, Hashable, Sendable {
 }
 
 public struct CloudVaultDocumentRewrapResult {
-    public let data: [String: Any]
+    public let data: CloudVaultJSONObject
     public let changedFields: [String]
 
     public var changed: Bool {
         changedFields.isEmpty == false
     }
 
-    public init(data: [String: Any], changedFields: [String]) {
+    public init(data: CloudVaultJSONObject, changedFields: [String]) {
         self.data = data
         self.changedFields = changedFields
     }
@@ -627,7 +635,7 @@ public enum CloudVaultCrypto {
         payload: RoamingProfilePayload,
         sealedPayload: CloudVaultSealedPayload,
         uid: String
-    ) -> [String: Any] {
+    ) -> CloudVaultJSONObject {
         [
             "uid": uid,
             "schemaVersion": 1,
@@ -638,8 +646,8 @@ public enum CloudVaultCrypto {
         ]
     }
 
-    public static func sealedPayloadDictionary(_ envelope: CloudVaultSealedPayload) -> [String: Any] {
-        var dict: [String: Any] = [
+    public static func sealedPayloadDictionary(_ envelope: CloudVaultSealedPayload) -> CloudVaultJSONObject {
+        var dict: CloudVaultJSONObject = [
             "schemaVersion": envelope.schemaVersion,
             "algorithm": envelope.algorithm,
             "keyVersion": envelope.keyVersion,
@@ -653,7 +661,7 @@ public enum CloudVaultCrypto {
     }
 
     public static func sealedPayload(from raw: Any?) -> CloudVaultSealedPayload? {
-        guard let dict = raw as? [String: Any],
+        guard let dict = raw as? CloudVaultJSONObject,
               let schemaVersion = dict["schemaVersion"] as? Int,
               let algorithm = dict["algorithm"] as? String,
               let keyVersion = dict["keyVersion"] as? Int,
@@ -671,9 +679,9 @@ public enum CloudVaultCrypto {
         )
     }
 
-    public static func firestoreDictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
+    public static func firestoreDictionary<T: Encodable>(_ value: T) throws -> CloudVaultJSONObject {
         let data = try JSONEncoder().encode(value)
-        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let dict = try JSONSerialization.jsonObject(with: data) as? CloudVaultJSONObject else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
         return dict
@@ -687,7 +695,7 @@ public enum CloudVaultCrypto {
         decodeEnvelope(raw, as: CloudVaultBlobEnvelope.self)
     }
 
-    static func decodeBlobEnvelopeForDocumentRewrap(_ raw: [String: Any]) -> CloudVaultBlobEnvelope? {
+    static func decodeBlobEnvelopeForDocumentRewrap(_ raw: CloudVaultJSONObject) -> CloudVaultBlobEnvelope? {
         var cryptographicMembers = raw
         if cryptographicMembers["createdAt"] != nil {
             // Firestore Timestamp is intentionally opaque to the crypto layer.
@@ -699,7 +707,7 @@ public enum CloudVaultCrypto {
     }
 
     public static func rewrapCloudVaultDocument(
-        _ data: [String: Any],
+        _ data: CloudVaultJSONObject,
         uid: String,
         collection: String,
         docID: String,
@@ -739,16 +747,16 @@ public enum CloudVaultCrypto {
         }
     }
 
-    public static func signalEnvelopeDictionary(_ envelope: CloudVaultSignalEnvelope) throws -> [String: Any] {
+    public static func signalEnvelopeDictionary(_ envelope: CloudVaultSignalEnvelope) throws -> CloudVaultJSONObject {
         let data = try JSONEncoder().encode(envelope)
-        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let dict = try JSONSerialization.jsonObject(with: data) as? CloudVaultJSONObject else {
             throw CloudVaultCryptoError.invalidEnvelope
         }
         return dict
     }
 
     public static func signalEnvelope(from raw: Any?) -> CloudVaultSignalEnvelope? {
-        guard let dict = raw as? [String: Any],
+        guard let dict = raw as? CloudVaultJSONObject,
               JSONSerialization.isValidJSONObject(dict),
               let data = try? JSONSerialization.data(withJSONObject: dict) else {
             return nil
@@ -1134,7 +1142,7 @@ public enum CloudVaultCrypto {
     }
 
     private static func decodeEnvelope<T: Decodable>(_ raw: Any?, as type: T.Type) -> T? {
-        guard let dict = raw as? [String: Any],
+        guard let dict = raw as? CloudVaultJSONObject,
               JSONSerialization.isValidJSONObject(dict),
               let data = try? JSONSerialization.data(withJSONObject: dict) else {
             return nil
@@ -1319,12 +1327,12 @@ public struct CloudVaultKeyStore: Sendable {
 
     public func loadKey(uid: String) throws -> Data? {
         #if canImport(Security)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account(uid: uid),
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account(uid: uid),
+            kSecReturnData: true,
+            kSecMatchLimit: kSecMatchLimitOne
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -1350,14 +1358,14 @@ public struct CloudVaultKeyStore: Sendable {
     public func saveKey(_ keyData: Data, uid: String) throws {
         guard keyData.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
         #if canImport(Security)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account(uid: uid)
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account(uid: uid)
         ]
-        let attributes: [String: Any] = [
-            kSecValueData as String: keyData,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let attributes: [CFString: Any] = [
+            kSecValueData: keyData,
+            kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecSuccess { return }
@@ -1365,8 +1373,8 @@ public struct CloudVaultKeyStore: Sendable {
             throw CloudVaultCryptoError.keychainError(Int(updateStatus))
         }
         var create = query
-        create[kSecValueData as String] = keyData
-        create[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        create[kSecValueData] = keyData
+        create[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let addStatus = SecItemAdd(create as CFDictionary, nil)
         guard addStatus == errSecSuccess else {
             throw CloudVaultCryptoError.keychainError(Int(addStatus))
@@ -1385,10 +1393,10 @@ public struct CloudVaultKeyStore: Sendable {
     /// idempotent retry like `saveKey`.
     public func deleteKey(uid: String) throws {
         #if canImport(Security)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account(uid: uid)
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: account(uid: uid)
         ]
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {

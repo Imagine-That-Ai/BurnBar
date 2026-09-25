@@ -4,6 +4,14 @@ import OpenBurnBarKernel
 import FoundationNetworking
 #endif
 
+/// Untyped JSON object at the schemaless insight-adapter boundary.
+///
+/// Provider request bodies and response payloads carry variant fields, so
+/// navigation stays dictionary-based — but every site spells the type through
+/// this alias instead of repeating the raw untyped-dictionary literal,
+/// keeping the string-any boundary countable at one choke point.
+typealias InsightJSONObject = [String: Any]
+
 /// Adapter for OpenAI's Chat Completions API. Same shape as Anthropic
 /// modulo wire format. Uses strict JSON-Schema on `gpt-5*` and later.
 public struct OpenAIInsightAdapter: InsightModelGateway {
@@ -89,7 +97,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         let userPayload = try prompt.userPayload(for: request)
         let userText = String(data: userPayload, encoding: .utf8) ?? ""
 
-        var messages: [[String: Any]] = [
+        var messages: [InsightJSONObject] = [
             ["role": "system", "content": systemPrompt + "\n\nSchema:\n" + InsightJSONSchema.analysisResultSchemaV1],
             ["role": "user", "content": userText]
         ]
@@ -101,7 +109,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         var accumulatedCacheReadTokens = 0
 
         while true {
-            var body: [String: Any] = [
+            var body: InsightJSONObject = [
                 "model": request.selectedModel.modelID,
                 "messages": messages,
                 "temperature": 0.2
@@ -201,7 +209,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         let userPayload = try promptEngine.userPayload(for: request)
         let userText = String(data: userPayload, encoding: .utf8) ?? ""
 
-        var body: [String: Any] = [
+        var body: InsightJSONObject = [
             "model": request.modelTag.modelID,
             "messages": [
                 ["role": "system", "content": systemPrompt + "\n\nSchema:\n" + InsightJSONSchema.canvasSchemaV1],
@@ -238,9 +246,9 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         }
         // Extract OpenAI-shaped content[0].message.content first.
         if let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-           let choices = json["choices"] as? [[String: Any]],
+           let choices = json["choices"] as? [InsightJSONObject],
            let first = choices.first,
-           let message = first["message"] as? [String: Any],
+           let message = first["message"] as? InsightJSONObject,
            let content = message["content"] as? String,
            let canvasData = content.data(using: .utf8) {
             return try AnthropicInsightAdapter.decodeCanvas(from: canvasData,
@@ -256,16 +264,16 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
 
     private func extractOpenAIToolCalls(from data: Data) -> [InsightToolCall]? {
         guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-              let choices = json["choices"] as? [[String: Any]],
+              let choices = json["choices"] as? [InsightJSONObject],
               let first = choices.first,
-              let message = first["message"] as? [String: Any],
-              let toolCalls = message["tool_calls"] as? [[String: Any]] else {
+              let message = first["message"] as? InsightJSONObject,
+              let toolCalls = message["tool_calls"] as? [InsightJSONObject] else {
             return nil
         }
         let calls = toolCalls.compactMap { call -> InsightToolCall? in
             guard call["type"] as? String == "function",
                   let id = call["id"] as? String,
-                  let function = call["function"] as? [String: Any],
+                  let function = call["function"] as? InsightJSONObject,
                   let name = function["name"] as? String,
                   let argumentsJSON = function["arguments"] as? String,
                   let argumentsData = argumentsJSON.data(using: .utf8),
@@ -281,11 +289,11 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         return calls.isEmpty ? nil : calls
     }
 
-    private func buildOpenAIAssistantMessage(from data: Data) -> [String: Any] {
+    private func buildOpenAIAssistantMessage(from data: Data) -> InsightJSONObject {
         guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-              let choices = json["choices"] as? [[String: Any]],
+              let choices = json["choices"] as? [InsightJSONObject],
               let first = choices.first,
-              let message = first["message"] as? [String: Any] else {
+              let message = first["message"] as? InsightJSONObject else {
             return ["role": "assistant", "content": ""]
         }
         var copy = message
@@ -293,7 +301,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         return copy
     }
 
-    private func parseToolArguments(name: String, input: [String: Any]) -> InsightToolArguments {
+    private func parseToolArguments(name: String, input: InsightJSONObject) -> InsightToolArguments {
         switch name {
         case "drilldown_search":
             return .drilldownSearch(
@@ -350,13 +358,13 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
 
     private func usageFrom(data: Data) -> (inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int)? {
         guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-              let usage = json["usage"] as? [String: Any] else {
+              let usage = json["usage"] as? InsightJSONObject else {
             return nil
         }
         let input = usage["prompt_tokens"] as? Int ?? usage["input_tokens"] as? Int ?? 0
         let output = usage["completion_tokens"] as? Int ?? usage["output_tokens"] as? Int ?? 0
-        let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
-        let inputDetails = usage["input_tokens_details"] as? [String: Any]
+        let promptDetails = usage["prompt_tokens_details"] as? InsightJSONObject
+        let inputDetails = usage["input_tokens_details"] as? InsightJSONObject
         let cacheCreation = intValue(usage["cache_creation_input_tokens"])
             ?? intValue(usage["cache_creation_tokens"])
             ?? 0
@@ -398,7 +406,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         completedAt: Date
     ) -> InsightTokenUsage? {
         guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
-              let usage = json["usage"] as? [String: Any] else {
+              let usage = json["usage"] as? InsightJSONObject else {
             return nil
         }
         let input = usage["prompt_tokens"] as? Int ?? usage["input_tokens"] as? Int ?? 0
