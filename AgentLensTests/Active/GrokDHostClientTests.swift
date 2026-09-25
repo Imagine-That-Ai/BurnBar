@@ -1013,7 +1013,7 @@ final class GrokDHostClientTests: XCTestCase {
         let agents = try await client.listAgents()
         let bot = agents.first { $0.name == "Probe Bot" && GrokDHostClient.isAgentUUID($0.id) && !$0.isBusy }
         guard let bot else {
-            throw XCTSkip("idle Probe Bot missing")
+            throw XCTSkip("idle Probe Bot missing") // env-guard: idle Probe Bot on the live grokd
         }
         let token = "BBLOCALD-AUDIT-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString.prefix(8))"
         let started = Date()
@@ -1023,7 +1023,7 @@ final class GrokDHostClientTests: XCTestCase {
         } catch let error as GrokDHostError {
             switch error {
             case .agentBusy, .sendRefused:
-                throw XCTSkip("Probe Bot refused send")
+                throw XCTSkip("Probe Bot refused send") // env-guard: Probe Bot accepts the send
             default:
                 throw error
             }

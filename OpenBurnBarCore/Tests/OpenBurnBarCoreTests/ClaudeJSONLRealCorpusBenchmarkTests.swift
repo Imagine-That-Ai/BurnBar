@@ -19,7 +19,7 @@ final class ClaudeJSONLRealCorpusBenchmarkTests: XCTestCase {
     func testColdRestartAndWarmScans() throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["OPENBURNBAR_CLAUDE_REAL_CORPUS_BENCHMARK"] == "1" else {
-            throw XCTSkip("real Claude corpus benchmark is opt-in")
+            throw XCTSkip("real Claude corpus benchmark is opt-in") // env-guard: OPENBURNBAR_CLAUDE_REAL_CORPUS_BENCHMARK=1
         }
         let outputPath = try XCTUnwrap(
             environment["OPENBURNBAR_CLAUDE_REAL_CORPUS_BENCHMARK_OUTPUT"],

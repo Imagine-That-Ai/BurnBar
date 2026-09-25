@@ -57,7 +57,7 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
 
     func test_restrictedShellDoesNotInheritParentSecretEnvironment() async throws {
         guard FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec") else {
-            throw XCTSkip("sandbox-exec unavailable")
+            throw XCTSkip("sandbox-exec unavailable") // env-guard: /usr/bin/sandbox-exec executable
         }
         let key = "OPENBURNBAR_TEST_SECRET_TOKEN"
         let previousValue = getenv(key).map { String(cString: $0) }

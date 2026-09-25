@@ -1674,6 +1674,12 @@ jobs:
       - name: Lab boundary (shrink-only ratchet)
         run: ./scripts/debt/check-lab-boundary.sh
 
+      # Wave 4 XCTSkip ratchet: the skip count may only shrink, and every
+      # site carries a revive-by: date (debt) or env-guard: condition
+      # (permanent gate) marker. Pure python3.
+      - name: XCTSkip budget (shrink-only ratchet)
+        run: ./scripts/debt/check-xctskip-budget.sh
+
       - name: BurnBarRPC IPC canon is current
         run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
 

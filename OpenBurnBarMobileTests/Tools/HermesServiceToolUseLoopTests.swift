@@ -44,7 +44,7 @@ final class HermesServiceToolUseLoopTests: XCTestCase {
         do {
             _ = try iOSDeviceKeypair()
         } catch EscrowCryptoError.keychainError(let status) where status == errSecMissingEntitlement {
-            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
+            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.") // env-guard: keychain entitlement (signed host)
         }
     }
 

@@ -70,6 +70,25 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
         return try String(contentsOf: url, encoding: .utf8)
     }
 
+    // MARK: - Wave 4: single guarded loader per cross-repo resource (was: an
+    // identical guard+skip in every test). A missing file skips (the
+    // environment cannot reach the repo); an UNPARSABLE file fails via
+    // XCTUnwrap at the call site — a committed contract that no longer
+    // parses is a regression, not a missing environment.
+    private static func requireRules() throws -> String {
+        guard let rules = try Self.source("firestore.rules") else {
+            throw XCTSkip("firestore.rules is not reachable from this environment.") // env-guard: repo sources reachable (firestore.rules)
+        }
+        return rules
+    }
+
+    private static func requireAndroidSource(_ relativePath: String) throws -> String {
+        guard let kotlin = try Self.source(relativePath) else {
+            throw XCTSkip("The Android contract is not reachable from this environment.") // env-guard: repo sources reachable (Android contract)
+        }
+        return kotlin
+    }
+
     /// Isolates `validAIInboxMirror()` so a `kind in [...]` list elsewhere in the
     /// rules file (the Hermes relay chunk kinds, for one) cannot be mistaken for
     /// the inbox's.
@@ -114,10 +133,11 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
     // MARK: - Rules agree with Swift
 
     func test_firestoreRulesAcceptExactlyTheSwiftVocabulary() throws {
-        guard let rules = try Self.source("firestore.rules"),
-              let block = Self.inboxRulesBlock(rules) else {
-            throw XCTSkip("firestore.rules is not reachable from this environment.")
-        }
+        let rules = try Self.requireRules()
+        let block = try XCTUnwrap(
+            Self.inboxRulesBlock(rules),
+            "validAIInboxMirror() missing from firestore.rules"
+        )
 
         let kinds = try XCTUnwrap(
             Self.quotedValues(in: block, after: ".kind in ["),
@@ -140,10 +160,11 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
     /// The encoder's output must be a SUBSET of the rules allowlist: `hasOnly`
     /// rejects the entire write for one unlisted key.
     func test_firestoreRulesAllowlistCoversEveryEncodedField() throws {
-        guard let rules = try Self.source("firestore.rules"),
-              let block = Self.inboxRulesBlock(rules) else {
-            throw XCTSkip("firestore.rules is not reachable from this environment.")
-        }
+        let rules = try Self.requireRules()
+        let block = try XCTUnwrap(
+            Self.inboxRulesBlock(rules),
+            "validAIInboxMirror() missing from firestore.rules"
+        )
 
         let allowed = try XCTUnwrap(Self.quotedValues(in: block, after: "keys().hasOnly(["))
         XCTAssertEqual(
@@ -154,9 +175,7 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
     }
 
     func test_itemStateRulesAllowlistMatchesTheCodec() throws {
-        guard let rules = try Self.source("firestore.rules") else {
-            throw XCTSkip("firestore.rules is not reachable from this environment.")
-        }
+        let rules = try Self.requireRules()
         guard let start = rules.range(of: "function validAIInboxItemState()") else {
             XCTFail("Missing validAIInboxItemState() in firestore.rules")
             return
@@ -177,11 +196,9 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
     // MARK: - Kotlin agrees with Swift
 
     func test_kotlinEnumsMirrorTheSwiftVocabulary() throws {
-        guard let kotlin = try Self.source(
+        let kotlin = try Self.requireAndroidSource(
             "android/app/src/main/java/com/openburnbar/data/inbox/AIInboxItem.kt"
-        ) else {
-            throw XCTSkip("The Android contract is not reachable from this environment.")
-        }
+        )
 
         for (enumName, expected) in [
             ("AIInboxItemKind", Self.expectedKinds),
@@ -222,11 +239,9 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
     /// The Kotlin AAD must bind the same four values as Swift, or nothing the Mac
     /// seals will open on Android.
     func test_kotlinBindsTheSameAAD() throws {
-        guard let kotlin = try Self.source(
+        let kotlin = try Self.requireAndroidSource(
             "android/app/src/main/java/com/openburnbar/data/inbox/AIInboxRefreshParts.kt"
-        ) else {
-            throw XCTSkip("The Android contract is not reachable from this environment.")
-        }
+        )
 
         XCTAssertTrue(
             kotlin.contains("collection = AIInboxMirrorCodec.COLLECTION"),
@@ -243,11 +258,9 @@ final class AIInboxCrossPlatformContractTests: XCTestCase {
     }
 
     func test_kotlinCollectionConstantsMatchSwift() throws {
-        guard let kotlin = try Self.source(
+        let kotlin = try Self.requireAndroidSource(
             "android/app/src/main/java/com/openburnbar/data/inbox/AIInboxItem.kt"
-        ) else {
-            throw XCTSkip("The Android contract is not reachable from this environment.")
-        }
+        )
 
         XCTAssertTrue(
             kotlin.contains("\"\(AIInboxMirrorCodec.collection)\""),

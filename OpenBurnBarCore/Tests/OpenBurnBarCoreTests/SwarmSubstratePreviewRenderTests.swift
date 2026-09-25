@@ -21,7 +21,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
     ///   SUBSTRATE_PREVIEW_ID=mesh.mesh-isoline swift test --filter testRenderOnePreview
     func testRenderOnePreview() throws {
         guard let id = ProcessInfo.processInfo.environment["SUBSTRATE_PREVIEW_ID"] else {
-            throw XCTSkip("set SUBSTRATE_PREVIEW_ID")
+            throw XCTSkip("set SUBSTRATE_PREVIEW_ID") // env-guard: SUBSTRATE_PREVIEW_ID set (dev artifact)
         }
         guard let d = OpenBurnBarUI.SubstrateCatalog.byID[id] ?? OpenBurnBarUI.SubstrateCatalog.substrateList.first(where: { $0.id == id }) else {
             XCTFail("unknown substrate id \(id)")
@@ -48,7 +48,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
     ///   SUBSTRATE_RENDER_PREVIEWS=1 swift test --filter testRenderRealisticDensity
     func testRenderRealisticDensity() throws {
         guard ProcessInfo.processInfo.environment["SUBSTRATE_RENDER_PREVIEWS"] == "1" else {
-            throw XCTSkip("set SUBSTRATE_RENDER_PREVIEWS=1")
+            throw XCTSkip("set SUBSTRATE_RENDER_PREVIEWS=1") // env-guard: SUBSTRATE_RENDER_PREVIEWS=1 (dev artifact)
         }
         let outDir = "/tmp/substrate-previews-real"
         try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
@@ -100,7 +100,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
     func testRenderAllSubstratePreviews() throws {
         // Dev artifact, not a CI assertion — gated so normal test runs skip it.
         guard ProcessInfo.processInfo.environment["SUBSTRATE_RENDER_PREVIEWS"] == "1" else {
-            throw XCTSkip("set SUBSTRATE_RENDER_PREVIEWS=1 to render the preview contact sheet")
+            throw XCTSkip("set SUBSTRATE_RENDER_PREVIEWS=1 to render the preview contact sheet") // env-guard: SUBSTRATE_RENDER_PREVIEWS=1 (dev artifact)
         }
         let outDir = "/tmp/substrate-previews"
         try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
@@ -172,7 +172,7 @@ final class SwarmSubstratePreviewRenderTests: XCTestCase {
     /// wallpaper host feeds. Run: SUBSTRATE_RENDER_PREVIEWS=1 swift test --filter testRenderWallpaperShape
     func testRenderWallpaperShape() throws {
         guard ProcessInfo.processInfo.environment["SUBSTRATE_RENDER_PREVIEWS"] == "1" else {
-            throw XCTSkip("set SUBSTRATE_RENDER_PREVIEWS=1")
+            throw XCTSkip("set SUBSTRATE_RENDER_PREVIEWS=1") // env-guard: SUBSTRATE_RENDER_PREVIEWS=1 (dev artifact)
         }
         let outDir = "/tmp/substrate-previews-wall"
         try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)

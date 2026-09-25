@@ -14,7 +14,7 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
     func testStatefulCanvasRenderers_doNotRenderAsynchronously() throws {
         let mainBundlePath = Bundle.main.bundlePath
         if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping source code validation in sandboxed test runner.")
+            throw XCTSkip("Skipping source code validation in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
         }
         
         let statefulCanvasSources = [
@@ -189,7 +189,7 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
     func testWebsiteBackgroundEditorial_capsFrameRateAt30() throws {
         let mainBundlePath = Bundle.main.bundlePath
         if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping source code validation in sandboxed test runner.")
+            throw XCTSkip("Skipping source code validation in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
         }
         let source = try Self.loadSource("OpenBurnBarMobile/Views/Aurora/WebsiteBackgroundView.swift")
         XCTAssertTrue(
@@ -201,7 +201,7 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
     func testDecorativeLoadersAndHeroes_capFrameRateAt30() throws {
         let mainBundlePath = Bundle.main.bundlePath
         if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping source code validation in sandboxed test runner.")
+            throw XCTSkip("Skipping source code validation in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
         }
         let cooking = try Self.loadSource("OpenBurnBarCore/Sources/OpenBurnBarUI/Views/CookingLoader.swift")
         XCTAssertTrue(cooking.contains("minimumInterval: 1.0 / 30"), "Cooking loader is decorative; 30 fps is enough.")

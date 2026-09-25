@@ -11,7 +11,7 @@ final class InsightLiveProviderSmokeTests: XCTestCase {
         let models = try await adapter.availableModels()
         let modelID = Self.env("OPENBURNBAR_LIVE_OLLAMA_MODEL") ?? models.first?.id
         guard let modelID, !modelID.isEmpty else {
-            throw XCTSkip("Ollama is reachable but did not advertise a model.")
+            throw XCTSkip("Ollama is reachable but did not advertise a model.") // env-guard: Ollama reachable and advertising a model
         }
 
         let tag = InsightModelTag(
@@ -33,7 +33,7 @@ final class InsightLiveProviderSmokeTests: XCTestCase {
         try XCTSkipUnless(Self.liveRunsEnabled, "Set OPENBURNBAR_RUN_LIVE_INSIGHTS=1 to run live provider smoke tests.")
         try XCTSkipUnless(Self.env("OPENBURNBAR_RUN_LIVE_ZAI") == "1", "Set OPENBURNBAR_RUN_LIVE_ZAI=1 to spend Z.ai credits.")
         guard let apiKey = Self.env("ZAI_API_KEY") ?? Self.env("ZHIPUAI_API_KEY") else {
-            throw XCTSkip("ZAI_API_KEY or ZHIPUAI_API_KEY is not set.")
+            throw XCTSkip("ZAI_API_KEY or ZHIPUAI_API_KEY is not set.") // env-guard: OPENBURNBAR_RUN_LIVE_ZAI=1 + ZAI_API_KEY set
         }
 
         let modelID = Self.env("OPENBURNBAR_LIVE_ZAI_MODEL") ?? "glm-4.6"

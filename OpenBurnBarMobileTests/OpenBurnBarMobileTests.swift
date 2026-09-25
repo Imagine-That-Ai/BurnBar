@@ -247,7 +247,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
     func testSignedDeviceIrohHostKeyKeychainRoundTrip() throws {
         #if targetEnvironment(simulator)
-        throw XCTSkip("Requires a signed physical-device app process.")
+        throw XCTSkip("Requires a signed physical-device app process.") // env-guard: signed physical-device app process
         #else
         let backing = IrohHostKeyKeychainPinBacking()
         let account = "signed-device-probe|\(UUID().uuidString)"
@@ -276,7 +276,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
     func testSignedDeviceAdvertisedHostKeyVerifiesFreshMacPairingRecord() async throws {
         #if targetEnvironment(simulator)
-        throw XCTSkip("Requires the signed-in physical iPad and live Mac host.")
+        throw XCTSkip("Requires the signed-in physical iPad and live Mac host.") // env-guard: signed-in physical iPad + live Mac host
         #else
         guard let uid = Auth.auth().currentUser?.uid else {
             XCTFail("The physical iPad must remain signed in.")
@@ -297,10 +297,10 @@ final class OpenBurnBarMobileTests: XCTestCase {
 
     func testOperatorAuthorizedLiveMacHostPinRepair() async throws {
         #if targetEnvironment(simulator)
-        throw XCTSkip("Requires the signed-in physical iPad and live Mac host.")
+        throw XCTSkip("Requires the signed-in physical iPad and live Mac host.") // env-guard: signed-in physical iPad + live Mac host
         #else
         guard ProcessInfo.processInfo.environment["OPENBURNBAR_RUN_HOST_PIN_REPAIR"] == "1" else {
-            throw XCTSkip("Set OPENBURNBAR_RUN_HOST_PIN_REPAIR=1 for an explicit operator-authorized repair.")
+            throw XCTSkip("Set OPENBURNBAR_RUN_HOST_PIN_REPAIR=1 for an explicit operator-authorized repair.") // env-guard: OPENBURNBAR_RUN_HOST_PIN_REPAIR=1 (operator-authorized)
         }
         guard let uid = Auth.auth().currentUser?.uid else {
             XCTFail("The physical iPad must remain signed in.")
@@ -4894,7 +4894,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
             }
             root.deleteLastPathComponent()
         }
-        throw XCTSkip("Source-inspection checks require the Mac workspace, which is not mounted inside this app-host process.")
+        throw XCTSkip("Source-inspection checks require the Mac workspace, which is not mounted inside this app-host process.") // env-guard: Mac workspace mounted in the app-host process
     }
 
     private func makeCloudSearchRow(
@@ -5950,7 +5950,7 @@ final class PhoneControlSigningIdentityStoreTests: XCTestCase {
             let reloaded = try store.signingIdentity(secureEnclaveEnabled: false)
             XCTAssertEqual(reloaded.publicKeyRepresentation, identity.publicKeyRepresentation)
         } catch PhoneControlSigningKeyStore.KeyStoreError.keychainStatus(let status) where status == errSecMissingEntitlement {
-            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
+            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.") // env-guard: keychain entitlement (signed host)
         }
     }
 
@@ -5968,7 +5968,7 @@ final class PhoneControlSigningIdentityStoreTests: XCTestCase {
             XCTAssertEqual(identity.kind, .ed25519)
             XCTAssertNil(identity.wireKeyKind)
         } catch PhoneControlSigningKeyStore.KeyStoreError.keychainStatus(let status) where status == errSecMissingEntitlement {
-            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
+            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.") // env-guard: keychain entitlement (signed host)
         }
     }
 
@@ -5994,7 +5994,7 @@ final class PhoneControlSigningIdentityStoreTests: XCTestCase {
             case .secureEnclaveP256: XCTAssertEqual(identity.wireKeyKind, .secureEnclaveP256)
             }
         } catch PhoneControlSigningKeyStore.KeyStoreError.keychainStatus(let status) where status == errSecMissingEntitlement {
-            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
+            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.") // env-guard: keychain entitlement (signed host)
         }
     }
 }

@@ -232,7 +232,7 @@ final class DomainCoreReleaseIdentityReporterTests: XCTestCase {
         guard loadedCommit == String(repeating: "0", count: 40) else {
             // If the artifact carries a real commit, the all-zeros guard does
             // not fire; skip this case rather than mask a different behavior.
-            throw XCTSkip("loaded artifact commit is not the all-zeros placeholder")
+            throw XCTSkip("loaded artifact commit is not the all-zeros placeholder") // env-guard: loaded artifact carries the all-zeros placeholder commit
         }
         XCTAssertThrowsError(
             try DomainCoreReleaseIdentityReporter.write(
@@ -257,7 +257,7 @@ final class DomainCoreReleaseIdentityReporterTests: XCTestCase {
         guard loadedCommit != String(repeating: "0", count: 40),
               loadedCommit.range(of: #"^[0-9a-f]{40}$"#, options: .regularExpression) != nil
         else {
-            throw XCTSkip("loaded artifact commit is the placeholder; mismatch path unreachable")
+            throw XCTSkip("loaded artifact commit is the placeholder; mismatch path unreachable") // env-guard: loaded artifact carries a real commit
         }
         // Build a distinct-but-valid 40-hex SHA by flipping the last character.
         let last = loadedCommit.last
@@ -289,7 +289,7 @@ final class DomainCoreReleaseIdentityReporterTests: XCTestCase {
         guard loadedCommit != String(repeating: "0", count: 40),
               loadedCommit.range(of: #"^[0-9a-f]{40}$"#, options: .regularExpression) != nil
         else {
-            throw XCTSkip("loaded artifact commit is the placeholder; happy path unreachable")
+            throw XCTSkip("loaded artifact commit is the placeholder; happy path unreachable") // env-guard: loaded artifact carries a real commit
         }
         let sourceFingerprint = OpenBurnBarDomainCoreFFI.domainCoreSourceFingerprint()
 

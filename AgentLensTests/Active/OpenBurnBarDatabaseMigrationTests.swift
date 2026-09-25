@@ -778,7 +778,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertFalse(descriptors.contains { $0.modelName == "deterministic-fake-embedding" })
 
         guard let nl = NLEmbeddingProvider() else {
-            throw XCTSkip("NLEmbedding sentence model unavailable in this environment.")
+            throw XCTSkip("NLEmbedding sentence model unavailable in this environment.") // env-guard: NLEmbedding sentence model downloadable
         }
         XCTAssertTrue(nl.descriptor.versionTag.hasPrefix("nl-sentence-en-\(nl.descriptor.dimensions)-rmacos-"))
         XCTAssertEqual(nl.descriptor.promptVersion, "memory-fact-v1")

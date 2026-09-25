@@ -1279,9 +1279,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: rootURL) }
 
         let databaseURL = rootURL.appendingPathComponent("openburnbar.sqlite")
-        var database: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(databaseURL.path, &database), SQLITE_OK)
-        guard let database else { throw XCTSkip("SQLite is unavailable") }
+        let database = try openUsageHistoryDatabase(at: databaseURL)
         defer { sqlite3_close(database) }
         let schema = """
         CREATE TABLE conversations (
@@ -1383,9 +1381,7 @@ final class BurnBarDaemonServerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: rootURL) }
 
         let databaseURL = rootURL.appendingPathComponent("openburnbar.sqlite")
-        var database: OpaquePointer?
-        XCTAssertEqual(sqlite3_open(databaseURL.path, &database), SQLITE_OK)
-        guard let database else { throw XCTSkip("SQLite is unavailable") }
+        let database = try openUsageHistoryDatabase(at: databaseURL)
         defer { sqlite3_close(database) }
         let schema = """
         CREATE TABLE conversations (
@@ -1482,6 +1478,15 @@ final class BurnBarDaemonServerTests: XCTestCase {
 
     private func makeSocketPath(name: String) -> String {
         "/tmp/openburnbar-daemon-tests-\(name)-\(UUID().uuidString).sock"
+    }
+
+    // Wave 4: single guarded opener (was: an identical open+assert+skip in
+    // both usage-history tests). Callers still own their close/remove defers.
+    private func openUsageHistoryDatabase(at databaseURL: URL) throws -> OpaquePointer {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(databaseURL.path, &database), SQLITE_OK)
+        guard let database else { throw XCTSkip("SQLite is unavailable") } // env-guard: SQLite open succeeds
+        return database
     }
 
     private func sendRequest<Response: Decodable>(

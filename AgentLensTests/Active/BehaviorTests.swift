@@ -106,7 +106,7 @@ final class BehaviorTests: XCTestCase {
 
     func test_goldenVectors_matchWhenPresent() throws {
         guard let data = Self.loadGoldenVectorData() else {
-            throw XCTSkip("petcore golden behavior-swift.json not present; determinism covered above")
+            throw XCTSkip("petcore golden behavior-swift.json not present; determinism covered above") // env-guard: petcore golden behavior-swift.json present
         }
         let vector = try JSONDecoder().decode(BehaviorGoldenVector.self, from: data)
         var interp = BehaviorInterpreter(graph: vector.graph, seed: vector.seed)

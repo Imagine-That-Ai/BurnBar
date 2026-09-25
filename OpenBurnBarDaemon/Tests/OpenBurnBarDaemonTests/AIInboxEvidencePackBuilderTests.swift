@@ -235,7 +235,7 @@ final class AIInboxEvidencePackBuilderTests: XCTestCase {
 
     func test_buildFetchesRepositorySnapshotsOnTheRemotePhase() async throws {
         guard BurnBarAIInboxProcessRunner.locate("gh") != nil else {
-            throw XCTSkip("The availability probe requires a gh binary on this machine")
+            throw XCTSkip("The availability probe requires a gh binary on this machine") // env-guard: gh binary on PATH
         }
         let now = Date()
         try seedConversation(id: "conv-remote", endedAt: now.addingTimeInterval(-300), fullText: "Pushed the fix.")
@@ -368,7 +368,7 @@ final class AIInboxEvidencePackBuilderTests: XCTestCase {
         do {
             try FileManager.default.createDirectory(at: probeDirectory, withIntermediateDirectories: true)
         } catch {
-            throw XCTSkip("The home directory is not writable in this environment")
+            throw XCTSkip("The home directory is not writable in this environment") // env-guard: home directory writable
         }
         defer { try? FileManager.default.removeItem(at: probeDirectory) }
         try "probe".write(

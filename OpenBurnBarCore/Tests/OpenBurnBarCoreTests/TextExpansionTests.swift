@@ -120,7 +120,7 @@ final class TextExpansionTests: XCTestCase {
     func testCGEventCharacterExtractionPrefersUnicodePayload() throws {
         guard let source = CGEventSource(stateID: .hidSystemState),
               let event = CGEvent(keyboardEventSource: source, virtualKey: 26, keyDown: true) else {
-            throw XCTSkip("CGEvent creation unavailable in this environment")
+            throw XCTSkip("CGEvent creation unavailable in this environment") // env-guard: CGEvent creation permitted
         }
         event.flags = .maskShift
         var unicode: [UniChar] = Array("&".utf16)

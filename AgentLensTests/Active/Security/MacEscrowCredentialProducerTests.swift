@@ -198,7 +198,7 @@ final class MacEscrowCredentialProducerTests: XCTestCase {
     func test_liveWriterUsesEscrowCollectionsNeverAndroidCredentialTransfers() throws {
         let mainBundlePath = Bundle.main.bundlePath
         if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping host file validation in sandboxed test runner.")
+            throw XCTSkip("Skipping host file validation in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
         }
         
         let testFile = URL(fileURLWithPath: #filePath)

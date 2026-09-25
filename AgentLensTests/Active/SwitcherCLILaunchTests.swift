@@ -656,7 +656,7 @@ final class SwitcherCLILaunchTests: XCTestCase {
         guard let missingCLI = SwitcherCLIProfileType.allCases.first(where: {
             CLILaunchAdapter.resolvePinnedExecutable(for: $0) == nil
         }) else {
-            throw XCTSkip("All supported CLIs are installed in a pinned executable directory.")
+            throw XCTSkip("All supported CLIs are installed in a pinned executable directory.") // env-guard: at least one supported CLI unpinned/missing
         }
 
         XCTAssertNil(CLILaunchAdapter.resolveExecutable(for: missingCLI))

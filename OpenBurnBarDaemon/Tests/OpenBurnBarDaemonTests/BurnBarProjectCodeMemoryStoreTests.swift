@@ -67,7 +67,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
     func testEncryptedDatabaseSnapshotRoundTripsWhenCodecAndSecretAreAvailable() throws {
         guard BurnBarDaemonDatabaseCipher.isCipherAvailable(),
               BurnBarDaemonDatabaseCipher.resolveKey() != nil else {
-            throw XCTSkip("Linux SQLCipher test requires the configured daemon database secret")
+            throw XCTSkip("Linux SQLCipher test requires the configured daemon database secret") // env-guard: daemon database secret configured (Linux SQLCipher)
         }
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(
@@ -2880,7 +2880,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         let query = "retry broken network socket" // zero word overlap with the code (incl. no "the")
 
         guard NLSentenceEmbeddingProvider().dimension > 0 else {
-            throw XCTSkip("NLEmbedding sentence model unavailable in this environment")
+            throw XCTSkip("NLEmbedding sentence model unavailable in this environment") // env-guard: NLEmbedding sentence model downloadable
         }
 
         // (a) Daemon's own NL embedder: the meaning-related code is found despite no shared words.
@@ -4799,10 +4799,10 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             try process.run()
             process.waitUntilExit()
         } catch {
-            throw XCTSkip("git is unavailable for ignore semantics test")
+            throw XCTSkip("git is unavailable for ignore semantics test") // env-guard: git available
         }
         if process.terminationStatus != 0 {
-            throw XCTSkip("git setup failed for ignore semantics test")
+            throw XCTSkip("git setup failed for ignore semantics test") // env-guard: git setup succeeds
         }
     }
 
@@ -4825,7 +4825,7 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
             "\(cwd)/../crates/project-code-static-parser/target/release/project-code-static-parser"
         ]
         guard let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            throw XCTSkip("project-code-static-parser helper has not been built")
+            throw XCTSkip("project-code-static-parser helper has not been built") // env-guard: project-code-static-parser helper built
         }
         return URL(fileURLWithPath: path)
     }

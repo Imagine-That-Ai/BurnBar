@@ -14,7 +14,7 @@ final class AnalyticsTaxonomyTests: XCTestCase {
     private func registeredEventNames() throws -> Set<String> {
         let mainBundlePath = Bundle.main.bundlePath
         if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping taxonomy validation in sandboxed test runner.")
+            throw XCTSkip("Skipping taxonomy validation in sandboxed test runner.") // env-guard: unsandboxed runner (host path lacks /openburnbar-app-tests/)
         }
         
         let docURL = URL(fileURLWithPath: #filePath)

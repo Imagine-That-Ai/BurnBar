@@ -76,7 +76,7 @@ final class ParserFixtureExtractionParityTests: XCTestCase {
         for fixture in ParserContractCorpus.fixtures {
             let rendered = ParserContractCorpus.builderArtifacts(for: fixture)
             guard let committed = try ParserContractCorpus.committedArtifacts(for: fixture, bundle: bundle) else {
-                throw XCTSkip(
+                throw XCTSkip( // revive-by: 2026-10-31 - generate + bundle extracted fixture files
                     "Extracted fixture files are not bundled yet. Generate them via "
                     + "ParserOutputContractGoldenTests (see its header), copy into "
                     + "AgentLensTests/Fixtures/ParserContract/, regenerate the project, and re-run."
@@ -104,7 +104,7 @@ final class ParserFixtureExtractionParityTests: XCTestCase {
         let bundle = Bundle(for: ParserExtractionBundleMarker.self)
         for fixture in ParserContractCorpus.fixtures {
             guard let committed = try ParserContractCorpus.committedArtifacts(for: fixture, bundle: bundle) else {
-                throw XCTSkip("Extracted fixture files are not bundled yet (see the header workflow).")
+                throw XCTSkip("Extracted fixture files are not bundled yet (see the header workflow).") // revive-by: 2026-10-31 - generate + bundle extracted fixture files
             }
             let inlineContract = try await ParserContractCorpus.contract(
                 for: fixture, artifacts: ParserContractCorpus.builderArtifacts(for: fixture)

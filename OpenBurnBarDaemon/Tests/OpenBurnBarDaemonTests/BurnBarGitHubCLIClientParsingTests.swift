@@ -277,7 +277,7 @@ final class BurnBarGitHubCLIClientParsingTests: XCTestCase {
 
     func test_snapshotAssemblesAllSectionsAndCachesAvailability() async throws {
         guard BurnBarAIInboxProcessRunner.locate("gh") != nil else {
-            throw XCTSkip("The availability probe requires a gh binary on this machine")
+            throw XCTSkip("The availability probe requires a gh binary on this machine") // env-guard: gh binary on PATH
         }
         // The keys must pin the subcommand, not just the state flag: the
         // issue fetch also carries "--state open" on its command line.

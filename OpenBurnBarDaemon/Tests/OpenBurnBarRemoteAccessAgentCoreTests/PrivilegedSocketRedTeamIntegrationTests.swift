@@ -15,10 +15,10 @@ final class PrivilegedSocketRedTeamIntegrationTests: XCTestCase {
 
     private func runRedTeamProbeIfSocketLive(socket: String, operation: String = "input") throws {
         guard ProcessInfo.processInfo.environment["RUN_PRIVILEGED_SOCKET_REDTEAM"] == "1" else {
-            throw XCTSkip("Set RUN_PRIVILEGED_SOCKET_REDTEAM=1 after rebuilding privileged daemons")
+            throw XCTSkip("Set RUN_PRIVILEGED_SOCKET_REDTEAM=1 after rebuilding privileged daemons") // env-guard: RUN_PRIVILEGED_SOCKET_REDTEAM=1
         }
         guard FileManager.default.fileExists(atPath: socket) else {
-            throw XCTSkip("Privileged socket not present at \(socket)")
+            throw XCTSkip("Privileged socket not present at \(socket)") // env-guard: privileged socket present
         }
 
         let probeURL: URL
@@ -34,7 +34,7 @@ final class PrivilegedSocketRedTeamIntegrationTests: XCTestCase {
         }
 
         guard FileManager.default.isExecutableFile(atPath: probeURL.path) else {
-            throw XCTSkip("Build OpenBurnBarPrivilegedSocketRedTeamProbe first; expected executable at \(probeURL.path)")
+            throw XCTSkip("Build OpenBurnBarPrivilegedSocketRedTeamProbe first; expected executable at \(probeURL.path)") // env-guard: OpenBurnBarPrivilegedSocketRedTeamProbe built
         }
 
         let process = Process()

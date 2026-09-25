@@ -27,7 +27,7 @@ final class ControlDeckSnapshotHarness: XCTestCase {
     @MainActor
     func testRenderDeckChromeOverBrightBackdrop() throws {
         guard let outputDirectory else {
-            throw XCTSkip("Set OBB_SNAPSHOT_DIR to write deck snapshots.")
+            throw XCTSkip("Set OBB_SNAPSHOT_DIR to write deck snapshots.") // env-guard: OBB_SNAPSHOT_DIR set
         }
         try FileManager.default.createDirectory(
             at: outputDirectory, withIntermediateDirectories: true

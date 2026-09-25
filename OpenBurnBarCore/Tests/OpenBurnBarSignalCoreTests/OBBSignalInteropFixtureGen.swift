@@ -17,7 +17,7 @@ final class OBBSignalInteropFixtureGen: XCTestCase {
 
     func testEmitSwiftAliceToAndroidBobFixture() throws {
         guard let outPath = ProcessInfo.processInfo.environment["OBB_INTEROP_OUT"] else {
-            throw XCTSkip("set OBB_INTEROP_OUT to emit the interop fixture")
+            throw XCTSkip("set OBB_INTEROP_OUT to emit the interop fixture") // env-guard: OBB_INTEROP_OUT set (fixture gen)
         }
         let ctx = NullContext()
 

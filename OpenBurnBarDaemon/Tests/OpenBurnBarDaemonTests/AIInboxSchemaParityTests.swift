@@ -44,6 +44,15 @@ final class AIInboxSchemaParityTests: XCTestCase {
         return try String(contentsOf: url, encoding: .utf8)
     }
 
+    // MARK: - Wave 4: single guarded loader (was: an identical guard+skip in
+    // every migration-file test).
+    private static func requireSource(at relativePath: String) throws -> String {
+        guard let dataSource = try Self.source(at: relativePath) else {
+            throw XCTSkip("Repository sources are not reachable from this test environment.") // env-guard: repo sources reachable (migration files)
+        }
+        return dataSource
+    }
+
     private static func statementsBlock(from source: String, marker: String) -> String? {
         guard let start = source.range(of: marker) else {
             return nil
@@ -56,7 +65,7 @@ final class AIInboxSchemaParityTests: XCTestCase {
     /// The v58 / v59 DDL lives in exactly one file each now.
     func test_agentLensMirrorStaysDeleted() throws {
         guard let root = Self.repositoryRoot() else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
+            throw XCTSkip("Repository sources are not reachable from this test environment.") // env-guard: repo sources reachable (repository root)
         }
         for relativePath in [Self.deletedAppMigrationPath, Self.deletedAppFounderLensMigrationPath] {
             try MemorySchemaSource.assertAgentLensMirrorDeleted(relativePath, under: root)
@@ -64,9 +73,7 @@ final class AIInboxSchemaParityTests: XCTestCase {
     }
 
     func test_singleMigratorRegistersTheExpectedIdentifier() throws {
-        guard let dataSource = try Self.source(at: Self.dataMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
+        let dataSource = try Self.requireSource(at: Self.dataMigrationPath)
         XCTAssertTrue(
             dataSource.contains("migrator.registerMigration(\"v58_ai_inbox\")"),
             "The single migrator must register the v58 migration identifier"
@@ -77,9 +84,7 @@ final class AIInboxSchemaParityTests: XCTestCase {
     /// works). Its DDL must therefore describe the same tables and columns the
     /// migrations do.
     func test_daemonDDLMatchesMigrationDDL() throws {
-        guard let dataSource = try Self.source(at: Self.dataMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
+        let dataSource = try Self.requireSource(at: Self.dataMigrationPath)
 
         for statement in BurnBarAIInboxSchema.statements {
             let normalized = Self.normalize(statement)
@@ -110,9 +115,7 @@ final class AIInboxSchemaParityTests: XCTestCase {
     /// The v59 DDL block must still exist in the single migrator (and only
     /// there — the mirror-gone test above covers the deleted path).
     func test_founderLensDDLBlockExistsInSingleMigrator() throws {
-        guard let dataSource = try Self.source(at: Self.dataFounderLensMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
+        let dataSource = try Self.requireSource(at: Self.dataFounderLensMigrationPath)
         let marker = "static let founderLensSchemaStatements: [String] = ["
         XCTAssertNotNil(
             Self.statementsBlock(from: dataSource, marker: marker),
@@ -121,9 +124,7 @@ final class AIInboxSchemaParityTests: XCTestCase {
     }
 
     func test_founderLensMigratorRegistersTheExpectedIdentifier() throws {
-        guard let dataSource = try Self.source(at: Self.dataFounderLensMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
+        let dataSource = try Self.requireSource(at: Self.dataFounderLensMigrationPath)
         XCTAssertTrue(
             dataSource.contains("migrator.registerMigration(\"v59_founder_lens\")"),
             "The single migrator must register the v59 migration identifier"
@@ -131,9 +132,7 @@ final class AIInboxSchemaParityTests: XCTestCase {
     }
 
     func test_daemonFounderLensDDLMatchesMigrationDDL() throws {
-        guard let dataSource = try Self.source(at: Self.dataFounderLensMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
+        let dataSource = try Self.requireSource(at: Self.dataFounderLensMigrationPath)
         for statement in BurnBarAIInboxSchema.founderLensStatements {
             let normalized = Self.normalize(statement)
             XCTAssertTrue(

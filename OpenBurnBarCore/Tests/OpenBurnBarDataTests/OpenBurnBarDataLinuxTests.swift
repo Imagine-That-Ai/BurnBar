@@ -3,17 +3,17 @@ import GRDB
 @testable import OpenBurnBarData
 import XCTest
 
+// Wave 4: the whole file is Linux-only — compile it out on other platforms
+// instead of skipping every test at runtime (identical Linux behavior, zero
+// skip noise on macOS).
+#if os(Linux)
 public final class OpenBurnBarDataLinuxTests: XCTestCase {
     private let passphrase = "openburnbar-linux-data-tests-passphrase-2026"
     private let wrongPassphrase = "openburnbar-linux-data-tests-wrong-passphrase"
 
     override public func setUpWithError() throws {
         try super.setUpWithError()
-        #if os(Linux)
         continueAfterFailure = false
-        #else
-        throw XCTSkip("Linux SQLCipher data durability tests run on Linux.")
-        #endif
     }
 
     public func testEncryptedFileBackedOpenFailsClosedForSecretAndCodecFailures() throws {
@@ -513,3 +513,4 @@ private extension OpenBurnBarLocalDatabase {
         }
     }
 }
+#endif

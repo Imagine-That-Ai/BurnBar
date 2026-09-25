@@ -53,7 +53,7 @@ final class ClaudeStreamGoldenParseDiffTests: XCTestCase {
         guard let rawURL = StreamParseContract.bundledURL(
             resource: StreamParseContract.rawResourceName, ext: "jsonl", bundle: bundle
         ) else {
-            throw XCTSkip("Committed RAW stream golden not bundled yet — regenerate the project so "
+            throw XCTSkip("Committed RAW stream golden not bundled yet — regenerate the project so " // revive-by: 2026-10-31 - bundle StreamGolden fixtures via project regen
                 + "AgentLensTests/Fixtures/StreamGolden/*.jsonl bundles as a test resource.")
         }
         let raw = try String(contentsOf: rawURL, encoding: .utf8)
@@ -61,7 +61,7 @@ final class ClaudeStreamGoldenParseDiffTests: XCTestCase {
         guard let eventsURL = StreamParseContract.bundledURL(
             resource: StreamParseContract.eventsResourceName, ext: "json", bundle: bundle
         ) else {
-            throw XCTSkip("Committed events golden not bundled yet.")
+            throw XCTSkip("Committed events golden not bundled yet.") // revive-by: 2026-10-31 - bundle StreamGolden fixtures via project regen
         }
         let committedData = try Data(contentsOf: eventsURL)
         let committed = try StreamParseContract.decode(committedData)
@@ -159,7 +159,7 @@ final class ClaudeStreamGoldenParseDiffTests: XCTestCase {
         guard let url = StreamParseContract.bundledURL(
             resource: StreamParseContract.eventsResourceName, ext: "json", bundle: bundle
         ) else {
-            throw XCTSkip("Committed events golden not bundled yet.")
+            throw XCTSkip("Committed events golden not bundled yet.") // revive-by: 2026-10-31 - bundle StreamGolden fixtures via project regen
         }
         return try StreamParseContract.decode(Data(contentsOf: url))
     }

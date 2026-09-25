@@ -2315,7 +2315,7 @@ final class MercuryRouterTests: XCTestCase {
 
     func testDisplaySelectionAcknowledgesSelectedDisplayAndKeepsMirrorStreaming() async throws {
         guard let display = ScreenCapturePipeline.availableDisplays().first else {
-            throw XCTSkip("No displays available on this test host.")
+            throw XCTSkip("No displays available on this test host.") // env-guard: display attached to the test host
         }
         let (router, sink) = makeRouter(
             consent: true,
@@ -2572,7 +2572,7 @@ final class MercuryRouterTests: XCTestCase {
     private func extractStreaming(from phase: MercuryRouter.Phase) throws -> String {
         if case let .streaming(id, _) = phase { return id }
         if case let .starting(id) = phase { return id }
-        throw XCTSkip("phase not streaming/starting")
+        throw XCTSkip("phase not streaming/starting") // env-guard: router reaches streaming/starting phase
     }
 }
 

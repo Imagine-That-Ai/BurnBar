@@ -187,7 +187,7 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
         let smokeEnabled = ProcessInfo.processInfo.environment["OPENBURNBAR_REAL_PROVIDER_SMOKE"] == "1"
             || ProcessInfo.processInfo.environment["BURNBAR_REAL_PROVIDER_SMOKE"] == "1"
         guard smokeEnabled else {
-            throw XCTSkip("Set OPENBURNBAR_REAL_PROVIDER_SMOKE=1 to run optional real provider smoke coverage.")
+            throw XCTSkip("Set OPENBURNBAR_REAL_PROVIDER_SMOKE=1 to run optional real provider smoke coverage.") // env-guard: OPENBURNBAR_REAL_PROVIDER_SMOKE=1
         }
 
         let harness = try OpenBurnBarSearchIntegrationHarness(name: "real-provider-authoring-smoke")
@@ -258,7 +258,7 @@ final class OpenBurnBarAuthoringReplayGoldenTests: XCTestCase {
             XCTAssertFalse(draft.references.isEmpty)
         } catch let error as ArtifactAuthoringError {
             if case .cliUnavailable = error {
-                throw XCTSkip("No real CLI provider is available in this environment.")
+                throw XCTSkip("No real CLI provider is available in this environment.") // env-guard: real CLI provider installed
             }
             throw error
         }

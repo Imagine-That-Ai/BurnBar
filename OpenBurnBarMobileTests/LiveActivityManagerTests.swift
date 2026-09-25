@@ -5,8 +5,14 @@ import OpenBurnBarCore
 
 @MainActor
 final class LiveActivityManagerTests: XCTestCase {
+    // Wave 4: one class-wide ActivityKit floor instead of a per-test guard in
+    // every method.
+    override nonisolated func setUpWithError() throws {
+        try super.setUpWithError()
+        guard #available(iOS 16.1, *) else { throw XCTSkip("ActivityKit requires iOS 16.1+") } // env-guard: iOS 16.1+
+    }
+
     func test_startUpdateEnd_routesThroughBackend() async throws {
-        guard #available(iOS 16.1, *) else { throw XCTSkip("ActivityKit requires iOS 16.1+") }
         let backend = StubBurnBarLiveActivityBackend()
         let manager = LiveActivityManager(backend: backend)
 
@@ -56,7 +62,6 @@ final class LiveActivityManagerTests: XCTestCase {
     }
 
     func test_startActivity_whenActivitiesDisabled_doesNotRequest() throws {
-        guard #available(iOS 16.1, *) else { throw XCTSkip("ActivityKit requires iOS 16.1+") }
         let backend = StubBurnBarLiveActivityBackend()
         backend.areActivitiesEnabled = false
         let manager = LiveActivityManager(backend: backend)
@@ -68,7 +73,6 @@ final class LiveActivityManagerTests: XCTestCase {
     }
 
     func test_startActivity_requestFailure_leavesNoActiveActivity() throws {
-        guard #available(iOS 16.1, *) else { throw XCTSkip("ActivityKit requires iOS 16.1+") }
         let backend = StubBurnBarLiveActivityBackend()
         backend.requestError = StubBurnBarLiveActivityBackend.Error()
         let manager = LiveActivityManager(backend: backend)
@@ -83,7 +87,6 @@ final class LiveActivityManagerTests: XCTestCase {
     /// numbers, so updates whose state matches what the activity already
     /// displays must skip the ActivityKit round trip entirely.
     func test_updateActivity_skipsRedundantStateUpdates() async throws {
-        guard #available(iOS 16.1, *) else { throw XCTSkip("ActivityKit requires iOS 16.1+") }
         let backend = StubBurnBarLiveActivityBackend()
         let manager = LiveActivityManager(backend: backend)
 
@@ -146,7 +149,6 @@ final class LiveActivityManagerTests: XCTestCase {
     /// previously orphaned the new Lock Screen activity and made the next
     /// rollup snapshot request a duplicate.
     func test_endThenRestart_inFlightEndDoesNotOrphanNewActivity() async throws {
-        guard #available(iOS 16.1, *) else { throw XCTSkip("ActivityKit requires iOS 16.1+") }
         let backend = StubBurnBarLiveActivityBackend()
         let manager = LiveActivityManager(backend: backend)
 

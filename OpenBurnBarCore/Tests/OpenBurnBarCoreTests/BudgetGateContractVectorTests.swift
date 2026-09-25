@@ -128,7 +128,7 @@ final class BudgetGateContractVectorTests: XCTestCase {
 
     private func loadSuite() throws -> Suite {
         guard let url = Bundle.module.url(forResource: "budget-enforcement-vectors", withExtension: "json") else {
-            throw XCTSkip("budget-enforcement-vectors.json missing from OpenBurnBarCoreTests Fixtures bundle")
+            throw XCTSkip("budget-enforcement-vectors.json missing from OpenBurnBarCoreTests Fixtures bundle") // revive-by: 2026-10-31 - author budget-enforcement-vectors.json fixture
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { d in

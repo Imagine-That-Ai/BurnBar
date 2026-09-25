@@ -490,7 +490,7 @@ final class AIInboxDetectorsBreadthTests: XCTestCase {
         do {
             try manager.createDirectory(at: root, withIntermediateDirectories: true)
         } catch {
-            throw XCTSkip("Home directory is not writable in this environment: \(error)")
+            throw XCTSkip("Home directory is not writable in this environment: \(error)") // env-guard: home directory writable
         }
 
         let marker = root.appendingPathComponent("ai-inbox-index-health-\(UUID().uuidString).jsonl")

@@ -112,7 +112,7 @@ final class SentryDSNResolutionTests: XCTestCase {
         }
 
         guard let bundle = Bundle(path: bundleURL.path) else {
-            throw XCTSkip("Could not load test bundle from \(bundleURL.path)")
+            throw XCTSkip("Could not load test bundle from \(bundleURL.path)") // env-guard: synthetic test bundle loads from tmp
         }
         return bundle
     }

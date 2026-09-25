@@ -79,7 +79,7 @@ final class P16PhysicalIPadTrustCycleTests: XCTestCase {
 
     private func requirePhysicalIPad(phase: String) throws {
         guard environment["OPENBURNBAR_P16_PHASE"] == phase else {
-            throw XCTSkip("This method is only armed for the P-16 \(phase) phase.")
+            throw XCTSkip("This method is only armed for the P-16 \(phase) phase.") // env-guard: OPENBURNBAR_P16_PHASE armed for this phase
         }
 #if targetEnvironment(simulator)
         XCTFail("P-16 requires a physical iPad; Simulator evidence is forbidden.")

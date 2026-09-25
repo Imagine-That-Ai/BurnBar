@@ -252,7 +252,7 @@ final class DirectDownloadArtifactVerifierTests: XCTestCase {
         // SUPublicEDKey. If this ever goes missing the updater fails closed,
         // so surface it here too.
         guard let key = DirectDownloadArtifactVerifier.bundledPublicKeyBase64() else {
-            throw XCTSkip("Test host bundle does not carry SUPublicEDKey; covered by release verification job.")
+            throw XCTSkip("Test host bundle does not carry SUPublicEDKey; covered by release verification job.") // env-guard: test host bundle carries SUPublicEDKey
         }
         let raw = Data(base64Encoded: key)
         XCTAssertEqual(raw?.count, 32, "SUPublicEDKey must be a raw 32-byte Ed25519 public key")

@@ -72,7 +72,7 @@ final class ParserOutputContractGoldenTests: XCTestCase {
 
         // (3) Validate against the COMMITTED (bundled) golden.
         guard let committedURL = bundledGoldenURL() else {
-            throw XCTSkip(
+            throw XCTSkip( // revive-by: 2026-10-31 - copy candidate corpus into the committed golden
                 "No committed parser-output golden bundled yet. Copy \(outputDir.path)/ParserContract/* into "
                 + "AgentLensTests/Fixtures/ParserContract/, regenerate the project, and re-run."
             )
@@ -118,7 +118,7 @@ final class ParserOutputContractGoldenTests: XCTestCase {
                 artifacts = ParserContractCorpus.builderArtifacts(for: fixture)
             case .committedFiles(let bundle):
                 guard let committed = try ParserContractCorpus.committedArtifacts(for: fixture, bundle: bundle) else {
-                    throw XCTSkip("Committed fixture files for \(fixture.id) are not bundled yet.")
+                    throw XCTSkip("Committed fixture files for \(fixture.id) are not bundled yet.") // revive-by: 2026-10-31 - copy candidate corpus into the committed golden
                 }
                 artifacts = committed
             }
