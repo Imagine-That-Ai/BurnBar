@@ -31,16 +31,20 @@ disabled_rules:
 #   * brownfield-refactor opt-ins that require API-changing rewrites were
 #     removed with their measured debt recorded (swiftlint 0.63.3, repo
 #     exclusions, CI-equivalent scope):
-#       rule                            2026-06-12   2026-09-22
-#       force_unwrapping                715 sites    916 sites
-#       discouraged_optional_collection 326 sites    589 sites
-#       implicitly_unwrapped_optional   169 sites    324 sites
-#       no_extension_access_modifier    190 sites    265 sites (codebase
-#                                       convention is ACL-on-extension,
-#                                       e.g. `public extension`)
-#       discouraged_optional_boolean     99 sites    228 sites
-#     All five grew (~2/3 of force_unwrapping sits in test targets, where
-#     `!` is largely idiomatic). Re-measure with the same scope before
+#       rule                            2026-06-12   2026-09-22   2026-09-25
+#       force_unwrapping                715 sites    916 sites    922 sites
+#       discouraged_optional_collection 326 sites    589 sites    601 sites
+#       implicitly_unwrapped_optional   169 sites    324 sites    326 sites
+#       no_extension_access_modifier    190 sites    265 sites    265 sites
+#                                       (codebase convention is
+#                                       ACL-on-extension, e.g. `public
+#                                       extension`)
+#       discouraged_optional_boolean     99 sites    228 sites    227 sites
+#     Wave 4: these ceilings are now ENFORCED per rule by
+#     scripts/debt/check-swiftlint-rules-budget.sh (budgets/
+#     swiftlint-rules-baseline.json, run in pr-native-fast) — any growth
+#     fails the door. (~2/3 of force_unwrapping sits in test targets, where
+#     `!` is largely idiomatic.) Re-measure with the same scope before
 #     quoting these; local `.build-*` / `.muse/worktrees` checkouts must
 #     stay out of the count (CI lints a fresh checkout).
 opt_in_rules:

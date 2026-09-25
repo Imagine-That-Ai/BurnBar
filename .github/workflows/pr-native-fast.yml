@@ -307,6 +307,13 @@ jobs:
           /tmp/swiftlint-bin/swiftlint version
           /tmp/swiftlint-bin/swiftlint lint --quiet --strict
 
+      - name: SwiftLint per-rule debt ratchet (shrink-only)
+        # The five brownfield opt-ins (.swiftlint.yml) are not in the strict
+        # gate; this ratchet fails on ANY per-rule growth instead.
+        env:
+          SWIFTLINT_BIN: /tmp/swiftlint-bin/swiftlint
+        run: bash scripts/debt/check-swiftlint-rules-budget.sh
+
       - name: Self-test signed daemon runtime gate
         run: bash scripts/ci/verify-daemon-release-signing.test.sh
 

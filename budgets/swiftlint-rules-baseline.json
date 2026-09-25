@@ -1,0 +1,11 @@
+{
+  "note": "Per-rule shrink-only ceilings for the five brownfield SwiftLint opt-ins (wave 4). Counts are SwiftLint violations under the repo's excluded list plus local-only junk exclusions, SwiftLint 0.63.3. Any per-rule growth fails the gate; lower ceilings with scripts/debt/check-swiftlint-rules-budget.sh --update after burning debt (refuses to raise). Seeded 2026-09-25.",
+  "version": "0.63.3",
+  "rules": {
+    "force_unwrapping": 922,
+    "discouraged_optional_collection": 601,
+    "implicitly_unwrapped_optional": 326,
+    "no_extension_access_modifier": 265,
+    "discouraged_optional_boolean": 227
+  }
+}

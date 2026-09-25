@@ -81,6 +81,9 @@ budgets/raw-firestore-baseline.json
 budgets/singleton-baseline.json
 budgets/string-any-boundary-baseline.json
 budgets/swift-file-size-baseline.json
+# Wave 4: per-rule shrink-only ceilings for the five brownfield SwiftLint
+# opt-ins; scripts/debt/check-swiftlint-rules-budget.sh fails on any growth.
+budgets/swiftlint-rules-baseline.json
 budgets/port-file-size-baseline.json
 budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
