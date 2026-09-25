@@ -20,7 +20,10 @@ count_swift_lines() {
   if [[ -f "${path}" ]]; then
     wc -l < "${path}" | tr -d ' '
   else
-    echo "0"
+    # Missing files must never bake a bogus 0 into the trend (wave 3.5
+    # moved the functions types barrel and the regen recorded 0 lines).
+    echo "WARNING: metric source missing, recording n/a: ${path}" >&2
+    echo "n/a"
   fi
 }
 
@@ -69,8 +72,8 @@ quarantine_files="$(find "${repo_root}/AgentLensTests/Archive" -name '*.swift' 2
 quarantine_lines="$(find "${repo_root}/AgentLensTests/Archive" -name '*.swift' -exec cat {} + 2>/dev/null | wc -l | tr -d ' ')"
 legacy_reference_files="$(find "${repo_root}/AgentLensTests/LegacyReference" -name '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
 
-types_ts_lines="$(count_swift_lines "${repo_root}/functions/src/types.ts")"
-types_legacy_lines="$(count_swift_lines "${repo_root}/functions/src/types/legacy.ts")"
+types_ts_lines="$(count_swift_lines "${repo_root}/packages/functions-shared/src/types.ts")"
+types_legacy_lines="$(count_swift_lines "${repo_root}/packages/functions-shared/src/types/legacy.ts")"
 index_ts_lines="$(count_swift_lines "${repo_root}/functions/src/index.ts")"
 
 cloud_sync_lines="$(count_swift_lines "${repo_root}/AgentLens/Services/CloudSyncService.swift")"
@@ -284,8 +287,8 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Schema \`knownDrift\` tokens (\`tools/schema-sync/manifest.json\`) | ${schema_known_drift_total} | 0 | 0 |
 | \`@unchecked Sendable\` ratchet (assert-zero gate; ${unchecked_sendable_allowlist} documented allowlist exceptions) | ${unchecked_sendable_total} (${unchecked_sendable_allowlist} allowlisted) | 0 | 0 |
 | Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | ${top_four_total} | ≤ 5000 | ≤ 3500 |
-| \`functions/src/types.ts\` LOC (barrel) | ${types_ts_lines} | stable (re-export) | — |
-| \`functions/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |
+| \`packages/functions-shared/src/types.ts\` LOC (barrel) | ${types_ts_lines} | stable (re-export) | — |
+| \`packages/functions-shared/src/types/legacy.ts\` LOC | ${types_legacy_lines} | shrinking (TypeSpec migration) | — |
 | \`functions/src/index.ts\` LOC | ${index_ts_lines} | modularize | — |
 | \`import SwiftUI\` in Services/ | ${swiftui_services} | 0 | 0 |
 | Phase 1 security register open items (\`docs/governance/PHASE1_SECURITY_REGISTER.md\`) | ${phase1_security_open} | ≤ 3 | 0 |

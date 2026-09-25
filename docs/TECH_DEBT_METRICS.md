@@ -14,19 +14,19 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | Legacy reference suites (ADR, not quarantined) | 2 | stable | — |
 | `@MainActor` on I/O facades (listed set) | 3 | 4 | 0 |
 | Empty `catch {}` blocks (app + daemon) | 0 | 0 | 0 |
-| `Task.detached` in `AgentLens/Services/` | 22 | ≤ 10 | 0 |
-| `try?` in `AgentLens/Services/` (untagged debt / tagged `try?-ok` best-effort) | 0 untagged (500 tagged) | ≤ 120 | ≤ 50 |
+| `Task.detached` in `AgentLens/Services/` | 30 | ≤ 10 | 0 |
+| `try?` in `AgentLens/Services/` (untagged debt / tagged `try?-ok` best-effort) | 10 untagged (497 tagged) | ≤ 120 | ≤ 50 |
 | Unsafe cast assert-zero gate | 0 | 0 | 0 |
 | Untyped GRDB row cast assert-zero gate | 0 | 0 | 0 |
-| Untyped `[String: Any]` dictionaries (App: 700, Mobile: 440, Core: 713, Daemon: 472) | 2325 total | shrinking | ≤ 500 |
+| Untyped `[String: Any]` dictionaries (App: 700, Mobile: 440, Core: 711, Daemon: 472) | 2323 total | shrinking | ≤ 500 |
 | Knip dead-code budget (`budgets/knip-baseline.json`, functions) | 0 | 0 | 0 |
 | Schema `knownDrift` tokens (`tools/schema-sync/manifest.json`) | 0 | 0 | 0 |
 | `@unchecked Sendable` ratchet (assert-zero gate; 91 documented allowlist exceptions) | 0 (91 allowlisted) | 0 | 0 |
-| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 4317 | ≤ 5000 | ≤ 3500 |
-| `functions/src/types.ts` LOC (barrel) | 8 | stable (re-export) | — |
-| `functions/src/types/legacy.ts` LOC | 19 | shrinking (TypeSpec migration) | — |
-| `functions/src/index.ts` LOC | 289 | modularize | — |
-| `import SwiftUI` in Services/ | 0 | 0 | 0 |
+| Top-4 service LOC (CloudSync + Search + UsageAgg + Projection) | 4334 | ≤ 5000 | ≤ 3500 |
+| `packages/functions-shared/src/types.ts` LOC (barrel) | 8 | stable (re-export) | — |
+| `packages/functions-shared/src/types/legacy.ts` LOC | 19 | shrinking (TypeSpec migration) | — |
+| `functions/src/index.ts` LOC | 30 | modularize | — |
+| `import SwiftUI` in Services/ | 1 | 0 | 0 |
 | Phase 1 security register open items (`docs/governance/PHASE1_SECURITY_REGISTER.md`) | 0 | ≤ 3 | 0 |
 | Rust `unwrap()`/`expect()` in `crates/{burnbar-remote,openburnbar-iroh}` | 0 | 0 | 0 |
 | Force-unwrap sites (`budgets/force-unwrap-baseline.json`, shrink-only ratchet) | 212 | shrinking | 0 |
@@ -36,9 +36,9 @@ Track trends monthly against targets in [TECH_DEBT_STRATEGY.md](TECH_DEBT_STRATE
 | File | LOC |
 |------|-----|
 | `AgentLens/Services/CloudSyncService.swift` | 255 |
-| `AgentLens/Services/Search/` (SearchService + extensions) | 1540 |
+| `AgentLens/Services/Search/` (SearchService + extensions) | 1543 |
 | `AgentLens/Services/UsageAggregator.swift` | 826 |
-| `AgentLens/Services/ProjectionPipeline/` | 1696 |
+| `AgentLens/Services/ProjectionPipeline/` | 1710 |
 
 ## Remediation links
 

@@ -30,4 +30,4 @@ bash scripts/ops/run-privileged-socket-redteam.sh
 | Probe exit 0 | Pre-P0 regression — do not ship |
 | XCTest failure | Policy/auth regression in VirtualHID bridge |
 
-Attach the evidence file to the security signoff PR or internal ops bucket before checking the Phase 2 ops box in [`SOTA_10_10_SIGNOFF.md`](../security/SOTA_10_10_SIGNOFF.md).
+Attach the evidence file to the security signoff PR or internal ops bucket before checking the Phase 2 ops box in the SOTA 10/10 signoff record (local-only per the audit-evidence `.gitignore` policy; human signatures pending under AR-007 — see `docs/governance/RISK_REGISTER.md`).

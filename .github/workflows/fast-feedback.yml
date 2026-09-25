@@ -1680,6 +1680,18 @@ jobs:
       - name: XCTSkip budget (shrink-only ratchet)
         run: ./scripts/debt/check-xctskip-budget.sh
 
+      # Wave 4 DESIGN palette: every table row must carry exactly the
+      # shipped DesignSystem.swift hexes, and the shared token constants
+      # must mirror the literals. Pure python3.
+      - name: Design tokens match shipped source
+        run: ./scripts/ci/check-design-tokens.sh
+
+      # Wave 4 docs freshness: orphaned docs untouched for >90 days may
+      # only shrink (link, refresh, or archive to docs/archive/YYYY-MM/).
+      # Pure git + python3.
+      - name: Docs freshness budget (shrink-only ratchet)
+        run: ./scripts/ci/check-docs-freshness.sh
+
       - name: BurnBarRPC IPC canon is current
         run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
 
