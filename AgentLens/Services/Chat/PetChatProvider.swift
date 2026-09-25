@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import OpenBurnBarKernel
 
 // MARK: - PetAuthStatus
 
@@ -135,14 +136,14 @@ final class CLIBridgeChatProvider: AgentChatProvider {
             if await bridge.isExecutableAvailable(named: "claude") { return .ready }
             return keychain.has(.claude) ? .ready : .needsLogin
         case .hermes:
-            await bridge.probeHermesAvailability(bearerToken: try? keychain.get(.hermes))
+            await bridge.probeHermesAvailability(bearerToken: try? keychain.get(.hermes)) // try?-ok(absent entry means unavailable; probe reports .error)
             return bridge.hermesAvailable ? .ready : .error
         case .openclaw:
-            await bridge.probeOpenClawAvailability(baseURL: openClawBaseURL(), bearerToken: try? keychain.get(.openclaw))
+            await bridge.probeOpenClawAvailability(baseURL: openClawBaseURL(), bearerToken: try? keychain.get(.openclaw)) // try?-ok(absent entry means unavailable; probe reports .error)
             return bridge.openClawAvailable ? .ready : .error
         case .piAgent:
             let base = piAgentBaseURL()
-            await bridge.probePiAgentAvailability(baseURL: base, bearerToken: try? keychain.get(.piAgent))
+            await bridge.probePiAgentAvailability(baseURL: base, bearerToken: try? keychain.get(.piAgent)) // try?-ok(absent entry means unavailable; probe reports .error)
             return bridge.piAgentAvailable ? .ready : .error
         case .droid:
             return await bridge.isExecutableAvailable(named: "droid") ? .ready : .needsLogin
@@ -214,20 +215,20 @@ final class CLIBridgeChatProvider: AgentChatProvider {
         case .claude:
             return bridge.chatClaudeStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
         case .hermes:
-            return bridge.chatHermes(systemPrompt: persona, history: history, bearerToken: try? keychain.get(.hermes))
+            return bridge.chatHermes(systemPrompt: persona, history: history, bearerToken: try? keychain.get(.hermes)) // try?-ok(nil token surfaces as an auth error from the chat call)
         case .openclaw:
             return bridge.chatOpenClaw(
                 baseURL: openClawBaseURL(),
                 systemPrompt: persona,
                 history: history,
-                bearerToken: try? keychain.get(.openclaw)
+                bearerToken: try? keychain.get(.openclaw) // try?-ok(nil token surfaces as an auth error from the chat call)
             )
         case .piAgent:
             return bridge.chatPiAgent(
                 baseURL: piAgentBaseURL(),
                 systemPrompt: persona,
                 history: history,
-                bearerToken: try? keychain.get(.piAgent)
+                bearerToken: try? keychain.get(.piAgent) // try?-ok(nil token surfaces as an auth error from the chat call)
             )
         case .droid:
             return bridge.chatDroidStream(systemPrompt: persona, userMessage: userMessage, workspaceDirectory: workspace)
@@ -282,17 +283,17 @@ final class CLIBridgeChatProvider: AgentChatProvider {
     /// The configured OpenClaw base URL (stored alongside the token under a
     /// distinct Keychain account), falling back to the local gateway default.
     private func openClawBaseURL() -> URL {
-        if let raw = try? keychain.get(.openclaw, account: "baseURL"), let url = URL(string: raw) {
+        if let raw = try? keychain.get(.openclaw, account: "baseURL"), let url = URL(string: raw) { // try?-ok(unreadable entry falls through to the localhost default)
             return url
         }
-        return URL(string: "http://localhost:8642")!
+        return URL(staticString: "http://localhost:8642")
     }
 
     private func piAgentBaseURL() -> URL {
-        if let raw = try? keychain.get(.piAgent, account: "baseURL"), let url = URL(string: raw) {
+        if let raw = try? keychain.get(.piAgent, account: "baseURL"), let url = URL(string: raw) { // try?-ok(unreadable entry falls through to the localhost default)
             return url
         }
-        return URL(string: "http://127.0.0.1:8765")!
+        return URL(staticString: "http://127.0.0.1:8765")
     }
 }
 

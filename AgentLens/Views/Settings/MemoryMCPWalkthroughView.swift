@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import OpenBurnBarUI
+import OpenBurnBarKernel
 
 // MARK: - Memory (Pensieve) walkthrough content
 //
@@ -65,7 +66,7 @@ enum MemoryWalkthroughContent {
     /// Diagnoses a broken link from Terminal.
     static let doctorCommand = "openburnbar mcp doctor"
     /// The guided setup page on the web.
-    static let setupURL = URL(string: "https://burnbar.ai/product")!
+    static let setupURL = URL(staticString: "https://burnbar.ai/product")
     /// The member's web console — where sealed data is visible and governed
     /// from any browser, not just this Mac.
     static let consoleURL = MacCloudConsoleURLs.pensieve

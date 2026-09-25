@@ -518,7 +518,7 @@ struct HermesGatewayDetailView: View {
 
     private var resolvedBaseURL: URL {
         URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8642")!
+            ?? URL(staticString: "http://127.0.0.1:8642")
     }
 
     private var resolvedBearer: String? {
@@ -730,7 +730,7 @@ struct PiAgentDetailView: View {
 
     private var resolvedPiBaseURL: URL {
         URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8765")!
+            ?? URL(staticString: "http://127.0.0.1:8765")
     }
 
     private var resolvedPiBearer: String? {

@@ -24,7 +24,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
     public let modelCatalog: [InsightCatalogModel]
 
     public init(apiKey: String,
-                baseURL: URL = URL(string: "https://api.openai.com")!,
+                baseURL: URL = URL(staticString: "https://api.openai.com"),
                 urlSession: URLSession = .shared,
                 modelCatalog: [InsightCatalogModel] = OpenAIInsightAdapter.defaultModels) {
         self.apiKey = apiKey
@@ -237,7 +237,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
             )
         }
         // Extract OpenAI-shaped content[0].message.content first.
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        if let json = BurnBarJSONValue.dictionary(fromJSONData: data),
            let choices = json["choices"] as? [[String: Any]],
            let first = choices.first,
            let message = first["message"] as? [String: Any],
@@ -255,7 +255,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
     // MARK: - Tool-use helpers
 
     private func extractOpenAIToolCalls(from data: Data) -> [InsightToolCall]? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let choices = json["choices"] as? [[String: Any]],
               let first = choices.first,
               let message = first["message"] as? [String: Any],
@@ -269,7 +269,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
                   let name = function["name"] as? String,
                   let argumentsJSON = function["arguments"] as? String,
                   let argumentsData = argumentsJSON.data(using: .utf8),
-                  let arguments = try? JSONSerialization.jsonObject(with: argumentsData) as? [String: Any] else {
+                  let arguments = BurnBarJSONValue.dictionary(fromJSONData: argumentsData) else {
                 return nil
             }
             return InsightToolCall(
@@ -282,7 +282,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
     }
 
     private func buildOpenAIAssistantMessage(from data: Data) -> [String: Any] {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let choices = json["choices"] as? [[String: Any]],
               let first = choices.first,
               let message = first["message"] as? [String: Any] else {
@@ -349,7 +349,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
     }
 
     private func usageFrom(data: Data) -> (inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int)? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let usage = json["usage"] as? [String: Any] else {
             return nil
         }
@@ -397,7 +397,7 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         startedAt: Date,
         completedAt: Date
     ) -> InsightTokenUsage? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let usage = json["usage"] as? [String: Any] else {
             return nil
         }

@@ -270,7 +270,7 @@ struct PixelClockFirmwareFlasher {
     }
 
     private static func downloadOfficialFirmware() async throws -> (version: String, parts: [FirmwarePart]) {
-        let baseURL = URL(string: "https://raw.githubusercontent.com/Blueforcer/awtrix3/main/docs/ulanzi_flasher/firmware/")!
+        let baseURL = URL(staticString: "https://raw.githubusercontent.com/Blueforcer/awtrix3/main/docs/ulanzi_flasher/firmware/")
         let manifestURL = baseURL.appendingPathComponent("manifest.json")
         let (data, response) = try await URLSession.shared.data(from: manifestURL)
         try validateHTTP(response)

@@ -6,8 +6,8 @@ import FirebaseCore
 import OpenBurnBarCore
 
 private enum CloudStoreLegalURLs {
-    static let privacy = URL(string: "https://burnbar.ai/legal/privacy-policy")!
-    static let terms = URL(string: "https://burnbar.ai/legal/terms")!
+    static let privacy = URL(staticString: "https://burnbar.ai/legal/privacy-policy")
+    static let terms = URL(staticString: "https://burnbar.ai/legal/terms")
 }
 
 private enum CloudSubscriptionDisclosure {
@@ -753,12 +753,12 @@ private struct CloudStoreRemoteMCPCard: View {
             }
 
             HStack(spacing: MobileTheme.Spacing.md) {
-                Link(destination: URL(string: "https://burnbar.ai/product")!) {
+                Link(destination: URL(staticString: "https://burnbar.ai/product")) {
                     Label("Setup", systemImage: "arrow.up.right.square.fill")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.ember)
                 }
-                Link(destination: URL(string: "https://burnbar.ai/security")!) {
+                Link(destination: URL(staticString: "https://burnbar.ai/security")) {
                     Label("Runbook", systemImage: "stethoscope")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.ember)
@@ -1100,7 +1100,7 @@ private struct CloudStoreTrustCard: View {
             }
 
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
-                Link(destination: URL(string: "https://burnbar.ai/pricing")!) {
+                Link(destination: URL(staticString: "https://burnbar.ai/pricing")) {
                     HStack(spacing: 6) {
                         Text("Read the BurnBar Cloud pricing details")
                         Image(systemName: "arrow.up.right.square.fill")
@@ -1530,7 +1530,7 @@ private struct CloudStoreMemberCard: View {
         // buttons, so the certificate stays one coherent object.
         HStack(spacing: MobileTheme.Spacing.md) {
             FoilCTAButton(title: "Manage", icon: "creditcard.fill") {
-                openURL(URL(string: "https://apps.apple.com/account/subscriptions")!)
+                openURL(URL(staticString: "https://apps.apple.com/account/subscriptions"))
             }
             .accessibilityLabel("Manage subscription in App Store")
 

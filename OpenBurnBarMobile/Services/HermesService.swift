@@ -436,7 +436,7 @@ final class HermesService {
     }
 
     init(
-        baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
+        baseURL: URL = URL(staticString: "http://127.0.0.1:8642"),
         urlSession: URLSession = .shared,
         functionsRepository: FunctionsRepository = .shared,
         connectionRepository: HermesConnectionListing = FirestoreHermesConnectionRepository.shared,

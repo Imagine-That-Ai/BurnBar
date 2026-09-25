@@ -11,8 +11,8 @@ import UniformTypeIdentifiers
 
 #if canImport(UIKit)
 enum WallpaperSettingsDeepLink {
-    static let wallpaperSettingsURL = URL(string: "App-prefs:Wallpaper")!
-    static let settingsRootURL = URL(string: "App-prefs:")!
+    static let wallpaperSettingsURL = URL(staticString: "App-prefs:Wallpaper")
+    static let settingsRootURL = URL(staticString: "App-prefs:")
 
     @MainActor
     static func open(using application: UIApplication = .shared) {

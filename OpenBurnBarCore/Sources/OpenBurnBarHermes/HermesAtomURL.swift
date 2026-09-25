@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Hermes Atom URL Codec
 //
@@ -69,7 +70,7 @@ public enum HermesAtomURL {
             components.queryItems = [URLQueryItem(name: "profile", value: profile)]
         }
         // URLComponents builds the right form even when host has no path.
-        return components.url ?? URL(string: "\(hermesAtomURLScheme)://unknown")!
+        return components.url ?? URL(staticString: "burnbar://unknown")
     }
 
     /// Decode a `URL` back to a `HermesAtom`. Returns `nil` for any URL

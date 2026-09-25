@@ -50,7 +50,7 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
     /// default reads the live keychain exactly as before.
     static let consoleURL = "https://console.x.ai"
     static let plansURL = "https://grok.com/plans"
-    static let managementBaseURL = URL(string: "https://api.x.ai")!
+    static let managementBaseURL = URL(staticString: "https://api.x.ai")
     static let rollingWindowSeconds: TimeInterval = 2 * 60 * 60
 
     /// Subdirectory inside `~/Library/Application Support/OpenBurnBar/`

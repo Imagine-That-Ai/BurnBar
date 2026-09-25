@@ -382,7 +382,7 @@ final class InsightsMacEnvironment {
     nonisolated static func hermesInsightBaseURL(environment: [String: String]) -> URL {
         environment["HERMES_BASE_URL"]
             .flatMap { URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-            ?? URL(string: "http://127.0.0.1:8642")!
+            ?? URL(staticString: "http://127.0.0.1:8642")
     }
 
     nonisolated static func makeHermesInsightAdapter(

@@ -20,7 +20,7 @@ final class GitHubCopilotUsageAPI: ProviderUsageAPI, Sendable {
     }
 
     func validate() async throws -> Bool {
-        var request = URLRequest(url: URL(string: "\(baseURL)/user")!)
+        var request = URLRequest(url: URL(staticString: "https://api.github.com/user"))
         request.setValue("Bearer \(pat)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")

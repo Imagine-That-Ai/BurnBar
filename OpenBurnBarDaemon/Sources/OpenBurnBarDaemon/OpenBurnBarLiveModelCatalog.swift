@@ -188,7 +188,7 @@ struct BurnBarLiveModelCatalogDiscoverySnapshot: Sendable {
 }
 
 public struct BurnBarLiveModelCatalog: Sendable {
-    private static let ollamaCloudCatalogURL = URL(string: "https://ollama.com/search?c=cloud")!
+    private static let ollamaCloudCatalogURL = URL(staticString: "https://ollama.com/search?c=cloud")
 
     /// Anthropic's API version header value for the Messages models endpoint.
     private static let anthropicVersion = "2023-06-01"

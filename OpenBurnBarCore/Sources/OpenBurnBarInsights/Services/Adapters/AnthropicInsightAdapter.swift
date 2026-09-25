@@ -26,7 +26,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
     public let modelCatalog: [InsightCatalogModel]
 
     public init(apiKey: String,
-                baseURL: URL = URL(string: "https://api.anthropic.com")!,
+                baseURL: URL = URL(staticString: "https://api.anthropic.com"),
                 urlSession: URLSession = .shared,
                 modelCatalog: [InsightCatalogModel] = AnthropicInsightAdapter.defaultModels) {
         self.apiKey = apiKey
@@ -266,7 +266,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
                                                          detail: "non-utf8 response")
         }
         // First-pass: look for an Anthropic-shaped object with `content`.
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        if let json = BurnBarJSONValue.dictionary(fromJSONData: data),
            let content = json["content"] as? [[String: Any]] {
             let text = content.compactMap { $0["text"] as? String }.joined()
             if let canvas = try? parseEmbedded(json: text, modelTag: modelTag) {
@@ -312,7 +312,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
             return copy
         }
         // Otherwise: simple-shape decode → assemble widgets.
-        guard let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+        guard let obj = BurnBarJSONValue.dictionary(fromJSONData: jsonData) else {
             throw InsightGatewayError.malformedResponse(modelID: modelTag.modelID, detail: "not an object")
         }
         let title = (obj["title"] as? String) ?? "Canvas"
@@ -350,7 +350,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
     // MARK: - Tool-use helpers
 
     private func extractAnthropicToolCalls(from data: Data) -> [InsightToolCall]? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let content = json["content"] as? [[String: Any]] else {
             return nil
         }
@@ -368,7 +368,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
     }
 
     private func buildAnthropicAssistantMessage(from data: Data) -> [String: Any] {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let content = json["content"] as? [[String: Any]] else {
             return ["role": "assistant", "content": ""]
         }
@@ -431,7 +431,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
     }
 
     private func usageFrom(data: Data) -> (inputTokens: Int, outputTokens: Int, cacheCreationTokens: Int, cacheReadTokens: Int)? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let usage = json["usage"] as? [String: Any] else {
             return nil
         }
@@ -465,7 +465,7 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         startedAt: Date,
         completedAt: Date
     ) -> InsightTokenUsage? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let usage = json["usage"] as? [String: Any] else {
             return nil
         }

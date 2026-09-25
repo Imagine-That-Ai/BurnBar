@@ -13,7 +13,6 @@ final class OpenRouterUsageAPI: ProviderUsageAPI, Sendable {
     let authMethod: ProviderAuthMethod = .apiKey
 
     private let apiKey: String
-    private let baseURL = "https://openrouter.ai/api/v1"
     private let session: URLSession
 
     init(apiKey: String, session: URLSession = .shared) {
@@ -22,7 +21,7 @@ final class OpenRouterUsageAPI: ProviderUsageAPI, Sendable {
     }
 
     func validate() async throws -> Bool {
-        var request = URLRequest(url: URL(string: "\(baseURL)/auth/key")!)
+        var request = URLRequest(url: URL(staticString: "https://openrouter.ai/api/v1/auth/key"))
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
         let (_, response) = try await session.data(for: request)
@@ -31,7 +30,7 @@ final class OpenRouterUsageAPI: ProviderUsageAPI, Sendable {
     }
 
     func fetchUsage(since: Date) async throws -> [ProviderUsageRecord] {
-        var request = URLRequest(url: URL(string: "\(baseURL)/activity")!)
+        var request = URLRequest(url: URL(staticString: "https://openrouter.ai/api/v1/activity"))
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await session.data(for: request)
@@ -43,7 +42,7 @@ final class OpenRouterUsageAPI: ProviderUsageAPI, Sendable {
             )
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(guard throws invalidResponse)
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(guard throws invalidResponse)
             throw ProviderUsageAPIError.invalidResponse
         }
 

@@ -1,10 +1,11 @@
 import SwiftUI
 import FirebaseAuth
 import OpenBurnBarAnalytics
+import OpenBurnBarKernel
 
 private enum AccountSettingsLegalURLs {
-    static let privacy = URL(string: "https://burnbar.ai/legal/privacy-policy")!
-    static let terms = URL(string: "https://burnbar.ai/legal/terms")!
+    static let privacy = URL(staticString: "https://burnbar.ai/legal/privacy-policy")
+    static let terms = URL(staticString: "https://burnbar.ai/legal/terms")
 }
 
 // MARK: - Account Settings View

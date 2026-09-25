@@ -38,7 +38,7 @@ public final class ComputerUseOpenTimestampsClient: Sendable {
         public let userAgent: String
 
         public init(
-            calendarURL: URL = URL(string: "https://a.pool.opentimestamps.org/digest")!,
+            calendarURL: URL = URL(staticString: "https://a.pool.opentimestamps.org/digest"),
             userAgent: String = "OpenBurnBar-ComputerUse/1.0"
         ) {
             self.calendarURL = calendarURL

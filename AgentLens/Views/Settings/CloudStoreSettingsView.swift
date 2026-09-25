@@ -596,15 +596,6 @@ struct CloudStoreSettingsView: View {
         )
     }
 
-    private func formatElapsed(_ seconds: TimeInterval) -> String {
-        if seconds < 60 {
-            return String(format: "%.0fs", seconds)
-        }
-        let minutes = Int(seconds) / 60
-        let remainder = Int(seconds) % 60
-        return "\(minutes)m \(remainder)s"
-    }
-
     @MainActor
     private func refreshPendingBackupCounts() async {
         guard let dataStore else {
@@ -1380,7 +1371,7 @@ struct CloudStoreSettingsView: View {
 
                 HStack(spacing: 16) {
                     if isHostedMCPUnlocked {
-                        Link(destination: URL(string: "https://burnbar.ai/product")!) {
+                        Link(destination: URL(staticString: "https://burnbar.ai/product")) {
                             HStack(spacing: 6) {
                                 Text("Open Remote MCP setup")
                                 Image(systemName: "arrow.up.right.square.fill")
@@ -1509,7 +1500,7 @@ struct CloudStoreSettingsView: View {
                     detail: "Managed by Apple in Settings → Apple ID. We never store payment details."
                 )
 
-                Link(destination: URL(string: "https://burnbar.ai/pricing")!) {
+                Link(destination: URL(staticString: "https://burnbar.ai/pricing")) {
                     HStack(spacing: 6) {
                         Text("Read the Hosted Quota Sync technical doc")
                         Image(systemName: "arrow.up.right.square.fill")

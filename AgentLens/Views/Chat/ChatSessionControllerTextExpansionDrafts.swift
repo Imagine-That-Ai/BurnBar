@@ -155,7 +155,7 @@ extension ChatSessionController {
             bearerToken = hermesBearerToken
         case .openclaw:
             baseURL = URL(string: settingsManager.openClawGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                ?? URL(string: "http://127.0.0.1:18789")!
+                ?? URL(staticString: "http://127.0.0.1:18789")
             bearerToken = openClawBearerToken
         case .piAgent:
             baseURL = piAgentGatewayBaseURL

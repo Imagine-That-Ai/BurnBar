@@ -48,7 +48,7 @@ public enum WarpAPIFetcher {
     // MARK: - Configuration
 
     private static let timeoutInterval: TimeInterval = 15
-    private static let apiURL = URL(string: "https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo")!
+    private static let apiURL = URL(staticString: "https://app.warp.dev/graphql/v2?op=GetRequestLimitInfo")
     private static let clientID = "warp-app"
     /// Warp's GraphQL endpoint returns HTTP 429 unless User-Agent matches the official client pattern.
     private static let userAgent = "Warp/1.0"
@@ -186,7 +186,7 @@ public enum WarpAPIFetcher {
     /// Parses the GraphQL JSON response into `WarpCredits`.
     /// Package-private for testing.
     static func parseCreditsResponse(_ data: Data) throws -> WarpCredits {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON throws)
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed JSON throws)
             throw QuotaServiceError.invalidResponse("Warp response was not valid JSON.")
         }
 

@@ -106,7 +106,7 @@ final class CursorConnectorManager {
         let factoryURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".factory/settings.json")
         guard let data = try? Data(contentsOf: factoryURL), // try?-ok(missing file guard-return)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(malformed guard-return)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(malformed guard-return)
               let customModels = json["customModels"] as? [[String: Any]] else {
             lastError = "Factory settings were not found."
             return
@@ -239,11 +239,11 @@ final class CursorConnectorManager {
     }
 
     func openCloudflareDocs() {
-        NSWorkspace.shared.open(URL(string: "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/")!)
+        NSWorkspace.shared.open(URL(staticString: "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"))
     }
 
     func openCursorDocs() {
-        NSWorkspace.shared.open(URL(string: "https://cursor.com/help/models-and-usage/api-keys")!)
+        NSWorkspace.shared.open(URL(staticString: "https://cursor.com/help/models-and-usage/api-keys"))
     }
 
     func syncRoutedClient(_ target: RoutedClientTarget) {
@@ -714,7 +714,7 @@ final class CursorConnectorManager {
         var insertedAny = false
         for line in lines {
             guard let payload = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any], // try?-ok(skip malformed log line)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: payload), // try?-ok(skip malformed log line)
                   let requestID = json["request_id"] as? String,
                   let providerRaw = json["provider"] as? String,
                   let provider = ConnectorProvider(rawValue: providerRaw),

@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 // MARK: - Elder Wand Web Tools
 //
@@ -21,7 +22,7 @@ import OpenBurnBarEngine
 struct ElderWandHostedSearchConfig: Sendable, Equatable {
     static let firebaseAuthorizationHeader = "x-openburnbar-firebase-authorization"
     static let appCheckHeader = "x-openburnbar-firebase-appcheck"
-    static let defaultEndpoint = URL(string: "https://us-central1-burnbar.cloudfunctions.net/performElderWandHostedSearch")!
+    static let defaultEndpoint = URL(staticString: "https://us-central1-burnbar.cloudfunctions.net/performElderWandHostedSearch")
 
     let endpoint: URL
     let firebaseAuthorization: String
@@ -377,7 +378,7 @@ struct ElderWandWebTools: Sendable {
     private static func hostedSearchUnavailableMessage(data: Data? = nil, statusCode: Int? = nil) -> String {
         let detail: String
         if let data,
-           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let root = BurnBarJSONValue.dictionary(fromJSONData: data),
            let error = root["error"] as? [String: Any],
            let message = error["message"] as? String,
            !message.isEmpty {
@@ -457,7 +458,7 @@ struct ElderWandWebTools: Sendable {
         backend: ElderWandSearchBackend,
         data: Data
     ) -> [SearchResult] {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return []
         }
         switch backend {
@@ -494,7 +495,7 @@ struct ElderWandWebTools: Sendable {
     /// Extract a string argument from the model's raw JSON `arguments` blob.
     private static func stringArgument(_ key: String, from arguments: String) -> String? {
         guard let data = arguments.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
         return object[key] as? String

@@ -322,13 +322,13 @@ enum AccountChangeDestination: Hashable {
     var url: URL {
         switch self {
         case .openAI:
-            return URL(string: "https://chatgpt.com/")!
+            return URL(staticString: "https://chatgpt.com/")
         case .claude:
-            return URL(string: "https://claude.ai/")!
+            return URL(staticString: "https://claude.ai/")
         case .googleAccount:
-            return URL(string: "https://accounts.google.com/AccountChooser?continue=https://myaccount.google.com/")!
+            return URL(staticString: "https://accounts.google.com/AccountChooser?continue=https://myaccount.google.com/")
         case .appleID:
-            return URL(string: "https://appleid.apple.com/sign-in")!
+            return URL(staticString: "https://appleid.apple.com/sign-in")
         }
     }
 }

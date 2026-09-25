@@ -41,7 +41,7 @@ public struct KimiQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Constants
 
-    private static let usageURL = URL(string: "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages")!
+    private static let usageURL = URL(staticString: "https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages")
 
     // MARK: - Types
 
@@ -265,7 +265,7 @@ public struct KimiQuotaAdapter: ProviderQuotaAdapter {
         while base64.count % 4 != 0 { base64 += "=" }
 
         guard let data = Data(base64Encoded: base64),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional JWT-payload decode)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(optional JWT-payload decode)
             return nil
         }
 

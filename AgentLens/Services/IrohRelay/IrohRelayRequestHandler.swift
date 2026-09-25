@@ -933,7 +933,7 @@ final class IrohRelayRequestHandler: Sendable {
         let rawHost = settings?.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines) ?? "127.0.0.1"
         let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
         let port = max(settings?.gatewayPort ?? 8317, 1)
-        let base = URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+        let base = URL(string: "http://\(host):\(port)") ?? URL(staticString: "http://127.0.0.1:8317")
         if base.absoluteString.hasSuffix("/") { return base }
         return URL(string: "\(base.absoluteString)/") ?? base
     }
@@ -947,7 +947,7 @@ final class IrohRelayRequestHandler: Sendable {
     @MainActor
     private func hermesBaseURLWithTrailingSlash() -> URL {
         let base = URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8642")!
+            ?? URL(staticString: "http://127.0.0.1:8642")
         if base.absoluteString.hasSuffix("/") { return base }
         return URL(string: "\(base.absoluteString)/") ?? base
     }
@@ -1150,7 +1150,7 @@ final class IrohRelayRequestHandler: Sendable {
     nonisolated static func isSSETerminalChoiceEvent(_ event: String) -> Bool {
         for dataPayload in sseDataPayloads(from: event) {
             guard let data = dataPayload.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(best-effort SSE parse)
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(best-effort SSE parse)
                   let choices = object["choices"] as? [[String: Any]] else {
                 continue
             }
@@ -1194,7 +1194,7 @@ final class IrohRelayRequestHandler: Sendable {
     nonisolated static func requestedModel(fromBody body: String?) -> String? {
         guard let body,
               let data = body.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional body parse)
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional body parse)
               let model = object["model"] as? String else {
             return nil
         }
@@ -1212,7 +1212,7 @@ final class IrohRelayRequestHandler: Sendable {
             return ("0", "0", "0", "")
         }
         guard let data = body.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(metadata parse fallback)
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(metadata parse fallback)
             return (String(body.utf8.count), "0", "0", "")
         }
         let messages = object["messages"] as? [Any]
@@ -1237,7 +1237,7 @@ final class IrohRelayRequestHandler: Sendable {
     ) -> String? {
         for dataPayload in sseDataPayloads(from: event) {
             guard let data = dataPayload.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(error SSE parse skip)
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(error SSE parse skip)
                 continue
             }
             if let message = errorMessage(fromJSONObject: object) {
@@ -1408,7 +1408,7 @@ final class IrohRelayRequestHandler: Sendable {
         let message: String
         if let body,
            let data = body.data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(error body parse fallback)
+           let object = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(error body parse fallback)
            let parsed = errorMessage(fromJSONObject: object) {
             message = parsed
         } else if let body,

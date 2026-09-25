@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 // MARK: - Agent Deck (PR 1 — "Say who is answering")
 //
@@ -558,7 +559,7 @@ final class AgentDeckSwitcher {
 
     private static func hermesGatewayBaseURL(_ settingsManager: SettingsManager) -> URL {
         URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8642")!
+            ?? URL(staticString: "http://127.0.0.1:8642")
     }
 
     private static func hermesBearerToken(_ settingsManager: SettingsManager) -> String? {
@@ -568,7 +569,7 @@ final class AgentDeckSwitcher {
 
     private static func piAgentGatewayBaseURL(_ settingsManager: SettingsManager) -> URL {
         URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8765")!
+            ?? URL(staticString: "http://127.0.0.1:8765")
     }
 
     private static func piAgentBearerToken(_ settingsManager: SettingsManager) -> String? {

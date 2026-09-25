@@ -455,7 +455,7 @@ final class OpenBurnBarRuntimeContext {
         managedRuntimeProbeTask = Task {
             if self.settingsManager.launchHermesWithOpenBurnBar {
                 let baseURL = URL(string: self.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                    ?? URL(string: "http://127.0.0.1:8642")!
+                    ?? URL(staticString: "http://127.0.0.1:8642")
                 let bearerToken = self.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
                 _ = await HermesRuntimeLauncher().openHermesAndGateway(
                     baseURL: baseURL,
@@ -465,7 +465,7 @@ final class OpenBurnBarRuntimeContext {
             }
             if self.settingsManager.launchPiAgentsWithOpenBurnBar {
                 let baseURL = URL(string: self.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                    ?? URL(string: "http://127.0.0.1:8765")!
+                    ?? URL(staticString: "http://127.0.0.1:8765")
                 let bearerToken = self.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
                 let preferred = self.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
                 let redisRaw = self.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)

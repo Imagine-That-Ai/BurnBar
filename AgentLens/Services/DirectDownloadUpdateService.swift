@@ -50,15 +50,14 @@ final class DirectDownloadUpdateChecker {
     static let oneClickSourceUpdateKey = "updates.oneClickSourceUpdate"
 
     private static let feedURLKey = "OpenBurnBarDirectUpdateFeedURL"
-    private nonisolated static let repoSlug = "Imagine-That-Ai/BurnBar"
     /// Pre-verification defaults key. The legacy checker wrote it before
     /// `runModal`, permanently muting a build after one "Later". It is removed
     /// on start so previously muted machines are prompted again.
     private static let legacyPromptedBuildKey = "OpenBurnBarLastPromptedDirectUpdateBuild"
     private static let defaultFeedURL =
-        URL(string: "https://downloads.burnbar.ai/latest-macos.json")!
+        URL(staticString: "https://downloads.burnbar.ai/latest-macos.json")
     private static let releasesPageURL =
-        URL(string: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest")!
+        URL(staticString: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest")
     private static let recheckInterval: TimeInterval = 24 * 60 * 60
 
     @ObservationIgnored private var hasStartedAutomaticChecks = false
@@ -221,7 +220,7 @@ final class DirectDownloadUpdateChecker {
     }
 
     private nonisolated static func resolvePrereleaseFeedURL() async throws -> URL {
-        let url = URL(string: "https://api.github.com/repos/\(repoSlug)/releases?per_page=10")!
+        let url = URL(staticString: "https://api.github.com/repos/Imagine-That-Ai/BurnBar/releases?per_page=10")
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("OpenBurnBar-Updater", forHTTPHeaderField: "User-Agent")

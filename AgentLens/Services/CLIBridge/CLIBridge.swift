@@ -57,7 +57,7 @@ final class CLIBridge: ObservableObject {
     /// Non-blocking probe for Hermes gateway API availability. Does not set `detectedBackend`.
     /// Also fetches the current model name from the models endpoint.
     func probeHermesAvailability(
-        baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
+        baseURL: URL = URL(staticString: "http://127.0.0.1:8642"),
         bearerToken: String? = nil
     ) async {
         let result = await Self.probeHermes(
@@ -274,7 +274,7 @@ final class CLIBridge: ObservableObject {
 
     /// Streams assistant text and tool-use events from Hermes gateway API (OpenAI-compatible SSE).
     func chatHermes(
-        baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
+        baseURL: URL = URL(staticString: "http://127.0.0.1:8642"),
         systemPrompt: String,
         history: [ChatMessageRecord],
         bearerToken: String? = nil,

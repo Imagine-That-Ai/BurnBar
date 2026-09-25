@@ -1,13 +1,9 @@
 {
   "note": "Force-unwrap (!) site budget across AgentLens/, OpenBurnBarMobile/, OpenBurnBarCore/Sources/, OpenBurnBarDaemon/Sources/, OpenBurnBarKeyboard/, OpenBurnBarWidget/. Shrink-only: count may only decrease as sites are removed. Excludes try! and as! (governed by force_try / force_cast) and implicitly-unwrapped optional type declarations (governed by implicitly_unwrapped_optional). String interpolation expressions are counted (executable code). Regenerate via scripts/debt/check-force-unwrap-budget.sh --update.",
-  "total": 212,
+  "total": 129,
   "files": [
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift",
-      "count": 8
-    },
-    {
-      "path": "OpenBurnBarMobile/Views/Store/CloudStoreView.swift",
       "count": 8
     },
     {
@@ -20,10 +16,6 @@
     },
     {
       "path": "AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSettingsView+Rendering.swift",
-      "count": 5
-    },
-    {
-      "path": "AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSupport.swift",
       "count": 5
     },
     {
@@ -43,18 +35,6 @@
       "count": 4
     },
     {
-      "path": "AgentLens/Services/DirectDownloadUpdateService.swift",
-      "count": 3
-    },
-    {
-      "path": "AgentLens/Services/ProviderQuota/FactoryLoginHelper.swift",
-      "count": 3
-    },
-    {
-      "path": "AgentLens/Views/Chat/ChatSessionControllerBackendGatewayRouting.swift",
-      "count": 3
-    },
-    {
       "path": "AgentLens/Views/SessionLogs/SessionLogsView+Filtering.swift",
       "count": 3
     },
@@ -71,87 +51,11 @@
       "count": 3
     },
     {
-      "path": "OpenBurnBarMobile/Views/Aurora/WallpaperGeneratorView.swift",
-      "count": 3
-    },
-    {
-      "path": "AgentLens/App/AgentLensApp+LiveServices.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/PetCompanion/Chat/PetChatProvider.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Services/CLIBridge/CLIBridge.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Services/CloudSync/HermesRelayHostService.swift",
-      "count": 2
-    },
-    {
       "path": "AgentLens/Services/ContextPackService.swift",
       "count": 2
     },
     {
-      "path": "AgentLens/Services/CursorConnector/CursorConnectorManager.swift",
-      "count": 2
-    },
-    {
       "path": "AgentLens/Services/DataStore/ConversationStore+Chat.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Services/HermesRealtimeRelayHostClient.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Services/HermesRuntimeLauncher.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Services/HomeAssistant/HomeAssistantBlueprintInstaller.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Services/IrohRelay/IrohRelayRequestHandler.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Services/ManagedAgentRuntime/ManagedAgentRuntime.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Services/OpenBurnBarStartupRecovery.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Services/ProviderUsageAPI/OpenRouterUsageAPI.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Views/Chat/DashboardChatWorkspaceToolbar.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Views/Chat/HermesRuntimeGate.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Views/Insights/InsightsMacEnvironment.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Views/Settings/AccountSettingsView.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Views/Settings/ChatGatewaySettingsView.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Views/Settings/CloudStoreSettingsView.swift",
       "count": 2
     },
     {
@@ -167,10 +71,6 @@
       "count": 2
     },
     {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/FusionSessionSpend.swift",
-      "count": 2
-    },
-    {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarLinuxSecurity/LinuxDesktopOwnerAuthenticator.swift",
       "count": 2
     },
@@ -180,6 +80,10 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarMemoryExport/MemoryExporter.swift",
+      "count": 2
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarUsageModels/FusionSessionSpend.swift",
       "count": 2
     },
     {
@@ -195,12 +99,8 @@
       "count": 2
     },
     {
-      "path": "OpenBurnBarMobile/Views/You/SettingsHubView.swift",
+      "path": "OpenBurnBarMobile/Views/Store/CloudStoreView.swift",
       "count": 2
-    },
-    {
-      "path": "AgentLens/Services/CloudSync/PiAgentCloudRelayHostService.swift",
-      "count": 1
     },
     {
       "path": "AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
@@ -215,26 +115,6 @@
       "count": 1
     },
     {
-      "path": "AgentLens/Services/ProviderUsageAPI/GitHubCopilotUsageAPI.swift",
-      "count": 1
-    },
-    {
-      "path": "AgentLens/Services/SmartHub/PixelClockFirmwareFlasher.swift",
-      "count": 1
-    },
-    {
-      "path": "AgentLens/Views/Chat/ChatPanel.swift",
-      "count": 1
-    },
-    {
-      "path": "AgentLens/Views/Chat/ChatSessionController+SearchSend.swift",
-      "count": 1
-    },
-    {
-      "path": "AgentLens/Views/Chat/ChatSessionControllerTextExpansionDrafts.swift",
-      "count": 1
-    },
-    {
       "path": "AgentLens/Views/Chat/FusionSpend/FusionReceiptModalModel.swift",
       "count": 1
     },
@@ -243,15 +123,11 @@
       "count": 1
     },
     {
-      "path": "AgentLens/Views/Components/UpdateBannerCard.swift",
-      "count": 1
-    },
-    {
       "path": "AgentLens/Views/ComputerUse/ComputerUseSettingsView.swift",
       "count": 1
     },
     {
-      "path": "AgentLens/Views/Onboarding/HermesSetupWizardController.swift",
+      "path": "AgentLens/Views/Insights/InsightsMacEnvironment.swift",
       "count": 1
     },
     {
@@ -263,39 +139,15 @@
       "count": 1
     },
     {
+      "path": "AgentLens/Views/Settings/AccountSwitcher/AccountSwitcherSupport.swift",
+      "count": 1
+    },
+    {
       "path": "AgentLens/Views/Settings/AlertsAndNotificationsViews.swift",
       "count": 1
     },
     {
-      "path": "AgentLens/Views/Settings/MemoryMCPWalkthroughView.swift",
-      "count": 1
-    },
-    {
       "path": "AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift",
-      "count": 1
-    },
-    {
-      "path": "AgentLens/Views/Settings/UpdatesSettingsView.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/ComputerUseOpenTimestampsClient.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarHermes/HermesAtomURL.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/Adapters/AnthropicInsightAdapter.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/Adapters/OllamaInsightAdapter.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarInsights/Services/Adapters/OpenAIInsightAdapter.swift",
       "count": 1
     },
     {
@@ -315,11 +167,7 @@
       "count": 1
     },
     {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/EscrowModels.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/TokenUsage.swift",
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/URL+StaticString.swift",
       "count": 1
     },
     {
@@ -343,31 +191,7 @@
       "count": 1
     },
     {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/AnthropicCredentialProbe.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/CodexQuotaAdapter.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/KimiQuotaAdapter.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/OllamaQuotaAdapter.swift",
-      "count": 1
-    },
-    {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/OpenBurnBarQuotaAdapters.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/WarpAPIFetcher.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/XAIQuotaAdapter.swift",
       "count": 1
     },
     {
@@ -375,11 +199,15 @@
       "count": 1
     },
     {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ClaudeInteractiveHandoffService.swift",
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarUsageModels/TokenUsage.swift",
       "count": 1
     },
     {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ElderWandWebTools.swift",
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarVaultModels/EscrowModels.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ClaudeInteractiveHandoffService.swift",
       "count": 1
     },
     {
@@ -392,10 +220,6 @@
     },
     {
       "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarHTTPGatewayServer.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarLiveModelCatalog.swift",
       "count": 1
     },
     {
@@ -423,10 +247,6 @@
       "count": 1
     },
     {
-      "path": "OpenBurnBarMobile/Services/AssistantModelCatalog.swift",
-      "count": 1
-    },
-    {
       "path": "OpenBurnBarMobile/Services/ChartStudio/TrendDigestCacheStore.swift",
       "count": 1
     },
@@ -439,19 +259,15 @@
       "count": 1
     },
     {
-      "path": "OpenBurnBarMobile/Services/HermesRuntimeStore.swift",
-      "count": 1
-    },
-    {
-      "path": "OpenBurnBarMobile/Services/HermesService.swift",
-      "count": 1
-    },
-    {
       "path": "OpenBurnBarMobile/Services/MobileChatHistoryStore.swift",
       "count": 1
     },
     {
       "path": "OpenBurnBarMobile/Services/PiService.swift",
+      "count": 1
+    },
+    {
+      "path": "OpenBurnBarMobile/Views/Aurora/WallpaperGeneratorView.swift",
       "count": 1
     },
     {

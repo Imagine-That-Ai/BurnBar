@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Managed Agent Runtime Kind
 
@@ -20,8 +21,8 @@ enum ManagedAgentRuntimeKind: String, Hashable, CaseIterable, Sendable {
     /// configured a custom endpoint.
     var defaultGatewayBaseURL: URL {
         switch self {
-        case .hermes: return URL(string: "http://127.0.0.1:8642")!
-        case .piAgent: return URL(string: "http://127.0.0.1:8765")!
+        case .hermes: return URL(staticString: "http://127.0.0.1:8642")
+        case .piAgent: return URL(staticString: "http://127.0.0.1:8765")
         }
     }
 
