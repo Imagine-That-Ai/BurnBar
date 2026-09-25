@@ -56,7 +56,7 @@ final class AnalyticsTaxonomyGovernanceTests: XCTestCase {
     /// Backtick-wrapped tokens of the form `surface.object.action` (lowercase,
     /// dot-separated, snake within a segment) — the shape registered events take in
     /// the doc's tables. Mirrors the wire-name shape (`AnalyticsName.eventPattern`).
-    private static let registeredTokenPattern = "`([a-z0-9]+(\\.[a-z0-9_]+)+)`"
+    private static let registeredTokenPattern = "`([a-z0-9]+(_[a-z0-9]+)*(\\.[a-z0-9_]+)+)`"
 
     private static func registeredWireNames(inTaxonomy text: String) -> Set<String> {
         guard let re = try? NSRegularExpression(pattern: registeredTokenPattern) else { return [] }
