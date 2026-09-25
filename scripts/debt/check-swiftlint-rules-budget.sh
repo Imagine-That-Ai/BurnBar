@@ -22,7 +22,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-BASELINE="budgets/swiftlint-rules-baseline.json"
 MODE="${1:-}"
 
 SWIFTLINT_BIN="${SWIFTLINT_BIN:-swiftlint}"

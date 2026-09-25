@@ -19,7 +19,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-BASELINE="budgets/xctskip-baseline.json"
 MODE="${1:-}"
 
 ROOTS=(AgentLensTests OpenBurnBarMobileTests OpenBurnBarCore OpenBurnBarDaemon)
