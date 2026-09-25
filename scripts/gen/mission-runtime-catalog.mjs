@@ -446,7 +446,7 @@ emitOrCheck(
   "windows/app/OpenBurnBar.App.Presentation/Catalog/MissionRuntimeCatalog.generated.cs",
   csharp,
 );
-emitOrCheck("functions/src/generated/missionRuntimeCatalog.generated.ts", ts);
+emitOrCheck("functions-sync/src/generated/missionRuntimeCatalog.generated.ts", ts);
 
 const rulesPath = path.join(repoRoot, "firestore.rules");
 let rules = readFileSync(rulesPath, "utf8");

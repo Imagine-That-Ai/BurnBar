@@ -18,13 +18,17 @@ const EXCLUDED_PREFIXES = [
   ".swiftpm/",
   "Vendor/",
   "artifacts/",
-  "functions/src/types/generated/",
+  "packages/functions-shared/src/types/generated/",
   "android/app/src/main/assets/mermaid/",
   "OpenBurnBarMobile/Resources/Mermaid/",
   "tools/type-debt/fixtures/",
 ];
 const DEFAULT_SCAN_ROOTS = [
   "functions/src",
+  "functions-identity/src",
+  "functions-sync/src",
+  "functions-media/src",
+  "packages/functions-shared/src",
   "extensions",
   "services",
   "website/src",
