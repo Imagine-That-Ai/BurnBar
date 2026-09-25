@@ -2023,10 +2023,10 @@ for (const receiver of [
 for (const relayLogSurface of [
   "AgentLens/Services/IrohRelay/IrohRelayRequestHandler.swift",
   "AgentLens/Services/IrohRelay/HermesIrohRelayHostClient.swift",
-  "AgentLens/Services/IrohRelay/IrohRelayKeyStore.swift",
+  "AgentLens/Services/IrohRelay/IrohRelayKeyStore+AgentLens.swift",
   "AgentLens/Services/IrohRelay/IrohPairingKeyStore.swift",
   "OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift",
-  "OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger.swift",
+  "OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger+Mobile.swift",
 ]) {
   assertNotIncludes(
     relayLogSurface,

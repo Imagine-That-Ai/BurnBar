@@ -4,6 +4,7 @@ import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
 import OpenBurnBarAssistantModels
+import OpenBurnBarComputerUseCore
 import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import os
@@ -139,7 +140,7 @@ extension CLIAgentMissionDispatcher {
         groupRequest["groupId"] = groupID
         groupRequest["deviceId"] = deviceId
         _ = try await ComputerUseSecurityCallableClient.createCliAgentMissionGroup(
-            payload: ComputerUseSecurityCallableClient.sendableJSONPayload(groupRequest),
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(groupRequest),
             deviceId: deviceId
         )
         var leaves: [[String: Any]] = []
@@ -231,7 +232,7 @@ extension CLIAgentMissionDispatcher {
                     parent["siblings"] = Array(slice.dropFirst())
                 }
                 _ = try await ComputerUseSecurityCallableClient.createCliAgentMission(
-                    payload: ComputerUseSecurityCallableClient.sendableJSONPayload(parent),
+                    payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(parent),
                     deviceId: deviceId
                 )
             }

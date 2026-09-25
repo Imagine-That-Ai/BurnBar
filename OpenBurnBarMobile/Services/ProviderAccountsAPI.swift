@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFunctions
+import OpenBurnBarComputerUseCore
 import OpenBurnBarKernel
 import OpenBurnBarQuota
 
@@ -153,7 +154,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             }
         }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(
             provider: providerID.rawValue,
             accountID: accountID
         )
@@ -198,7 +199,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             payload["deviceDisplayName"] = deviceDisplayName
         }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(
             provider: providerID.rawValue,
             accountID: accountID
         )
@@ -239,7 +240,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             payload["deviceDisplayName"] = deviceDisplayName
         }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(
             provider: providerID.rawValue,
             accountID: accountID
         )
@@ -344,7 +345,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         if let sourceDeviceID, sourceDeviceID.isEmpty == false { payload["sourceDeviceID"] = sourceDeviceID }
         if let deviceDisplayName, deviceDisplayName.isEmpty == false { payload["deviceDisplayName"] = deviceDisplayName }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(
             provider: providerID.rawValue,
             accountID: accountID
         )
@@ -366,7 +367,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
 
     func deleteHostedQuotaCredentials(accountID: String = "codex_default") async throws {
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "codex", accountID: accountID)
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "codex", accountID: accountID)
         _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
             "deleteHostedQuotaCredentials",
             deviceId: deviceId,
@@ -382,7 +383,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         if let isDefault { payload["isDefault"] = isDefault }
         if let disabled { payload["disabled"] = disabled }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "account", accountID: accountID)
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "account", accountID: accountID)
         let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
             "updateProviderAccount",
             deviceId: deviceId,
@@ -401,7 +402,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
 
     func deleteProviderAccount(accountID: String) async throws {
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "account", accountID: accountID)
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "account", accountID: accountID)
         _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
             "deleteProviderAccount",
             deviceId: deviceId,

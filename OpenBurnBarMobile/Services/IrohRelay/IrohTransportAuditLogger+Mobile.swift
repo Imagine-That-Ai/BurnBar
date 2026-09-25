@@ -1,15 +1,22 @@
 import Foundation
-@preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 
+/// Append-only audit logger for iroh transport events. Mirrors the
+/// `IrohTransportAuditEventDoc` schema in `functions/src/types.ts`.
+/// Writes to `/users/{uid}/iroh_audit_events/{eventId}`. Read-only from the
+/// client side (rules deny update + delete).
+///
+/// Wave 3.4 iOS back: the Firestore writer stays in-app (Core is
+/// Firebase-free); the audit event contract (`IrohTransportAuditLogging`)
+/// is shared from OpenBurnBarIrohRelay.
 final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, Sendable {
     static let shared = FirestoreIrohAuditLogger()
 
     private let firestoreProvider: @Sendable () -> Firestore
-    // Fresh per access: ISO8601DateFormatter is not Sendable/thread-safe; audit
-    // logging is low-frequency so a shared static would be a needless data race.
+    /// Computed (not stored) so the class stays genuinely `Sendable`:
+    /// `ISO8601DateFormatter` is a non-`Sendable` reference type, and a fresh
+    /// instance per format call is race-free with no shared mutable state.
     private var isoFormatter: ISO8601DateFormatter {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -36,7 +43,7 @@ final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, Sendable {
         let eventId = UUID().uuidString
         let now = Date()
         let expireAt = now.addingTimeInterval(auditTTLSeconds)
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "id": eventId,
             "connectionId": connectionId,
             "eventType": event.rawValue,
@@ -62,7 +69,9 @@ final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, Sendable {
                 .document(eventId)
                 .setData(payload, merge: false)
         } catch {
-            AppLogger.network.silentFailure("hermes_iroh_audit_write_failed", error: error)
+            #if DEBUG
+            NSLog("hermes_iroh_audit_write_failed: \(String(describing: type(of: error)))")
+            #endif
         }
     }
 }

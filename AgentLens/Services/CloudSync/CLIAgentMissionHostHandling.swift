@@ -325,7 +325,7 @@ extension CLIAgentMissionRequestListener {
         // region isolation. All mutation of the mu* vars ends above this line.
         // sendableJSONPayload: the frozen dictionary itself must have a
         // Sendable value type to cross into the claim/evaluate closures.
-        let data = ComputerUseSecurityCallableClient.sendableJSONPayload(muData)
+        let data = ComputerUseSecurityCallableSupport.sendableJSONPayload(muData)
         let missionGroupContext = muMissionGroupContext
         let requestedRuntime = muRequestedRuntime
         let requestedModelID = muRequestedModelID
@@ -363,7 +363,7 @@ extension CLIAgentMissionRequestListener {
                 selectedRuntimeName: backend.displayName,
                 selectedModelID: requestedModelID,
                 approvalRequestId: nil,
-                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
+                sealedStatePayload: ComputerUseSecurityCallableSupport.sendableJSONPayload(sealedState)
             )
             claimedMissions[document.documentID] = .init(hostWriteNonce: hostWriteNonce, deviceId: accountManager.deviceId)
             if missionEventSequences[document.documentID] == nil {
@@ -483,7 +483,7 @@ extension CLIAgentMissionRequestListener {
                         deviceId: handle.deviceId,
                         status: "starting",
                         hostWriteNonce: handle.hostWriteNonce,
-                        sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
+                        sealedStatePayload: ComputerUseSecurityCallableSupport.sendableJSONPayload(sealedState)
                     )
                 }
             } catch {

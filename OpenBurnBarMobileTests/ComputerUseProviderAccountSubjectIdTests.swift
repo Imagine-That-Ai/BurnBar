@@ -1,7 +1,8 @@
 import XCTest
+import OpenBurnBarComputerUseCore
 @testable import OpenBurnBarMobile
 
-/// Locks the exact behavior of `ComputerUseSecurityCallableClient.providerAccountSubjectId`
+/// Locks the exact behavior of `ComputerUseSecurityCallableSupport.providerAccountSubjectId`
 /// across the audit-wave-4 force-unwrap removal (item 9, site 3). The helper is pure, so these
 /// assertions must pass byte-for-byte both before and after the refactor:
 /// - nil / empty / whitespace-only account IDs fall back to `<provider>_default`.
@@ -11,28 +12,28 @@ final class ComputerUseProviderAccountSubjectIdTests: XCTestCase {
 
     func testNilAccountIDFallsBackToProviderDefault() {
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "codex", accountID: nil),
+            ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "codex", accountID: nil),
             "codex_default"
         )
     }
 
     func testEmptyAccountIDFallsBackToProviderDefault() {
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "codex", accountID: ""),
+            ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "codex", accountID: ""),
             "codex_default"
         )
     }
 
     func testWhitespaceOnlyAccountIDFallsBackToProviderDefault() {
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "codex", accountID: "  "),
+            ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "codex", accountID: "  "),
             "codex_default"
         )
     }
 
     func testPlainAccountIDIsUsedDirectly() {
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "codex", accountID: "acct"),
+            ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "codex", accountID: "acct"),
             "acct"
         )
     }
@@ -41,14 +42,14 @@ final class ComputerUseProviderAccountSubjectIdTests: XCTestCase {
         // The original " acct " (not a pre-trimmed copy) reaches the sanitizer; its
         // whitespace becomes hyphens that the sanitizer's edge-trim removes.
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "codex", accountID: " acct "),
+            ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "codex", accountID: " acct "),
             "acct"
         )
     }
 
     func testSanitizerFallbackWhenAccountIDSanitizesToEmpty() {
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "OpenAI", accountID: "!!!"),
+            ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "OpenAI", accountID: "!!!"),
             "openai_default"
         )
     }

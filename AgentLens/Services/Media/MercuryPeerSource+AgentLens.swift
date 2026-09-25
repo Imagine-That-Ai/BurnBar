@@ -22,6 +22,10 @@ import OpenBurnBarMedia
 /// Capabilities default to `MercuryPeer.iphoneFallbackCapabilities` until
 /// the first heartbeat arrives — Macs always assume an online iPhone can
 /// at least receive files and incoming calls.
+///
+/// Wave 3.4 macOS back: the registry/cadence-driven resolver stays in-app;
+/// heartbeat-capability parsing is shared via
+/// `MercuryPeer.advertisedFeatures` (OpenBurnBarMedia).
 @MainActor
 final class MercuryPeerSource: ObservableObject {
     @Published private(set) var peer: MercuryPeer?
@@ -160,7 +164,7 @@ final class MercuryPeerSource: ObservableObject {
         guard let heartbeat else {
             return MercuryPeer.iphoneFallbackCapabilities
         }
-        let parsed = Set(heartbeat.capabilities.compactMap { MercuryPeer.Feature(rawValue: $0) })
+        let parsed = MercuryPeer.advertisedFeatures(from: heartbeat.capabilities)
         return parsed.isEmpty ? MercuryPeer.iphoneFallbackCapabilities : parsed
     }
 }

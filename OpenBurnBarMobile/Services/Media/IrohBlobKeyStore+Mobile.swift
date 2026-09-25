@@ -1,18 +1,25 @@
 import Foundation
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 import Security
 
-/// Persists the iroh endpoint's 32-byte secret key in the iOS Keychain.
-/// Same trust boundary as `HermesConnectionSecretStore`: this-device-only,
-/// no iCloud sync, and regenerated if the item is missing or malformed.
-final class IrohRelayKeyStore: Sendable {
-    static let shared = IrohRelayKeyStore()
+/// iOS-side persistence of the iroh BLOB endpoint's 32-byte secret key.
+/// Distinct Keychain entry from the chat secret (`IrohRelayKeyStore`) for
+/// the same reason the Mac splits them: two iroh endpoints need two
+/// NodeIds so discovery can resolve each ALPN to its own physical
+/// listener.
+///
+/// Wave 3.4 iOS back: plain-query Keychain plumbing stays in-app; the
+/// secret material itself (`IrohSecretKeyMaterial`) is shared from
+/// OpenBurnBarIrohRelay.
+final class IrohBlobKeyStore: Sendable {
+    static let shared = IrohBlobKeyStore()
 
     private let service: String
     private let account: String
 
     init(
-        service: String = "ai.openburnbar.iroh-secret",
+        service: String = "ai.openburnbar.iroh-blob-secret",
         account: String = "primary"
     ) {
         self.service = service
@@ -43,12 +50,12 @@ final class IrohRelayKeyStore: Sendable {
         case errSecItemNotFound:
             return nil
         default:
-            throw IrohRelayKeyStoreError.keychainStatus(status)
+            throw IrohBlobKeyStoreError.keychainStatus(status)
         }
     }
 
     private func saveToKeychain(_ secret: IrohSecretKeyMaterial) throws {
-        let attributes: [String: Any] = [
+        let attributes: MobileJSONObject = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
@@ -61,31 +68,28 @@ final class IrohRelayKeyStore: Sendable {
             return
         case errSecDuplicateItem:
             let query = KeychainGenericPasswordQuery.base(service: service, account: account)
-            let update: [String: Any] = [
+            let update: MobileJSONObject = [
                 kSecValueData as String: secret.raw,
                 kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             ]
             let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
             if updateStatus != errSecSuccess {
-                throw IrohRelayKeyStoreError.keychainStatus(updateStatus)
+                throw IrohBlobKeyStoreError.keychainStatus(updateStatus)
             }
         default:
-            throw IrohRelayKeyStoreError.keychainStatus(status)
+            throw IrohBlobKeyStoreError.keychainStatus(status)
         }
     }
 
     private func deleteFromKeychain() throws {
         let query = KeychainGenericPasswordQuery.base(service: service, account: account)
         let status = SecItemDelete(query as CFDictionary)
-        switch status {
-        case errSecSuccess, errSecItemNotFound:
-            return
-        default:
-            throw IrohRelayKeyStoreError.keychainStatus(status)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            throw IrohBlobKeyStoreError.keychainStatus(status)
         }
     }
 }
 
-enum IrohRelayKeyStoreError: Error, Equatable {
+enum IrohBlobKeyStoreError: Error, Equatable {
     case keychainStatus(OSStatus)
 }

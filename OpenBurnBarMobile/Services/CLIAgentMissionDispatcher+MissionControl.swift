@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarComputerUseCore
 import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import os
@@ -189,7 +190,7 @@ extension CLIAgentMissionDispatcher {
                     requestId: requestID,
                     deviceId: deviceId,
                     ceilingDigest: digest,
-                    requestedGrant: ComputerUseSecurityCallableClient.sendableJSONPayload(requestedGrant)
+                    requestedGrant: ComputerUseSecurityCallableSupport.sendableJSONPayload(requestedGrant)
                 )
             }
         }
@@ -225,7 +226,7 @@ extension CLIAgentMissionDispatcher {
         try await ComputerUseSecurityCallableClient.cancelCliAgentMission(
             requestId: requestID,
             deviceId: deviceId,
-            sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
+            sealedStatePayload: ComputerUseSecurityCallableSupport.sendableJSONPayload(sealedState)
         )
     }
 

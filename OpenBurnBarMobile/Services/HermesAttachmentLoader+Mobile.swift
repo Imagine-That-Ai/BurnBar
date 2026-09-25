@@ -12,6 +12,12 @@ import OpenBurnBarKernel
 /// Builds `HermesAttachment` records from PhotosPicker, fileImporter, drag,
 /// camera, and clipboard sources on iPhone and iPad. Mirrors the macOS
 /// loader so the wire format stays identical regardless of platform.
+///
+/// Wave 3.4 iOS back: every entry point is UIKit/PhotosUI-bound so the
+/// loader stays in-app; the platform-agnostic shaping (size limits, safe
+/// filenames, text previews) lives in
+/// `HermesAttachmentLoaderSupport` (OpenBurnBarAssistantModels), shared
+/// with the macOS back.
 enum HermesAttachmentLoader {
     enum LoaderError: Error, LocalizedError {
         case unreadableFile(String)
@@ -56,7 +62,7 @@ enum HermesAttachmentLoader {
         try enforceSizeLimit(name: displayName, kind: kind, byteSize: byteSize)
 
         let attachmentID = UUID().uuidString
-        let safeName = safeFilename(displayName)
+        let safeName = HermesAttachmentLoaderSupport.safeFilename(displayName)
         let storedRelative = "attachments/\(attachmentID)-\(safeName)"
         let storedURL = workspace.appendingPathComponent(storedRelative)
         if fm.fileExists(atPath: storedURL.path) {
@@ -64,7 +70,7 @@ enum HermesAttachmentLoader {
         }
         try fm.copyItem(at: url, to: storedURL)
 
-        let preview = makeTextPreview(forKind: kind, fileURL: storedURL)
+        let preview = HermesAttachmentLoaderSupport.textPreview(forKind: kind, fileURL: storedURL)
         let thumbnail = makeThumbnail(forKind: kind, fileURL: storedURL)
 
         return HermesAttachment(
@@ -93,7 +99,7 @@ enum HermesAttachmentLoader {
         let displayName = baseName.hasSuffix(".jpg") || baseName.hasSuffix(".jpeg") || baseName.hasSuffix(".png") || baseName.hasSuffix(".heic")
             ? baseName
             : "\(baseName).jpg"
-        let safeName = safeFilename(displayName)
+        let safeName = HermesAttachmentLoaderSupport.safeFilename(displayName)
         let storedRelative = "attachments/\(attachmentID)-\(safeName)"
         let storedURL = workspace.appendingPathComponent(storedRelative)
 
@@ -154,7 +160,7 @@ enum HermesAttachmentLoader {
             throw LoaderError.workspaceUnavailable
         }
         let attachmentID = UUID().uuidString
-        let safeName = safeFilename(displayName)
+        let safeName = HermesAttachmentLoaderSupport.safeFilename(displayName)
         let storedRelative = "attachments/\(attachmentID)-\(safeName)"
         let storedURL = workspace.appendingPathComponent(storedRelative)
 
@@ -197,7 +203,7 @@ enum HermesAttachmentLoader {
         try enforceSafeAttachmentForAgentImport(name: displayName, mimeType: mime, byteSize: opened.data.count)
         try enforceSizeLimit(name: displayName, kind: kind, byteSize: opened.data.count)
 
-        let safeName = safeFilename(displayName)
+        let safeName = HermesAttachmentLoaderSupport.safeFilename(displayName)
         let storedRelative = "attachments/\(opened.attachmentId)-\(safeName)"
         let storedURL = workspace.appendingPathComponent(storedRelative)
         if FileManager.default.fileExists(atPath: storedURL.path) {
@@ -205,7 +211,7 @@ enum HermesAttachmentLoader {
         }
         try opened.data.write(to: storedURL, options: [.atomic])
 
-        let preview = makeTextPreview(forKind: kind, fileURL: storedURL)
+        let preview = HermesAttachmentLoaderSupport.textPreview(forKind: kind, fileURL: storedURL)
         let thumbnail = makeThumbnail(forKind: kind, fileURL: storedURL)
         return HermesAttachment(
             id: opened.attachmentId,
@@ -226,15 +232,7 @@ enum HermesAttachmentLoader {
         kind: HermesAttachmentKind,
         byteSize: Int
     ) throws {
-        let limit: Int
-        switch kind {
-        case .image: limit = HermesAttachmentLimits.maxImageBytes
-        case .pdf: limit = HermesAttachmentLimits.maxImageBytes
-        case .audio: limit = HermesAttachmentLimits.maxAudioBytes
-        case .textDocument: limit = HermesAttachmentLimits.maxTextDocumentBytes
-        case .video, .generic: limit = HermesAttachmentLimits.maxGenericBytes
-        }
-        if byteSize > limit {
+        if byteSize > HermesAttachmentLoaderSupport.sizeLimit(for: kind) {
             throw LoaderError.tooLarge(name: name, kind: kind, byteSize: byteSize)
         }
     }
@@ -286,22 +284,6 @@ enum HermesAttachmentLoader {
             return mime
         }
         return "application/octet-stream"
-    }
-
-    private static func safeFilename(_ name: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
-        let scalars = name.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
-        let trimmed = String(scalars).prefix(80)
-        return trimmed.isEmpty ? "file" : String(trimmed)
-    }
-
-    private static func makeTextPreview(forKind kind: HermesAttachmentKind, fileURL: URL) -> String? {
-        guard kind == .textDocument else { return nil }
-        guard let data = try? Data(contentsOf: fileURL, options: [.alwaysMapped]) else { return nil }
-        let head = data.prefix(HermesAttachmentLimits.textPreviewBytes)
-        if let utf8 = String(data: head, encoding: .utf8) { return utf8 }
-        if let latin1 = String(data: head, encoding: .isoLatin1) { return latin1 }
-        return nil
     }
 
     private static func makeThumbnail(forKind kind: HermesAttachmentKind, fileURL: URL) -> Data? {

@@ -4,11 +4,18 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
+import OpenBurnBarComputerUseCore
 import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import UIKit
 
 /// WS4 iOS client for App Check attestation binding and escrow device trust callables.
+///
+/// Wave 3.4 iOS back: the Firebase callable surface stays in-app (Core is
+/// Firebase-free); the platform-agnostic payload shaping
+/// (`providerAccountSubjectId`, `sendableJSONPayload`) lives in
+/// `ComputerUseSecurityCallableSupport` (OpenBurnBarComputerUseCore),
+/// shared with the macOS back.
 enum ComputerUseSecurityCallableClient {
     private static let relaySenderProofProtocolVersion = "3"
 
@@ -469,7 +476,7 @@ enum ComputerUseSecurityCallableClient {
         } catch {
             nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
         }
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "deviceId": deviceId,
             "deviceName": deviceName,
             "platform": platform,
@@ -501,7 +508,7 @@ enum ComputerUseSecurityCallableClient {
         } catch {
             nonce = try await reboundHighRiskActionNonce(afterBindingConflict: error)
         }
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "deviceId": deviceId,
             "nonce": nonce,
             "trustChain": trustChain
@@ -637,7 +644,7 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func parseEscrowDeviceTrustRevocationResult(
-        _ dict: [String: Any]
+        _ dict: MobileJSONObject
     ) throws -> EscrowDeviceTrustRevocationResult {
         guard dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Escrow device trust revocation failed.")
@@ -999,7 +1006,7 @@ enum ComputerUseSecurityCallableClient {
         _ = try requireSignedInUser()
         try await bindAppCheckAttestation()
         let nonce = try await issueHighRiskActionNonce()
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "deviceId": deviceId,
             "peerNodeId": peerNodeId,
             "publicKeyBase64": publicKeyBase64,
@@ -1027,44 +1034,6 @@ enum ComputerUseSecurityCallableClient {
         guard response.ok else {
             throw ClientError.invalidResponse("Agent grant request queueing failed.")
         }
-    }
-
-    static func providerAccountSubjectId(provider: String, accountID: String?) -> String {
-        let raw: String
-        if let accountID, !accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // Preserve the ORIGINAL (untrimmed) account id; the sanitizer below
-            // collapses and edge-trims the whitespace-derived hyphens.
-            raw = accountID
-        } else {
-            raw = "\(provider)_default"
-        }
-        let sanitized = sanitizedProviderAccountSubjectFragment(raw)
-        let fallback = sanitizedProviderAccountSubjectFragment("\(provider)_default")
-        return sanitized.isEmpty ? fallback : sanitized
-    }
-
-    private static func sanitizedProviderAccountSubjectFragment(_ raw: String) -> String {
-        var collapsed = ""
-        var previousWasHyphen = false
-        for scalar in raw.lowercased().unicodeScalars {
-            let fragment: String
-            switch scalar.value {
-            case 48...57, 97...122, 95:
-                fragment = String(scalar)
-            case 45:
-                fragment = "-"
-            default:
-                fragment = "-"
-            }
-            if fragment == "-" {
-                guard !previousWasHyphen else { continue }
-                previousWasHyphen = true
-            } else {
-                previousWasHyphen = false
-            }
-            collapsed.append(fragment)
-        }
-        return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 
     private static func relaySenderKeyPublishProofSubjectId(
@@ -1160,36 +1129,6 @@ enum ComputerUseSecurityCallableClient {
             "trustedDeviceId": deviceId,
             "actionProof": actionProof
         ]
-    }
-
-    /// Narrows an untyped JSON object to a provably `Sendable` one.
-    ///
-    /// Mission payloads arrive from Firestore as `[String: Any]`, but
-    /// `callHighRiskOwnerAction` requires `Sendable`. `as? any Sendable` cannot
-    /// express that — `Sendable` is a marker protocol — so recognise the JSON
-    /// value types instead. Unrecognised values are dropped rather than
-    /// force-cast: a payload reaching the wire while carrying a non-Sendable
-    /// reference is exactly the race the requirement exists to prevent.
-    static func sendableJSONPayload(_ object: [String: Any]) -> [String: any Sendable] {
-        object.reduce(into: [String: any Sendable]()) { result, entry in
-            if let value = sendableJSONValue(entry.value) {
-                result[entry.key] = value
-            }
-        }
-    }
-
-    private static func sendableJSONValue(_ value: Any) -> (any Sendable)? {
-        switch value {
-        case let value as String: return value
-        case let value as Bool: return value
-        case let value as Int: return value
-        case let value as Double: return value
-        case let value as NSNumber: return value.doubleValue
-        case is NSNull: return nil
-        case let value as [Any]: return value.compactMap(sendableJSONValue)
-        case let value as [String: Any]: return sendableJSONPayload(value)
-        default: return nil
-        }
     }
 
     @discardableResult
@@ -1291,7 +1230,7 @@ enum ComputerUseSecurityCallableClient {
     static func publishMissionApprovalCeiling(
         requestId: String,
         deviceId: String,
-        canonical: [String: Any],
+        canonical: MobileJSONObject,
         ceilingDigest: String,
         signature: String
     ) async throws {
@@ -1303,7 +1242,7 @@ enum ComputerUseSecurityCallableClient {
             payload: [
                 "requestId": requestId,
                 "deviceId": deviceId,
-                "canonical": sendableJSONPayload(canonical),
+                "canonical": ComputerUseSecurityCallableSupport.sendableJSONPayload(canonical),
                 "ceilingDigest": ceilingDigest,
                 "signature": signature
             ]
@@ -1340,7 +1279,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_create",
             subjectId: requestId,
-            payload: sendableJSONPayload(payload.merging(["deviceId": deviceId]) { _, new in new })
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(payload.merging(["deviceId": deviceId]) { _, new in new })
         )
         guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               dict["ok"] as? Bool == true,
@@ -1358,7 +1297,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_group_create",
             subjectId: groupId,
-            payload: sendableJSONPayload(payload.merging(["deviceId": deviceId, "groupId": groupId]) { _, new in new })
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(payload.merging(["deviceId": deviceId, "groupId": groupId]) { _, new in new })
         )
         guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               dict["ok"] as? Bool == true,

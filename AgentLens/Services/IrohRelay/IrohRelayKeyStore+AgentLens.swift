@@ -14,6 +14,11 @@ import Security
 /// the pairing key never rotates (its public half is the iOS verifier root),
 /// while the iroh secret key can be regenerated to roll the NodeId without
 /// invalidating verifiers.
+///
+/// Wave 3.4 macOS back: the access-denied regenerate path is macOS Keychain
+/// behavior (`LAContext` + interaction gate + `AppLogger`), so the store
+/// stays in-app; the secret material itself (`IrohSecretKeyMaterial`) is
+/// shared from OpenBurnBarIrohRelay.
 final class IrohRelayKeyStore: Sendable {
     static let shared = IrohRelayKeyStore()
 
@@ -122,7 +127,7 @@ struct IrohRotatingKeychainSecretStore: Sendable {
 
     func save(_ data: Data) throws {
         let query = baseQuery()
-        let update: [String: Any] = [
+        let update: UntypedJSONObject = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
@@ -179,7 +184,7 @@ struct IrohRotatingKeychainSecretStore: Sendable {
         }
     }
 
-    private func baseQuery() -> [String: Any] {
+    private func baseQuery() -> UntypedJSONObject {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

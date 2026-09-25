@@ -4,11 +4,18 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 import OpenBurnBarSignalCore
 
 /// WS4 Mac client for App Check attestation binding and escrow device trust callables.
+///
+/// Wave 3.4 macOS back: the Firebase callable surface stays in-app (Core is
+/// Firebase-free); the platform-agnostic payload shaping
+/// (`providerAccountSubjectId`, `sendableJSONPayload`) lives in
+/// `ComputerUseSecurityCallableSupport` (OpenBurnBarComputerUseCore),
+/// shared with the iOS back.
 enum ComputerUseSecurityCallableClient {
     struct EscrowDeviceTrustRevocationResult: Sendable, Equatable {
         let revokedCloudVaultWrappers: Int
@@ -962,58 +969,19 @@ enum ComputerUseSecurityCallableClient {
     }
 
     static func loadOrCreateLocalDeviceId(defaults: UserDefaults = .standard) -> String {
-        OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
-        if let stored = defaults.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
+        OpenBurnBarMigration.migrateUserDefaults()
+        if let stored = defaults.string(forKey: OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
             return stored
         }
-        for legacyKey in OpenBurnBarCore.OpenBurnBarIdentity.legacyDeviceIDKeys {
+        for legacyKey in OpenBurnBarIdentity.legacyDeviceIDKeys {
             if let stored = defaults.string(forKey: legacyKey), !stored.isEmpty {
-                defaults.set(stored, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
+                defaults.set(stored, forKey: OpenBurnBarIdentity.deviceIDKey)
                 return stored
             }
         }
         let created = UUID().uuidString
-        defaults.set(created, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
+        defaults.set(created, forKey: OpenBurnBarIdentity.deviceIDKey)
         return created
-    }
-
-    /// Sanitizes provider account ids the same way `accountIDFor` does server-side.
-    static func providerAccountSubjectId(provider: String, accountID: String?) -> String {
-        let raw: String
-        if let accountID, !accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // Preserve the ORIGINAL (untrimmed) account id; the sanitizer below
-            // collapses and edge-trims the whitespace-derived hyphens.
-            raw = accountID
-        } else {
-            raw = "\(provider)_default"
-        }
-        let sanitized = sanitizedProviderAccountSubjectFragment(raw)
-        let fallback = sanitizedProviderAccountSubjectFragment("\(provider)_default")
-        return sanitized.isEmpty ? fallback : sanitized
-    }
-
-    private static func sanitizedProviderAccountSubjectFragment(_ raw: String) -> String {
-        var collapsed = ""
-        var previousWasHyphen = false
-        for scalar in raw.lowercased().unicodeScalars {
-            let fragment: String
-            switch scalar.value {
-            case 48...57, 97...122, 95:
-                fragment = String(scalar)
-            case 45:
-                fragment = "-"
-            default:
-                fragment = "-"
-            }
-            if fragment == "-" {
-                guard !previousWasHyphen else { continue }
-                previousWasHyphen = true
-            } else {
-                previousWasHyphen = false
-            }
-            collapsed.append(fragment)
-        }
-        return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 
     /// Builds nonce + trusted-device action proof fields for owner-action callables.
@@ -1060,37 +1028,6 @@ enum ComputerUseSecurityCallableClient {
             "trustedDeviceId": deviceId,
             "actionProof": actionProof
         ]
-    }
-
-    /// Narrows an untyped JSON object to a provably `Sendable` one.
-    ///
-    /// Mission payloads arrive from Firestore as `UntypedJSONObject`, but
-    /// `callHighRiskOwnerAction` deliberately requires `Sendable` (tightened by the
-    /// high-risk-owner-action security work). `as? any Sendable` cannot express that --
-    /// `Sendable` is a marker protocol and Swift rejects it in a conditional cast -- so
-    /// recognise the JSON value types instead. Anything unrecognised is dropped rather
-    /// than force-cast: a payload reaching the wire while carrying a non-Sendable
-    /// reference is exactly the race the requirement exists to prevent.
-    static func sendableJSONPayload(_ object: UntypedJSONObject) -> [String: any Sendable] {
-        object.reduce(into: [String: any Sendable]()) { result, entry in
-            if let value = sendableJSONValue(entry.value) {
-                result[entry.key] = value
-            }
-        }
-    }
-
-    private static func sendableJSONValue(_ value: Any) -> (any Sendable)? {
-        switch value {
-        case let value as String: return value
-        case let value as Bool: return value
-        case let value as Int: return value
-        case let value as Double: return value
-        case let value as NSNumber: return value.doubleValue
-        case is NSNull: return nil
-        case let value as [Any]: return value.compactMap(sendableJSONValue)
-        case let value as UntypedJSONObject: return sendableJSONPayload(value)
-        default: return nil
-        }
     }
 
     @discardableResult
@@ -1167,7 +1104,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_create",
             subjectId: requestId,
-            payload: sendableJSONPayload(payload.merging(["deviceId": deviceId]) { _, new in new })
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(payload.merging(["deviceId": deviceId]) { _, new in new })
         )
         guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               dict["ok"] as? Bool == true,
@@ -1185,7 +1122,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_group_create",
             subjectId: groupId,
-            payload: sendableJSONPayload(payload.merging(["deviceId": deviceId, "groupId": groupId]) { _, new in new })
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(payload.merging(["deviceId": deviceId, "groupId": groupId]) { _, new in new })
         )
         guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               dict["ok"] as? Bool == true,
@@ -1221,7 +1158,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_claim",
             subjectId: requestId,
-            payload: sendableJSONPayload(payload)
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(payload)
         )
         guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               dict["ok"] as? Bool == true,
@@ -1237,7 +1174,7 @@ enum ComputerUseSecurityCallableClient {
         deviceId: String,
         status: String,
         hostWriteNonce: String,
-        // `any Sendable` values: callers hold `UntypedJSONObject` mission state that
+        // `any Sendable` values: callers hold `[String: Any]` mission state that
         // crosses into this async call; requiring provably-Sendable values here
         // (via `sendableJSONPayload`) is what satisfies Swift 6 region isolation.
         sealedStatePayload: [String: any Sendable],
@@ -1258,7 +1195,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_status",
             subjectId: requestId,
-            payload: sendableJSONPayload(payload)
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(payload)
         )
         guard let dict = BurnBarJSONValue.dictionary(from: result.data), dict["ok"] as? Bool == true else {
             throw ClientError.invalidResponse("Mission status update failed.")
@@ -1278,7 +1215,7 @@ enum ComputerUseSecurityCallableClient {
             deviceId: deviceId,
             actionKind: "cli_agent_mission_append_event",
             subjectId: requestId,
-            payload: sendableJSONPayload([
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload([
                 "requestId": requestId,
                 "deviceId": deviceId,
                 "hostWriteNonce": hostWriteNonce,

@@ -138,7 +138,7 @@ require_pattern "iOS mobile rotation pickup tests" \
   OpenBurnBarMobileTests/MobileCloudVaultRotationPickupTests.swift
 require_pattern "Mac list callable callerDeviceId" \
   'listPendingCallablePayload' \
-  AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift
+  AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient+AgentLens.swift
 require_pattern "Android list callable callerDeviceId" \
   'callerDeviceId' \
   android/app/src/main/java/com/openburnbar/data/computeruse/ComputerUseSecurityCallableClient.kt

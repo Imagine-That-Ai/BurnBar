@@ -13,6 +13,10 @@ import Security
 /// Same Keychain trust model as the chat key: generic password,
 /// `WhenUnlockedThisDeviceOnly`, no iCloud sync, deleting the app removes
 /// the entry.
+///
+/// Wave 3.4 macOS back: the access-denied regenerate path is macOS Keychain
+/// behavior, so the store stays in-app; the secret material itself
+/// (`IrohSecretKeyMaterial`) is shared from OpenBurnBarIrohRelay.
 final class IrohBlobKeyStore: Sendable {
     static let shared = IrohBlobKeyStore()
 

@@ -7,6 +7,12 @@ import UniformTypeIdentifiers
 /// Loads files from disk / `NSImage` into the chat workspace and produces
 /// `HermesAttachment` metadata. Mirrors the iOS loader of the same name so
 /// the macOS / iOS / iPadOS surfaces produce identical attachments.
+///
+/// Wave 3.4 macOS back: every entry point is AppKit-bound so the loader
+/// stays in-app; the platform-agnostic shaping (size limits, safe
+/// filenames, text previews) lives in
+/// `HermesAttachmentLoaderSupport` (OpenBurnBarAssistantModels), shared
+/// with the iOS back.
 enum HermesAttachmentLoader {
     enum LoaderError: Error, LocalizedError {
         case unreadableFile(URL)
@@ -47,7 +53,7 @@ enum HermesAttachmentLoader {
         try enforceSizeLimit(name: displayName, kind: kind, byteSize: byteSize)
 
         let attachmentID = UUID().uuidString
-        let safeName = safeFilename(displayName)
+        let safeName = HermesAttachmentLoaderSupport.safeFilename(displayName)
         let storedRelative = "attachments/\(attachmentID)-\(safeName)"
         let storedURL = workspaceURL.appendingPathComponent(storedRelative)
 
@@ -56,7 +62,7 @@ enum HermesAttachmentLoader {
         }
         try fm.copyItem(at: url, to: storedURL)
 
-        let preview = makeTextPreview(forKind: kind, fileURL: storedURL)
+        let preview = HermesAttachmentLoaderSupport.textPreview(forKind: kind, fileURL: storedURL)
         let thumbnail = makeThumbnail(forKind: kind, fileURL: storedURL)
 
         return HermesAttachment(
@@ -90,7 +96,7 @@ enum HermesAttachmentLoader {
 
         let attachmentID = UUID().uuidString
         let displayName = suggestedName ?? "pasted-image-\(Int(Date().timeIntervalSince1970)).png"
-        let safeName = safeFilename(displayName)
+        let safeName = HermesAttachmentLoaderSupport.safeFilename(displayName)
         let storedRelative = "attachments/\(attachmentID)-\(safeName)"
         let storedURL = workspaceURL.appendingPathComponent(storedRelative)
         try png.write(to: storedURL)
@@ -137,15 +143,7 @@ enum HermesAttachmentLoader {
         kind: HermesAttachmentKind,
         byteSize: Int
     ) throws {
-        let limit: Int
-        switch kind {
-        case .image: limit = HermesAttachmentLimits.maxImageBytes
-        case .pdf: limit = HermesAttachmentLimits.maxImageBytes
-        case .audio: limit = HermesAttachmentLimits.maxAudioBytes
-        case .textDocument: limit = HermesAttachmentLimits.maxTextDocumentBytes
-        case .video, .generic: limit = HermesAttachmentLimits.maxGenericBytes
-        }
-        if byteSize > limit {
+        if byteSize > HermesAttachmentLoaderSupport.sizeLimit(for: kind) {
             throw LoaderError.tooLarge(name: name, kind: kind, byteSize: byteSize)
         }
     }
@@ -153,22 +151,6 @@ enum HermesAttachmentLoader {
     private static func mimeType(for url: URL) -> String {
         let type = UTType(filenameExtension: url.pathExtension)
         return type?.preferredMIMEType ?? "application/octet-stream"
-    }
-
-    private static func safeFilename(_ name: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
-        let scalars = name.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
-        let trimmed = String(scalars).prefix(80)
-        return trimmed.isEmpty ? "file" : String(trimmed)
-    }
-
-    private static func makeTextPreview(forKind kind: HermesAttachmentKind, fileURL: URL) -> String? {
-        guard kind == .textDocument else { return nil }
-        guard let data = try? Data(contentsOf: fileURL, options: [.alwaysMapped]) else { return nil } // try?-ok(optional text preview)
-        let head = data.prefix(HermesAttachmentLimits.textPreviewBytes)
-        if let utf8 = String(data: head, encoding: .utf8) { return utf8 }
-        if let latin1 = String(data: head, encoding: .isoLatin1) { return latin1 }
-        return nil
     }
 
     private static func makeThumbnail(forKind kind: HermesAttachmentKind, fileURL: URL) -> Data? {

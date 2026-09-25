@@ -7,6 +7,7 @@ import FirebaseFirestore
 import FirebaseMessaging
 import GoogleSignIn
 import OpenBurnBarKernel
+import OpenBurnBarComputerUseCore
 import OpenBurnBarLaunchServices
 import OpenBurnBarMedia
 #if canImport(Sentry)
@@ -144,7 +145,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     @MainActor
     private func configureMercuryFileTransfer() {
         let receiver = iOSFileTransferService(
-            service: MediaFileTransferServiceFactory.make(),
+            service: MediaFileTransferServiceFactory.make(secretKeyProvider: {
+                try IrohBlobKeyStore.shared.secretKeyMaterial().raw
+            }),
             settingsProvider: { @MainActor in
                 // Mirrors the Mac `ChatBackendSettings.mediaBlobTransferEnabled`
                 // key so Remote Config + per-device sync stays consistent.
@@ -237,7 +240,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         FirebaseApp.configure()
         Self.disableFirestoreNetworkOnIncompatibleOSIfNeeded()
         Self.configureGoogleSignIn()
-        _ = MobileAppCheckAttestationMonitor.shared
+        _ = AppCheckAttestationMonitor.shared
         Task { @MainActor in
             await Self.validateAppCheckIfNeeded()
         }

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarComputerUseCore
 import OpenBurnBarKernel
 @preconcurrency import FirebaseFirestore
 
@@ -115,7 +116,7 @@ struct MacWandMissionDispatcher {
         groupRequest["groupId"] = groupID
         groupRequest["deviceId"] = accountManager.deviceId
         _ = try await ComputerUseSecurityCallableClient.createCliAgentMissionGroup(
-            payload: ComputerUseSecurityCallableClient.sendableJSONPayload(groupRequest),
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(groupRequest),
             deviceId: accountManager.deviceId
         )
 
@@ -194,7 +195,7 @@ struct MacWandMissionDispatcher {
                 parent["siblings"] = Array(slice.dropFirst())
             }
             _ = try await ComputerUseSecurityCallableClient.createCliAgentMission(
-                payload: ComputerUseSecurityCallableClient.sendableJSONPayload(parent),
+                payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(parent),
                 deviceId: accountManager.deviceId
             )
         }

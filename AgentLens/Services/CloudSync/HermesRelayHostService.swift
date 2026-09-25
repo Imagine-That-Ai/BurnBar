@@ -110,7 +110,9 @@ final class HermesRelayHostService {
                 // file-transfer service AND the persistent media
                 // control-stream registry. Returns nil on builds that
                 // don't link the xcframework (loopback dev path).
-                if let fileTransferService = MediaFileTransferServiceFactory.make() {
+                if let fileTransferService = MediaFileTransferServiceFactory.make(secretKeyProvider: {
+                    try IrohBlobKeyStore.shared.secretKeyMaterial().raw
+                }) {
                     let controlRegistry = MediaControlStreamRegistry()
                     self.mercuryControlStreamRegistry = controlRegistry
                     let macFileTransfer = MacFileTransferService(

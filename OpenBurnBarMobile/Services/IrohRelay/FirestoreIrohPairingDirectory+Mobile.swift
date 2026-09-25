@@ -5,12 +5,15 @@ import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 
 /// Mobile (iOS / iPadOS) `IrohPairingDirectory`. Reads
-/// `/users/{uid}/iroh_pairing/{connectionId}` written by the Mac via
-/// `AgentLens/.../FirestoreIrohPairingDirectory.swift`. Mobile is a pure
-/// reader; the `publish` / `revoke` calls throw because mobile does not
-/// host an iroh endpoint in Phase 4 (mobile is the dialer). Silently
+/// `/users/{uid}/iroh_pairing/{connectionId}` written by the Mac. Mobile is
+/// a pure reader; the `publish` / `revoke` calls throw because mobile does
+/// not host an iroh endpoint in Phase 4 (mobile is the dialer). Silently
 /// no-oping these would have masked a coding error if a future mobile
 /// caller wired itself into the shared publisher.
+///
+/// Wave 3.4 iOS back: the reader guard + fetch stay here; document decoding
+/// lives in `IrohPairingRecord.decodeFirestoreDocument`
+/// (OpenBurnBarIrohRelay), shared with the macOS publisher back.
 final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
     static let shared = FirestoreIrohPairingDirectory()
 
@@ -40,34 +43,11 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
             .document(connectionId)
             .getDocument(source: .server)
         guard snapshot.exists, let data = snapshot.data() else { return nil }
-        return decode(data: data, uid: uid)
+        return IrohPairingRecord.decodeFirestoreDocument(data, uid: uid)
     }
 
     func revoke(uid: String, connectionId: String) async throws {
         throw IrohPairingDirectoryError.unsupportedOnReader
-    }
-
-    private func decode(data: [String: Any], uid: String) -> IrohPairingRecord? {
-        guard let id = data["id"] as? String,
-              let nodeId = data["nodeId"] as? String,
-              let publishedAtMillis = data["publishedAtMillis"] as? Int64
-                ?? (data["publishedAtMillis"] as? NSNumber)?.int64Value,
-              let signature = data["signature"] as? String else {
-            return nil
-        }
-        let protocolVersion = (data["protocolVersion"] as? Int)
-            ?? (data["protocolVersion"] as? NSNumber)?.intValue
-            ?? IrohRelayProtocol.frameProtocolVersion
-        return IrohPairingRecord(
-            uid: uid,
-            connectionId: id,
-            nodeId: nodeId,
-            relayURL: data["relayURL"] as? String,
-            directAddresses: data["directAddresses"] as? [String] ?? [],
-            publishedAtMillis: publishedAtMillis,
-            protocolVersion: protocolVersion,
-            signature: signature
-        )
     }
 }
 

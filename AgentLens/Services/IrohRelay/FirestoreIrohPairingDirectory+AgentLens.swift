@@ -23,6 +23,11 @@ import OpenBurnBarIrohRelay
 ///   schemaVersion: 1
 /// }
 /// ```
+///
+/// Wave 3.4 macOS back: publish/revoke stay here (server-only callables
+/// via `ComputerUseSecurityCallableClient`); document decoding lives in
+/// `IrohPairingRecord.decodeFirestoreDocument` (OpenBurnBarIrohRelay),
+/// shared with the iOS reader back.
 final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
     private let firestoreProvider: @Sendable () -> Firestore
     private let deviceIDProvider: @Sendable () async -> String
@@ -50,36 +55,13 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, Sendable {
             .document(connectionId)
             .getDocument()
         guard snapshot.exists, let data = snapshot.data() else { return nil }
-        return FirestoreIrohPairingDirectory.decode(data: data, uid: uid)
+        return IrohPairingRecord.decodeFirestoreDocument(data, uid: uid)
     }
 
     func revoke(uid: String, connectionId: String) async throws {
         try await ComputerUseSecurityCallableClient.revokeIrohPairingRecord(
             deviceId: await deviceIDProvider(),
             connectionId: connectionId
-        )
-    }
-
-    static func decode(data: [String: Any], uid: String) -> IrohPairingRecord? {
-        guard let id = data["id"] as? String,
-              let nodeId = data["nodeId"] as? String,
-              let publishedAtMillis = data["publishedAtMillis"] as? Int64
-                ?? (data["publishedAtMillis"] as? NSNumber)?.int64Value,
-              let signature = data["signature"] as? String else {
-            return nil
-        }
-        let protocolVersion = (data["protocolVersion"] as? Int)
-            ?? (data["protocolVersion"] as? NSNumber)?.intValue
-            ?? IrohRelayProtocol.frameProtocolVersion
-        return IrohPairingRecord(
-            uid: uid,
-            connectionId: id,
-            nodeId: nodeId,
-            relayURL: data["relayURL"] as? String,
-            directAddresses: data["directAddresses"] as? [String] ?? [],
-            publishedAtMillis: publishedAtMillis,
-            protocolVersion: protocolVersion,
-            signature: signature
         )
     }
 }

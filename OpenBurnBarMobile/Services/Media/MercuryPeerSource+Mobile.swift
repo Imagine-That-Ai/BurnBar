@@ -20,6 +20,10 @@ import OpenBurnBarMedia
 /// capability advertise is best-effort, not load-bearing —
 /// `canRequestMirror` keeps returning `true` for an online Mac on the
 /// fallback set.
+///
+/// Wave 3.4 iOS back: the transport/relay-driven resolver stays in-app;
+/// heartbeat-capability parsing is shared via
+/// `MercuryPeer.advertisedFeatures` (OpenBurnBarMedia).
 @MainActor
 final class MercuryPeerSource: ObservableObject {
     static let relayFreshnessWindow: TimeInterval = 30 * 60
@@ -215,7 +219,7 @@ final class MercuryPeerSource: ObservableObject {
             guard isOnline else { return peer?.capabilities ?? [] }
             return Self.fallbackCapabilities(for: relayConnectionProvider())
         }
-        let parsed = Set(heartbeat.capabilities.compactMap { MercuryPeer.Feature(rawValue: $0) })
+        let parsed = MercuryPeer.advertisedFeatures(from: heartbeat.capabilities)
         if parsed.isEmpty && heartbeat.capabilities.isEmpty {
             return MercuryPeer.macFallbackCapabilities
         }

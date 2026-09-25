@@ -246,16 +246,9 @@ Categories:
 ```text
 # Exact AgentLens path | exact OpenBurnBarMobile path | category
 AgentLens/App/AppDelegate.swift | OpenBurnBarMobile/App/AppDelegate.swift | storage-backend-divergence
+# Wave 3.4 confirmed fork: AmplitudeTransport stays in-app on both hosts
+# (OpenBurnBarAnalytics is SDK-free by design; project.yml documents this).
 AgentLens/Services/Analytics/AmplitudeTransport.swift | OpenBurnBarMobile/Services/Analytics/AmplitudeTransport.swift | transport
-AgentLens/Services/AppCheckAttestationMonitor.swift | OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift | transport
-AgentLens/Services/Chat/HermesAttachmentLoader.swift | OpenBurnBarMobile/Services/HermesAttachmentLoader.swift | transport
-AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | transport
-AgentLens/Services/IrohRelay/FirestoreIrohPairingDirectory.swift | OpenBurnBarMobile/Services/IrohRelay/FirestoreIrohPairingDirectory.swift | transport
-AgentLens/Services/IrohRelay/IrohRelayKeyStore.swift | OpenBurnBarMobile/Services/IrohRelay/IrohRelayKeyStore.swift | transport
-AgentLens/Services/IrohRelay/IrohTransportAuditLogger.swift | OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger.swift | transport
-AgentLens/Services/Media/IrohBlobKeyStore.swift | OpenBurnBarMobile/Services/Media/IrohBlobKeyStore.swift | transport
-AgentLens/Services/Media/MediaFileTransferServiceFactory.swift | OpenBurnBarMobile/Services/Media/MediaFileTransferServiceFactory.swift | transport
-AgentLens/Services/Media/MercuryPeerSource.swift | OpenBurnBarMobile/Services/Media/MercuryPeerSource.swift | transport
 AgentLens/Theme/LiquidGlass.swift | OpenBurnBarMobile/Theme/LiquidGlass.swift | platform-ui
 AgentLens/Theme/ProTheme.swift | OpenBurnBarMobile/Theme/ProTheme.swift | platform-ui
 AgentLens/Views/Chat/BudgetBlockedCard.swift | OpenBurnBarMobile/Views/Chat/BudgetBlockedCard.swift | storage-backend-divergence
