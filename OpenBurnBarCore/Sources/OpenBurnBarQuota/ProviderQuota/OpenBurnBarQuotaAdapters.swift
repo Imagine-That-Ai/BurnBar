@@ -21,7 +21,9 @@ public struct OpenAIQuotaAdapter: ProviderQuotaAdapter {
 
         let now = Date()
         let start = now.addingTimeInterval(-24 * 60 * 60)
-        var components = URLComponents(string: "https://api.openai.com/v1/organization/usage/completions")!
+        guard var components = URLComponents(string: "https://api.openai.com/v1/organization/usage/completions") else {
+            return unavailableSnapshot(for: .openAI, source: .officialAPI, message: "OpenAI usage URL could not be built.")
+        }
         components.queryItems = [
             URLQueryItem(name: "start_time", value: String(Int(start.timeIntervalSince1970))),
             URLQueryItem(name: "end_time", value: String(Int(now.timeIntervalSince1970))),

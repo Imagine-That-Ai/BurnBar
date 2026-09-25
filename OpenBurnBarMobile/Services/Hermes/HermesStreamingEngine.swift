@@ -581,7 +581,7 @@ final class HermesStreamingEngine {
                     hasStructuralChange = true
                 }
             } else {
-                let name = nameFragment?.isEmpty == false ? nameFragment! : "Hermes tool"
+                let name = nameFragment.flatMap { $0.isEmpty ? nil : $0 } ?? "Hermes tool"
                 let arguments = argsFragment ?? ""
                 message.toolCalls.append(
                     HermesToolCall(

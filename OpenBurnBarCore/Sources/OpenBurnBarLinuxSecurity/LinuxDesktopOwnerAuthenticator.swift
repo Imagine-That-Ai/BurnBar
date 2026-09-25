@@ -400,10 +400,14 @@ private struct LinuxDBusPolkitClient {
     }
 
     private func writeAll(_ data: Data) throws {
+        guard data.count > 0 else { return }
         try data.withUnsafeBytes { bytes in
+            guard let baseAddress = bytes.baseAddress else {
+                throw LinuxDesktopOwnerAuthenticationError.polkitUnavailable("D-Bus write buffer unavailable")
+            }
             var sent = 0
             while sent < data.count {
-                let rc = Glibc.write(fd, bytes.baseAddress!.advanced(by: sent), data.count - sent)
+                let rc = Glibc.write(fd, baseAddress.advanced(by: sent), data.count - sent)
                 guard rc > 0 else {
                     throw LinuxDesktopOwnerAuthenticationError.polkitUnavailable(String(cString: strerror(errno)))
                 }
@@ -427,11 +431,15 @@ private struct LinuxDBusPolkitClient {
     }
 
     private func readExactly(_ count: Int) throws -> Data {
+        guard count > 0 else { return Data() }
         var data = Data(count: count)
         try data.withUnsafeMutableBytes { bytes in
+            guard let baseAddress = bytes.baseAddress else {
+                throw LinuxDesktopOwnerAuthenticationError.polkitUnavailable("D-Bus read buffer unavailable")
+            }
             var offset = 0
             while offset < count {
-                let rc = Glibc.read(fd, bytes.baseAddress!.advanced(by: offset), count - offset)
+                let rc = Glibc.read(fd, baseAddress.advanced(by: offset), count - offset)
                 guard rc > 0 else {
                     throw LinuxDesktopOwnerAuthenticationError.polkitUnavailable("D-Bus socket closed")
                 }

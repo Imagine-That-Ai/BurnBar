@@ -175,8 +175,10 @@ final class FusionReceiptModalModel {
         // Index each fusion event's position within its run so we can hand the
         // aggregator a synthetic stage label when no recorded one exists.
         var byParent: [String: [BurnBarUsageEvent]] = [:]
-        for event in events where event.parentRequestID?.hasPrefix(FusionUsageRow.fusionParentPrefix) == true {
-            byParent[event.parentRequestID!, default: []].append(event)
+        for event in events {
+            guard let parentRequestID = event.parentRequestID,
+                  parentRequestID.hasPrefix(FusionUsageRow.fusionParentPrefix) else { continue }
+            byParent[parentRequestID, default: []].append(event)
         }
 
         var inferredStage: [ObjectIdentifierKey: String] = [:]

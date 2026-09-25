@@ -304,10 +304,10 @@ struct MobileTextExpansionSettingsView: View {
                 .buttonStyle(PremiumButtonStyle(isDestructive: false))
                 .disabled(!canSave)
 
-                if editingID != nil {
+                if let editingID {
                     HStack(spacing: 12) {
                         Button {
-                            deleteSnippet(editingID!)
+                            deleteSnippet(editingID)
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }

@@ -491,7 +491,7 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
                     continue
                 }
                 let candidate = ModelMatch(provider: provider, model: model, rank: rank)
-                if best == nil || candidate.rank < best!.rank {
+                if best.map({ candidate.rank < $0.rank }) ?? true {
                     best = candidate
                 }
             }

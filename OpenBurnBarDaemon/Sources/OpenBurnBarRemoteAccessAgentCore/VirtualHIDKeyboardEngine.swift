@@ -289,11 +289,14 @@ public final class VirtualHIDKeyboardEngine: @unchecked Sendable {
         }
 
         private func post(_ bytes: [UInt8], to device: IOHIDUserDevice) throws {
-            let result = bytes.withUnsafeBytes { pointer in
-                IOHIDUserDeviceHandleReportWithTimeStamp(
+            let result = try bytes.withUnsafeBytes { pointer -> IOReturn in
+                guard let baseAddress = pointer.bindMemory(to: UInt8.self).baseAddress else {
+                    throw EngineError.virtualHIDReportFailed
+                }
+                return IOHIDUserDeviceHandleReportWithTimeStamp(
                     device,
                     mach_absolute_time(),
-                    pointer.bindMemory(to: UInt8.self).baseAddress!,
+                    baseAddress,
                     bytes.count
                 )
             }

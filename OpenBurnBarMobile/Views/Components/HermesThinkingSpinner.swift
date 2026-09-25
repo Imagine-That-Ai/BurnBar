@@ -1275,11 +1275,12 @@ struct HermesThinkingStylePickerSheet: View {
 private extension Color {
     /// sRGB "RRGGBB" export for persisting the custom picker color.
     var burnbarHexString: String? {
-        guard let components = UIColor(self).cgColor.converted(
-            to: CGColorSpace(name: CGColorSpace.sRGB)!,
-            intent: .defaultIntent,
-            options: nil
-        )?.components, components.count >= 3 else { return nil }
+        guard let srgb = CGColorSpace(name: CGColorSpace.sRGB),
+              let components = UIColor(self).cgColor.converted(
+                  to: srgb,
+                  intent: .defaultIntent,
+                  options: nil
+              )?.components, components.count >= 3 else { return nil }
         let r = Int((components[0] * 255).rounded())
         let g = Int((components[1] * 255).rounded())
         let b = Int((components[2] * 255).rounded())

@@ -190,10 +190,10 @@ public struct MemoryExporter: Sendable {
             projectSnapshotJSONBySlug: snapshot.projectSnapshots,
             quarantineBodiesByMemoryID: snapshot.quarantineBodies
         )
-        let auditBySubject = Dictionary(grouping: snapshot.auditRows.filter { $0.subjectID != nil }) {
-            // reason: filtered above
-            // swiftlint:disable:next force_unwrapping
-            $0.subjectID!
+        var auditBySubject: [String: [MemoryExportAuditRow]] = [:]
+        for row in snapshot.auditRows {
+            guard let subjectID = row.subjectID else { continue }
+            auditBySubject[subjectID, default: []].append(row)
         }
         let provenanceByMemory = Dictionary(grouping: snapshot.provenance, by: \.memoryID)
 
@@ -547,9 +547,7 @@ public struct MemoryExporter: Sendable {
                 deletesTable.note(.outOfWindow)
                 continue
             }
-            // reason: filtered above
-            // swiftlint:disable:next force_unwrapping
-            let subjectID = delete.subjectID!
+            guard let subjectID = delete.subjectID else { continue }
             let id = MemoryExportIdentity.tombstoneID(
                 storeID: storeID,
                 sourceTable: "memory_audit.delete",

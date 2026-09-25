@@ -886,8 +886,8 @@ final class MacRemoteMCPClientStore: ObservableObject {
         let grantMode = (data["grantMode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return MacRemoteMCPClientRecord(
-            id: clientID?.isEmpty == false ? clientID! : documentID,
-            displayName: displayName?.isEmpty == false ? displayName! : "OpenBurnBar MCP client",
+            id: clientID.flatMap { $0.isEmpty ? nil : $0 } ?? documentID,
+            displayName: displayName.flatMap { $0.isEmpty ? nil : $0 } ?? "OpenBurnBar MCP client",
             clientType: clientType ?? "",
             allowedScopes: scopes,
             grantMode: grantMode ?? "local_decrypt_shim",

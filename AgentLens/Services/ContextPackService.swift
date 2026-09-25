@@ -152,9 +152,7 @@ enum ContextPackService {
 
         // Step 5: Build session entries
         var sessions = capped.map { record, score, reason -> ContextPackSession in
-            let title = record.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                ? record.summaryTitle!
-                : (record.inferredTaskTitle.isEmpty ? "Session" : record.inferredTaskTitle)
+            let title = Self.sessionTitle(for: record)
             let body = buildSessionBody(record)
             return ContextPackSession(
                 id: record.id,
@@ -346,14 +344,22 @@ enum ContextPackService {
 
     // MARK: - Session Body Builder
 
+    /// Resolves the display title for a session entry: the summary title when
+    /// present and non-blank, else the inferred task title, else "Session".
+    static func sessionTitle(for record: OpenBurnBarCore.ConversationRecord) -> String {
+        if let summaryTitle = record.summaryTitle,
+           !summaryTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return summaryTitle
+        }
+        return record.inferredTaskTitle.isEmpty ? "Session" : record.inferredTaskTitle
+    }
+
     /// Builds the shared body text for a single session entry.
     static func buildSessionBody(_ record: OpenBurnBarCore.ConversationRecord) -> String {
         var lines: [String] = []
 
         // Title
-        let title = record.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            ? record.summaryTitle!
-            : (record.inferredTaskTitle.isEmpty ? "Session" : record.inferredTaskTitle)
+        let title = Self.sessionTitle(for: record)
         lines.append("## \(title)")
         lines.append("")
 

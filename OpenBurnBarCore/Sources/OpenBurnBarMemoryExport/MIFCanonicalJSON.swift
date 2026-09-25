@@ -94,13 +94,14 @@ public enum MIFCanonicalJSON {
             let ordered = members.keys.sorted { lhs, rhs in
                 lhs.utf16.lexicographicallyPrecedes(rhs.utf16)
             }
-            for (index, key) in ordered.enumerated() {
+            // Keys came from members.keys, so every lookup hits; compactMap
+            // skips rather than crashes if that ever stops holding.
+            let orderedPairs = ordered.compactMap { key in members[key].map { (key, $0) } }
+            for (index, pair) in orderedPairs.enumerated() {
                 if index > 0 { out += "," }
-                writeString(key, into: &out)
+                writeString(pair.0, into: &out)
                 out += ":"
-                // reason: key came from members.keys
-                // swiftlint:disable:next force_unwrapping
-                write(members[key]!, into: &out)
+                write(pair.1, into: &out)
             }
             out += "}"
         }

@@ -92,9 +92,9 @@ func browserServiceStatusDisplays(
         return BrowserServiceStatusDisplay(
             id: identity.provider.rawValue,
             providerName: identity.provider.displayName,
-            accountLabel: identity.accountLabel?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                ? identity.accountLabel!.trimmingCharacters(in: .whitespacesAndNewlines)
-                : "signed in",
+            accountLabel: identity.accountLabel
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .flatMap { $0.isEmpty ? nil : $0 } ?? "signed in",
             fiveHour: snapshot?.hourlyBucket?.remainingText ?? "--",
             sevenDay: snapshot?.weeklyBucket?.remainingText ?? "--"
         )

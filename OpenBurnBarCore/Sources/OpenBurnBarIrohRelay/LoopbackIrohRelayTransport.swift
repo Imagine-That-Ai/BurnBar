@@ -315,7 +315,7 @@ public final class LoopbackIrohRelayTransport: IrohRelayTransport, Sendable {
         // value. The cryptographic NodeId is owned by the xcframework
         // transport; loopback callers must not trust this value for identity.
         let alphabet = "abcdefghijklmnopqrstuvwxyz234567"
-        return String((0..<52).map { _ in alphabet.randomElement()! })
+        return String((0..<52).map { _ in alphabet.randomElement() ?? "a" })
     }
 }
 

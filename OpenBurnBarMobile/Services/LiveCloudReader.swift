@@ -237,7 +237,7 @@ final class LiveCloudReader: CloudReader {
                 platform: "macOS",
                 lastSeen: lastPublished ?? readAt
             ),
-            lastErrorClassification: lastError != nil ? .other(message: lastError!) : nil
+            lastErrorClassification: lastError.map { .other(message: $0) }
         )
     }
 
@@ -759,7 +759,7 @@ final class LiveEscrowGateway: EscrowGateway {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: "escrow_\(provider)",
             kSecAttrService as String: "com.openburnbar.mobile",
-            kSecValueData as String: credential.data(using: .utf8)!,
+            kSecValueData as String: Data(credential.utf8),
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         SecItemDelete(q as CFDictionary)

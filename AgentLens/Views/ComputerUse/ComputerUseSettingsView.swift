@@ -990,9 +990,10 @@ struct ComputerUseSettingsView: View {
                 )
                 let archiveURL = URL(fileURLWithPath: response.archiveURL)
                 NSWorkspace.shared.activateFileViewerSelecting([archiveURL])
-                let signatureSuffix = response.signatureURL == nil
-                    ? ""
-                    : " Signature sidecar: \(URL(fileURLWithPath: response.signatureURL!).lastPathComponent)."
+                let signatureSuffix: String = {
+                    guard let signatureURL = response.signatureURL else { return "" }
+                    return " Signature sidecar: \(URL(fileURLWithPath: signatureURL).lastPathComponent)."
+                }()
                 let readbackSuffix: String
                 if response.signatureURL != nil {
                     if let runtimeController {

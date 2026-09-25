@@ -31,21 +31,22 @@ final class TrendDigestCacheStore: ObservableObject {
             deviceSummaries: deviceSummaries,
             recentUsages: recentUsages
         )
-        if hash != cachedHash {
-            let built = TrendDataDigest.build(
-                windowTotals: windowTotals,
-                providerSummaries: providerSummaries,
-                modelSummaries: modelSummaries,
-                deviceSummaries: deviceSummaries,
-                dailyPoints: dailyPoints,
-                recentUsages: recentUsages,
-                displayMode: displayMode
-            )
-            cachedDigest = built
-            cachedInsights = TrendInsightEngine.insights(from: built)
-            cachedHash = hash
+        if hash == cachedHash, let cached = cachedDigest {
+            return cached
         }
-        return cachedDigest!
+        let built = TrendDataDigest.build(
+            windowTotals: windowTotals,
+            providerSummaries: providerSummaries,
+            modelSummaries: modelSummaries,
+            deviceSummaries: deviceSummaries,
+            dailyPoints: dailyPoints,
+            recentUsages: recentUsages,
+            displayMode: displayMode
+        )
+        cachedDigest = built
+        cachedInsights = TrendInsightEngine.insights(from: built)
+        cachedHash = hash
+        return built
     }
 
     func insights(

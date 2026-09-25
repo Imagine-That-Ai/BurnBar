@@ -535,7 +535,7 @@ private enum BurnBarObservabilityError: Error, LocalizedError {
 // simply not Sendable-annotated in the SDK. sendable-allowlist: foundation-sdk-shim
 private final class BurnBarSignalMonitor: @unchecked Sendable {
     private let queue: DispatchQueue
-    private let continuation: AsyncStream<Int32>.Continuation
+    private let continuation: AsyncStream<Int32>.Continuation?
     private let stream: AsyncStream<Int32>
     private let sources: [DispatchSourceSignal]
 
@@ -545,7 +545,10 @@ private final class BurnBarSignalMonitor: @unchecked Sendable {
         self.stream = AsyncStream { continuation in
             storedContinuation = continuation
         }
-        self.continuation = storedContinuation!
+        // AsyncStream invokes its build closure synchronously, so the
+        // continuation is always captured here; keep it optional and drop
+        // signals rather than crash if that ever stops holding.
+        self.continuation = storedContinuation
         self.queue = queue
         let continuation = self.continuation
 
@@ -553,7 +556,7 @@ private final class BurnBarSignalMonitor: @unchecked Sendable {
             signal(signalNumber, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: queue)
             source.setEventHandler { [continuation] in
-                continuation.yield(signalNumber)
+                continuation?.yield(signalNumber)
             }
             source.resume()
             return source

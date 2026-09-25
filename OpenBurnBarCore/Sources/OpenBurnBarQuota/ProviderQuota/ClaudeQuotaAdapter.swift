@@ -1119,11 +1119,12 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 return max(0, min(((limit - remaining) / limit) * 100, 100))
             }()
             let resetsAt = headers.unifiedTokensResetSeconds.map { now.addingTimeInterval($0) }
+            let unifiedUsedValue: Double? = if let limit, let remaining { limit - remaining } else { nil }
             buckets.append(ProviderQuotaBucket(
                 key: "claude-unified-header-probe",
                 label: "5-hour unified window",
                 windowKind: .rollingHours,
-                usedValue: (limit != nil && remaining != nil) ? (limit! - remaining!) : nil,
+                usedValue: unifiedUsedValue,
                 limitValue: limit,
                 remainingValue: remaining,
                 usedPercent: usedPercent,
@@ -1146,11 +1147,12 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                     guard let limit, limit > 0, let remaining else { return nil }
                     return max(0, min(((limit - remaining) / limit) * 100, 100))
                 }()
+                let usedValue: Double? = if let limit, let remaining { limit - remaining } else { nil }
                 return ProviderQuotaBucket(
                     key: "claude-rate-limit-\(prefix)",
                     label: label,
                     windowKind: .custom,
-                    usedValue: (limit != nil && remaining != nil) ? (limit! - remaining!) : nil,
+                    usedValue: usedValue,
                     limitValue: limit,
                     remainingValue: remaining,
                     usedPercent: usedPercent,

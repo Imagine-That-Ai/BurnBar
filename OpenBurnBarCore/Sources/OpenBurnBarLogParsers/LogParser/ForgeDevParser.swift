@@ -451,7 +451,8 @@ public final class ForgeDevParser: LogParser, Sendable {
             return NSString.path(withComponents: common)
         }
 
-        return (filePaths.first! as NSString).deletingLastPathComponent
+        guard let firstPath = filePaths.first else { return nil }
+        return (firstPath as NSString).deletingLastPathComponent
     }
 
     private func collectFilePaths(from metricsJSON: [String: Any]?) -> [String] {

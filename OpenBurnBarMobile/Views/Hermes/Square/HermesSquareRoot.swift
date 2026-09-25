@@ -4,7 +4,7 @@ import OpenBurnBarCore
 import OpenBurnBarMedia
 import FirebaseAuth
 
-private let hermesSquareLogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesSquare")
+let hermesSquareLogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesSquare")
 
 // MARK: - Hermes Square Root (Hermes Square §3 / §6.2)
 //
@@ -33,7 +33,7 @@ struct HermesSquareRoot: View {
 
     // MARK: State
 
-    @State private var selectedMissionID: String?
+    @State var selectedMissionID: String?
     @State private var showCancelForIDs: Set<String> = []
     @State private var missionToCancel: MissionConsoleActiveTile?
     @State private var renameTargetItem: ThreadInboxItem?
@@ -42,27 +42,27 @@ struct HermesSquareRoot: View {
     @State private var missionForActionSheet: MissionConsoleActiveTile?
 
     @State private var piService = PiService()
-    @State private var registry = AgentIdentityRegistry.shared
-    @State private var inbox: ThreadInboxStore
+    @State var registry = AgentIdentityRegistry.shared
+    @State var inbox: ThreadInboxStore
     @State private var historyStore = MobileChatHistoryStore.shared
-    @State private var searchIndex = UnifiedSearchIndex()
-    @State private var cloudSearchStore = ActivityStore()
-    @State private var projectsStore = ProjectsStore()
+    @State var searchIndex = UnifiedSearchIndex()
+    @State var cloudSearchStore = ActivityStore()
+    @State var projectsStore = ProjectsStore()
 
-    @State private var query: String = ""
-    @State private var searchHits: [UnifiedSearchIndex.Hit] = []
-    @State private var cloudSearchRowsByID: [String: CloudConversationSearchRow] = [:]
-    @State private var isSearching: Bool = false
+    @State var query: String = ""
+    @State var searchHits: [UnifiedSearchIndex.Hit] = []
+    @State var cloudSearchRowsByID: [String: CloudConversationSearchRow] = [:]
+    @State var isSearching: Bool = false
 
-    @AppStorage(PinnedAgentGridConfig.userDefaultsKey) private var pinnedJSON: String = ""
+    @AppStorage(PinnedAgentGridConfig.userDefaultsKey) var pinnedJSON: String = ""
     @AppStorage(ChatTilePreferencesStorage.userDefaultsKey) private var tilePreferencesJSON: String = ""
 
-    @State private var navTarget: NavTarget?
+    @State var navTarget: NavTarget?
     @AppStorage("assistants.activeRuntime") private var activeRuntimeRaw: String = AssistantRuntimeID.hermes.rawValue
     @State private var isShowingDiscover: Bool = false
     @State private var isShowingSubscriptions: Bool = false
     @State private var isShowingFanOut: Bool = false
-    @State private var isShowingVoice: Bool = false
+    @State var isShowingVoice: Bool = false
     @State private var isShowingDemoMiniProgram: Bool = false
     @State private var isShowingSwitcher: Bool = false
     @State private var isShowingOverflow: Bool = false
@@ -79,13 +79,13 @@ struct HermesSquareRoot: View {
     @ObservedObject private var hostReachability = HostReachabilityClient.shared
     @Environment(\.cloudSubscriptionStore) private var cloudStore
     @State private var activeGroupObserver = MissionGroupObserver()
-    @State private var approvalPolicyStore = ApprovalPolicyStore.shared
+    @State var approvalPolicyStore = ApprovalPolicyStore.shared
     @State private var rollbackService = RollbackService.shared
     /// Round-4 perf sweep: cached filtered+sorted rollback sessions.
     /// Rebuilt only when `snapshotsBySession` changes (via `.onChange`),
     /// not on every body evaluation.
     @State private var cachedRollbackSessions: [(key: String, value: [RollbackSnapshot])] = []
-    @State private var voiceIntentBanner: VoiceIntent?
+    @State var voiceIntentBanner: VoiceIntent?
     @State private var subscriptionTopicStore = AgentSubscriptionTopicStore.shared
     /// Mercury Phase 8 — paired Mac peer presence + Live sheet plumbing.
     /// The peer source polls `MediaControlStreamCoordinator.phase` and
@@ -96,24 +96,24 @@ struct HermesSquareRoot: View {
     @State private var mercuryAckBanner: HermesRealtimeRelayMirrorAck?
     @State private var bootingMercuryConnectionID: String?
     @State private var mercuryBootError: String?
-    @State private var searchReindexTask: Task<Void, Never>?
-    @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
+    @State var searchReindexTask: Task<Void, Never>?
+    @AppStorage("mercuryPinnedTileEnabled") var mercuryPinnedTileEnabled: Bool = true
 
-    private var inboxSplit: (service: [ThreadInboxItem], subscription: [ThreadInboxItem]) {
+    var inboxSplit: (service: [ThreadInboxItem], subscription: [ThreadInboxItem]) {
         inbox.items.splitForInbox()
     }
 
-    private var pinnedGrid: PinnedAgentGridConfig {
+    var pinnedGrid: PinnedAgentGridConfig {
         PinnedAgentGridConfig.from(jsonString: pinnedJSON)
     }
 
-    private var visibleTiles: [AssistantRuntimeID] {
+    var visibleTiles: [AssistantRuntimeID] {
         let prefs = ChatTilePreferences.from(jsonString: tilePreferencesJSON).sanitized()
         let ordered = prefs.orderedVisibleTiles
         return ordered.isEmpty ? [.hermes] : ordered
     }
 
-    private var selectedRuntime: AssistantRuntimeID {
+    var selectedRuntime: AssistantRuntimeID {
         get { AssistantRuntimeID(rawValue: activeRuntimeRaw) ?? .hermes }
         nonmutating set { activeRuntimeRaw = newValue.rawValue }
     }
@@ -1134,402 +1134,6 @@ struct HermesSquareRoot: View {
         }
     }
 
-    // MARK: Actions
-
-    private func handlePinnedTap(uri: String) {
-        if uri.hasPrefix(AgentIdentityRegistry.pairedMacURIPrefix) {
-            let connectionID = String(uri.dropFirst(AgentIdentityRegistry.pairedMacURIPrefix.count))
-            setNavTarget(.mercuryLive(connectionID))
-            HapticBus.tabChange()
-            return
-        }
-        guard let identity = registry.identity(for: uri) else { return }
-        if let runtime = identity.runtimeID, visibleTiles.contains(runtime) {
-            setNavTarget(.runtimeNative(runtime))
-        } else {
-            setNavTarget(.brandZone(uri))
-        }
-        HapticBus.tabChange()
-    }
-
-    private func handlePinnedLongPress(uri: String) {
-        if uri.hasPrefix(AgentIdentityRegistry.pairedMacURIPrefix) {
-            let connectionID = String(uri.dropFirst(AgentIdentityRegistry.pairedMacURIPrefix.count))
-            setNavTarget(.mercuryLive(connectionID))
-            return
-        }
-        setNavTarget(.brandZone(uri))
-    }
-
-    private func syncMercuryPeer(_ peer: MercuryPeer?) {
-        registry.pairedMacPeer = peer
-        autoPinPairedMacIfNeeded(peer: peer)
-    }
-
-    private func setNavTarget(_ target: NavTarget) {
-        let sequence = HermesSquareNavigationRetarget.sequence(
-            current: navTarget,
-            requested: target
-        )
-        guard let first = sequence.first else { return }
-        navTarget = first
-        if sequence.count == 2, let final = sequence.last {
-            Task { @MainActor in
-                navTarget = final
-            }
-        }
-    }
-
-    /// Mercury Phase 8 — idempotent auto-pin of the "My Mac" tile when
-    /// the peer source first resolves a live peer. Re-runs only when
-    /// the connection id changes (rare). The `mercuryPinnedTileEnabled`
-    /// AppStorage flag lets the user opt out from the Mercury Live
-    /// sheet's settings toggle.
-    private func autoPinPairedMacIfNeeded(peer: MercuryPeer?) {
-        guard mercuryPinnedTileEnabled else { return }
-        let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
-        let updated = PairedMacAutoPinPolicy.pinningPeerIfEligible(peer, in: grid)
-        guard updated != grid else { return }
-        pinnedJSON = updated.jsonString()
-    }
-
-    private func resolvedMercuryConnectionID(for routedConnectionID: String) -> String {
-        if !routedConnectionID.hasPrefix("paired-mac:") {
-            return routedConnectionID
-        }
-        if let relay = hermesService.suggestedRelayConnection {
-            return relay.id
-        }
-        if hermesService.selectedConnection.mode == .relayLink {
-            return hermesService.selectedConnection.id
-        }
-        return routedConnectionID
-    }
-
-    private func handleThreadTap(_ item: ThreadInboxItem) {
-        if item.source == .missionGroup, let missionID = item.liveMissionID {
-            selectedMissionID = missionID
-            HapticBus.tabChange()
-            return
-        }
-        if let runtime = HermesSquareThreadRouting.runtime(for: item) {
-            selectedRuntime = runtime
-        }
-        setNavTarget(.thread(item.id))
-        HapticBus.tabChange()
-    }
-
-    private func handleSearchHit(_ hit: UnifiedSearchIndex.Hit) {
-        switch hit.ref.corpus {
-        case .agents:
-            setNavTarget(.brandZone(hit.ref.id))
-        case .projects:
-            setNavTarget(.projectMemory(hit.ref.id))
-        case .threads:
-            setNavTarget(.thread(hit.ref.id))
-        case .missions:
-            selectedMissionID = hit.ref.id
-        case .cards:
-            if let identity = registry.identities.first {
-                setNavTarget(.brandZone(identity.id))
-            }
-        case .cloudSessions:
-            setNavTarget(.cloudSession(hit.ref.id))
-        default:
-            break
-        }
-    }
-
-    private func askWiki(for project: ProjectSummary) {
-        AssistantPendingPrompt.shared.stash(
-            assistant: .hermes,
-            prompt: "/wiki \(project.projectName)"
-        )
-        setNavTarget(.runtimeNative(.hermes))
-    }
-
-    private func projectSummary(for projectID: String) -> ProjectSummary? {
-        let query = projectID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return projectsStore.summaries.first(where: { summary in
-            summary.id == query
-                || summary.projectName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == query
-        })
-    }
-
-    private func pin(_ uri: String) {
-        let updated = pinnedGrid.pinning(uri).sanitized()
-        pinnedJSON = updated.jsonString()
-    }
-
-    private func unpin(_ uri: String) {
-        let updated = pinnedGrid.unpinning(uri).sanitized()
-        pinnedJSON = updated.jsonString()
-    }
-
-    private func handlePinnedMoveLeft(uri: String) {
-        let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
-        guard let index = grid.pinnedURIs.firstIndex(of: uri), index > 0 else { return }
-        let updated = grid.moving(from: index, to: index - 1)
-        pinnedJSON = updated.jsonString()
-        HapticBus.threshold()
-    }
-
-    private func handlePinnedMoveRight(uri: String) {
-        let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
-        guard let index = grid.pinnedURIs.firstIndex(of: uri), index < grid.pinnedURIs.count - 1 else { return }
-        let updated = grid.moving(from: index, to: index + 1)
-        pinnedJSON = updated.jsonString()
-        HapticBus.threshold()
-    }
-
-    private func handlePinnedUnpin(uri: String) {
-        let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
-        let updated = grid.unpinning(uri)
-        pinnedJSON = updated.jsonString()
-        HapticBus.threshold()
-    }
-
-    enum MoveDirection {
-        case up, down
-    }
-
-    private func updateThreadItemMetadata(
-        item: ThreadInboxItem,
-        customTitle: String? = nil,
-        labelColorHex: String? = nil,
-        isPinned: Bool? = nil,
-        priorityOrder: Int? = nil
-    ) {
-        let parts = item.id.split(separator: ":", maxSplits: 1)
-        guard parts.count == 2 else { return }
-        let prefix = parts[0]
-        let rawId = String(parts[1])
-
-        if prefix == "cli" {
-            Task {
-                do {
-                    try await CLIAgentChatReader.shared.updateSessionMetadata(
-                        id: rawId,
-                        customTitle: customTitle,
-                        labelColorHex: labelColorHex,
-                        isPinned: isPinned,
-                        priorityOrder: priorityOrder
-                    )
-                    await inbox.refresh()
-                } catch {
-                    hermesSquareLogger.error("Error updating CLI session metadata: \(String(describing: error), privacy: .public)")
-                }
-            }
-        } else if prefix == "hermes" || prefix == "pi" || prefix == "cliMirror" {
-            MobileChatHistoryStore.shared.updateThreadMetadata(
-                id: rawId,
-                customTitle: customTitle,
-                labelColorHex: labelColorHex,
-                isPinned: isPinned,
-                priorityOrder: priorityOrder
-            )
-            Task {
-                await inbox.refresh()
-            }
-        }
-    }
-
-    private func moveThreadItem(_ item: ThreadInboxItem, direction: MoveDirection) {
-        let (service, _) = inboxSplit
-        let conversations = service.filter { $0.source != .missionGroup }
-        guard let index = conversations.firstIndex(where: { $0.id == item.id }) else { return }
-
-        var newConversations = conversations
-        if direction == .up && index > 0 {
-            newConversations.swapAt(index, index - 1)
-        } else if direction == .down && index < conversations.count - 1 {
-            newConversations.swapAt(index, index + 1)
-        } else {
-            return
-        }
-
-        for (i, element) in newConversations.enumerated() {
-            let newPriority = i + 1
-            if element.priorityOrder != newPriority {
-                updateThreadItemMetadata(item: element, priorityOrder: newPriority)
-            }
-        }
-    }
-
-    // MARK: Search
-
-    private func runSearch() async {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else {
-            searchHits = []
-            return
-        }
-        isSearching = true
-        defer { isSearching = false }
-        async let localHits = searchIndex.searchFlat(q, limit: 20)
-        await cloudSearchStore.updateSearch(query: q)
-        let cloudRows = cloudSearchStore.cloudSearchHits
-        cloudSearchRowsByID = Dictionary(uniqueKeysWithValues: cloudRows.map { ($0.id, $0) })
-        let cloudHits = cloudRows.map { row in
-            UnifiedSearchIndex.Hit(
-                ref: UnifiedSearchIndex.DocumentRef(corpus: .cloudSessions, id: row.id),
-                title: row.title,
-                preview: [
-                    row.provider,
-                    row.snippet
-                ].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-                    .joined(separator: " · "),
-                score: row.score,
-                lastActivityAt: nil
-            )
-        }
-        searchHits = Array((await localHits + cloudHits)
-            .sorted { lhs, rhs in
-                if lhs.score != rhs.score { return lhs.score > rhs.score }
-                return (lhs.lastActivityAt ?? .distantPast) > (rhs.lastActivityAt ?? .distantPast)
-            }
-            .prefix(30))
-    }
-
-    private func scheduleSearchReindex() {
-        searchReindexTask?.cancel()
-        searchReindexTask = Task {
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            guard !Task.isCancelled else { return }
-            await reindexSearch()
-        }
-    }
-
-    private func reindexSearch() async {
-        await searchIndex.clear()
-        for identity in registry.identities {
-            await searchIndex.upsert(.from(identity))
-        }
-        for project in projectsStore.summaries {
-            let body = [
-                project.projectName,
-                project.topModel ?? "",
-                project.totalTokens.formatAsTokenVolume(),
-                project.totalCost.formatAsCost()
-            ].joined(separator: " ")
-            let document = UnifiedSearchIndex.Document(
-                ref: UnifiedSearchIndex.DocumentRef(corpus: .projects, id: project.id),
-                title: project.projectName,
-                body: body,
-                lastActivityAt: project.lastSeen,
-                preview: "\(project.sessions) sessions · \(project.totalCost.formatAsCost())"
-            )
-            await searchIndex.upsert(document)
-        }
-        for item in inbox.items {
-            await searchIndex.upsert(.from(item))
-        }
-        for tile in missionHost.snapshot.activeTiles {
-            await searchIndex.upsert(.from(tile))
-        }
-    }
-
-    // MARK: Navigation
-
-    enum NavTarget: Hashable, Identifiable {
-        case thread(String)           // thread inbox id, e.g. "hermes:<threadID>"
-        case brandZone(String)        // agent URI
-        case runtimeNative(AssistantRuntimeID)
-        case runtimeThread(AssistantRuntimeID)
-        case cloudSession(String)
-        case projectMemory(String)
-        /// Mercury Phase 8 — paired Mac tile destination. Carries the
-        /// peer's iroh connection id, which doubles as the URI tail.
-        case mercuryLive(String)
-
-        var id: Self { self }
-    }
-
-    // MARK: - Phase B helpers
-
-    private func recordApprovalPolicy(_ ask: MissionConsoleApprovalAsk, decision: ApprovalPolicy.Decision) {
-        // Phase B: derive a class hash from the ask metadata. Phase B is
-        // intentionally conservative — we class by (runtime, decision)
-        // only when the ask doesn't carry richer fields. Approve the ask
-        // immediately too.
-        let policy = ApprovalPolicy(
-            missionKind: nil,
-            toolName: nil,
-            fileGlob: nil,
-            runtimeID: ask.runtimeID,
-            targetProject: nil,
-            decision: decision,
-            displayLabel: "\(decision == .approve ? "Always approve" : "Always deny") for \(ask.runtimeDisplayLabel)"
-        )
-        approvalPolicyStore.record(policy)
-        Task {
-            await missionHost.respond(to: ask, approve: decision == .approve)
-        }
-    }
-
-    // MARK: - Phase C+D: voice + rollback wiring
-
-    @ViewBuilder
-    private var voiceSheetContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Voice command")
-                    .font(.title3.bold())
-                Spacer()
-                Button("Done") { isShowingVoice = false }
-            }
-            VoiceCommandSurface(
-                registry: registry,
-                currentThreadAgentURI: nil,
-                onIntent: { intent in
-                    handleVoiceIntent(intent)
-                    isShowingVoice = false
-                }
-            )
-            Spacer()
-        }
-        .padding(20)
-        .presentationDetents([.medium, .large])
-    }
-
-    private func handleVoiceIntent(_ intent: VoiceIntent) {
-        voiceIntentBanner = intent
-        Task {
-            try? await Task.sleep(nanoseconds: 4_500_000_000)
-            if voiceIntentBanner == intent { voiceIntentBanner = nil }
-        }
-        switch intent {
-        case .openAgent(let uri):
-            setNavTarget(.brandZone(uri))
-        case .search(let q):
-            query = q
-            Task { await runSearch() }
-        case .sendMessageToCurrentThread(let text):
-            AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: text)
-            setNavTarget(.runtimeNative(.hermes))
-        case .dispatchMission(let prompt, _):
-            AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: prompt)
-            setNavTarget(.runtimeNative(.hermes))
-        case .fallbackToHermes(let text):
-            AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: text)
-            setNavTarget(.runtimeNative(.hermes))
-        case .ambientBriefing:
-            AssistantPendingPrompt.shared.stash(
-                assistant: .hermes,
-                prompt: "What's important across my fleet right now? Summarize in 5 bullets."
-            )
-            setNavTarget(.runtimeNative(.hermes))
-        }
-    }
-
-    @MainActor
-    private func consumePendingThread() {
-        guard let route = HermesSquarePendingThreadRoute.consumePendingRoute() else { return }
-        selectedRuntime = route.runtime
-        setNavTarget(.thread(route.inboxID))
-    }
-
     private var selectedRuntimeBinding: Binding<AssistantRuntimeID> {
         Binding(
             get: { selectedRuntime },
@@ -1790,125 +1394,6 @@ struct HermesSquareRoot: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.top, 80)
             }
-        }
-    }
-}
-
-enum HermesSquarePendingThreadRoute {
-    static func hermesInboxID(for threadID: String?) -> String? {
-        HermesSquareAgentsColumnRouting.inboxID(runtime: .hermes, threadID: threadID)
-    }
-
-    @MainActor
-    static func consumeHermesInboxID() -> String? {
-        hermesInboxID(for: AssistantPendingThread.shared.consume(.hermes))
-    }
-
-    @MainActor
-    static func consumePendingRoute() -> (runtime: AssistantRuntimeID, inboxID: String)? {
-        for runtime in AssistantRuntimeID.allCases {
-            guard let inboxID = HermesSquareAgentsColumnRouting.inboxID(
-                runtime: runtime,
-                threadID: AssistantPendingThread.shared.consume(runtime)
-            ) else { continue }
-            return (runtime, inboxID)
-        }
-        return nil
-    }
-}
-
-enum HermesSquareNavigationRetarget {
-    static func sequence(
-        current: HermesSquareRoot.NavTarget?,
-        requested: HermesSquareRoot.NavTarget
-    ) -> [HermesSquareRoot.NavTarget?] {
-        if current == requested {
-            return [nil, requested]
-        }
-        return [requested]
-    }
-}
-
-private struct HermesSquareCloudSessionDetailView: View {
-    let row: CloudConversationSearchRow
-    @State private var activityStore = ActivityStore()
-    @State private var bodyText: String?
-    @State private var errorText: String?
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(row.title)
-                        .font(.title3.bold())
-                        .foregroundStyle(DesignSystemColors.textPrimary)
-                    HStack(spacing: 8) {
-                        if let provider = row.provider {
-                            Label(provider, systemImage: "cpu")
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundStyle(DesignSystemColors.textMuted)
-                }
-
-                if let bodyText {
-                    Text(bodyText)
-                        .font(.callout.monospaced())
-                        .textSelection(.enabled)
-                        .foregroundStyle(DesignSystemColors.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else if let errorText {
-                    Text(errorText)
-                        .font(.callout)
-                        .foregroundStyle(MobileTheme.error)
-                } else {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Opening encrypted session…")
-                            .font(.callout)
-                            .foregroundStyle(DesignSystemColors.textMuted)
-                    }
-                }
-            }
-            .padding(18)
-        }
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-        .navigationTitle("Cloud Session")
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            do {
-                bodyText = try await activityStore.loadCloudConversationBody(for: row)
-            } catch {
-                errorText = error.localizedDescription
-            }
-        }
-    }
-}
-
-extension View {
-    /// Medium/large sheet with a scrolling body and a Done button — the shape
-    /// every Agents desk overflow sheet uses. Collapses three identical
-    /// `NavigationStack` bodies into one place to keep the chrome in step.
-    func deskSheet(
-        _ title: String,
-        isPresented: Binding<Bool>,
-        @ViewBuilder content: @escaping () -> some View
-    ) -> some View {
-        sheet(isPresented: isPresented) {
-            NavigationStack {
-                ScrollView {
-                    content()
-                        .padding(16)
-                }
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { isPresented.wrappedValue = false }
-                    }
-                }
-            }
-            .presentationDetents([.medium, .large])
         }
     }
 }

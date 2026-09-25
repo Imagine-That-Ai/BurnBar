@@ -209,15 +209,18 @@ struct PixelClockSettingsCard: View {
         .disabled(model.isBusy)
     }
 
+    @ViewBuilder
     private var setupManualFallbackLink: some View {
-        Link(destination: URL(string: PixelClockSetupResult.awtrixLightFlasherURL)!) {
-            Label("Manual fallback", systemImage: "safari")
-                .font(DesignSystem.Typography.caption)
-                .fontWeight(.semibold)
+        if let flasherURL = URL(string: PixelClockSetupResult.awtrixLightFlasherURL) {
+            Link(destination: flasherURL) {
+                Label("Manual fallback", systemImage: "safari")
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(DesignSystem.Colors.textMuted)
+            .accessibilityLabel("Open manual AWTRIX Light flasher")
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(DesignSystem.Colors.textMuted)
-        .accessibilityLabel("Open manual AWTRIX Light flasher")
     }
 
     private var setupDetectButton: some View {

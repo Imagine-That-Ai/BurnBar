@@ -1354,7 +1354,7 @@ final class MobileChatHistoryStore {
     /// fresh, and a cloud refresh is kicked off so the new user immediately
     /// sees their own history.
     func switchPartition(to uid: String?) {
-        let key = uid?.isEmpty == false ? uid! : "local"
+        let key = uid.flatMap { $0.isEmpty ? nil : $0 } ?? "local"
         let sanitized = MobileChatFileLocalStore.sanitizePartitionKey(key)
         guard sanitized != activePartition else { return }
         activePartition = sanitized

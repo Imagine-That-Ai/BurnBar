@@ -345,7 +345,8 @@ public enum FusionSpendAggregator {
     public static func sessions(from rows: [FusionUsageRow]) -> [FusionSessionSpend] {
         var byParent: [String: [FusionUsageRow]] = [:]
         for row in rows where row.isFusion {
-            byParent[row.parentRequestID!, default: []].append(row)
+            guard let parentID = row.parentRequestID else { continue }
+            byParent[parentID, default: []].append(row)
         }
         let sessions = byParent.map { parentID, runRows -> FusionSessionSpend in
             let items = runRows
@@ -404,7 +405,9 @@ public enum FusionSpendAggregator {
             if row.isFusion {
                 fusionCost += row.cost
                 fusionTokens += row.totalTokens
-                fusionParents.insert(row.parentRequestID!)
+                if let parentID = row.parentRequestID {
+                    fusionParents.insert(parentID)
+                }
                 byModel[row.modelID, default: 0] += row.cost
             } else {
                 normalCost += row.cost

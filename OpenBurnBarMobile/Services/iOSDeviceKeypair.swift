@@ -6,7 +6,7 @@ import Security
 /// iOS Keychain-backed device keypair for escrow encryption.
 /// Uses P-256 ECIES via CryptoKit with private key stored in Keychain.
 final class iOSDeviceKeypair: DeviceKeypairProtocol {
-    private static let keyTag = "com.openburnbar.mobile.escrow-key".data(using: .utf8)!
+    private static let keyTag = Data("com.openburnbar.mobile.escrow-key".utf8)
     private var privateKey: P256.KeyAgreement.PrivateKey
     private(set) var keyVersion: Int
 
@@ -126,7 +126,7 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
 
     private static func saveOldKey(key: P256.KeyAgreement.PrivateKey, version: Int) throws {
         let raw = key.rawRepresentation
-        let oldTag = "com.openburnbar.mobile.escrow-key-v\(version)".data(using: .utf8)!
+        let oldTag = Data("com.openburnbar.mobile.escrow-key-v\(version)".utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: oldTag,
@@ -142,7 +142,7 @@ final class iOSDeviceKeypair: DeviceKeypairProtocol {
     }
 
     private static func loadOldKey(version: Int) throws -> P256.KeyAgreement.PrivateKey? {
-        let oldTag = "com.openburnbar.mobile.escrow-key-v\(version)".data(using: .utf8)!
+        let oldTag = Data("com.openburnbar.mobile.escrow-key-v\(version)".utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: oldTag,

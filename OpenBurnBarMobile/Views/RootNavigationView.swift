@@ -787,7 +787,7 @@ struct RootNavigationView: View {
         }
         let modelID = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_MODEL"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let selectedModelID = (modelID?.isEmpty == false) ? modelID! : "default"
+        let selectedModelID = modelID.flatMap { $0.isEmpty ? nil : $0 } ?? "default"
         Self.hermesE2ELogger.info("Applying Hermes E2E prompt promptCharacters=\(prompt.count, privacy: .public) model=\(selectedModelID, privacy: .public)")
         didApplyHermesE2EPrompt = true
         selection = .agents

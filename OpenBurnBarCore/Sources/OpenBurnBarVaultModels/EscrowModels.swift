@@ -172,7 +172,7 @@ public struct EscrowCredentialMetadataBinding: Sendable, Equatable {
     }
 
     public var associatedData: Data {
-        [
+        Data([
             "OpenBurnBar-Escrow-Credential-Binding-v1",
             field("grant", grantId),
             field("source", sourceDeviceId),
@@ -183,8 +183,7 @@ public struct EscrowCredentialMetadataBinding: Sendable, Equatable {
             field("keyVersion", String(keyVersion)),
             field("envelopeVersion", String(envelopeVersion))
         ]
-        .joined(separator: "\n")
-        .data(using: .utf8)!
+        .joined(separator: "\n").utf8)
     }
 
     private func field(_ name: String, _ value: String) -> String {

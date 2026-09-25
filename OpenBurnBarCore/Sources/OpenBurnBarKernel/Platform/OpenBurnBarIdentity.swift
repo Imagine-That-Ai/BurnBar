@@ -77,7 +77,10 @@ public struct OpenBurnBarAppPaths: Sendable {
             try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
             return OpenBurnBarAppPaths(applicationSupportRoot: root)
         }
-        let appSupportRoot = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        // Application Support always resolves on Apple platforms; fall back to a
+        // writable isolated directory rather than crashing if it ever does not.
+        let appSupportRoot = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
         return OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
     }
 

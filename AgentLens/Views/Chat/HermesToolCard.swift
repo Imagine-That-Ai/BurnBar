@@ -54,7 +54,7 @@ struct HermesToolCard: View {
 
                 if isRunning {
                     shimmerDot
-                } else if detail != nil && !detail!.isEmpty {
+                } else if let detail, !detail.isEmpty {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(DesignSystem.Colors.textMuted)

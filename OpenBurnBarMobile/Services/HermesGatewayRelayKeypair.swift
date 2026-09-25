@@ -105,7 +105,7 @@ struct HermesGatewayRelayKeypair: Sendable {
     /// The algorithm identifier the phone advertises alongside its pubkey.
     var relayEncryption: String { HermesRelayCrypto.algorithm }
 
-    private static let keyTag = "com.openburnbar.mobile.hermes-gateway-relay".data(using: .utf8)!
+    private static let keyTag = Data("com.openburnbar.mobile.hermes-gateway-relay".utf8)
 
     /// Load the persisted relay key, or mint and persist a new one on first use.
     ///
@@ -191,9 +191,9 @@ struct HermesGatewayRatchetPrivateBundle: Sendable, Equatable {
 /// protocol-specific domain so the gateway can echo the bundle without becoming
 /// a trust anchor.
 enum HermesGatewayRatchetPrekeyStore {
-    private static let identityKeyTag = "com.openburnbar.mobile.hermes-gateway-ratchet-identity".data(using: .utf8)!
-    private static let signingKeyTag = "com.openburnbar.mobile.hermes-gateway-ratchet-signing".data(using: .utf8)!
-    private static let signedPreKeyTag = "com.openburnbar.mobile.hermes-gateway-ratchet-signed-prekey".data(using: .utf8)!
+    private static let identityKeyTag = Data("com.openburnbar.mobile.hermes-gateway-ratchet-identity".utf8)
+    private static let signingKeyTag = Data("com.openburnbar.mobile.hermes-gateway-ratchet-signing".utf8)
+    private static let signedPreKeyTag = Data("com.openburnbar.mobile.hermes-gateway-ratchet-signed-prekey".utf8)
 
     static func loadOrCreateBundle() throws -> HermesGatewayRatchetPrekeyBundle {
         try loadOrCreatePrivateBundle().publicBundle

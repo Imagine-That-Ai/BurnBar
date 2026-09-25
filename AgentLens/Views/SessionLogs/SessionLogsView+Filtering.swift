@@ -156,9 +156,12 @@ extension SessionLogsView {
     private static func timeGroups(from logs: [OpenBurnBarCore.ConversationRecord], now: Date) -> [SessionLogGroup] {
         let calendar = Calendar.current
         let startOfToday = calendar.startOfDay(for: now)
-        let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday)!
-        let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
-        let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
+        guard let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday),
+              let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)),
+              let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) else {
+            AppLogger.dataStore.error("time_bucket_boundaries_unavailable")
+            return [SessionLogGroup(id: "all", title: "Sessions", systemImage: "tray.fill", accentColor: DesignSystem.Colors.ember, provider: nil, logs: logs)]
+        }
 
         var buckets: [String: [OpenBurnBarCore.ConversationRecord]] = [
             "today": [], "yesterday": [], "week": [], "month": [], "older": []

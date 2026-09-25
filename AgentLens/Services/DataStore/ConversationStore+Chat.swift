@@ -286,8 +286,8 @@ extension ConversationStore {
                     let lastMessageContent = (row["lastMessageContent"] as? String)?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
 
-                    let titleSource = (firstUserMessage?.isEmpty == false) ? firstUserMessage! : "BurnBar Chat"
-                    let previewSource = (lastMessageContent?.isEmpty == false) ? lastMessageContent! : titleSource
+                    let titleSource = firstUserMessage.flatMap { $0.isEmpty ? nil : $0 } ?? "BurnBar Chat"
+                    let previewSource = lastMessageContent.flatMap { $0.isEmpty ? nil : $0 } ?? titleSource
 
                     return ChatThreadSummary(
                         id: id,

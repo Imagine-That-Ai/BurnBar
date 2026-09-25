@@ -725,7 +725,11 @@ public struct BurnBarDAGContract: Codable, Hashable, Sendable {
             if dependencyEdges != declaredEdges {
                 let extraEdges = declaredEdges.subtracting(dependencyEdges)
                 let missingEdges = dependencyEdges.subtracting(declaredEdges)
-                let mismatchedEdge = (extraEdges.first ?? missingEdges.first)!
+                guard let mismatchedEdge = extraEdges.first ?? missingEdges.first else {
+                    // Unreachable: unequal sets always differ by at least one
+                    // edge. Fail closed rather than passing validation.
+                    throw BurnBarDAGError.edgeDependencyMismatch(sourceID: "unknown", targetID: "unknown")
+                }
                 throw BurnBarDAGError.edgeDependencyMismatch(
                     sourceID: mismatchedEdge.sourceNodeID.rawValue,
                     targetID: mismatchedEdge.targetNodeID.rawValue
@@ -797,7 +801,8 @@ public struct BurnBarDAGContract: Codable, Hashable, Sendable {
             }
 
             for neighbor in adjacency[current] ?? [] {
-                inDegree[neighbor]! -= 1
+                guard let degree = inDegree[neighbor] else { return nil }
+                inDegree[neighbor] = degree - 1
                 if inDegree[neighbor] == 0 {
                     queue.append(neighbor)
                 }

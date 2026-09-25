@@ -635,17 +635,23 @@ public struct LinuxPKCELoopbackFlow: Equatable, Sendable {
         self.state = state
         self.challenge = LinuxPKCEChallenge(verifier: verifier)
 
-        var components = URLComponents(url: authBaseURL, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "client_id", value: clientID),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "redirect_uri", value: "http://\(callbackHost):\(callbackPort)\(redirectPath)"),
-            URLQueryItem(name: "code_challenge", value: challenge.challenge),
-            URLQueryItem(name: "code_challenge_method", value: challenge.method),
-            URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "scope", value: scopes.joined(separator: " "))
-        ]
-        self.authURL = components.url!
+        // A base URL that cannot round-trip through URLComponents keeps its
+        // bare form: without the state/code query items the flow fails closed
+        // at `acceptCallback` instead of crashing here.
+        if var components = URLComponents(url: authBaseURL, resolvingAgainstBaseURL: false) {
+            components.queryItems = [
+                URLQueryItem(name: "client_id", value: clientID),
+                URLQueryItem(name: "response_type", value: "code"),
+                URLQueryItem(name: "redirect_uri", value: "http://\(callbackHost):\(callbackPort)\(redirectPath)"),
+                URLQueryItem(name: "code_challenge", value: challenge.challenge),
+                URLQueryItem(name: "code_challenge_method", value: challenge.method),
+                URLQueryItem(name: "state", value: state),
+                URLQueryItem(name: "scope", value: scopes.joined(separator: " "))
+            ]
+            self.authURL = components.url ?? authBaseURL
+        } else {
+            self.authURL = authBaseURL
+        }
     }
 
     public func acceptCallback(_ url: URL) throws -> String {

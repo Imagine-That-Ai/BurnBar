@@ -516,7 +516,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 title: "Simulator E2E Mission",
                 prompt: prompt,
                 missionKind: "custom",
-                requestedRuntime: runtime?.isEmpty == false ? runtime! : "ollama",
+                requestedRuntime: runtime.flatMap { $0.isEmpty ? nil : $0 } ?? "ollama",
                 targetProject: targetProject?.isEmpty == false ? targetProject : nil,
                 depth: "standard",
                 approvalMode: "read_only",

@@ -226,7 +226,7 @@ enum ComputerUseSecurityCallableClient {
     static func approveEscrowDeviceTrust(deviceId: String, approverDeviceId: String? = nil) async throws {
         let uid = try requireSignedInUser().uid
         try await bindAppCheckAttestation() // cov:ignore -- live Firebase attestation bind before protected trust-chain writes
-        let resolvedApproverDeviceId = approverDeviceId?.isEmpty == false ? approverDeviceId! : deviceId
+        let resolvedApproverDeviceId = approverDeviceId.flatMap { $0.isEmpty ? nil : $0 } ?? deviceId
         let trustChain = try await buildTrustChainProof(
             uid: uid,
             targetDeviceId: deviceId,

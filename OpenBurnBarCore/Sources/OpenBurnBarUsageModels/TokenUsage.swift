@@ -467,7 +467,10 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         return "acct_sha256_\(hex.prefix(24))"
     }
 
-    private static let usageIDNamespace = UUID(uuidString: "8CB8098C-794D-5D3F-A060-395F6B5BA5D8")!
+    private static let usageIDNamespace = UUID(uuid: (
+        0x8C, 0xB8, 0x09, 0x8C, 0x79, 0x4D, 0x5D, 0x3F,
+        0xA0, 0x60, 0x39, 0x5F, 0x6B, 0x5B, 0xA5, 0xD8
+    ))
 
     private static func uuidV5(namespace: UUID, name: String) -> UUID {
         var namespaceBytes = namespace.uuid

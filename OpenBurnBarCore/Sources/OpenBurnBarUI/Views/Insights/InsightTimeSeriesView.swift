@@ -337,7 +337,11 @@ public struct InsightTimeSeriesView: View {
                 seriesName: series.name,
                 value: point.value
             ))
-            if pivot == nil || abs(point.date.timeIntervalSince(date)) < abs(pivot!.timeIntervalSince(date)) {
+            if let current = pivot {
+                if abs(point.date.timeIntervalSince(date)) < abs(current.timeIntervalSince(date)) {
+                    pivot = point.date
+                }
+            } else {
                 pivot = point.date
             }
         }

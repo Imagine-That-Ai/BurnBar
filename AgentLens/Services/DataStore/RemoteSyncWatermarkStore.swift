@@ -628,7 +628,11 @@ final class AtomicRemoteSyncTransaction {
     /// Tracks the latest remote `updatedAt` seen.
     func recordProcessedItem(remoteUpdatedAt: Date) {
         processedItems += 1
-        if latestRemoteUpdateAt == nil || remoteUpdatedAt > latestRemoteUpdateAt! {
+        if let latest = latestRemoteUpdateAt {
+            if remoteUpdatedAt > latest {
+                latestRemoteUpdateAt = remoteUpdatedAt
+            }
+        } else {
             latestRemoteUpdateAt = remoteUpdatedAt
         }
     }
