@@ -50,6 +50,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - [BurnBar Resume](docs/BURNBAR_RESUME.md)
 - [Receipts register](docs/RECEIPTS.md)
 - [OpenBurnBar Roadmap](docs/ROADMAP.md)
+- [Subsystem onboarding map](docs/ONBOARDING.md) — subsystem → modules → canonical tests → runbooks
 - [OpenBurnBar + Cursor Agent Onboarding](docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md)
 - [OpenBurnBar Cursor Marketplace Plugin](docs/OPENBURNBAR_CURSOR_PLUGIN.md)
 - [OpenBurnBar Current Release Architecture](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md)
