@@ -1,6 +1,6 @@
 import AppKit
 import OpenBurnBarAnalytics
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import SwiftUI
 
 // MARK: - Primitives

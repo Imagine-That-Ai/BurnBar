@@ -1,7 +1,8 @@
 import SwiftUI
 import os.log
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
 import OpenBurnBarMedia
+import OpenBurnBarUI
 import FirebaseAuth
 
 // MARK: - HermesSquareRoot + Support

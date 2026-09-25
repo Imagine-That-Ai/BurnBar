@@ -1,7 +1,7 @@
 import AVFoundation
 import CoreMedia
 import ImageIO
-import OpenBurnBarCore
+import OpenBurnBarUI
 import Photos
 import SwiftUI
 import UIKit

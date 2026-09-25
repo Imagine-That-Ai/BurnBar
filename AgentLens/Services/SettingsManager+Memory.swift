@@ -3,7 +3,7 @@ import FirebaseCore
 import FirebaseRemoteConfig
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension SettingsManager {
     // MARK: Memory (G4: user toggle + Remote Config fleet kill switch)

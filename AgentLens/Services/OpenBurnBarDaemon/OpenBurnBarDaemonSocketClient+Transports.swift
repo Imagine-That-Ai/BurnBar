@@ -1,6 +1,7 @@
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
 
 extension OpenBurnBarDaemonSocketClient {
     static func sendEncoded<Request: Encodable, Response: Codable & Sendable>(

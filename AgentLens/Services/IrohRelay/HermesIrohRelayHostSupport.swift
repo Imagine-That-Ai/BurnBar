@@ -3,7 +3,6 @@ import FirebaseAppCheck
 import FirebaseCore
 import FirebaseRemoteConfig
 import Foundation
-import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import os
 

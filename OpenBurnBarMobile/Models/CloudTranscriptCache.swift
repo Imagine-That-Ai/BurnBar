@@ -3,7 +3,7 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import os.log
 
 // MARK: - Cloud Transcript Cache

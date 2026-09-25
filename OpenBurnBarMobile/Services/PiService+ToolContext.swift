@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarHermes
 import Security
 
 // MARK: - Tool Use Loop

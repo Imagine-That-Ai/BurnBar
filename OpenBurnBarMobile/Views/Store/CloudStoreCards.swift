@@ -1,5 +1,6 @@
 import FirebaseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import StoreKit
 import SwiftUI
 

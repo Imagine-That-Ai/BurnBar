@@ -1,5 +1,6 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
 import SwiftUI
 
 // MARK: - ConnectionsSettingsView + External OAuth

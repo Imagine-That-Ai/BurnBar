@@ -1,5 +1,5 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import SwiftUI
 
 // MARK: - Switcher Data Loading Protocol

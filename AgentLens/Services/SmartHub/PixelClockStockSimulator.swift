@@ -1,6 +1,6 @@
 import Foundation
 import Network
-import OpenBurnBarCore
+import OpenBurnBarUI
 import OSLog
 
 enum PixelClockStockMQTT {
