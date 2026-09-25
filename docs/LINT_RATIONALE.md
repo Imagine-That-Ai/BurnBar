@@ -307,22 +307,6 @@ AgentLens/Views/Settings/SmartDisplays/NestHubSettingsCard.swift | OpenBurnBarMo
 AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/PixelClockSettingsCard.swift | storage-backend-divergence
 AgentLens/Views/Settings/TextExpansionSettingsView.swift | OpenBurnBarMobile/Views/You/TextExpansionSettingsView.swift | platform-ui
 # Exact AgentLens path | exact OpenBurnBarCore path | category (Wave 2.2 widening)
-AgentLens/Models/AgentProvider.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AgentProvider.swift | pending-core-consolidation
-AgentLens/Models/ConversationRecord.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ConversationRecord.swift | pending-core-consolidation
-AgentLens/Services/Analytics/Analytics.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/Analytics.swift | pending-core-consolidation
-AgentLens/Services/Analytics/AnalyticsBuckets.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsBuckets.swift | pending-core-consolidation
-AgentLens/Services/Analytics/AnalyticsConsentStore.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsConsentStore.swift | pending-core-consolidation
-AgentLens/Services/Analytics/AnalyticsEvent.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsEvent.swift | pending-core-consolidation
-AgentLens/Services/Analytics/AnalyticsIdentity.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsIdentity.swift | pending-core-consolidation
-AgentLens/Services/Analytics/AnalyticsName.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsName.swift | pending-core-consolidation
-AgentLens/Services/Analytics/AnalyticsSuperProperties.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsSuperProperties.swift | pending-core-consolidation
-AgentLens/Services/Analytics/AnalyticsTransporting.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsTransporting.swift | pending-core-consolidation
-AgentLens/Services/Analytics/AnalyticsValue.swift | OpenBurnBarCore/Sources/OpenBurnBarAnalytics/AnalyticsValue.swift | pending-core-consolidation
-AgentLens/Services/ProviderQuota/AnthropicCredentialProbe.swift | OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/AnthropicCredentialProbe.swift | pending-core-consolidation
-AgentLens/Services/ProviderQuota/ProviderQuotaAdapter.swift | OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/ProviderQuotaAdapter.swift | pending-core-consolidation
-AgentLens/Services/ProviderQuota/ProviderQuotaPacing.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderQuotaPacing.swift | pending-core-consolidation
-AgentLens/Services/ProviderQuota/ProviderQuotaTypes.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderQuotaTypes.swift | pending-core-consolidation
-AgentLens/Utilities/Formatting.swift | OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Formatting.swift | pending-core-consolidation
 AgentLens/Views/Components/CardRowPacker.swift | OpenBurnBarCore/Sources/OpenBurnBarUI/Views/CardRowPacker.swift | platform-ui
 ```
 

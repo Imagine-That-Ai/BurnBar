@@ -156,3 +156,23 @@ public enum PacingMath {
         }
     }
 }
+
+// MARK: - Bucket pacing convenience
+
+public extension ProviderQuotaBucket {
+    /// Where usage *should* be in this window if it's to last the full
+    /// reset period. Returns nil for lifetime/custom windows or buckets
+    /// without a `resetsAt`.
+    ///
+    /// Moved from AgentLens (3.4 twin consolidation); the rawValue bridge
+    /// is gone because the bucket is the Core struct now.
+    func idealPace(now: Date = Date(), calendar: Calendar = .current) -> IdealPace? {
+        PacingMath.pace(
+            windowKind: windowKind,
+            resetsAt: resetsAt,
+            progressFraction: progressFraction,
+            now: now,
+            calendar: calendar
+        )
+    }
+}

@@ -237,4 +237,47 @@ final class ProviderQuotaPacingTests: XCTestCase {
         )
         XCTAssertEqual(pace.windowEnd, resetsAt)
     }
+
+    // MARK: - Bucket convenience (moved from AgentLens in 3.4)
+
+    private func makeBucket(
+        windowKind: ProviderQuotaWindowKind = .rollingHours,
+        usedPercent: Double? = 50,
+        resetsAt: Date? = Date(timeIntervalSince1970: 1_750_000_000).addingTimeInterval(2.5 * 60 * 60)
+    ) -> ProviderQuotaBucket {
+        ProviderQuotaBucket(
+            key: "test",
+            label: "Test",
+            windowKind: windowKind,
+            usedValue: nil,
+            limitValue: nil,
+            remainingValue: nil,
+            usedPercent: usedPercent,
+            resetsAt: resetsAt,
+            unit: .percent,
+            isEstimated: false
+        )
+    }
+
+    func test_idealPace_matchesPacingMathForBucket() {
+        let now = makeNow()
+        let bucket = makeBucket()
+        let pace = bucket.idealPace(now: now)
+        let expected = PacingMath.pace(
+            windowKind: .rollingHours,
+            resetsAt: bucket.resetsAt,
+            progressFraction: bucket.progressFraction,
+            now: now
+        )
+        XCTAssertEqual(pace, expected)
+        XCTAssertEqual(pace?.severity, .onPace)
+    }
+
+    func test_idealPace_nilWithoutResetsAt() {
+        XCTAssertNil(makeBucket(resetsAt: nil).idealPace(now: makeNow()))
+    }
+
+    func test_idealPace_nilForLifetimeWindow() {
+        XCTAssertNil(makeBucket(windowKind: .lifetime).idealPace(now: makeNow()))
+    }
 }

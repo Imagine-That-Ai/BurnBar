@@ -7,7 +7,7 @@
     "**/*.md",
     "**/node_modules/**",
     "**/dist/**",
-    "**/lib/**",
+    "functions/lib/**",
     "**/.build/**",
     "**/.derived-data*/**",
     "**/.spm-cache*/**",
