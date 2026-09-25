@@ -882,7 +882,7 @@ check("macOS gates never run pull-request or merge-group code on persistent self
     [DAEMON_WORKFLOW, 2],
     [DOMAIN_CORE_WORKFLOW, 2],
     [HEADLESS_WORKFLOW, 1],
-    [NATIVE_WORKFLOW, 2],
+    [NATIVE_WORKFLOW, 3],
   ]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
     // Paid opt-in arm present and still the isolated capped pool (never inline group:).

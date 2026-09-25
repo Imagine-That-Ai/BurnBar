@@ -67,6 +67,19 @@ test("isolated tests select only their owning product", () => {
   for (const lane of LANES) assert.equal(windows[lane], false);
 });
 
+test("PR app-smoke gate files select macos (gate changes re-run the gate)", () => {
+  for (const path of [
+    "scripts/ci/select-pr-app-tests.sh",
+    "scripts/ci/select-pr-app-tests.test.sh",
+    ".github/workflows/pr-native-fast.yml",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, false, path);
+    assert.equal(result.macos, true, path);
+    assert.equal(result.mobile, false, path);
+  }
+});
+
 test("shared Swift sources select every Swift consumer", () => {
   const result = classifyPaths(["OpenBurnBarCore/Sources/Quota.swift"]);
   assert.equal(result.macos, true);
