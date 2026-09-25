@@ -186,6 +186,13 @@ jobs:
             ${{ runner.os }}-app-spm-
             ${{ runner.os }}-spm-
 
+      # Preflight runs unconditionally above the first FFI-touching step: it is
+      # idempotent (PATH fix + probe, installs only when missing) and the
+      # libsignal preflight gate requires it to precede any step that runs
+      # prepare-signal-ffi-xcframework.sh, including the prebuilt restore.
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
+
       - name: Prepare Signal FFI XCFramework (prebuilt restore)
         id: prepare-ffi
         continue-on-error: true
@@ -196,10 +203,6 @@ jobs:
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
           toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
-
-      - name: Ensure libsignal native toolchain (cache-miss rebuild only)
-        if: steps.prepare-ffi.outcome == 'failure'
-        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Rebuild Signal FFI XCFramework (cache miss)
         if: steps.prepare-ffi.outcome == 'failure'
