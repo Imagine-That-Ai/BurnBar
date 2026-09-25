@@ -26,8 +26,7 @@ object CostRule {
     }
 
     /** Sum of [effectiveCostUSD] over events, in order (fixture total). */
-    fun totalCostUSD(costs: List<CostSpellings>): Double =
-        costs.sumOf { effectiveCostUSD(it.costUSD, it.costUsd, it.cost) }
+    fun totalCostUSD(costs: List<CostSpellings>): Double = costs.sumOf { effectiveCostUSD(it.costUSD, it.costUsd, it.cost) }
 }
 
 /** A usage event's cost spellings (all optional; null = absent/unusable). */
