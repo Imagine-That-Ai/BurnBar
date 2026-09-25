@@ -10,6 +10,36 @@ iOS → Cloud Functions → Firestore / Secret Manager / Provider APIs
 Mac → Firestore (usage, quota snapshots)
 ```
 
+## Deploy codebases (3.5)
+
+Four independently deployable codebases (`firebase.json` `functions[]`):
+`identity` (`functions-identity/`), `sync` (`functions-sync/`), `media`
+(`functions-media`), `admin` (`functions/`, this directory). Build all with
+`./scripts/build-functions-all.sh`; deploy one with
+`firebase deploy --only functions:identity` (etc.).
+
+Cold-start proxy measured 2026-09-25 (fresh `node`, `require()` built
+`lib/index.js`, second run to skip disk-cache noise; not Cloud Run
+wall-clock, but comparable across codebases):
+
+| Codebase | `lib/` size | require time | modules loaded |
+|---|---|---:|---:|
+| identity | 1.9 MB | ~1.4 s | 2031 |
+| sync | 2.0 MB | ~1.0 s | 1446 |
+| media | 0.8 MB | ~1.0 s | 1423 |
+| admin | 1.6 MB | ~1.0 s | 1422 |
+
+Identity's extra ~600 modules are passkey/WebAuthn-only (`@simplewebauthn`,
+`asn1js`, `@peculiar`, …) — sync/media/admin cold starts do not pay for
+them, which is the isolation the split exists to provide. Re-measure
+before growing a codebase's dependency set:
+
+```bash
+for cb in functions-identity functions-sync functions-media functions; do
+  node -e "const t0=process.hrtime.bigint();require('./$cb/lib/index.js');console.log('$cb',Number(process.hrtime.bigint()-t0)/1e6+'ms',Object.keys(require.cache).length+'modules')" 2>/dev/null
+done
+```
+
 ## Setup
 
 1. **Install dependencies**

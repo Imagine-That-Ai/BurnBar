@@ -2596,6 +2596,7 @@
 		D93B4F374E52D760A570E632 /* BurnBarDaemonSocketRPCCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4754C2A0D8267BE5672321A4 /* BurnBarDaemonSocketRPCCoverageTests.swift */; };
 		D943676FEDF65B46270974C4 /* openburnbar-db-compat-params-observed.json in Resources */ = {isa = PBXBuildFile; fileRef = 29D5C834B101B6A7A614DC6D /* openburnbar-db-compat-params-observed.json */; };
 		D948326F55F935DE0F71CE34 /* ChatPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B573607D98641E05DC8BFC63 /* ChatPanel.swift */; };
+		F6E5D4C3B2A1908776655443 /* PetAuthStatus+ChipColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C6 /* PetAuthStatus+ChipColor.swift */; };
 		D9567E15285BF6E99B04C12A /* BurnBarModelVariantLiveCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98329879204FD8B07C9A5EB6 /* BurnBarModelVariantLiveCatalogTests.swift */; };
 		D9649F99B33CE8020553AF67 /* PiAgentCloudRelayHostServiceMattersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF3D2D89638FE51D753C8AB /* PiAgentCloudRelayHostServiceMattersTests.swift */; };
 		D96FEAD1AE5BE6AE4A5EB300 /* CLIAgentMissionRequestListener+Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80A96F426649C51BCAB0247E /* CLIAgentMissionRequestListener+Models.swift */; };
@@ -5275,6 +5276,7 @@
 		B55B3530BD4852334409BBC4 /* SummaryAPIKeyResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryAPIKeyResolver.swift; sourceTree = "<group>"; };
 		B56BEC1B390FEF65B53D5A27 /* OpenBurnBarDaemonBinaryResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarDaemonBinaryResolver.swift; sourceTree = "<group>"; };
 		B573607D98641E05DC8BFC63 /* ChatPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPanel.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C6 /* PetAuthStatus+ChipColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PetAuthStatus+ChipColor.swift"; sourceTree = "<group>"; };
 		B57EBB251CFEF15BA51BC050 /* BurnBarCustomModelLiveCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarCustomModelLiveCatalogTests.swift; sourceTree = "<group>"; };
 		B5980E6FFCD24604A21B037B /* IdentityHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityHero.swift; sourceTree = "<group>"; };
 		B59A6CACDDC2BD3D6EC70F8C /* HelpSupportHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpSupportHubView.swift; sourceTree = "<group>"; };
@@ -7011,6 +7013,7 @@
 				9A8084FA1175E73254F8E125 /* InsightBriefCard.swift */,
 				EB1AF4D5C63600ED8A80A5F3 /* MemoryCitationChipView.swift */,
 				CCF6D3F2ACFF72BF9B1AE2A7 /* MercuryShimmerModifier.swift */,
+				A1B2C3D4E5F60718293A4B5C6 /* PetAuthStatus+ChipColor.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -14935,6 +14938,7 @@
 				3E9E4940DC089B13E2AAFCCD /* PendingDeviceApprovalBanner.swift in Sources */,
 				9656AE5E0ADEF7037C43AA39 /* PensieveTokens.swift in Sources */,
 				42501FA5970D7DE61FEB3C35 /* PetAttachmentDropDelegate.swift in Sources */,
+				F6E5D4C3B2A1908776655443 /* PetAuthStatus+ChipColor.swift in Sources */,
 				CD974B3703121508F51ACCF0 /* PetBubblePanel.swift in Sources */,
 				3EE7B431A65B464A93EFD30F /* PetChatBubble.swift in Sources */,
 				D2BC384890E123DBDB61B211 /* PetChatFallback.swift in Sources */,
