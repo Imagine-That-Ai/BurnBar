@@ -88,6 +88,7 @@ budgets/port-file-size-baseline.json
 budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json
+budgets/docs-freshness-baseline.json
 budgets/core-target-membership-baseline.json
 budgets/core-umbrella-imports-baseline.json
 # Wave 3.1 Core/Lab split: frozen count of Lab->Core boundary references;
@@ -120,7 +121,6 @@ budgets/force-unwrap-baseline.json
 .github/workflows/linux-release-baseline.yml
 
 # --- File-level TypeScript suppressions (token-scoped) ---
-functions/src/types/legacy.ts | eslint-disable
 website/src/scripts/dotConstellation.ts | ts-suppress
 website/src/scripts/easterEggFx.ts | ts-suppress
 website/src/scripts/emberSwarm.ts | ts-suppress
