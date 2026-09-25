@@ -17,14 +17,14 @@ const repoRoot = resolve(__dirname, "../../..");
 const clients = [
   {
     platform: "macOS",
-    path: "AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
+    path: "AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient+AgentLens.swift",
     registerStart: "static func registerEscrowDevice(",
     approveStart: "static func approveEscrowDeviceTrust(",
     approveEnd: "private static func buildTrustChainProof(",
   },
   {
     platform: "iOS",
-    path: "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
+    path: "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient+Mobile.swift",
     registerStart: "static func registerEscrowDevice(",
     approveStart: "static func approveEscrowDeviceTrust(",
     approveEnd: "private static func buildTrustChainProof(",
@@ -80,7 +80,7 @@ describe("cross-platform App Check binding order", () => {
   }
 
   const macSource = readFileSync(
-    resolve(repoRoot, "AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift"),
+    resolve(repoRoot, "AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient+AgentLens.swift"),
     "utf8",
   );
   const macPairingActions = [
