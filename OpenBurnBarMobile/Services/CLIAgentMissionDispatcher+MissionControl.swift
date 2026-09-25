@@ -6,8 +6,6 @@ import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import os
 
-typealias UntypedJSONObject = [String: Any]
-
 // MARK: - Mission group observation, merge, approval + cancel
 //
 // Split out of `CLIAgentMissionDispatcher.swift` (audit wave 4, item 14

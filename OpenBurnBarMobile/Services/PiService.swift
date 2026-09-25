@@ -330,7 +330,7 @@ final class PiService {
     /// Weak storage backing `atomNavigatorAccessor`. Kept out of the
     /// public surface to discourage callers from reaching past the
     /// accessor.
-    private weak var toolAtomNavigatorReference: AnyObject?
+    weak var toolAtomNavigatorReference: AnyObject?
 
     init(
         urlSession: URLSession = .shared,

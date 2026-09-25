@@ -365,12 +365,10 @@ enum InboxHomeChromePolicy {
 /// refuses to carry so Streams can keep embedding the same list.
 struct InboxHomeView: View {
     @Bindable var store: AIInboxStore
-    @Environment(\.mobileTrayInset) private var trayInset
     @State private var searchText = ""
 
     var body: some View {
         AIInboxSplitLayout(store: store, showsPageHeader: InboxHomeChromePolicy.showsInPageHeadlineWhenHosted)
-            .padding(.bottom, trayInset)
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle(InboxHomeChromePolicy.navigationTitle)
             .navigationBarTitleDisplayMode(.large)

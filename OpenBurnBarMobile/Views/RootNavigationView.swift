@@ -592,7 +592,7 @@ struct RootNavigationView: View {
     private func openDevicesRoute() {
         selection = .devices
         detailPath = NavigationPath()
-        updateColumnVisibility(for: .devices, animated: false)
+        updateColumnVisibility(animated: false)
     }
 
     private func openHermesGatewayPairingRoute(_: Notification) {

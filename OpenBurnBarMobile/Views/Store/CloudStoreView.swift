@@ -5,12 +5,12 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 
-private enum CloudStoreLegalURLs {
+enum CloudStoreLegalURLs {
     static let privacy = URL(staticString: "https://burnbar.ai/legal/privacy-policy")
     static let terms = URL(staticString: "https://burnbar.ai/legal/terms")
 }
 
-private enum CloudSubscriptionDisclosure {
+enum CloudSubscriptionDisclosure {
     static let title = "BurnBar Cloud, BurnBar Cloud Pro, and BurnBar Cloud Ultra"
     static let period = "Monthly or annual auto-renewable subscriptions"
     static let included = "BurnBar Cloud includes sync, encrypted history backup, cloud search, "
@@ -402,7 +402,7 @@ private func topUpUnitLabel(for kind: String) -> String {
 /// `cardGradient` tint + ember-tinted hairline. Same chrome as every other
 /// primary card in the iOS rebuild (PulseView, BurnView, etc.) so the Cloud
 /// destination doesn't read as a different app.
-private struct MercuryFoilCardModifier: ViewModifier {
+struct MercuryFoilCardModifier: ViewModifier {
     var cornerRadius: CGFloat = MobileTheme.Radius.lg
 
     func body(content: Content) -> some View {

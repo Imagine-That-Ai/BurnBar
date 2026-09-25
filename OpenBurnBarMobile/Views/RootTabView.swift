@@ -604,6 +604,10 @@ struct RootTabView: View {
             presentMercuryCall(connectionId: connectionId)
         case .mission(let missionId):
             presentMissionConsole(missionId: missionId)
+        case .devices:
+            selection = .you
+            youPath = NavigationPath()
+            youPath.append(YouRoute.devices)
         case nil:
             break
         }
