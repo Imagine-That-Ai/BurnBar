@@ -6,7 +6,7 @@ import OpenBurnBarMedia
 public typealias MercuryLinuxMediaReplySender = @Sendable (HermesRealtimeRelayFrame) async throws -> Void
 
 public actor MercuryLinuxMediaSessionController {
-    private struct PendingSession: Sendable {
+    struct PendingSession: Sendable {
         var kind: DaemonMediaSessionKind
         var requestID: String
         var uid: String
@@ -50,7 +50,7 @@ public actor MercuryLinuxMediaSessionController {
         var route: MercuryControlRoute?
     }
 
-    private let logger: BurnBarDaemonLogger
+    let logger: BurnBarDaemonLogger
     private let channel: MercuryLinuxMediaChannel?
     private let fileTransferService: MediaFileTransferService?
     private let downloadDirectoryProvider: @Sendable () -> URL
@@ -62,11 +62,11 @@ public actor MercuryLinuxMediaSessionController {
     private let packetCodec = MediaPacketCodec()
     private let frameAEAD = MediaFrameAEAD()
     private var bitrateController = BitrateController(steps: .screenShare)
-    private var mediaFrameSealKey: PlatformSymmetricKey?
+    var mediaFrameSealKey: PlatformSymmetricKey?
     private var phase: DaemonMediaSessionPhase = .idle
     private var pending: PendingSession?
     private var active: PendingSession?
-    private var sessionID: String?
+    var sessionID: String?
     private var startedAt: Date?
     private var updatedAt = Date()
     private var cooldownUntil: Date?
@@ -1491,96 +1491,5 @@ public actor MercuryLinuxMediaSessionController {
         }
     }
 
-    private func sendDecision(
-        for pending: PendingSession,
-        accepted: Bool,
-        sessionID: String?,
-        detail: String?
-    ) async {
-        guard let replySender = pending.replySender else { return }
-        let frame: HermesRealtimeRelayFrame
-        switch pending.kind {
-        case .mirror:
-            frame = HermesRealtimeRelayFrame(
-                type: .mediaMirrorAck,
-                uid: pending.uid,
-                connectionId: pending.connectionID,
-                requestId: pending.requestID,
-                media: HermesRealtimeRelayMediaPayload(
-                    mirrorAck: HermesRealtimeRelayMirrorAck(
-                        requestId: pending.requestID,
-                        decision: accepted ? .accepted : .denied,
-                        detail: detail,
-                        sessionId: sessionID,
-                        streamingCapabilities: nil,
-                        mediaFrameSealEstablished: mediaFrameSealKey != nil
-                    )
-                )
-            )
-        case .call:
-            frame = HermesRealtimeRelayFrame(
-                type: .mediaCallAck,
-                uid: pending.uid,
-                connectionId: pending.connectionID,
-                requestId: pending.requestID,
-                media: HermesRealtimeRelayMediaPayload(
-                    callAck: HermesRealtimeRelayCallAck(
-                        requestId: pending.requestID,
-                        decision: accepted ? .accepted : .denied,
-                        detail: detail
-                    )
-                )
-            )
-        }
-        do {
-            try await replySender(frame)
-        } catch {
-            logger.warning("linux_media_reply_failed", metadata: ["error": "\(error)"])
-        }
-    }
-
-    private func sendBusyMirrorAck(
-        frame: HermesRealtimeRelayFrame,
-        request: HermesRealtimeRelayMirrorRequest,
-        replySender: MercuryLinuxMediaReplySender?
-    ) async {
-        guard let replySender else { return }
-        let outbound = HermesRealtimeRelayFrame(
-            type: .mediaMirrorAck,
-            uid: frame.uid,
-            connectionId: frame.connectionId,
-            requestId: request.requestId,
-            media: HermesRealtimeRelayMediaPayload(
-                mirrorAck: HermesRealtimeRelayMirrorAck(
-                    requestId: request.requestId,
-                    decision: .busy,
-                    detail: "Linux Mercury media is already streaming."
-                )
-            )
-        )
-        try? await replySender(outbound)
-    }
-
-    private func sendBusyCallAck(
-        frame: HermesRealtimeRelayFrame,
-        invite: HermesRealtimeRelayCallInvite,
-        replySender: MercuryLinuxMediaReplySender?
-    ) async {
-        guard let replySender else { return }
-        let outbound = HermesRealtimeRelayFrame(
-            type: .mediaCallAck,
-            uid: frame.uid,
-            connectionId: frame.connectionId,
-            requestId: invite.requestId,
-            media: HermesRealtimeRelayMediaPayload(
-                callAck: HermesRealtimeRelayCallAck(
-                    requestId: invite.requestId,
-                    decision: .busy,
-                    detail: "Linux Mercury media is already streaming."
-                )
-            )
-        )
-        try? await replySender(outbound)
-    }
 }
 #endif

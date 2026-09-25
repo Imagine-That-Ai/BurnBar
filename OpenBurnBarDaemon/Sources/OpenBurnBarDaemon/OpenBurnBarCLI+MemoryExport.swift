@@ -216,9 +216,12 @@ extension BurnBarCLIRunner {
     /// D-0025 ruling 3 is satisfied rather than worked around, and the private
     /// half sits in `./fixture-keys/recipient-secret.json` for the importer.
     private func runMemoryRecipientKeypair(_ command: MemoryExportCommand) throws -> String {
-        // reason: validate() refuses recipient-keypair without --out
-        // swiftlint:disable:next force_unwrapping
-        let directory = URL(fileURLWithPath: command.out!)
+        // validate() refuses recipient-keypair without --out; refuse again here
+        // rather than crashing if that ever stops holding.
+        guard let out = command.out else {
+            throw BurnBarCLIError.missingArgument("recipient-keypair requires --out <directory>.")
+        }
+        let directory = URL(fileURLWithPath: out)
         let keypair = try MemoryExportRecipient.generateKeypair(storeID: command.storeID)
         let written = try MemoryExportRecipient.writeKeypair(keypair, to: directory)
         if command.json {
@@ -246,9 +249,12 @@ extension BurnBarCLIRunner {
     /// files on disk need no key at all, and without them a corrupted or
     /// truncated bundle was undetectable until it reached the other side.
     private func runMemoryVerify(_ command: MemoryExportCommand) throws -> String {
-        // reason: validate() refuses verify without --bundle
-        // swiftlint:disable:next force_unwrapping
-        let url = URL(fileURLWithPath: command.bundle!)
+        // validate() refuses verify without --bundle; refuse again here
+        // rather than crashing if that ever stops holding.
+        guard let bundle = command.bundle else {
+            throw BurnBarCLIError.missingArgument("verify requires --bundle <path>.")
+        }
+        let url = URL(fileURLWithPath: bundle)
 
         // The key the signature verifies against, in precedence order:
         //   1. `--signing-key FILE` — the descriptor the operator carried over;
@@ -301,9 +307,11 @@ extension BurnBarCLIRunner {
         let storeID = try queue.read { try MemoryExportStoreReader.storeIdentity($0) }
         let headAfter = try queue.read { try MemoryExportStoreReader.auditHead($0) }
 
-        // reason: validate() refuses p5-check without --target-ids
-        // swiftlint:disable:next force_unwrapping
-        let targetPath = command.targetIDs!
+        // validate() refuses p5-check without --target-ids; refuse again here
+        // rather than crashing if that ever stops holding.
+        guard let targetPath = command.targetIDs else {
+            throw BurnBarCLIError.missingArgument("p5-check requires --target-ids <path>.")
+        }
         guard let text = try? String(contentsOf: URL(fileURLWithPath: targetPath), encoding: .utf8) else {
             throw BurnBarCLIError.missingArgument("cannot read the target id set at \(targetPath).")
         }
@@ -317,9 +325,11 @@ extension BurnBarCLIRunner {
         // the digest is `sha256(UTF-8(normalize(body)))` — the unkeyed recipe
         // both stores can compute over their own rows (the bundle's keyed
         // `body_norm_digest` died with the discarded bundle key).
-        // reason: validate() refuses p5-check without --target-digests
-        // swiftlint:disable:next force_unwrapping
-        let digestPath = command.targetDigests!
+        // validate() refuses p5-check without --target-digests; refuse again
+        // here rather than crashing if that ever stops holding.
+        guard let digestPath = command.targetDigests else {
+            throw BurnBarCLIError.missingArgument("p5-check requires --target-digests <path>.")
+        }
         guard let digestText = try? String(
             contentsOf: URL(fileURLWithPath: digestPath),
             encoding: .utf8
@@ -375,12 +385,15 @@ extension BurnBarCLIRunner {
             return target == digest ? nil : id
         })
 
+        // validate() refuses p5-check without --required-version; refuse again
+        // here rather than crashing if that ever stops holding.
+        guard let requiredVersion = command.requiredVersion else {
+            throw BurnBarCLIError.missingArgument("p5-check requires --required-version <version>.")
+        }
         let result = MemoryExportP5Check.run(
             gates: MemoryExportP5Gates(
                 sourceVersion: BurnBarDaemonVersion.current,
-                // reason: validate() refuses p5-check without it
-                // swiftlint:disable:next force_unwrapping
-                requiredVersion: command.requiredVersion!,
+                requiredVersion: requiredVersion,
                 socketTokenRotated: command.socketTokenRotated,
                 memoryWriteCapabilityWithdrawn: command.memoryWriteWithdrawn
             ),

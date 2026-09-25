@@ -1,6 +1,5 @@
 import OpenBurnBarEngine
 import Foundation
-import OpenBurnBarKernel
 
 // OpenAI Responses API <-> Chat Completions request/response/stream conversion.
 // Extracted from OpenBurnBarProviderExecutor.swift (god-type decomposition) — same module, same isolation, verbatim.
@@ -11,21 +10,19 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         _ body: Data,
         modelID: String
     ) throws -> (Data, Bool) {
-        let json = try JSONSerialization.jsonObject(with: body)
-        guard let object = json as? [String: Any] else {
-            throw BurnBarProviderExecutorError.invalidResponse
-        }
+        let request = try BurnBarBridgeJSON.decodeBridgeRequest(ResponsesBridgeInboundRequest.self, from: body)
 
-        let streamRequested = object["stream"] as? Bool ?? false
-        var messages: [[String: Any]] = []
-        if let instructions = object["instructions"] as? String,
+        let streamRequested = request.stream?.bool ?? false
+        var messages: [ChatBridgeOutboundMessage] = []
+        if let instructions = request.instructions?.string,
            !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            messages.append(["role": "system", "content": instructions])
+            messages.append(ChatBridgeOutboundMessage(role: "system", content: .string(instructions)))
         }
 
-        if let existingMessages = object["messages"] as? [[String: Any]], !existingMessages.isEmpty {
-            messages.append(contentsOf: sanitizedChatMessages(existingMessages))
-        } else if let input = object["input"] {
+        if let existing = request.messages?.array, !existing.isEmpty,
+           existing.allSatisfy({ $0.object != nil }) {
+            messages.append(contentsOf: sanitizedChatMessages(existing))
+        } else if let input = request.input {
             messages.append(contentsOf: messagesFromResponsesInput(input))
         }
         messages = coalescedSystemMessages(messages)
@@ -37,117 +34,100 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             )
         }
 
-        var chatObject: [String: Any] = [
-            "model": modelID,
-            "messages": messages
-        ]
-        for compatibleKey in [
-            "temperature",
-            "top_p",
-            "stop",
-            "stream",
-            "presence_penalty",
-            "frequency_penalty",
-            "logit_bias",
-            "seed",
-            "user",
-            "response_format",
-            "max_tokens",
-            "tools",
-            "tool_choice"
-        ] {
-            if let value = object[compatibleKey] {
-                chatObject[compatibleKey] = value
-            }
+        var chat = ChatBridgeOutboundRequest(model: modelID, messages: messages)
+        chat.temperature = request.temperature
+        chat.topP = request.topP
+        chat.stop = request.stop
+        chat.stream = request.stream
+        chat.presencePenalty = request.presencePenalty
+        chat.frequencyPenalty = request.frequencyPenalty
+        chat.logitBias = request.logitBias
+        chat.seed = request.seed
+        chat.user = request.user
+        chat.responseFormat = request.responseFormat
+        chat.maxTokens = request.maxTokens
+        chat.tools = request.tools
+        chat.toolChoice = request.toolChoice
+        if chat.maxTokens == nil, let maxOutputTokens = request.maxOutputTokens {
+            chat.maxTokens = maxOutputTokens
         }
-        if chatObject["max_tokens"] == nil, let maxOutputTokens = object["max_output_tokens"] {
-            chatObject["max_tokens"] = maxOutputTokens
+        if chat.responseFormat == nil,
+           let format = request.text?["format"], format.object != nil {
+            chat.responseFormat = format
         }
-        if chatObject["response_format"] == nil,
-           let text = object["text"] as? [String: Any],
-           let format = text["format"] as? [String: Any] {
-            chatObject["response_format"] = format
-        }
-        normalizeResponsesToolsForChatCompletions(&chatObject)
+        try normalizeResponsesToolsForChatCompletions(&chat)
 
-        return (try JSONSerialization.data(withJSONObject: chatObject, options: []), streamRequested)
+        return (try BurnBarBridgeJSON.encode(chat, sortedKeys: false), streamRequested)
     }
 
-    static func normalizeResponsesToolsForChatCompletions(_ object: inout [String: Any]) {
-        if let responseTools = object["tools"] as? [[String: Any]] {
-            let chatTools = responseTools.compactMap(chatCompletionsTool)
-            if chatTools.isEmpty {
-                object.removeValue(forKey: "tools")
-            } else {
-                object["tools"] = chatTools
-            }
+    static func normalizeResponsesToolsForChatCompletions(_ request: inout ChatBridgeOutboundRequest) throws {
+        if let tools = request.tools?.array, tools.allSatisfy({ $0.object != nil }) {
+            let normalized = tools.compactMap(chatCompletionsTool)
+            request.tools = normalized.isEmpty
+                ? nil
+                : try BurnBarBridgeJSON.bridgeValue(normalized)
         }
 
-        guard let toolChoice = object["tool_choice"] as? [String: Any] else {
+        guard let toolChoice = request.toolChoice, toolChoice.object != nil else {
             return
         }
-        guard let toolName = (toolChoice["name"] as? String)
-                ?? ((toolChoice["function"] as? [String: Any])?["name"] as? String),
+        guard let toolName = toolChoice["name"]?.string
+                ?? toolChoice["function"]?["name"]?.string,
               !toolName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            object.removeValue(forKey: "tool_choice")
+            request.toolChoice = nil
             return
         }
-        object["tool_choice"] = [
-            "type": "function",
-            "function": ["name": toolName]
-        ]
+        request.toolChoice = .object([
+            "type": .string("function"),
+            "function": .object(["name": .string(toolName)]),
+        ])
     }
 
-    static func chatCompletionsTool(_ tool: [String: Any]) -> [String: Any]? {
-        let function = tool["function"] as? [String: Any]
-        if let type = tool["type"] as? String,
+    static func chatCompletionsTool(_ tool: BurnBarBridgeValue) -> ChatBridgeOutboundTool? {
+        guard tool.object != nil,
+              let view = try? tool.decoded(as: ChatBridgeInboundTool.self) else {
+            return nil
+        }
+        let function = view.function?.object.map(BurnBarBridgeValue.object)
+        if let type = view.type?.string,
            type.lowercased() != "function",
            function == nil {
             return nil
         }
-        guard let name = (function?["name"] as? String) ?? (tool["name"] as? String),
+        guard let name = function?["name"]?.string ?? view.name?.string,
               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
 
-        let description = (function?["description"] as? String) ?? (tool["description"] as? String)
-        let parameters = (function?["parameters"] as? [String: Any])
-            ?? (function?["input_schema"] as? [String: Any])
-            ?? (tool["parameters"] as? [String: Any])
-            ?? (tool["input_schema"] as? [String: Any])
-            ?? [
-                "type": "object",
-                "properties": [:]
-            ]
+        let description = function?["description"]?.string ?? view.toolDescription?.string
+        let parameters = function?["parameters"]
+            ?? function?["input_schema"]
+            ?? view.parameters
+            ?? view.inputSchema
+            ?? .object(["type": .string("object"), "properties": .object([:])])
 
-        var chatFunction: [String: Any] = [
-            "name": name,
-            "parameters": parameters
-        ]
-        if let description, !description.isEmpty {
-            chatFunction["description"] = description
-        }
-        if let strict = (function?["strict"] as? Bool) ?? (tool["strict"] as? Bool) {
-            chatFunction["strict"] = strict
-        }
-
-        return [
-            "type": "function",
-            "function": chatFunction
-        ]
+        return ChatBridgeOutboundTool(
+            type: "function",
+            function: ChatBridgeOutboundTool.ChatBridgeOutboundToolFunction(
+                name: name,
+                toolDescription: description.flatMap { $0.isEmpty ? nil : $0 },
+                parameters: parameters,
+                strict: function?["strict"]?.bool ?? view.strict?.bool
+            )
+        )
     }
 
-    static func sanitizedChatMessages(_ messages: [[String: Any]]) -> [[String: Any]] {
+    static func sanitizedChatMessages(_ messages: [BurnBarBridgeValue]) -> [ChatBridgeOutboundMessage] {
         messages.compactMap(sanitizedChatMessage)
     }
 
-    static func coalescedSystemMessages(_ messages: [[String: Any]]) -> [[String: Any]] {
+    static func coalescedSystemMessages(_ messages: [ChatBridgeOutboundMessage]) -> [ChatBridgeOutboundMessage] {
         var systemText: [String] = []
-        var orderedNonSystemMessages: [[String: Any]] = []
+        var orderedNonSystemMessages: [ChatBridgeOutboundMessage] = []
 
         for message in messages {
-            if (message["role"] as? String) == "system",
-               let content = message["content"] as? String,
+            if message.role == "system",
+               case .string(let content) = message.content,
                !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 systemText.append(content)
             } else {
@@ -159,28 +139,29 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             return orderedNonSystemMessages
         }
 
-        return [["role": "system", "content": systemText.joined(separator: "\n\n")]]
+        return [ChatBridgeOutboundMessage(role: "system", content: .string(systemText.joined(separator: "\n\n")))]
             + orderedNonSystemMessages
     }
 
-    static func sanitizedChatMessage(_ message: [String: Any]) -> [String: Any]? {
-        guard let content = chatCompletionsContent(from: message["content"] ?? message["text"]),
+    static func sanitizedChatMessage(_ message: BurnBarBridgeValue) -> ChatBridgeOutboundMessage? {
+        guard let item = try? message.decoded(as: ResponsesBridgeInboundItem.self),
+              let content = chatBridgeContent(from: item.content ?? item.text),
               !chatCompletionsContentIsEmpty(content) else {
             return nil
         }
 
-        var sanitized: [String: Any] = [
-            "role": chatCompletionsRole(message["role"] as? String),
-            "content": content
-        ]
-        if let name = message["name"] as? String, !name.isEmpty {
-            sanitized["name"] = name
+        var sanitized = ChatBridgeOutboundMessage(
+            role: chatCompletionsRole(item.role?.string),
+            content: content
+        )
+        if let name = item.name?.string, !name.isEmpty {
+            sanitized.name = name
         }
-        if let toolCallID = message["tool_call_id"] as? String, !toolCallID.isEmpty {
-            sanitized["tool_call_id"] = toolCallID
+        if let toolCallID = item.toolCallID?.string, !toolCallID.isEmpty {
+            sanitized.toolCallID = toolCallID
         }
-        if let toolCalls = message["tool_calls"] {
-            sanitized["tool_calls"] = toolCalls
+        if let toolCalls = item.toolCalls {
+            sanitized.toolCalls = toolCalls
         }
         return sanitized
     }
@@ -198,72 +179,111 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         }
     }
 
-    static func messagesFromResponsesInput(_ input: Any) -> [[String: Any]] {
-        if let string = input as? String {
-            return [["role": "user", "content": string]]
+    static func messagesFromResponsesInput(_ input: BurnBarBridgeValue) -> [ChatBridgeOutboundMessage] {
+        if let string = input.string {
+            return [ChatBridgeOutboundMessage(role: "user", content: .string(string))]
         }
 
-        guard let items = input as? [[String: Any]] else {
+        guard let items = input.array, items.allSatisfy({ $0.object != nil }) else {
             return []
         }
 
         return items.compactMap { item in
-            guard let content = chatCompletionsContent(from: item["content"] ?? item["text"]),
+            guard let view = try? item.decoded(as: ResponsesBridgeInboundItem.self),
+                  let content = chatBridgeContent(from: view.content ?? view.text),
                   !chatCompletionsContentIsEmpty(content) else {
                 return nil
             }
-            return ["role": chatCompletionsRole(item["role"] as? String), "content": content]
+            return ChatBridgeOutboundMessage(role: chatCompletionsRole(view.role?.string), content: content)
         }
     }
 
+    /// Untyped entry point kept for `normalizeOpenAICompatibleMessages`: the
+    /// main executor passes schemaless content through this bridge helper.
     static func chatCompletionsContent(from value: Any?) -> Any? {
-        if let string = value as? String {
-            return string
-        }
-        guard let parts = value as? [[String: Any]] else {
+        guard let input = BurnBarBridgeValue.from(untyped: value),
+              let converted = chatBridgeContent(from: input) else {
             return nil
         }
-        let convertedParts = parts.compactMap(chatCompletionsContentPart)
-        if !convertedParts.isEmpty {
-            return convertedParts
+        // Plain strings return directly: JSONSerialization refuses top-level
+        // fragments, so they cannot round-trip through `jsonObject`.
+        if case .string(let text) = converted {
+            return text
         }
-        let text = responsesContentText(value)
-        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+        guard let data = try? BurnBarBridgeJSON.encode(converted, sortedKeys: false),
+              let untyped = try? JSONSerialization.jsonObject(with: data) else {
+            return nil
+        }
+        return untyped
     }
 
-    static func chatCompletionsContentPart(_ part: [String: Any]) -> [String: Any]? {
-        let type = (part["type"] as? String)?
+    static func chatBridgeContent(from value: BurnBarBridgeValue?) -> ChatBridgeOutboundContent? {
+        guard let value else { return nil }
+        if let string = value.string {
+            return .string(string)
+        }
+        guard let parts = value.array, parts.allSatisfy({ $0.object != nil }) else {
+            return nil
+        }
+        let converted = parts.compactMap { part -> ChatBridgeOutboundPart? in
+            guard let view = try? part.decoded(as: ResponsesBridgeContentPart.self) else { return nil }
+            return chatBridgeContentPart(view, original: part)
+        }
+        if !converted.isEmpty {
+            return .parts(converted)
+        }
+        let text = responsesBridgeContentText(value)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : .string(text)
+    }
+
+    static func chatBridgeContentPart(
+        _ part: ResponsesBridgeContentPart,
+        original: BurnBarBridgeValue
+    ) -> ChatBridgeOutboundPart? {
+        let type = part.type?.string?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
 
         switch type {
         case "text":
-            guard let text = part["text"] as? String else { return nil }
-            return ["type": "text", "text": text]
+            guard let text = part.text?.string else { return nil }
+            return ChatBridgeOutboundPart(type: .string("text"), text: .string(text))
         case "input_text", "output_text":
-            guard let text = (part["text"] as? String)
-                ?? (part["input_text"] as? String)
-                ?? (part["output_text"] as? String) else { return nil }
-            return ["type": "text", "text": text]
+            guard let text = part.text?.string
+                ?? part.inputText?.string
+                ?? part.outputText?.string else { return nil }
+            return ChatBridgeOutboundPart(type: .string("text"), text: .string(text))
         case "image_url":
-            if let imageURL = part["image_url"] as? [String: Any] {
-                return ["type": "image_url", "image_url": imageURL]
+            if let imageURL = part.imageURL?.object {
+                return ChatBridgeOutboundPart(
+                    type: .string("image_url"),
+                    imageURL: .object(imageURL)
+                )
             }
-            if let imageURL = part["image_url"] as? String {
-                return ["type": "image_url", "image_url": ["url": imageURL]]
+            if let imageURL = part.imageURL?.string {
+                return ChatBridgeOutboundPart(
+                    type: .string("image_url"),
+                    imageURL: .object(["url": .string(imageURL)])
+                )
             }
             return nil
         case "input_image":
-            if let imageURL = (part["image_url"] as? String) ?? (part["url"] as? String) {
-                return ["type": "image_url", "image_url": ["url": imageURL]]
+            if let imageURL = part.imageURL?.string ?? part.url?.string {
+                return ChatBridgeOutboundPart(
+                    type: .string("image_url"),
+                    imageURL: .object(["url": .string(imageURL)])
+                )
             }
-            if let imageURL = part["image_url"] as? [String: Any] {
-                return ["type": "image_url", "image_url": imageURL]
+            if let imageURL = part.imageURL?.object {
+                return ChatBridgeOutboundPart(
+                    type: .string("image_url"),
+                    imageURL: .object(imageURL)
+                )
             }
             return nil
         case "input_audio":
-            guard part["input_audio"] != nil else { return nil }
-            return part
+            guard part.inputAudio != nil else { return nil }
+            return chatBridgePartPreserving(original, type: nil)
         case "file", "input_file":
             // Responses clients use `input_file` for PDFs and other
             // document inputs. A provider that lacks `/responses` falls
@@ -275,53 +295,61 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             guard let dataURL = responsesInputFileDataURL(from: part) else {
                 return nil
             }
-            let mediaType = dataURLMediaType(dataURL)
-            if mediaType == "application/pdf" {
-                var file: [String: Any] = ["file_data": dataURL]
-                if let filename = responsesInputFileName(from: part) {
-                    file["filename"] = filename
-                }
-                return ["type": "file", "file": file]
-            }
-            return [
-                "type": "image_url",
-                "image_url": [
-                    "url": dataURL,
-                    "detail": "auto"
-                ]
-            ]
+            return fileOrImagePart(dataURL: dataURL, filename: responsesInputFileName(from: part))
         default:
-            if part["image_url"] != nil {
-                var normalized = part
-                normalized["type"] = "image_url"
-                return normalized
+            if part.imageURL != nil {
+                return chatBridgePartPreserving(original, type: "image_url")
             }
-            if part["input_audio"] != nil {
-                var normalized = part
-                normalized["type"] = "input_audio"
-                return normalized
+            if part.inputAudio != nil {
+                return chatBridgePartPreserving(original, type: "input_audio")
             }
-            if part["file"] != nil || part["file_data"] != nil {
+            if part.file != nil || part.fileData != nil {
                 guard let dataURL = responsesInputFileDataURL(from: part) else { return nil }
-                var file: [String: Any] = ["file_data": dataURL]
+                var file: [String: BurnBarBridgeValue] = ["file_data": .string(dataURL)]
                 if let filename = responsesInputFileName(from: part) {
-                    file["filename"] = filename
+                    file["filename"] = .string(filename)
                 }
-                return ["type": "file", "file": file]
+                return ChatBridgeOutboundPart(type: .string("file"), file: .object(file))
             }
-            if let text = part["text"] as? String {
-                return ["type": "text", "text": text]
+            if let text = part.text?.string {
+                return ChatBridgeOutboundPart(type: .string("text"), text: .string(text))
             }
             return nil
         }
     }
 
-    private static func responsesInputFileDataURL(from part: [String: Any]) -> String? {
-        let nestedFile = part["file"] as? [String: Any]
-        let candidate = (part["file_data"] as? String)
-            ?? (part["data"] as? String)
-            ?? (nestedFile?["file_data"] as? String)
-            ?? (nestedFile?["data"] as? String)
+    private static func fileOrImagePart(dataURL: String, filename: String?) -> ChatBridgeOutboundPart {
+        if dataURLMediaType(dataURL) == "application/pdf" {
+            var file: [String: BurnBarBridgeValue] = ["file_data": .string(dataURL)]
+            if let filename {
+                file["filename"] = .string(filename)
+            }
+            return ChatBridgeOutboundPart(type: .string("file"), file: .object(file))
+        }
+        return ChatBridgeOutboundPart(
+            type: .string("image_url"),
+            imageURL: .object(["url": .string(dataURL), "detail": .string("auto")])
+        )
+    }
+
+    /// Preserve an input part verbatim (unknown keys included), optionally
+    /// forcing its `type` marker. Used for `input_audio` and untyped fallbacks.
+    private static func chatBridgePartPreserving(
+        _ original: BurnBarBridgeValue,
+        type: String?
+    ) -> ChatBridgeOutboundPart? {
+        guard var part = try? original.decoded(as: ChatBridgeOutboundPart.self) else { return nil }
+        if let type {
+            part.type = .string(type)
+        }
+        return part
+    }
+
+    private static func responsesInputFileDataURL(from part: ResponsesBridgeContentPart) -> String? {
+        let candidate = part.fileData?.string
+            ?? part.data?.string
+            ?? part.file?["file_data"]?.string
+            ?? part.file?["data"]?.string
         guard let candidate,
               candidate.lowercased().hasPrefix("data:"),
               let comma = candidate.firstIndex(of: ",") else {
@@ -340,10 +368,9 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         return candidate
     }
 
-    private static func responsesInputFileName(from part: [String: Any]) -> String? {
-        let nestedFile = part["file"] as? [String: Any]
-        let candidate = (part["filename"] as? String)
-            ?? (nestedFile?["filename"] as? String)
+    private static func responsesInputFileName(from part: ResponsesBridgeContentPart) -> String? {
+        let candidate = part.filename?.string
+            ?? part.file?["filename"]?.string
         let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty,
               trimmed.count <= 256,
@@ -367,32 +394,31 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             .lowercased() ?? ""
     }
 
-    static func chatCompletionsContentIsEmpty(_ value: Any) -> Bool {
-        if let string = value as? String {
-            return string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        if let parts = value as? [[String: Any]] {
+    static func chatCompletionsContentIsEmpty(_ value: ChatBridgeOutboundContent) -> Bool {
+        switch value {
+        case .string(let text):
+            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .parts(let parts):
             return parts.isEmpty
+        case .null:
+            return true
         }
-        return false
     }
 
     static func responsesContentText(_ value: Any?) -> String {
-        if let string = value as? String {
+        guard let input = BurnBarBridgeValue.from(untyped: value) else { return "" }
+        return responsesBridgeContentText(input)
+    }
+
+    static func responsesBridgeContentText(_ value: BurnBarBridgeValue?) -> String {
+        guard let value else { return "" }
+        if let string = value.string {
             return string
         }
-        if let parts = value as? [[String: Any]] {
+        if let parts = value.array, parts.allSatisfy({ $0.object != nil }) {
             return parts.compactMap { part in
-                if let text = part["text"] as? String {
-                    return text
-                }
-                if let text = part["input_text"] as? String {
-                    return text
-                }
-                if let text = part["output_text"] as? String {
-                    return text
-                }
-                return nil
+                guard let view = try? part.decoded(as: ResponsesBridgeContentPart.self) else { return nil }
+                return view.text?.string ?? view.inputText?.string ?? view.outputText?.string
             }
             .joined(separator: "\n")
         }
@@ -430,48 +456,37 @@ extension BurnBarOpenAICompatibleProviderExecutor {
 
         try appendResponseServerSentEvent(
             event: "response.created",
-            payload: [
-                "type": "response.created",
-                "response": baseResponsesObject(
-                    id: responseID,
-                    itemID: itemID,
-                    modelID: modelID,
-                    created: created,
-                    status: "in_progress",
-                    outputText: "",
-                    usage: nil
-                )
-            ],
+            payload: ResponsesBridgeEventCreated(response: baseResponsesObject(
+                id: responseID,
+                itemID: itemID,
+                modelID: modelID,
+                created: created,
+                status: "in_progress",
+                outputText: "",
+                usage: nil
+            )),
             to: &sse
         )
         try appendResponseServerSentEvent(
             event: "response.output_item.added",
-            payload: [
-                "type": "response.output_item.added",
-                "response_id": responseID,
-                "output_index": 0,
-                "item": responseMessageItem(
-                    itemID: itemID,
-                    status: "in_progress",
-                    outputText: ""
-                )
-            ],
+            payload: ResponsesBridgeEventOutputItemAdded(
+                type: "response.output_item.added",
+                responseID: responseID,
+                outputIndex: 0,
+                item: responseMessageItem(itemID: itemID, status: "in_progress", outputText: "")
+            ),
             to: &sse
         )
         try appendResponseServerSentEvent(
             event: "response.content_part.added",
-            payload: [
-                "type": "response.content_part.added",
-                "response_id": responseID,
-                "item_id": itemID,
-                "output_index": 0,
-                "content_index": 0,
-                "part": [
-                    "type": "output_text",
-                    "text": "",
-                    "annotations": []
-                ]
-            ],
+            payload: ResponsesBridgeEventContentPartAdded(
+                type: "response.content_part.added",
+                responseID: responseID,
+                itemID: itemID,
+                outputIndex: 0,
+                contentIndex: 0,
+                part: ResponsesBridgeOutputText(text: "")
+            ),
             to: &sse
         )
 
@@ -484,29 +499,30 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             if payload == "[DONE]" {
                 break
             }
-            guard let data = payload.data(using: .utf8),
-                  let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = object["choices"] as? [[String: Any]],
-                  let firstChoice = choices.first else {
+            guard let data = payload.data(using: .utf8) else { continue }
+            // Mirror the legacy guard-try: malformed SSE data lines abort the
+            // conversion with the parse error; valid-but-unexpected lines skip.
+            _ = try JSONSerialization.jsonObject(with: data)
+            guard let chunk = try? JSONDecoder().decode(ChatBridgeInboundCompletion.self, from: data),
+                  let firstChoice = chunk.choices?.first else {
                 continue
             }
-            let delta = firstChoice["delta"] as? [String: Any]
-            let content = (delta?["content"] as? String)
-                ?? ((firstChoice["message"] as? [String: Any])?["content"] as? String)
+            let content = firstChoice.delta?.content?.string
+                ?? firstChoice.message?.content?.string
                 ?? ""
             guard !content.isEmpty else { continue }
             outputText += content
             didEmitDelta = true
             try appendResponseServerSentEvent(
                 event: "response.output_text.delta",
-                payload: [
-                    "type": "response.output_text.delta",
-                    "response_id": responseID,
-                    "item_id": itemID,
-                    "output_index": 0,
-                    "content_index": 0,
-                    "delta": content
-                ],
+                payload: ResponsesBridgeEventOutputTextDelta(
+                    type: "response.output_text.delta",
+                    responseID: responseID,
+                    itemID: itemID,
+                    outputIndex: 0,
+                    contentIndex: 0,
+                    delta: content
+                ),
                 to: &sse
             )
         }
@@ -518,14 +534,14 @@ extension BurnBarOpenAICompatibleProviderExecutor {
                 outputText = content
                 try appendResponseServerSentEvent(
                     event: "response.output_text.delta",
-                    payload: [
-                        "type": "response.output_text.delta",
-                        "response_id": responseID,
-                        "item_id": itemID,
-                        "output_index": 0,
-                        "content_index": 0,
-                        "delta": content
-                    ],
+                    payload: ResponsesBridgeEventOutputTextDelta(
+                        type: "response.output_text.delta",
+                        responseID: responseID,
+                        itemID: itemID,
+                        outputIndex: 0,
+                        contentIndex: 0,
+                        delta: content
+                    ),
                     to: &sse
                 )
             }
@@ -533,60 +549,49 @@ extension BurnBarOpenAICompatibleProviderExecutor {
 
         try appendResponseServerSentEvent(
             event: "response.output_text.done",
-            payload: [
-                "type": "response.output_text.done",
-                "response_id": responseID,
-                "item_id": itemID,
-                "output_index": 0,
-                "content_index": 0,
-                "text": outputText
-            ],
+            payload: ResponsesBridgeEventOutputTextDone(
+                type: "response.output_text.done",
+                responseID: responseID,
+                itemID: itemID,
+                outputIndex: 0,
+                contentIndex: 0,
+                text: outputText
+            ),
             to: &sse
         )
         try appendResponseServerSentEvent(
             event: "response.content_part.done",
-            payload: [
-                "type": "response.content_part.done",
-                "response_id": responseID,
-                "item_id": itemID,
-                "output_index": 0,
-                "content_index": 0,
-                "part": [
-                    "type": "output_text",
-                    "text": outputText,
-                    "annotations": []
-                ]
-            ],
+            payload: ResponsesBridgeEventContentPartDone(
+                type: "response.content_part.done",
+                responseID: responseID,
+                itemID: itemID,
+                outputIndex: 0,
+                contentIndex: 0,
+                part: ResponsesBridgeOutputText(text: outputText)
+            ),
             to: &sse
         )
         try appendResponseServerSentEvent(
             event: "response.output_item.done",
-            payload: [
-                "type": "response.output_item.done",
-                "response_id": responseID,
-                "output_index": 0,
-                "item": responseMessageItem(
-                    itemID: itemID,
-                    status: "completed",
-                    outputText: outputText
-                )
-            ],
+            payload: ResponsesBridgeEventOutputItemDone(
+                type: "response.output_item.done",
+                responseID: responseID,
+                outputIndex: 0,
+                item: responseMessageItem(itemID: itemID, status: "completed", outputText: outputText)
+            ),
             to: &sse
         )
         try appendResponseServerSentEvent(
             event: "response.completed",
-            payload: [
-                "type": "response.completed",
-                "response": baseResponsesObject(
-                    id: responseID,
-                    itemID: itemID,
-                    modelID: modelID,
-                    created: created,
-                    status: "completed",
-                    outputText: outputText,
-                    usage: chatResponse.usage
-                )
-            ],
+            payload: ResponsesBridgeEventCompleted(response: baseResponsesObject(
+                id: responseID,
+                itemID: itemID,
+                modelID: modelID,
+                created: created,
+                status: "completed",
+                outputText: outputText,
+                usage: chatResponse.usage
+            )),
             to: &sse
         )
         sse.append(Data("data: [DONE]\n\n".utf8))
@@ -623,7 +628,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
                 )
             }
         )
-        return try JSONSerialization.data(withJSONObject: object, options: [])
+        return try BurnBarBridgeJSON.encode(object, sortedKeys: false)
     }
 
     static func baseResponsesObject(
@@ -634,104 +639,71 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         status: String,
         outputText: String,
         usage: BurnBarProviderProxyUsage?
-    ) -> [String: Any] {
-        var object: [String: Any] = [
-            "id": id,
-            "object": "response",
-            "created_at": created,
-            "model": modelID,
-            "status": status,
-            "output": [
-                [
-                    "id": itemID,
-                    "type": "message",
-                    "status": status,
-                    "role": "assistant",
-                    "content": [
-                        [
-                            "type": "output_text",
-                            "text": outputText,
-                            "annotations": []
-                        ]
-                    ]
-                ]
-            ],
-            "output_text": outputText
-        ]
-        if let usage {
-            object["usage"] = [
-                "input_tokens": usage.inputTokens,
-                "output_tokens": usage.outputTokens,
-                "total_tokens": usage.inputTokens + usage.outputTokens + usage.cacheCreationTokens + usage.cacheReadTokens,
-                "reasoning_tokens": usage.reasoningTokens
-            ]
-        }
-        return object
+    ) -> ResponsesBridgeObject {
+        ResponsesBridgeObject(
+            id: id,
+            object: "response",
+            createdAt: created,
+            model: modelID,
+            status: status,
+            output: [.message(id: itemID, status: status, outputText: outputText, alwaysEmitPart: true)],
+            outputText: outputText,
+            usage: usage.map {
+                ResponsesBridgeUsageOut(
+                    inputTokens: $0.inputTokens,
+                    outputTokens: $0.outputTokens,
+                    totalTokens: $0.inputTokens + $0.outputTokens + $0.cacheCreationTokens + $0.cacheReadTokens,
+                    reasoningTokens: $0.reasoningTokens
+                )
+            }
+        )
     }
 
     static func responseMessageItem(
         itemID: String,
         status: String,
         outputText: String
-    ) -> [String: Any] {
-        [
-            "id": itemID,
-            "type": "message",
-            "status": status,
-            "role": "assistant",
-            "content": outputText.isEmpty ? [] : [
-                [
-                    "type": "output_text",
-                    "text": outputText,
-                    "annotations": []
-                ]
-            ]
-        ]
+    ) -> ResponsesBridgeOutputItem {
+        .message(id: itemID, status: status, outputText: outputText, alwaysEmitPart: false)
     }
 
     static func appendResponseServerSentEvent(
         event: String,
-        payload: [String: Any],
+        payload: some Encodable,
         to data: inout Data
     ) throws {
-        let payloadData = try JSONSerialization.data(withJSONObject: payload, options: [])
-        data.append(Data("event: \(event)\n".utf8))
-        data.append(Data("data: ".utf8))
-        data.append(payloadData)
-        data.append(Data("\n\n".utf8))
+        try BurnBarBridgeJSON.appendNamedSSE(event: event, payload: payload, to: &data)
     }
 
     static func extractResponsesUsage(responseBody: Data) -> BurnBarProviderProxyUsage? {
-        guard let object = BurnBarJSONValue.dictionary(fromJSONData: responseBody),
-              let usage = object["usage"] as? [String: Any] else {
+        guard let envelope = try? JSONDecoder().decode(ResponsesUsageEnvelope.self, from: responseBody),
+              let usage = envelope.usage else {
             return nil
         }
 
-        var inputTokens = intValue(usage["input_tokens"])
-            ?? intValue(usage["prompt_tokens"])
+        var inputTokens = usage.inputTokens?.asInt
+            ?? usage.promptTokens?.asInt
             ?? 0
-        let outputTokens = intValue(usage["output_tokens"])
-            ?? intValue(usage["completion_tokens"])
+        let outputTokens = usage.outputTokens?.asInt
+            ?? usage.completionTokens?.asInt
             ?? 0
-        let cacheCreationTokens = intValue(usage["cache_creation_input_tokens"])
-            ?? intValue(usage["cache_creation_tokens"])
+        let cacheCreationTokens = usage.cacheCreationInputTokens?.asInt
+            ?? usage.cacheCreationTokens?.asInt
             ?? 0
-        let exclusiveCacheReadTokens = intValue(usage["cache_read_input_tokens"])
-            ?? intValue(usage["cache_read_tokens"])
+        let exclusiveCacheReadTokens = usage.cacheReadInputTokens?.asInt
+            ?? usage.cacheReadTokens?.asInt
             ?? 0
-        let promptDetails = usage["prompt_tokens_details"] as? [String: Any]
-        let inputDetails = usage["input_tokens_details"] as? [String: Any]
-        let inclusiveCacheReadTokens = intValue(usage["input_cached_tokens"])
-            ?? intValue(usage["cached_input_tokens"])
-            ?? intValue(usage["cached_tokens"])
-            ?? intValue(promptDetails?["cached_tokens"])
-            ?? intValue(inputDetails?["cached_tokens"])
+        let inclusiveCacheReadTokens = usage.inputCachedTokens?.asInt
+            ?? usage.cachedInputTokens?.asInt
+            ?? usage.cachedTokens?.asInt
+            ?? usage.promptTokensDetails?["cached_tokens"]?.asInt
+            ?? usage.inputTokensDetails?["cached_tokens"]?.asInt
             ?? 0
         let cacheReadTokens = exclusiveCacheReadTokens > 0 ? exclusiveCacheReadTokens : inclusiveCacheReadTokens
         if inclusiveCacheReadTokens > 0 && exclusiveCacheReadTokens == 0 {
             inputTokens = max(inputTokens - inclusiveCacheReadTokens, 0)
         }
-        let reasoningTokens = intValue(usage["reasoning_tokens"]) ?? 0
+        let reasoningTokens = usage.reasoningTokens?.asInt ?? 0
 
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 || reasoningTokens > 0 else {
             return nil

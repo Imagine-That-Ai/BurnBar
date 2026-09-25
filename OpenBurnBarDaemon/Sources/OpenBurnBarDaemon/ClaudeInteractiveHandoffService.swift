@@ -315,7 +315,7 @@ public final class ClaudeInteractiveHandoffService: Sendable {
     ) -> [String] {
         let prefix = projectDirectory?.standardizedFileURL.path
         return snapshot.perFileTokens.keys
-            .filter { prefix == nil || $0.hasPrefix(prefix!) }
+            .filter { file in prefix.map { file.hasPrefix($0) } ?? true }
             .map { ($0 as NSString).lastPathComponent }
             .sorted()
     }
