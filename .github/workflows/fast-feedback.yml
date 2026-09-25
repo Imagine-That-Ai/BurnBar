@@ -329,6 +329,12 @@ jobs:
         if: steps.ts.outputs.changed == 'true'
         run: bash scripts/build-entitlements.sh
 
+      - name: Build functions-shared runtime package
+        # The coverage vitest aliases shared->src but still resolves sibling
+        # vendors + the domain-core WASM through installed node_modules.
+        if: steps.ts.outputs.changed == 'true'
+        run: bash scripts/build-functions-shared.sh
+
       - name: Compute TypeScript diff coverage (≥80% of changed lines)
         env:
           COVERAGE_THRESHOLD: "80"

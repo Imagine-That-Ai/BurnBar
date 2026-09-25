@@ -15,7 +15,6 @@ mode="${1:-}"
 python3 - "${repo_root}" "${baseline_path}" "${mode}" <<'PY'
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -31,12 +30,33 @@ guard = "#if OPENBURNBAR_LAB"
 decl_re = re.compile(r"^(?:@\w+\s+)*(?:public\s+|open\s+|internal\s+)?(?:final\s+)?(?:class|struct|enum|actor|protocol)\s+([A-Za-z_][A-Za-z0-9_]*)")
 comment_re = re.compile(r"^\s*//")
 
-def rg(pattern, *roots, globs=("--glob", "*.swift")):
-    result = subprocess.run(
-        ["rg", "-n", "--no-heading", pattern, *globs, *[str(r) for r in roots]],
-        capture_output=True, text=True, cwd=repo,
-    )
-    return result.stdout.splitlines()
+def walk_matches(pattern, *roots, suffixes=(".swift",)):
+    """Pure-Python ripgrep: path:lineno:content rows, no toolchain needed.
+
+    Ubuntu runners do not ship `rg`, so shell out to nothing — walk the
+    trees directly. Hidden and *.build trees are skipped to mirror `rg`
+    defaults (and keep warm checkouts fast).
+    """
+    found = re.compile(pattern)
+    hits = []
+    for root in roots:
+        base = repo / root
+        if not base.is_dir():
+            continue
+        for path in base.rglob("*"):
+            if not path.is_file() or path.suffix not in suffixes:
+                continue
+            rel_parts = path.relative_to(repo).parts
+            if any(part.startswith(".") or part.endswith(".build") for part in rel_parts):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, ValueError):
+                continue
+            for lineno, content in enumerate(text.splitlines(), 1):
+                if found.search(content):
+                    hits.append(f"{path.relative_to(repo)}:{lineno}:{content}")
+    return hits
 
 failures = []
 
@@ -62,10 +82,10 @@ if symbols:
     sym_re = re.compile(alternation)
     string_re = re.compile(r'"(?:[^"\\]|\\.)*"')
     block_comment_re = re.compile(r"/\*.*?\*/")
-    for line in rg(alternation, "AgentLens", "OpenBurnBarCore",
+    for line in walk_matches(alternation, "AgentLens", "OpenBurnBarCore",
                    "AgentLensTests", "OpenBurnBarDaemon",
-                   globs=("--glob", "*.swift", "--glob", "*.mm", "--glob", "*.h")):
-        # rg -n rows are path:lineno:content. DocC ``Symbol`` cross-links in
+                   suffixes=(".swift", ".mm", ".h")):
+        # Rows are path:lineno:content. DocC ``Symbol`` cross-links in
         # comments bind nothing at compile time; only code references can
         # breach the boundary.
         parts = line.split(":", 2)

@@ -40,5 +40,9 @@
     "./*.js": "./lib/*.js",
     "./*/*.js": "./lib/*/*.js",
     "./*/*/*.js": "./lib/*/*/*.js"
+  },
+  "overrides": {
+    "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
+    "brace-expansion": "^5.0.9"
   }
 }

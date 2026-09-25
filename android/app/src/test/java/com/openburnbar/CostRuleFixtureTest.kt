@@ -1,6 +1,7 @@
 package com.openburnbar
 
 import com.openburnbar.data.models.CostRule
+import com.openburnbar.data.models.CostSpellings
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -38,6 +39,18 @@ class CostRuleFixtureTest {
             total += effective
         }
         assertEquals(fixture.getDouble("expectedTotal"), total, 0.0)
+    }
+
+    @Test
+    fun `totalCostUSD sums effectiveCostUSD over events in order`() {
+        val costs = listOf(
+            CostSpellings(costUSD = 1.25, costUsd = 999.0),
+            CostSpellings(costUsd = 0.04),
+            CostSpellings(cost = 0.03),
+            CostSpellings(),
+        )
+        assertEquals(1.32, CostRule.totalCostUSD(costs), 1e-9)
+        assertEquals(0.0, CostRule.totalCostUSD(emptyList()), 0.0)
     }
 
     private fun JSONObject.optDoubleOrNull(key: String): Double? {

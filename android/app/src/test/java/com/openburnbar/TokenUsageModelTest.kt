@@ -1,6 +1,7 @@
 
 package com.openburnbar
 
+import com.openburnbar.data.db.toEntity
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.QuotaBucket
 import com.openburnbar.data.models.TimelineScope
@@ -138,5 +139,17 @@ class TokenUsageModelTest {
         assertEquals(0.0, TokenUsage(costUSD = 0.0, costUsd = 4.0).effectiveCost, 0.0)
         assertEquals(0.25, TokenUsage(costUSD = -1.0, costUsd = 0.25).effectiveCost, 0.0)
         assertEquals(0.0, TokenUsage(costUSD = -1.0, costUsd = -2.0, cost = -3.0).effectiveCost, 0.0)
+    }
+
+    @Test
+    fun `toEntity normalizes absent legacy costs to zero`() {
+        // Wave 2.5: the entity columns are non-null, so absent costs persist as 0.0.
+        val absent = TokenUsage().toEntity()
+        assertEquals(0.0, absent.costUsd, 0.0)
+        assertEquals(0.0, absent.cost, 0.0)
+        // Present values pass through untouched.
+        val present = TokenUsage(costUsd = 0.04, cost = 0.03).toEntity()
+        assertEquals(0.04, present.costUsd, 0.0)
+        assertEquals(0.03, present.cost, 0.0)
     }
 }
