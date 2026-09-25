@@ -104,6 +104,35 @@ final class CodexRolloutJailTests: XCTestCase {
         XCTAssertNil(CodexRolloutJail.containedPath("", homeDirectoryURL: home))
     }
 
+    func test_windowsContainmentCore() {
+        // The pure string core of the Windows branch (which itself only
+        // compiles on Windows): drive-letter + UNC absolute, backslashes,
+        // case-insensitive, trailing-slash prefix blocks siblings and root.
+        let jail = #"C:\Users\test\.codex"#
+        XCTAssertTrue(CodexRolloutJail.windowsPathIsContained(
+            candidate: #"C:\Users\test\.codex\sessions\a.jsonl"#, jailRoot: jail))
+        XCTAssertTrue(CodexRolloutJail.windowsPathIsContained(
+            candidate: "C:/Users/test/.codex/sessions/a.jsonl", jailRoot: jail))
+        XCTAssertTrue(CodexRolloutJail.windowsPathIsContained(
+            candidate: #"c:\users\TEST\.CODEX\a.jsonl"#, jailRoot: jail))
+        XCTAssertTrue(CodexRolloutJail.windowsPathIsContained(
+            candidate: #"\\server\share\.codex\a.jsonl"#,
+            jailRoot: #"\\server\share\.codex"#))
+        XCTAssertFalse(CodexRolloutJail.windowsPathIsContained(
+            candidate: #"C:\Users\test\.codex-evil\a.jsonl"#, jailRoot: jail))
+        XCTAssertFalse(CodexRolloutJail.windowsPathIsContained(
+            candidate: #"C:\Users\test\.codex"#, jailRoot: jail))
+        XCTAssertFalse(CodexRolloutJail.windowsPathIsContained(
+            candidate: #"D:\.codex\a.jsonl"#, jailRoot: jail))
+        XCTAssertFalse(CodexRolloutJail.windowsPathIsContained(
+            candidate: #"C:codex\a.jsonl"#, jailRoot: jail))
+        XCTAssertFalse(CodexRolloutJail.windowsPathIsContained(
+            candidate: #"~\.codex\a.jsonl"#, jailRoot: jail))
+        XCTAssertFalse(CodexRolloutJail.windowsPathIsContained(
+            candidate: "sessions/a.jsonl", jailRoot: jail))
+        XCTAssertFalse(CodexRolloutJail.windowsPathIsContained(candidate: "", jailRoot: jail))
+    }
+
     func test_jailResolvesSymlinkedHome() throws {
         // A symlinked home (or a symlinked ~/.codex) must still jail
         // correctly: both sides of the prefix check resolve symlinks before

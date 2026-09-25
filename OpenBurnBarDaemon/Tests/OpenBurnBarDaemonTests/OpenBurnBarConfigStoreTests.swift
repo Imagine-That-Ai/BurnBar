@@ -27,8 +27,10 @@ final class BurnBarConfigStoreTests: XCTestCase {
             contentsOf: packageRoot.appendingPathComponent("Sources/OpenBurnBarDaemon/OpenBurnBarConnectorSecretStore.swift"),
             encoding: .utf8
         )
+        // Wave 4 daemon split: the provider-router keychain plane moved from
+        // OpenBurnBarProviderExecutor.swift to BurnBarKeychainSecretStore.swift.
         let providerSource = try String(
-            contentsOf: packageRoot.appendingPathComponent("Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift"),
+            contentsOf: packageRoot.appendingPathComponent("Sources/OpenBurnBarDaemon/BurnBarKeychainSecretStore.swift"),
             encoding: .utf8
         )
         let switcherSource = try String(
@@ -90,7 +92,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let providerSource = try String(
-            contentsOf: packageRoot.appendingPathComponent("Sources/OpenBurnBarDaemon/OpenBurnBarProviderExecutor.swift"),
+            contentsOf: packageRoot.appendingPathComponent("Sources/OpenBurnBarDaemon/BurnBarKeychainSecretStore.swift"),
             encoding: .utf8
         )
 
