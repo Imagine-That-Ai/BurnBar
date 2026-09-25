@@ -81,16 +81,9 @@ final class DirectCLIStreamMirror: Sendable {
               let type = object["type"] as? String
         else { return nil }
 
-        if let event = parseCodex(object: object, type: type) {
-            return event
-        }
-        if let event = parseOpenClaude(object: object, type: type) {
-            return event
-        }
-        if let event = parsePi(object: object, type: type) {
-            return event
-        }
-        return nil
+        return parseCodex(object: object, type: type)
+            ?? parseOpenClaude(object: object, type: type)
+            ?? parsePi(object: object, type: type)
     }
 
     func parseCodex(object: UntypedJSONObject, type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {

@@ -1,8 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarComputerUseCore
-import OpenBurnBarAssistantModels
-import OpenBurnBarKernel
+import OpenBurnBarKernel // re-exports OpenBurnBarAssistantModels (PlatformSupportReexport)
 import OSLog
 
 // Mission runtime planner, live device-trust checker, cancellation tracker.

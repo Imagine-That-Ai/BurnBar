@@ -90,7 +90,8 @@ struct PetAgentSwitcher: View {
     }
 }
 
-// NOTE (3.1): PetAuthStatus.chipColor lives in Core
-// (AgentLens/Services/Chat/PetChatProvider.swift) next to `label`: the
-// mapping is Core-pure and covered by a Core security-policy test.
+// NOTE (3.1/4): PetAuthStatus.chipColor lives in the view layer
+// (AgentLens/Views/Chat/PetAuthStatus+ChipColor.swift) next to its consumer:
+// it returns a SwiftUI Color, so Services cannot host it. Covered by
+// AgentSecurityPolicyTests.
 #endif
