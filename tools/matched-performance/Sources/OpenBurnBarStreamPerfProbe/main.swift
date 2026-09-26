@@ -4,7 +4,6 @@ import OpenBurnBarInsights
 import OpenBurnBarKernel
 import OpenBurnBarMedia
 import OpenBurnBarQuota
-import OpenBurnBarRecap
 
 private struct Arguments {
     let samples: Int

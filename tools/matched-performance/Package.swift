@@ -30,8 +30,7 @@ let package = Package(
                 .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore"),
                 .product(name: "OpenBurnBarKernel", package: "OpenBurnBarCore"),
                 .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore"),
-                .product(name: "OpenBurnBarQuota", package: "OpenBurnBarCore"),
-                .product(name: "OpenBurnBarRecap", package: "OpenBurnBarCore")
+                .product(name: "OpenBurnBarQuota", package: "OpenBurnBarCore")
             ]
         )
     ],
