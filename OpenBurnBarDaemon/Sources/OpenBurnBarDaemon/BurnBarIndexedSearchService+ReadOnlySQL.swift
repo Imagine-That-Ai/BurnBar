@@ -1,7 +1,10 @@
-import CSQLite
 import Foundation
 import OpenBurnBarEngine
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
 extension BurnBarIndexedSearchService {
     // MARK: - Read-only SQL (daemon.search.sql)
