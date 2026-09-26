@@ -1180,6 +1180,9 @@ let firstPartyTargetsBaseA: [Target] = [
         .target(
             name: "OpenBurnBarProjectCodeContracts"
         ),
+]
+
+let firstPartyTargetsBaseB: [Target] = [
         // Wave 3.2 (Kernel domain split): the five model leaves carved out of
         // `OpenBurnBarKernel/SharedModels/` (Kernel was 200 files / 54,951
         // lines, over its ceiling). Each leaf is Kernel-independent; Kernel
@@ -1264,6 +1267,9 @@ let firstPartyTargetsBaseA: [Target] = [
             ] + domainCoreDependencies,
             resources: [.process("Resources")]
         ),
+]
+
+let firstPartyTargetsBaseC: [Target] = [
         // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): cross-platform
         // engine-layer targets carved from the OpenBurnBarCore monolith. At S0 each
         // holds only `Sources/<Target>/ModuleMarker.swift`; move packets fill them.
@@ -1311,9 +1317,6 @@ let firstPartyTargetsBaseA: [Target] = [
             ] + domainCoreDependencies,
             exclude: openBurnBarQuotaExcludes
         ),
-]
-
-let firstPartyTargetsBaseB: [Target] = [
         .target(
             name: "OpenBurnBarVectorKit",
             dependencies: [
@@ -1327,6 +1330,9 @@ let firstPartyTargetsBaseB: [Target] = [
             dependencies: ["OpenBurnBarKernel"],
             exclude: openBurnBarHermesExcludes
         ),
+]
+
+let firstPartyTargetsBaseD: [Target] = [
         // OpenBurnBarPretext gains its own `Resources/` bundle when S10 moves the
         // Pretext HTML/JS in (adding `resources: [.process("Resources")]` — the one
         // allowed manifest-structure edit, enumerated in packet P-06). At S0 it
@@ -1405,6 +1411,9 @@ let firstPartyTargetsBaseB: [Target] = [
             // transport behind `AnalyticsTransporting`.
             dependencies: []
         ),
+]
+
+let firstPartyTargetsBaseE: [Target] = [
         .target(
             name: "OpenBurnBarIrohRelay",
             dependencies: irohRelayDependencies + [swiftCryptoDependency],
@@ -1449,6 +1458,9 @@ let firstPartyTargetsBaseB: [Target] = [
                 .linkedLibrary("pam", .when(platforms: [.linux]))
             ]
         ),
+]
+
+let firstPartyTargetsBaseF: [Target] = [
         .target(
             name: "OpenBurnBarSignalCore",
             dependencies: signalCoreDependencies,
@@ -1464,9 +1476,6 @@ let firstPartyTargetsBaseB: [Target] = [
             exclude: signalSessionTransportFallbackExcludes,
             sources: signalSessionTransportSources
         ),
-]
-
-let firstPartyTargetsBaseC: [Target] = [
         // Windows-port Phase-1 walking skeleton (PHASE1_CORE_SPLIT_PLAN.md, PR-5).
         // A Foundation-only executable that drives the vertical slice — one
         // provider -> parse -> auth -> one dashboard tile — over REAL Core APIs,
@@ -1541,6 +1550,9 @@ let firstPartyTargetsBaseC: [Target] = [
                 .copy("Fixtures")
             ]
         ),
+]
+
+let firstPartyTargetsBaseG: [Target] = [
         .testTarget(
             name: "OpenBurnBarLinuxCoreFoundationTests",
             dependencies: [
@@ -1666,6 +1678,9 @@ let firstPartyTargetsBaseC: [Target] = [
             // checker has known gaps (Task hand-off) that would contort correct tests.
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+]
+
+let firstPartyTargetsBaseH: [Target] = [
         .testTarget(
             name: "BurnBarRemoteEngineTests",
             dependencies: ["BurnBarRemoteEngine", swiftTestingDependency],
@@ -1727,7 +1742,7 @@ let firstPartyTargetsBaseC: [Target] = [
 
 // Chunked so the Linux Swift 6 compiler can type-check the manifest:
 // one 600-line literal exceeds the solver budget (type-check timeout).
-let firstPartyTargetsBase: [Target] = firstPartyTargetsBaseA + firstPartyTargetsBaseB + firstPartyTargetsBaseC
+let firstPartyTargetsBase: [Target] = firstPartyTargetsBaseA + firstPartyTargetsBaseB + firstPartyTargetsBaseC + firstPartyTargetsBaseD + firstPartyTargetsBaseE + firstPartyTargetsBaseF + firstPartyTargetsBaseG + firstPartyTargetsBaseH
 
 #if os(Linux)
 // Remaining placeholder-only targets are not tests. Keeping them out of the

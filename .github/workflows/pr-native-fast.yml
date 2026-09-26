@@ -129,8 +129,16 @@ jobs:
   # (no separate pre-build, no coverage-taxing extras beyond the guard
   # evidence), and the split test plan (smoke catalog + impacted classes via
   # scripts/ci/select-pr-app-tests.sh — the full corpus stays post-merge).
-  # timeout-minutes: 20 enforces the door budget literally: a cold-cache run
-  # that cannot finish in budget goes red and passes on retry once warm.
+  # The build reuses app-pr-gate's macos-lab-gate derived-data subdir so the
+  # restored main-branch build products actually hit: a fresh temp dir would
+  # rebuild every SPM dependency from scratch on every run. Same scheme,
+  # configuration, and flags as the Lab lane, so incremental rebuilds are
+  # sound; each runner holds a private copy, never shared live.
+  # timeout-minutes: 40 still enforces a door budget, calibrated for a
+  # large impacted selection on top of an incremental rebuild: the 20-minute
+  # budget was sized for ~137 smoke tests, and a mega-diff selects most of
+  # the corpus. Small PRs still finish in the same wall-clock time (a cap is
+  # not spend); only the ceiling moves.
   app-smoke:
     name: Mac app smoke + impacted tests
     needs: [classify]
@@ -138,7 +146,7 @@ jobs:
     # Routing (cost + security): same isolated hosted macOS pools as the
     # other native PR jobs — PR/merge-queue code is untrusted.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -223,6 +231,7 @@ jobs:
           OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180 \
           OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360 \
           OPENBURNBAR_APP_TEST_FILTERS="${{ steps.select-tests.outputs.filters }}" \
+          OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-lab-gate" \
           SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin \
           ./scripts/test-openburnbar-app.sh
 
