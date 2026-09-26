@@ -16,7 +16,9 @@
     "node_modules/**",
     "src/types/generated/**",
     "src/__tests__/bola/bolaVictimSeeds.generated.ts",
-    ".dependency-cruiser.cjs"
+    ".dependency-cruiser.cjs",
+    "src/pricing.ts",
+    "src/domainCorePricing.ts"
   ],
   "ignoreIssues": {
     "src/types/legacy/{connections,insights-digest,insights-spec,media,quota-usage}.ts": [

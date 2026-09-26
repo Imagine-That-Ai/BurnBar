@@ -398,8 +398,12 @@ jobs:
             --lockfile=extensions/safari/package-lock.json
             --lockfile=firestore-rules-tests/package-lock.json
             --lockfile=functions/package-lock.json
+            --lockfile=functions-identity/package-lock.json
+            --lockfile=functions-media/package-lock.json
+            --lockfile=functions-sync/package-lock.json
             --lockfile=packages/design-tokens/package-lock.json
             --lockfile=packages/entitlements/package-lock.json
+            --lockfile=packages/functions-shared/package-lock.json
             --lockfile=packages/libsignal-bridge/package-lock.json
             --lockfile=packages/libsignal-protocol/package-lock.json
             --lockfile=packages/signal-envelope-contracts/package-lock.json

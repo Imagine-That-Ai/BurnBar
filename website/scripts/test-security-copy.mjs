@@ -217,12 +217,22 @@ check(
 
 /* ── 5 · the denylist the page prints is the denylist the rules enforce ─── */
 
-const denylistFn = firestoreRules.match(
+const gateFn = firestoreRules.match(
   /function hasNoPlaintextSecretFields\(\)\s*\{([\s\S]*?)\n\s*\}/
 );
-assert.ok(denylistFn, "could not find hasNoPlaintextSecretFields() in firestore.rules");
+assert.ok(gateFn, "could not find hasNoPlaintextSecretFields() in firestore.rules");
+assert.ok(
+  /mapHasNoPlaintextSecretKeys\(request\.resource\.data\)/.test(gateFn[1]),
+  "hasNoPlaintextSecretFields() no longer delegates to mapHasNoPlaintextSecretKeys()"
+);
+// The denylist lives in plaintextSecretFieldNames() (single hasAny over the
+// returned names); parse the names there.
+const denylistFn = firestoreRules.match(
+  /function plaintextSecretFieldNames\(\)\s*\{([\s\S]*?)\n\s*\}/
+);
+assert.ok(denylistFn, "could not find plaintextSecretFieldNames() in firestore.rules");
 const deniedFields = new Set(
-  [...denylistFn[1].matchAll(/!\("([A-Za-z]+)" in d\)/g)].map((m) => m[1])
+  [...denylistFn[1].matchAll(/"([A-Za-z_]+)"/g)].map((m) => m[1])
 );
 assert.ok(deniedFields.size > 3, `parsed ${deniedFields.size} denied fields — parser is wrong`);
 
