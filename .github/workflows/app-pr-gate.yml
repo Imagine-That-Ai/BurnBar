@@ -57,12 +57,15 @@ jobs:
     # stays unchanged. Set repo var MACOS_GATE_POOL=paid to force the capped
     # hosted pool for a billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
-    # Cold cache + libsignal FFI + the full app build and bounded smoke catalog
-    # routinely take ~55–70 minutes on macos-26 hosted runners (CPU budget gate
-    # alone can take ~30m). Keep a 90m ceiling so a post-merge/nightly run does
-    # not cancel mid-smoke. The full XCTest corpus belongs to the
+    # Cold cache + libsignal FFI + the full app build, bounded smoke catalog,
+    # and the Lab lane (separate derived-data dir, full rebuild) routinely take
+    # ~55–70 minutes on macos-26 hosted runners, and the Lab rebuild needs
+    # ~30m after the ~65m smoke point (CPU budget gate alone can take ~30m).
+    # Keep a 120m ceiling — same as the mobile lane — so a merge_group run
+    # does not cancel mid-Lab (observed 90m timeout on 2026-09-26 with all
+    # 137 smoke tests passing). The full XCTest corpus belongs to the
     # post-merge/nightly harness, not this lane.
-    timeout-minutes: 90
+    timeout-minutes: 120
     needs: [classify, merge-group-product-lanes]
     if: ${{ always() && ((github.event_name == 'merge_group' && needs.merge-group-product-lanes.result == 'success') || (github.event_name != 'merge_group' && needs.classify.result == 'success' && needs.classify.outputs.macos == 'true')) }}
     steps:
