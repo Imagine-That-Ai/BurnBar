@@ -2,12 +2,11 @@
   "schemaVersion": 1,
   "targets": [
     "anchorAuditLogHeads",
-    "benchAssistant",
     "healthCheck",
     "healthLive",
     "healthReady",
-    "insightsHostedAnswer",
     "onUsageWritten",
+    "reapExpiredCounterDayBuckets",
     "rebuildRollups",
     "rebuildUsageRollups",
     "refreshAllProviderQuotas",

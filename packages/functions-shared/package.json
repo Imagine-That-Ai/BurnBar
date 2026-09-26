@@ -43,6 +43,7 @@
   },
   "overrides": {
     "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
-    "brace-expansion": "^5.0.9"
+    "brace-expansion": "^5.0.9",
+    "uuid": "11.1.1"
   }
 }

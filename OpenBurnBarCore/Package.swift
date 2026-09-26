@@ -1122,7 +1122,7 @@ let linuxSecretServiceTargets: [Target] = []
 let linuxSecretServiceDependencies: [Target.Dependency] = []
 #endif
 
-let firstPartyTargetsBase: [Target] = [
+let firstPartyTargetsBaseA: [Target] = [
         .systemLibrary(
             name: "Czlib",
             pkgConfig: "zlib",
@@ -1311,6 +1311,9 @@ let firstPartyTargetsBase: [Target] = [
             ] + domainCoreDependencies,
             exclude: openBurnBarQuotaExcludes
         ),
+]
+
+let firstPartyTargetsBaseB: [Target] = [
         .target(
             name: "OpenBurnBarVectorKit",
             dependencies: [
@@ -1461,6 +1464,9 @@ let firstPartyTargetsBase: [Target] = [
             exclude: signalSessionTransportFallbackExcludes,
             sources: signalSessionTransportSources
         ),
+]
+
+let firstPartyTargetsBaseC: [Target] = [
         // Windows-port Phase-1 walking skeleton (PHASE1_CORE_SPLIT_PLAN.md, PR-5).
         // A Foundation-only executable that drives the vertical slice — one
         // provider -> parse -> auth -> one dashboard tile — over REAL Core APIs,
@@ -1717,7 +1723,11 @@ let firstPartyTargetsBase: [Target] = [
             // checker has known gaps (Task hand-off) that would contort correct tests.
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
-    ]
+]
+
+// Chunked so the Linux Swift 6 compiler can type-check the manifest:
+// one 600-line literal exceeds the solver budget (type-check timeout).
+let firstPartyTargetsBase: [Target] = firstPartyTargetsBaseA + firstPartyTargetsBaseB + firstPartyTargetsBaseC
 
 #if os(Linux)
 // Remaining placeholder-only targets are not tests. Keeping them out of the
