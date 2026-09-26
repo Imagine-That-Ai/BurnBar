@@ -334,10 +334,10 @@ public struct LinuxComputerUseInputAdapter: Sendable {
     ]
     private static let defaultPortalProbeTimeoutMillis = 1_500
     private static let defaultPortalSessionTimeoutMillis = 60_000
-    private static let portalBusName = "org.freedesktop.portal.Desktop"
-    private static let portalObjectPath = "/org/freedesktop/portal/desktop"
-    private static let remoteDesktopInterface = "org.freedesktop.portal.RemoteDesktop"
-    private static let sessionInterface = "org.freedesktop.portal.Session"
+    static let portalBusName = "org.freedesktop.portal.Desktop"
+    static let portalObjectPath = "/org/freedesktop/portal/desktop"
+    static let remoteDesktopInterface = "org.freedesktop.portal.RemoteDesktop"
+    static let sessionInterface = "org.freedesktop.portal.Session"
     private static let portalSessionInputTypes: UInt32 = 3 // keyboard + pointer
 
     private let environment: EnvironmentReader
@@ -1088,14 +1088,14 @@ public struct LinuxComputerUseInputAdapter: Sendable {
         }
     }
 
-    private func nonEmptyEnvironment(_ name: String) -> String? {
+    func nonEmptyEnvironment(_ name: String) -> String? {
         guard let value = environment(name)?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
             return nil
         }
         return value
     }
 
-    private func assertKillSwitchNotActive() throws {
+    func assertKillSwitchNotActive() throws {
         if LinuxPrivilegedInputKillFlag.environmentKillSwitchActive(environment: environment) {
             throw AdapterError.killSwitchActive("environment")
         }

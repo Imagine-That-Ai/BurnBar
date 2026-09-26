@@ -284,7 +284,7 @@ extension LinuxComputerUseInputAdapter {
         }
     }
 
-    private struct PortalResponse: Sendable {
+    struct PortalResponse: Sendable {
         let code: UInt32
         let output: String
     }

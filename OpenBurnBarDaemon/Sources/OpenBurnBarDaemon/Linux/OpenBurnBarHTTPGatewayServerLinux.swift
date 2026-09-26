@@ -33,7 +33,7 @@ public enum BurnBarHTTPGatewayError: Error, LocalizedError {
         }
     }
 
-    fileprivate var httpStatus: Int {
+    var httpStatus: Int {
         switch self {
         case .requestTooLarge:
             return 413
@@ -46,7 +46,7 @@ public enum BurnBarHTTPGatewayError: Error, LocalizedError {
         }
     }
 
-    fileprivate var responseCode: String {
+    var responseCode: String {
         switch self {
         case .requestTooLarge: return "request_too_large"
         case .unsupportedTransferEncoding: return "unsupported_transfer_encoding"
@@ -118,7 +118,7 @@ public actor BurnBarHTTPGatewayServer {
     public static let defaultModelCatalogCacheTTL: TimeInterval = 45
     /// Accommodates one bounded Linux chat attachment plus the prompt while
     /// keeping the loopback HTTP boundary explicitly finite.
-    fileprivate static let maxRequestBytes = 16 * 1024 * 1024
+    static let maxRequestBytes = 16 * 1024 * 1024
 
     let configuration: BurnBarGatewayConfiguration
     let configStore: BurnBarConfigStore
