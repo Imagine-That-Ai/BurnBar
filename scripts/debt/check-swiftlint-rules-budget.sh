@@ -32,29 +32,59 @@ fi
 
 TMP_CONFIG=".swiftlint-rules-budget-tmp.yml"
 trap 'rm -f "$TMP_CONFIG"' EXIT
+# Stdlib-only on purpose: macos-26 runners have no PyYAML, and this gate must
+# run on a bare checkout. Parses just the top-level `excluded:` dash list.
 python3 - "$TMP_CONFIG" <<'PY'
 import sys
-import yaml
 
+RULES = [
+    "force_unwrapping",
+    "discouraged_optional_collection",
+    "implicitly_unwrapped_optional",
+    "no_extension_access_modifier",
+    "discouraged_optional_boolean",
+]
+
+excluded = []
+in_excluded = False
 with open(".swiftlint.yml") as handle:
-    repo_config = yaml.safe_load(handle)
-excluded = list(repo_config.get("excluded", []))
+    for raw in handle:
+        line = raw.rstrip("\n")
+        if not in_excluded:
+            if line == "excluded:":
+                in_excluded = True
+            continue
+        stripped = line.strip()
+        if stripped == "" or stripped.startswith("#"):
+            continue
+        if stripped.startswith("- "):
+            excluded.append(stripped[2:].strip().strip("'\""))
+            continue
+        break
+if not excluded:
+    print(
+        "FAIL: parsed zero excluded entries from .swiftlint.yml — the top-level "
+        "`excluded:` dash list moved or changed shape; update this parser, do not lint unscoped.",
+        file=sys.stderr,
+    )
+    sys.exit(2)
 # Local-only junk a fresh CI checkout never has (.swiftlint.yml calls this
 # out: re-measure with the same scope). Nested .build* dirs come from
 # agent/validator runs inside package dirs.
 excluded += [".muse", ".build-*", "OpenBurnBarCore/.build*", "OpenBurnBarDaemon/.build*", "tools/*/.build*"]
-tmp = {
-    "only_rules": [
-        "force_unwrapping",
-        "discouraged_optional_collection",
-        "implicitly_unwrapped_optional",
-        "no_extension_access_modifier",
-        "discouraged_optional_boolean",
-    ],
-    "excluded": excluded,
-}
+
+
+def yaml_str(value):
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 with open(sys.argv[1], "w") as handle:
-    yaml.safe_dump(tmp, handle)
+    handle.write("only_rules:\n")
+    for rule in RULES:
+        handle.write("  - %s\n" % rule)
+    handle.write("excluded:\n")
+    for entry in excluded:
+        handle.write("  - %s\n" % yaml_str(entry))
 PY
 
 "$SWIFTLINT_BIN" lint --config "$TMP_CONFIG" --reporter json > /tmp/swiftlint-rules-budget.json 2>/dev/null || true

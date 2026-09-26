@@ -937,6 +937,7 @@ targets:
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift" "MacCloudStoreLegalLinks.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift" "SettingsView.txt"
           copy_fixture "${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift" "CloudStoreView.txt"
+          copy_fixture "${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreCards.swift" "CloudStoreCards.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/App/AgentLensApp.swift" "AgentLensApp.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Services/OpenBurnBarAppCheckProviderFactory.swift" "OpenBurnBarAppCheckProviderFactory.txt"
           copy_fixture "${PROJECT_DIR}/project.yml" "project.yml"
@@ -948,6 +949,7 @@ targets:
           - $(PROJECT_DIR)/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift
           - $(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift
           - $(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift
+          - $(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreCards.swift
           - $(PROJECT_DIR)/AgentLens/App/AgentLensApp.swift
           - $(PROJECT_DIR)/AgentLens/Services/OpenBurnBarAppCheckProviderFactory.swift
           - $(PROJECT_DIR)/project.yml
@@ -959,6 +961,7 @@ targets:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MacCloudStoreLegalLinks.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreCards.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AgentLensApp.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/OpenBurnBarAppCheckProviderFactory.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/project.yml

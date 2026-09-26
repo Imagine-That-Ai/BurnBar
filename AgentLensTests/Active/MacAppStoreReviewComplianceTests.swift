@@ -50,7 +50,9 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     }
 
     func testIOSActiveCloudMembersCanRestorePurchasesFromMemberCard() throws {
-        let source = try bundledTextResource(named: "CloudStoreView")
+        let viewSource = try bundledTextResource(named: "CloudStoreView")
+        let cardsSource = try bundledTextResource(named: "CloudStoreCards")
+        let source = viewSource + "\n" + cardsSource
 
         XCTAssertTrue(source.contains("CloudStoreMemberCard(store: store)"))
         XCTAssertTrue(source.contains("Task { await store.restorePurchases() }"))
