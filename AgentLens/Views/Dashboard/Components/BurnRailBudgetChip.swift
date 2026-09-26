@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Budget status chip for the BurnBar top rail. Shows the most restrictive active
 /// rule's used/limit as a compact pill beside the existing delta chip.

@@ -5,7 +5,7 @@ import OSLog
 #if canImport(Darwin)
 import Darwin
 #endif
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 extension OpenAICompatibleChatGatewayClient {
@@ -38,12 +38,12 @@ extension OpenAICompatibleChatGatewayClient {
             throw CLIBridgeError.hermesSSEError(Self.errorDetail(statusCode: http.statusCode, data: data))
         }
 
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(JSON parse fallback)
+        guard let obj = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(JSON parse fallback)
               let choices = obj["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String
         else {
-            let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:] // try?-ok(JSON parse fallback)
+            let obj = (BurnBarJSONValue.dictionary(fromJSONData: data)) ?? [:] // try?-ok(JSON parse fallback)
             return ("", OpenAICompatibleUsageParser.usage(from: obj))
         }
 
@@ -102,7 +102,7 @@ extension OpenAICompatibleChatGatewayClient {
     }
 
     private static func parsedErrorMessage(from data: Data) -> String? {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON parse fallback)
+        guard let obj = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(JSON parse fallback)
             return nil
         }
         if let error = obj["error"] as? String {

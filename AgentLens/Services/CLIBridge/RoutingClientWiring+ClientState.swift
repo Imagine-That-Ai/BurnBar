@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import OpenBurnBarKernel
 
 extension RoutingClientWiring {
 
@@ -7,7 +8,7 @@ extension RoutingClientWiring {
         let url = codexModelCatalogURL()
         guard fileManager.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url), // try?-ok(optional catalog read, empty fallback)
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional catalog parse, empty fallback)
+              let root = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional catalog parse, empty fallback)
               let models = root["models"] as? [[String: Any]] else {
             return []
         }

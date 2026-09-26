@@ -1,6 +1,7 @@
 import XCTest
 import GRDB
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 @MainActor
 final class DataStoreTests: XCTestCase {
@@ -343,7 +344,13 @@ final class DataStoreTests: XCTestCase {
 
     func test_projectMemorySnapshot_roundTripsThroughControlPlaneStore() async throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        // Wave 2.1c: snapshots are daemon-owned; tests use the local double.
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            snapshotWriter: LocalProjectMemorySnapshotWriter(dbQueue: queue)
+        )
         let now = Date()
         let snapshot = ProjectMemorySnapshot(
             projectSlug: "apollo",
@@ -404,7 +411,13 @@ final class DataStoreTests: XCTestCase {
 
     func test_projectMemorySnapshot_deleteRemovesSnapshot() async throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        // Wave 2.1c: snapshots are daemon-owned; tests use the local double.
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            snapshotWriter: LocalProjectMemorySnapshotWriter(dbQueue: queue)
+        )
         let snapshot = ProjectMemorySnapshot(
             projectSlug: "remove-me",
             projectDisplayName: "Remove Me",
@@ -434,7 +447,13 @@ final class DataStoreTests: XCTestCase {
 
     func test_deleteAllIndexedConversationsClearsDerivedProjectMemorySnapshots() async throws {
         let queue = try DatabaseQueue()
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        // Wave 2.1c: snapshots are daemon-owned; tests use the local double.
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            snapshotWriter: LocalProjectMemorySnapshotWriter(dbQueue: queue)
+        )
         let now = Date()
         let snapshot = ProjectMemorySnapshot(
             projectSlug: "privacy-reset",
@@ -682,5 +701,74 @@ final class DataStoreTests: XCTestCase {
             startTime: startTime,
             endTime: endTime
         )
+    }
+
+    func test_insert_replacesPlaceholderModelRowWithExactModel() async throws {
+        let store = try DataStore.makeInMemoryForTesting()
+        let now = Date()
+        let placeholder = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "placeholder-session",
+            projectName: "p",
+            model: "<synthetic>",
+            inputTokens: 11,
+            outputTokens: 3,
+            costUSD: 0.01,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(placeholder)
+        var rows = try await store.fetchAllUsage()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.model, "<synthetic>")
+
+        // The re-parse emits the corrected exact-model row for the same
+        // session; the placeholder row must be deleted, not kept alongside.
+        let corrected = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "placeholder-session",
+            projectName: "p",
+            model: "claude-fable-5-1",
+            inputTokens: 11,
+            outputTokens: 3,
+            costUSD: 0.01,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(corrected)
+        rows = try await store.fetchAllUsage()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.model, "claude-fable-5-1")
+    }
+
+    func test_insert_placeholderRowNeverDeletesExactModel() async throws {
+        let store = try DataStore.makeInMemoryForTesting()
+        let now = Date()
+        let exact = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "exact-session",
+            projectName: "p",
+            model: "claude-fable-5-1",
+            inputTokens: 11,
+            outputTokens: 3,
+            costUSD: 0.01,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(exact)
+        let placeholder = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "exact-session",
+            projectName: "p",
+            model: "<synthetic>",
+            inputTokens: 1,
+            outputTokens: 1,
+            costUSD: 0.001,
+            startTime: now,
+            endTime: now
+        )
+        try await store.insert(placeholder)
+        let rows = try await store.fetchAllUsage()
+        XCTAssertTrue(rows.contains { $0.model == "claude-fable-5-1" })
     }
 }

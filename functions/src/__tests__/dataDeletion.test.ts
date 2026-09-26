@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { UNDELETABLE_DOMAINS } from "../callables/dataDeletion.js";
-import { DATA_DOMAIN_PATHS } from "../callables/dataExport.js";
+import { UNDELETABLE_DOMAINS } from "../domains/compliance/dataDeletion.js";
+import { DATA_DOMAIN_PATHS } from "../domains/compliance/dataExport.js";
 
 const registry = JSON.parse(
   readFileSync(join(process.cwd(), "..", "packages", "data-domains", "registry.json"), "utf8"),

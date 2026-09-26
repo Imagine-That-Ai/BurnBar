@@ -3,6 +3,7 @@ import FirebaseAuth
 @preconcurrency import FirebaseFunctions
 import FirebaseStorage
 import UIKit
+import OpenBurnBarKernel
 import OSLog
 
 // MARK: - Profile Avatar Service
@@ -62,7 +63,7 @@ final class ProfileAvatarService {
             let result = try await Functions.functions(region: "us-central1")
                 .httpsCallable("getProfileAvatarDownloadUrl")
                 .call([:])
-            guard let dict = result.data as? [String: Any],
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data),
                   let rawDownloadURL = dict["downloadURL"] as? String,
                   let signedURL = URL(string: rawDownloadURL) else {
                 throw AvatarError.malformedSignedURLResponse

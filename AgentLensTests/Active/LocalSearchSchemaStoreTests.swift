@@ -106,7 +106,7 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
                 updatedAt: now
             )
         ]
-        try await store.replaceSearchChunks(documentID: "doc-1", title: document.title, chunks: chunks)
+        try await store.replaceSearchChunks(documentID: "doc-1", title: document.title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: chunks)
 
         let fetchedDocuments = try await store.fetchSearchDocuments(limit: 10)
         XCTAssertEqual(fetchedDocuments.count, 1)
@@ -242,6 +242,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: "doc-many",
             title: manyDocument.title,
+            projectName: manyDocument.projectName ?? "",
+            provider: manyDocument.provider ?? "",
             chunks: manyChunks
         )
         let manyEmbeddings = manyChunks.map { chunk in
@@ -327,6 +329,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: document.id,
             title: document.title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
             chunks: [
                 makeSearchChunk(
                     id: "chunk-reindex-1",
@@ -349,6 +353,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: document.id,
             title: document.title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
             chunks: [
                 makeSearchChunk(
                     id: "chunk-reindex-3",
@@ -364,6 +370,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         let diff = try await store.applySearchChunkDiff(
             documentID: document.id,
             title: document.title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
             chunks: [
                 makeSearchChunk(
                     id: "chunk-reindex-4",
@@ -713,6 +721,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: conversationDocument.id,
             title: conversationDocument.title,
+            projectName: conversationDocument.projectName ?? "",
+            provider: conversationDocument.provider ?? "",
             chunks: [
                 SearchChunkRecord(
                     id: "chunk-conv-1",
@@ -732,6 +742,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: skillDocument.id,
             title: skillDocument.title,
+            projectName: skillDocument.projectName ?? "",
+            provider: skillDocument.provider ?? "",
             chunks: [
                 SearchChunkRecord(
                     id: "chunk-skill-1",
@@ -751,6 +763,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: sharedDocument.id,
             title: sharedDocument.title,
+            projectName: sharedDocument.projectName ?? "",
+            provider: sharedDocument.provider ?? "",
             chunks: [
                 SearchChunkRecord(
                     id: "chunk-shared-1",
@@ -1001,6 +1015,8 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
             try await store.replaceSearchChunks(
                 documentID: document.id,
                 title: document.title,
+                projectName: document.projectName ?? "",
+                provider: document.provider ?? "",
                 chunks: [
                     SearchChunkRecord(
                         id: "chunk-\(document.id)",
@@ -1044,7 +1060,13 @@ final class LocalSearchSchemaStoreTests: XCTestCase {
 
     private func makeInMemoryStore() throws -> DataStore {
         let queue = try DatabaseQueue(path: ":memory:")
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
     }
 
     private func makeSearchChunk(

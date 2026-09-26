@@ -23,7 +23,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(resolve(__dirname, "../callables/agentGrantCallables.ts"), "utf8");
+const source = readFileSync(resolve(__dirname, "../../../functions-sync/src/callables/agentGrantCallables.ts"), "utf8");
 
 /** Isolate the queueAgentCapabilityGrantRequest handler body so anchors can't
  * accidentally match identical tokens in a sibling handler. */

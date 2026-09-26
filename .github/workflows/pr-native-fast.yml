@@ -13,6 +13,9 @@ name: PR Native Fast Gate
 #     and catch the overwhelming majority of native compile/unit regressions.
 #   - `xcodegen generate` pbxproj drift check (committed project.pbxproj must
 #     match project.yml + the on-disk source globs).
+#   - Mac app smoke + impacted tests (wave 3.8): the release smoke catalog
+#     plus test classes impacted by the PR diff, in under 20 minutes. The
+#     full app proof (CPU budget gate, Lab lane) stays post-merge.
 #
 # WHAT STAYS POST-MERGE / NIGHTLY (openburnbar-pr-harness.yml, unchanged):
 #   - Full iOS/macOS App XCTest suites (3000+ tests, simulator-bound).
@@ -111,6 +114,136 @@ jobs:
             echo "No native surface changed: skipping macOS gates (aggregate still passes)."
           fi
 
+  # ── Lane classification for the app-smoke job (wave 3.8) ──────────────────
+  # ci-impact is the authority for whether the Mac app graph is affected. It
+  # fails closed (ambiguous/unresolvable diffs select every lane), so a
+  # classification fault runs the smoke lane rather than skipping it.
+  classify:
+    uses: ./.github/workflows/ci-impact.yml
+
+  # ── PARKED: Mac app smoke + impacted tests (wave 3.8) ──────────────────────
+  # Wave 3.8 built the lane machinery (selector at
+  # scripts/ci/select-pr-app-tests.sh, classifier lib, this job) for a bounded
+  # app-host proof on the PR door. PR #2683 batch-H proved the build cannot
+  # fit the door: a from-scratch singlefile compile (batch mode crashes
+  # SwiftEmitModule on this target, 44b801f4a2) plus source-built gRPC takes
+  # ~40 min before tests start, against the ~45 min gate poll — and a
+  # timed-out run never saves its cache, so the lane cannot bootstrap warm.
+  # The job stays wired but parked behind MACOS_APP_SMOKE_ENABLED (unset ==
+  # skip; the Native Gate already accepts skipped). Enforcement stays on
+  # merge_group via app-pr-gate's full suite (240-min budgets). Re-enable
+  # when the fleet pool (warm disks) or a fitting build lands. The lane's
+  # self-tests run in ci-impact.yml, and the scripts stay live for local runs.
+  app-smoke:
+    name: Mac app smoke + impacted tests
+    needs: [classify]
+    if: needs.classify.outputs.macos == 'true' && vars.MACOS_APP_SMOKE_ENABLED == 'true'
+    # Routing (cost + security): same isolated hosted macOS pools as the
+    # other native PR jobs — PR/merge-queue code is untrusted.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    timeout-minutes: 40
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          # Pull request checkouts land on refs/pull/<n>/merge; depth 2 keeps
+          # the base/head parents the test selector diffs.
+          fetch-depth: 2
+          submodules: false
+
+      - name: Self-test the PR test selector + app test classifier
+        # Fail fast before the expensive build when the gate itself is broken.
+        run: |
+          set -euo pipefail
+          bash scripts/ci/select-pr-app-tests.test.sh
+          node --test scripts/ci/classify-ci-impact.test.mjs
+          bash scripts/test-openburnbar-app-classifier.sh
+
+      - name: Resolve Signal FFI cache identity
+        id: signal-ffi-cache
+        # Read the pinned submodule SHA from the gitlink: no submodule fetch
+        # on the common (cache-hit) path. Matches `git -C Vendor/libsignal
+        # rev-parse HEAD` after init, so the key below hits the warmer entry.
+        run: echo "sha=$(git rev-parse HEAD:Vendor/libsignal)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache macOS Signal FFI artifact
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+
+      - name: Cache Swift Package Manager dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          # Identical key + paths to the app-pr-gate macOS job so the
+          # main-branch cache-warmer entries hit here too.
+          path: |
+            .spm-cache-new
+            .build
+            .derived-data
+            ~/.cache/org.swift.swiftpm
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-app-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-app-spm-
+            ${{ runner.os }}-spm-
+
+      # Preflight runs unconditionally above the first FFI-touching step: it is
+      # idempotent (PATH fix + probe, installs only when missing) and the
+      # libsignal preflight gate requires it to precede any step that runs
+      # prepare-signal-ffi-xcframework.sh, including the prebuilt restore.
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
+
+      - name: Prepare Signal FFI XCFramework (prebuilt restore)
+        id: prepare-ffi
+        continue-on-error: true
+        run: SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Install Rust toolchain for libsignal Swift FFI (cache-miss rebuild only)
+        if: steps.prepare-ffi.outcome == 'failure'
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
+
+      - name: Rebuild Signal FFI XCFramework (cache miss)
+        if: steps.prepare-ffi.outcome == 'failure'
+        run: SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Select smoke + impacted app tests
+        id: select-tests
+        # merge_group has no pull_request SHAs (empty args): the selector
+        # falls back to the HEAD^1/HEAD^2 merge parents, and fails closed
+        # (red) when no diff is resolvable.
+        run: bash scripts/ci/select-pr-app-tests.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+
+      - name: Build + run app smoke + impacted tests
+        run: |
+          set -euo pipefail
+          OPENBURNBAR_ENABLE_COVERAGE=YES \
+          OPENBURNBAR_APP_TEST_ATTEMPTS=2 \
+          OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180 \
+          OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360 \
+          OPENBURNBAR_APP_TEST_FILTERS="${{ steps.select-tests.outputs.filters }}" \
+          OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-lab-gate" \
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin \
+          ./scripts/test-openburnbar-app.sh
+
+      - name: Upload app test xcresult bundles (hang/failure diagnostics)
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: pr-app-smoke-xcresults
+          path: |
+            .derived-data/test-openburnbar-app-diagnostics
+            .derived-data/test-openburnbar-app-attempts.jsonl
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Guard against zero-test false greens
+        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" --min 137 # smoke catalog floor (app-pr-gate recorded 137); impacted tests only add
+
   # ── PR-GATED: SwiftPM compile + unit gate (OpenBurnBarCore + Daemon) ────────
   # Mirrors the "Swift Core" lane of openburnbar-pr-harness.yml but is wired to
   # pull_request so it actually gates merges. `swift test` builds first, so a
@@ -180,6 +313,13 @@ jobs:
           unzip -oq /tmp/swiftlint.zip -d /tmp/swiftlint-bin
           /tmp/swiftlint-bin/swiftlint version
           /tmp/swiftlint-bin/swiftlint lint --quiet --strict
+
+      - name: SwiftLint per-rule debt ratchet (shrink-only)
+        # The five brownfield opt-ins (.swiftlint.yml) are not in the strict
+        # gate; this ratchet fails on ANY per-rule growth instead.
+        env:
+          SWIFTLINT_BIN: /tmp/swiftlint-bin/swiftlint
+        run: bash scripts/debt/check-swiftlint-rules-budget.sh
 
       - name: Self-test signed daemon runtime gate
         run: bash scripts/ci/verify-daemon-release-signing.test.sh
@@ -340,8 +480,10 @@ jobs:
     name: PR Native Gate
     needs:
       - detect-native-changes
+      - classify
       - swiftpm-native
       - xcodegen-drift
+      - app-smoke
       - product-lane-freshness
     runs-on: ubuntu-latest
     if: always()
@@ -349,14 +491,18 @@ jobs:
       - name: Check native jobs passed (or were correctly skipped)
         env:
           DETECT_RESULT: ${{ needs.detect-native-changes.result }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
           SWIFTPM_RESULT: ${{ needs.swiftpm-native.result }}
           XCODEGEN_RESULT: ${{ needs.xcodegen-drift.result }}
+          APP_SMOKE_RESULT: ${{ needs.app-smoke.result }}
           FRESHNESS_RESULT: ${{ needs.product-lane-freshness.result }}
         run: |
           set -euo pipefail
           echo "detect-native-changes: ${DETECT_RESULT}"
+          echo "classify: ${CLASSIFY_RESULT}"
           echo "swiftpm-native: ${SWIFTPM_RESULT}"
           echo "xcodegen-drift: ${XCODEGEN_RESULT}"
+          echo "app-smoke: ${APP_SMOKE_RESULT}"
           echo "product-lane-freshness: ${FRESHNESS_RESULT}"
 
           # The detector itself must have succeeded; a 'skipped' here would mean
@@ -366,10 +512,17 @@ jobs:
             exit 1
           fi
 
+          # Same for the lane classifier: app-smoke skips are only trustworthy
+          # when classification actually ran.
+          if [[ "${CLASSIFY_RESULT}" != "success" ]]; then
+            echo "::error::classify did not succeed (${CLASSIFY_RESULT})."
+            exit 1
+          fi
+
           # success and skipped are both acceptable for the macOS jobs (skipped
           # == no native surface changed). Anything else (failure/cancelled) is
           # a hard fail.
-          for result in "${SWIFTPM_RESULT}" "${XCODEGEN_RESULT}"; do
+          for result in "${SWIFTPM_RESULT}" "${XCODEGEN_RESULT}" "${APP_SMOKE_RESULT}"; do
             if [[ "${result}" != "success" && "${result}" != "skipped" ]]; then
               echo "::error::A native PR gate job failed (result=${result})."
               exit 1
@@ -381,4 +534,4 @@ jobs:
             exit 1
           fi
 
-          echo "### PR Native Gate: native compile/test + pbxproj drift + 24h product-lane freshness passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "### PR Native Gate: native compile/test + pbxproj drift + app smoke + 24h product-lane freshness passed" >> "$GITHUB_STEP_SUMMARY"

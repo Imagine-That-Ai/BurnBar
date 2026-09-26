@@ -50,11 +50,20 @@ public struct ComputerUseAuditSignedHead: Codable, Hashable, Sendable {
         }
     }
 
+    /// Thrown when the seal cannot be evaluated at all (malformed encoding or
+    /// key material). Distinct from a clean `false` (evaluated: invalid).
+    public enum SealError: Error, Sendable, Equatable {
+        case malformedSignature
+        case malformedPublicKey
+    }
+
     public func verifySignature() throws -> Bool {
-        guard let signature = Data(base64Encoded: signatureEd25519Base64),
-              let publicKeyData = Data(base64Encoded: signerPublicKeyEd25519Base64),
+        guard let signature = Data(base64Encoded: signatureEd25519Base64) else {
+            throw SealError.malformedSignature
+        }
+        guard let publicKeyData = Data(base64Encoded: signerPublicKeyEd25519Base64),
               let publicKey = try? PlatformCrypto.ed25519PublicKey(rawRepresentation: publicKeyData) else {
-            return false
+            throw SealError.malformedPublicKey
         }
         let payload = try signingPayload
         return (try? PlatformCrypto.verifyEd25519Signature(signature, message: payload, publicKey: publicKey)) == true

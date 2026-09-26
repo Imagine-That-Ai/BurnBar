@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -24,7 +25,7 @@ public struct OllamaInsightAdapter: InsightModelGateway {
     public let modelCatalog: [InsightCatalogModel]
     public let numPredict: Int
 
-    public init(baseURL: URL = URL(string: "http://127.0.0.1:11434")!,
+    public init(baseURL: URL = URL(staticString: "http://127.0.0.1:11434"),
                 urlSession: URLSession = .shared,
                 modelCatalog: [InsightCatalogModel] = [],
                 numPredict: Int = 1400) {
@@ -160,7 +161,7 @@ public struct OllamaInsightAdapter: InsightModelGateway {
                 reason: "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)"
             )
         }
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        if let json = BurnBarJSONValue.dictionary(fromJSONData: data),
            let message = json["message"] as? [String: Any],
            let content = message["content"] as? String,
            let canvasData = content.data(using: .utf8) {
@@ -179,7 +180,7 @@ public struct OllamaInsightAdapter: InsightModelGateway {
         startedAt: Date,
         completedAt: Date
     ) -> InsightTokenUsage? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return nil
         }
         let input = json["prompt_eval_count"] as? Int ?? 0

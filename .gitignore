@@ -272,6 +272,10 @@ docs/security/*HANDOFF*.md
 docs/security/*REMEDIATION*.md
 docs/security/*findings*.md
 docs/security/SOTA_*_SIGNOFF.md
+# Exception: the wave sign-off is a public assurance asset (allowlisted in
+# scripts/security/internal-content-policy.mjs `assurance-docs`) — design-level
+# status only, no findings disclosed.
+!docs/security/SOTA_10_10_SIGNOFF.md
 
 # libsignal Swift FFI prebuilt xcframeworks — build outputs (CI builds libsignal
 # from the Vendor/libsignal submodule via Rust+protobuf); multi-GB, never committed.
@@ -333,3 +337,8 @@ arena-public/publish_manifest.json
 website/.tmp/
 # Agent-owned goal ledgers are working notes, not public artifacts.
 .factory/goals/
+# Wave 0.6 hygiene: tool-output debris and local-only state must never be tracked.
+--help/
+.audit.out
+.muse/
+.xcode-source-packages-audit/

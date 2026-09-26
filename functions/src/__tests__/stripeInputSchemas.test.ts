@@ -1,7 +1,7 @@
 import { HttpsError } from "firebase-functions/v2/https";
 import { describe, expect, it } from "vitest";
 
-import { parseGooglePlayProSubscriptionInput, parseGooglePlayTopUpInput } from "../callables/stripeInputSchemas.js";
+import { parseGooglePlayProSubscriptionInput, parseGooglePlayTopUpInput } from "../../../functions-identity/src/callables/stripeInputSchemas.js";
 
 function caughtHttpsError(action: () => unknown): HttpsError {
   try {

@@ -95,19 +95,19 @@ struct AuroraNavigationTray: View {
     /// glow, specular stroke, or drop shadow. `.interactive()` lets specular
     /// respond to the scrub. Older systems use material.
     @ViewBuilder
-    private var pill: some View {
+    private func pill(tabWidth: CGFloat) -> some View {
         LiquidGlassGroup {
             if #available(iOS 26.0, *) {
-                tabRow
+                tabRow(tabWidth: tabWidth)
                     .liquidGlassEffect(.regular.interactive(), in: Capsule(style: .continuous))
                     .contentShape(Capsule(style: .continuous))
-                    .gesture(scrubGesture)
+                    .gesture(scrubGesture(tabWidth: tabWidth))
             } else {
-                tabRow
+                tabRow(tabWidth: tabWidth)
                     .background(pillBackground)
                     .clipShape(Capsule(style: .continuous))
                     .contentShape(Capsule(style: .continuous))
-                    .gesture(scrubGesture)
+                    .gesture(scrubGesture(tabWidth: tabWidth))
             }
         }
     }

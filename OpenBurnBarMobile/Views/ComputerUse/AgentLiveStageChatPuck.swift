@@ -1,6 +1,9 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// The "Chat Puck" — the floating, draggable representation of the
 /// Hermes chat that appears in `.maximize` mode so the user never loses

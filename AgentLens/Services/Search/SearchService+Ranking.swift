@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
 
 extension SearchService {
         func normalizedSourceKinds(_ kinds: Set<SearchSourceKind>?) -> [SearchSourceKind]? {
@@ -18,7 +19,7 @@ extension SearchService {
 
         func matchesFilters(
             document: SearchDocumentRecord,
-            conversation: OpenBurnBarCore.ConversationRecord?,
+            conversation: OpenBurnBarInboxModels.ConversationRecord?,
             filters: RetrievalFilters,
             readableSharedSourceIDs: Set<String>?
         ) -> Bool {

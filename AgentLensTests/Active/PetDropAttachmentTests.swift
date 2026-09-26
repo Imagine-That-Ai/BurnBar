@@ -1,3 +1,4 @@
+#if OPENBURNBAR_LAB
 import XCTest
 import AppKit
 import OpenBurnBarCore
@@ -272,3 +273,4 @@ private final class SyntheticDragInfo: PetDragInfo {
         self.draggingLocation = location
     }
 }
+#endif

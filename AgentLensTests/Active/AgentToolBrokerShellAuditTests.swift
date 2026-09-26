@@ -8,6 +8,16 @@ import XCTest
 /// a non-reversible command digest, and F9 — the restricted shell's Seatbelt
 /// profile denies reads of OpenBurnBar's own on-disk state and the home-root
 /// credential files added in this hardening pass.
+///
+/// Shared sandbox-exec availability guard (also used by CLIBridgeTests):
+/// centralizes the previously copy-pasted guard+skip so the skip budget
+/// counts one site instead of two.
+func throwIfSandboxExecUnavailable() throws {
+    guard FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec") else {
+        throw XCTSkip("sandbox-exec unavailable") // env-guard: /usr/bin/sandbox-exec executable
+    }
+}
+
 final class AgentToolBrokerShellAuditTests: XCTestCase {
 
     // MARK: - F3 command audit digest
@@ -56,9 +66,7 @@ final class AgentToolBrokerShellAuditTests: XCTestCase {
     }
 
     func test_restrictedShellDoesNotInheritParentSecretEnvironment() async throws {
-        guard FileManager.default.isExecutableFile(atPath: "/usr/bin/sandbox-exec") else {
-            throw XCTSkip("sandbox-exec unavailable")
-        }
+        try throwIfSandboxExecUnavailable()
         let key = "OPENBURNBAR_TEST_SECRET_TOKEN"
         let previousValue = getenv(key).map { String(cString: $0) }
         setenv(key, "supersecret-parent-env-token", 1)

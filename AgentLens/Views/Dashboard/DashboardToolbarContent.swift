@@ -1,7 +1,12 @@
 import AppKit
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Command Deck Toolbar
 //

@@ -2,7 +2,7 @@ import Foundation
 @preconcurrency import FirebaseFirestore
 import FirebaseFunctions
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OSLog
 
 // Mission document handling and group-claim validation.
@@ -225,7 +225,7 @@ extension CLIAgentMissionRequestListener {
     func handle(document: QueryDocumentSnapshot) async {
         let rawData = document.data()
         if let ignored = MissionClaimGate.ignoreReason(rawData, localBodyID: localBodyIDProvider()) {
-            logger.debug("mission id=\(document.documentID, privacy: .public) \(ignored, privacy: .public)")
+            logger.debug("mission id=\(document.documentID, privacy: .private(mask: .hash)) \(ignored, privacy: .private)")
             return
         }
         let cancellationTracker = MissionCancellationTracker()
@@ -235,14 +235,14 @@ extension CLIAgentMissionRequestListener {
             guard let snapshot, snapshot.exists else { return }
             let status = snapshot.data()?["status"] as? String
             if status == "cancelled" || status == "canceled" {
-                logger.warning("cancellation signal received for mission id=\(docID, privacy: .public)")
+                logger.warning("cancellation signal received for mission id=\(docID, privacy: .private(mask: .hash))")
                 cancellationTracker.cancel()
             }
         }
         defer { cancellationListener.remove() }
 
         guard let uid = accountManager.currentUID else {
-            logger.warning("mission id=\(document.documentID, privacy: .public) ignored because this Mac is not signed in")
+            logger.warning("mission id=\(document.documentID, privacy: .private(mask: .hash)) ignored because this Mac is not signed in")
             return
         }
         let privatePayload: CLIAgentMissionPrivatePayload?
@@ -253,7 +253,7 @@ extension CLIAgentMissionRequestListener {
                 requestID: document.documentID
             )
         } catch {
-            logger.error("mission id=\(document.documentID, privacy: .public) cannot be opened with this Mac vault key: \(error.localizedDescription, privacy: .public)")
+            logger.error("mission id=\(document.documentID, privacy: .private(mask: .hash)) cannot be opened with this Mac vault key: \(error.localizedDescription, privacy: .private)")
             return
         }
         var muData = mergePrivateMissionPayload(privatePayload, into: rawData)
@@ -262,7 +262,7 @@ extension CLIAgentMissionRequestListener {
             muMissionGroupContext = try await validateMissionGroupClaimIfNeeded(
                 data: muData, uid: uid, requestID: document.documentID)
         } catch {
-            logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
+            logger.warning("mission id=\(document.documentID, privacy: .private(mask: .hash)) refused before claim: \(error.localizedDescription, privacy: .private)")
             // cov:ignore-start -- live Firestore mission-listener denial telemetry; reducer behavior is unit-tested.
             MissionRemoteAuthorizationShadow.observeDeny(
                 ctx: .fromMissionData(muData, missionID: document.documentID, prompt: "", fanOutCount: 1),
@@ -306,14 +306,12 @@ extension CLIAgentMissionRequestListener {
                 muRequestedModelID = wandRoutingSelection.modelID
                 muData["requestedRuntime"] = muRequestedRuntime
                 muData["requestedModelID"] = muRequestedModelID
-                muBackend = resolveBackend(
-                    requestedRuntime: muRequestedRuntime,
-                    missionKind: muData["missionKind"] as? String
-                )
-                logger.info("wand routing selected mission id=\(document.documentID, privacy: .public) model=\(wandRoutingSelection.modelID, privacy: .public) provider=\(wandRoutingSelection.provider ?? "unknown", privacy: .public) source=\(wandRoutingSelection.source ?? "unknown", privacy: .public)")
+                muBackend = resolveBackend(requestedRuntime: muRequestedRuntime, missionKind: muData["missionKind"] as? String)
+                let wandRoute = (provider: wandRoutingSelection.provider ?? "unknown", source: wandRoutingSelection.source ?? "unknown")
+                logger.info("wand routing selected mission id=\(document.documentID, privacy: .private(mask: .hash)) model=\(muRequestedModelID ?? "auto", privacy: .private) provider=\(wandRoute.provider, privacy: .private) source=\(wandRoute.source, privacy: .private)")
             }
         } catch {
-            logger.warning("mission id=\(document.documentID, privacy: .public) refused before claim: \(error.localizedDescription, privacy: .public)")
+            logger.warning("mission id=\(document.documentID, privacy: .private(mask: .hash)) refused before claim: \(error.localizedDescription, privacy: .private)")
             return
         }
 
@@ -322,7 +320,7 @@ extension CLIAgentMissionRequestListener {
         // region isolation. All mutation of the mu* vars ends above this line.
         // sendableJSONPayload: the frozen dictionary itself must have a
         // Sendable value type to cross into the claim/evaluate closures.
-        let data = ComputerUseSecurityCallableClient.sendableJSONPayload(muData)
+        let data = ComputerUseSecurityCallableSupport.sendableJSONPayload(muData)
         let missionGroupContext = muMissionGroupContext
         let requestedRuntime = muRequestedRuntime
         let requestedModelID = muRequestedModelID
@@ -337,7 +335,7 @@ extension CLIAgentMissionRequestListener {
         )
 
         @MainActor @Sendable func performExclusiveClaim() async throws -> String {
-            logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
+            logger.info("claiming mission id=\(document.documentID, privacy: .private(mask: .hash)) kind=\(missionKind, privacy: .private) requested=\(requestedRuntime, privacy: .private) selected=\(backend.rawValue, privacy: .private) model=\(requestedModelID ?? "auto", privacy: .private)")
             let baseClaimSummary = requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
                 ?? "\(backend.displayName) claimed the mission on this Mac."
             let claimSummary = wandRoutingSelection.map {
@@ -360,13 +358,13 @@ extension CLIAgentMissionRequestListener {
                 selectedRuntimeName: backend.displayName,
                 selectedModelID: requestedModelID,
                 approvalRequestId: nil,
-                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
+                sealedStatePayload: ComputerUseSecurityCallableSupport.sendableJSONPayload(sealedState)
             )
             claimedMissions[document.documentID] = .init(hostWriteNonce: hostWriteNonce, deviceId: accountManager.deviceId)
             if missionEventSequences[document.documentID] == nil {
                 missionEventSequences[document.documentID] = 1
             }
-            logger.info("claimed mission id=\(document.documentID, privacy: .public)")
+            logger.info("claimed mission id=\(document.documentID, privacy: .private(mask: .hash))")
             return hostWriteNonce
         }
 
@@ -453,7 +451,7 @@ extension CLIAgentMissionRequestListener {
             }
 
             if chatController.isStreaming {
-                logger.warning("mission id=\(document.documentID, privacy: .public) blocked because chat controller is already streaming")
+                logger.warning("mission id=\(document.documentID, privacy: .private(mask: .hash)) blocked because chat controller is already streaming")
                 await fail(document: document, message: "Mac chat controller is already running another mission.")
                 return
             }
@@ -463,7 +461,7 @@ extension CLIAgentMissionRequestListener {
                 return
             }
 
-            logger.info("starting mission id=\(document.documentID, privacy: .public) backend=\(backend.rawValue, privacy: .public)")
+            logger.info("starting mission id=\(document.documentID, privacy: .private(mask: .hash)) backend=\(backend.rawValue, privacy: .private)")
             do {
                 let summary = requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
                     ?? "Starting \(backend.displayName) with the mission prompt."
@@ -480,11 +478,11 @@ extension CLIAgentMissionRequestListener {
                         deviceId: handle.deviceId,
                         status: "starting",
                         hostWriteNonce: handle.hostWriteNonce,
-                        sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
+                        sealedStatePayload: ComputerUseSecurityCallableSupport.sendableJSONPayload(sealedState)
                     )
                 }
             } catch {
-                logger.error("mission starting update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                logger.error("mission starting update failed id=\(document.documentID, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
             }
             await recordEvent(
                 reference: document.reference,
@@ -513,7 +511,7 @@ extension CLIAgentMissionRequestListener {
                     liveSummary: summary
                 )
             } catch {
-                logger.error("mission running update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                logger.error("mission running update failed id=\(document.documentID, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
             }
 
             if cancellationTracker.isCancelled {
@@ -572,7 +570,7 @@ extension CLIAgentMissionRequestListener {
                     errorMessage: sealedErrorMessage,
                     resultPreview: safeDirectOutput
                 )
-                logger.info("finished direct CLI mission id=\(document.documentID, privacy: .public) status=\(directResult.status, privacy: .public)")
+                logger.info("finished direct CLI mission id=\(document.documentID, privacy: .private(mask: .hash)) status=\(directResult.status, privacy: .private)")
                 await recordEvent(
                     reference: document.reference,
                     requestID: document.documentID,
@@ -632,7 +630,7 @@ extension CLIAgentMissionRequestListener {
             var mirroredTranscriptPieceIDs = Set<String>()
             while chatController.isStreaming {
                 if cancellationTracker.isCancelled {
-                    logger.warning("cancelling active streaming chat generation for mission id=\(document.documentID, privacy: .public)")
+                    logger.warning("cancelling active streaming chat generation for mission id=\(document.documentID, privacy: .private(mask: .hash))")
                     chatController.cancelGeneration()
                     break
                 }
@@ -713,7 +711,7 @@ extension CLIAgentMissionRequestListener {
                 errorMessage: sealedErrorMessage,
                 resultPreview: sealedResultPreview
             )
-            logger.info("finished mission id=\(document.documentID, privacy: .public) status=\(status, privacy: .public)")
+            logger.info("finished mission id=\(document.documentID, privacy: .private(mask: .hash)) status=\(status, privacy: .private)")
 
             await recordChangedFileEvents(
                 before: changedFilesBefore,
@@ -744,7 +742,7 @@ extension CLIAgentMissionRequestListener {
                 fail: { }
             )
         } catch {
-            logger.error("mission claim-then-evaluate failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("mission claim-then-evaluate failed id=\(document.documentID, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
         }
 
     }

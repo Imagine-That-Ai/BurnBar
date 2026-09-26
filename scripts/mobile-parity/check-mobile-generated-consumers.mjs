@@ -7,7 +7,7 @@ import { readJson, runCheckCli, walkMobileSources } from './lib/check-support.mj
 import { resolveConfinedPath } from './lib/path-confine.mjs';
 import { repoRoot } from './lib/repo-root.mjs';
 
-export const GENERATED_TS_DIR = 'functions/src/types/generated';
+export const GENERATED_TS_DIR = 'packages/functions-shared/src/types/generated';
 export const GENERATED_SWIFT_DIR = 'OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels';
 export const GENERATED_KT_DIR = 'android/app/src/main/java/com/openburnbar/data/models/generated';
 

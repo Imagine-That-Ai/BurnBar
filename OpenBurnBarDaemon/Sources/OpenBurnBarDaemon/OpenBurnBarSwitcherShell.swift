@@ -83,11 +83,14 @@ public protocol BurnBarCLIShellExecuting: Sendable {
 public protocol BurnBarSwitcherProfileStoreProviding: SwitcherProfileStoreAdapter {}
 
 public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStoreProviding, Sendable {
-    private let dbQueue: any DatabaseWriter
+    // Internal (not private) so the Wave 2.1c-v app lane — the single write
+    // choke point, in BurnBarSwitcherSQLiteProfileStore+ActiveProfileLane —
+    // shares this queue. Still module-confined; no API change.
+    let dbQueue: any DatabaseWriter
     private let logger = BurnBarDaemonLogger(category: "switcher-profile-store")
 
     public init(databaseURL: URL = BurnBarDaemonPaths.supportDirectoryURL.appendingPathComponent("openburnbar.sqlite")) throws {
-        self.dbQueue = try DatabasePool(path: databaseURL.path, configuration: Self.databaseConfiguration())
+        self.dbQueue = try DatabasePool(path: databaseURL.path, configuration: Self.databaseConfiguration(for: databaseURL.path))
         try Self.ensureDrainTargetColumn(on: self.dbQueue)
     }
 
@@ -182,34 +185,26 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
     }
 
     public func setActiveProfileID(_ profileID: String?) {
+        // Wave 2.1c-v: the app lane is the single write choke point; this
+        // legacy void setter keeps its silent-failure contract for the CLI
+        // launch path while sharing the lane's statements byte for byte.
         do {
-            try dbQueue.write { db in
-                // Rewrite only the global pointer (providerID IS NULL). Wiping
-                // every row would also delete per-provider drain targets the
-                // app has set in the shared SQLite file.
-                try db.execute(sql: "DELETE FROM switcher_active_profile WHERE providerID IS NULL")
-                try db.execute(
-                    sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, NULL, ?)",
-                    arguments: [profileID, Date()]
-                )
-            }
+            _ = try switcherActiveProfileApply(
+                BurnBarSwitcherActiveProfileApplyRequest(sets: [.init(profileID: profileID)])
+            )
         } catch {
             logger.silentFailure("set_active_profile_id", error: error)
         }
     }
 
     public func setActiveProfileID(_ profileID: String?, for providerID: ProviderID) {
+        // Wave 2.1c-v: delegates to the app lane (see above).
         do {
-            try dbQueue.write { db in
-                try db.execute(
-                    sql: "DELETE FROM switcher_active_profile WHERE providerID = ?",
-                    arguments: [providerID.rawValue]
+            _ = try switcherActiveProfileApply(
+                BurnBarSwitcherActiveProfileApplyRequest(
+                    sets: [.init(profileID: profileID, providerID: providerID.rawValue)]
                 )
-                try db.execute(
-                    sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, ?, ?)",
-                    arguments: [profileID, providerID.rawValue, Date()]
-                )
-            }
+            )
         } catch {
             logger.silentFailure("set_active_profile_id_for_provider", error: error)
         }
@@ -259,7 +254,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         }
     }
 
-    private static func databaseConfiguration() -> Configuration {
+    private static func databaseConfiguration(for databasePath: String) -> Configuration {
         var configuration = Configuration()
         configuration.readonly = false
         // AgentLens shares this SQLite file. EQP showed intersection scans
@@ -268,16 +263,25 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
         configuration.busyMode = .timeout(5)
         configuration.maximumReaderCount = 8
 
-        // RR-1: key the shared SQLite with the same app Keychain key WHEN a
-        // SQLCipher codec is linked, matching `DatabaseEncryptionService` on the
-        // app side (passphrase mode + cipher_version self-check). This path uses
-        // GRDB's own `db.execute` so the PRAGMA runs through GRDB's SQLCipher
-        // build (not the raw `SQLite3` system module). On a stock-SQLite build
-        // `isCipherAvailable()` is false and we leave the file disclosed-plaintext
-        // rather than applying a silent no-op key.
-        if BurnBarDaemonDatabaseCipher.isCipherAvailable(),
-           let key = BurnBarDaemonDatabaseCipher.validatedKeyForGRDB() {
-            configuration.prepareDatabase { db in
+        // RR-1: key the shared SQLite with the same app Keychain key, matching
+        // `DatabaseEncryptionService` on the app side (passphrase mode +
+        // cipher_version self-check). This path uses GRDB's own `db.execute`
+        // so the PRAGMA runs through GRDB's SQLCipher build (not the raw
+        // `SQLite3` system module). Wave 2.4 fail-closed: the closure is
+        // ALWAYS installed and executes the shared keying decision — no codec
+        // or ciphertext-without-a-key throws out of the open instead of
+        // serving disclosed-plaintext.
+        configuration.prepareDatabase { db in
+            let decision = BurnBarDaemonDatabaseCipher.grdbKeyingDecision(
+                databasePath: databasePath,
+                resolvedKey: BurnBarDaemonDatabaseCipher.validatedKeyForGRDB()
+            )
+            switch decision {
+            case .openPlaintext:
+                return
+            case .refuse(let error):
+                throw error
+            case .applyKey(let key):
                 try db.execute(sql: "PRAGMA key = '\(key)'")
                 let cipherVersion = try String.fetchOne(db, sql: "PRAGMA cipher_version")
                 guard let version = cipherVersion, version.isEmpty == false else {

@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
 import { readRollupJobDirtiedAt, writeUserRollups, type WindowKey } from "../rollups.js";
-import type { UsageRollupDoc } from "../types.js";
+import type { UsageRollupDoc } from "../../../packages/functions-shared/src/types.js";
 
 type Doc = Record<string, unknown>;
 

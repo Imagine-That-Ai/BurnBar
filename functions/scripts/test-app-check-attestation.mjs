@@ -6,7 +6,7 @@ import {
   isAppCheckAttestationClaimFresh,
   readAppCheckAttestationClaim,
   readAppIdFromCallableRequest,
-} from "../lib/appCheckAttestation.js";
+} from "../../packages/functions-shared/lib/appCheckAttestation.js";
 
 assert.equal(
   readAppIdFromCallableRequest({ app: { appId: "1:999:ios:deadbeef" } }),

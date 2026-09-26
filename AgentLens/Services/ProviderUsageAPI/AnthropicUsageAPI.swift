@@ -54,7 +54,7 @@ final class AnthropicUsageAPI: ProviderUsageAPI, Sendable {
                 )
             }
 
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(guard throws on malformed JSON)
+            guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(guard throws on malformed JSON)
                 throw ProviderUsageAPIError.invalidResponse
             }
 

@@ -50,7 +50,9 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
     }
 
     func testIOSActiveCloudMembersCanRestorePurchasesFromMemberCard() throws {
-        let source = try bundledTextResource(named: "CloudStoreView")
+        let viewSource = try bundledTextResource(named: "CloudStoreView")
+        let cardsSource = try bundledTextResource(named: "CloudStoreCards")
+        let source = viewSource + "\n" + cardsSource
 
         XCTAssertTrue(source.contains("CloudStoreMemberCard(store: store)"))
         XCTAssertTrue(source.contains("Task { await store.restorePurchases() }"))
@@ -94,15 +96,19 @@ final class MacAppStoreReviewComplianceTests: XCTestCase {
         // longer "injection is gated behind an env var": it is that no build
         // phase can stage a debug App Check token at all, while the release
         // artifact verifier still blocks any token that slips in some other
-        // way. The release blocker exits early for Debug configurations only,
-        // with no OPENBURNBAR_USE_DEBUG_APP_CHECK escape hatch. Mirrors the
-        // iOS assertions in OpenBurnBarMobileTests/AppStoreReviewComplianceTests.
+        // way. The release blocker exits early for dev/test configurations
+        // only (Debug plus the wave-3.1 Lab config, which is test-only: the
+        // release script archives the OpenBurnBarMAS scheme and can never
+        // produce a Lab build), with no OPENBURNBAR_USE_DEBUG_APP_CHECK
+        // escape hatch. Release/ReleaseMAS fall through to enforcement.
+        // Mirrors the iOS assertions in
+        // OpenBurnBarMobileTests/AppStoreReviewComplianceTests.
         XCTAssertFalse(source.contains("Inject Internal Mac App Check Debug Token"))
         XCTAssertFalse(source.contains("OPENBURNBAR_USE_DEBUG_APP_CHECK"))
         XCTAssertFalse(source.contains("FIRAAppCheckDebugToken"))
         XCTAssertFalse(source.contains("FirebaseAppCheckDebugToken"))
         XCTAssertTrue(source.contains("Block Mac App Check Debug Token In Release"))
-        XCTAssertTrue(source.contains("if [[ \"${CONFIGURATION:-}\" == \"Debug\" ]]; then"))
+        XCTAssertTrue(source.contains("if [[ \"${CONFIGURATION:-}\" == \"Debug\" || \"${CONFIGURATION:-}\" == \"Lab\" ]]; then"))
         XCTAssertTrue(source.contains("AgentLens/Resources/GoogleService-Info.plist"))
         XCTAssertTrue(source.contains("scripts/ci/verify-apple-appcheck-release-artifact.sh"))
     }

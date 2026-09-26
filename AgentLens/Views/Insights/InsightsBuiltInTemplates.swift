@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Eight ready-to-go canvas templates the user can stamp.
 enum InsightsBuiltInTemplates {

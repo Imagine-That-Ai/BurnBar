@@ -16,7 +16,7 @@ extension BurnBarHTTPGatewayServer {
     /// the top-level body key or the equivalent header-style key), so fusion is
     /// not re-entered on inner panel/judge/synthesis calls.
     static func bodyCarriesFusionRecursionMarker(_ bodyData: Data) -> Bool {
-        guard let object = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: bodyData) else {
             return false
         }
         return object[fusionRecursionMarkerKey] != nil
@@ -152,7 +152,7 @@ extension BurnBarHTTPGatewayServer {
     ) async -> GatewayRouteOutcome {
         // Re-encode the synthesis body with stream:false.
         var bufferedBody = streaming.requestBody
-        if var object = try? JSONSerialization.jsonObject(with: streaming.requestBody) as? [String: Any] {
+        if var object = BurnBarJSONValue.dictionary(fromJSONData: streaming.requestBody) {
             object["stream"] = false
             if let reencoded = try? JSONSerialization.data(withJSONObject: object, options: []) {
                 bufferedBody = reencoded

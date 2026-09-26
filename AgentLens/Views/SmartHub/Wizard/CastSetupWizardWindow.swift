@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Cast Setup Wizard Window
 //

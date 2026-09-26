@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OSLog
 
 /// Translates a Ulanzi/AWTRIX hardware-button press into a Mac-side action

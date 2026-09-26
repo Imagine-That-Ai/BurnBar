@@ -1,10 +1,15 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarComputerUseCore
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 struct iPadDevicesSettingsView: View {
     @Bindable var store: DevicesStore
     @State private var smartHub = SmartHubStore()
-    @State private var appCheckMonitor = MobileAppCheckAttestationMonitor.shared
+    @State private var appCheckMonitor = AppCheckAttestationMonitor.shared
     @State private var newName = ""
     @State private var showRenameSheet = false
     @State private var showRevokeConfirmation = false

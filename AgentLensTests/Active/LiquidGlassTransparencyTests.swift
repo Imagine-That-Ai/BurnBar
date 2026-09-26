@@ -136,7 +136,7 @@ final class LiquidGlassTransparencyTests: XCTestCase {
 
     func testStyleResolvesVariantAndCompositionFromTransparency() throws {
         guard #available(macOS 26.0, *) else {
-            throw XCTSkip("Glass requires macOS 26")
+            throw XCTSkip("Glass requires macOS 26") // env-guard: macOS 26+
         }
         XCTAssertEqual(LiquidGlassStyle.regular.resolvedGlass(at: 0, overMediaRichContent: true), Glass.regular)
         // `.clear` is no longer selected by the slider alone. Without the kernel

@@ -44,6 +44,10 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case run
     /// Indexed search queries.
     case search
+    /// Indexed-search store writes (Wave 2.1c-ii single-writer lanes). Split
+    /// from `search` so the read-only posture keeps query access without
+    /// gaining write authority over the shared index tables.
+    case searchWrite = "search_write"
     /// Project-scoped durable memory reads.
     case memoryRead = "memory_read"
     /// Project-scoped durable memory writes.
@@ -52,6 +56,10 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
     case codeRead = "code_read"
     /// Project code indexing writes.
     case codeWrite = "code_write"
+    /// Account-switcher active-profile writes (Wave 2.1c-v single-writer
+    /// lane). Split from any read surface so attenuated profiles keep query
+    /// access without gaining authority over which account drains quota.
+    case switcherWrite = "switcher_write"
     /// Operator-only code-store diagnostics (schema version, store sizes, forget
     /// backlog). Excluded from the readOnly/runClient profiles so only the trusted
     /// first-party controller can inspect store internals.
@@ -119,7 +127,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // Actual dispatch is a separate, higher-privileged path.
              .warFlameRoute, .warFlameDistillList:
             return .observability
-        case .chatThreadList, .chatThreadGet, .chatMessageAppend,
+        case .chatThreadList, .chatThreadGet, .chatMessageAppend, .chatThreadCreate,
              // Inbox reply threads store the user's own dialogue verbatim —
              // the same sensitivity as chat history, so the same capability.
              // A read-only observability peer may list items but not read the
@@ -167,13 +175,16 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .run
         case .searchQuery, .searchSQL:
             return .search
+        case .searchVectorSnapshotUpsert, .searchIndexApply:
+            return .searchWrite
         // `memoryModelPolicy` mints a 15-minute gateway bearer that can spend
         // under the member's consented providers: agency, not a store read, so
         // read-only and run-client peers never get it (cliSupport is method-scoped).
         // `memorySyncInboxAck` stamps `applied_at` on inbox rows, so it is a
         // write even though it merges nothing itself.
         case .memoryRemember, .memoryReviewStatus, .memoryForget, .memoryModelPolicy,
-             .memorySyncInboxAck:
+             .memorySyncInboxAck, .memorySnapshotUpsert, .memorySnapshotDelete,
+             .memorySnapshotDeleteAll, .memoryAuthorityApply:
             return .memoryWrite
         case .memoryRecall, .memoryAuditTrail, .memoryAnalytics, .memorySyncInboxList:
             return .memoryRead
@@ -184,6 +195,8 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
             return .codeRead
         case .codeOpsDiagnostics, .codeDatabaseSnapshot, .codeDatabaseRestore:
             return .codeOperator
+        case .switcherActiveProfileApply:
+            return .switcherWrite
         }
     }
 }

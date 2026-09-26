@@ -33,6 +33,14 @@ public final class Analytics {
         self.authenticatedUserId = authenticatedUserId
     }
 
+    /// Flip consent and notify the recorder in one call (used by the first-run prompt
+    /// and the Settings toggle on both hosts). Shared here so the macOS and iOS consent
+    /// surfaces cannot drift apart: grant starts the SDK, revoke stops it.
+    public func setConsent(granted: Bool) {
+        if granted { consent.grant() } else { consent.revoke() }
+        consentDidChange()
+    }
+
     /// Call when consent changes (settings toggle / first-run prompt). On grant:
     /// start the SDK, emit `consent.analytics.granted` exactly once, and — if a
     /// session is already authenticated — re-identify so a sign-in-then-opt-in

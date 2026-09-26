@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Conversation Search DTOs
 // Moved verbatim from `FunctionsRepository.swift` (tech-debt finding-67) so
@@ -155,7 +155,7 @@ final class ConversationSearchAPI: ConversationSearchServicing {
             "query": query,
             "limit": max(1, min(limit, 50))
         ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let rawHits = dict["hits"] else {
             throw FunctionsError.decodingFailed
         }
@@ -175,7 +175,7 @@ final class ConversationSearchAPI: ConversationSearchServicing {
             "semanticHashes": Array(semanticHashes.prefix(12)),
             "limit": max(1, min(limit, 50))
         ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let rawHits = dict["hits"] else {
             throw FunctionsError.decodingFailed
         }
@@ -237,7 +237,7 @@ final class ConversationSearchAPI: ConversationSearchServicing {
     func encryptedSessionBlobDownloadURL(storagePath: String) async throws -> URL {
         let callable = try functionsClient().httpsCallable("getEncryptedSessionBlobDownloadUrl")
         let result = try await callable.call(["storagePath": storagePath])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let raw = dict["downloadURL"] as? String,
               let url = URL(string: raw) else {
             throw FunctionsError.decodingFailed

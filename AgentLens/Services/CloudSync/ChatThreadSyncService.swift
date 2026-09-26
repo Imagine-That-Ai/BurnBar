@@ -1,7 +1,8 @@
 import FirebaseAuth
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarAnalytics
 
 /// Sync domain for chat thread and message upload.
 ///

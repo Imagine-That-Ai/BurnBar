@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 extension AccountSwitcherSettingsView {
     var body: some View {
@@ -699,8 +703,8 @@ extension AccountSwitcherSettingsView {
                 HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
                     HStack(spacing: DesignSystem.Spacing.sm) {
                         Group {
-                            if group.hasBundledLogo {
-                                Image(group.bundledLogoName!)
+                            if group.hasBundledLogo, let logoName = group.bundledLogoName {
+                                Image(logoName)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                             } else {
@@ -1013,9 +1017,12 @@ private struct CLIReserveAddSheet: View {
     private var provider: AgentProvider? { request.cliType.agentProvider }
     private var existingAccounts: [String] {
         request.existingProfiles.map { profile in
-            profile.cliMetadata?.accountDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                ? profile.cliMetadata!.accountDescription!
-                : profile.displayName
+            if let accountDescription = profile.cliMetadata?.accountDescription,
+               !accountDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                accountDescription
+            } else {
+                profile.displayName
+            }
         }
     }
 
@@ -1164,9 +1171,13 @@ private struct CLIReserveAddSheet: View {
     }
 
     private func existingAccountRow(profile: SwitcherProfileRecord, index: Int) -> some View {
-        let account = profile.cliMetadata?.accountDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            ? profile.cliMetadata!.accountDescription!
-            : "Account label unavailable"
+        let account: String = {
+            if let accountDescription = profile.cliMetadata?.accountDescription,
+               !accountDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return accountDescription
+            }
+            return "Account label unavailable"
+        }()
         let windows = cliQuotaWindowDisplays(for: profile, snapshot: quotaSnapshotLookup(profile)) ?? []
 
         return VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {

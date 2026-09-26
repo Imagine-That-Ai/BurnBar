@@ -10,7 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TeamRosterService } from "../teamRoster.js";
+import { TeamRosterService } from "../../../functions-identity/src/teamRoster.js";
 import {
   ADMIN_UID,
   DEVICE,
@@ -26,11 +26,11 @@ import {
   storedDoc,
 } from "./teamRosterHarness.js";
 
-vi.mock("../adminRuntime.js", async () => {
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", async () => {
   const { rosterHarness } = await import("./teamRosterHarness.js");
   return { db: rosterHarness.db, auth: rosterHarness.auth };
 });
-vi.mock("../callables/shared/entitlements.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", () => ({
   assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
 }));
 

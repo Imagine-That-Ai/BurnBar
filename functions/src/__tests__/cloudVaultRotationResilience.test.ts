@@ -192,7 +192,7 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
   return { store, dbMock, FieldValueMock, FakeTimestamp };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: FieldValueMock,
   Timestamp: FakeTimestamp,
@@ -201,30 +201,30 @@ vi.mock("firebase-admin/firestore", () => ({
 
 // Auth / App Check / nonce assertions are exercised elsewhere; stub to no-ops so
 // the survivor-eligibility + rotation logic under test is what drives behavior.
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   assertAuth: vi.fn(),
   assertAppCheck: vi.fn(),
   assertOwnership: vi.fn(),
   enforceAuthAndAppCheck: vi.fn(),
 }));
-vi.mock("../appCheckAttestation.js", () => ({
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
 }));
 
 const { configMock } = vi.hoisted(() => ({ configMock: { enforceAppCheck: true, requireHighRiskNonce: false } }));
-vi.mock("../config.js", () => ({ getConfig: () => configMock }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => configMock }));
 
 const { logWarnMock, logInfoMock } = vi.hoisted(() => ({ logWarnMock: vi.fn(), logInfoMock: vi.fn() }));
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: logInfoMock, logWarn: logWarnMock };
 });
-vi.mock("../scheduledOps.js", () => ({ runScheduledJob: async (_n: string, fn: () => Promise<unknown>) => fn() }));
+vi.mock("../../../packages/functions-shared/src/scheduledOps.js", () => ({ runScheduledJob: async (_n: string, fn: () => Promise<unknown>) => fn() }));
 
 import {
   listPendingCloudVaultRotationRequirements,
   sweepStalePendingCloudVaultRotations,
-} from "../cloudVaultRotationResilience.js";
+} from "../../../functions-identity/src/domains/devices/cloudVaultRotationResilience.js";
 
 const UID = "uidRR5";
 const HOUR_MS = 60 * 60 * 1000;

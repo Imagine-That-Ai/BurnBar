@@ -1,7 +1,11 @@
 import Foundation
 import SwiftUI
 import Network
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 public enum SwarmBackgroundLocation: String, Codable, CaseIterable, Identifiable {
     case disabled = "Disabled"

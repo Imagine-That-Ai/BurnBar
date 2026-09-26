@@ -1,5 +1,8 @@
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
 
 // Project-memory cards, controller-project editor, citation wrapper, and memory insight controller.

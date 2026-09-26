@@ -1,5 +1,10 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarTextExpansion
+import OpenBurnBarUI
 
 struct MobileTextExpansionSettingsView: View {
     @State private var store = MobileTextExpansionStore()
@@ -299,10 +304,10 @@ struct MobileTextExpansionSettingsView: View {
                 .buttonStyle(PremiumButtonStyle(isDestructive: false))
                 .disabled(!canSave)
 
-                if editingID != nil {
+                if let editingID {
                     HStack(spacing: 12) {
                         Button {
-                            deleteSnippet(editingID!)
+                            deleteSnippet(editingID)
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }

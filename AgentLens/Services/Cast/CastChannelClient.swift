@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 import os
 
 @MainActor
@@ -520,7 +521,7 @@ final class CastChannelClient {
 
     private func handle(message: CastMessage) {
         guard let data = message.payloadUTF8.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return } // try?-ok(malformed inbound skipped)
+              let obj = BurnBarJSONValue.dictionary(fromJSONData: data) else { return } // try?-ok(malformed inbound skipped)
 
         // requestId-based correlation.
         if let requestId = obj["requestId"] as? Int, let cb = pending.removeValue(forKey: requestId) {

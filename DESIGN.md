@@ -17,71 +17,80 @@
 
 ## Color System
 
+Source of truth: `AgentLens/Theme/DesignSystem.swift`, with the editorial
+skin from `DesignSystemTokens` (`OpenBurnBarCore/.../DesignSystemTokens.swift`,
+mirrored verbatim from `apps/console/styles/globals.css`).
+`scripts/ci/check-design-tokens.sh` (fast-feedback gate) fails when any
+row below drifts from the shipped values.
+
 ### Philosophy
-Colors are **adaptive** — they flip between dark and warm-neutral light based on macOS system appearance. The brand accent colors shift slightly between modes to maintain contrast and saturation.
+Colors are **adaptive** — they flip between dark and light with macOS
+system appearance — plus a light-locked **editorial** paper skin for
+reading surfaces. Dark cool slate is the primary experience; cool
+chrome makes the warm accents glow. `coral` / `purple` / `teal` /
+`gold` are **legacy aliases**, not independent hexes
+(`DesignSystem.swift:27-31`): they resolve to `ember` / `whimsy` /
+`whimsy` / `amber`. Per-provider brand colour comes from
+`DesignSystem.Colors.primary(for:)` / `accent(for:)`, never from these
+tables.
 
-The dark palette is the primary experience (most developers run dark mode). The light palette is a warm neutral — cream-toned, not clinical white — so the app feels premium in both modes.
+### Surfaces
 
-### Dark Mode (primary) — Warm Charcoal
+| Token | Dark | Light | Editorial | Role |
+|-------|------|-------|-----------|------|
+| `background` | `#0D1117` | `#F3E8E6` | `#F6F4EF` | App window, the page |
+| `surface` | `#161B22` | `#FAF5F2` | `#FFFEFB` | Cards, raised paper |
+| `surfaceElevated` | `#1F2630` | `#FDF8F5` | `#FFFEFB` | Popovers, sheets |
+| `surfaceMuted` | `#1B202A` | `#F2E0DA` | `#F0EEE7` | Recessed wells |
+| `border` | `#30363D` | `#E8BFB5` | `#1F16140F` | Hairlines (editorial: ink at 12%) |
+| `borderSubtle` | `#21262D` | `#F2E0DA` | `#1416140F` | Separators (editorial: ink at ~8%) |
 
-Not GitHub dark. Near-black with a brown undertone, off-white text, earthy borders. Cohesive with botanical cream light mode.
+### Text
 
-| Token | Value | Role |
-|-------|-------|------|
-| `background` | `#0E0D0B` | Warm near-black |
-| `surface` | `#171510` | Dark warm charcoal |
-| `surfaceElevated` | `#201E18` | Elevated warm surface |
-| `border` | `#302C22` | Earthy dark border |
-| `borderSubtle` | `#1E1C16` | Subtle warm separator |
-| `textPrimary` | `#F0EBE2` | Warm off-white — not clinical pure white |
-| `textSecondary` | `#9A9088` | Warm gray |
-| `textMuted` | `#7A7268` | Warm muted |
-| `success` | `#38D898` | Vivid green |
-| `warning` | `#F0C040` | Rich amber |
-| `error` | `#F06070` | Rich red |
+| Token | Dark | Light | Editorial | Role |
+|-------|------|-------|-----------|------|
+| `textPrimary` | `#E6EDF3` | `#2A1816` | `#16140F` | Headings, body |
+| `textSecondary` | `#8B949E` | `#6E4E48` | `#353027` | Secondary copy |
+| `textMuted` | `#6E7681` | `#9A756D` | `#6E685D` | Captions, placeholders |
 
-### Light Mode — Botanical Cream
+### Semantic
 
-Inspired by herbarium paper and botanical illustration: cream with a clear green undertone, sage borders, forest-ink text. Reads premium and distinct — not generic Mac beige.
+| Token | Dark | Light | Editorial | Role |
+|-------|------|-------|-----------|------|
+| `success` | `#38D898` | `#3A7835` | `#0C7C69` | Ok states |
+| `warning` | `#FFA800` | `#C47800` | `#8A6200` | Caution |
+| `error` | `#FA5053` | `#D43030` | `#B22219` | Failures |
 
-| Token | Value | Role |
-|-------|-------|------|
-| `background` | `#EDF0E5` | Herbarium paper — cream with green cast |
-| `surface` | `#F4F6EE` | Lighter botanical paper |
-| `surfaceElevated` | `#FAFAF5` | Near-white with green tint |
-| `border` | `#C5CEB6` | Pressed sage |
-| `borderSubtle` | `#D8E2CA` | Light sage separator |
-| `textPrimary` | `#1C2014` | Botanical ink — near-black with green cast |
-| `textSecondary` | `#4A5442` | Aged ink |
-| `textMuted` | `#7A8572` | Faded sage text |
-| `success` | `#3A7835` | Forest green |
-| `warning` | `#A87018` | Amber |
-| `error` | `#BF3030` | Deep red |
+### Brand accents
 
-### Brand Accents
+| Token | Dark | Light | Editorial | Usage |
+|-------|------|-------|-----------|-------|
+| `ember` (`coral`) | `#FA5053` | `#F45B69` | `#F45B69` | Assistant stroke, error accent |
+| `whimsy` (`purple`, `teal`) | `#8B7FE8` | `#6A5ACD` | `#565D68` | User stroke, charts, cool contrast |
+| `amber` (`gold`) | `#FFA800` | `#F28C38` | `#8A6200` | Quota pressure, warnings |
+| `blaze` | `#E86100` | `#E86100` | `#B3243C` | Peak-heat emphasis |
 
-Accents shift between modes — botanical light uses earthier, nature-grounded variants:
+### Cooling spectrum (Quit control — no editorial skin)
 
-`coral` / `purple` / `teal` / `gold` are **legacy aliases**, not independent hexes
-(`DesignSystem.swift:26-29`): they resolve to `ember` / `whimsy` / `whimsy` / `amber`.
-Per-provider brand colour comes from `DesignSystem.Colors.primary(for:)` /
-`accent(for:)`, never from this table.
-
-| Token | Dark | Light | Resolves to | Usage |
-|-------|------|-------|-------------|-------|
-| `ember` (`coral`) | `#FA5053` | `#F45B69` | — | Assistant bubble stroke, error accent |
-| `whimsy` (`purple`, `teal`) | `#8B7FE8` | `#6A5ACD` | — | Non-Hermes chat accent, charts |
-| `amber` (`gold`) | `#FFA800` | `#F28C38` | — | Quota pressure, warnings |
-| `blaze` | `#E86100` | `#E86100` | — | Peak-heat emphasis |
+| Token | Dark | Light | Usage |
+|-------|------|-------|-------|
+| `frost` | `#6FC2FF` | `#5EB1EF` | Drain top, bright sky |
+| `glacier` | `#4D9BF5` | `#3B82F6` | Drain middle |
+| `abyss` | `#12294D` | `#1B3A6B` | Drain bottom, deep navy |
 
 ### Hermes Mercury (chat identity)
 
 Hermes has two color identities: **provider purple** (`#A855F7`/`#C084FC`) for tracking and charts, and **warm mercury** for the chat interface. The mercury axis is a metallic neutral — silver that catches firelight — sitting between the warm accents (ember/amber/blaze) and the cool contrast (whimsy).
 
-| Token | Dark | Light | Usage |
-|-------|------|-------|-------|
-| `hermesMercury` | `#C8BFB5` | `#AEA69C` | Warm silver — response bubble strokes, status text, thinking state |
-| `hermesAureate` | `#D4AA3C` | `#B8942E` | Warm gold — Hermes badges, links, send button accent, and the Hermes Agent Sigil tint. (This row previously documented a gunmetal `#A2ACBA`/`#3F4651` pairing that the code never shipped; corrected against `DesignSystem.swift:59`.) |
+| Token | Dark | Light | Editorial | Usage |
+|-------|------|-------|-----------|-------|
+| `hermesMercury` | `#C8BFB5` | `#AEA69C` | `#9B9488` | Warm silver — response strokes, status, thinking |
+| `hermesAureate` | `#D4AA3C` | `#B8942E` | `#353027` | Warm gold — badges, links, send accent, Agent Sigil tint |
+
+Known divergence: macOS ships the gold aureate above, while
+`UnifiedDesignSystem` renders gunmetal (`#A2ACBA` dark / `#3F4651`
+light) from the hermesAureate Light/Dark token constants. Unification
+is open; the token check exempts this pair (see the script).
 
 **Mercury gradient:**
 ```swift
@@ -100,8 +109,8 @@ static let mercuryGradient = LinearGradient(
 ```
 
 **Chat bubble strokes:**
-- User bubbles: `whimsy` stroke (unchanged)
-- OpenBurnBar assistant bubbles (Local Index mode): `ember` stroke (unchanged)
+- User bubbles: `whimsy` stroke (`#8B7FE8` / `#6A5ACD` / editorial `#565D68`)
+- OpenBurnBar assistant bubbles (Local Index mode): `ember` stroke (`#FA5053` / `#F45B69` / editorial `#F45B69`)
 - Hermes assistant bubbles: `mercuryGradient` stroke with shimmer
 - Hermes tool cards: `mercuryGradient` stroke, grouped by capability
 

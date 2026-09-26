@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 // The "update available" card. One component, rendered into the popover
 // (compact), the dashboard, and settings. It reads everything from the shared
@@ -21,7 +22,7 @@ struct UpdateBannerCard: View {
     private var oneClickSourceEnabled = false
 
     private static let releasesPageURL =
-        URL(string: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest")!
+        URL(staticString: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest")
 
     var body: some View {
         // Reading `.shared.phase` inside body registers SwiftUI observation, so

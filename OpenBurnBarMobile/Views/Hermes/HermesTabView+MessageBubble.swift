@@ -1,6 +1,11 @@
 import SwiftUI
 import AVFoundation
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import PhotosUI
 import UniformTypeIdentifiers
@@ -163,7 +168,7 @@ struct HermesMessageBubble: View {
 
     private var iosCLITranscriptText: String {
         let toolLines = message.toolCalls.map { tc in
-            "⟨\(tc.name)\(tc.detail != nil ? ": \(tc.detail!)" : "")⟩"
+            "⟨\(tc.name)\(tc.detail.map { ": \($0)" } ?? "")⟩"
         }
         if toolLines.isEmpty { return message.text }
         return ([message.text] + toolLines).filter { !$0.isEmpty }.joined(separator: "\n")

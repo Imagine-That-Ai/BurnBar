@@ -1,7 +1,10 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OSLog
 
 // Direct CLI stream mirror and locked process output.
@@ -74,23 +77,16 @@ final class DirectCLIStreamMirror: Sendable {
         guard line.first == "{",
               let data = line.data(using: .utf8),
               // try?-ok(optional jsonline parse)
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data),
               let type = object["type"] as? String
         else { return nil }
 
-        if let event = parseCodex(object: object, type: type) {
-            return event
-        }
-        if let event = parseOpenClaude(object: object, type: type) {
-            return event
-        }
-        if let event = parsePi(object: object, type: type) {
-            return event
-        }
-        return nil
+        return parseCodex(object: object, type: type)
+            ?? parseOpenClaude(object: object, type: type)
+            ?? parsePi(object: object, type: type)
     }
 
-    func parseCodex(object: [String: Any], type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+    func parseCodex(object: UntypedJSONObject, type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
         if type == "thread.started" || type == "turn.started" {
             return .toolResult(
                 type == "thread.started" ? "Codex session initialized." : "Codex turn started.",
@@ -99,7 +95,7 @@ final class DirectCLIStreamMirror: Sendable {
         }
 
         if type == "item.started" || type == "item.completed" || type == "item.finished" {
-            guard let item = object["item"] as? [String: Any],
+            guard let item = object["item"] as? UntypedJSONObject,
                   let itemType = item["type"] as? String
             else { return nil }
 
@@ -145,7 +141,7 @@ final class DirectCLIStreamMirror: Sendable {
         }
 
         if type == "turn.completed",
-           let usage = object["usage"] as? [String: Any] {
+           let usage = object["usage"] as? UntypedJSONObject {
             return .toolResult(formatUsage(usage), title: "LLM usage")
         }
 
@@ -158,7 +154,7 @@ final class DirectCLIStreamMirror: Sendable {
         return nil
     }
 
-    func parseOpenClaude(object: [String: Any], type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+    func parseOpenClaude(object: UntypedJSONObject, type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
         if type == "system",
            let subtype = object["subtype"] as? String,
            subtype == "init" {
@@ -173,10 +169,10 @@ final class DirectCLIStreamMirror: Sendable {
         }
 
         if type == "stream_event",
-           let event = object["event"] as? [String: Any],
+           let event = object["event"] as? UntypedJSONObject,
            let streamType = event["type"] as? String {
             if streamType == "content_block_delta",
-               let delta = event["delta"] as? [String: Any],
+               let delta = event["delta"] as? UntypedJSONObject,
                let deltaType = delta["type"] as? String,
                deltaType == "text_delta",
                let text = (delta["text"] as? String)?.nilIfEmpty {
@@ -186,13 +182,13 @@ final class DirectCLIStreamMirror: Sendable {
                 return flushAssistantDelta()
             }
             if streamType == "message_delta",
-               let usage = event["usage"] as? [String: Any] {
+               let usage = event["usage"] as? UntypedJSONObject {
                 return .toolResult(formatUsage(usage), title: "LLM usage")
             }
         }
 
         if type == "assistant",
-           let message = object["message"] as? [String: Any] {
+           let message = object["message"] as? UntypedJSONObject {
             _ = flushAssistantDelta()
             return parseAssistantMessage(message, title: "Assistant", captureAsFinal: true)
         }
@@ -221,14 +217,14 @@ final class DirectCLIStreamMirror: Sendable {
         return nil
     }
 
-    func parsePi(object: [String: Any], type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+    func parsePi(object: UntypedJSONObject, type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
         if type == "session",
            let id = object["id"] as? String {
             return .toolResult("Pi session initialized\nsession=\(id)", title: "LLM call started")
         }
 
         if type == "message_start",
-           let message = object["message"] as? [String: Any],
+           let message = object["message"] as? UntypedJSONObject,
            (message["role"] as? String) == "assistant" {
             let api = message["api"] as? String
             let provider = message["provider"] as? String
@@ -242,18 +238,18 @@ final class DirectCLIStreamMirror: Sendable {
         }
 
         if type == "message_update",
-           let update = object["assistantMessageEvent"] as? [String: Any],
+           let update = object["assistantMessageEvent"] as? UntypedJSONObject,
            let updateType = update["type"] as? String {
             if updateType == "text_delta",
                let text = (update["delta"] as? String)?.nilIfEmpty {
                 return appendAssistantDelta(text)
             }
             if updateType == "text_start",
-               let partial = update["partial"] as? [String: Any] {
+               let partial = update["partial"] as? UntypedJSONObject {
                 return parseAssistantMessage(partial, title: "Assistant", captureAsFinal: false)
             }
             if updateType == "thinking_start" || updateType == "thinking_delta" || updateType == "thinking_end" {
-                let count = ((update["partial"] as? [String: Any])?["content"] as? [[String: Any]])?
+                let count = ((update["partial"] as? UntypedJSONObject)?["content"] as? [UntypedJSONObject])?
                     .compactMap { item -> String? in
                         guard (item["type"] as? String) == "thinking" else { return nil }
                         return item["thinking"] as? String
@@ -279,20 +275,20 @@ final class DirectCLIStreamMirror: Sendable {
         }
 
         if type == "message_end",
-           let message = object["message"] as? [String: Any],
+           let message = object["message"] as? UntypedJSONObject,
            (message["role"] as? String) == "assistant" {
             if let flushed = flushAssistantDelta() {
                 return flushed
             }
             let assistantEvent = parseAssistantMessage(message, title: "Assistant", captureAsFinal: true)
-            if let usage = message["usage"] as? [String: Any] {
+            if let usage = message["usage"] as? UntypedJSONObject {
                 return .toolResult(formatUsage(usage), title: "LLM usage")
             }
             return assistantEvent
         }
 
         if type == "turn_end",
-           let results = object["toolResults"] as? [[String: Any]],
+           let results = object["toolResults"] as? [UntypedJSONObject],
            !results.isEmpty {
             let rendered = results.compactMap { result -> String? in
                 if let name = result["toolName"] as? String {
@@ -329,11 +325,11 @@ final class DirectCLIStreamMirror: Sendable {
     }
 
     func parseAssistantMessage(
-        _ message: [String: Any],
+        _ message: UntypedJSONObject,
         title: String,
         captureAsFinal: Bool
     ) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
-        guard let content = message["content"] as? [[String: Any]] else { return nil }
+        guard let content = message["content"] as? [UntypedJSONObject] else { return nil }
         var textParts: [String] = []
         var toolEvents: [CLIAgentMissionRequestListener.DirectCLIStreamEvent] = []
         for item in content {
@@ -361,7 +357,7 @@ final class DirectCLIStreamMirror: Sendable {
         return text.nilIfEmpty.map { .assistant($0, title: title) }
     }
 
-    func formatUsage(_ usage: [String: Any]) -> String {
+    func formatUsage(_ usage: UntypedJSONObject) -> String {
         usage.keys.sorted().map { key in
             "\(key)=\(usage[key] ?? "")"
         }.joined(separator: "\n")

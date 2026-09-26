@@ -10,10 +10,10 @@ import { seedBolaVictimTenant } from "./bolaVictimSeeds.generated.js";
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 
-vi.mock("../../auth.js", async () => {
-  const actual = await vi.importActual<typeof import("../../auth.js")>("../../auth.js");
+vi.mock("../../../../packages/functions-shared/src/auth.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/auth.js")>("../../../../packages/functions-shared/src/auth.js");
   return {
     ...actual,
     enforceAuthAndAppCheck: vi.fn(),
@@ -26,7 +26,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — openTimestamps", () => {
   it("validateOpenTimestampsProof rejects cross-user object access", async () => {
-    const mod = await import("../../computerUseOpenTimestamps.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseOpenTimestamps.js");
     const run = callableRunner(mod.validateOpenTimestampsProof);
     bolaStore.clear();
     seedBolaVictimTenant(bolaStore, "validateOpenTimestampsProof");

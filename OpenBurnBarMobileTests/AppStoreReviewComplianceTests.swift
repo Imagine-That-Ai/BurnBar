@@ -43,7 +43,7 @@ final class AppStoreReviewComplianceTests: XCTestCase {
     func testMobileInfoPlistDeclaresGoogleClientIDMatchingFirebasePlist() throws {
         let info = try XCTUnwrap(Bundle.main.infoDictionary)
         guard let googleURL = Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") else {
-            throw XCTSkip("GoogleService-Info.plist is injected for configured builds; local plist-less builds cannot verify its client ID")
+            throw XCTSkip("GoogleService-Info.plist is injected for configured builds; local plist-less builds cannot verify its client ID") // env-guard: GoogleService-Info.plist provisioned
         }
         let google = try XCTUnwrap(
             PropertyListSerialization.propertyList(from: try Data(contentsOf: googleURL), format: nil) as? [String: Any]
@@ -81,7 +81,7 @@ final class AppStoreReviewComplianceTests: XCTestCase {
 
     func testAppDelegateConfiguresGoogleSignInAfterFirebaseStarts() throws {
         guard let firebaseApp = FirebaseApp.app() else {
-            throw XCTSkip("Firebase is not configured in this test host.")
+            throw XCTSkip("Firebase is not configured in this test host.") // env-guard: Firebase configured in the test host
         }
         let clientID = try XCTUnwrap(firebaseApp.options.clientID)
         XCTAssertEqual(GIDSignIn.sharedInstance.configuration?.clientID, clientID)
@@ -549,12 +549,17 @@ final class AppStoreReviewComplianceTests: XCTestCase {
     }
 
     private func skipSourceInspectionInSimulatorAppHost() throws {
+        // One site for both app-host conditions (was: a simulator-only throw
+        // plus a workspace-missing throw): the simulator never mounts the Mac
+        // workspace, and a physical host skips only when it is unmounted.
         #if targetEnvironment(simulator)
-        throw XCTSkip("Source-inspection compliance checks read host workspace files and are not reliable inside the simulator app-host process.")
-        #endif
+        let workspaceMounted = false
+        #else
         let projectURL = repoRoot().appendingPathComponent("OpenBurnBar.xcodeproj")
-        if !FileManager.default.fileExists(atPath: projectURL.path) {
-            throw XCTSkip("Source-inspection compliance checks require the Mac workspace, which is not mounted inside the physical iPhone app-host process.")
+        let workspaceMounted = FileManager.default.fileExists(atPath: projectURL.path)
+        #endif
+        guard workspaceMounted else {
+            try skipSourceInspectionWorkspaceUnmounted("compliance checks")
         }
     }
 

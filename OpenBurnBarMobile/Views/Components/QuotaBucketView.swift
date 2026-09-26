@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Compact bucket renderer used by `QuotaDetailSheet` and other mobile
 /// quota surfaces. Shows the bucket label, used / limit, remaining percent,

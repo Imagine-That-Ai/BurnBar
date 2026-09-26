@@ -61,12 +61,12 @@ data class TokenUsage(
     val reasoningTokens: Int = 0,
     @PropertyName("totalTokens")
     val totalTokens: Int = 0,
-    /** Canonical cost field (Firestore "costUsd"). */
-    @PropertyName("costUsd")
-    val costUsd: Double = 0.0,
-    /** Schema-sync alias (Firestore "costUSD"). */
+    /** Canonical cost field (Firestore "costUSD"). Nullable: absent must fall through. */
     @PropertyName("costUSD")
-    val costUSD: Double = 0.0,
+    val costUSD: Double? = null,
+    /** Legacy cost field (Firestore "costUsd"). Read only via [effectiveCost]. */
+    @PropertyName("costUsd")
+    val costUsd: Double? = null,
     @PropertyName("currency")
     val currency: String? = null,
     @PropertyName("recordedAt")
@@ -75,9 +75,9 @@ data class TokenUsage(
     val eventKind: String? = null,
     @PropertyName("idempotencyKey")
     val idempotencyKey: String? = null,
-    /** Legacy cost field (Firestore "cost"), consumer falls back to costUsd. */
+    /** Legacy cost field (Firestore "cost"). Read only via [effectiveCost]. */
     @PropertyName("cost")
-    val cost: Double = 0.0,
+    val cost: Double? = null,
     @PropertyName("provenanceConfidence")
     val provenanceConfidence: String? = null,
     @PropertyName("provenanceMethod")
@@ -100,9 +100,9 @@ data class TokenUsage(
     @PropertyName("schemaVersion")
     val schemaVersion: Int = 0,
 ) {
-    /** Effective cost — prefers costUsd, falls back to cost. */
+    /** Effective cost — one shared rule (Wave 2.5): costUSD first, then legacy. */
     val effectiveCost: Double
-        get() = if (costUsd > 0.0) costUsd else cost
+        get() = CostRule.effectiveCostUSD(costUSD, costUsd, cost)
 }
 
 /**

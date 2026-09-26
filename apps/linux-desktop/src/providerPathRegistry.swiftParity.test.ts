@@ -22,7 +22,7 @@ const generatedSwift = fs.readFileSync(
   'utf8'
 );
 const swiftProvider = fs.readFileSync(
-  path.join(repoRoot, 'OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AgentProvider.swift'),
+  path.join(repoRoot, 'OpenBurnBarCore/Sources/OpenBurnBarProviderModels/AgentProvider.swift'),
   'utf8'
 );
 const parserRegistry = fs.readFileSync(

@@ -9,7 +9,7 @@ import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callab
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {
@@ -18,15 +18,15 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../appCheckAttestation.js", async () => {
-  const actual = await vi.importActual<typeof import("../../appCheckAttestation.js")>("../../appCheckAttestation.js");
+vi.mock("../../../../packages/functions-shared/src/appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/appCheckAttestation.js")>("../../../../packages/functions-shared/src/appCheckAttestation.js");
   return {
     ...actual,
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
@@ -42,7 +42,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — signal", () => {
   it("publishSignalPrekeyBundle rejects cross-user object access", async () => {
-    const mod = await import("../../callables/signalPrekeyDirectory.js");
+    const mod = await import("../../../../functions-identity/src/domains/devices/signalPrekeyDirectory.js");
     const exported = mod.publishSignalPrekeyBundle;
     if (!exported) throw new Error("missing export publishSignalPrekeyBundle");
     const run = callableRunner(exported);
@@ -56,7 +56,7 @@ describe("BOLA — signal", () => {
   });
 
   it("claimSignalPrekeyBundle rejects cross-user object access", async () => {
-    const mod = await import("../../callables/signalPrekeyDirectory.js");
+    const mod = await import("../../../../functions-identity/src/domains/devices/signalPrekeyDirectory.js");
     const exported = mod.claimSignalPrekeyBundle;
     if (!exported) throw new Error("missing export claimSignalPrekeyBundle");
     const run = callableRunner(exported);
@@ -70,7 +70,7 @@ describe("BOLA — signal", () => {
   });
 
   it("recordSignalSession rejects cross-user object access", async () => {
-    const mod = await import("../../callables/signalPrekeyDirectory.js");
+    const mod = await import("../../../../functions-identity/src/domains/devices/signalPrekeyDirectory.js");
     const exported = mod.recordSignalSession;
     if (!exported) throw new Error("missing export recordSignalSession");
     const run = callableRunner(exported);
@@ -84,7 +84,7 @@ describe("BOLA — signal", () => {
   });
 
   it("recordSignalRotation rejects cross-user object access", async () => {
-    const mod = await import("../../callables/signalPrekeyDirectory.js");
+    const mod = await import("../../../../functions-identity/src/domains/devices/signalPrekeyDirectory.js");
     const exported = mod.recordSignalRotation;
     if (!exported) throw new Error("missing export recordSignalRotation");
     const run = callableRunner(exported);
@@ -98,7 +98,7 @@ describe("BOLA — signal", () => {
   });
 
   it("signalPrekeyWatermark rejects cross-user object access", async () => {
-    const mod = await import("../../callables/signalPrekeyDirectory.js");
+    const mod = await import("../../../../functions-identity/src/domains/devices/signalPrekeyDirectory.js");
     const exported = mod.signalPrekeyWatermark;
     if (!exported) throw new Error("missing export signalPrekeyWatermark");
     const run = callableRunner(exported);

@@ -11,7 +11,7 @@ import {
   shouldCreateNotificationEvent,
   shouldSuppressForDevice,
   sweepStuckAgentReplyEvents,
-} from "../lib/agentNotifications.js";
+} from "../../functions-sync/lib/domains/notify/agentNotificationTriggers.js";
 
 const before = {
   messages: [

@@ -1,4 +1,5 @@
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // remediation(ProjectsView-decomposition): Relocated the self-contained "Wiki

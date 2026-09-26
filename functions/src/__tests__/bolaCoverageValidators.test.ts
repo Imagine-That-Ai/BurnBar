@@ -7,7 +7,7 @@ import type { EndpointAuthorizationEntry } from "../security/bolaCoverageTypes.j
 import { validateEndpointBolaCoverage } from "../security/bolaCoverageValidators.js";
 
 const COVERAGE_FILE = "functions/src/__tests__/bola/synthetic.bola.test.ts";
-const HANDLER_FILE = "callables/synthetic.ts";
+const HANDLER_FILE = "functions/src/callables/synthetic.ts";
 
 const runtimeCoverageSource = `
 import { it } from "vitest";
@@ -83,7 +83,7 @@ function writeSyntheticRepo(handlerSource: string, coverageSource = runtimeCover
   mkdirSync(join(repoRoot, "functions/src/__tests__/bola"), { recursive: true });
   mkdirSync(join(repoRoot, "functions/src/callables"), { recursive: true });
   writeFileSync(join(repoRoot, COVERAGE_FILE), coverageSource);
-  writeFileSync(join(repoRoot, "functions/src", HANDLER_FILE), handlerSource);
+  writeFileSync(join(repoRoot, HANDLER_FILE), handlerSource);
   return repoRoot;
 }
 

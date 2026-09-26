@@ -1,6 +1,9 @@
 import Foundation
 import os.log
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarHermes
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
 
 private let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
 
@@ -168,7 +171,7 @@ final class HermesStreamingEngine {
     /// JSON object and append them to the in-flight message. Idempotent:
     /// duplicate envelopes (matched by content hash via `CardEnvelope.id`)
     /// are skipped so re-emitted chunks don't double-render.
-    private func absorbCards(from json: [String: Any], into message: inout HermesChatMessage) {
+    private func absorbCards(from json: MobileJSONObject, into message: inout HermesChatMessage) {
         var newCards: [CardEnvelope] = []
         if let single = json["card"] {
             if let envelope = Self.cardEnvelope(from: single) {
@@ -198,7 +201,7 @@ final class HermesStreamingEngine {
     /// dictionary; the 2 MB budget gate is enforced via
     /// `CardEnvelope.fromJSON`.
     private static func cardEnvelope(from value: Any) -> CardEnvelope? {
-        guard let dict = value as? [String: Any] else { return nil }
+        guard let dict = value as? MobileJSONObject else { return nil }
         guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return nil }
         let declaredKind = dict["kind"] as? String
         let envelope = CardEnvelope.fromJSON(data, declaredKind: declaredKind)
@@ -277,7 +280,7 @@ final class HermesStreamingEngine {
         }
 
         guard let jsonData = data.data(using: .utf8) else { return }
-        guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { return }
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: jsonData) else { return }
 
         // The Elder Wand emits a final SSE frame carrying the itemized fusion
         // session spend (after the synthesis stream's `[DONE]`), so iOS — which
@@ -296,7 +299,7 @@ final class HermesStreamingEngine {
             commitMessage(message)
         }
 
-        if let error = json["error"] as? [String: Any],
+        if let error = json["error"] as? MobileJSONObject,
            let messageText = error["message"] as? String {
             setLastError(messageText)
             message.text = messageText
@@ -321,13 +324,13 @@ final class HermesStreamingEngine {
         // a `.tooLarge` stub instead of corrupting the stream.
         absorbCards(from: json, into: &message)
 
-        if let choices = json["choices"] as? [[String: Any]],
+        if let choices = json["choices"] as? [MobileJSONObject],
            let first = choices.first {
             // Some agents emit cards inside the choice/delta envelope (e.g.,
             // when the runtime wraps everything in OpenAI's choices[] shape).
             // Honour both placements.
             absorbCards(from: first, into: &message)
-            if let deltaObject = first["delta"] as? [String: Any] {
+            if let deltaObject = first["delta"] as? MobileJSONObject {
                 absorbCards(from: deltaObject, into: &message)
             }
         }
@@ -347,7 +350,7 @@ final class HermesStreamingEngine {
         case .refusalChunk(let text):
             appendStreamedRefusal(text, to: &message)
         case .toolCallChunk(let id, let index, let name, let argumentsDelta):
-            var raw: [String: Any] = [
+            var raw: MobileJSONObject = [
                 "id": id,
                 "index": index,
                 "function": ["arguments": argumentsDelta]
@@ -424,7 +427,7 @@ final class HermesStreamingEngine {
         commitMessage(message)
     }
 
-    private func visibleContent(from item: [String: Any]?) -> String? {
+    private func visibleContent(from item: MobileJSONObject?) -> String? {
         guard let item else { return nil }
         return visibleContentValue(item["content"])
             ?? visibleContentValue(item["text"])
@@ -468,8 +471,8 @@ final class HermesStreamingEngine {
         commitMessage(message)
     }
 
-    private func streamingUpstreamErrorMessage(from json: [String: Any]) -> String? {
-        if let hermes = json["hermes"] as? [String: Any],
+    private func streamingUpstreamErrorMessage(from json: MobileJSONObject) -> String? {
+        if let hermes = json["hermes"] as? MobileJSONObject,
            boolValue(hermes["failed"]) == true
             || boolValue(hermes["completed"]) == false && stringValue(hermes["error"]) != nil {
             let message = stringValue(hermes["error"])
@@ -478,15 +481,15 @@ final class HermesStreamingEngine {
             return HermesServiceError.upstreamModelErrorMessage(from: message)
                 ?? "Hermes upstream model failed: \(message)"
         }
-        guard let choices = json["choices"] as? [[String: Any]] else {
+        guard let choices = json["choices"] as? [MobileJSONObject] else {
             return nil
         }
         for choice in choices {
             let finishReason = stringValue(choice["finish_reason"])
                 ?? stringValue(choice["finishReason"])
             guard finishReason?.lowercased() == "error" else { continue }
-            let message = visibleContent(from: choice["delta"] as? [String: Any])
-                ?? visibleContent(from: choice["message"] as? [String: Any])
+            let message = visibleContent(from: choice["delta"] as? MobileJSONObject)
+                ?? visibleContent(from: choice["message"] as? MobileJSONObject)
                 ?? stringValue(choice["text"])
                 ?? stringValue(json["error"])
                 ?? stringValue(json["message"])
@@ -501,7 +504,7 @@ final class HermesStreamingEngine {
         if let value = raw as? String {
             return value.isEmpty ? nil : value
         }
-        if let object = raw as? [String: Any] {
+        if let object = raw as? MobileJSONObject {
             return visibleContentValue(object["text"])
                 ?? visibleContentValue(object["value"])
                 ?? visibleContentValue(object["content"])
@@ -509,7 +512,7 @@ final class HermesStreamingEngine {
         if let array = raw as? [Any] {
             let joined = array.compactMap { part -> String? in
                 if let text = part as? String { return text }
-                guard let object = part as? [String: Any] else { return nil }
+                guard let object = part as? MobileJSONObject else { return nil }
                 return visibleContentValue(object["text"])
                     ?? visibleContentValue(object["value"])
                     ?? visibleContentValue(object["content"])
@@ -528,7 +531,7 @@ final class HermesStreamingEngine {
     /// that must be concatenated in order. Once we have enough of the argument
     /// JSON to parse, we extract a short `detail` preview (path, command,
     /// query, etc.) so the mobile pill can show *what* the model is doing.
-    private func mergeToolCalls(_ rawToolCalls: [[String: Any]], into message: inout HermesChatMessage) {
+    private func mergeToolCalls(_ rawToolCalls: [MobileJSONObject], into message: inout HermesChatMessage) {
         if !rawToolCalls.isEmpty {
             message.markFirstResponseChunk()
         }
@@ -542,7 +545,7 @@ final class HermesStreamingEngine {
         var hasStructuralChange = false
         var didAppendArguments = false
         for raw in rawToolCalls {
-            let function = raw["function"] as? [String: Any]
+            let function = raw["function"] as? MobileJSONObject
             let nameFragment = stringValue(function?["name"]) ?? stringValue(raw["name"])
             let argsFragment = stringValue(function?["arguments"]) ?? stringValue(raw["arguments"])
 
@@ -578,7 +581,7 @@ final class HermesStreamingEngine {
                     hasStructuralChange = true
                 }
             } else {
-                let name = nameFragment?.isEmpty == false ? nameFragment! : "Hermes tool"
+                let name = nameFragment.flatMap { $0.isEmpty ? nil : $0 } ?? "Hermes tool"
                 let arguments = argsFragment ?? ""
                 message.toolCalls.append(
                     HermesToolCall(
@@ -646,7 +649,7 @@ final class HermesStreamingEngine {
         guard !trimmed.isEmpty else { return nil }
 
         if let data = trimmed.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let obj = BurnBarJSONValue.dictionary(fromJSONData: data) {
             for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
                 if let value = obj[key] as? String, !value.isEmpty {
                     return String(value.prefix(200))
@@ -684,7 +687,7 @@ final class HermesStreamingEngine {
         HermesWireValueParsing.stringValue(value)
     }
 
-    private func modelNameValue(item: [String: Any]) -> String? {
+    private func modelNameValue(item: MobileJSONObject) -> String? {
         HermesWireValueParsing.modelNameValue(item: item)
     }
 
@@ -897,7 +900,7 @@ final class HermesStreamingEngine {
             }
         )
 
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "model": model,
             "messages": requestMessages,
             "stream": true

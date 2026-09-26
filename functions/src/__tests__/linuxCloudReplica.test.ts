@@ -6,7 +6,7 @@ import {
   parseLinuxCloudCursor,
   parseLinuxCloudPushRequest,
   parseLinuxCloudReplica,
-} from "../callables/linuxCloudReplica.js";
+} from "../../../functions-sync/src/domains/support/linuxCloudReplica.js";
 
 type LinuxCloudRemoteReplica = ReturnType<typeof parseLinuxCloudReplica>;
 

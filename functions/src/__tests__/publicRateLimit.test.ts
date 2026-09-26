@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { HttpsError } from "firebase-functions/v2/https";
 
-import { clientIpFromHttpRequest, isPublicRateLimitExceeded } from "../callables/publicRateLimit.js";
+import { clientIpFromHttpRequest, isPublicRateLimitExceeded } from "../../../packages/functions-shared/src/callables/publicRateLimit.js";
 
 describe("isPublicRateLimitExceeded", () => {
   it("returns true for a firebase-functions resource-exhausted HttpsError", () => {

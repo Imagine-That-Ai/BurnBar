@@ -88,7 +88,9 @@ final class OpenBurnBarSearchIntegrationHarness {
         dataStore = try DataStore(
             databaseQueue: databaseQueue,
             runMigrations: true,
-            refreshOnInit: false
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: databaseQueue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: databaseQueue)
         )
     }
 

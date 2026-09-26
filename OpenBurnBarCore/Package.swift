@@ -1065,7 +1065,14 @@ let applePrunedDecompositionTargets: [Target] = buildApplePrunedDecompositionTar
     ),
     .target(
         name: "OpenBurnBarLaunchServices",
-        dependencies: ["OpenBurnBarKernel"],
+        dependencies: [
+            "OpenBurnBarKernel",
+            // Wave 3.2: SwitcherProfile moved in from Kernel SharedModels;
+            // it references provider models. Locked (used for the CLI launch
+            // cache) moved to PlatformSupport.
+            "OpenBurnBarProviderModels",
+            "OpenBurnBarPlatformSupport"
+        ],
         exclude: openBurnBarLaunchServicesExcludes
     ),
     .target(
@@ -1115,7 +1122,7 @@ let linuxSecretServiceTargets: [Target] = []
 let linuxSecretServiceDependencies: [Target.Dependency] = []
 #endif
 
-let firstPartyTargetsBase: [Target] = [
+let firstPartyTargetsBaseA: [Target] = [
         .systemLibrary(
             name: "Czlib",
             pkgConfig: "zlib",
@@ -1150,7 +1157,16 @@ let firstPartyTargetsBase: [Target] = [
         // `import OpenBurnBarKernel` consumers keep the same public surface.
         .target(
             name: "OpenBurnBarInboxModels",
-            dependencies: ["OpenBurnBarPlatformSupport"]
+            dependencies: [
+                "OpenBurnBarPlatformSupport",
+                // Wave 3.2: chat/inbox/record models moved in from Kernel
+                // SharedModels; they reference Hermes/vault/provider models
+                // plus assistant attachments.
+                "OpenBurnBarAssistantModels",
+                "OpenBurnBarHermesModels",
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarVaultModels"
+            ]
         ),
         // Project-code intelligence wire contracts (index/search/symbols/refs/
         // call graph/diagnostics/ops/snapshot/watch/explore) as a Foundation-only
@@ -1163,6 +1179,66 @@ let firstPartyTargetsBase: [Target] = [
         // surface. Deps: Foundation only.
         .target(
             name: "OpenBurnBarProjectCodeContracts"
+        )
+]
+
+let firstPartyTargetsBaseB: [Target] = [
+        // Wave 3.2 (Kernel domain split): the five model leaves carved out of
+        // `OpenBurnBarKernel/SharedModels/` (Kernel was 200 files / 54,951
+        // lines, over its ceiling). Each leaf is Kernel-independent; Kernel
+        // depends on and `@_exported import`s all five so existing
+        // `import OpenBurnBarKernel` consumers keep compiling with zero
+        // call-site changes (AssistantModels/InboxModels/ProjectCodeContracts
+        // precedent). Product-less (package-internal, like SQLiteReader): the
+        // Kernel/Engine/Core umbrellas re-expose them. DAG (acyclic):
+        // ProviderModels -> {FirestoreModels, PlatformSupport};
+        // HermesModels -> {ProviderModels, PlatformSupport,
+        // DomainCoreRuntime} + FFI;
+        // VaultModels -> {ProviderModels, PlatformSupport} + FFI;
+        // UsageModels -> {ProviderModels, HermesModels, FirestoreModels,
+        // PlatformSupport} + swift-crypto off-Apple;
+        // MobilePolicy -> {UsageModels} (pulse-window display formatting).
+        .target(
+            name: "OpenBurnBarHermesModels",
+            dependencies: [
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarPlatformSupport",
+                "OpenBurnBarAssistantModels",
+                "OpenBurnBarDomainCoreRuntime"
+            ] + domainCoreDependencies
+        ),
+        .target(
+            name: "OpenBurnBarMobilePolicy",
+            dependencies: [
+                // The pulse-window policy formats cost/token volume for
+                // display via UsageModels' Foundation extensions.
+                "OpenBurnBarUsageModels"
+            ]
+        ),
+        .target(
+            name: "OpenBurnBarProviderModels",
+            dependencies: [
+                "OpenBurnBarFirestoreModels",
+                "OpenBurnBarPlatformSupport"
+            ]
+        ),
+        .target(
+            name: "OpenBurnBarVaultModels",
+            dependencies: [
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarPlatformSupport",
+                "OpenBurnBarDomainCoreRuntime"
+            ] + domainCoreDependencies
+        ),
+        .target(
+            name: "OpenBurnBarUsageModels",
+            dependencies: [
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarHermesModels",
+                "OpenBurnBarFirestoreModels",
+                "OpenBurnBarPlatformSupport",
+                swiftCryptoNonAppleDependency
+            ]
         ),
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
@@ -1180,10 +1256,20 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarPlatformSupport",
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",
+                // Wave 3.2: the five SharedModels domain leaves (re-exported
+                // below in PlatformSupportReexport.swift).
+                "OpenBurnBarHermesModels",
+                "OpenBurnBarMobilePolicy",
+                "OpenBurnBarProviderModels",
+                "OpenBurnBarVaultModels",
+                "OpenBurnBarUsageModels",
                 swiftCryptoNonAppleDependency
             ] + domainCoreDependencies,
             resources: [.process("Resources")]
-        ),
+        )
+]
+
+let firstPartyTargetsBaseC: [Target] = [
         // Core-decomposition S0 (docs/CORE_DECOMPOSITION_PROGRAM.md): cross-platform
         // engine-layer targets carved from the OpenBurnBarCore monolith. At S0 each
         // holds only `Sources/<Target>/ModuleMarker.swift`; move packets fill them.
@@ -1243,7 +1329,10 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarHermes",
             dependencies: ["OpenBurnBarKernel"],
             exclude: openBurnBarHermesExcludes
-        ),
+        )
+]
+
+let firstPartyTargetsBaseD: [Target] = [
         // OpenBurnBarPretext gains its own `Resources/` bundle when S10 moves the
         // Pretext HTML/JS in (adding `resources: [.process("Resources")]` — the one
         // allowed manifest-structure edit, enumerated in packet P-06). At S0 it
@@ -1321,7 +1410,10 @@ let firstPartyTargetsBase: [Target] = [
             // without Xcode/Amplitude. The iOS app supplies the real Amplitude
             // transport behind `AnalyticsTransporting`.
             dependencies: []
-        ),
+        )
+]
+
+let firstPartyTargetsBaseE: [Target] = [
         .target(
             name: "OpenBurnBarIrohRelay",
             dependencies: irohRelayDependencies + [swiftCryptoDependency],
@@ -1365,7 +1457,10 @@ let firstPartyTargetsBase: [Target] = [
             linkerSettings: [
                 .linkedLibrary("pam", .when(platforms: [.linux]))
             ]
-        ),
+        )
+]
+
+let firstPartyTargetsBaseF: [Target] = [
         .target(
             name: "OpenBurnBarSignalCore",
             dependencies: signalCoreDependencies,
@@ -1454,7 +1549,69 @@ let firstPartyTargetsBase: [Target] = [
             resources: [
                 .copy("Fixtures")
             ]
-        ),
+        )
+]
+
+// Assembled incrementally (seed literal + appends per host-gated block)
+// rather than one `[strings] + (cond ? [] : [product]) + a + b` expression:
+// the one-shot form exceeds the Linux manifest solver budget (the same
+// failure documented above for the Core-decomposition products). Same
+// dependency SET; do NOT collapse back into one expression.
+var openBurnBarCoreTestsDependencies: [Target.Dependency] = [
+    "OpenBurnBarCore",
+    "OpenBurnBarDomainCoreRuntime",
+    "OpenBurnBarKernel",
+    "OpenBurnBarLogParsers",
+    "OpenBurnBarSQLiteReader",
+    "OpenBurnBarFirestoreModels",
+    "OpenBurnBarLinuxSecurity",
+    // P-13 AE-TESTABLE: `ZAIQuotaAdapterTests` reaches the INTERNAL
+    // `ZAIQuotaAdapter.zaiUsageQueryItems(now:)`, which moved with the
+    // ProviderQuota adapters into `OpenBurnBarQuota`. `@testable import
+    // OpenBurnBarQuota` (added in that test) needs the module as a test-target
+    // dependency; the test file otherwise stays put with its logic unchanged.
+    "OpenBurnBarQuota",
+    // P-22 (S15) AE-IMPORT: `OBBCAbiUsageScanExportTests` reaches the PUBLIC
+    // OBBCAbi C-ABI surface (`OBBCAbiUsageScanExport.run`, `obb_scan_usage`,
+    // `obb_parse_cli_stdout`, `obb_string_free`), which moved Core →
+    // OpenBurnBarCoreCAbi. The test now `import OpenBurnBarCoreCAbi` (plain, not
+    // @testable — public API only); this dependency edge makes the module
+    // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
+    // OpenBurnBarCore, and a test target adding it introduces no product cycle.
+    "OpenBurnBarCoreCAbi",
+    // Wave 2.7 AE-TESTABLE: `CodexRolloutJailTests` builds a fixture
+    // Codex `threads` database with GRDB and drives the production
+    // `fetchThreadRows` expansion path through it.
+    // Wave 3.2 AE-TESTABLE: `StandingOrderRowTests` reaches the
+    // INTERNAL `StandingOrderRow.decode`, which moved with the
+    // usage models into `OpenBurnBarUsageModels`. `@testable
+    // import OpenBurnBarUsageModels` (added in that test) needs
+    // the module as a test-target dependency.
+    "OpenBurnBarUsageModels",
+    // Wave 3.2 AE-TESTABLE: `AIInboxMirrorCodecCoercionTests`
+    // reaches INTERNAL `dateValue`/`intValue`, which moved with
+    // the inbox codec into `OpenBurnBarInboxModels`.
+    "OpenBurnBarInboxModels",
+    // Wave 3.2 AE-TESTABLE: `HermesDomainCoreAdapterBoundaryTests`
+    // drives the adapter's internals, which moved into
+    // `OpenBurnBarHermesModels`.
+    "OpenBurnBarHermesModels",
+    // Wave 3.2 AE-TESTABLE: the three CloudVault domain-core
+    // adapter test suites drive adapter internals, which moved
+    // into `OpenBurnBarVaultModels`.
+    "OpenBurnBarVaultModels"
+]
+    // Boundary builds exclude the GRDB-SQLCipher package (see
+    // dependencies above), so the Wave 2.7 GRDB edge — and the
+    // GRDB-importing test file itself (see exclude:) — is
+    // Apple-full-graph-only.
+if !buildForLinuxBoundary {
+    openBurnBarCoreTestsDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
+}
+openBurnBarCoreTestsDependencies.append(contentsOf: domainCoreDependencies)
+openBurnBarCoreTestsDependencies.append(contentsOf: swiftTestingAppleDependencies)
+
+let firstPartyTargetsBaseG: [Target] = [
         .testTarget(
             name: "OpenBurnBarLinuxCoreFoundationTests",
             dependencies: [
@@ -1476,32 +1633,11 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarCoreTests",
             // Native-required migration tests must import the generated binding
             // directly so an absent or stale ABI cannot compile into a skipped assertion.
-            dependencies: [
-                "OpenBurnBarCore",
-                "OpenBurnBarDomainCoreRuntime",
-                "OpenBurnBarKernel",
-                "OpenBurnBarLogParsers",
-                "OpenBurnBarSQLiteReader",
-                "OpenBurnBarFirestoreModels",
-                "OpenBurnBarLinuxSecurity",
-                // P-13 AE-TESTABLE: `ZAIQuotaAdapterTests` reaches the INTERNAL
-                // `ZAIQuotaAdapter.zaiUsageQueryItems(now:)`, which moved with the
-                // ProviderQuota adapters into `OpenBurnBarQuota`. `@testable import
-                // OpenBurnBarQuota` (added in that test) needs the module as a test-target
-                // dependency; the test file otherwise stays put with its logic unchanged.
-                "OpenBurnBarQuota",
-                // P-22 (S15) AE-IMPORT: `OBBCAbiUsageScanExportTests` reaches the PUBLIC
-                // OBBCAbi C-ABI surface (`OBBCAbiUsageScanExport.run`, `obb_scan_usage`,
-                // `obb_parse_cli_stdout`, `obb_string_free`), which moved Core →
-                // OpenBurnBarCoreCAbi. The test now `import OpenBurnBarCoreCAbi` (plain, not
-                // @testable — public API only); this dependency edge makes the module
-                // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
-                // OpenBurnBarCore, and a test target adding it introduces no product cycle.
-                "OpenBurnBarCoreCAbi"
-            ] + domainCoreDependencies + swiftTestingAppleDependencies,
+            dependencies: openBurnBarCoreTestsDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
-                + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests"),
+                + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests")
+                + (buildForLinuxBoundary ? ["CodexRolloutJailTests.swift"] : []),
             sources: openBurnBarCoreOffAppleTestSources,
             resources: [
                 .process("Fixtures")
@@ -1551,7 +1687,10 @@ let firstPartyTargetsBase: [Target] = [
             // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
             // checker has known gaps (Task hand-off) that would contort correct tests.
             swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
+        )
+]
+
+let firstPartyTargetsBaseH: [Target] = [
         .testTarget(
             name: "BurnBarRemoteEngineTests",
             dependencies: ["BurnBarRemoteEngine", swiftTestingDependency],
@@ -1609,7 +1748,11 @@ let firstPartyTargetsBase: [Target] = [
             // checker has known gaps (Task hand-off) that would contort correct tests.
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
-    ]
+]
+
+// Chunked so the Linux Swift 6 compiler can type-check the manifest:
+// one 600-line literal exceeds the solver budget (type-check timeout).
+let firstPartyTargetsBase: [Target] = firstPartyTargetsBaseA + firstPartyTargetsBaseB + firstPartyTargetsBaseC + firstPartyTargetsBaseD + firstPartyTargetsBaseE + firstPartyTargetsBaseF + firstPartyTargetsBaseG + firstPartyTargetsBaseH
 
 #if os(Linux)
 // Remaining placeholder-only targets are not tests. Keeping them out of the
@@ -1648,6 +1791,23 @@ let firstPartyTargets: [Target] = platformFirstPartyTargetsBase
             .process("Fixtures")
         ],
         swiftSettings: [.swiftLanguageMode(.v5)]
+    ),
+    // Wave 2.3 schema-doc generator: runs the live OpenBurnBarData migrator
+    // on an in-memory database and emits docs/SCHEMA_SQLITE.sql from the
+    // resulting sqlite_master DDL — the doc is byte-truth, not a hand copy.
+    // Same never-referenced-leaf shape as the parity harnesses: NO product
+    // in `packageProducts`, absent from the app's `project.yml`, so the Apple
+    // app scheme never resolves/links/builds it. Apple-only (pruned with
+    // OpenBurnBarData off-Apple): `swift run --package-path OpenBurnBarCore
+    // OpenBurnBarSchemaExport [--check]`.
+    .executableTarget(
+        name: "OpenBurnBarSchemaExport",
+        dependencies: [
+            "OpenBurnBarData",
+            swiftCryptoNonAppleDependency,
+            .product(name: "GRDB", package: "GRDB-SQLCipher")
+        ],
+        path: "Sources/OpenBurnBarSchemaExport"
     ),
     // BB-E. Depends on OpenBurnBarKernel for the ONE secret/PII gate — a
     // migration-private scanner would be a third corpus to drift against — and

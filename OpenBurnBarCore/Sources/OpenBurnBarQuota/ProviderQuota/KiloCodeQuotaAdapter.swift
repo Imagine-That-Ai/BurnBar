@@ -223,7 +223,7 @@ public struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
                   say == "api_req_started",
                   let text = message["text"] as? String,
                   let jsonData = text.data(using: .utf8),
-                  let apiReq = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { // try?-ok(malformed json, skip)
+                  let apiReq = BurnBarJSONValue.dictionary(fromJSONData: jsonData) else { // try?-ok(malformed json, skip)
                 continue
             }
 

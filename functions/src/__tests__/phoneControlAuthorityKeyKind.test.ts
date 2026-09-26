@@ -186,31 +186,31 @@ beforeEach(() => {
   });
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 vi.mock("firebase-admin/firestore", () => ({ FieldValue: FieldValueMock, Timestamp: FakeTimestamp }));
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   assertAuth: vi.fn(),
   assertAppCheck: vi.fn(),
   assertOwnership: vi.fn(),
   enforceAuthAndAppCheck: vi.fn(),
 }));
 const { configMock } = vi.hoisted(() => ({ configMock: { enforceAppCheck: true, requireHighRiskNonce: false } }));
-vi.mock("../config.js", () => ({ getConfig: () => configMock }));
-vi.mock("../callables/shared/entitlements.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared/entitlements.js")>(
-    "../callables/shared/entitlements.js",
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => configMock }));
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>(
+    "../../../packages/functions-shared/src/shared/entitlements.js",
   );
   return {
     ...actual,
     assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
   };
 });
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: vi.fn(), logWarn: vi.fn() };
 });
 // Signal session cleanup is exercised elsewhere; stub to isolate the F2 paths.
-vi.mock("../signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
+vi.mock("../../../packages/functions-shared/src/signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
 const { requireTrustedDeviceActionProof } = vi.hoisted(() => ({
   requireTrustedDeviceActionProof: vi.fn(async () => ({
     deviceId: "mac-1",
@@ -218,18 +218,18 @@ const { requireTrustedDeviceActionProof } = vi.hoisted(() => ({
     signalIdentityKeyId: "mac-1_1",
   })),
 }));
-vi.mock("../callables/computerUseSecurityFirestore.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/computerUseSecurityFirestore.js")>(
-    "../callables/computerUseSecurityFirestore.js",
+vi.mock("../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js")>(
+    "../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js",
   );
   return {
     ...actual,
     requireTrustedDeviceActionProof,
   };
 });
-vi.mock("../callables/computerUseSecurity.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/computerUseSecurity.js")>(
-    "../callables/computerUseSecurity.js",
+vi.mock("../../../functions-sync/src/domains/computer-use/computerUseSecurity.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../functions-sync/src/domains/computer-use/computerUseSecurity.js")>(
+    "../../../functions-sync/src/domains/computer-use/computerUseSecurity.js",
   );
   return {
     ...actual,
@@ -245,9 +245,9 @@ import {
   publishAgentGrantAuthority,
   queueAgentCapabilityGrantRequest,
   revokeEscrowDeviceTrust,
-} from "../callables/computerUseSecurity.js";
-import { rotateCloudVaultKey } from "../callables/cloudVaultRotation.js";
-import { APP_CHECK_ATTESTATION_CLAIM_KEY, appCheckAttestationDigestHex } from "../appCheckAttestation.js";
+} from "../../../functions-sync/src/domains/computer-use/computerUseSecurity.js";
+import { rotateCloudVaultKey } from "../../../functions-identity/src/domains/devices/cloudVaultRotation.js";
+import { APP_CHECK_ATTESTATION_CLAIM_KEY, appCheckAttestationDigestHex } from "../../../packages/functions-shared/src/appCheckAttestation.js";
 
 // Cocoa reference epoch helpers (matching computerUseSecurity.ts)
 const COCOA_EPOCH_OFFSET = 978307200; // seconds between Unix epoch and Cocoa reference date

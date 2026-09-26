@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 #if os(macOS)
 import AppKit
 import WebKit
@@ -17,7 +18,7 @@ enum FactoryLoginHelper {
     static func runLoginFlow() async -> String? {
         await runCookieLogin(
             title: "Connect Factory",
-            url: URL(string: "https://app.factory.ai")!,
+            url: URL(staticString: "https://app.factory.ai"),
             domainMatch: { $0.contains("factory.ai") },
             cookieMatch: { cookie in
                 cookie.name == "wos-session"
@@ -42,7 +43,7 @@ enum FactoryLoginHelper {
         // least one valid jar to replay against `/settings`.
         await runCookieLogin(
             title: "Connect Ollama",
-            url: URL(string: "https://ollama.com/settings")!,
+            url: URL(staticString: "https://ollama.com/settings"),
             domainMatch: { $0.contains("ollama.com") },
             cookieMatch: { cookie in
                 let name = cookie.name.lowercased()
@@ -61,7 +62,7 @@ enum FactoryLoginHelper {
     static func runKimiLoginFlow() async -> String? {
         await runCookieLogin(
             title: "Connect Kimi",
-            url: URL(string: "https://www.kimi.com/code/console")!,
+            url: URL(staticString: "https://www.kimi.com/code/console"),
             domainMatch: { $0.contains("kimi.com") },
             // Kimi's auth jar varies depending on which sign-in path the
             // user took (phone, Google, Apple). The primary cookie the

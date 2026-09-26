@@ -26,7 +26,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
         try await super.setUp()
         dbQueue = try DatabaseQueue()
         try await Self.addMigrationv32(to: dbQueue)
-        store = SwitcherProfileStore(dbQueue: dbQueue)
+        store = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
     }
 
     override func tearDown() {
@@ -349,7 +349,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
         try store.setActiveProfile(profile.id)
 
         // Simulate app relaunch by creating a fresh store instance (same dbQueue)
-        let freshStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let freshStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
 
         // Verify active profile is restored
         let state = try freshStore.fetchActiveProfileState()
@@ -379,7 +379,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
         try store.setActiveProfile(p1.id)
 
         // Simulate relaunch
-        let freshStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let freshStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let state = try freshStore.fetchActiveProfileState()
 
         // Final state should be p1
@@ -409,17 +409,29 @@ final class SwitcherCrossFlowTests: XCTestCase {
             )
         }
 
-        // Simulate relaunch - should clean up legacy rows
-        let freshStore = SwitcherProfileStore(dbQueue: dbQueue)
+        // Simulate relaunch. Wave 2.1c-v: fetch is read-only — it resolves
+        // deterministically without touching the legacy rows. Cleanup moved
+        // to the writer: the next set rewrites the scope (heal-on-write).
+        let freshStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let state = try freshStore.fetchActiveProfileState()
 
         XCTAssertEqual(state.activeProfileID, profile.id)
 
-        // Verify exactly one row remains after cleanup
-        let rowCount = try await dbQueue.read { db in
+        // Fetch writes nothing: the seed row plus the two injected legacy
+        // rows are all still present.
+        let rowsAfterFetch = try await dbQueue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
         }
-        XCTAssertEqual(rowCount, 1, "Legacy multi-row should be cleaned up on hydration")
+        XCTAssertEqual(rowsAfterFetch, 3, "Fetch must not write in the single-writer cutover")
+
+        // The next set heals the scope: one global rewrite removes every
+        // legacy duplicate (a browser profile has no per-provider mirror).
+        try freshStore.setActiveProfile(profile.id)
+        let rowsAfterSet = try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM switcher_active_profile") ?? 0
+        }
+        XCTAssertEqual(rowsAfterSet, 1, "Next set should heal legacy multi-row state")
+        XCTAssertEqual(try freshStore.fetchActiveProfileState().activeProfileID, profile.id)
     }
 
     // MARK: - VAL-CROSS-004: Launch actions use latest active profile after rapid switch
@@ -1007,7 +1019,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the Dashboard view
@@ -1023,7 +1036,7 @@ extension SwitcherCrossFlowTests {
         XCTAssertNoThrow(sut)
 
         // Simulate creating a profile in Settings (via store)
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1053,7 +1066,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the Popover view
@@ -1069,7 +1083,7 @@ extension SwitcherCrossFlowTests {
         XCTAssertNoThrow(sut)
 
         // Simulate creating a profile in Settings (via store)
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .safari,
@@ -1100,11 +1114,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profile and set as active
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1120,7 +1135,8 @@ extension SwitcherCrossFlowTests {
         let freshDataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create Dashboard view with fresh DataStore
@@ -1134,7 +1150,7 @@ extension SwitcherCrossFlowTests {
         view.testTriggerLoadData()
 
         // Verify the store has the correct active profile after relaunch simulation
-        let freshStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let freshStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let state = try freshStore.fetchActiveProfileState()
         XCTAssertEqual(state.activeProfileID, profile.id)
     }
@@ -1149,7 +1165,7 @@ extension SwitcherCrossFlowTests {
         try await Self.addMigrationv32(to: dbQueue)
 
         // Create profile and set as active
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1202,11 +1218,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profiles in the same database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let browserProfile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1247,11 +1264,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create browser profile
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let chromeProfile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1325,7 +1343,7 @@ extension SwitcherCrossFlowTests {
         setUpLogEmitter()
 
         // Create profile with env keys using injectable logger
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, logEmitter: logEmitter, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         _ = try localStore.createWithLogging(SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .claude,
@@ -1390,7 +1408,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track settings callback
@@ -1422,7 +1441,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track settings callback
@@ -1454,7 +1474,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track settings callback
@@ -1489,7 +1510,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track settings callback
@@ -1524,7 +1546,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create Dashboard view with injected error
@@ -1553,11 +1576,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profile and set as active
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1602,11 +1626,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profiles
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let p1 = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1666,7 +1691,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track settings callback - this is what VAL-CROSS-008 requires us to verify
@@ -1729,7 +1755,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track settings callback
@@ -1790,11 +1817,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profiles so retry has data to load
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1865,11 +1893,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create two profiles
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let p1 = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1946,11 +1975,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create two profiles
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let chromeProfile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -2021,7 +2051,7 @@ extension SwitcherCrossFlowTests {
         try await Self.addMigrationv32(to: dbQueue)
 
         // Create two browser profiles
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let chrome1 = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -2055,7 +2085,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create Dashboard view
@@ -2085,7 +2116,7 @@ extension SwitcherCrossFlowTests {
         try await Self.addMigrationv32(to: dbQueue)
 
         // Create CLI profiles
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let codexProfile = try localStore.create(SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .codex,
@@ -2134,7 +2165,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create Dashboard view BEFORE creating profile (simulating Dashboard loading first)
@@ -2151,7 +2183,7 @@ extension SwitcherCrossFlowTests {
         XCTAssertEqual(profiles.count, 0, "No profiles before creation")
 
         // ACTIONABLE: Simulate Settings creating a profile (via store)
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let newProfile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -2182,7 +2214,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create Popover view BEFORE creating profile
@@ -2199,7 +2232,7 @@ extension SwitcherCrossFlowTests {
         XCTAssertEqual(profiles.count, 0, "No profiles before creation")
 
         // ACTIONABLE: Simulate Settings creating a profile (via store)
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let newProfile = try localStore.create(SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .claude,
@@ -2230,7 +2263,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track callbacks
@@ -2285,7 +2319,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track callbacks
@@ -2343,11 +2378,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profile via store (simulating Settings create)
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -2394,11 +2430,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profile via store (simulating Settings create)
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .claude,
@@ -2446,11 +2483,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create two profiles via store
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let p1 = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -2518,11 +2556,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create two profiles via store
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let chromeProfile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -2591,7 +2630,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track callback
@@ -2649,7 +2689,8 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Track callback
@@ -2709,11 +2750,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create two browser profiles
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile1 = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -2801,11 +2843,12 @@ extension SwitcherCrossFlowTests {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create CLI profiles
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let codexProfile = try localStore.create(SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .codex,

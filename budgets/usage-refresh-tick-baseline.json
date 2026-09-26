@@ -1,4 +1,5 @@
 {
   "fetchAllUsageCallSites": 1,
-  "rawTokenUsageWriteStatements": 0
+  "rawTokenUsageWriteStatements": 0,
+  "dashboardSnapshotBypassSites": 0
 }

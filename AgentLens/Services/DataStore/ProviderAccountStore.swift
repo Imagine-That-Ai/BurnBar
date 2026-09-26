@@ -1,6 +1,8 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarData
 
 /// Local CRUD for provider accounts.
 ///

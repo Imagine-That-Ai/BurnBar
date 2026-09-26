@@ -250,7 +250,7 @@ public struct OllamaQuotaAdapter: ProviderQuotaAdapter {
         } else {
             baseString = "http://localhost:11434"
         }
-        return URL(string: baseString) ?? URL(string: "http://localhost:11434")!
+        return URL(string: baseString) ?? URL(staticString: "http://localhost:11434")
     }
 
     private func buildRequest(url: URL, apiKey: String?) -> URLRequest? {
@@ -269,7 +269,7 @@ public struct OllamaQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private func modelEntries(in data: Data) -> [ModelEntry] {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional JSON decode)
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional JSON decode)
               let models = json["models"] as? [[String: Any]] else {
             return []
         }

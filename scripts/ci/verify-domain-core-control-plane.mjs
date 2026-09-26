@@ -52,11 +52,11 @@ const SEED_PATHS = Object.freeze([
   "config/domain-core-release-predicate.schema.json",
   "crates/openburnbar-domain-core/domain-wasm/tests/package-smoke.mjs",
   "crates/openburnbar-domain-core/union-abi-manifest.json",
-  "functions/src/domainCoreBuildProfile.ts",
-  "functions/src/domainCorePricing.ts",
+  "packages/functions-shared/src/domainCoreBuildProfile.ts",
+  "packages/functions-shared/src/domainCorePricing.ts",
   "functions/src/__tests__/pricing.test.ts",
-  "functions/src/generated/domainCoreCandidateReceipt.ts",
-  "functions/src/health.ts",
+  "packages/functions-shared/src/generated/domainCoreCandidateReceipt.ts",
+  "functions/src/domains/ops/health.ts",
   // The vendored brace-expansion CJS shim executes inside the Firebase CLI
   // during authenticated deploys. Trust the selecting npm manifest, lockfile,
   // consumed archive, and every checked-in package input used to rebuild it so

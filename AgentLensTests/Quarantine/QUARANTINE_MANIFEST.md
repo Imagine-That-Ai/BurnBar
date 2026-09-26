@@ -54,7 +54,7 @@ it with `./scripts/test-openburnbar-app.sh`.
 | `test_detectAvailableProviders_returnsFalseForAllOnCleanSystem` | LegacyReference | Environmental — requires a hermetic FS sandbox | Settings | Settings Manager | Add hermetic FS sandbox so provider detection does not walk host machine | 2026-05-17 |
 | `test_remoteExact_overwritesLocalHighConfidenceEstimate` | LegacyReference | Stale contract — provenance conflict resolution rewrote local rules | CloudSync | Usage Conflict Resolution | Realign test assertions against current provenance conflict resolution rules | 2026-05-17 |
 | `test_remoteEqualConfidence_updatesValuesButPreservesUsageSource` | LegacyReference | Stale contract — provenance conflict resolution rewrote local rules | CloudSync | Usage Conflict Resolution | Realign test assertions against current provenance conflict resolution rules | 2026-05-17 |
-| `testMakeConfigurationWithKey_reportsCipherVersion` | Skipped-with-issue | Environmental — SQLCipher PRAGMA cipher_version requires release build | Database | Database Encryption Service | Active: `DatabaseEncryptionServiceTests` XCTSkip; verify in release CI or build-config gate; re-dated 2026-07-01 — needs release-build gate (see 2026-07-01 note) | 2026-09-30 |
+| `testMakeConfigurationWithKey_reportsCipherVersion` | Done | ~~Skipped-with-issue~~ **Revived (manifest corrected 2026-09-22)** → runs unconditionally in `AgentLensTests/Active/DatabaseEncryptionServiceTests.swift`; the SQLCipher-vendored GRDB build hard-fails a missing codec instead of skipping | Database | Database Encryption Service | — | Done |
 
 ## Legacy Quarantines
 
@@ -70,8 +70,8 @@ it with `./scripts/test-openburnbar-app.sh`.
 | Bucket | Count |
 |--------|------:|
 | Wave 2 rows (this manifest) | 24 |
-| Revived (`Done`) | 6 |
-| Active `XCTSkip` (`Skipped-with-issue`) | 1 |
+| Revived (`Done`) | 7 |
+| Active `XCTSkip` (`Skipped-with-issue`) | 0 |
 | Legacy reference (open Wave 2 + legacy suites) | 17 |
 | Compiled quarantine Swift files | 0 |
 | `AgentLensTests/LegacyReference/` suites | 2 |
@@ -84,6 +84,8 @@ it with `./scripts/test-openburnbar-app.sh`.
 ## Maintenance Notes
 
 - Do not add `project.yml` glob exclusions for quarantined files; they live outside the `OpenBurnBarTests` target source paths by directory convention.
-- When reviving a test, move the method(s) from the Quarantine file back into the matching Active file, then delete the Quarantine file if it becomes empty.
-- Update this manifest immediately when tests are revived or newly quarantined.
-- Prefer `XCTSkip("…issue…")` in Active over silent deletion when the contract is known but blocked.
+- There are no Quarantine Swift files to revive from (README + this manifest only since 2026-05-30). Revival means writing the case fresh in the matching Active file against current APIs; `AgentLensTests/LegacyReference/` (2 suites, documentation-only per ADR 2026-05-27) may be consulted for historical intent but is never moved verbatim.
+- Update this manifest immediately when tests are revived or newly quarantined. The 2026-09-22 cipher-version correction is the cautionary tale: the test ran unconditionally while this manifest still tracked it as skipped-with-issue.
+- Prefer `XCTSkip("…issue…")` in Active over silent deletion when the contract is known but blocked — and add the manifest row in the same commit, or the skip is invisible.
+
+**2026-09-22 correction:** `testMakeConfigurationWithKey_reportsCipherVersion` was found running unconditionally (hard assertions, no skip) while tracked above as `Skipped-with-issue` with a 2026-09-30 target. Row reclassified to `Done`. Zero date-tracked entries remain; the next `Skipped-with-issue` row must carry a live target date or `check-quarantine-freshness.sh` fails the harness.

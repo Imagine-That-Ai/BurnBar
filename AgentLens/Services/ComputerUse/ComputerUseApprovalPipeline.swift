@@ -4,7 +4,7 @@ import Combine
 import CryptoKit
 import Foundation
 import OSLog
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 
@@ -174,7 +174,7 @@ final class ComputerUseApprovalPipeline {
 
     func finalizeAuditSignedHeadIfPossible() {
         guard let logger = session.auditLogger else { return }
-        let legacyKey = OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory
+        let legacyKey = OpenBurnBarKernel.OpenBurnBarAppPaths.live().supportDirectory
             .appendingPathComponent("computer-use-audit", isDirectory: true)
             .appendingPathComponent("keys", isDirectory: true)
             .appendingPathComponent("audit-export-ed25519.raw", isDirectory: false)

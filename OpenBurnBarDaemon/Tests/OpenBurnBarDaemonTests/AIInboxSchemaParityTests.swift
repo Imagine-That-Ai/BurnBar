@@ -2,23 +2,23 @@ import OpenBurnBarEngine
 @testable import OpenBurnBarDaemon
 import XCTest
 
-/// The AI Inbox tables are created in three places against ONE database file:
-/// the daemon store, the `OpenBurnBarData` migration, and the AgentLens mirror
-/// of that migration. Drift between them is the classic silent-corruption bug in
-/// this repo's two-tree migration setup.
+/// The AI Inbox tables are created in two places against ONE database file:
+/// the daemon store and the one GRDB migrator (`v58_ai_inbox` /
+/// `v59_founder_lens` in `OpenBurnBarData`). Wave 2.2 deleted the AgentLens
+/// mirror of those migrations, so the app runs this same registry — there is
+/// no second text to drift.
 ///
-/// This suite reads the two migration files from source and asserts they are
-/// byte-identical to each other and structurally identical to the daemon DDL, so
-/// a change to one that is not mirrored fails the build rather than a user's
-/// database.
+/// This suite pins the daemon's statements against the migrator's and asserts
+/// the deleted mirror stays deleted, so a change that is not in the one
+/// registry fails the build rather than a user's database.
 final class AIInboxSchemaParityTests: XCTestCase {
     private static let dataMigrationPath =
         "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV58.swift"
-    private static let appMigrationPath =
+    private static let deletedAppMigrationPath =
         "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV58.swift"
     private static let dataFounderLensMigrationPath =
         "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+DataMigrationV59.swift"
-    private static let appFounderLensMigrationPath =
+    private static let deletedAppFounderLensMigrationPath =
         "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV59.swift"
 
     /// Walks up from this file to the repository root so the test works from any
@@ -34,19 +34,27 @@ final class AIInboxSchemaParityTests: XCTestCase {
         return nil
     }
 
-    private static func source(at relativePath: String) throws -> String? {
-        guard let root = repositoryRoot() else { return nil }
-        let url = root.appendingPathComponent(relativePath)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            XCTFail("Missing migration file: \(relativePath)")
-            return nil
-        }
-        return try String(contentsOf: url, encoding: .utf8)
+    private enum MigrationSourceError: Error {
+        case missingFile(String)
     }
 
-    /// Extracts the `aiInboxSchemaStatements` array literal.
-    private static func statementsBlock(from source: String) -> String? {
-        statementsBlock(from: source, marker: "static let aiInboxSchemaStatements: [String] = [")
+    // MARK: - Wave 4: single guarded loader (was: an identical guard+skip in
+    // every migration-file test). The repository-root skip lives here alone;
+    // both the file loader and the mirror-deleted test route through it.
+    private static func requireRepositoryRoot() throws -> URL {
+        guard let root = repositoryRoot() else {
+            throw XCTSkip("Repository sources are not reachable from this test environment.") // env-guard: repo sources reachable
+        }
+        return root
+    }
+
+    private static func requireSource(at relativePath: String) throws -> String {
+        let url = try Self.requireRepositoryRoot().appendingPathComponent(relativePath)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            XCTFail("Missing migration file: \(relativePath)")
+            throw MigrationSourceError.missingFile(relativePath)
+        }
+        return try String(contentsOf: url, encoding: .utf8)
     }
 
     private static func statementsBlock(from source: String, marker: String) -> String? {
@@ -58,51 +66,27 @@ final class AIInboxSchemaParityTests: XCTestCase {
         return String(remainder[..<end.lowerBound])
     }
 
-    func test_bothMigrationTreesDeclareIdenticalDDL() throws {
-        guard let dataSource = try Self.source(at: Self.dataMigrationPath),
-              let appSource = try Self.source(at: Self.appMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
+    /// The v58 / v59 DDL lives in exactly one file each now.
+    func test_agentLensMirrorStaysDeleted() throws {
+        let root = try Self.requireRepositoryRoot()
+        for relativePath in [Self.deletedAppMigrationPath, Self.deletedAppFounderLensMigrationPath] {
+            try MemorySchemaSource.assertAgentLensMirrorDeleted(relativePath, under: root)
         }
-
-        let dataBlock = try XCTUnwrap(
-            Self.statementsBlock(from: dataSource),
-            "Could not find the DDL block in \(Self.dataMigrationPath)"
-        )
-        let appBlock = try XCTUnwrap(
-            Self.statementsBlock(from: appSource),
-            "Could not find the DDL block in \(Self.appMigrationPath)"
-        )
-
-        XCTAssertEqual(
-            dataBlock,
-            appBlock,
-            """
-            The v58 AI Inbox DDL has drifted between the two migration trees. \
-            Both files must declare byte-identical statements — update them in the same commit.
-            """
-        )
     }
 
-    func test_bothMigrationTreesRegisterTheSameMigrationIdentifier() throws {
-        guard let dataSource = try Self.source(at: Self.dataMigrationPath),
-              let appSource = try Self.source(at: Self.appMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
-        for source in [dataSource, appSource] {
-            XCTAssertTrue(
-                source.contains("migrator.registerMigration(\"v58_ai_inbox\")"),
-                "Both trees must register the identical migration identifier"
-            )
-        }
+    func test_singleMigratorRegistersTheExpectedIdentifier() throws {
+        let dataSource = try Self.requireSource(at: Self.dataMigrationPath)
+        XCTAssertTrue(
+            dataSource.contains("migrator.registerMigration(\"v58_ai_inbox\")"),
+            "The single migrator must register the v58 migration identifier"
+        )
     }
 
     /// The daemon creates these tables itself (so a pre-migration profile still
     /// works). Its DDL must therefore describe the same tables and columns the
     /// migrations do.
     func test_daemonDDLMatchesMigrationDDL() throws {
-        guard let dataSource = try Self.source(at: Self.dataMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
+        let dataSource = try Self.requireSource(at: Self.dataMigrationPath)
 
         for statement in BurnBarAIInboxSchema.statements {
             let normalized = Self.normalize(statement)
@@ -114,7 +98,7 @@ final class AIInboxSchemaParityTests: XCTestCase {
 
                 \(statement)
 
-                Add it to both migration trees in the same commit.
+                Add it to the single migrator.
                 """
             )
         }
@@ -130,47 +114,27 @@ final class AIInboxSchemaParityTests: XCTestCase {
 
     // MARK: - v59 Founder Lens parity
 
-    func test_founderLensMigrationTreesDeclareIdenticalDDL() throws {
-        guard let dataSource = try Self.source(at: Self.dataFounderLensMigrationPath),
-              let appSource = try Self.source(at: Self.appFounderLensMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
+    /// The v59 DDL block must still exist in the single migrator (and only
+    /// there — the mirror-gone test above covers the deleted path).
+    func test_founderLensDDLBlockExistsInSingleMigrator() throws {
+        let dataSource = try Self.requireSource(at: Self.dataFounderLensMigrationPath)
         let marker = "static let founderLensSchemaStatements: [String] = ["
-        let dataBlock = try XCTUnwrap(
+        XCTAssertNotNil(
             Self.statementsBlock(from: dataSource, marker: marker),
             "Could not find the DDL block in \(Self.dataFounderLensMigrationPath)"
         )
-        let appBlock = try XCTUnwrap(
-            Self.statementsBlock(from: appSource, marker: marker),
-            "Could not find the DDL block in \(Self.appFounderLensMigrationPath)"
-        )
-        XCTAssertEqual(
-            dataBlock,
-            appBlock,
-            """
-            The v59 Founder Lens DDL has drifted between the two migration trees. \
-            Both files must declare byte-identical statements — update them in the same commit.
-            """
-        )
     }
 
-    func test_founderLensMigrationTreesRegisterTheSameIdentifier() throws {
-        guard let dataSource = try Self.source(at: Self.dataFounderLensMigrationPath),
-              let appSource = try Self.source(at: Self.appFounderLensMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
-        for source in [dataSource, appSource] {
-            XCTAssertTrue(
-                source.contains("migrator.registerMigration(\"v59_founder_lens\")"),
-                "Both trees must register the identical v59 migration identifier"
-            )
-        }
+    func test_founderLensMigratorRegistersTheExpectedIdentifier() throws {
+        let dataSource = try Self.requireSource(at: Self.dataFounderLensMigrationPath)
+        XCTAssertTrue(
+            dataSource.contains("migrator.registerMigration(\"v59_founder_lens\")"),
+            "The single migrator must register the v59 migration identifier"
+        )
     }
 
     func test_daemonFounderLensDDLMatchesMigrationDDL() throws {
-        guard let dataSource = try Self.source(at: Self.dataFounderLensMigrationPath) else {
-            throw XCTSkip("Repository sources are not reachable from this test environment.")
-        }
+        let dataSource = try Self.requireSource(at: Self.dataFounderLensMigrationPath)
         for statement in BurnBarAIInboxSchema.founderLensStatements {
             let normalized = Self.normalize(statement)
             XCTAssertTrue(
@@ -180,7 +144,7 @@ final class AIInboxSchemaParityTests: XCTestCase {
 
                 \(statement)
 
-                Add it to both migration trees in the same commit.
+                Add it to the single migrator.
                 """
             )
         }

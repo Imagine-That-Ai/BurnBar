@@ -168,8 +168,9 @@ public final class ClineFormatParser: LogParser, Sendable {
                 lastTimestamp = date
             }
 
-            // Model detection
-            if let model = message["model"] as? String, !model.isEmpty {
+            // Model detection; harness placeholders (`<synthetic>`) are rejected.
+            if let model = message["model"] as? String,
+               !TokenExtractionUtility.isPlaceholderModelName(model) {
                 models.insert(TokenExtractionUtility.normalizeModelName(model))
             }
 
@@ -222,7 +223,7 @@ public final class ClineFormatParser: LogParser, Sendable {
                     if let say = msg["say"] as? String, say == "api_req_started" || say == "api_req_finished",
                        let text = msg["text"] as? String,
                        let textData = text.data(using: .utf8),
-                       let reqJson = try? JSONSerialization.jsonObject(with: textData) as? [String: Any] {
+                       let reqJson = BurnBarJSONValue.dictionary(fromJSONData: textData) {
                         if let tIn = reqJson["tokensIn"] as? Int { inputTokens += tIn }
                         if let tOut = reqJson["tokensOut"] as? Int { outputTokens += tOut }
                         if let cW = reqJson["cacheWrites"] as? Int { cacheCreationTokens += cW }
@@ -251,7 +252,7 @@ public final class ClineFormatParser: LogParser, Sendable {
 
         guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
 
-        let model = models.first ?? "unknown"
+        let model = models.min() ?? "unknown"
         let pricing = ModelPricing.lookup(model: model)
         let cost = try pricing.cost(
             inputTokens: inputTokens,

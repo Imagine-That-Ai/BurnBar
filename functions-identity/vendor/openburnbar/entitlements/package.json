@@ -1,0 +1,10 @@
+{
+  "name": "@openburnbar/entitlements",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared OpenBurnBar entitlement product-ID catalog, Firestore active-state predicate, and expiry math for Node services.",
+  "license": "AGPL-3.0-only",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts"
+}

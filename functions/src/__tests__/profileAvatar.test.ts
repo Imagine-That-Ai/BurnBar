@@ -9,7 +9,7 @@ vi.mock("firebase-admin/storage", () => ({
   getStorage: () => ({ bucket }),
 }));
 
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ enforceAppCheck: false }),
 }));
 
@@ -23,7 +23,7 @@ describe("profile avatar signed URLs", () => {
     getSignedUrl.mockResolvedValueOnce(["https://storage.example/avatar?signature=ok"]);
 
     const { PROFILE_AVATAR_SIGNED_URL_TTL_MS, signedProfileAvatarUrlForUid } =
-      await import("../callables/profileAvatar.js");
+      await import("../../../functions-sync/src/domains/support/profileAvatar.js");
     const now = new Date("2026-06-14T12:00:00.000Z");
 
     const result = await signedProfileAvatarUrlForUid("user-123", now);
@@ -46,7 +46,7 @@ describe("profile avatar signed URLs", () => {
   it("fails closed when the owner has no avatar object", async () => {
     exists.mockResolvedValueOnce([false]);
 
-    const { signedProfileAvatarUrlForUid } = await import("../callables/profileAvatar.js");
+    const { signedProfileAvatarUrlForUid } = await import("../../../functions-sync/src/domains/support/profileAvatar.js");
 
     await expect(signedProfileAvatarUrlForUid("missing-user")).rejects.toMatchObject({
       code: "not-found",

@@ -1,4 +1,6 @@
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import SwiftUI
 
 /// Minimal splash shown in the popover on first launch.

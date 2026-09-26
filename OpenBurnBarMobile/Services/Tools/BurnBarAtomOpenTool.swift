@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarKernel
 
 // MARK: - burnbar_atom_open
 //
@@ -40,7 +41,7 @@ public struct BurnBarAtomOpenTool: MobileTool {
         """
     }
 
-    public var parametersSchema: [String: Any] {
+    public var parametersSchema: MobileToolParametersSchema {
         MobileToolJSONSchema.object(
             properties: [
                 "atom_url": MobileToolJSONSchema.string(

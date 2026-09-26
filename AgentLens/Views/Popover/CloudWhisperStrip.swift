@@ -1,5 +1,5 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarUI
 
 // MARK: - Cloud Whisper Strip (macOS popover)
 //

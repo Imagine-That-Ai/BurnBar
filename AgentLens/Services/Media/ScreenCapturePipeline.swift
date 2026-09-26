@@ -8,7 +8,8 @@ import CoreGraphics
 @preconcurrency import ScreenCaptureKit
 #endif
 import OSLog
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 import CoreMedia
 

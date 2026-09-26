@@ -382,10 +382,20 @@ function buildStagingHostingConfig(firebaseJson) {
 }
 
 function buildFunctionsConfig(firebaseJson) {
-  const functions = requirePlainObject(
-    firebaseJson.functions,
-    "firebase.json functions",
-  );
+  // Wave 3.5 made firebase.json functions a multi-codebase ARRAY; a legacy
+  // single object still normalizes to one entry.
+  const isArray = Array.isArray(firebaseJson.functions);
+  const entries = isArray
+    ? firebaseJson.functions
+    : [
+        requirePlainObject(
+          firebaseJson.functions,
+          "firebase.json functions",
+        ),
+      ];
+  if (entries.length === 0) {
+    throw new Error("firebase.json functions must not be empty");
+  }
   const allowedKeys = new Set([
     "source",
     "runtime",
@@ -393,43 +403,58 @@ function buildFunctionsConfig(firebaseJson) {
     "codebase",
     "predeploy",
   ]);
-  for (const key of Object.keys(functions)) {
-    if (!allowedKeys.has(key)) {
-      throw new Error(`functions config has unsupported key ${key}`);
+  const outputs = [];
+  for (const [index, entry] of entries.entries()) {
+    const functions = requirePlainObject(entry, `firebase.json functions[${index}]`);
+    for (const key of Object.keys(functions)) {
+      if (!allowedKeys.has(key)) {
+        throw new Error(`functions config has unsupported key ${key}`);
+      }
     }
-  }
-  const config = {
-    functions: copyDefined(functions, [
+    const out = copyDefined(functions, [
       "source",
       "runtime",
       "ignore",
       "codebase",
-    ]),
-  };
-  if (config.functions.source !== undefined) {
-    const absoluteSource = resolveRepoDirectoryPath(
-      config.functions.source,
-      "functions.source",
-    );
-    if (portableFunctionsSource) {
-      if (config.functions.source !== "functions") {
-        throw new Error(
-          '--portable-functions-source requires canonical functions.source="functions"',
-        );
+    ]);
+    if (out.source !== undefined) {
+      if (portableFunctionsSource) {
+        // Portable: the staged artifact root carries every codebase source
+        // dir beside the generated config, so each source must be a bare dir
+        // name that resolves there (no repo-absolute paths leak through).
+        if (
+          typeof out.source !== "string" ||
+          out.source.includes("/") ||
+          out.source === "." ||
+          out.source === ".." ||
+          out.source.length === 0
+        ) {
+          throw new Error(
+            `--portable-functions-source requires a bare source dir name, got ${JSON.stringify(out.source)}`,
+          );
+        }
+        const stagedSource = resolve(dirname(outputPath), out.source);
+        if (!existsSync(stagedSource) || !statSync(stagedSource).isDirectory()) {
+          throw new Error(
+            `portable functions.source does not resolve beside the output config: ${stagedSource}`,
+          );
+        }
+      } else {
+        out.source = resolveRepoDirectoryPath(out.source, "functions.source");
       }
-      const stagedSource = resolve(dirname(outputPath), "functions");
-      if (!existsSync(stagedSource) || !statSync(stagedSource).isDirectory()) {
-        throw new Error(
-          `portable functions.source does not resolve beside the output config: ${stagedSource}`,
-        );
-      }
-      config.functions.source = "functions";
-    } else {
-      config.functions.source = absoluteSource;
     }
+    outputs.push(out);
   }
+  const config = { functions: isArray ? outputs : outputs[0] };
   assertNoPredeploy(config, "firebase-functions.ci.json");
-  return { config, manifest: { functionsSource: config.functions.source } };
+  return {
+    config,
+    manifest: {
+      functionsSource: isArray
+        ? outputs.map((entry) => entry.source)
+        : outputs[0].source,
+    },
+  };
 }
 
 function buildFirestoreConfig(firebaseJson) {

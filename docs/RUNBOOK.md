@@ -372,8 +372,9 @@ sqlite3 ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite "PRAGMA in
 sqlite3 ~/Library/Application\ Support/OpenBurnBar/openburnbar.sqlite \
   "SELECT identifier FROM grdb_migrations ORDER BY identifier;"
 
-# Compare with expected migrations in source
-grep "registerMigration" AgentLens/Services/DataStore/OpenBurnBarDatabase.swift | sed 's/.*"\(.*\)".*/\1/'
+# Compare with expected migrations in source (Wave 2.2: the single
+# migrator lives in OpenBurnBarData; the AgentLens copy is deleted)
+grep -h "registerMigration" OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase*.swift | sed 's/.*"\(.*\)".*/\1/' | sort -u
 
 # Check for recovery archives created by the in-app reset path
 ls -lt ~/Library/Application\ Support/OpenBurnBar/StartupRecovery/ 2>/dev/null | head

@@ -1,5 +1,7 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Hermes Atom Router (iOS)
 //

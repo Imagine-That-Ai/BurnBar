@@ -1,8 +1,14 @@
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarComputerUseCore
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Mac Copy
 
@@ -122,7 +128,7 @@ struct DevicesAndSyncSettingsView: View {
                             icon: "icloud.fill",
                             iconTint: DesignSystem.Colors.teal,
                             title: MacCopy.cloudSyncSectionTitle,
-                            subtitle: "Status and security model for sync across devices",
+                            subtitle: "Sync is off until you turn it on. Usage metadata syncs as plaintext; credentials stay sealed",
                             value: "Healthy",
                             valueTint: DesignSystem.Colors.success
                         )
@@ -238,11 +244,13 @@ struct DevicesAndSyncSettingsView: View {
 
 struct CloudSyncStatusDetailView: View {
     @State private var appCheckMonitor = AppCheckAttestationMonitor.shared
+    /// Wave 0.5: the master cloud-sync switch. Off by default; persisted on-device.
+    var accountManager: AccountManager = .shared
 
     var body: some View {
         SettingsDetailContainer(
             title: MacCopy.cloudSyncSectionTitle,
-            subtitle: "OpenBurnBar uses Firebase for cross-device sync. The transfer pipeline is end-to-end encrypted with device trust and provider readback."
+            subtitle: "Off by default — nothing leaves this Mac until you turn sync on. When on, usage metadata uploads to Firebase as plaintext for cross-device resume; provider credentials and vault contents stay sealed end-to-end."
         ) {
             if let warning = appCheckMonitor.lastWarningMessage {
                 GlassCard {
@@ -264,6 +272,23 @@ struct CloudSyncStatusDetailView: View {
                 }
             }
 
+            GlassCard {
+                Toggle(isOn: cloudSyncBinding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Cloud sync")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text(accountManager.isCloudSyncEnabled ? "On — usage metadata syncs to Firebase" : "Off — everything stays on this Mac")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(.switch)
+                .tint(DesignSystem.Colors.teal)
+                .padding(DesignSystem.Spacing.md)
+            }
+
             MercuryEnvelopeCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     Text(appCheckMonitor.lastWarningMessage == nil ? MacCopy.cloudSyncHealthy : MacCopy.cloudSyncDegraded)
@@ -273,6 +298,15 @@ struct CloudSyncStatusDetailView: View {
                 }
             }
         }
+    }
+
+    /// Master cloud-sync switch (Wave 0.5 consent). Follows the
+    /// CloudStoreSettingsView binding precedent.
+    private var cloudSyncBinding: Binding<Bool> {
+        Binding(
+            get: { accountManager.isCloudSyncEnabled },
+            set: { accountManager.setCloudSyncEnabled($0) }
+        )
     }
 }
 
@@ -647,7 +681,7 @@ enum MacCredentialTransferability: Equatable, Sendable {
         }
     }
 
-    var credentialKind: OpenBurnBarCore.EscrowCredentialKind {
+    var credentialKind: OpenBurnBarKernel.EscrowCredentialKind {
         switch self {
         case .apiKey: return .apiKey
         case .oauthToken: return .oauthToken
@@ -662,14 +696,14 @@ struct MacEscrowGrantSummary: Identifiable, Equatable {
     let id: String
     let provider: AgentProvider
     let targetDeviceName: String
-    let credentialKind: OpenBurnBarCore.EscrowCredentialKind
+    let credentialKind: OpenBurnBarKernel.EscrowCredentialKind
     let grantedAt: Date
 
     init(
         id: String,
         provider: AgentProvider,
         targetDeviceName: String,
-        credentialKind: OpenBurnBarCore.EscrowCredentialKind,
+        credentialKind: OpenBurnBarKernel.EscrowCredentialKind,
         grantedAt: Date = Date()
     ) {
         self.id = id
@@ -933,18 +967,18 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
     }
 
     static func loadOrCreateDeviceId(defaults: UserDefaults = .standard) -> String {
-        OpenBurnBarCore.OpenBurnBarMigration.migrateUserDefaults()
-        if let stored = defaults.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
+        OpenBurnBarKernel.OpenBurnBarMigration.migrateUserDefaults()
+        if let stored = defaults.string(forKey: OpenBurnBarKernel.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
             return stored
         }
-        for legacyKey in OpenBurnBarCore.OpenBurnBarIdentity.legacyDeviceIDKeys {
+        for legacyKey in OpenBurnBarKernel.OpenBurnBarIdentity.legacyDeviceIDKeys {
             if let stored = defaults.string(forKey: legacyKey), !stored.isEmpty {
-                defaults.set(stored, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
+                defaults.set(stored, forKey: OpenBurnBarKernel.OpenBurnBarIdentity.deviceIDKey)
                 return stored
             }
         }
         let created = UUID().uuidString
-        defaults.set(created, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
+        defaults.set(created, forKey: OpenBurnBarKernel.OpenBurnBarIdentity.deviceIDKey)
         return created
     }
 

@@ -28,16 +28,16 @@
 
 import type { Firestore } from "firebase-admin/firestore";
 import { onRequest } from "firebase-functions/v2/https";
-import type { ModelBenchmarkSnapshotDoc, ModelBenchmarkSourceStatusDoc } from "./types.js";
-import { isRecord, parseModelBenchmarkSnapshotDoc, parseModelBenchmarkSourceStatusDoc } from "./guards.js";
-import { logError, logWarn, wrapRequestHandler } from "./logging.js";
-import { setPublicJsonSecurityHeaders } from "./publicHttpSecurityHeaders.js";
-import { FUNCTIONS_REGION } from "./runtimeOptions.js";
+import type { ModelBenchmarkSnapshotDoc, ModelBenchmarkSourceStatusDoc } from "@openburnbar/functions-shared/types.js";
+import { isRecord, parseModelBenchmarkSnapshotDoc, parseModelBenchmarkSourceStatusDoc } from "@openburnbar/functions-shared/guards.js";
+import { logError, logWarn, wrapRequestHandler } from "@openburnbar/functions-shared/logging.js";
+import { setPublicJsonSecurityHeaders } from "@openburnbar/functions-shared/publicHttpSecurityHeaders.js";
+import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
 import {
   checkPublicHttpEndpointRateLimit,
   clientIpFromHttpRequest,
   isPublicRateLimitExceeded,
-} from "./callables/publicRateLimit.js";
+} from "@openburnbar/functions-shared/callables/publicRateLimit.js";
 import { parseModelMeta, parseRuntimeMeta, parsePreviousRundown } from "./routerRundownTypes.js";
 import type { ModelMeta, RuntimeMeta } from "./routerRundownTypes.js";
 import { buildRouterRundown } from "./routerRundownScoring.js";

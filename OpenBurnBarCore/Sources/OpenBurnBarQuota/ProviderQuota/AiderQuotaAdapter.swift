@@ -401,7 +401,7 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
         openSessionTokens: inout Int
     ) {
         guard let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed JSONL line)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(skip malformed JSONL line)
               let event = json["event"] as? String else { return }
 
         let time = jsonTime(json["time"])

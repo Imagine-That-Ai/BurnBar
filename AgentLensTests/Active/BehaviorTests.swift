@@ -1,11 +1,13 @@
+#if OPENBURNBAR_LAB
 import XCTest
 @testable import OpenBurnBar
 
-/// C3 — the Swift behavior interpreter. When the TS core's golden vectors
-/// (`packages/petcore/test/golden/behavior.json`) are present they are consumed
-/// for same-seed parity; otherwise the suite asserts the interpreter's own
-/// determinism + weighted-selection contract, which is what the golden vectors
-/// will later pin.
+/// C3 — the Swift behavior interpreter. The committed Swift-compatible golden
+/// (`packages/petcore/test/golden/behavior-swift.json`) pins graph-walking,
+/// single-candidate determinism, nil-on-no-match, and one exact weighted draw
+/// (hand-derived from the pinned Mulberry32 sequence, not from the
+/// implementation); the suite additionally asserts the interpreter's own
+/// determinism + weighted-selection contract.
 final class BehaviorTests: XCTestCase {
 
     // MARK: Graph fixtures
@@ -101,12 +103,15 @@ final class BehaviorTests: XCTestCase {
         XCTAssertEqual(c.nextUInt32(), 2_693_262_067)
     }
 
-    // MARK: Golden-vector parity (consumed if the TS export exists)
+    // MARK: Golden-vector parity (committed fixture)
 
     func test_goldenVectors_matchWhenPresent() throws {
-        guard let data = Self.loadGoldenVectorData() else {
-            throw XCTSkip("petcore golden behavior-swift.json not present; determinism covered above")
-        }
+        // The golden is committed at packages/petcore/test/golden/behavior-swift.json
+        // (or pointed at by OPENBURNBAR_PET_BEHAVIOR_GOLDEN_JSON) — a missing
+        // golden is a packaging regression that must fail loudly, never a
+        // silent skip.
+        let data = try XCTUnwrap(Self.loadGoldenVectorData(),
+            "petcore golden behavior-swift.json not present")
         let vector = try JSONDecoder().decode(BehaviorGoldenVector.self, from: data)
         var interp = BehaviorInterpreter(graph: vector.graph, seed: vector.seed)
         for (i, step) in vector.steps.enumerated() {
@@ -116,10 +121,9 @@ final class BehaviorTests: XCTestCase {
         }
     }
 
-    /// Look for an opt-in Swift-compatible golden file. The shared TS petcore
-    /// export currently uses a different multi-seed shape, so this deliberately
-    /// avoids hard-coded machine-local paths and skips unless a converted fixture
-    /// is provided.
+    /// Look for the committed Swift-compatible golden file (overridable via
+    /// `OPENBURNBAR_PET_BEHAVIOR_GOLDEN_JSON` for TS-parity experiments). Paths
+    /// are repo-relative (`#filePath`-anchored), never machine-local.
     private static func loadGoldenVectorData() -> Data? {
         let environment = ProcessInfo.processInfo.environment
         let testFile = URL(fileURLWithPath: #filePath)
@@ -141,3 +145,4 @@ final class BehaviorTests: XCTestCase {
         return nil
     }
 }
+#endif

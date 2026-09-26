@@ -1410,7 +1410,7 @@ final class MediaControlStreamPresenceTests: XCTestCase {
         uid: String,
         connectionID: String,
         requestID: String,
-        mediaFrameSealEstablished: Bool?
+        mediaFrameSealEstablished: Bool
     ) -> HermesRealtimeRelayFrame {
         HermesRealtimeRelayFrame(
             type: .mediaMirrorAck,

@@ -74,12 +74,12 @@ const firestoreState = vi.hoisted(() => {
   return { docs, db };
 });
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   auth: {},
   db: firestoreState.db,
 }));
 
-vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
+vi.mock("../../../packages/functions-shared/src/cloudProAllowanceRemoteConfig.js", () => ({
   loadCloudProAllowanceConfig: vi.fn(async () => ({
     includedHostedActionsMonthly: 500,
     includedRelayGBMonthly: 50,
@@ -96,29 +96,19 @@ vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
   })),
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
 }));
 
 import type Stripe from "stripe";
 
-import {
-  applyStripeCheckoutSession,
-  applyStripeSubscription,
-  BURNBAR_PRO_ENTITLEMENT_ID,
-  BURNBAR_ULTRA_ENTITLEMENT_ID,
-  deactivateStripeCustomerEntitlements,
-  reconcileStripeCharge,
-  reconcileStripeCreditNote,
-  reconcileStripeDispute,
-  reconcileStripeInvoice,
-  writeBurnBarProEntitlement,
-} from "../callables/shared.js";
+import { BURNBAR_PRO_ENTITLEMENT_ID, BURNBAR_ULTRA_ENTITLEMENT_ID, writeBurnBarProEntitlement } from "../../../packages/functions-shared/src/shared/entitlements.js";
+import { applyStripeCheckoutSession, applyStripeSubscription, deactivateStripeCustomerEntitlements, reconcileStripeCharge, reconcileStripeCreditNote, reconcileStripeDispute, reconcileStripeInvoice } from "../../../functions-identity/src/shared/stripe.js";
 import {
   markStripeWebhookEventFailed,
   markStripeWebhookEventProcessed,
   reserveStripeWebhookEvent,
-} from "../callables/stripe.js";
+} from "../../../functions-identity/src/domains/billing/stripe.js";
 
 // Focused Stripe test doubles: each stub covers only the client/object surface its test exercises.
 function stripeStub<T>(stub: object = {}): T {

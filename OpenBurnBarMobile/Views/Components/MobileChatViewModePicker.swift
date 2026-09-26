@@ -1,5 +1,7 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Compact segmented toggle between Agent view (rich bubbles) and CLI view
 /// (raw monospaced output) adapted for iOS/iPadOS mobile app layout.

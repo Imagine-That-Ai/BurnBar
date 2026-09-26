@@ -1,5 +1,8 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 enum ProviderQuotaPersistenceTarget: String, CaseIterable, Sendable {
     case snapshots
@@ -25,7 +28,7 @@ enum ProviderQuotaPersistenceLoadResult<Value> {
 }
 
 struct ProviderQuotaSnapshotStore {
-    let appPaths: OpenBurnBarCore.OpenBurnBarAppPaths
+    let appPaths: OpenBurnBarKernel.OpenBurnBarAppPaths
     let fileManager: FileManager
 
     func loadPersistedSnapshots() -> ProviderQuotaPersistenceLoadResult<(snapshots: [AgentProvider: ProviderQuotaSnapshot], accountSnapshots: [String: ProviderQuotaSnapshot], lastFetch: Date?)> {

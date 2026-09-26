@@ -1,6 +1,10 @@
 import SwiftUI
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarMedia
 
 /// Menu-bar popover Mercury section. Live indicator, paired-iPhone

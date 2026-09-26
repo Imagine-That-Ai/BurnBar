@@ -6,7 +6,7 @@ import {
   DATA_DOMAIN_USAGE,
   resolveDataTierFromEntitlements,
   wandParallelMaxForDataTier,
-} from "../callables/dataDomainUsage.js";
+} from "../../../functions-sync/src/domains/usage/dataDomainUsage.js";
 
 type DataTier = Parameters<typeof wandParallelMaxForDataTier>[0];
 type RegistryDomain = { id: string; byteSource?: string | null; countSource?: string | null };

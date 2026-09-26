@@ -326,11 +326,11 @@ final class PiService {
     /// Closure that resolves the currently-installed `HermesAtomNavigator`,
     /// or `nil` when no chat surface is mounted. Set via
     /// `setToolAtomNavigator(_:)`.
-    fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)?
+    var atomNavigatorAccessor: (() -> HermesAtomNavigator?)?
     /// Weak storage backing `atomNavigatorAccessor`. Kept out of the
     /// public surface to discourage callers from reaching past the
     /// accessor.
-    private weak var toolAtomNavigatorReference: AnyObject?
+    weak var toolAtomNavigatorReference: AnyObject?
 
     init(
         urlSession: URLSession = .shared,
@@ -1082,7 +1082,7 @@ final class PiService {
         bearerToken: String?,
         model: String?,
         onTextDelta: @escaping (String) -> Void,
-        onToolCallDelta: @escaping ([[String: Any]]) -> Void,
+        onToolCallDelta: @escaping ([MobileJSONObject]) -> Void,
         onRefusalDelta: @escaping (String) -> Void = { _ in },
         onReasoningDelta: @escaping (String) -> Void = { _ in },
         onFinishReason: @escaping (String) -> Void = { _ in }
@@ -1095,7 +1095,7 @@ final class PiService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         if let bearerToken { request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization") }
-        var body: [String: Any] = [
+        var body: MobileJSONObject = [
             "model": model ?? "pi",
             "stream": true,
             "messages": Self.wireMessages(from: messages)
@@ -1119,14 +1119,14 @@ final class PiService {
             let payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
             if payload == "[DONE]" { return }
             guard let data = payload.data(using: .utf8),
-                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = json["choices"] as? [[String: Any]],
+                  let json = try JSONSerialization.jsonObject(with: data) as? MobileJSONObject,
+                  let choices = json["choices"] as? [MobileJSONObject],
                   let first = choices.first else { continue }
 
             // Some Pi backends only ever send the final assistant turn as a
             // `message` object (no streaming `delta` chain). Handle both.
-            let delta = first["delta"] as? [String: Any]
-            let finalMessage = first["message"] as? [String: Any]
+            let delta = first["delta"] as? MobileJSONObject
+            let finalMessage = first["message"] as? MobileJSONObject
 
             if let content = Self.contentString(from: delta)
                 ?? Self.contentString(from: finalMessage) {
@@ -1158,13 +1158,13 @@ final class PiService {
         }
     }
 
-    private static func refusalString(from item: [String: Any]?) -> String? {
+    private static func refusalString(from item: MobileJSONObject?) -> String? {
         guard let item else { return nil }
         guard let raw = item["refusal"] else { return nil }
         return contentString(from: ["content": raw])
     }
 
-    private static func reasoningString(from item: [String: Any]?) -> String? {
+    private static func reasoningString(from item: MobileJSONObject?) -> String? {
         guard let item else { return nil }
         for key in ["reasoning_content", "reasoningContent", "reasoning", "thinking"] {
             if let value = item[key],
@@ -1180,13 +1180,13 @@ final class PiService {
         return s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : s
     }
 
-    private static func contentString(from item: [String: Any]?) -> String? {
+    private static func contentString(from item: MobileJSONObject?) -> String? {
         guard let item else { return nil }
         if let value = item["content"] as? String, !value.isEmpty { return value }
         if let parts = item["content"] as? [Any] {
             let joined = parts.compactMap { part -> String? in
                 if let text = part as? String { return text }
-                guard let obj = part as? [String: Any] else { return nil }
+                guard let obj = part as? MobileJSONObject else { return nil }
                 return obj["text"] as? String ?? obj["value"] as? String
             }
             .joined()
@@ -1195,12 +1195,12 @@ final class PiService {
         return nil
     }
 
-    private static func toolCallsArray(from item: [String: Any]?) -> [[String: Any]]? {
+    private static func toolCallsArray(from item: MobileJSONObject?) -> [MobileJSONObject]? {
         guard let item else { return nil }
-        if let calls = item["tool_calls"] as? [[String: Any]], !calls.isEmpty { return calls }
-        if let calls = item["toolCalls"] as? [[String: Any]], !calls.isEmpty { return calls }
-        if let call = item["function_call"] as? [String: Any] { return [call] }
-        if let call = item["functionCall"] as? [String: Any] { return [call] }
+        if let calls = item["tool_calls"] as? [MobileJSONObject], !calls.isEmpty { return calls }
+        if let calls = item["toolCalls"] as? [MobileJSONObject], !calls.isEmpty { return calls }
+        if let call = item["function_call"] as? MobileJSONObject { return [call] }
+        if let call = item["functionCall"] as? MobileJSONObject { return [call] }
         return nil
     }
 
@@ -1209,9 +1209,9 @@ final class PiService {
     /// splits a single tool call across many chunks (name first, then
     /// successive partial `arguments` strings), so we accumulate by index/id
     /// and recompute the `detail` preview as more JSON arrives.
-    static func mergeToolCalls(_ rawToolCalls: [[String: Any]], into message: inout PiChatMessage) {
+    static func mergeToolCalls(_ rawToolCalls: [MobileJSONObject], into message: inout PiChatMessage) {
         for raw in rawToolCalls {
-            let function = raw["function"] as? [String: Any]
+            let function = raw["function"] as? MobileJSONObject
             let nameFragment = stringValue(function?["name"]) ?? stringValue(raw["name"])
             let argsFragment = stringValue(function?["arguments"]) ?? stringValue(raw["arguments"])
             let indexHint = intValue(raw["index"])
@@ -1240,7 +1240,7 @@ final class PiService {
                     message.toolCalls[idx].detail = summary
                 }
             } else {
-                let name = nameFragment?.isEmpty == false ? nameFragment! : "Pi tool"
+                let name = nameFragment.flatMap { $0.isEmpty ? nil : $0 } ?? "Pi tool"
                 let arguments = argsFragment ?? ""
                 message.toolCalls.append(
                     PiToolCall(
@@ -1263,7 +1263,7 @@ final class PiService {
         guard !trimmed.isEmpty else { return nil }
 
         if let data = trimmed.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+           let obj = BurnBarJSONValue.dictionary(fromJSONData: data) {
             for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
                 if let value = obj[key] as? String, !value.isEmpty {
                     return String(value.prefix(200))
@@ -1360,8 +1360,8 @@ final class PiService {
     }
 
     private static func parseModels(data: Data) -> [HermesRuntimeModelOption] {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
-        let raw = (object["data"] as? [[String: Any]]) ?? []
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data) else { return [] }
+        let raw = (object["data"] as? [MobileJSONObject]) ?? []
         return raw.compactMap { entry in
             guard let id = entry["id"] as? String, !id.isEmpty else { return nil }
             let provider = (entry["provider_id"] as? String)
@@ -1402,8 +1402,8 @@ final class PiService {
     /// streaming-in-flight assistant turn (it has no committed body
     /// yet). Tool replies and assistant turns with `tool_calls` get the
     /// extended shape required by the Chat Completions API.
-    static func wireMessages(from messages: [PiChatMessage]) -> [[String: Any]] {
-        var out: [[String: Any]] = []
+    static func wireMessages(from messages: [PiChatMessage]) -> [MobileJSONObject] {
+        var out: [MobileJSONObject] = []
         for msg in messages where !msg.isError {
             if msg.isStreaming { continue }
             switch msg.role {
@@ -1417,17 +1417,17 @@ final class PiService {
                 }
             case .assistant:
                 if !msg.toolCalls.isEmpty {
-                    let toolCalls: [[String: Any]] = msg.toolCalls.map { call in
+                    let toolCalls: [MobileJSONObject] = msg.toolCalls.map { call in
                         [
                             "id": call.id,
                             "type": "function",
                             "function": [
                                 "name": call.name,
                                 "arguments": call.arguments
-                            ] as [String: Any]
-                        ] as [String: Any]
+                            ] as MobileJSONObject
+                        ] as MobileJSONObject
                     }
-                    var entry: [String: Any] = [
+                    var entry: MobileJSONObject = [
                         "role": "assistant",
                         "tool_calls": toolCalls
                     ]
@@ -1446,93 +1446,5 @@ final class PiService {
             }
         }
         return out
-    }
-}
-
-// MARK: - Tool Use Loop
-
-extension PiService: MobileToolContext {
-    /// Install / replace the navigator the `burnbar_atom_open` tool uses.
-    /// Same contract as `HermesService.setToolAtomNavigator`.
-    public func setToolAtomNavigator(_ navigator: HermesAtomNavigator?) {
-        if let navigator {
-            let weakRef = navigator as AnyObject
-            self.toolAtomNavigatorReference = weakRef
-            self.atomNavigatorAccessor = { [weak weakRef] in
-                weakRef as? HermesAtomNavigator
-            }
-        } else {
-            self.toolAtomNavigatorReference = nil
-            self.atomNavigatorAccessor = nil
-        }
-    }
-
-    public var atomNavigator: HermesAtomNavigator? {
-        atomNavigatorAccessor?()
-    }
-
-    public var availableSessions: [MobileToolSessionSummary] {
-        // Pi doesn't (yet) maintain a session list mirror — keep the
-        // surface honest by returning empty. The tool reports
-        // `total_available: 0` and the model recovers gracefully.
-        []
-    }
-
-    public var runtimeStatusSnapshot: MobileToolRuntimeStatus {
-        MobileToolRuntimeStatus(
-            runtime: "pi",
-            isReachable: isReachable,
-            connectionName: selectedConnection.displayName.nilIfBlank,
-            connectionMode: selectedConnection.mode.rawValue,
-            selectedModelID: selectedModelID?.nilIfBlank,
-            advertisedModel: selectedConnection.advertisedModel?.nilIfBlank,
-            lastError: lastError?.nilIfBlank
-        )
-    }
-
-    /// Execute the streamed tool calls on `message`, append matching
-    /// `role: .tool` replies to `messages`, and stamp the call statuses
-    /// for the pill UI.
-    @discardableResult
-    func executeToolCalls(
-        for message: inout PiChatMessage
-    ) async -> [MobileToolExecutionResult] {
-        guard !message.toolCalls.isEmpty else { return [] }
-        let pending = message.toolCalls.map { call in
-            PendingToolCall(id: call.id, name: call.name, arguments: call.arguments)
-        }
-        let executor = MobileToolExecutor(catalog: toolCatalog)
-        let results = await executor.execute(pending, context: self)
-
-        var updated = message
-        var statusByID: [String: String] = [:]
-        for r in results {
-            statusByID[r.toolCallID] = r.isError ? "failed" : "done"
-        }
-        updated.toolCalls = updated.toolCalls.map { call in
-            PiToolCall(
-                id: call.id,
-                name: call.name,
-                status: statusByID[call.id] ?? call.status,
-                arguments: call.arguments,
-                detail: call.detail ?? PiService.summarizeToolArguments(call.arguments)
-            )
-        }
-        message = updated
-
-        if let idx = messages.firstIndex(where: { $0.id == message.id }) {
-            messages[idx] = message
-        }
-
-        for r in results {
-            let reply = PiChatMessage(
-                role: .tool,
-                text: r.content,
-                isError: r.isError,
-                toolCallID: r.toolCallID
-            )
-            messages.append(reply)
-        }
-        return results
     }
 }

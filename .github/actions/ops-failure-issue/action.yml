@@ -10,7 +10,8 @@ description: >-
   new red in a different lane. On a genuine P0 ops failure it pages
   out-of-band via an optional Slack Incoming Webhook; dedupe is the persistent
   `paged:ops` label so a flapping lane pages once and retries only if the
-  webhook was missing or failed.
+  webhook was missing or failed. Lanes that set `repage-until-green` page on
+  every red run until a green run closes the issue.
 
 inputs:
   mode:
@@ -58,6 +59,16 @@ inputs:
       configure this as the repo secret OPS_PAGING_SLACK_WEBHOOK (A6).
     required: false
     default: ""
+  repage-until-green:
+    description: >-
+      Set to "true" to page on EVERY red run for this lane instead of once
+      (the persistent paged:ops dedupe is bypassed). A standing red can never
+      go silent; a green run closes the issue and re-arms the alarm. A named
+      blocker (known-red-named-blocker) still suppresses paging. Use only for
+      lanes where a silent standing red is worse than a daily page, such as
+      deploy-health.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -72,6 +83,7 @@ runs:
         OPS_DETAILS: ${{ inputs.details }}
         OPS_LABELS: ${{ inputs.labels }}
         OPS_PAGING_SLACK_WEBHOOK: ${{ inputs.paging-slack-webhook }}
+        OPS_REPAGE_UNTIL_GREEN: ${{ inputs.repage-until-green }}
       with:
         github-token: ${{ inputs.github-token }}
         script: |
@@ -276,8 +288,11 @@ runs:
           // issue is P0, open, unblocked, and not already paged. Only add
           // `paged:ops` after a successful POST — a missing or failed
           // webhook leaves the issue unpaged so a later run can retry.
+          // Lanes with repage-until-green bypass the dedupe and page on
+          // every red run (subsuming the seven-day tier).
           const pageP0IfEligible = async (issueNumber, issueLabels, createdAt) => {
-            const paging = shouldPageP0({ mode, labels: issueLabels });
+            const repageUntilGreen = process.env.OPS_REPAGE_UNTIL_GREEN === 'true';
+            const paging = shouldPageP0({ mode, labels: issueLabels, repageUntilGreen });
             const repaging = evaluateSevenDayRepage({
               created_at: createdAt,
               labels: issueLabels,
@@ -287,6 +302,7 @@ runs:
             // A re-page is only the second alert after `paged:ops` exists;
             // otherwise one unpaged issue would alert once as both tiers.
             const shouldRepage = !paging.shouldPage && repaging.shouldRepage;
+            const isRepageUntilGreen = paging.reason === 'p0-repage-until-green';
             if (!paging.shouldPage && !shouldRepage) {
               if (paging.reason === 'p0-unpaged') return; // unreachable guard
               core.info(`Lane '${lane}': issue #${issueNumber} not paged (${paging.reason}; ${repaging.reason}).`);
@@ -294,14 +310,16 @@ runs:
             }
             const webhook = process.env.OPS_PAGING_SLACK_WEBHOOK;
             if (!webhook) {
-              core.warning(`Lane '${lane}': P0 issue #${issueNumber} eligible for ${shouldRepage ? 'seven-day re-page' : 'initial paging'} but OPS_PAGING_SLACK_WEBHOOK is not configured (A6 blocker). Issue behavior unaffected; will retry on next failure.`);
+              core.warning(`Lane '${lane}': P0 issue #${issueNumber} eligible for ${shouldRepage ? 'seven-day re-page' : isRepageUntilGreen ? 're-page until green' : 'initial paging'} but OPS_PAGING_SLACK_WEBHOOK is not configured (A6 blocker). Issue behavior unaffected; will retry on next failure.`);
               return;
             }
             const repoSlug = `${context.repo.owner}/${context.repo.repo}`;
             const issueUrl = `${context.serverUrl}/${repoSlug}/issues/${issueNumber}`;
             const slackText = shouldRepage
               ? `🚨 *P0 ops failure re-page* — ${oneLine(repoSlug, 'repo')} lane \`${lane}\` has been red for seven days: ${summary}\nIssue: ${issueUrl}\nRun: ${runUrl}`
-              : `🚨 *P0 ops failure* — ${oneLine(repoSlug, 'repo')} lane \`${lane}\`: ${summary}\nIssue: ${issueUrl}\nRun: ${runUrl}`;
+              : isRepageUntilGreen
+                ? `🚨 *P0 ops failure re-page (still red)* — ${oneLine(repoSlug, 'repo')} lane \`${lane}\`: ${summary}\nIssue: ${issueUrl}\nRun: ${runUrl}`
+                : `🚨 *P0 ops failure* — ${oneLine(repoSlug, 'repo')} lane \`${lane}\`: ${summary}\nIssue: ${issueUrl}\nRun: ${runUrl}`;
             try {
               const pageResponse = await fetch(webhook, {
                 method: 'POST',
@@ -320,7 +338,7 @@ runs:
                 issue_number: issueNumber,
                 labels: [shouldRepage ? REPAGE_LABEL : PAGED_LABEL],
               });
-              core.notice(`Lane '${lane}': ${shouldRepage ? 're-paged' : 'paged'} P0 issue #${issueNumber} to Slack out-of-band.`);
+              core.notice(`Lane '${lane}': ${shouldRepage || isRepageUntilGreen ? 're-paged' : 'paged'} P0 issue #${issueNumber} to Slack out-of-band.`);
             } catch (pageError) {
               core.warning(`Lane '${lane}': Slack webhook POST failed for issue #${issueNumber}: ${oneLine(pageError.message, 'error')}. Not paged — will retry on next failure.`);
             }

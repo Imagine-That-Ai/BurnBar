@@ -85,15 +85,42 @@ extension DataStore {
         try await actor.searchIndexStore.countChunks(documentID: documentID)
     }
 
-    func replaceSearchChunks(documentID: String, title: String, chunks: [SearchChunkRecord]) async throws {
-        try await actor.searchIndexStore.replaceChunks(documentID: documentID, title: title, chunks: chunks)
+    /// Wave 2.1c-iv: the caller supplies the FTS context (`projectName` /
+    /// `provider`) from the finalized document in hand — the store can no
+    /// longer read it back from `search_documents` (daemon-owned).
+    func replaceSearchChunks(
+        documentID: String,
+        title: String,
+        projectName: String,
+        provider: String,
+        chunks: [SearchChunkRecord]
+    ) async throws {
+        try await actor.searchIndexStore.replaceChunks(
+            documentID: documentID,
+            title: title,
+            projectName: projectName,
+            provider: provider,
+            chunks: chunks
+        )
     }
 
     /// Incrementally applies a chunk diff for a document.
     /// Compares new chunks against existing chunks by contentHash to minimize writes.
     /// Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
-    func applySearchChunkDiff(documentID: String, title: String, chunks: [SearchChunkRecord]) async throws -> ChunkDiffResult {
-        try await actor.searchIndexStore.applyChunkDiff(documentID: documentID, title: title, newChunks: chunks)
+    func applySearchChunkDiff(
+        documentID: String,
+        title: String,
+        projectName: String,
+        provider: String,
+        chunks: [SearchChunkRecord]
+    ) async throws -> ChunkDiffResult {
+        try await actor.searchIndexStore.applyChunkDiff(
+            documentID: documentID,
+            title: title,
+            projectName: projectName,
+            provider: provider,
+            newChunks: chunks
+        )
     }
 
     /// Fetches existing embeddings keyed by contentHash for a document.

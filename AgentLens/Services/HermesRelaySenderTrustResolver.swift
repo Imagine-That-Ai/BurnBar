@@ -1,6 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 final class FirestoreHermesRelaySenderTrustResolver: HermesRelaySenderTrustResolving, Sendable {
     static let shared = FirestoreHermesRelaySenderTrustResolver()

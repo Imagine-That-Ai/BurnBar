@@ -66,28 +66,28 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("email redaction", () => {
     it("redacts email in a string field", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", message: "user is john@example.com" });
       const payload = captureLog(logSpy);
       expect(payload.message).toBe("user is [email]");
     });
 
     it("redacts email in event field", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "login", email: "alice@corp.example.org" });
       const payload = captureLog(logSpy);
       expect(payload.email).toBe("[email]");
     });
 
     it("redacts multiple emails in one string", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", message: "from a@b.com to c@d.io" });
       const payload = captureLog(logSpy);
       expect(payload.message).toBe("from [email] to [email]");
     });
 
     it("does not redact non-email strings", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", message: "hello world" });
       const payload = captureLog(logSpy);
       expect(payload.message).toBe("hello world");
@@ -98,14 +98,14 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("IP address redaction", () => {
     it("redacts IPv4 address", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", ip: "192.168.1.42" });
       const payload = captureLog(logSpy);
       expect(payload.ip).toBe("[ip]");
     });
 
     it("redacts IPv4 embedded in message", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", message: "request from 10.0.0.1 blocked" });
       const payload = captureLog(logSpy);
       expect(payload.message).toBe("request from [ip] blocked");
@@ -113,7 +113,7 @@ describe("PII scrubbing in structured logging", () => {
 
     it("does not treat version strings as IPs", async () => {
       // "1.2.3.4" is an IP, but "v1.2.3" is not. The regex requires 4 octets.
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", version: "v1.2.3" });
       const payload = captureLog(logSpy);
       // "1.2.3" only has 3 octets — must NOT be redacted
@@ -125,21 +125,21 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("API key and token redaction", () => {
     it("redacts Stripe secret key", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", key: "sk-abcdefghijklmnopqrstuvwxyz1234567890" });
       const payload = captureLog(logSpy);
       expect(payload.key).toBe("[REDACTED]");
     });
 
     it("redacts Google AIza API key", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", key: "AIzaSyAbcdefghijklmnopqrstuvwxyz123456" });
       const payload = captureLog(logSpy);
       expect(payload.key).toBe("[REDACTED]");
     });
 
     it("redacts JWT bearer token starting with eyJ", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       const jwt = ["eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9", "eyJzdWIiOiIxMjM0NTY3ODkwIn0", "signature"].join(".");
       logInfo({ event: "test", token: jwt });
       const payload = captureLog(logSpy);
@@ -148,14 +148,14 @@ describe("PII scrubbing in structured logging", () => {
 
     it("does not redact short strings that happen to start with sk-", async () => {
       // Prefix without the 20+ following chars should not match
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", reference: "sk-123" }); // only 3 chars after prefix
       const payload = captureLog(logSpy);
       expect(payload.reference).toBe("sk-123");
     });
 
     it("redacts sensitive field names even when values do not match known token patterns", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", accessToken: "short-secret", tokenPreview: "obb_...abcd", code: "ABCD-EFGH-JKM2" });
       const payload = captureLog(logSpy);
       expect(payload.accessToken).toBe("[REDACTED]");
@@ -164,7 +164,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("redacts credential transfer keys and full v2 token values", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       const token = "obbct_v2.ct_" + "a".repeat(24) + "." + "ABCD-".repeat(6) + "EF";
       logInfo({
         event: "test",
@@ -178,21 +178,21 @@ describe("PII scrubbing in structured logging", () => {
 
     // T-PRV-04: broadened provider token prefixes
     it("redacts xAI (xai-) keys", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", note: "key xai-abcdefghijklmnopqrstuvwxyz0123 here" });
       const payload = captureLog(logSpy);
       expect(payload.note).toBe("key [REDACTED] here");
     });
 
     it("redacts Anthropic (sk-ant-) keys", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", note: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789" });
       const payload = captureLog(logSpy);
       expect(payload.note).toBe("[REDACTED]");
     });
 
     it("redacts GitHub PAT (ghp_) and github_pat_ tokens", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({
         event: "test",
         a: "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
@@ -204,7 +204,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("redacts Stripe restricted (rk_live_) and explicit live secret (sk_live_) keys", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       // Synthetic fixtures built at runtime so no key-shaped literal lives in
       // source (avoids tripping push-protection secret scanners on fake data).
       logInfo({ event: "test", a: "rk_live_" + "x".repeat(26), b: "sk_live_" + "x".repeat(26) });
@@ -214,7 +214,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("redacts Slack (xoxb-) tokens", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", note: "xoxb-" + "1".repeat(11) + "-" + "y".repeat(24) });
       const payload = captureLog(logSpy);
       expect(payload.note).toBe("[REDACTED]");
@@ -225,21 +225,21 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("sensitive keys redact non-string primitive values", () => {
     it("redacts a numeric value under a sensitive key", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", apiKey: 1234567890 });
       const payload = captureLog(logSpy);
       expect(payload.apiKey).toBe("[REDACTED]");
     });
 
     it("redacts a boolean value under a sensitive key", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", secret: true });
       const payload = captureLog(logSpy);
       expect(payload.secret).toBe("[REDACTED]");
     });
 
     it("keeps non-sensitive numeric/boolean values untouched as their native type", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", latency_ms: 42, healthy: false, attempt: 0 });
       const payload = captureLog(logSpy);
       expect(payload.latency_ms).toBe(42);
@@ -248,7 +248,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("does not redact a null/undefined value even under a sensitive key", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", token: null });
       const payload = captureLog(logSpy);
       // null carries no secret and must not be coerced to the redaction marker.
@@ -260,14 +260,14 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("credit card redaction", () => {
     it("redacts 16-digit credit card number", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", card: "4111111111111111" });
       const payload = captureLog(logSpy);
       expect(payload.card).toBe("[REDACTED]");
     });
 
     it("redacts spaced credit card number", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", card: "4111 1111 1111 1111" });
       const payload = captureLog(logSpy);
       expect(payload.card).toBe("[REDACTED]");
@@ -275,7 +275,7 @@ describe("PII scrubbing in structured logging", () => {
 
     it("does not redact 16-char alphanumeric strings", async () => {
       // Must only match all-digit patterns
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", ref: "ABCD1234EFGH5678" });
       const payload = captureLog(logSpy);
       expect(payload.ref).toBe("ABCD1234EFGH5678");
@@ -286,7 +286,7 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("UID key-based truncation", () => {
     it("truncates uid field to first 8 chars and renames to user_id_hash", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", uid: "mzO4MRBNjbsePMeFHl2T8hBCsU02" });
       const payload = captureLog(logSpy);
       expect(payload.user_id_hash).toBe("mzO4MRBN");
@@ -294,14 +294,14 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("truncates userId field to first 8 chars, preserves key name", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", userId: "mzO4MRBNjbsePMeFHl2T8hBCsU02" });
       const payload = captureLog(logSpy);
       expect(payload.userId).toBe("mzO4MRBN");
     });
 
     it("uid shorter than 8 chars passes through truncated safely", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", uid: "abc" });
       const payload = captureLog(logSpy);
       expect(payload.user_id_hash).toBe("abc");
@@ -312,21 +312,21 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("non-string field passthrough", () => {
     it("numbers pass through unchanged", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", latency_ms: 42 });
       const payload = captureLog(logSpy);
       expect(payload.latency_ms).toBe(42);
     });
 
     it("booleans pass through unchanged", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", healthy: true });
       const payload = captureLog(logSpy);
       expect(payload.healthy).toBe(true);
     });
 
     it("null values pass through unchanged", async () => {
-      const { logWarn } = await import("../logging.js");
+      const { logWarn } = await import("../../../packages/functions-shared/src/logging.js");
       logWarn({ event: "test", detail: undefined });
       const payload = parseConsolePayload(warnSpy.mock.calls[0]?.[0]);
       expect(payload.detail).toBeUndefined();
@@ -337,7 +337,7 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("nested object scrubbing", () => {
     it("recursively scrubs nested objects", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({
         event: "test",
         context: JSON.stringify({ user: "admin@company.com", ip: "1.2.3.4" }),
@@ -349,7 +349,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("recursively redacts sensitive nested keys", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({
         event: "test",
         nested: {
@@ -365,7 +365,7 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("log severity routing", () => {
     it("logInfo writes to console.log with severity INFO", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test_event" });
       const payload = captureLog(logSpy);
       expect(payload.severity).toBe("INFO");
@@ -374,7 +374,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("logError writes to console.error with severity ERROR", async () => {
-      const { logError } = await import("../logging.js");
+      const { logError } = await import("../../../packages/functions-shared/src/logging.js");
       logError({ event: "test_error", error: "something failed" });
       const payload = captureLog(errorSpy);
       expect(payload.severity).toBe("ERROR");
@@ -382,14 +382,14 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("logWarn writes to console.warn with severity WARNING", async () => {
-      const { logWarn } = await import("../logging.js");
+      const { logWarn } = await import("../../../packages/functions-shared/src/logging.js");
       logWarn({ event: "test_warn" });
       const payload = parseConsolePayload(warnSpy.mock.calls[0]?.[0]);
       expect(payload.severity).toBe("WARNING");
     });
 
     it("auto-generates trace_id when not provided", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "a" });
       logInfo({ event: "b" });
       const p1 = parseConsolePayload(logSpy.mock.calls[0]?.[0]);
@@ -400,7 +400,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("preserves caller-provided trace_id", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       logInfo({ event: "test", trace_id: "my-trace-123" });
       const payload = captureLog(logSpy);
       expect(payload.trace_id).toBe("my-trace-123");
@@ -411,7 +411,7 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("field length truncation", () => {
     it("truncates string fields longer than 1024 chars", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       const longString = "a".repeat(2000);
       logInfo({ event: "test", message: longString });
       const payload = captureLog(logSpy);
@@ -421,7 +421,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("does not truncate strings at or under 1024 chars", async () => {
-      const { logInfo } = await import("../logging.js");
+      const { logInfo } = await import("../../../packages/functions-shared/src/logging.js");
       const normalString = "x".repeat(1024);
       logInfo({ event: "test", message: normalString });
       const payload = captureLog(logSpy);
@@ -433,7 +433,7 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("traceIdFromCallableRequest", () => {
     it("extracts trace ID from x-cloud-trace-context header", async () => {
-      const { traceIdFromCallableRequest } = await import("../logging.js");
+      const { traceIdFromCallableRequest } = await import("../../../packages/functions-shared/src/logging.js");
       const id = traceIdFromCallableRequest({
         rawRequest: { headers: { "x-cloud-trace-context": "abc123/0;o=1" } },
       });
@@ -441,7 +441,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("falls back to x-trace-id header", async () => {
-      const { traceIdFromCallableRequest } = await import("../logging.js");
+      const { traceIdFromCallableRequest } = await import("../../../packages/functions-shared/src/logging.js");
       const id = traceIdFromCallableRequest({
         rawRequest: { headers: { "x-trace-id": "fallback-trace" } },
       });
@@ -449,13 +449,13 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("generates a UUID when no trace header present", async () => {
-      const { traceIdFromCallableRequest } = await import("../logging.js");
+      const { traceIdFromCallableRequest } = await import("../../../packages/functions-shared/src/logging.js");
       const id = traceIdFromCallableRequest({ rawRequest: { headers: {} } });
       expect(id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
     it("generates a UUID when rawRequest is absent", async () => {
-      const { traceIdFromCallableRequest } = await import("../logging.js");
+      const { traceIdFromCallableRequest } = await import("../../../packages/functions-shared/src/logging.js");
       const id = traceIdFromCallableRequest({});
       expect(id).toMatch(/^[0-9a-f-]{36}$/);
     });
@@ -465,7 +465,7 @@ describe("PII scrubbing in structured logging", () => {
 
   describe("callable logging wrappers", () => {
     it("logCallableStart emits callable_start event", async () => {
-      const { logCallableStart } = await import("../logging.js");
+      const { logCallableStart } = await import("../../../packages/functions-shared/src/logging.js");
       logCallableStart("myFunction", "trace-abc", "uid-12345678");
       const payload = captureLog(logSpy);
       expect(payload.event).toBe("callable_start");
@@ -475,7 +475,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("logCallableSuccess emits callable_success event", async () => {
-      const { logCallableSuccess } = await import("../logging.js");
+      const { logCallableSuccess } = await import("../../../packages/functions-shared/src/logging.js");
       logCallableSuccess("myFunction", "trace-abc", "uid-12345678");
       const payload = captureLog(logSpy);
       expect(payload.event).toBe("callable_success");
@@ -483,7 +483,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("logCallableFailure emits callable_error event via logError", async () => {
-      const { logCallableFailure } = await import("../logging.js");
+      const { logCallableFailure } = await import("../../../packages/functions-shared/src/logging.js");
       logCallableFailure("myFunction", "trace-abc", new Error("boom"), "uid-12345678");
       const payload = captureLog(errorSpy);
       expect(payload.event).toBe("callable_error");
@@ -493,7 +493,7 @@ describe("PII scrubbing in structured logging", () => {
 
     // T-PRV-04: free-form String(error) is truncated AND scrubbed.
     it("scrubs PII embedded in a free-form error string", async () => {
-      const { logCallableFailure } = await import("../logging.js");
+      const { logCallableFailure } = await import("../../../packages/functions-shared/src/logging.js");
       logCallableFailure("fn", "t", new Error("failed for user bob@example.com from 10.0.0.9"), "uid-1");
       const payload = captureLog(errorSpy);
       expect(String(payload.error)).not.toContain("bob@example.com");
@@ -503,7 +503,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("truncates an over-long free-form error string", async () => {
-      const { logCallableFailure } = await import("../logging.js");
+      const { logCallableFailure } = await import("../../../packages/functions-shared/src/logging.js");
       logCallableFailure("fn", "t", "x".repeat(4000), "uid-1");
       const payload = captureLog(errorSpy);
       const err = String(payload.error);
@@ -512,7 +512,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("withCallableLogging logs start+success and returns handler result", async () => {
-      const { withCallableLogging } = await import("../logging.js");
+      const { withCallableLogging } = await import("../../../packages/functions-shared/src/logging.js");
       const result = await withCallableLogging("fn", {}, undefined, async () => "result-value");
       expect(result).toBe("result-value");
       expect(logSpy).toHaveBeenCalledTimes(2);
@@ -522,7 +522,7 @@ describe("PII scrubbing in structured logging", () => {
     });
 
     it("withCallableLogging logs start+error and re-throws on handler failure", async () => {
-      const { withCallableLogging } = await import("../logging.js");
+      const { withCallableLogging } = await import("../../../packages/functions-shared/src/logging.js");
       const boom = new Error("handler exploded");
       await expect(
         withCallableLogging("fn", {}, "uid123", async () => {

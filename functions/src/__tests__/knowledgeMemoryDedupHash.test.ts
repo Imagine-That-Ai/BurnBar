@@ -38,15 +38,15 @@ vi.mock("firebase-functions/logger", () => ({
   warn: vi.fn(),
   debug: vi.fn(),
 }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
 // App Check / ownership enforced via env elsewhere; no-op for the in-process call.
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 
 // Real validators (requireHexDigest, boundedTrimmedString, …) — only the Cloud
 // Pro entitlement gate and the Ultra-tier lookup are stubbed so the call runs
 // without Firestore entitlement docs.
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
@@ -73,7 +73,7 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../adminRuntime.js", async () => {
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", async () => {
   const { makeDb } = await import("./knowledgeDedupTestHarness.js");
   return { db: makeDb(), auth: {} };
 });
@@ -85,7 +85,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   afterEach(() => vi.clearAllMocks());
 
   it("two users + same plaintext -> different stored dedupHash (vault-keyed)", async () => {
-    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     await run(commitRequestForUser("userA", Buffer.alloc(32, 0xa1)));
@@ -105,7 +105,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   });
 
   it("a dump of a stored record contains NO field equal to the plaintext SHA-256 and NO cleartext repo path", async () => {
-    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     await run(commitRequestForUser("userA", Buffer.alloc(32, 0xa1)));
@@ -142,7 +142,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   });
 
   it("configureKnowledgeSource stores sourceManifestId and returns only a response compatibility alias", async () => {
-    const { configureKnowledgeSource } = await import("../callables/knowledgeMemory.js");
+    const { configureKnowledgeSource } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(configureKnowledgeSource);
     const sourceManifestId = "ab".repeat(32);
 
@@ -164,7 +164,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
     // REQUIRES the vault-keyed dedupHash + slugHmac and no longer accepts the
     // cleartext SHA-256 contentHash oracle, so a not-yet-updated client fails
     // instead of writing a v0 row.
-    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userLegacy", Buffer.alloc(32, 0xc3));
@@ -181,7 +181,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   });
 
   it("a v1 client that omits cloakedVector (sends a raw embedding) is REJECTED", async () => {
-    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userRawEmbed", Buffer.alloc(32, 0xd4));
@@ -194,7 +194,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   });
 
   it("accepts an optional path-bound Signal envelope on a knowledge vector", async () => {
-    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userSignal", Buffer.alloc(32, 0xe5));
@@ -218,7 +218,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   });
 
   it("rejects a polluted optional Signal envelope before any knowledge vector write", async () => {
-    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userSignalPolluted", Buffer.alloc(32, 0xe6));
@@ -232,7 +232,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   });
 
   it("rejects unapproved chat_memory vectors before write", async () => {
-    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userChatQuarantine", Buffer.alloc(32, 0x51));
@@ -249,7 +249,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   });
 
   it("stores approved chat_memory provenance without plaintext path side channels", async () => {
-    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userChatApproved", Buffer.alloc(32, 0x52));
@@ -272,7 +272,7 @@ describe("commitKnowledgeBatch — B-SEC-2 vault-keyed dedup, no plaintext side 
   });
 
   it("rejects a relocated optional Signal envelope before any knowledge vector write", async () => {
-    const { commitKnowledgeBatch } = await import("../callables/knowledgeMemory.js");
+    const { commitKnowledgeBatch } = await import("../../../functions-sync/src/domains/knowledge/knowledgeMemory.js");
     const run = callableRun(commitKnowledgeBatch);
 
     const req = commitRequestForUser("userSignalBad", Buffer.alloc(32, 0xf6));

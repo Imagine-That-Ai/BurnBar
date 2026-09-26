@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Elder Wand Judge Section

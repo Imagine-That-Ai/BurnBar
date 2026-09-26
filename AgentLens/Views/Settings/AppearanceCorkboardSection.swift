@@ -1,6 +1,12 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
+import OpenBurnBarLogParsers
+import OpenBurnBarAnalytics
 
 struct AppearanceCorkboardSection: View {
     @Environment(SettingsRouter.self) private var router: SettingsRouter?

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { LinearClient } from "../linear/linearClient.js";
+import { LinearClient } from "../../../functions-sync/src/linear/linearClient.js";
 
 const mocks = vi.hoisted(() => ({
   resilientFetch: vi.fn(),
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   resilientFetch: mocks.resilientFetch,
 }));
 

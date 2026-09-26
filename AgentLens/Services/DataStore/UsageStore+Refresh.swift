@@ -1,6 +1,25 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
+import OpenBurnBarData
+
+/// Ledger-wide analytic core of `DashboardUsageSnapshot`: per-window
+/// aggregate rows, the trailing 8-day cost/token series (offset 0 == today),
+/// and the per-day summaries. The covering newest-N rows are intentionally
+/// NOT part of this — they stay a live index-backed scan so session lists
+/// never serve rows past `loadedUsageLimit` staleness.
+struct DashboardRollupParts: Sendable {
+    /// Per-window GROUP BY rows keyed by time range.
+    let aggregatesByRange: [TimeRange: [UsageAggregateRow]]
+    /// Trailing cost series, offsets `0...7` (8 entries, 0 == today).
+    let dayCosts: [Double]
+    /// Trailing token series, offsets `0...7` (8 entries, 0 == today).
+    let dayTokens: [Int]
+    let dailySummaries: [DailyUsageSummary]
+}
 
 extension UsageStore {
     // MARK: - Refresh
@@ -208,26 +227,119 @@ extension UsageStore {
                 last7DayCosts: Array(repeating: 0, count: 6) + [today.totalCost],
                 last7DayTokenTotals: Array(repeating: 0, count: 6) + [today.totalTokens],
                 dailySummaries: [],
+                // `providerSummaries` is sorted by (cents desc, key asc):
+                // `.first` is the deterministic top provider. A raw-double
+                // `.max` would let ULP accumulation noise pick the winner.
                 topProviderToday: today.providerSummaries
-                    .max { $0.totalCost < $1.totalCost }
+                    .first
                     .map { ($0.provider, $0.totalCost) }
             )
         }
+    }
+
+    /// Materializable analytic core of the dashboard snapshot: every
+    /// ledger-wide aggregate EXCEPT the covering newest-N rows.
+    /// `DashboardRollupService` persists these parts as JSON in the
+    /// `dashboard_rollups` retrieval-health row so a fresh reload costs one
+    /// health read + one covering scan instead of the full multi-window
+    /// GROUP BY fan-out. See Wave 2.8.
+    static func fetchDashboardRollupParts(
+        db: Database,
+        now: Date
+    ) throws -> DashboardRollupParts {
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: now)
+        let windows = TimeRange.allCases.map { ($0, $0.dateRange(now: now)) }
+        let aggregatesByRange = try Self.fetchUsageAggregateRowsByTimeRange(
+            db: db,
+            windows: windows
+        )
+        let dayTotals = try Self.fetchOverlappingDayCostAndTokens(
+            db: db,
+            calendar: calendar,
+            todayStart: todayStart,
+            offsets: 0...7
+        )
+        return DashboardRollupParts(
+            aggregatesByRange: aggregatesByRange,
+            dayCosts: (0...7).map { dayTotals[$0]?.cost ?? 0 },
+            dayTokens: (0...7).map { dayTotals[$0]?.tokens ?? 0 },
+            dailySummaries: try Self.fetchDailySummaries(db: db)
+        )
+    }
+
+    /// Assembles a dashboard snapshot from live covering rows + analytic
+    /// parts. The stale path fetches both in one read transaction; the
+    /// materialized fresh path pairs a live covering scan with persisted
+    /// parts. Both produce identical snapshots for the same ledger state.
+    static func makeDashboardSnapshot(
+        coveringUsages: [TokenUsage],
+        parts: DashboardRollupParts,
+        now: Date
+    ) -> DashboardUsageSnapshot {
+        let windows = TimeRange.allCases.map { ($0, $0.dateRange(now: now)) }
+        var windowSummaries: [TimeRange: DashboardUsageWindowSummary] = [:]
+        for (timeRange, dateRange) in windows {
+            let windowCovering: [TokenUsage]
+            if let dateRange {
+                windowCovering = coveringUsages.filter { $0.intersects(dateRange: dateRange) }
+            } else {
+                windowCovering = coveringUsages
+            }
+            windowSummaries[timeRange] = Self.makeWindowSummary(
+                loadedUsages: windowCovering,
+                aggregateRows: parts.aggregatesByRange[timeRange] ?? []
+            )
+        }
+
+        let today = windowSummaries[.today] ?? .empty
+
+        let last7DayCosts = (0..<7).reversed().map { offset in
+            parts.dayCosts[offset]
+        }
+        let last7DayTokenTotals = (0..<7).reversed().map { offset in
+            parts.dayTokens[offset]
+        }
+        let rollingDailyTotal = (1...7).reduce(0.0) { partial, offset in
+            partial + parts.dayCosts[offset]
+        }
+
+        return DashboardUsageSnapshot(
+            loadedUsages: coveringUsages,
+            windowSummaries: windowSummaries,
+            rollingDailyAverage: rollingDailyTotal / 7,
+            distinctUsageDayCount: parts.dailySummaries.count,
+            last7DayCosts: last7DayCosts,
+            last7DayTokenTotals: last7DayTokenTotals,
+            dailySummaries: parts.dailySummaries,
+            // `providerSummaries` is sorted by (cents desc, key asc):
+            // `.first` is the deterministic top provider. A raw-double
+            // `.max` would let ULP accumulation noise pick the winner.
+            topProviderToday: today.providerSummaries
+                .first
+                .map { ($0.provider, $0.totalCost) }
+        )
     }
 
     func fetchDashboardUsageSnapshot(
         loadedUsageLimit: Int,
         now: Date = Date()
     ) async throws -> DashboardUsageSnapshot {
-        let calendar = Calendar.current
-        let todayStart = calendar.startOfDay(for: now)
+        try await fetchDashboardUsageSnapshotWithParts(
+            loadedUsageLimit: loadedUsageLimit,
+            now: now
+        ).snapshot
+    }
 
-        return try await dbQueue.read { db in
-            let windows = TimeRange.allCases.map { ($0, $0.dateRange(now: now)) }
-            let aggregatesByRange = try Self.fetchUsageAggregateRowsByTimeRange(
-                db: db,
-                windows: windows
-            )
+    /// Snapshot + the materializable parts behind it, from a single read
+    /// transaction. `DashboardRollupService` persists the parts on its stale
+    /// path so later fresh-path reloads can skip the GROUP BY fan-out.
+    func fetchDashboardUsageSnapshotWithParts(
+        loadedUsageLimit: Int,
+        now: Date = Date()
+    ) async throws -> (snapshot: DashboardUsageSnapshot, parts: DashboardRollupParts) {
+        try await dbQueue.read { db in
+            let parts = try Self.fetchDashboardRollupParts(db: db, now: now)
             // One covering scan (newest `loadedUsageLimit` rows, all-time).
             // Bounded windows previously each `SELECT * … LIMIT N` — five
             // full-row decodes — even though provider/model totals already
@@ -241,51 +353,12 @@ extension UsageStore {
                 dateRange: nil,
                 limit: loadedUsageLimit
             )
-            var windowSummaries: [TimeRange: DashboardUsageWindowSummary] = [:]
-            for (timeRange, dateRange) in windows {
-                let windowCovering: [TokenUsage]
-                if let dateRange {
-                    windowCovering = coveringUsages.filter { $0.intersects(dateRange: dateRange) }
-                } else {
-                    windowCovering = coveringUsages
-                }
-                windowSummaries[timeRange] = Self.makeWindowSummary(
-                    loadedUsages: windowCovering,
-                    aggregateRows: aggregatesByRange[timeRange] ?? []
-                )
-            }
-
-            let today = windowSummaries[.today] ?? .empty
-
-            let dayTotals = try Self.fetchOverlappingDayCostAndTokens(
-                db: db,
-                calendar: calendar,
-                todayStart: todayStart,
-                offsets: 0...7
+            let snapshot = Self.makeDashboardSnapshot(
+                coveringUsages: coveringUsages,
+                parts: parts,
+                now: now
             )
-            let last7DayCosts = (0..<7).reversed().map { offset in
-                dayTotals[offset]?.cost ?? 0
-            }
-            let last7DayTokenTotals = (0..<7).reversed().map { offset in
-                dayTotals[offset]?.tokens ?? 0
-            }
-            let rollingDailyTotal = (1...7).reduce(0.0) { partial, offset in
-                partial + (dayTotals[offset]?.cost ?? 0)
-            }
-
-            let dailySummaries = try Self.fetchDailySummaries(db: db)
-            return DashboardUsageSnapshot(
-                loadedUsages: coveringUsages,
-                windowSummaries: windowSummaries,
-                rollingDailyAverage: rollingDailyTotal / 7,
-                distinctUsageDayCount: dailySummaries.count,
-                last7DayCosts: last7DayCosts,
-                last7DayTokenTotals: last7DayTokenTotals,
-                dailySummaries: dailySummaries,
-                topProviderToday: today.providerSummaries
-                    .max { $0.totalCost < $1.totalCost }
-                    .map { ($0.provider, $0.totalCost) }
-            )
+            return (snapshot, parts)
         }
     }
 

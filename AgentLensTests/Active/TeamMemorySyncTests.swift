@@ -3,6 +3,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Team memory — the client sealer, the pull, the consent gate (D16 / P22, PR 3).
 ///
@@ -72,7 +73,7 @@ final class TeamMemorySyncTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         return PullFixture(
             queue: queue,
@@ -1185,7 +1186,7 @@ final class TeamMemorySyncTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let updatedAt = Date(timeIntervalSince1970: 1_700_008_000)
         for index in 0..<count {
             try await seedMirroredAgentMemory(
@@ -2289,7 +2290,7 @@ final class TeamMemorySyncTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let updatedAt = Date(timeIntervalSince1970: 1_700_009_000)
         try await seedMirroredAgentMemory(
             store: store,
@@ -2369,7 +2370,7 @@ final class TeamMemorySyncTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let updatedAt = Date(timeIntervalSince1970: 1_700_009_000)
         try await seedMirroredAgentMemory(
             store: store,

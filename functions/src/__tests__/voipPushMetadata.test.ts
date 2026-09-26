@@ -8,7 +8,7 @@ import {
   parseTriggerRequest,
   pushCallerInitial,
   sanitizePushDisplayName,
-} from "../voipPush.js";
+} from "../../../functions-media/src/voipPush.js";
 
 describe("VoIP/FCM push metadata minimization", () => {
   it("normalizes, control-scrubs, and caps caller display names", () => {

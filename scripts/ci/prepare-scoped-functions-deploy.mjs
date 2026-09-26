@@ -12,7 +12,15 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { prepareFunctionsRuntimePackage } from "./prepare-functions-runtime-package.mjs";
 
-const SCHEMA_VERSION = "openburnbar.staging-function-targets.v1";
+const SCHEMA_VERSION = "openburnbar.staging-function-targets.v2";
+// 3.5 deploy codebases, resolved relative to --functions-dir (the admin
+// codebase, which also hosts the staging target manifest).
+const CODEBASE_DIRS = {
+  admin: ".",
+  identity: "../functions-identity",
+  sync: "../functions-sync",
+  media: "../functions-media",
+};
 const TARGETS_RE =
   /^functions:[A-Za-z][A-Za-z0-9_-]*(,functions:[A-Za-z][A-Za-z0-9_-]*)*$/u;
 const MODULE_RE = /^\.\/[A-Za-z0-9_./-]+\.js$/u;
@@ -84,23 +92,7 @@ const { targets, functionsDir: rawFunctionsDir } = parseArgs(
   process.argv.slice(2),
 );
 const functionsDir = resolve(rawFunctionsDir);
-const packagePath = join(functionsDir, "package.json");
 const manifestPath = join(functionsDir, "staging-deploy-targets.json");
-const libDir = join(functionsDir, "lib");
-const outputPath = join(libDir, "staging-scoped-index.cjs");
-const packageJson = readJson(packagePath, "Functions package.json");
-if (packageJson.main !== "lib/index.js") {
-  fail(
-    "Functions package.json must use the canonical lib/index.js entrypoint before preparation",
-  );
-}
-
-// Candidate source is built and tested before artifact packaging. The trusted
-// deploy artifact contains compiled lib/ plus locked local packages only, so no
-// npm lifecycle/build/test script is valid inside Cloud Build. Removing every
-// script also prevents candidate-controlled lifecycle code from executing
-// after the trusted workflow has authenticated.
-packageJson.scripts = {};
 
 if (targets && !TARGETS_RE.test(targets))
   fail(
@@ -131,8 +123,7 @@ for (const targetName of requestedNames) {
 if (new Set(requestedNames).size !== requestedNames.length)
   fail("targets must not contain duplicates");
 
-const modules = new Map();
-const bindings = [];
+const byCodebase = new Map();
 for (const targetName of requestedNames) {
   const entry = manifest.targets[targetName];
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -140,61 +131,103 @@ for (const targetName of requestedNames) {
   }
   const moduleSpecifier = entry.module;
   const exportName = entry.export;
+  const codebase = entry.codebase;
   if (
     typeof moduleSpecifier !== "string" ||
     typeof exportName !== "string" ||
-    !EXPORT_RE.test(exportName)
+    !EXPORT_RE.test(exportName) ||
+    typeof codebase !== "string" ||
+    !(codebase in CODEBASE_DIRS)
   ) {
     fail(`target ${targetName} has an invalid manifest binding`);
   }
-  validateModulePath(libDir, moduleSpecifier, targetName);
-  if (!modules.has(moduleSpecifier))
-    modules.set(moduleSpecifier, `targetModule${modules.size}`);
-  bindings.push({
-    targetName,
-    exportName,
-    variable: modules.get(moduleSpecifier),
-  });
+  if (!byCodebase.has(codebase)) byCodebase.set(codebase, []);
+  byCodebase.get(codebase).push({ targetName, moduleSpecifier, exportName });
 }
 
-const generated = [
-  '"use strict";',
-  "// Generated before staging authentication. Do not commit this file.",
-  ...[...modules].map(
-    ([moduleSpecifier, variable]) =>
-      `const ${variable} = require(${JSON.stringify(moduleSpecifier)});`,
-  ),
-  ...bindings.flatMap(({ targetName, exportName, variable }) => [
-    `if (typeof ${variable}[${JSON.stringify(exportName)}] !== "function") {`,
-    `  throw new Error(${JSON.stringify(`Scoped staging target ${targetName} is not a function export.`)});`,
-    "}",
-    `exports[${JSON.stringify(targetName)}] = ${variable}[${JSON.stringify(exportName)}];`,
-  ]),
-  "",
-].join("\n");
-writeAtomic(outputPath, generated);
+const involvedCodebases = [...byCodebase.keys()].sort();
+const digests = [];
+for (const codebase of involvedCodebases) {
+  const codebaseDir = resolve(functionsDir, CODEBASE_DIRS[codebase]);
+  const packagePath = join(codebaseDir, "package.json");
+  const libDir = join(codebaseDir, "lib");
+  const outputPath = join(libDir, "staging-scoped-index.cjs");
+  const packageJson = readJson(packagePath, `${codebase} package.json`);
+  if (packageJson.main !== "lib/index.js") {
+    fail(
+      `${codebase} package.json must use the canonical lib/index.js entrypoint before preparation`,
+    );
+  }
 
-packageJson.main = "lib/staging-scoped-index.cjs";
-writeAtomic(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
-prepareFunctionsRuntimePackage(functionsDir);
+  // Candidate source is built and tested before artifact packaging. The trusted
+  // deploy artifact contains compiled lib/ plus locked local packages only, so no
+  // npm lifecycle/build/test script is valid inside Cloud Build. Removing every
+  // script also prevents candidate-controlled lifecycle code from executing
+  // after the trusted workflow has authenticated.
+  packageJson.scripts = {};
+
+  const modules = new Map();
+  const bindings = [];
+  for (const { targetName, moduleSpecifier, exportName } of byCodebase.get(
+    codebase,
+  )) {
+    validateModulePath(libDir, moduleSpecifier, targetName);
+    if (!modules.has(moduleSpecifier))
+      modules.set(moduleSpecifier, `targetModule${modules.size}`);
+    bindings.push({
+      targetName,
+      exportName,
+      variable: modules.get(moduleSpecifier),
+    });
+  }
+
+  const generated = [
+    '"use strict";',
+    "// Generated before staging authentication. Do not commit this file.",
+    ...[...modules].map(
+      ([moduleSpecifier, variable]) =>
+        `const ${variable} = require(${JSON.stringify(moduleSpecifier)});`,
+    ),
+    ...bindings.flatMap(({ targetName, exportName, variable }) => [
+      `if (typeof ${variable}[${JSON.stringify(exportName)}] !== "function") {`,
+      `  throw new Error(${JSON.stringify(`Scoped staging target ${targetName} is not a function export.`)});`,
+      "}",
+      `exports[${JSON.stringify(targetName)}] = ${variable}[${JSON.stringify(exportName)}];`,
+    ]),
+    "",
+  ].join("\n");
+  writeAtomic(outputPath, generated);
+
+  packageJson.main = "lib/staging-scoped-index.cjs";
+  writeAtomic(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+  prepareFunctionsRuntimePackage(codebaseDir);
+  digests.push(
+    `${codebase}:sha256=${createHash("sha256").update(generated).digest("hex")}`,
+  );
+}
 
 // The trusted deploy must receive the resolved selector list so a blank input
 // deploys with a filtered `--only functions:<name>,...` scope. An unscoped
 // `--only functions` deploy against the scoped entrypoint would ask the
 // non-interactive Firebase CLI to delete every remote function missing from
-// the manifest and abort.
+// the manifest and abort. The packaging step also needs the involved codebase
+// dirs so the artifact ships only reviewed code.
 const resolvedTargets = requestedNames
   .map((targetName) => `functions:${targetName}`)
   .join(",");
 if (process.env.GITHUB_OUTPUT) {
   appendFileSync(
     process.env.GITHUB_OUTPUT,
-    `function_targets=${resolvedTargets}\n`,
+    `function_targets=${resolvedTargets}\n` +
+      `involved_codebases=${involvedCodebases
+        .map((codebase) =>
+          codebase === "admin" ? "functions" : `functions-${codebase}`,
+        )
+        .join(",")}\n`,
     "utf8",
   );
 }
 
-const digest = createHash("sha256").update(generated).digest("hex");
 console.log(
-  `Scoped staging Functions entrypoint: ${requestedNames.length} reviewed target(s), sha256=${digest}`,
+  `Scoped staging Functions entrypoints: ${requestedNames.length} reviewed target(s) across ${involvedCodebases.join(",")} (${digests.join(" ")})`,
 );

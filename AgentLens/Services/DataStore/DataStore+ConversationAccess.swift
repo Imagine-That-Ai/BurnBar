@@ -247,10 +247,6 @@ extension DataStore {
         try await actor.conversationStore.threadID(forChatMessageID: messageID)
     }
 
-    func deleteAllChatMessages() async throws {
-        try await actor.conversationStore.deleteAllChatMessages()
-    }
-
     func searchConversationsFTS(
         query: String,
         provider: AgentProvider? = nil,
@@ -361,5 +357,12 @@ extension DataStore {
             conversationSources: conversationSources,
             limit: limit
         )
+    }
+
+    /// Age retention for conversations (Wave 2.6): reaps rows older than the
+    /// usage cutoff with their search/summary rows. Returns rows reaped.
+    @discardableResult
+    func reapConversationsOlderThan(_ cutoff: Date) async throws -> Int {
+        try await actor.conversationStore.reapConversationsOlderThan(cutoff)
     }
 }

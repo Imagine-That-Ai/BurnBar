@@ -2,6 +2,7 @@ import GRDB
 import OpenBurnBarKernel
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// E19 (app half): the sync-status row's read, against a real migrated store.
 ///

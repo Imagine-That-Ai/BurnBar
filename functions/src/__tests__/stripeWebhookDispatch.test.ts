@@ -12,11 +12,11 @@ const state = vi.hoisted(() => ({
   deactivateCustomer: vi.fn(),
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
 }));
 
-vi.mock("../callables/shared.js", () => ({
+vi.mock("../../../functions-identity/src/shared/stripe.js", () => ({
   applyStripeCheckoutSession: state.applyCheckout,
   applyStripeSubscription: state.applySubscription,
   reconcileStripeInvoice: state.reconcileInvoice,
@@ -27,7 +27,7 @@ vi.mock("../callables/shared.js", () => ({
   deactivateStripeCustomerEntitlements: state.deactivateCustomer,
 }));
 
-import { processStripeWebhookEvent } from "../callables/stripeWebhookDispatch.js";
+import { processStripeWebhookEvent } from "../../../functions-identity/src/callables/stripeWebhookDispatch.js";
 
 function webhookEvent(type: string, object: Record<string, unknown>, id = "evt_dispatch_1"): Stripe.Event {
   const value = {

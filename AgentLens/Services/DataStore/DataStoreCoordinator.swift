@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import Observation
 import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - DataStoreCoordinator
 //
@@ -391,13 +392,23 @@ final class DataStoreCoordinator {
 
     static func makeInMemoryForTesting(
         runMigrations: Bool = true,
-        refreshOnInit: Bool = false
+        refreshOnInit: Bool = false,
+        chatWriter: ((any DatabaseWriter) -> any ChatHistoryWriter)? = nil,
+        snapshotWriter: ((any DatabaseWriter) -> any ProjectMemorySnapshotWriter)? = nil,
+        vectorSnapshotWriter: ((any DatabaseWriter) -> any VectorIndexSnapshotWriter)? = nil,
+        searchIndexWriter: ((any DatabaseWriter) -> any SearchIndexWriter)? = nil,
+        switcherActiveProfileWriter: ((any DatabaseWriter) -> any SwitcherActiveProfileWriter)? = nil
     ) throws -> DataStoreCoordinator {
         let queue = try DatabaseQueue()
         return try DataStoreCoordinator(
             databaseQueue: queue,
             runMigrations: runMigrations,
-            refreshOnInit: refreshOnInit
+            refreshOnInit: refreshOnInit,
+            chatWriter: chatWriter?(queue) ?? DaemonChatHistoryWriter(),
+            snapshotWriter: snapshotWriter?(queue) ?? DaemonProjectMemorySnapshotWriter(),
+            vectorSnapshotWriter: vectorSnapshotWriter?(queue) ?? DaemonVectorIndexSnapshotWriter(),
+            searchIndexWriter: searchIndexWriter?(queue) ?? DaemonSearchIndexWriter(),
+            switcherActiveProfileWriter: switcherActiveProfileWriter?(queue) ?? DaemonSwitcherActiveProfileWriter()
         )
     }
     #endif
@@ -409,6 +420,14 @@ final class DataStoreCoordinator {
     /// startup PRAGMAs do not require post-open synchronous queue writes.
     nonisolated private static func installStartupPragmas(on config: inout Configuration) {
         config.prepareDatabase { @Sendable db in
+            // Wave 2.6: auto_vacuum FIRST — enabling WAL first seals a fresh
+            // header with NONE and this set becomes a silent no-op. Write
+            // connections only: the pragma mutates the header. On
+            // pre-existing databases this is a no-op until the one-time
+            // guided VACUUM (DatabaseVacuumPolicy) rebuilds them.
+            if db.configuration.readonly == false {
+                try db.execute(sql: "PRAGMA auto_vacuum = INCREMENTAL")
+            }
             try db.execute(sql: "PRAGMA journal_mode = WAL")
             try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")
             try db.execute(sql: "PRAGMA synchronous = NORMAL")
@@ -460,12 +479,24 @@ final class DataStoreCoordinator {
         databaseQueue: any DatabaseWriter,
         runMigrations: Bool = true,
         refreshOnInit: Bool = true,
-        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil
+        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil,
+        chatWriter: any ChatHistoryWriter = DaemonChatHistoryWriter(),
+        snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter(),
+        vectorSnapshotWriter: any VectorIndexSnapshotWriter = DaemonVectorIndexSnapshotWriter(),
+        memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter(),
+        searchIndexWriter: any SearchIndexWriter = DaemonSearchIndexWriter(),
+        switcherActiveProfileWriter: any SwitcherActiveProfileWriter = DaemonSwitcherActiveProfileWriter()
     ) throws {
         let actor = try DataStoreActor(
             databaseQueue: databaseQueue,
             runMigrations: runMigrations,
-            migrationBackupConfigurationBuilder: migrationBackupConfigurationBuilder
+            migrationBackupConfigurationBuilder: migrationBackupConfigurationBuilder,
+            chatWriter: chatWriter,
+            snapshotWriter: snapshotWriter,
+            vectorSnapshotWriter: vectorSnapshotWriter,
+            memoryAuthorityWriter: memoryAuthorityWriter,
+            searchIndexWriter: searchIndexWriter,
+            switcherActiveProfileWriter: switcherActiveProfileWriter
         )
         self.actor = actor
 
@@ -542,7 +573,10 @@ final class DataStoreCoordinator {
 
         do {
             let marker = await actor.usageTableWriteMarker
-            let snapshot = try await actor.fetchDashboardUsageSnapshot(loadedUsageLimit: Self.quickHydrationLimit)
+            let snapshot = try await DashboardRollupService(dataStore: self).snapshotAsync(
+                loadedUsageLimit: Self.quickHydrationLimit,
+                windowBoundary: nextWindowBoundary
+            )
             guard generation == refreshGeneration else { return }
             lastReloadedUsageWriteMarker = marker
             replaceUsageSnapshot(snapshot)
@@ -631,11 +665,12 @@ final class DataStoreCoordinator {
     /// O(total-history): an idle tick previously refetched + re-sorted +
     /// re-aggregated every `token_usage` row before the fingerprint gate
     /// could discard the result; now it performs one actor hop to read an
-    /// integer and returns. When content DID change, the reload uses the
-    /// same `fetchDashboardUsageSnapshot` path as init (`GROUP BY` window
-    /// totals + `quickHydrationLimit` covering rows) — not `SELECT *` /
-    /// `fetchAllUsage` — so displayed numbers stay SQL-accurate without
-    /// decoding the entire ledger.
+    /// integer and returns. When content DID change, the reload goes through
+    /// `DashboardRollupService` (Wave 2.8): a fresh materialized payload
+    /// serves one health read + the `quickHydrationLimit` covering scan, and
+    /// only a genuinely stale payload runs the `GROUP BY` fan-out once and
+    /// persists the new parts — never `SELECT *` / `fetchAllUsage` — so
+    /// displayed numbers stay SQL-accurate without decoding the ledger.
     func reloadUsagesIfChanged() async {
         let marker = await actor.usageTableWriteMarker
         let now = nowProvider()
@@ -670,8 +705,9 @@ final class DataStoreCoordinator {
             // may already be visible in the rows, and the next tick then
             // reloads once more. Never the reverse (stale rows recorded
             // under a newer marker).
-            let snapshot = try await actor.fetchDashboardUsageSnapshot(
-                loadedUsageLimit: Self.quickHydrationLimit
+            let snapshot = try await DashboardRollupService(dataStore: self).snapshotAsync(
+                loadedUsageLimit: Self.quickHydrationLimit,
+                windowBoundary: nextWindowBoundary
             )
             lastReloadedUsageWriteMarker = marker
             replaceUsageSnapshot(snapshot)

@@ -1,5 +1,10 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
+import OpenBurnBarLogParsers
+import OpenBurnBarAnalytics
 
 // MARK: - Project Spend Lane
 
@@ -200,7 +205,7 @@ struct ProjectSpendCard: View {
 
     private var topModelsLine: String {
         let models = summary.modelBreakdown.prefix(3).map { model in
-            "\(OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(model.modelName)) \(model.cost.formatAsCost())"
+            "\(OpenBurnBarLogParsers.TokenExtractionUtility.displayNameForModel(model.modelName)) \(model.cost.formatAsCost())"
         }
         return models.joined(separator: " · ")
     }

@@ -45,18 +45,18 @@ import {
   fromLibEnvironment,
   AppleJWSVerifier,
   JWSVerificationFailure,
-} from "../lib/appstore/verifier.js";
+} from "../../functions-identity/lib/domains/billing/appstore/verifier.js";
 
-import { appendEntitlementEvent, __testing__ as auditTesting } from "../lib/appstore/audit.js";
+import { appendEntitlementEvent, __testing__ as auditTesting } from "../../functions-identity/lib/domains/billing/appstore/audit.js";
 
-import { __testing__ as quotaTesting } from "../lib/quota.js";
+import { __testing__ as quotaTesting } from "../../packages/functions-shared/lib/quota.js";
 
 import {
   beginBinding,
   EntitlementReconcileError,
   reconcileEntitlement,
   __testing__ as reconcilerTesting,
-} from "../lib/appstore/reconciler.js";
+} from "../../functions-identity/lib/domains/billing/appstore/reconciler.js";
 
 import { Environment } from "@apple/app-store-server-library";
 

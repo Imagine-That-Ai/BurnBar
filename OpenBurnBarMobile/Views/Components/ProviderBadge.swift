@@ -1,5 +1,7 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 /// Deprecated — use `ProviderAvatar` instead.
 /// Kept for backward compatibility; delegates to `.tile` mode.

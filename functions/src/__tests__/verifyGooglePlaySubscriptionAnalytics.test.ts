@@ -19,8 +19,8 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { createHash } from "node:crypto";
 
-import { ServerAnalytics, type AnalyticsEnvelope, type ServerAnalyticsTransport } from "../analytics/recorder.js";
-import { setServerAnalyticsForTest } from "../analytics/index.js";
+import { ServerAnalytics, type AnalyticsEnvelope, type ServerAnalyticsTransport } from "../../../functions-identity/src/analytics/recorder.js";
+import { setServerAnalyticsForTest } from "../../../functions-identity/src/analytics/index.js";
 
 const state = vi.hoisted(() => {
   const docSets: Array<{ path: string; data: Record<string, unknown> }> = [];
@@ -44,7 +44,7 @@ vi.mock("googleapis", () => ({
   },
 }));
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     doc: (path: string) => ({
       get: async () => ({ exists: false }),
@@ -54,8 +54,8 @@ vi.mock("../adminRuntime.js", () => ({
     }),
   },
 }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: state.enforceMock }));
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: state.enforceMock }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({
     enforceAppCheck: false,
     googlePlayPackageName: "ai.openburnbar.app",
@@ -74,41 +74,52 @@ vi.mock("../config.js", () => ({
     burnBarUltraAnnualProductID: "burnbar_ultra_legacy_annual",
   }),
 }));
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   externalApiWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
   stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
 }));
-vi.mock("../callables/googlePlayTokenClaims.js", () => ({ claimGooglePlayPurchaseToken: state.claimMock }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../functions-identity/src/callables/googlePlayTokenClaims.js", () => ({ claimGooglePlayPurchaseToken: state.claimMock }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: vi.fn(), logError: vi.fn(), logWarn: vi.fn() };
 });
-vi.mock("../callables/shared.js", async () => {
-  const { createHash: hash } = await import("node:crypto");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
   return {
     BURNBAR_PRO_ENTITLEMENT_ID: "burnbar_pro",
     BURNBAR_PRO_MAX_ENTITLEMENT_ID: "burnbar_pro_max",
     BURNBAR_ULTRA_ENTITLEMENT_ID: "burnbar_ultra",
+    assertActiveBurnBarCloudProEntitlement: state.assertActiveMock,
+    creditCloudProTopUp: vi.fn(),
+    writeBurnBarProEntitlement: state.writeEntitlementMock,
+  };
+});
+vi.mock("../../../functions-identity/src/shared/stripe.js", async () => {
+  return {
     STRIPE_API_SECRETS: [],
     STRIPE_WEBHOOK_SECRETS: [],
+    requireConfiguredStripe: vi.fn(),
+    requireConfiguredStripeWebhookSecret: vi.fn(),
+    getOrCreateStripeCustomer: vi.fn(),
+    applyStripeCheckoutSession: vi.fn(),
+    applyStripeSubscription: vi.fn(),
+    reconcileStripeInvoice: vi.fn(),
+    reconcileStripeCharge: vi.fn(),
+    reconcileStripeRefund: vi.fn(),
+    reconcileStripeDispute: vi.fn(),
+    reconcileStripeCreditNote: vi.fn(),
+    deactivateStripeCustomerEntitlements: vi.fn(),
+    assertStripeCustomerCanStartSubscriptionCheckout: vi.fn(),
+    findReusableStripeSubscriptionCheckoutSession: vi.fn(),
+  };
+});
+vi.mock("../../../functions-identity/src/shared/googlePlay.js", async () => {
+  return {
     GOOGLE_PLAY_ACTIVE_STATES: new Set([
       "SUBSCRIPTION_STATE_ACTIVE",
       "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
       "SUBSCRIPTION_STATE_CANCELED",
     ]),
-    nowISO: () => new Date().toISOString(),
-    boundedTrimmedString: (raw: unknown, fieldName: string, _maxLength: number, required?: boolean) => {
-      if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
-      if (required) throw new Error(`${fieldName} is required.`);
-      return undefined;
-    },
-    sha256Hex: (text: string) => hash("sha256").update(text).digest("hex"),
-    requireConfiguredStripe: vi.fn(),
-    requireConfiguredStripeWebhookSecret: vi.fn(),
-    boundedHttpsURL: vi.fn(),
-    assertActiveBurnBarCloudProEntitlement: state.assertActiveMock,
-    getOrCreateStripeCustomer: vi.fn(),
     selectGooglePlaySubscriptionLineItem: (
       purchase: { lineItems?: Array<{ productId?: unknown; expiryTime?: unknown }> },
       preferredProductIDs: string[],
@@ -128,22 +139,23 @@ vi.mock("../callables/shared.js", async () => {
         expiresAtMillis: typeof lineItem.expiryTime === "string" ? Date.parse(lineItem.expiryTime) : 0,
       };
     },
-    applyStripeCheckoutSession: vi.fn(),
-    applyStripeSubscription: vi.fn(),
-    reconcileStripeInvoice: vi.fn(),
-    reconcileStripeCharge: vi.fn(),
-    reconcileStripeRefund: vi.fn(),
-    reconcileStripeDispute: vi.fn(),
-    reconcileStripeCreditNote: vi.fn(),
-    deactivateStripeCustomerEntitlements: vi.fn(),
-    assertStripeCustomerCanStartSubscriptionCheckout: vi.fn(),
-    findReusableStripeSubscriptionCheckoutSession: vi.fn(),
-    creditCloudProTopUp: vi.fn(),
-    writeBurnBarProEntitlement: state.writeEntitlementMock,
+  };
+});
+vi.mock("../../../packages/functions-shared/src/shared/validators.js", async () => {
+  const { createHash: hash } = await import("node:crypto");
+  return {
+    nowISO: () => new Date().toISOString(),
+    boundedTrimmedString: (raw: unknown, fieldName: string, _maxLength: number, required?: boolean) => {
+      if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+      if (required) throw new Error(`${fieldName} is required.`);
+      return undefined;
+    },
+    sha256Hex: (text: string) => hash("sha256").update(text).digest("hex"),
+    boundedHttpsURL: vi.fn(),
   };
 });
 
-import { verifyGooglePlayBurnBarProSubscription } from "../callables/stripe.js";
+import { verifyGooglePlayBurnBarProSubscription } from "../../../functions-identity/src/domains/billing/stripe.js";
 
 const UID = "user-billing-1";
 const TOKEN = "gp-subscription-token-1";

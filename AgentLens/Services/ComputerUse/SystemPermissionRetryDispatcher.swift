@@ -1,7 +1,7 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import Foundation
 import OSLog
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 /// Phase 14 — When `SystemPermissionMonitor` flips a TCC bucket to

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TokenMessage } from "firebase-admin/messaging";
-import { fanoutDeviceApprovalRequest } from "../deviceApprovalPush.js";
+import { fanoutDeviceApprovalRequest } from "../../../packages/functions-shared/src/deviceApprovalPush.js";
 
 describe("deviceApprovalPush", () => {
   it("fans out push notification to companion devices excluding the requesting device", async () => {

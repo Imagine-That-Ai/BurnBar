@@ -24,7 +24,13 @@ final class VectorSemanticDeltaIntegrationTests: XCTestCase {
 
     private func makeStore() throws -> DataStore {
         let queue = try DatabaseQueue(path: ":memory:")
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
     }
 
     private func seedEmbeddingModel(
@@ -104,7 +110,7 @@ final class VectorSemanticDeltaIntegrationTests: XCTestCase {
             createdAt: updatedAt,
             updatedAt: updatedAt
         )
-        try await store.replaceSearchChunks(documentID: documentID, title: document.title, chunks: [chunk])
+        try await store.replaceSearchChunks(documentID: documentID, title: document.title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: [chunk])
 
         let vector = try await embedder.embedding(for: text)
         try await store.upsertChunkEmbedding(

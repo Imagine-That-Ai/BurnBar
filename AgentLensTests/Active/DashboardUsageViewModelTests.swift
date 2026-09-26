@@ -1,6 +1,7 @@
 import XCTest
 import GRDB
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 // MARK: - DashboardUsageViewModelTests
 

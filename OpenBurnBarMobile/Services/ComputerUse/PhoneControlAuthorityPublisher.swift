@@ -2,7 +2,7 @@
 import CryptoKit
 import Foundation
 import LocalAuthentication
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 import OpenBurnBarIrohRelay
 

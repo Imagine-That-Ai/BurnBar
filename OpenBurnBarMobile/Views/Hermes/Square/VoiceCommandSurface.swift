@@ -1,7 +1,10 @@
 import SwiftUI
 import Speech
 import AVFoundation
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Voice Command Surface (Hermes Square §6.7)
 //

@@ -474,7 +474,7 @@ final class MemoryExportBundleTests: XCTestCase {
             try MemoryExportFixtureStore.insertAppMemory(db, id: "S1", body: "The key is \(secret) and it rotates.")
         }
         let snapshot = try MemoryExportFixtureStore.snapshot(queue)
-        // NOT `XCTSkipUnless`. This is the strongest security assertion in the
+        // NOT a conditional-skip guard. This is the strongest security assertion in the
         // suite, and XCTest counts a skip as a pass — so on a machine where the
         // corpus resource does not resolve, the green run proved nothing, which
         // is the same fail-open shape §6 refuses for `python3 -c 'import

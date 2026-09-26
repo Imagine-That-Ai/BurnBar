@@ -1,6 +1,7 @@
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 
 enum OpenClawServiceError: LocalizedError {
     case selectedModelUnavailable(String)
@@ -290,7 +291,7 @@ final class OpenClawService {
     // MARK: - Parsing
 
     static func parseModels(data: Data) -> [HermesRuntimeModelOption] {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return []
         }
         let raw = (object["data"] as? [[String: Any]]) ?? []

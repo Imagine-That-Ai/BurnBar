@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
 import WidgetKit
 
 /// Owns the verdict pipeline state on the mobile (iOS/iPad) Insights tab.

@@ -3,6 +3,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// U8 of the usage-memory program — the executable v1 replication invariant:
 /// **usage memories are LOCAL-ONLY**. They must never reach the sealed-facts
@@ -24,7 +25,7 @@ final class UsageMemoryCloudSyncInvariantTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        return (queue, ControlPlaneStore(dbQueue: queue))
+        return (queue, ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue)))
     }
 
     /// Seeds one APPROVED memory per usage kind plus one approved chat memory,

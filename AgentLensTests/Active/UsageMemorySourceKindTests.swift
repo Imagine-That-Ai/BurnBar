@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// PR1 of the usage-memory program: `MemorySourceKind` gains the two usage
 /// kinds and the authority store is parameterized by source kind. These tests
@@ -15,7 +16,7 @@ final class UsageMemorySourceKindTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        return (queue, ControlPlaneStore(dbQueue: queue))
+        return (queue, ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue)))
     }
 
     func test_chatWrapperKeepsRowShapeAndAuditLabelsByteIdentical() async throws {

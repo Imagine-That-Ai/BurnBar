@@ -47,11 +47,22 @@ function expectPass(label) {
 }
 
 function expectFailure(label, path, source) {
+  expectMutation(label, path, source);
   writeFileSync(path, source);
   const result = runGate();
   if (result.status === 0) throw new Error(`${label}: expected failure`);
   writeFileSync(callerPath, pristineCaller);
   writeFileSync(trustedPath, pristineTrusted);
+}
+
+// A mutation that matches nothing leaves the pristine workflow in place, so
+// the gate passes and the failure below misreports the cause. Fail at the
+// mutation site instead.
+function expectMutation(label, path, source) {
+  const pristine = path === callerPath ? pristineCaller : pristineTrusted;
+  if (source === pristine) {
+    throw new Error(`${label}: mutation was a no-op (needle not found)`);
+  }
 }
 
 try {
@@ -189,17 +200,17 @@ try {
     "TypeScript declarations retained",
     callerPath,
     pristineCaller.replace(
-      `          find "$destination/lib" -type f \\
-            \\( -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete`,
-      "          echo declarations-retained",
+      `            find "$destination/lib" -type f \\
+              \\( -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete`,
+      "            echo declarations-retained",
     ),
   );
   expectFailure(
     "certificate documentation retained",
     callerPath,
     pristineCaller.replace(
-      '          rm -f "$destination/lib/appstore/certs/README.md"',
-      "          echo certificate-documentation-retained",
+      '            rm -f "$destination/lib/domains/billing/appstore/certs/README.md"',
+      "            echo certificate-documentation-retained",
     ),
   );
   expectFailure(
@@ -238,7 +249,7 @@ try {
     "missing local Functions packages",
     callerPath,
     pristineCaller.replace(
-      'cp -R functions/vendor "$destination/vendor"',
+      'cp -R "$codebase/vendor" "$destination/vendor"',
       'echo "vendor omitted"',
     ),
   );
@@ -281,12 +292,12 @@ try {
     "staging dotenv self-truncation",
     trustedPath,
     pristineTrusted.replace(
-      `          } > "$env_temp"
-          mv "$env_temp" "$env_file"
-          trap - EXIT`,
-      `          } > "$env_file"
-          rm -f "$env_temp"
-          trap - EXIT`,
+      `            } > "$env_temp"
+            mv "$env_temp" "$env_file"
+            trap - EXIT`,
+      `            } > "$env_file"
+            rm -f "$env_temp"
+            trap - EXIT`,
     ),
   );
   expectFailure(

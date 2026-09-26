@@ -5,6 +5,7 @@ import Darwin
 import Glibc
 #endif
 import Foundation
+import OpenBurnBarKernel
 
 /// Result of one local `codex exec` invocation: the raw exit code plus the
 /// captured stdout/stderr. Mirrors `FactoryDroidProcessResult` so the daemon's
@@ -412,10 +413,10 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
     """
 
     static func chatCompletionPrompt(from body: Data) throws -> (prompt: String, stream: Bool) {
-        guard let object = try JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+        guard let object = try JSONSerialization.jsonObject(with: body) as? DaemonJSONObject else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
-        let messages = (object["messages"] as? [[String: Any]]) ?? []
+        let messages = (object["messages"] as? [DaemonJSONObject]) ?? []
         var parts = [backendGuardrail]
         for message in messages {
             let role = (message["role"] as? String ?? "user").capitalized
@@ -424,7 +425,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
                 parts.append("\(role):\n\(content)")
             }
         }
-        if let responseFormat = object["response_format"] as? [String: Any],
+        if let responseFormat = object["response_format"] as? DaemonJSONObject,
            (responseFormat["type"] as? String) == "json_object" {
             parts.append("Return valid JSON only.")
         }
@@ -432,7 +433,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
     }
 
     static func responsesPrompt(from body: Data) throws -> (prompt: String, stream: Bool) {
-        guard let object = try JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+        guard let object = try JSONSerialization.jsonObject(with: body) as? DaemonJSONObject else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
         var parts = [backendGuardrail]
@@ -455,7 +456,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
             return string
         case let array as [Any]:
             return array.map(text(from:)).filter { !$0.isEmpty }.joined(separator: "\n")
-        case let object as [String: Any]:
+        case let object as DaemonJSONObject:
             if let text = object["text"] as? String {
                 return text
             }
@@ -484,7 +485,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty,
                   let data = trimmed.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 return
             }
             if let text = agentMessageText(from: object), !text.isEmpty {
@@ -494,13 +495,13 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
         return latest
     }
 
-    private static func agentMessageText(from object: [String: Any]) -> String? {
-        if let item = object["item"] as? [String: Any],
+    private static func agentMessageText(from object: DaemonJSONObject) -> String? {
+        if let item = object["item"] as? DaemonJSONObject,
            (item["type"] as? String) == "agent_message",
            let text = item["text"] as? String {
             return text
         }
-        if let message = object["message"] as? [String: Any],
+        if let message = object["message"] as? DaemonJSONObject,
            let text = message["text"] as? String {
             return text
         }
@@ -518,7 +519,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty,
                   let data = trimmed.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data),
                   (object["type"] as? String) == "error" else {
                 return
             }
@@ -577,7 +578,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
     private static func chatCompletionResponseBody(modelID: String, output: String, stream: Bool) throws -> Data {
         let id = "chatcmpl-openburnbar-codex-\(UUID().uuidString)"
         if stream {
-            let chunk: [String: Any] = [
+            let chunk: DaemonJSONObject = [
                 "id": id,
                 "object": "chat.completion.chunk",
                 "created": Int(Date().timeIntervalSince1970),
@@ -588,7 +589,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
                     "finish_reason": NSNull()
                 ]]
             ]
-            let done: [String: Any] = [
+            let done: DaemonJSONObject = [
                 "id": id,
                 "object": "chat.completion.chunk",
                 "created": Int(Date().timeIntervalSince1970),
@@ -601,7 +602,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
             ]
             return try sseBody(events: [chunk, done])
         }
-        let body: [String: Any] = [
+        let body: DaemonJSONObject = [
             "id": id,
             "object": "chat.completion",
             "created": Int(Date().timeIntervalSince1970),
@@ -641,7 +642,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
                 modelID: modelID
             ).body
         }
-        let body: [String: Any] = [
+        let body: DaemonJSONObject = [
             "id": id,
             "object": "response",
             "created_at": Date().timeIntervalSince1970,
@@ -664,7 +665,7 @@ public struct BurnBarCodexProviderExecutor: BurnBarProviderExecuting, Sendable {
         return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
     }
 
-    private static func sseBody(events: [[String: Any]]) throws -> Data {
+    private static func sseBody(events: [DaemonJSONObject]) throws -> Data {
         var text = ""
         for event in events {
             let data = try JSONSerialization.data(withJSONObject: event, options: [.sortedKeys])

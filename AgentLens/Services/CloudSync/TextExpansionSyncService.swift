@@ -1,6 +1,8 @@
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarTextExpansion
+import OpenBurnBarData
 
 final class TextExpansionSyncService: CloudSyncDomain, Sendable {
     private let context: CloudSyncContext

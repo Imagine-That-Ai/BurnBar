@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - ConversationStore CRUD
 
@@ -86,7 +87,7 @@ extension ConversationStore {
                 // 60s refresh tick. ON CONFLICT performs an UPDATE in place, so the
                 // existing conversations_au AFTER UPDATE trigger maintains the FTS index
                 // (delete-then-insert for the same rowid). This matches the established
-                // upsert idiom in BudgetRulesStore, ProjectionStore, UsageStore, and
+                // upsert idiom in GRDBBudgetRulesStore, ProjectionStore, UsageStore, and
                 // ProviderAccountStore. Columns absent from the SET clause (deletedAt,
                 // version) intentionally retain their existing values, preserving
                 // tombstones across re-indexing rather than resurrecting them.
@@ -668,7 +669,11 @@ extension ConversationStore {
             try await dbQueue.write { db in
                 try db.execute(sql: "DELETE FROM conversations")
                 try db.execute(sql: "DELETE FROM summary_runs")
-                try db.execute(sql: "DELETE FROM project_memory_snapshots")
+                // Wave 2.1c: snapshots are daemon-owned, so they leave the
+                // local transaction and wipe via RPC below. Local-first keeps
+                // the historical atomic core intact; the RPC failure propagates
+                // (the settings UI surfaces it) and a retry is idempotent on
+                // both sides.
                 try db.execute(
                     sql: """
                     DELETE FROM chunk_embeddings
@@ -688,6 +693,10 @@ extension ConversationStore {
                 try db.execute(sql: "DELETE FROM search_chunks WHERE sourceKind = 'conversation'")
                 try db.execute(sql: "DELETE FROM search_documents WHERE sourceKind = 'conversation'")
             }
+            // Daemon-owned table: the snapshot wipe rides RPC, after the local
+            // transaction, and its failure propagates so the UI reports an
+            // incomplete reset instead of silently keeping private summaries.
+            try await snapshotWriter.deleteAllSnapshots()
         }
 
         /// Hard-deletes a single conversation row. This is the "the source log

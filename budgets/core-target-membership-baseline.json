@@ -1,5 +1,5 @@
 {
-  "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check \u2014 a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update. reason: Fleet snapshot/RPC contracts are shared wire types in OpenBurnBarKernel (daemon + Mac app); Kernel planned ceiling 48000 -> 50000 to hold BurnBarFleetContracts.swift + BurnBarFleetRPCContracts.swift without splitting the wire module mid-port. Mobile Swift/Kotlin policy twins (auth, escrow, pulse, Hermes, OS integration) also live in Kernel SharedModels so iOS and Android compile the same classifier; planned ceiling 50000 -> 52000 to hold those files without a mid-parity target split. reason: War Room fleet orchestration (PR #2324) lands its shared contracts in the owning modules instead of new leaf targets: Kernel 50000 -> 52000 holds the Wire codec/session/plan, FlameRouter, HermesRoom/CommandBoard/StandingOrder models (live 51703, <300 bounded headroom); FirestoreModels 703 -> 800 holds the HermesBody/WarWireGrant docs (live 746); Data 21 -> 25 files holds the v62-v64 migration + backup-lane mirrors (live 24). reason: #2323 (mobile parity twins) and #2324 (War Room) both spent the same 50000 -> 52000 Kernel headroom while open, so the merge lands at 189 files / 53406 lines; planned ceiling 52000 -> 54000 and 185 -> 190 files covers both without splitting the wire module between two in-flight ports. The next Kernel growth pays for a target split instead. reason: First-paint burn + updater identity release cut (#2608) lands UsageWindowAttribution.swift in Kernel SharedModels, the one shared window-attribution model both the Mac app Home spend and the daemon compile; planned file ceiling 191 -> 192 for the release-cut shared model. The split-instead debt stays owed: the next feature growth pays for the target split. reason: living-glass sweep lands the daemon remote-relay keep-awake surface (KeepAwakeLease, KeepAwakeToggleCommand, wire acks) in the owning IrohRelay sibling and the usage retention policy plus the Missions/ refile in Kernel: OpenBurnBarKernel file ceiling 192 -> 194 (194 live, LOC still under the 54000 planned ceiling); OpenBurnBarIrohRelay LOC ceiling 2688 -> 3022 (3022 live, 19 files). No new leaf targets mid-port; the decomposition debt stays owed and the next growth pays for the split.",
+  "note": "OpenBurnBarCore main-target membership snapshot (per-file line counts) + per-sibling {files, LOC} ceilings (docs/CORE_DECOMPOSITION_PROGRAM.md). Deny-gate: no NEW .swift file may be added to OpenBurnBarCore/Sources/OpenBurnBarCore/ (new code lands in a sibling target); main-target totals may only shrink AND no individual baselined main-target file may grow (per-file check \u2014 a removed big file cannot mask regrowth in another file); no sibling may exceed its ceiling (decomposition-destination siblings use a PLANNED end-state ceiling that --update never ratchets down, others use 1.25x measured). Shrink is non-fatal (run --update to ratchet down). Regenerate via scripts/debt/check-core-target-membership-budget.sh --update.",
   "main": {
     "target": "OpenBurnBarCore",
     "totalLines": 127,
@@ -42,14 +42,44 @@
       "maxLines": 2700,
       "planned": true
     },
-    "OpenBurnBarInboxModels": {
-      "maxFiles": 5,
+    "OpenBurnBarProjectCodeContracts": {
+      "maxFiles": 2,
       "maxLines": 1000,
       "planned": true
     },
+    "OpenBurnBarHermesModels": {
+      "maxFiles": 42,
+      "maxLines": 12200,
+      "planned": true
+    },
+    "OpenBurnBarMobilePolicy": {
+      "maxFiles": 18,
+      "maxLines": 2200,
+      "planned": true
+    },
+    "OpenBurnBarProviderModels": {
+      "maxFiles": 28,
+      "maxLines": 7700,
+      "planned": true
+    },
+    "OpenBurnBarVaultModels": {
+      "maxFiles": 19,
+      "maxLines": 7000,
+      "planned": true
+    },
+    "OpenBurnBarUsageModels": {
+      "maxFiles": 18,
+      "maxLines": 3600,
+      "planned": true
+    },
+    "OpenBurnBarInboxModels": {
+      "maxFiles": 15,
+      "maxLines": 4300,
+      "planned": true
+    },
     "OpenBurnBarKernel": {
-      "maxFiles": 194,
-      "maxLines": 54000,
+      "maxFiles": 115,
+      "maxLines": 32300,
       "planned": true
     },
     "OpenBurnBarParserSupport": {
@@ -69,7 +99,7 @@
     },
     "OpenBurnBarQuota": {
       "maxFiles": 55,
-      "maxLines": 13000,
+      "maxLines": 13100,
       "planned": true
     },
     "OpenBurnBarVectorKit": {
@@ -80,6 +110,11 @@
     "OpenBurnBarInsights": {
       "maxFiles": 100,
       "maxLines": 20000,
+      "planned": true
+    },
+    "OpenBurnBarRecap": {
+      "maxFiles": 30,
+      "maxLines": 6000,
       "planned": true
     },
     "OpenBurnBarHermes": {
@@ -113,28 +148,28 @@
       "planned": true
     },
     "OpenBurnBarComputerUseCore": {
-      "maxFiles": 74,
-      "maxLines": 15324
+      "maxFiles": 80,
+      "maxLines": 16549
     },
     "OpenBurnBarMedia": {
-      "maxFiles": 25,
-      "maxLines": 4359
+      "maxFiles": 32,
+      "maxLines": 5299
     },
     "OpenBurnBarIrohRelay": {
-      "maxFiles": 19,
-      "maxLines": 3022
+      "maxFiles": 23,
+      "maxLines": 3778
     },
     "OpenBurnBarSignalCore": {
-      "maxFiles": 9,
-      "maxLines": 2415
+      "maxFiles": 10,
+      "maxLines": 2503
     },
     "OpenBurnBarSignalSessionTransport": {
       "maxFiles": 3,
-      "maxLines": 650
+      "maxLines": 509
     },
     "OpenBurnBarFirestoreModels": {
-      "maxFiles": 18,
-      "maxLines": 800
+      "maxFiles": 19,
+      "maxLines": 933
     },
     "OpenBurnBarAnalytics": {
       "maxFiles": 12,
@@ -145,8 +180,8 @@
       "maxLines": 3227
     },
     "OpenBurnBarData": {
-      "maxFiles": 25,
-      "maxLines": 4920
+      "maxFiles": 32,
+      "maxLines": 6119
     },
     "BurnBarRemoteEngine": {
       "maxFiles": 2,
@@ -154,12 +189,7 @@
     },
     "OpenBurnBarCoreCAbi": {
       "maxFiles": 7,
-      "maxLines": 1098
-    },
-    "OpenBurnBarRecap": {
-      "maxFiles": 30,
-      "maxLines": 6000,
-      "planned": true
+      "maxLines": 1085
     }
   }
 }

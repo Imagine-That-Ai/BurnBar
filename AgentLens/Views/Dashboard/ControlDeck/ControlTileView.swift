@@ -2,6 +2,7 @@ import AppKit
 import OpenBurnBarKernel
 import OpenBurnBarUI
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Control Tile View
 //
@@ -50,7 +51,9 @@ struct ControlTileView: View {
         case .charts: ChartsTile(model: model, onNavigate: onNavigate)
         case .alerts: AlertsTile(settingsManager: settingsManager, todaySpend: todaySpend, onOpenSettings: onOpenSettings)
         case .appearance: AppearanceTile(settingsManager: settingsManager, onOpenSettings: onOpenSettings)
+        #if OPENBURNBAR_LAB
         case .pets: PetsTile(model: model, onOpenSettings: onOpenSettings)
+        #endif
         case .updates: UpdatesTile(onOpenSettings: onOpenSettings)
         case .fleet: FleetTile(onNavigate: onNavigate)
         }
@@ -308,10 +311,14 @@ private struct TextExpansionTile: View {
                 // the door and re-poll when the app comes back to the front.
                 // Routed through the ladder so a dashboard toggle cannot be the
                 // first thing a user hears about screen control.
+                // Unreachable on MAS (globalTextExpansionAvailable is false and
+                // hides this picker); the ladder itself compiles out there.
+                #if !DISTRIBUTION_MAS
                 Task { @MainActor in
                     await AppCommandRouter.shared.permissionLadder.request(.accessibility)
                     model.refreshSynchronousFacts()
                 }
+                #endif
             }
             model.refreshSynchronousFacts()
             Analytics.shared.track(.settingsChanged, [
@@ -337,8 +344,12 @@ private struct TextExpansionTile: View {
                 tint: DesignSystem.Colors.warning,
                 help: "Opens System Settings → Privacy & Security → Accessibility. macOS grants the permission, not OpenBurnBar."
             ) {
+                // The ladder compiles out on MAS (sandboxed apps cannot hold
+                // Accessibility); the tile still re-polls its synchronous facts.
                 Task { @MainActor in
+                    #if !DISTRIBUTION_MAS
                     await AppCommandRouter.shared.permissionLadder.request(.accessibility)
+                    #endif
                     model.refreshSynchronousFacts()
                 }
             }
@@ -624,6 +635,7 @@ private struct AppearanceTile: View {
 // from `PetCompanionFeature.runtime`.** `runtime` is a `static let` whose first
 // touch builds the controller, the Carbon global hotkey, and the system
 // observers. Rendering a chip must not boot a subsystem.
+#if OPENBURNBAR_LAB
 private struct PetsTile: View {
     let model: ControlDeckModel
     let onOpenSettings: (String?) -> Void
@@ -672,6 +684,7 @@ private struct PetsTile: View {
         }
     }
 }
+#endif
 
 // MARK: - H-4 · Updates
 //

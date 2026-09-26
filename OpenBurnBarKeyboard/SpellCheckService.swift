@@ -83,9 +83,8 @@ final class SpellCheckService {
 
     /// Preserves capitalization style of the original word onto the correction.
     static func preserveCapitalization(original: String, correction: String) -> String {
-        guard !original.isEmpty && !correction.isEmpty else { return correction }
-        
-        let firstChar = original.first!
+        guard !original.isEmpty && !correction.isEmpty,
+              let firstChar = original.first else { return correction }
         if firstChar.isUppercase {
             let isAllUppercase = original.allSatisfy { !$0.isLetter || $0.isUppercase }
             if isAllUppercase {

@@ -1,6 +1,6 @@
 #if canImport(UIKit)
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 /// Phase 14 — Phone-side composer that converts a SwiftUI grant-sheet

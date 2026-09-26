@@ -1,6 +1,10 @@
 import Charts
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Fusion Impact Screen
 //
@@ -597,7 +601,7 @@ private struct FusionModelRow: View {
                     .fill(color)
                     .frame(width: 9, height: 9)
                     .accessibilityHidden(true)
-                Text(OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(modelID))
+                Text(OpenBurnBarLogParsers.TokenExtractionUtility.displayNameForModel(modelID))
                     .font(DesignSystem.Typography.caption)
                     .fontWeight(.medium)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
@@ -632,7 +636,7 @@ private struct FusionModelRow: View {
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(modelID))
+        .accessibilityLabel(OpenBurnBarLogParsers.TokenExtractionUtility.displayNameForModel(modelID))
         .accessibilityValue("\(CurrencyFormatting.usd(cost)), \(percent) percent of fusion spend")
     }
 }

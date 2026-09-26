@@ -20,7 +20,7 @@ import {
   sanitizeGatewayRelayEnvelope,
   sanitizeGatewayRelayEnvelopeCapabilities,
   serializeHermesGatewayEvent,
-} from "../hermesGateway.js";
+} from "../../../packages/functions-shared/src/hermesGateway.js";
 
 const PUBKEY65 = "BAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0A=";
 const PAYLOAD = "aGVsbG8tcGF5bG9hZA==";

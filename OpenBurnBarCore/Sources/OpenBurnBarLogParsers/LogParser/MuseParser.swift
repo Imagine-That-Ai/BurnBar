@@ -264,9 +264,9 @@ public final class MuseParser: LogParser, Sendable {
         var goalAttributionOnlyInput = 0
         var goalAttributionOnlyOutput = 0
 
-        func ingestEnvelope(_ json: [String: Any]) {
+        func ingestEnvelope(_ json: LogParserJSONObject) {
             // session id from stream (authoritative)
-            if sessionId == nil, let stream = json["stream"] as? [String: Any], let sid = stream["id"] as? String, !sid.isEmpty {
+            if sessionId == nil, let stream = json["stream"] as? LogParserJSONObject, let sid = stream["id"] as? String, !sid.isEmpty {
                 sessionId = sid
             }
 
@@ -283,11 +283,11 @@ public final class MuseParser: LogParser, Sendable {
             }
 
             guard let payloadType = json["payload_type"] as? String else { return }
-            guard let payload = json["payload"] as? [String: Any] else { return }
+            guard let payload = json["payload"] as? LogParserJSONObject else { return }
 
             // Metadata: workspace_root / model
             if payloadType == "runtime.session.metadata" {
-                if let record = payload["record"] as? [String: Any] {
+                if let record = payload["record"] as? LogParserJSONObject {
                     workspaceRoot = (record["workspace_root"] as? String) ?? workspaceRoot
                     modelId = (record["model_id"] as? String) ?? modelId
                     providerId = (record["provider_id"] as? String) ?? providerId
@@ -299,7 +299,7 @@ public final class MuseParser: LogParser, Sendable {
             // Tool calls
             if payloadType == "tool_batch.effect.started" {
                 if options.includeConversationBodies,
-                   let record = payload["record"] as? [String: Any], let name = record["tool_name"] as? String, !name.isEmpty {
+                   let record = payload["record"] as? LogParserJSONObject, let name = record["tool_name"] as? String, !name.isEmpty {
                     toolNames.insert(name)
                 }
                 return
@@ -312,7 +312,7 @@ public final class MuseParser: LogParser, Sendable {
                     // But our guard already filters to kind==run, so extract started inside.
                     return
                 }
-                guard let event = payload["event"] as? [String: Any], let eventKind = event["kind"] as? String else { return }
+                guard let event = payload["event"] as? LogParserJSONObject, let eventKind = event["kind"] as? String else { return }
 
                 switch eventKind {
                 case "started":
@@ -336,7 +336,7 @@ public final class MuseParser: LogParser, Sendable {
                         assistantTexts.append(text)
                     }
                 case "model_completed":
-                    let usage = event["usage"] as? [String: Any]
+                    let usage = event["usage"] as? LogParserJSONObject
                     let inp = intVal(usage?["input_tokens"])
                     let out = intVal(usage?["output_tokens"])
                     let cached = intVal(usage?["cached_tokens"])
@@ -355,8 +355,8 @@ public final class MuseParser: LogParser, Sendable {
                     if let m = event["model"] as? String, !m.isEmpty { lastModel = m }
                 case "goal_usage_attribution":
                     // Only accumulate if we never see model_completed (fallback)
-                    if let record = event["record"] as? [String: Any],
-                       let qty = record["quantity"] as? [String: Any],
+                    if let record = event["record"] as? LogParserJSONObject,
+                       let qty = record["quantity"] as? LogParserJSONObject,
                        let reported = qty["reported"] as? Bool, reported,
                        let family = record["usage_family"] as? String, family == "provider" {
                         let inp = intVal(qty["input_tokens"])
@@ -382,7 +382,7 @@ public final class MuseParser: LogParser, Sendable {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
             guard let data = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 continue // truncated/partial line — skip
             }
 
@@ -541,13 +541,13 @@ public final class MuseParser: LogParser, Sendable {
     /// Unwrap `{retained_frame, children[].record_json}` batches. Muse 1.3
     /// writes permission transactions this way; usage events stay top-level
     /// today but a later wrap must not go uncounted.
-    static func expandEnvelopes(_ json: [String: Any]) -> [[String: Any]] {
-        var out: [[String: Any]] = [json]
-        guard let children = json["children"] as? [[String: Any]] else { return out }
+    static func expandEnvelopes(_ json: LogParserJSONObject) -> [LogParserJSONObject] {
+        var out: [LogParserJSONObject] = [json]
+        guard let children = json["children"] as? [LogParserJSONObject] else { return out }
         for child in children {
             guard let raw = child["record_json"] as? String,
                   let data = raw.data(using: .utf8),
-                  let inner = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let inner = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 continue
             }
             out.append(contentsOf: expandEnvelopes(inner))

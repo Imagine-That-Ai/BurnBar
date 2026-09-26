@@ -34,7 +34,7 @@ public struct WindsurfQuotaAdapter: ProviderQuotaAdapter {
         )
         guard let jsonString = rows.first?.string("value"),
               let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { return nil }
         let usage = json["usage"] as? [String: Any] ?? [:]
         let quota = json["quotaUsage"] as? [String: Any] ?? [:]
         let planName = (json["planName"] as? String) ?? "Windsurf"

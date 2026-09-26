@@ -4,6 +4,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// PR-E2 — proves the cloud-sync scheduling lane ships DORMANT and only egresses
 /// when BOTH the explicit user opt-in AND the Remote Config fleet ceiling allow.
@@ -18,7 +19,7 @@ final class MemoryCloudSyncDomainTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_900)
         let scope = MemoryScope(userID: uid, appID: "cloud-app")
         _ = try await store.addChatMemoryAuthorityRecord(

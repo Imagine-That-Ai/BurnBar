@@ -27,8 +27,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { assertActiveBurnBarCloudProEntitlement } from "../callables/shared/entitlements.js";
-import { TeamRosterService, requiredTeamKeyEnvelopeIds } from "../teamRoster.js";
+import { assertActiveBurnBarCloudProEntitlement } from "../../../packages/functions-shared/src/shared/entitlements.js";
+import { TeamRosterService, requiredTeamKeyEnvelopeIds } from "../../../functions-identity/src/teamRoster.js";
 import {
   ADMIN_UID,
   DEVICE,
@@ -44,14 +44,14 @@ import {
   storedDoc,
 } from "./teamRosterHarness.js";
 
-vi.mock("../adminRuntime.js", async () => {
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", async () => {
   const { rosterHarness } = await import("./teamRosterHarness.js");
   return { db: rosterHarness.db, auth: rosterHarness.auth };
 });
-vi.mock("../callables/shared/entitlements.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", () => ({
   assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
 }));
-vi.mock("../callables/publicRateLimit.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({
   checkTeamRosterMutationRateLimit: vi.fn(async () => undefined),
   checkTeamInviteRateLimit: vi.fn(async () => undefined),
   checkTeamInviteAcceptRateLimit: vi.fn(async () => undefined),

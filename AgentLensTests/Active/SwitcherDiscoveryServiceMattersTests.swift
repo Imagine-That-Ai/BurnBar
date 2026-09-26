@@ -24,7 +24,8 @@ final class SwitcherDiscoveryServiceMattersTests: XCTestCase {
         return try DataStore(
             databaseQueue: queue,
             runMigrations: true,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: queue)
         )
     }
 

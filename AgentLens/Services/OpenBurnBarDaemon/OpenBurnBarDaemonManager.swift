@@ -1,9 +1,10 @@
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 import CryptoKit
 import Foundation
 import Observation
 import UserNotifications
+import OpenBurnBarInboxModels
 
 struct OpenBurnBarDaemonRuntimePaths: Hashable {
     static let launchAgentLabel = "com.openburnbar.daemon"
@@ -88,8 +89,8 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
 
     static func live(fileManager: FileManager = .default) -> OpenBurnBarDaemonRuntimePaths {
         let supportDirectory = resolveSupportDirectory(
-            prepare: { try OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager) },
-            fallback: { OpenBurnBarCore.OpenBurnBarAppPaths.live(fileManager: fileManager).supportDirectory }
+            prepare: { try OpenBurnBarKernel.OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager) },
+            fallback: { OpenBurnBarKernel.OpenBurnBarAppPaths.live(fileManager: fileManager).supportDirectory }
         )
         let daemonDirectory = supportDirectory.appendingPathComponent("daemon", isDirectory: true)
         let homeDirectory = fileManager.homeDirectoryForCurrentUser
@@ -265,6 +266,10 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
     case daemonSocketAuthTokenUnavailable
     case emptyResponse
     case rpcError(String)
+    /// A `-32004` conflict: the daemon refused a mutation whose precondition
+    /// moved (the 2.1c-iii reseal compare-and-swap). Nothing was applied;
+    /// the caller re-reads and retries instead of surfacing an error.
+    case rpcConflict(String)
     case rpcTimedOut(seconds: Int)
     case lifecycleStepFailed(step: String, underlying: String)
 
@@ -303,6 +308,8 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
             return "OpenBurnBarDaemon returned an empty response."
         case .rpcError(let message):
             return "OpenBurnBarDaemon RPC error: \(message)"
+        case .rpcConflict(let message):
+            return "OpenBurnBarDaemon RPC conflict (retry with a fresh read): \(message)"
         case .rpcTimedOut(let seconds):
             return "OpenBurnBarDaemon RPC timed out after \(seconds) seconds."
         case .lifecycleStepFailed(let step, let underlying):
@@ -316,16 +323,16 @@ enum OpenBurnBarDaemonManagerError: Error, LocalizedError {
 @MainActor
 final class OpenBurnBarDaemonManager {
     static let shared = OpenBurnBarDaemonManager(settingsManager: .shared)
-    static let daemonSocketAuthTokenAccount = OpenBurnBarCore.OpenBurnBarIdentity.daemonSocketAuthTokenAccount
+    static let daemonSocketAuthTokenAccount = OpenBurnBarKernel.OpenBurnBarIdentity.daemonSocketAuthTokenAccount
     static let controllerRuntimeSecrets = KeychainStore(
-        service: OpenBurnBarCore.OpenBurnBarIdentity.controllerRuntimeKeychainService,
-        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
+        service: OpenBurnBarKernel.OpenBurnBarIdentity.controllerRuntimeKeychainService,
+        legacyServices: OpenBurnBarKernel.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
     )
     static let providerRuntimeSecrets = KeychainStore(
-        service: OpenBurnBarCore.OpenBurnBarIdentity.cursorConnectorKeychainService,
-        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
-            + [OpenBurnBarCore.OpenBurnBarIdentity.providerAPIKeychainService]
-            + OpenBurnBarCore.OpenBurnBarIdentity.legacyProviderAPIKeychainServices
+        service: OpenBurnBarKernel.OpenBurnBarIdentity.cursorConnectorKeychainService,
+        legacyServices: OpenBurnBarKernel.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
+            + [OpenBurnBarKernel.OpenBurnBarIdentity.providerAPIKeychainService]
+            + OpenBurnBarKernel.OpenBurnBarIdentity.legacyProviderAPIKeychainServices
     )
 
     /// Supervisor configuration exposed for diagnostics / testing.

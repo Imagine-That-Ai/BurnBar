@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { __testing__ } from "../callables/recovery.js";
+import { __testing__ } from "../domains/ops/recovery.js";
 
 const {
   requireSealedBlob,

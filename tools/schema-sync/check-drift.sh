@@ -6,8 +6,9 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
 
 generated_paths=(
-  functions/src/types/generated
+  packages/functions-shared/src/types/generated
   OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels
+  OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCMethod.generated.swift
   android/app/src/main/java/com/openburnbar/data/models/generated
 )
 
@@ -26,6 +27,9 @@ if [[ ! -d tools/schema-sync/node_modules/@typespec/compiler ]]; then
   npm --prefix tools/schema-sync ci
 fi
 node tools/schema-sync/check-tsp-canon.mjs
+
+echo "==> Checking RPC method N-1 snapshot…"
+node tools/schema-sync/check-rpc-snapshot.mjs
 
 echo "==> Checking for drift…"
 git diff --binary -- "${generated_paths[@]}" > "$after_diff"

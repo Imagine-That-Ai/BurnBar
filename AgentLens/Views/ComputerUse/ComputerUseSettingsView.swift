@@ -1,7 +1,11 @@
 #if canImport(SwiftUI) && canImport(AppKit) && !DISTRIBUTION_MAS
 import AppKit
 import ApplicationServices
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import SwiftUI
 
@@ -986,9 +990,10 @@ struct ComputerUseSettingsView: View {
                 )
                 let archiveURL = URL(fileURLWithPath: response.archiveURL)
                 NSWorkspace.shared.activateFileViewerSelecting([archiveURL])
-                let signatureSuffix = response.signatureURL == nil
-                    ? ""
-                    : " Signature sidecar: \(URL(fileURLWithPath: response.signatureURL!).lastPathComponent)."
+                let signatureSuffix: String = {
+                    guard let signatureURL = response.signatureURL else { return "" }
+                    return " Signature sidecar: \(URL(fileURLWithPath: signatureURL).lastPathComponent)."
+                }()
                 let readbackSuffix: String
                 if response.signatureURL != nil {
                     if let runtimeController {
@@ -1075,7 +1080,7 @@ struct ComputerUseSettingsView: View {
     }
 
     private func auditSessionDirectory(sessionId: String) -> URL {
-        OpenBurnBarCore.OpenBurnBarAppPaths.live().supportDirectory
+        OpenBurnBarKernel.OpenBurnBarAppPaths.live().supportDirectory
             .appendingPathComponent("computer-use-audit", isDirectory: true)
             .appendingPathComponent(sessionId, isDirectory: true)
     }

@@ -3,17 +3,17 @@ import GRDB
 @testable import OpenBurnBarData
 import XCTest
 
+// Wave 4: the whole file is Linux-only — compile it out on other platforms
+// instead of skipping every test at runtime (identical Linux behavior, zero
+// skip noise on macOS).
+#if os(Linux)
 public final class OpenBurnBarDataLinuxTests: XCTestCase {
     private let passphrase = "openburnbar-linux-data-tests-passphrase-2026"
     private let wrongPassphrase = "openburnbar-linux-data-tests-wrong-passphrase"
 
     override public func setUpWithError() throws {
         try super.setUpWithError()
-        #if os(Linux)
         continueAfterFailure = false
-        #else
-        throw XCTSkip("Linux SQLCipher data durability tests run on Linux.")
-        #endif
     }
 
     public func testEncryptedFileBackedOpenFailsClosedForSecretAndCodecFailures() throws {
@@ -121,7 +121,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let migrations = try database.migrationRows()
         XCTAssertEqual(migrations, OpenBurnBarLocalDatabase.migrationIdentifiers)
-        XCTAssertEqual(migrations.last, "v69_token_usage_end_time_index")
+        XCTAssertEqual(migrations.last, "v70_agent_memories_index_backfill")
         XCTAssertTrue(migrations.contains("v35_provider_accounts"))
         XCTAssertTrue(migrations.contains("v50_project_code_memory_schema"))
 
@@ -130,11 +130,11 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
         XCTAssertTrue(schemaHash.allSatisfy(\.isHexDigit))
 
         let schemaSQL = try String(contentsOf: repositoryRoot().appendingPathComponent("docs/SCHEMA_SQLITE.sql"), encoding: .utf8)
-        XCTAssertTrue(schemaSQL.contains("CREATE TABLE provider_accounts"))
+        XCTAssertTrue(schemaSQL.contains("CREATE TABLE \"provider_accounts\""))
         XCTAssertTrue(schemaSQL.contains("CREATE TABLE provider_quota_snapshots"))
-        XCTAssertTrue(schemaSQL.contains("CREATE VIRTUAL TABLE search_chunks_fts"))
+        XCTAssertTrue(schemaSQL.contains("CREATE VIRTUAL TABLE \"search_chunks_fts\""))
         XCTAssertTrue(
-            schemaSQL.contains("-- Schema hash: \(schemaHash)"),
+            schemaSQL.contains("-- schemaHashSHA256: \(schemaHash)"),
             "docs/SCHEMA_SQLITE.sql schema hash is stale; expected \(schemaHash)"
         )
     }
@@ -169,7 +169,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let database = try openDatabase(path: dbPath, passphrase: passphrase)
         defer { try? database.close() }
-        XCTAssertEqual(try database.migrationRows().last, "v69_token_usage_end_time_index")
+        XCTAssertEqual(try database.migrationRows().last, "v70_agent_memories_index_backfill")
         XCTAssertEqual(try database.count(sql: "SELECT COUNT(*) FROM provider_accounts WHERE id = 'legacy-provider-account'"), 1)
         XCTAssertEqual(try database.verifyPragmaString("integrity_check"), "ok")
 
@@ -513,3 +513,4 @@ private extension OpenBurnBarLocalDatabase {
         }
     }
 }
+#endif

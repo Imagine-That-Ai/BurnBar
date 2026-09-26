@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarUI
 
 /// Compact segmented toggle between Agent view (rich bubbles) and CLI view
 /// (raw monospaced output). Placed in the chat header/toolbar alongside

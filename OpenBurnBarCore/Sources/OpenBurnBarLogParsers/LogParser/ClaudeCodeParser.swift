@@ -68,7 +68,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,
-            schemaVersion: 3,
+            schemaVersion: 4,
             logLabel: "ClaudeCodeParser"
         )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths) // try?-ok(best-effort dir prep)
@@ -247,12 +247,13 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         }
 
         let fileSize = signature?.sizeBytes ?? 0
-        // Bodies may resume the token accumulator from byteOffset. Conversation
-        // text is still accumulated only from the resumed tail when
-        // `resumeConversationBodies` is on (default), so appends do not
-        // re-decode the prefix. Privacy: conversation text is not written to
-        // the parser cache (ClaudeCodeCacheEntry).
-        let resumableState = (fileSize >= Self.incrementalScanThresholdBytes)
+        // Incremental resume is usage-only. Bodies passes always re-read from
+        // offset 0: conversation text is privacy-transient and never stored in
+        // the parser cache (PR #1808), so a resumed tail cannot rebuild the
+        // prefix — resuming here would replace the stored transcript with its
+        // tail on upsert. The governor already budgets the full file for
+        // bodies passes (estimatedNewBytes below).
+        let resumableState = (fileSize >= Self.incrementalScanThresholdBytes && !includeConversation)
             ? cached?.scanState
             : nil
         let estimatedNewBytes: Int64 = includeConversation
@@ -434,7 +435,9 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             return SessionScanOutcome(usage: nil, conversation: nil, scanState: scanState)
         }
 
-        let model = effective.models.first ?? "claude"
+        // `models` only holds real ids (placeholders such as `<synthetic>` are
+        // rejected on insert); `min()` keeps the pick deterministic.
+        let model = effective.models.min() ?? "claude"
         let pricing = ModelPricing.lookup(model: model)
         let totalCost = try pricing.cost(
             inputTokens: effective.inputTokens,
@@ -497,7 +500,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         conversation: ClaudeConversationAccumulator?
     ) {
         guard let data = text.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skip)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skip)
             return
         }
 
@@ -530,7 +533,8 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         accumulator.cacheCreationTokens += extracted.cacheCreation
         accumulator.cacheReadTokens += extracted.cacheRead
 
-        if let model = message["model"] as? String {
+        if let model = message["model"] as? String,
+           !TokenExtractionUtility.isPlaceholderModelName(model) {
             accumulator.models.insert(model)
         }
     }
@@ -660,9 +664,11 @@ public struct ClaudeTokenScanState: Codable, Equatable, Sendable {
     }
 }
 
-/// v3 (schemaVersion 3): carries the incremental `scanState` and, by
+/// v4 (schemaVersion 4): carries the incremental `scanState` and, by
 /// construction, can no longer hold conversation bodies — parser caches are
-/// privacy-transient for conversation text (PR #1808).
+/// privacy-transient for conversation text (PR #1808). v4 additionally drops
+/// v3 rows whose model resolved to a harness placeholder (`<synthetic>`)
+/// so affected sessions re-parse against the exact model that did the work.
 struct ClaudeCodeCacheEntry: Codable, Equatable {
     let signature: FileSignature
     let usage: TokenUsage?

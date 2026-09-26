@@ -20,7 +20,12 @@ final class MemorySettingsAndKillSwitchTests: XCTestCase {
     }
 
     private func makeInMemoryStore() throws -> DataStoreCoordinator {
-        try DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: true)
+        let queue = try DatabaseQueue()
+        return try DataStoreCoordinator(
+            databaseQueue: queue,
+            runMigrations: true,
+            chatWriter: LocalChatHistoryWriter(dbQueue: queue)
+        )
     }
 
     // MARK: - Pure gate

@@ -1,7 +1,7 @@
 import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct MobileCloudVaultRotationRewrapProgress: Equatable, Sendable {
     let scannedDocuments: Int
@@ -42,7 +42,7 @@ private struct FirebaseMobileCloudVaultRotationBlobClient: MobileCloudVaultRotat
             "encryptedByteCount": byteCount,
             "contentType": "application/octet-stream"
         ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let storagePath = dict["storagePath"] as? String,
               let rawURL = dict["uploadURL"] as? String,
               let uploadURL = URL(string: rawURL) else {
@@ -74,7 +74,7 @@ private struct FirebaseMobileCloudVaultRotationBlobClient: MobileCloudVaultRotat
         let result = try await functions.httpsCallable("getEncryptedSessionBlobDownloadUrl").call([
             "storagePath": storagePath
         ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let rawURL = dict["downloadURL"] as? String,
               let url = URL(string: rawURL) else {
             throw URLError(.badServerResponse)

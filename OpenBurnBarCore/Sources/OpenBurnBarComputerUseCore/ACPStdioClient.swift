@@ -1,4 +1,5 @@
 #if os(macOS)
+import OpenBurnBarKernel
 // Process-based stdio session runner: macOS only. Foundation.Process does
 // not exist on iOS; the sole consumer is AgentLens (macOS). #2362 shipped
 // this file unguarded, which broke the iOS archive the first time a release
@@ -31,8 +32,8 @@ public enum ACPStdioClient {
         }
     }
 
-    public static func encodeRequest(id: Int, method: String, params: [String: Any]) throws -> Data {
-        let body: [String: Any] = ["jsonrpc": "2.0", "id": id, "method": method, "params": params]
+    public static func encodeRequest(id: Int, method: String, params: ComputerUseJSONObject) throws -> Data {
+        let body: ComputerUseJSONObject = ["jsonrpc": "2.0", "id": id, "method": method, "params": params]
         return try JSONSerialization.data(withJSONObject: body)
     }
 
@@ -133,8 +134,8 @@ public enum ACPStdioClient {
             }
         }
         @discardableResult
-        func write(_ method: String, params: [String: Any], notification: Bool = false) throws -> Bool {
-            var body: [String: Any] = ["jsonrpc": "2.0", "method": method, "params": params]
+        func write(_ method: String, params: ComputerUseJSONObject, notification: Bool = false) throws -> Bool {
+            var body: ComputerUseJSONObject = ["jsonrpc": "2.0", "method": method, "params": params]
             if !notification {
                 body["id"] = nextID
                 nextID += 1
@@ -183,14 +184,14 @@ public enum ACPStdioClient {
                 if !process.isRunning { break }
                 continue
             }
-            guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else {
+            guard let obj = BurnBarJSONValue.dictionary(fromJSONData: Data(line.utf8)) else {
                 continue
             }
             if let method = obj["method"] as? String, method == "session/set_mode" {
-                let params = obj["params"] as? [String: Any] ?? [:]
+                let params = obj["params"] as? ComputerUseJSONObject ?? [:]
                 let mode = (params["mode"] as? String) ?? (params["permissionMode"] as? String) ?? ""
                 if let reqID = obj["id"] {
-                    var response: [String: Any] = ["jsonrpc": "2.0", "id": reqID]
+                    var response: ComputerUseJSONObject = ["jsonrpc": "2.0", "id": reqID]
                     do {
                         try refuseAutoAcceptMode(mode)
                         response["result"] = ["mode": mode]
@@ -207,11 +208,11 @@ public enum ACPStdioClient {
                 continue
             }
             if let method = obj["method"] as? String, decodePermissionMethod(method) {
-                let params = obj["params"] as? [String: Any] ?? [:]
+                let params = obj["params"] as? ComputerUseJSONObject ?? [:]
                 let tool = (params["toolName"] as? String) ?? (params["name"] as? String)
                 let allowed = await onPermission(PermissionRequest(method: method, toolName: tool, rawParams: [:]))
                 if let reqID = obj["id"] {
-                    var response: [String: Any] = [
+                    var response: ComputerUseJSONObject = [
                         "jsonrpc": "2.0",
                         "id": reqID,
                         "result": [
@@ -235,7 +236,7 @@ public enum ACPStdioClient {
                 }
                 continue
             }
-            if let result = obj["result"] as? [String: Any] {
+            if let result = obj["result"] as? ComputerUseJSONObject {
                 if let sid = result["sessionId"] as? String ?? result["sessionID"] as? String {
                     sessionID = sid
                 }
@@ -248,7 +249,7 @@ public enum ACPStdioClient {
                 }
             }
             if let method = obj["method"] as? String, method == "session/update" {
-                if let params = obj["params"] as? [String: Any] {
+                if let params = obj["params"] as? ComputerUseJSONObject {
                     if let chunk = params["text"] as? String ?? nestedText(params) {
                         assistant += chunk
                         onUpdate(chunk)
@@ -265,7 +266,7 @@ public enum ACPStdioClient {
                     throw Error(code: "acp_child_exited", message: "ACP child closed stdin before session/prompt could be sent.")
                 }
             }
-            if promptSent, let result = obj["result"] as? [String: Any], result["stopReason"] != nil {
+            if promptSent, let result = obj["result"] as? ComputerUseJSONObject, result["stopReason"] != nil {
                 break
             }
         }
@@ -289,10 +290,10 @@ public enum ACPStdioClient {
         return false
     }
 
-    private static func nestedText(_ params: [String: Any]) -> String? {
-        if let update = params["update"] as? [String: Any] {
+    private static func nestedText(_ params: ComputerUseJSONObject) -> String? {
+        if let update = params["update"] as? ComputerUseJSONObject {
             if let text = update["text"] as? String { return text }
-            if let content = update["content"] as? [String: Any], let text = content["text"] as? String {
+            if let content = update["content"] as? ComputerUseJSONObject, let text = content["text"] as? String {
                 return text
             }
         }

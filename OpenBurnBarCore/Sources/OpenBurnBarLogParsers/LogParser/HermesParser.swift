@@ -617,7 +617,7 @@ public final class HermesParser: LogParser, Sendable {
         options: LogParseOptions
     ) throws -> ParseResult {
         guard let data = try? Data(contentsOf: indexURL),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let root = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -626,7 +626,7 @@ public final class HermesParser: LogParser, Sendable {
         let gate = ParserFileReadGate(options: options, fileManager: fileManager)
 
         for value in root.values {
-            guard let entry = value as? [String: Any],
+            guard let entry = value as? LogParserJSONObject,
                   let rawSessionId = stringValue(entry, key: "session_id") else {
                 continue
             }
@@ -744,7 +744,7 @@ public final class HermesParser: LogParser, Sendable {
         options: LogParseOptions
     ) throws -> ParseResult {
         guard let data = try? Data(contentsOf: file), // try?-ok(optional snapshot read)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(JSON decode, guard-return)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(JSON decode, guard-return)
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -850,13 +850,14 @@ public final class HermesParser: LogParser, Sendable {
         var summary = TranscriptSummary()
 
         for event in events {
-            guard let json = event as? [String: Any] else { continue }
-            let message = json["message"] as? [String: Any]
+            guard let json = event as? LogParserJSONObject else { continue }
+            let message = json["message"] as? LogParserJSONObject
             let role = ((message?["role"] as? String) ?? (json["role"] as? String) ?? "").lowercased()
             let rawContent = message?["content"] ?? json["content"]
             let toolName = (json["tool_name"] as? String) ?? (message?["tool_name"] as? String)
 
-            if let model = (message?["model"] as? String) ?? (json["model"] as? String), !model.isEmpty {
+            if let model = (message?["model"] as? String) ?? (json["model"] as? String),
+               !TokenExtractionUtility.isPlaceholderModelName(model) {
                 summary.model = TokenExtractionUtility.normalizeModelName(model)
             }
 
@@ -866,7 +867,7 @@ public final class HermesParser: LogParser, Sendable {
                 summary.endTime = timestamp
             }
 
-            if let usage = (message?["usage"] as? [String: Any]) ?? (json["usage"] as? [String: Any]) {
+            if let usage = (message?["usage"] as? LogParserJSONObject) ?? (json["usage"] as? LogParserJSONObject) {
                 let extracted = TokenExtractionUtility.extractUsageTokens(usage)
                 summary.inputTokens += extracted.input
                 summary.outputTokens += extracted.output
@@ -1083,12 +1084,12 @@ public final class HermesParser: LogParser, Sendable {
 
     // MARK: - Typed getters (JSON dictionaries)
 
-    private func stringValue(_ dictionary: [String: Any], key: String) -> String? {
+    private func stringValue(_ dictionary: LogParserJSONObject, key: String) -> String? {
         guard let value = dictionary[key] as? String, !value.isEmpty else { return nil }
         return value
     }
 
-    private func integerValue(_ dictionary: [String: Any], key: String) -> Int {
+    private func integerValue(_ dictionary: LogParserJSONObject, key: String) -> Int {
         if let value = dictionary[key] as? Int { return value }
         if let value = dictionary[key] as? Int64 { return Int(value) }
         if let value = dictionary[key] as? Double { return Int(value.rounded()) }
@@ -1096,7 +1097,7 @@ public final class HermesParser: LogParser, Sendable {
         return 0
     }
 
-    private func doubleValue(_ dictionary: [String: Any], key: String) -> Double? {
+    private func doubleValue(_ dictionary: LogParserJSONObject, key: String) -> Double? {
         if let value = dictionary[key] as? Double { return value }
         if let value = dictionary[key] as? Int { return Double(value) }
         if let value = dictionary[key] as? Int64 { return Double(value) }
@@ -1136,7 +1137,7 @@ public final class HermesParser: LogParser, Sendable {
             return value.trimmingCharacters(in: .whitespacesAndNewlines)
         case let array as [Any]:
             return array.map { stringContent(from: $0) }.filter { !$0.isEmpty }.joined(separator: "\n")
-        case let dictionary as [String: Any]:
+        case let dictionary as LogParserJSONObject:
             let orderedKeys = ["text", "content", "message", "input", "output"]
             var pieces: [String] = []
             for key in orderedKeys {

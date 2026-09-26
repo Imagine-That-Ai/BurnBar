@@ -86,8 +86,8 @@ vi.mock("firebase-functions/logger", () => ({
   debug: vi.fn(),
 }));
 
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return {
     ...actual,
     logInfo: vi.fn(),

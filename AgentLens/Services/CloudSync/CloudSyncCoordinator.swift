@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarAnalytics
 
 /// Cloud sync coordinator that orchestrates all sync domains.
 ///

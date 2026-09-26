@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { forEachInPages } from "../rollupPagination.js";
+import { forEachInPages } from "../../../packages/functions-shared/src/rollupPagination.js";
 
 class FakeDoc {
   constructor(readonly id: string) {}

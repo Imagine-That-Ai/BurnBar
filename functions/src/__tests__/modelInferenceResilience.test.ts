@@ -12,18 +12,18 @@ const mocks = vi.hoisted(() => ({
   logInfo: vi.fn(),
 }));
 
-vi.mock("../ssrfGuard.js", () => ({
+vi.mock("../../../packages/functions-shared/src/ssrfGuard.js", () => ({
   assertOutboundFetchTargetResolved: mocks.assertOutboundFetchTargetResolved,
 }));
 
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logError: mocks.logError,
   logInfo: mocks.logInfo,
   logWarn: vi.fn(),
 }));
 
-import { modelInferenceFetch, resilientFetch } from "../resilienceHelpers.js";
-import { resetModelInferencePoliciesForTests } from "../resilience.js";
+import { modelInferenceFetch, resilientFetch } from "../../../packages/functions-shared/src/resilienceHelpers.js";
+import { resetModelInferencePoliciesForTests } from "../../../packages/functions-shared/src/resilience.js";
 
 describe("model-inference resilience", () => {
   const fetchMock = vi.fn();

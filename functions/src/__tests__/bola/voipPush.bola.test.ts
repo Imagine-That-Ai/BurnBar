@@ -18,7 +18,7 @@ function expectRecord(value: unknown): asserts value is Record<string, unknown> 
   expect(Array.isArray(value)).toBe(false);
 }
 
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   assertAppCheck: vi.fn(),
 }));
 vi.mock("firebase-admin/firestore", () => ({
@@ -56,9 +56,9 @@ vi.mock("firebase-admin/firestore", () => ({
     fromMillis: (ms: number) => ({ toMillis: () => ms }),
   },
 }));
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(rateLimitStore) }));
-vi.mock("../../voipPush.js", async () => {
-  const actual = await vi.importActual<typeof import("../../voipPush.js")>("../../voipPush.js");
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(rateLimitStore) }));
+vi.mock("../../../../functions-media/src/voipPush.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../functions-media/src/voipPush.js")>("../../../../functions-media/src/voipPush.js");
   return {
     ...actual,
     macHasActiveMediaEntitlement: vi.fn(async () => true),
@@ -80,7 +80,7 @@ describe("BOLA — voipPush", () => {
       platform: "ios",
     });
 
-    const mod = await import("../../callables/voipPush.js");
+    const mod = await import("../../../../functions-media/src/domains/push/voipPush.js");
     const run = callableRunner(mod.triggerVoIPCall);
 
     await expect(
@@ -108,7 +108,7 @@ describe("BOLA — voipPush", () => {
       platform: "android",
     });
 
-    const mod = await import("../../callables/voipPush.js");
+    const mod = await import("../../../../functions-media/src/domains/push/voipPush.js");
     const run = callableRunner(mod.triggerVoIPCall);
 
     await expect(

@@ -1,6 +1,8 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // Stream/day/session/search rows, project card, filter sheet, and search-result state.
 // Extracted from StreamsView.swift (god-file decomposition) — same module, verbatim.

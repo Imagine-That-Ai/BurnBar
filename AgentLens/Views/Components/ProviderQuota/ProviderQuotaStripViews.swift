@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 #if canImport(AppKit)
 import AppKit

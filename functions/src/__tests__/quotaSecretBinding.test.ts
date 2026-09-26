@@ -9,21 +9,21 @@ const mocks = vi.hoisted(() => ({
   retrieveCredential: vi.fn(),
 }));
 
-vi.mock("../logging.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../logging.js")>();
+vi.mock("../../../packages/functions-shared/src/logging.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../packages/functions-shared/src/logging.js")>();
   return { ...actual, logInfo: mocks.logInfo };
 });
 
-vi.mock("../secrets.js", () => ({
+vi.mock("../../../packages/functions-shared/src/secrets.js", () => ({
   retrieveCredential: mocks.retrieveCredential,
 }));
 
-vi.mock("../resilienceHelpers.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../resilienceHelpers.js")>();
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../packages/functions-shared/src/resilienceHelpers.js")>();
   return { ...actual, resilientFetch: mocks.resilientFetch };
 });
 
-vi.mock("../providers/openai.js", () => ({
+vi.mock("../../../packages/functions-shared/src/providers/openai.js", () => ({
   openaiAdapter: {
     provider: "openai",
     testCredential: vi.fn(),
@@ -36,7 +36,7 @@ import {
   refreshUserProviderAccountQuota,
   refreshUserProviderQuota,
   type QuotaFirestoreLike,
-} from "../quota.js";
+} from "../../../packages/functions-shared/src/quota.js";
 
 const UID = "quota-secret-user";
 const ACCOUNT_ID = "openai_default";

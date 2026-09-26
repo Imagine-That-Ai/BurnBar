@@ -3,6 +3,7 @@ import CryptoKit
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 @MainActor
 final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
@@ -528,7 +529,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
             try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'index'")
         }
         XCTAssertTrue(indexes.contains("memory_extraction_jobs_lease_idx"))
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let reclaimed = try await store.claimNextMemoryExtractionJob(now: now.addingTimeInterval(1))
         XCTAssertEqual(reclaimed?.id, "memory-extraction-legacy")
         XCTAssertEqual(reclaimed?.threadLogicalID, "legacy-thread")
@@ -606,7 +607,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
 
         do {
             _ = try await store.addChatMemoryAuthorityRecord(
@@ -628,7 +629,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let body = "NEVER_INDEX_MEMORY_BODY_SECRET prefers local-only recall."
         let citation = MemoryCitation(
@@ -732,7 +733,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_100)
         let citation = MemoryCitation(
             id: "shared-citation",
@@ -777,7 +778,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertFalse(descriptors.contains { $0.modelName == "deterministic-fake-embedding" })
 
         guard let nl = NLEmbeddingProvider() else {
-            throw XCTSkip("NLEmbedding sentence model unavailable in this environment.")
+            throw XCTSkip("NLEmbedding sentence model unavailable in this environment.") // env-guard: NLEmbedding sentence model downloadable
         }
         XCTAssertTrue(nl.descriptor.versionTag.hasPrefix("nl-sentence-en-\(nl.descriptor.dimensions)-rmacos-"))
         XCTAssertEqual(nl.descriptor.promptVersion, "memory-fact-v1")
@@ -788,11 +789,11 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertEqual(vector.count, selected.descriptor.dimensions)
     }
 
-    func test_memoryEmbeddingRefsRespectVersionFloorAndDimensionMismatch() async throws {
+    func test_memoryEmbeddingMatchesRespectVersionFloorAndDimensionMismatch() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_100)
         let descriptorA = EmbeddingModelDescriptor(
             provider: "test-memory",
@@ -819,51 +820,23 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let registrationB = try await store.registerMemoryEmbeddingVersion(descriptor: descriptorB, now: now.addingTimeInterval(1))
         XCTAssertNotEqual(registrationA.versionID, registrationB.versionID)
 
-        do {
-            try await store.upsertMemoryEmbeddingRef(
-                memoryID: "mem-wrong-dimension",
-                embeddingVersionID: registrationA.versionID,
-                vector: [1, 0],
-                now: now
-            )
-            XCTFail("Expected dimension mismatch to throw before persistence.")
-        } catch {
-            XCTAssertEqual(
-                error as? ControlPlaneStore.MemoryEmbeddingStoreError,
-                .dimensionMismatch(expected: 3, actual: 2)
-            )
-        }
-
-        do {
-            try await store.upsertMemoryEmbeddingRef(
-                memoryID: "mem-unknown-version",
-                embeddingVersionID: "missing-version",
-                vector: [1, 0, 0],
-                now: now
-            )
-            XCTFail("Expected unknown embedding version to throw before persistence.")
-        } catch {
-            XCTAssertEqual(
-                error as? ControlPlaneStore.MemoryEmbeddingStoreError,
-                .unknownEmbeddingVersion("missing-version")
-            )
-        }
-
-        let rejectedRows = try await queue.read { db in
-            try Int.fetchOne(
-                db,
-                sql: """
-                SELECT COUNT(*)
-                FROM memory_embedding_refs
-                WHERE memory_id IN ('mem-wrong-dimension', 'mem-unknown-version')
-                """
-            ) ?? 0
-        }
-        XCTAssertEqual(rejectedRows, 0)
-
-        try await store.upsertMemoryEmbeddingRef(memoryID: "mem-a", embeddingVersionID: registrationA.versionID, vector: [1, 0, 0], now: now)
-        try await store.upsertMemoryEmbeddingRef(memoryID: "mem-b", embeddingVersionID: registrationB.versionID, vector: [1, 0, 0], now: now)
-        try await store.upsertMemoryEmbeddingRef(memoryID: "mem-c", embeddingVersionID: registrationA.versionID, vector: [0, 1, 0], now: now)
+        // NOTE (Wave 0.3 follow-up): `memory_embedding_refs` is daemon-written
+        // (ADR-005) and the app-side upsert is gone, so write-path validation
+        // (dimension / unknown-version rejection) is asserted on the daemon
+        // side. This test pins the app READ path; fixtures go in via direct
+        // SQL (test files are exempt from the single-writer ownership check).
+        try await insertMemoryEmbeddingRefFixture(
+            queue: queue, memoryID: "mem-a",
+            embeddingVersionID: registrationA.versionID, vector: [1, 0, 0], now: now
+        )
+        try await insertMemoryEmbeddingRefFixture(
+            queue: queue, memoryID: "mem-b",
+            embeddingVersionID: registrationB.versionID, vector: [1, 0, 0], now: now
+        )
+        try await insertMemoryEmbeddingRefFixture(
+            queue: queue, memoryID: "mem-c",
+            embeddingVersionID: registrationA.versionID, vector: [0, 1, 0], now: now
+        )
 
         let matches = try await store.memoryEmbeddingMatches(
             queryVector: [1, 0, 0],
@@ -888,11 +861,40 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         }
     }
 
+    /// Test-only fixture writer for the daemon-owned `memory_embedding_refs`
+    /// table (Wave 0.3 follow-up): mirrors the removed app upsert's row shape
+    /// so read-path tests can seed rows. Real writes go through the daemon.
+    private func insertMemoryEmbeddingRefFixture(
+        queue: DatabaseQueue,
+        memoryID: String,
+        embeddingVersionID: String,
+        vector: [Float],
+        now: Date
+    ) async throws {
+        let blob = BurnBarVectorBlobCodec.encode(vector)
+        let norm = sqrt(vector.reduce(Float(0)) { $0 + $1 * $1 })
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO memory_embedding_refs (
+                    memory_id, embedding_version_id, dimension, vector, norm, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(memory_id, embedding_version_id) DO UPDATE SET
+                    dimension = excluded.dimension,
+                    vector = excluded.vector,
+                    norm = excluded.norm,
+                    created_at = excluded.created_at
+                """,
+                arguments: [memoryID, embeddingVersionID, vector.count, blob, norm, now]
+            )
+        }
+    }
+
     func test_memorySecretGateRejectsPrePersistenceWithLabelOnlyAudit() async throws {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let secret = "sk-ant-1234567890abcdef1234567890"
         let body = "User pasted \(secret) and this must never persist as memory."
 
@@ -955,7 +957,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_200)
         let intent = ExtractionIntent(
             threadID: "thread-pr3",
@@ -995,7 +997,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_250)
         let intent = ExtractionIntent(
             threadID: "thread-retry-pr3",
@@ -1057,7 +1059,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_275)
         let staleIdempotency = ["stale", "idem", "pr3"].joined(separator: "-")
         let intent = ExtractionIntent(
@@ -1100,7 +1102,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_300)
         let dedupeMarker = ["stale", "max", "outbox"].joined(separator: "-")
         let intent = ExtractionIntent(
@@ -1159,7 +1161,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_320)
         let scope = MemoryScope(userID: "review-count-user", appID: "review-count-app")
 
@@ -1201,7 +1203,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_350)
         let scope = MemoryScope(userID: "dedup-user", appID: "dedup-app")
         let body = "User prefers concise status updates for backend memory work."
@@ -1286,7 +1288,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_360)
         let scope = MemoryScope(userID: "stable-user", appID: "stable-app")
         let body = "User wants memory review before prompt injection."
@@ -1346,7 +1348,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_390)
         let scope = MemoryScope(userID: "review-winner-user", appID: "review-winner-app")
         let body = "User wants approved memory to stay injectable after duplicate extraction."
@@ -1419,7 +1421,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let service = OpenBurnBarMemoryService(store: store)
         let now = Date(timeIntervalSince1970: 1_800_000_380)
         let scope = MemoryScope(userID: "recall-user", appID: "recall-app")
@@ -1495,7 +1497,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let disabledService = OpenBurnBarMemoryService(store: store, authorityWritesEnabled: { false })
         let scope = MemoryScope(userID: "service-user", appID: "service-app")
 
@@ -1579,7 +1581,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let service = OpenBurnBarMemoryService(
             store: store,
             authorityWritesEnabled: { true },
@@ -1674,23 +1676,19 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(entities.contains(MemoryEntity(keyName: "user_id", value: "authorized-user", count: 1)))
         XCTAssertFalse(entities.contains { $0.keyName == "user_id" && $0.value == "other-user" })
 
-        let transactionalService = service as any TransactionalMemoryExtractionServing
-        try await queue.write { db in
-            do {
-                try transactionalService.enqueueExtraction(
-                    ExtractionIntent(
-                        threadID: "thread-foreign",
-                        threadLogicalID: "thread-logical-foreign",
-                        messageID: "message-foreign",
-                        scope: MemoryScope(userID: "other-user", appID: "openburnbar"),
-                        promptVersion: "memory-extract-v1",
-                        idempotencyKey: "foreign-idem"
-                    ),
-                    in: db
+        do {
+            try await service.enqueueExtraction(
+                ExtractionIntent(
+                    threadID: "thread-foreign",
+                    threadLogicalID: "thread-logical-foreign",
+                    messageID: "message-foreign",
+                    scope: MemoryScope(userID: "other-user", appID: "openburnbar"),
+                    promptVersion: "memory-extract-v1",
+                    idempotencyKey: "foreign-idem"
                 )
-                XCTFail("Expected transactional extraction enqueue to reject non-local scopes.")
-            } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
-            }
+            )
+            XCTFail("Expected extraction enqueue to reject non-local scopes.")
+        } catch OpenBurnBarMemoryService.ScopeAuthorizationError.unauthorizedScope {
         }
 
         let storedCount = try await queue.read { db in
@@ -1703,7 +1701,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let service = OpenBurnBarMemoryService(store: store)
         let now = Date(timeIntervalSince1970: 1_800_000_390)
         let scope = MemoryScope(userID: "forget-user", appID: "forget-app")
@@ -1790,7 +1788,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let service = OpenBurnBarMemoryService(store: store)
         let now = Date(timeIntervalSince1970: 1_800_000_395)
         let appOnlyScope = MemoryScope(appID: "openburnbar")
@@ -1903,7 +1901,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let service = OpenBurnBarMemoryService(store: store)
         let now = Date(timeIntervalSince1970: 1_800_000_400)
         let scope = MemoryScope(userID: "tombstone-user", appID: "tombstone-app")
@@ -1966,7 +1964,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let service = OpenBurnBarMemoryService(store: store)
         let now = Date(timeIntervalSince1970: 1_800_000_410)
         let scope = MemoryScope(userID: "review-user", appID: "review-app")
@@ -2010,7 +2008,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
         let vaultKey = Data(repeating: 7, count: 32)
@@ -2084,7 +2082,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
         let vaultKey = Data(repeating: 11, count: 32)
@@ -2158,7 +2156,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
         let vaultKey = Data(repeating: 13, count: 32)
@@ -2225,7 +2223,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
         let vaultKey = Data(repeating: 21, count: 32)
@@ -2305,7 +2303,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
         let vaultKey = Data(repeating: 34, count: 32)
@@ -2366,7 +2364,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let service = OpenBurnBarMemoryService(store: store)
         let gateway = CloudSyncFirestoreFakeGateway()
         let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
@@ -2443,7 +2441,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
         let vaultKey = Data(repeating: 11, count: 32)
@@ -2552,7 +2550,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
         let vaultKey = Data(repeating: 9, count: 32)
@@ -2612,7 +2610,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = CloudSyncFirestoreFakeGateway()
         let sync = MemoryCloudSyncService(store: store, firestoreGateway: gateway)
         let vaultKey = Data(repeating: 10, count: 32)
@@ -2667,7 +2665,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_300)
         let intent = ExtractionIntent(
             threadID: "thread-worker-pr3",
@@ -2733,7 +2731,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_320)
         let intent = ExtractionIntent(
             threadID: "thread-idempotent-pr3",
@@ -2805,7 +2803,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_340)
         let intent = ExtractionIntent(
             threadID: "thread-secret-pr3",
@@ -2871,7 +2869,7 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_000_360)
         let intent = ExtractionIntent(
             threadID: "thread-disabled-pr3",
@@ -3154,15 +3152,22 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         }())
     }
 
-    func test_runMigrationsSafely_prunesOldBackups() async throws {
+    /// Pre-migration backups are capped at ONE restore point: at multi-GB
+    /// database sizes every kept copy is gigabytes of user disk that row
+    /// deletes never reclaim. The newest backup is always the restore
+    /// candidate the moment a migration succeeds; older ones are pruned
+    /// when a new one lands.
+    func test_runMigrationsSafely_prunesOldBackups_keepingOneRestorePoint() async throws {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         // Seed 7 fake backup files with staggered dates
+        var seeded: [String] = []
         for i in 0..<7 {
             let name = "test.sqlite.backup.2026010\(i)-120000"
+            seeded.append(name)
             let url = tempDir.appendingPathComponent(name)
             try "backup".write(to: url, atomically: true, encoding: .utf8)
             // Adjust modification date so they sort predictably
@@ -3182,7 +3187,10 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
 
         let contents = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
         let backups = contents.filter { $0.contains(".backup.") }
-        XCTAssertEqual(backups.count, 5, "Expected 5 backups after pruning, got: \(backups)")
+        XCTAssertEqual(backups.count, 1, "only the newest restore point survives, got: \(backups)")
+        for seed in seeded {
+            XCTAssertFalse(backups.contains(seed), "stale backup \(seed) must be pruned")
+        }
     }
 
     // MARK: - Data Repairs

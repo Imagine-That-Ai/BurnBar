@@ -46,7 +46,7 @@ function mergeWrite(path: string, data: Record<string, unknown>, merge = false):
   store.set(path, next);
 }
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     doc(path: string) {
       return {
@@ -81,21 +81,21 @@ vi.mock("firebase-admin/firestore", () => ({
   Timestamp: { fromMillis: (millis: number) => ({ toMillis: () => millis }) },
 }));
 
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ enforceAppCheck: true, linuxAppCheckAppID: "1:123:linux:route-test" }),
 }));
-vi.mock("../appCheckAttestation.js", () => ({
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   readAppIdFromCallableRequest: (request: { app?: { appId?: string } }) => request.app?.appId,
 }));
-vi.mock("../callables/shared/entitlements.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared/entitlements.js")>(
-    "../callables/shared/entitlements.js",
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>(
+    "../../../packages/functions-shared/src/shared/entitlements.js",
   );
   return { ...actual, assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined) };
 });
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: vi.fn(), logWarn: vi.fn() };
 });
 
@@ -104,8 +104,8 @@ import {
   registerIrohControllerRoute,
   resolveActiveIrohControllerRoutes,
   revokeIrohControllerRoute,
-} from "../callables/irohControllerRouteCallables.js";
-import { revokeIrohPairingRecord } from "../callables/phoneControlCallables.js";
+} from "../../../functions-sync/src/callables/irohControllerRouteCallables.js";
+import { revokeIrohPairingRecord } from "../../../functions-sync/src/callables/phoneControlCallables.js";
 
 const UID = "route-owner", CONNECTION_ID = "linux-browser-cu";
 const HOST_DEVICE_ID = "linux-host-fixture", SOURCE_DEVICE_ID = "phone-controller";

@@ -13,7 +13,7 @@ import {
   parseProviderAccountSecretRefDoc,
   parseProviderConnectionDoc,
   recordOrUndefined,
-} from "../lib/guards.js";
+} from "../../packages/functions-shared/lib/guards.js";
 import { parseUsageEventDoc } from "../lib/usageEventParse.js";
 
 assert.equal(isRecord({ ok: true }), true);

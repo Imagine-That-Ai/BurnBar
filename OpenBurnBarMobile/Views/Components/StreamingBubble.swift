@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarPretext
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - StreamingBubble (iOS)
 //

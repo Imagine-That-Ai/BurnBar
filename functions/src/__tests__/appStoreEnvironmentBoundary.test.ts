@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { StatusResponse } from "@apple/app-store-server-library";
 import { Firestore } from "firebase-admin/firestore";
 
-import type { AppStoreConfig } from "../types.js";
+import type { AppStoreConfig } from "../../../packages/functions-shared/src/types.js";
 import {
   assertConfiguredAppStoreEnvironment,
   reconcileEntitlement,
   EntitlementReconcileError,
-} from "../appstore/reconciler.js";
-import { AppleJWSVerifier, type DecodedTransaction } from "../appstore/verifier.js";
+} from "../../../functions-identity/src/domains/billing/appstore/reconciler.js";
+import { AppleJWSVerifier, type DecodedTransaction } from "../../../functions-identity/src/domains/billing/appstore/verifier.js";
 
 const BUNDLE_ID = "com.openburnbar.app";
 const PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";

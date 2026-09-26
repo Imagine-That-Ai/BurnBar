@@ -3,9 +3,9 @@ import GRDB
 @testable import OpenBurnBar
 import OpenBurnBarCore
 
-/// Fail-closed behavior for `BudgetLedger.snapshot(forRules:)`.
+/// Fail-closed behavior for `GRDBBudgetLedger.snapshot(forRules:)`.
 ///
-/// `BudgetLedger` feeds `BudgetGate`, the per-request spend gate. The original fast-path
+/// `GRDBBudgetLedger` feeds `BudgetGate`, the per-request spend gate. The original fast-path
 /// `snapshot` swallowed any DB read failure with `try? ... ?? 0`, reporting ZERO accumulated
 /// spend on error — a fail-open: an over-limit request would slip through when the ledger
 /// was unreadable. The fix removes the silent `?? 0` and instead OMITS a rule from the
@@ -83,7 +83,7 @@ final class BudgetLedgerMattersTests: XCTestCase {
     /// the legitimate "no spend yet" signal, NOT an omission.
     func test_snapshot_emptyLedger_reportsPresentZero() async throws {
         let queue = try makeMigratedQueue()
-        let ledger = BudgetLedger(dbQueue: queue)
+        let ledger = GRDBBudgetLedger(dbQueue: queue)
         let rule = globalRule(id: "rule-empty")
 
         let result = await ledger.snapshot(forRules: [rule], reference: Date())
@@ -99,7 +99,7 @@ final class BudgetLedgerMattersTests: XCTestCase {
         try await insertGlobalUsage(into: queue, cost: 12.50, at: now)
         try await insertGlobalUsage(into: queue, cost: 7.25, at: now)
 
-        let ledger = BudgetLedger(dbQueue: queue)
+        let ledger = GRDBBudgetLedger(dbQueue: queue)
         let rule = globalRule(id: "rule-spend")
 
         let result = await ledger.snapshot(forRules: [rule], reference: now.addingTimeInterval(60))
@@ -132,7 +132,7 @@ final class BudgetLedgerMattersTests: XCTestCase {
             providerAccountLabel: "Other Org"
         )
 
-        let ledger = BudgetLedger(dbQueue: queue)
+        let ledger = GRDBBudgetLedger(dbQueue: queue)
         let rule = organizationRule(id: "rule-org", identifier: "Acme Org")
 
         let spend = try await ledger.currentSpend(forRule: rule, reference: now.addingTimeInterval(60))
@@ -146,7 +146,7 @@ final class BudgetLedgerMattersTests: XCTestCase {
     /// never present-with-zero (which is the old fail-open behavior the fix removes).
     func test_snapshot_readFailure_omitsRuleInsteadOfReportingZero() async throws {
         let queue = try makeUnmigratedQueue() // no token_usage table -> reads throw
-        let ledger = BudgetLedger(dbQueue: queue)
+        let ledger = GRDBBudgetLedger(dbQueue: queue)
         let rule = globalRule(id: "rule-faulted")
 
         let result = await ledger.snapshot(forRules: [rule], reference: Date())
@@ -162,7 +162,7 @@ final class BudgetLedgerMattersTests: XCTestCase {
     /// ledger as at-limit. The old `?? 0` would have treated it as fully available headroom.
     func test_snapshot_readFailure_failClosedLookupTreatsRuleAtLimit() async throws {
         let queue = try makeUnmigratedQueue()
-        let ledger = BudgetLedger(dbQueue: queue)
+        let ledger = GRDBBudgetLedger(dbQueue: queue)
         let rule = globalRule(id: "rule-atlimit", limit: 50)
 
         let result = await ledger.snapshot(forRules: [rule], reference: Date())
@@ -181,11 +181,11 @@ final class BudgetLedgerMattersTests: XCTestCase {
     func test_snapshot_mixedBatch_presencePerRead() async throws {
         let rules = [globalRule(id: "a"), globalRule(id: "b"), globalRule(id: "c")]
 
-        let faulted = BudgetLedger(dbQueue: try makeUnmigratedQueue())
+        let faulted = GRDBBudgetLedger(dbQueue: try makeUnmigratedQueue())
         let faultedResult = await faulted.snapshot(forRules: rules, reference: Date())
         XCTAssertTrue(faultedResult.isEmpty, "All reads faulted -> all rules omitted (fail closed)")
 
-        let healthy = BudgetLedger(dbQueue: try makeMigratedQueue())
+        let healthy = GRDBBudgetLedger(dbQueue: try makeMigratedQueue())
         let healthyResult = await healthy.snapshot(forRules: rules, reference: Date())
         XCTAssertEqual(Set(healthyResult.keys), Set(rules.map(\.id)), "All reads succeeded -> all rules present")
         for rule in rules {

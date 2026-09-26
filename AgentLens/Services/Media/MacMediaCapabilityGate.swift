@@ -7,7 +7,7 @@ import CoreGraphics
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia

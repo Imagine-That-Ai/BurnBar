@@ -2,6 +2,7 @@ import Foundation
 import os
 @preconcurrency import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - DataStoreActor
 //
@@ -32,7 +33,13 @@ actor DataStoreActor {
     init(
         databaseQueue: any DatabaseWriter,
         runMigrations: Bool = true,
-        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil
+        migrationBackupConfigurationBuilder: OpenBurnBarDatabase.MigrationBackupConfigurationBuilder? = nil,
+        chatWriter: any ChatHistoryWriter = DaemonChatHistoryWriter(),
+        snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter(),
+        vectorSnapshotWriter: any VectorIndexSnapshotWriter = DaemonVectorIndexSnapshotWriter(),
+        memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter(),
+        searchIndexWriter: any SearchIndexWriter = DaemonSearchIndexWriter(),
+        switcherActiveProfileWriter: any SwitcherActiveProfileWriter = DaemonSwitcherActiveProfileWriter()
     ) throws {
         dbQueue = databaseQueue
         database = OpenBurnBarDatabase(
@@ -40,16 +47,27 @@ actor DataStoreActor {
             migrationBackupConfigurationBuilder: migrationBackupConfigurationBuilder
         )
         usageStore = UsageStore(dbQueue: databaseQueue)
-        conversationStore = ConversationStore(dbQueue: databaseQueue)
+        conversationStore = ConversationStore(
+            dbQueue: databaseQueue,
+            chatWriter: chatWriter,
+            snapshotWriter: snapshotWriter
+        )
         receiptStore = ReceiptStore(dbQueue: databaseQueue)
-        searchIndexStore = SearchIndexStore(dbQueue: databaseQueue)
+        searchIndexStore = SearchIndexStore(dbQueue: databaseQueue, searchIndexWriter: searchIndexWriter)
         artifactStore = ArtifactStore(dbQueue: databaseQueue)
-        projectionStore = ProjectionStore(dbQueue: databaseQueue)
-        controlPlaneStore = ControlPlaneStore(dbQueue: databaseQueue)
+        projectionStore = ProjectionStore(dbQueue: databaseQueue, vectorSnapshotWriter: vectorSnapshotWriter)
+        controlPlaneStore = ControlPlaneStore(
+            dbQueue: databaseQueue,
+            snapshotWriter: snapshotWriter,
+            memoryAuthorityWriter: memoryAuthorityWriter
+        )
         deviceStore = DeviceStore(dbQueue: databaseQueue)
         checkpointStore = ParserCheckpointStore(dbQueue: databaseQueue)
         remoteSyncWatermarkStore = RemoteSyncWatermarkStore(dbQueue: databaseQueue)
-        switcherStore = SwitcherProfileStore(dbQueue: databaseQueue)
+        switcherStore = SwitcherProfileStore(
+            dbQueue: databaseQueue,
+            activeProfileWriter: switcherActiveProfileWriter
+        )
         backfillCursorStore = BackfillCursorStore(dbQueue: databaseQueue)
         providerAccountStore = ProviderAccountStore(dbQueue: databaseQueue)
         textExpansionSnippetStore = TextExpansionSnippetStore(dbQueue: databaseQueue)
@@ -99,6 +117,13 @@ actor DataStoreActor {
 
     func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
         try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
+    }
+
+    func fetchDashboardUsageSnapshotWithParts(
+        loadedUsageLimit: Int,
+        now: Date = Date()
+    ) async throws -> (snapshot: DashboardUsageSnapshot, parts: DashboardRollupParts) {
+        try await usageStore.fetchDashboardUsageSnapshotWithParts(loadedUsageLimit: loadedUsageLimit, now: now)
     }
 
     func fetchQuickTodayUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {

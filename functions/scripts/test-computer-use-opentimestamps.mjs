@@ -6,7 +6,7 @@ import {
   parseComputerUseOpenTimestampsValidationRequest,
   runOtsVerify,
   validateComputerUseOpenTimestampsProofForRequest,
-} from "../lib/computerUseOpenTimestamps.js";
+} from "../../functions-sync/lib/domains/computer-use/computerUseOpenTimestamps.js";
 
 const proofBase64 = Buffer.from("proof").toString("base64");
 

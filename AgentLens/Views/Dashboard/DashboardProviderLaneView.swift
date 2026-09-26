@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 // MARK: - Provider / Model / Activity Lanes
 

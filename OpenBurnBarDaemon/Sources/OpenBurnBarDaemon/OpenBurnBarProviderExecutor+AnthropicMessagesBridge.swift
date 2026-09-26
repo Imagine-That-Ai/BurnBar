@@ -24,42 +24,41 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         _ body: Data,
         modelID: String
     ) throws -> (Data, Bool) {
-        guard let object = try JSONSerialization.jsonObject(with: body, options: []) as? [String: Any] else {
-            throw BurnBarProviderExecutorError.invalidResponse
-        }
-        guard let anthropicMessages = object["messages"] as? [[String: Any]], !anthropicMessages.isEmpty else {
+        let request = try BurnBarBridgeJSON.decodeBridgeRequest(AnthropicBridgeInboundRequest.self, from: body)
+        guard let rawMessages = request.messages?.array, !rawMessages.isEmpty,
+              let anthropicMessages = try? rawMessages.map({ try $0.decoded(as: AnthropicBridgeInboundMessage.self) }) else {
             throw BurnBarProviderExecutorError.upstreamError(
                 400,
                 "Anthropic Messages bridge requires at least one message."
             )
         }
 
-        var messages: [[String: Any]] = []
-        if let systemText = systemText(from: object["system"]), !systemText.isEmpty {
-            messages.append(["role": "system", "content": systemText])
+        var messages: [ChatBridgeOutboundMessage] = []
+        if let systemText = systemText(from: request.system), !systemText.isEmpty {
+            messages.append(ChatBridgeOutboundMessage(role: "system", content: .string(systemText)))
         }
 
         for message in anthropicMessages {
-            let role = ((message["role"] as? String) ?? "user")
+            let role = message.role?.string?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            let blocks = anthropicContentBlocks(from: message["content"])
+                .lowercased() ?? "user"
+            let blocks = anthropicContentBlocks(from: message.content)
             let toolResults = blocks.compactMap(openAIToolMessageFromAnthropicToolResult)
             let conversationalContent = openAIContent(fromAnthropicBlocks: blocks.filter {
-                ($0["type"] as? String) != "tool_result"
+                $0.type?.string != "tool_result"
             })
 
             if !isEmptyOpenAIContent(conversationalContent) {
-                var converted: [String: Any] = [
-                    "role": role == "assistant" ? "assistant" : "user",
-                    "content": conversationalContent
-                ]
+                var converted = ChatBridgeOutboundMessage(
+                    role: role == "assistant" ? "assistant" : "user",
+                    content: conversationalContent
+                )
                 if role == "assistant" {
                     let toolCalls = blocks.compactMap(openAIToolCallFromAnthropicToolUse)
                     if !toolCalls.isEmpty {
-                        converted["tool_calls"] = toolCalls
+                        converted.toolCalls = try BurnBarBridgeJSON.bridgeValue(toolCalls)
                         if isEmptyOpenAIContent(conversationalContent) {
-                            converted["content"] = NSNull()
+                            converted.content = .null
                         }
                     }
                 }
@@ -67,11 +66,11 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             } else if role == "assistant" {
                 let toolCalls = blocks.compactMap(openAIToolCallFromAnthropicToolUse)
                 if !toolCalls.isEmpty {
-                    messages.append([
-                        "role": "assistant",
-                        "content": NSNull(),
-                        "tool_calls": toolCalls
-                    ])
+                    messages.append(ChatBridgeOutboundMessage(
+                        role: "assistant",
+                        content: .null,
+                        toolCalls: try BurnBarBridgeJSON.bridgeValue(toolCalls)
+                    ))
                 }
             }
 
@@ -85,31 +84,26 @@ extension BurnBarOpenAICompatibleProviderExecutor {
             )
         }
 
-        var chat: [String: Any] = [
-            "model": modelID,
-            "messages": messages
-        ]
-        if let maxTokens = object["max_tokens"] {
-            chat["max_completion_tokens"] = maxTokens
-            chat["max_tokens"] = maxTokens
+        var chat = ChatBridgeOutboundRequest(model: modelID, messages: messages)
+        if let maxTokens = request.maxTokens {
+            chat.maxCompletionTokens = maxTokens
+            chat.maxTokens = maxTokens
         }
-        for key in ["temperature", "top_p", "stream"] {
-            if let value = object[key] {
-                chat[key] = value
-            }
+        chat.temperature = request.temperature
+        chat.topP = request.topP
+        chat.stream = request.stream
+        if let stopSequences = request.stopSequences {
+            chat.stop = stopSequences
         }
-        if let stopSequences = object["stop_sequences"] {
-            chat["stop"] = stopSequences
-        }
-        if let tools = openAITools(fromAnthropicTools: object["tools"]), !tools.isEmpty {
-            chat["tools"] = tools
-            if let toolChoice = openAIToolChoice(fromAnthropicToolChoice: object["tool_choice"]) {
-                chat["tool_choice"] = toolChoice
+        if let tools = openAITools(fromAnthropicTools: request.tools), !tools.isEmpty {
+            chat.tools = try BurnBarBridgeJSON.bridgeValue(tools)
+            if let toolChoice = openAIToolChoice(fromAnthropicToolChoice: request.toolChoice) {
+                chat.toolChoice = try BurnBarBridgeJSON.bridgeValue(toolChoice)
             }
         }
 
-        let streamRequested = object["stream"] as? Bool ?? false
-        return (try jsonData(chat), streamRequested)
+        let streamRequested = request.stream?.bool ?? false
+        return (try BurnBarBridgeJSON.encode(chat, sortedKeys: true), streamRequested)
     }
 
     static func anthropicMessagesProxyResponse(
@@ -134,33 +128,32 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         _ body: Data,
         modelID: String
     ) throws -> Data {
-        guard let object = try JSONSerialization.jsonObject(with: body, options: []) as? [String: Any],
-              let choices = object["choices"] as? [[String: Any]],
-              let firstChoice = choices.first,
-              let message = firstChoice["message"] as? [String: Any] else {
+        let completion = try BurnBarBridgeJSON.decodeBridgeRequest(ChatBridgeInboundCompletion.self, from: body)
+        guard let firstChoice = completion.choices?.first,
+              let message = firstChoice.message else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
 
-        var content: [[String: Any]] = []
-        let text = openAIContentText(message["content"])
+        var content: [AnthropicBridgedBlock] = []
+        let text = openAIContentText(message.content)
         if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            content.append(["type": "text", "text": text])
+            content.append(AnthropicBridgedBlock(type: "text", text: text))
         }
-        if let toolCalls = message["tool_calls"] as? [[String: Any]] {
+        if let toolCalls = message.toolCalls?.array, toolCalls.allSatisfy({ $0.object != nil }) {
             content.append(contentsOf: toolCalls.compactMap(anthropicToolUseBlock(fromOpenAIToolCall:)))
         }
 
-        let responseObject: [String: Any] = [
-            "id": (object["id"] as? String) ?? "msg_\(UUID().uuidString)",
-            "type": "message",
-            "role": "assistant",
-            "model": (object["model"] as? String) ?? modelID,
-            "content": content,
-            "stop_reason": anthropicStopReason(fromChatFinishReason: firstChoice["finish_reason"] as? String),
-            "stop_sequence": NSNull(),
-            "usage": anthropicUsage(fromOpenAIUsage: object["usage"])
-        ]
-        return try jsonData(responseObject)
+        let outbound = AnthropicOutboundMessage(
+            id: completion.id?.string ?? "msg_\(UUID().uuidString)",
+            type: "message",
+            role: "assistant",
+            model: completion.model?.string ?? modelID,
+            content: content,
+            stopReason: AnthropicBridgeStopReason.fromChatFinishReason(firstChoice.finishReason?.string),
+            stopSequence: .null,
+            usage: anthropicUsage(fromOpenAIUsage: completion.usage)
+        )
+        return try BurnBarBridgeJSON.encode(outbound, sortedKeys: true)
     }
 
     private static func anthropicMessagesStreamFromChatCompletionStream(
@@ -171,89 +164,116 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         var output = Data()
         var outputText = ""
         var stopReason = "end_turn"
-        var usage: [String: Any] = ["input_tokens": 0, "output_tokens": 0]
+        var usage = AnthropicOutboundMessage.AnthropicOutboundUsage(inputTokens: 0, outputTokens: 0)
         var streamedToolCalls: [Int: StreamedToolCall] = [:]
 
-        try appendNamedSSE(event: "message_start", payload: [
-            "type": "message_start",
-            "message": [
-                "id": messageID,
-                "type": "message",
-                "role": "assistant",
-                "model": modelID,
-                "content": [],
-                "stop_reason": NSNull(),
-                "stop_sequence": NSNull(),
-                "usage": usage
-            ]
-        ], to: &output)
-        try appendNamedSSE(event: "content_block_start", payload: [
-            "type": "content_block_start",
-            "index": 0,
-            "content_block": ["type": "text", "text": ""]
-        ], to: &output)
+        try BurnBarBridgeJSON.appendNamedSSE(
+            event: "message_start",
+            payload: AnthropicOutboundMessageStart(
+                type: "message_start",
+                message: AnthropicOutboundMessageStart.AnthropicOutboundMessageStartBody(
+                    id: messageID,
+                    type: "message",
+                    role: "assistant",
+                    model: modelID,
+                    content: [],
+                    stopReason: .null,
+                    stopSequence: .null,
+                    usage: usage
+                )
+            ),
+            to: &output
+        )
+        try BurnBarBridgeJSON.appendNamedSSE(
+            event: "content_block_start",
+            payload: AnthropicOutboundContentBlockStart(
+                type: "content_block_start",
+                index: 0,
+                contentBlock: .object(["type": .string("text"), "text": .string("")])
+            ),
+            to: &output
+        )
 
         for event in serverSentEvents(from: response.body) {
-            if let eventUsage = event.payload["usage"] as? [String: Any] {
+            if let eventUsage = event.usage {
                 usage = anthropicUsage(fromOpenAIUsage: eventUsage)
             }
-            guard let choices = event.payload["choices"] as? [[String: Any]],
-                  let choice = choices.first else {
+            guard let choice = event.choices?.first else {
                 continue
             }
-            if let finish = choice["finish_reason"] as? String {
-                stopReason = anthropicStopReason(fromChatFinishReason: finish)
+            if let finish = choice.finishReason?.string {
+                stopReason = AnthropicBridgeStopReason.fromChatFinishReason(finish)
             }
-            guard let delta = choice["delta"] as? [String: Any] else { continue }
-            if let text = delta["content"] as? String, !text.isEmpty {
+            guard let delta = choice.delta else { continue }
+            if let text = delta.content?.string, !text.isEmpty {
                 outputText += text
-                try appendNamedSSE(event: "content_block_delta", payload: [
-                    "type": "content_block_delta",
-                    "index": 0,
-                    "delta": ["type": "text_delta", "text": text]
-                ], to: &output)
+                try BurnBarBridgeJSON.appendNamedSSE(
+                    event: "content_block_delta",
+                    payload: AnthropicOutboundContentBlockDelta(
+                        type: "content_block_delta",
+                        index: 0,
+                        delta: .object(["type": .string("text_delta"), "text": .string(text)])
+                    ),
+                    to: &output
+                )
             }
-            if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
+            if let toolCalls = delta.toolCalls?.array, toolCalls.allSatisfy({ $0.object != nil }) {
                 merge(toolCalls: toolCalls, into: &streamedToolCalls)
             }
         }
 
-        try appendNamedSSE(event: "content_block_stop", payload: [
-            "type": "content_block_stop",
-            "index": 0
-        ], to: &output)
+        try BurnBarBridgeJSON.appendNamedSSE(
+            event: "content_block_stop",
+            payload: AnthropicOutboundContentBlockStop(type: "content_block_stop", index: 0),
+            to: &output
+        )
 
         var nextIndex = 1
         for call in streamedToolCalls.values.sorted(by: { $0.index < $1.index }) {
-            try appendNamedSSE(event: "content_block_start", payload: [
-                "type": "content_block_start",
-                "index": nextIndex,
-                "content_block": [
-                    "type": "tool_use",
-                    "id": call.id,
-                    "name": call.name,
-                    "input": objectFromJSONString(call.arguments) ?? [:]
-                ]
-            ], to: &output)
-            try appendNamedSSE(event: "content_block_stop", payload: [
-                "type": "content_block_stop",
-                "index": nextIndex
-            ], to: &output)
+            try BurnBarBridgeJSON.appendNamedSSE(
+                event: "content_block_start",
+                payload: AnthropicOutboundContentBlockStart(
+                    type: "content_block_start",
+                    index: nextIndex,
+                    contentBlock: .object([
+                        "type": .string("tool_use"),
+                        "id": .string(call.id),
+                        "name": .string(call.name),
+                        "input": objectFromJSONString(call.arguments) ?? .object([:])
+                    ])
+                ),
+                to: &output
+            )
+            try BurnBarBridgeJSON.appendNamedSSE(
+                event: "content_block_stop",
+                payload: AnthropicOutboundContentBlockStop(type: "content_block_stop", index: nextIndex),
+                to: &output
+            )
             nextIndex += 1
         }
 
-        if usage["output_tokens"] as? Int == 0 {
-            usage["output_tokens"] = max(1, outputText.count / 4)
+        if usage.outputTokens == 0 {
+            usage.outputTokens = max(1, outputText.count / 4)
         }
-        try appendNamedSSE(event: "message_delta", payload: [
-            "type": "message_delta",
-            "delta": [
-                "stop_reason": stopReason,
-                "stop_sequence": NSNull()
-            ],
-            "usage": ["output_tokens": usage["output_tokens"] ?? 0]
-        ], to: &output)
-        try appendNamedSSE(event: "message_stop", payload: ["type": "message_stop"], to: &output)
+        try BurnBarBridgeJSON.appendNamedSSE(
+            event: "message_delta",
+            payload: AnthropicOutboundMessageDelta(
+                type: "message_delta",
+                delta: AnthropicOutboundMessageDelta.AnthropicOutboundMessageDeltaBody(
+                    stopReason: stopReason,
+                    stopSequence: .null
+                ),
+                usage: AnthropicOutboundMessageDelta.AnthropicOutboundMessageDeltaUsage(
+                    outputTokens: usage.outputTokens
+                )
+            ),
+            to: &output
+        )
+        try BurnBarBridgeJSON.appendNamedSSE(
+            event: "message_stop",
+            payload: AnthropicOutboundMessageStop(type: "message_stop"),
+            to: &output
+        )
 
         return BurnBarProviderProxyResponse(
             statusCode: 200,
@@ -271,23 +291,23 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         var arguments: String
     }
 
-    private static func merge(toolCalls: [[String: Any]], into accumulator: inout [Int: StreamedToolCall]) {
+    private static func merge(toolCalls: [BurnBarBridgeValue], into accumulator: inout [Int: StreamedToolCall]) {
         for call in toolCalls {
-            let index = intValue(call["index"]) ?? accumulator.count
+            let index = call["index"]?.asInt ?? accumulator.count
             var existing = accumulator[index] ?? StreamedToolCall(
                 index: index,
                 id: "call_\(UUID().uuidString)",
                 name: "tool",
                 arguments: ""
             )
-            if let id = call["id"] as? String, !id.isEmpty {
+            if let id = call["id"]?.string, !id.isEmpty {
                 existing.id = id
             }
-            if let function = call["function"] as? [String: Any] {
-                if let name = function["name"] as? String, !name.isEmpty {
+            if let function = call["function"], function.object != nil {
+                if let name = function["name"]?.string, !name.isEmpty {
                     existing.name = name
                 }
-                if let arguments = function["arguments"] as? String, !arguments.isEmpty {
+                if let arguments = function["arguments"]?.string, !arguments.isEmpty {
                     existing.arguments += arguments
                 }
             }
@@ -295,84 +315,66 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         }
     }
 
-    private struct ServerSentEvent {
-        let payload: [String: Any]
-    }
-
-    private static func serverSentEvents(from data: Data) -> [ServerSentEvent] {
-        let text = String(decoding: data, as: UTF8.self)
-        return text.components(separatedBy: "\n\n").compactMap { chunk in
-            var dataLines: [String] = []
-            for line in chunk.split(separator: "\n", omittingEmptySubsequences: false) {
-                guard line.hasPrefix("data:") else { continue }
-                let dataLine = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
-                if dataLine == "[DONE]" { return nil }
-                dataLines.append(dataLine)
-            }
-            guard !dataLines.isEmpty,
-                  let payloadData = dataLines.joined(separator: "\n").data(using: .utf8),
-                  let payload = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
-                return nil
-            }
-            return ServerSentEvent(payload: payload)
+    private static func serverSentEvents(from data: Data) -> [ChatBridgeInboundCompletion] {
+        BurnBarBridgeJSON.eventPayloads(from: data).compactMap { payload in
+            try? JSONDecoder().decode(ChatBridgeInboundCompletion.self, from: payload)
         }
     }
 
-    private static func systemText(from value: Any?) -> String? {
-        if let string = value as? String {
+    private static func systemText(from value: BurnBarBridgeValue?) -> String? {
+        if let string = value?.string {
             return string.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         }
-        guard let blocks = value as? [[String: Any]] else { return nil }
+        guard let blocks = value?.array, blocks.allSatisfy({ $0.object != nil }) else { return nil }
         let text = blocks.compactMap { block -> String? in
-            guard block["type"] as? String == "text",
-                  let text = block["text"] as? String else { return nil }
+            guard let view = try? block.decoded(as: AnthropicContentBlockWire.self),
+                  view.type?.string == "text",
+                  let text = view.text?.string else { return nil }
             return text.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         }.joined(separator: "\n\n")
         return text.isEmpty ? nil : text
     }
 
-    private static func anthropicContentBlocks(from value: Any?) -> [[String: Any]] {
-        if let string = value as? String {
-            return [["type": "text", "text": string]]
+    private static func anthropicContentBlocks(from value: BurnBarBridgeValue?) -> [AnthropicContentBlockWire] {
+        guard let value else { return [] }
+        if let string = value.string {
+            return [AnthropicContentBlockWire.text(string)]
         }
-        return (value as? [[String: Any]]) ?? []
+        guard let blocks = value.array, blocks.allSatisfy({ $0.object != nil }) else { return [] }
+        return blocks.compactMap { try? $0.decoded(as: AnthropicContentBlockWire.self) }
     }
 
-    private static func openAIContent(fromAnthropicBlocks blocks: [[String: Any]]) -> Any {
-        var parts: [[String: Any]] = []
+    private static func openAIContent(fromAnthropicBlocks blocks: [AnthropicContentBlockWire]) -> ChatBridgeOutboundContent {
+        var parts: [ChatBridgeOutboundPart] = []
         var textOnly: [String] = []
         var sawNonText = false
 
         for block in blocks {
-            switch block["type"] as? String {
+            switch block.type?.string {
             case "text":
-                let text = (block["text"] as? String) ?? ""
+                let text = block.text?.string ?? ""
                 if !sawNonText {
                     textOnly.append(text)
                 }
-                parts.append(["type": "text", "text": text])
+                parts.append(ChatBridgeOutboundPart(type: .string("text"), text: .string(text)))
             case "image":
                 sawNonText = true
-                if let source = block["source"] as? [String: Any],
-                   let mediaType = source["media_type"] as? String,
-                   let data = source["data"] as? String {
-                    parts.append([
-                        "type": "image_url",
-                        "image_url": ["url": "data:\(mediaType);base64,\(data)"]
-                    ])
+                if let mediaType = block.source?.mediaType?.string,
+                   let data = block.source?.data?.string {
+                    parts.append(ChatBridgeOutboundPart(
+                        type: .string("image_url"),
+                        imageURL: .object(["url": .string("data:\(mediaType);base64,\(data)")])
+                    ))
                 }
             case "document":
                 sawNonText = true
-                if let source = block["source"] as? [String: Any],
-                   let mediaType = source["media_type"] as? String,
-                   let data = source["data"] as? String,
+                if let mediaType = block.source?.mediaType?.string,
+                   let data = block.source?.data?.string,
                    mediaType.caseInsensitiveCompare("application/pdf") == .orderedSame {
-                    parts.append([
-                        "type": "file",
-                        "file": [
-                            "file_data": "data:\(mediaType);base64,\(data)"
-                        ]
-                    ])
+                    parts.append(ChatBridgeOutboundPart(
+                        type: .string("file"),
+                        file: .object(["file_data": .string("data:\(mediaType);base64,\(data)")])
+                    ))
                 }
             default:
                 continue
@@ -380,160 +382,133 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         }
 
         if sawNonText {
-            return parts
+            return .parts(parts)
         }
-        return textOnly.joined()
+        return .string(textOnly.joined())
     }
 
-    private static func isEmptyOpenAIContent(_ value: Any) -> Bool {
-        if value is NSNull { return true }
-        if let string = value as? String {
-            return string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        if let parts = value as? [[String: Any]] {
+    private static func isEmptyOpenAIContent(_ value: ChatBridgeOutboundContent) -> Bool {
+        switch value {
+        case .string(let text):
+            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .parts(let parts):
             return parts.isEmpty
+        case .null:
+            return true
         }
-        return false
     }
 
-    private static func openAIContentText(_ value: Any?) -> String {
-        if let string = value as? String { return string }
-        guard let parts = value as? [[String: Any]] else { return "" }
+    private static func openAIContentText(_ value: BurnBarBridgeValue?) -> String {
+        guard let value else { return "" }
+        if let string = value.string { return string }
+        guard let parts = value.array, parts.allSatisfy({ $0.object != nil }) else { return "" }
         return parts.compactMap { part -> String? in
-            guard part["type"] as? String == "text" else { return nil }
-            return part["text"] as? String
+            guard let view = try? part.decoded(as: AnthropicContentBlockWire.self),
+                  view.type?.string == "text" else { return nil }
+            return view.text?.string
         }.joined()
     }
 
-    private static func openAIToolMessageFromAnthropicToolResult(_ block: [String: Any]) -> [String: Any]? {
-        guard block["type"] as? String == "tool_result",
-              let toolUseID = block["tool_use_id"] as? String,
+    private static func openAIToolMessageFromAnthropicToolResult(_ block: AnthropicContentBlockWire) -> ChatBridgeOutboundMessage? {
+        guard block.type?.string == "tool_result",
+              let toolUseID = block.toolUseID?.string,
               !toolUseID.isEmpty else {
             return nil
         }
-        return [
-            "role": "tool",
-            "tool_call_id": toolUseID,
-            "content": openAIContentText(block["content"])
-        ]
+        return ChatBridgeOutboundMessage(
+            role: "tool",
+            content: .string(openAIContentText(block.content)),
+            toolCallID: toolUseID
+        )
     }
 
-    private static func openAIToolCallFromAnthropicToolUse(_ block: [String: Any]) -> [String: Any]? {
-        guard block["type"] as? String == "tool_use",
-              let id = block["id"] as? String,
-              let name = block["name"] as? String,
+    private static func openAIToolCallFromAnthropicToolUse(_ block: AnthropicContentBlockWire) -> ChatBridgeOutboundToolCall? {
+        guard block.type?.string == "tool_use",
+              let id = block.id?.string,
+              let name = block.name?.string,
               !id.isEmpty,
               !name.isEmpty else {
             return nil
         }
-        let input = (block["input"] as? [String: Any]) ?? [:]
-        return [
-            "id": id,
-            "type": "function",
-            "function": [
-                "name": name,
-                "arguments": (try? jsonString(input)) ?? "{}"
-            ]
-        ]
+        let input = block.input?.object.map(BurnBarBridgeValue.object) ?? .object([:])
+        return ChatBridgeOutboundToolCall(
+            id: id,
+            type: "function",
+            function: ChatBridgeOutboundToolCall.ChatBridgeOutboundFunction(
+                name: name,
+                arguments: (try? BurnBarBridgeJSON.encodeString(input, sortedKeys: true)) ?? "{}"
+            )
+        )
     }
 
-    private static func anthropicToolUseBlock(fromOpenAIToolCall call: [String: Any]) -> [String: Any]? {
-        guard let function = call["function"] as? [String: Any],
-              let name = function["name"] as? String,
+    private static func anthropicToolUseBlock(fromOpenAIToolCall call: BurnBarBridgeValue) -> AnthropicBridgedBlock? {
+        guard let view = try? call.decoded(as: ChatBridgeInboundToolCall.self),
+              let name = view.function?["name"]?.string,
               !name.isEmpty else {
             return nil
         }
-        let arguments = (function["arguments"] as? String) ?? "{}"
-        return [
-            "type": "tool_use",
-            "id": (call["id"] as? String) ?? "call_\(UUID().uuidString)",
-            "name": name,
-            "input": objectFromJSONString(arguments) ?? [:]
-        ]
+        let arguments = view.function?["arguments"]?.string ?? "{}"
+        return AnthropicBridgedBlock(
+            type: "tool_use",
+            id: view.id?.string ?? "call_\(UUID().uuidString)",
+            name: name,
+            input: objectFromJSONString(arguments) ?? .object([:])
+        )
     }
 
-    private static func openAITools(fromAnthropicTools value: Any?) -> [[String: Any]]? {
-        guard let tools = value as? [[String: Any]] else { return nil }
+    private static func openAITools(fromAnthropicTools value: BurnBarBridgeValue?) -> [ChatBridgeOutboundTool]? {
+        guard let tools = value?.array, tools.allSatisfy({ $0.object != nil }) else { return nil }
         return tools.compactMap { tool in
-            guard let name = tool["name"] as? String, !name.isEmpty else { return nil }
-            var function: [String: Any] = [
-                "name": name,
-                "parameters": (tool["input_schema"] as? [String: Any]) ?? ["type": "object", "properties": [:]]
-            ]
-            if let description = tool["description"] as? String, !description.isEmpty {
-                function["description"] = description
-            }
-            return ["type": "function", "function": function]
+            guard let view = try? tool.decoded(as: AnthropicBridgeInboundTool.self),
+                  let name = view.name?.string, !name.isEmpty else { return nil }
+            let description = view.toolDescription?.string
+            return ChatBridgeOutboundTool(
+                type: "function",
+                function: ChatBridgeOutboundTool.ChatBridgeOutboundToolFunction(
+                    name: name,
+                    toolDescription: description.flatMap { $0.isEmpty ? nil : $0 },
+                    parameters: view.inputSchema?.object.map(BurnBarBridgeValue.object)
+                        ?? .object(["type": .string("object"), "properties": .object([:])])
+                )
+            )
         }
     }
 
-    private static func openAIToolChoice(fromAnthropicToolChoice value: Any?) -> Any? {
-        if let string = value as? String {
+    private static func openAIToolChoice(fromAnthropicToolChoice value: BurnBarBridgeValue?) -> ChatBridgeOutboundToolChoice? {
+        if let string = value?.string {
             switch string {
-            case "auto": return "auto"
-            case "none": return "none"
-            case "any": return "required"
+            case "auto": return .string("auto")
+            case "none": return .string("none")
+            case "any": return .string("required")
             default: return nil
             }
         }
-        guard let object = value as? [String: Any],
-              let type = object["type"] as? String else {
+        guard let value, value.object != nil,
+              let type = value["type"]?.string else {
             return nil
         }
-        if type == "auto" { return "auto" }
-        if type == "none" { return "none" }
-        if type == "any" { return "required" }
-        if type == "tool", let name = object["name"] as? String, !name.isEmpty {
-            return ["type": "function", "function": ["name": name]]
+        if type == "auto" { return .string("auto") }
+        if type == "none" { return .string("none") }
+        if type == "any" { return .string("required") }
+        if type == "tool", let name = value["name"]?.string, !name.isEmpty {
+            return .namedFunction(name)
         }
         return nil
     }
 
-    private static func anthropicStopReason(fromChatFinishReason value: String?) -> String {
-        switch value {
-        case "tool_calls":
-            return "tool_use"
-        case "length", "max_tokens":
-            return "max_tokens"
-        default:
-            return "end_turn"
-        }
+    private static func anthropicUsage(fromOpenAIUsage value: BurnBarBridgeValue?) -> AnthropicOutboundMessage.AnthropicOutboundUsage {
+        let input = value?["prompt_tokens"]?.asInt ?? value?["input_tokens"]?.asInt ?? 0
+        let output = value?["completion_tokens"]?.asInt ?? value?["output_tokens"]?.asInt ?? 0
+        return AnthropicOutboundMessage.AnthropicOutboundUsage(inputTokens: input, outputTokens: output)
     }
 
-    private static func anthropicUsage(fromOpenAIUsage value: Any?) -> [String: Any] {
-        let usage = value as? [String: Any] ?? [:]
-        let input = intValue(usage["prompt_tokens"]) ?? intValue(usage["input_tokens"]) ?? 0
-        let output = intValue(usage["completion_tokens"]) ?? intValue(usage["output_tokens"]) ?? 0
-        return [
-            "input_tokens": input,
-            "output_tokens": output
-        ]
-    }
-
-    private static func objectFromJSONString(_ value: String?) -> [String: Any]? {
+    private static func objectFromJSONString(_ value: String?) -> BurnBarBridgeValue? {
         guard let value,
               let data = value.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let parsed = try? BurnBarBridgeJSON.decode(BurnBarBridgeValue.self, from: data),
+              case .object = parsed else {
             return nil
         }
-        return object
+        return parsed
     }
-
-    private static func jsonData(_ object: Any) throws -> Data {
-        guard JSONSerialization.isValidJSONObject(object) else {
-            throw BurnBarProviderExecutorError.invalidResponse
-        }
-        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
-    }
-
-    private static func jsonString(_ object: Any) throws -> String {
-        let data = try jsonData(object)
-        return String(data: data, encoding: .utf8) ?? "{}"
-    }
-
-    private static func appendNamedSSE(event: String, payload: [String: Any], to output: inout Data) throws {
-        output.append(Data("event: \(event)\n".utf8))
-        output.append(Data("data: \(try jsonString(payload))\n\n".utf8))
-    }
-
 }

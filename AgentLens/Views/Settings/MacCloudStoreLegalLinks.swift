@@ -1,6 +1,8 @@
 import Foundation
 @preconcurrency import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 enum MacCloudStoreLegalURLs {
     static let privacy = requiredURL("https://burnbar.ai/legal/privacy-policy")

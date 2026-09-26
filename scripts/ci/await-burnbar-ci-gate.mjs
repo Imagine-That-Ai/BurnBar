@@ -3,8 +3,15 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const PASSING = new Set(["success", "neutral", "skipped"]);
+const PASSING = new Set(["success", "neutral"]);
 const WORKFLOW_PASSING = new Set(["success", "neutral"]);
+// "skipped" is deliberately NOT passing (Wave-1 1.3). A required context that
+// concluded skipped produced no proof, so it blocks unless the gate config
+// explicitly declares it in skippable_contexts with a reason (e.g. the
+// dependency-review action, which has no PR diff on merge_group, or a
+// path-filtered lane that reports skipped when its paths are untouched).
+// Skipped stays visible either way: declared skips land in state.skipped,
+// undeclared skips land in state.failed — never silently in state.passed.
 // Cancelled is intentionally NOT a hard failure during the poll loop.
 // Merge-queue and concurrency cancellations routinely supersede a check run
 // before its replacement is registered; treating cancelled as terminal after a
@@ -673,15 +680,32 @@ export function emitMainRedCircuitBreaker(
 
 export function evaluateGate(required, observations, options = {}) {
   const treatCancelledAsFailed = options.treatCancelledAsFailed === true;
+  const skippable = options.skippableContexts ?? {};
   const missing = [];
   const pending = [];
   const failed = [];
   const passed = [];
+  const skipped = [];
   for (const context of required) {
     const item = observations.get(context);
     if (!item) missing.push(context);
     else if (PASSING.has(item.conclusion)) passed.push(context);
-    else if (item.conclusion === "cancelled") {
+    else if (item.conclusion === "skipped") {
+      if (Object.hasOwn(skippable, context)) {
+        skipped.push({
+          context,
+          conclusion: item.conclusion,
+          reason: skippable[context] ?? null,
+          url: item.url,
+        });
+      } else {
+        failed.push({
+          context,
+          conclusion: item.conclusion,
+          url: item.url,
+        });
+      }
+    } else if (item.conclusion === "cancelled") {
       if (treatCancelledAsFailed) {
         failed.push({
           context,
@@ -711,6 +735,7 @@ export function evaluateGate(required, observations, options = {}) {
     pending,
     failed,
     passed,
+    skipped,
   };
 }
 
@@ -1180,6 +1205,14 @@ async function main() {
     return;
   }
 
+  const skippableContexts = config.skippable_contexts ?? {};
+  for (const declared of Object.keys(skippableContexts)) {
+    if (!config.required_contexts.includes(declared)) {
+      console.error(
+        `::warning::skippable_contexts declares "${annotationValue(declared)}", which is not a required context; the entry has no effect.`,
+      );
+    }
+  }
   const deadline = Date.now() + Number(config.timeout_minutes) * 60_000;
   const componentBudgetMs =
     Number(config.component_runtime_budget_minutes ?? 0) * 60_000;
@@ -1188,7 +1221,9 @@ async function main() {
     Number(config.stalled_check_grace_minutes ?? 10) * 60_000;
   while (true) {
     const observations = await collectObservations(repository, sha, token);
-    let state = evaluateGate(config.required_contexts, observations);
+    let state = evaluateGate(config.required_contexts, observations, {
+      skippableContexts,
+    });
     // A pending context whose job already finished is stale, not slow. Fold the
     // job's own verdict in before deciding to keep waiting, so a check run that
     // will never publish a conclusion cannot burn the whole budget.
@@ -1201,7 +1236,9 @@ async function main() {
       if (reconciled.size > 0) {
         for (const [context, observation] of reconciled)
           observations.set(context, observation);
-        state = evaluateGate(config.required_contexts, observations);
+        state = evaluateGate(config.required_contexts, observations, {
+          skippableContexts,
+        });
       }
     }
     if (state.failed.length > 0) {
@@ -1211,7 +1248,10 @@ async function main() {
     }
     if (state.ready) {
       console.log(
-        `All ${state.passed.length} component contexts passed for ${sha}.`,
+        `All ${state.passed.length} component contexts passed for ${sha}.` +
+          (state.skipped.length > 0
+            ? ` Declared skipped: ${state.skipped.map((entry) => entry.context).join(", ")}.`
+            : ""),
       );
       return;
     }
@@ -1229,14 +1269,17 @@ async function main() {
         const timedOut = evaluateGate(
           config.required_contexts,
           await collectObservations(repository, sha, token),
-          { treatCancelledAsFailed: true },
+          { treatCancelledAsFailed: true, skippableContexts },
         );
         // The refreshed read can observe a final check completing between the
         // first observation and the deadline re-check; a fully ready state is
         // a pass, not a timeout.
         if (timedOut.ready) {
           console.log(
-            `All ${timedOut.passed.length} component contexts passed for ${sha}.`,
+            `All ${timedOut.passed.length} component contexts passed for ${sha}.` +
+              (timedOut.skipped.length > 0
+                ? ` Declared skipped: ${timedOut.skipped.map((entry) => entry.context).join(", ")}.`
+                : ""),
           );
           return;
         }
@@ -1251,7 +1294,7 @@ async function main() {
       );
     }
     console.log(
-      `Waiting: ${state.missing.length} missing, ${state.pending.length} pending, ${state.passed.length} passed.`,
+      `Waiting: ${state.missing.length} missing, ${state.pending.length} pending, ${state.passed.length} passed, ${state.skipped.length} declared-skipped.`,
     );
     await sleep(Number(config.poll_interval_seconds) * 1000);
   }

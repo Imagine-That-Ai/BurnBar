@@ -1,5 +1,8 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
+import OpenBurnBarData
 
 /// Per-session token + cost + timing facets used to enrich the encrypted session-log
 /// backup manifest with plaintext cockpit facets (bodies stay encrypted).
@@ -80,6 +83,13 @@ extension DataStore {
         try await actor.fetchDashboardUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
     }
 
+    func fetchDashboardUsageSnapshotWithParts(
+        loadedUsageLimit: Int,
+        now: Date = Date()
+    ) async throws -> (snapshot: DashboardUsageSnapshot, parts: DashboardRollupParts) {
+        try await actor.fetchDashboardUsageSnapshotWithParts(loadedUsageLimit: loadedUsageLimit, now: now)
+    }
+
     func fetchUsageCostBreakdown(in dateRange: ClosedRange<Date>, limit: Int = 20) async throws -> UsageCostBreakdown {
         try await actor.usageStore.fetchUsageCostBreakdown(in: dateRange, limit: limit)
     }
@@ -102,6 +112,11 @@ extension DataStore {
 
     func incrementalVacuum(pages: Int = 256) async throws {
         try await actor.usageStore.incrementalVacuum(pages: pages)
+    }
+
+    @discardableResult
+    func ensureIncrementalVacuumIfNeeded() async throws -> DatabaseVacuumPolicy.MigrationPlan {
+        try await actor.usageStore.ensureIncrementalVacuumIfNeeded()
     }
 
     /// Usage-table new-event marker (see `UsageTableWriteMarker`).

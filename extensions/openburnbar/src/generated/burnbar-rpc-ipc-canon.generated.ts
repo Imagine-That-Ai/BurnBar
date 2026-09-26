@@ -212,6 +212,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.chat.thread.create",
+    "caseName": "chatThreadCreate",
+    "domain": "chat",
+    "capability": "chat",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarChatThreadCreateRequest",
+    "result": "BurnBarChatThreadCreateResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.chat.thread.get",
     "caseName": "chatThreadGet",
     "domain": "chat",
@@ -1052,6 +1062,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.memory.authority.apply",
+    "caseName": "memoryAuthorityApply",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.memory.authority.apply",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.memory.forget",
     "caseName": "memoryForget",
     "domain": "memory",
@@ -1099,6 +1119,36 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.memory.review_status",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.memory.snapshot.delete",
+    "caseName": "memorySnapshotDelete",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarProjectMemorySnapshotDeleteRequest",
+    "result": "BurnBarProjectMemorySnapshotDeleteResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.memory.snapshot.delete_all",
+    "caseName": "memorySnapshotDeleteAll",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarProjectMemorySnapshotDeleteAllRequest",
+    "result": "BurnBarProjectMemorySnapshotDeleteAllResponse",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.memory.snapshot.upsert",
+    "caseName": "memorySnapshotUpsert",
+    "domain": "memory",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarProjectMemorySnapshotUpsertRequest",
+    "result": "BurnBarProjectMemorySnapshotUpsertResponse",
     "error": "BurnBarRPCError"
   },
   {
@@ -1542,6 +1592,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.search.index.apply",
+    "caseName": "searchIndexApply",
+    "domain": "search",
+    "capability": "search_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.search.index.apply",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.search.query",
     "caseName": "searchQuery",
     "domain": "search",
@@ -1559,6 +1619,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.search.sql",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.search.vector_snapshot.upsert",
+    "caseName": "searchVectorSnapshotUpsert",
+    "domain": "search",
+    "capability": "search_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarVectorIndexSnapshotUpsertRequest",
+    "result": "BurnBarVectorIndexSnapshotUpsertResponse",
     "error": "BurnBarRPCError"
   },
   {
@@ -1589,6 +1659,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.simulator.run",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.switcher.active_profile.apply",
+    "caseName": "switcherActiveProfileApply",
+    "domain": "switcher",
+    "capability": "switcher_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.switcher.active_profile.apply",
     "error": "BurnBarRPCError"
   },
   {

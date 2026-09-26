@@ -1,6 +1,10 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // Extracted verbatim from AgentLensApp.swift (audit wave 4, item 14).
 // Post-scene startup: installs the AppCommandRouter closures (dashboard,
@@ -311,12 +315,14 @@ extension OpenBurnBarApp {
                         accountManager: context.accountManager
                     )
                 }
+                #if OPENBURNBAR_LAB
                 StartupProfiler.interval("pet_companion_activate") {
                     PetCompanionFeature.activateIfEnabled(chat: context.chatController)
                     PetOnboardingWindowPresenter.openIfNeeded(
                         chatController: context.chatController
                     )
                 }
+                #endif
             }
 
             // The performance harness now has the real dashboard and backdrop
@@ -329,7 +335,7 @@ extension OpenBurnBarApp {
                 guard !Task.isCancelled else { return }
                 if context.settingsManager.launchHermesWithOpenBurnBar {
                     let baseURL = URL(string: context.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                        ?? URL(string: "http://127.0.0.1:8642")!
+                        ?? URL(staticString: "http://127.0.0.1:8642")
                     let bearerToken = context.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
                     _ = await HermesRuntimeLauncher().openHermesAndGateway(
                         baseURL: baseURL,
@@ -338,7 +344,7 @@ extension OpenBurnBarApp {
                 }
                 if context.settingsManager.launchPiAgentsWithOpenBurnBar {
                     let baseURL = URL(string: context.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-                        ?? URL(string: "http://127.0.0.1:8765")!
+                        ?? URL(staticString: "http://127.0.0.1:8765")
                     let bearerToken = context.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
                     let preferred = context.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
                     let redisRaw = context.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -1,6 +1,7 @@
 import CryptoKit
 import FirebaseFunctions
 import XCTest
+import OpenBurnBarComputerUseCore
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarSignalCore
@@ -310,21 +311,21 @@ final class ComputerUseSecurityCallableClientTests: XCTestCase {
 
     func testProviderAccountSubjectIdSanitizesOwnerActionSubject() {
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.providerAccountSubjectId(
+            ComputerUseSecurityCallableSupport.providerAccountSubjectId(
                 provider: "OpenAI",
                 accountID: " Primary Account!! "
             ),
             "primary-account"
         )
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.providerAccountSubjectId(
+            ComputerUseSecurityCallableSupport.providerAccountSubjectId(
                 provider: "OpenAI",
                 accountID: "!!!"
             ),
             "openai_default"
         )
         XCTAssertEqual(
-            ComputerUseSecurityCallableClient.providerAccountSubjectId(
+            ComputerUseSecurityCallableSupport.providerAccountSubjectId(
                 provider: "Anthropic",
                 accountID: nil
             ),

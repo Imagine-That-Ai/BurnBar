@@ -5,13 +5,13 @@ import OSLog
 #if canImport(Darwin)
 import Darwin
 #endif
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 extension OpenAICompatibleChatGatewayClient {
     static func runToolEnabledLoop(
         url: URL,
-        messages originalMessages: [[String: Any]],
+        messages originalMessages: [UntypedJSONObject],
         model: String,
         session: URLSession,
         bearerToken: String?,
@@ -28,7 +28,7 @@ extension OpenAICompatibleChatGatewayClient {
         do {
             while true {
                 try Task.checkCancellation()
-                var body: [String: Any] = [
+                var body: UntypedJSONObject = [
                     "model": model,
                     "stream": false,
                     "messages": messages
@@ -57,7 +57,7 @@ extension OpenAICompatibleChatGatewayClient {
                     return
                 }
 
-                let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:] // try?-ok(JSON parse fallback)
+                let obj = (BurnBarJSONValue.dictionary(fromJSONData: data)) ?? [:] // try?-ok(JSON parse fallback)
                 if let usage = OpenAICompatibleUsageParser.usage(from: obj) {
                     continuation.yield(.usage(usage))
                 }
@@ -106,14 +106,14 @@ extension OpenAICompatibleChatGatewayClient {
         }
     }
 
-    static func extractOpenAIToolCalls(from obj: [String: Any]) -> [OpenAIToolCall] {
-        guard let choices = obj["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
-              let toolCalls = message["tool_calls"] as? [[String: Any]] else {
+    static func extractOpenAIToolCalls(from obj: UntypedJSONObject) -> [OpenAIToolCall] {
+        guard let choices = obj["choices"] as? [UntypedJSONObject],
+              let message = choices.first?["message"] as? UntypedJSONObject,
+              let toolCalls = message["tool_calls"] as? [UntypedJSONObject] else {
             return []
         }
         return toolCalls.compactMap { raw in
-            guard let function = raw["function"] as? [String: Any],
+            guard let function = raw["function"] as? UntypedJSONObject,
                   let name = function["name"] as? String,
                   !name.isEmpty else {
                 return nil
@@ -132,12 +132,12 @@ extension OpenAICompatibleChatGatewayClient {
         }
     }
 
-    static func buildOpenAIAssistantMessage(from obj: [String: Any]) -> [String: Any] {
-        guard let choices = obj["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any] else {
+    static func buildOpenAIAssistantMessage(from obj: UntypedJSONObject) -> UntypedJSONObject {
+        guard let choices = obj["choices"] as? [UntypedJSONObject],
+              let message = choices.first?["message"] as? UntypedJSONObject else {
             return ["role": "assistant", "content": ""]
         }
-        var assistant: [String: Any] = [
+        var assistant: UntypedJSONObject = [
             "role": "assistant",
             "content": message["content"] ?? NSNull()
         ]
@@ -147,9 +147,9 @@ extension OpenAICompatibleChatGatewayClient {
         return assistant
     }
 
-    static func extractAssistantContent(from obj: [String: Any]) -> String? {
-        guard let choices = obj["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any] else {
+    static func extractAssistantContent(from obj: UntypedJSONObject) -> String? {
+        guard let choices = obj["choices"] as? [UntypedJSONObject],
+              let message = choices.first?["message"] as? UntypedJSONObject else {
             return nil
         }
         return message["content"] as? String
@@ -176,7 +176,7 @@ extension OpenAICompatibleChatGatewayClient {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         if let data = trimmed.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(summary parse fallback)
+           let obj = BurnBarJSONValue.dictionary(fromJSONData: data) { // try?-ok(summary parse fallback)
             for key in ["path", "command", "url", "selector", "text", "key", "value"] {
                 if let value = obj[key] as? String, !value.isEmpty {
                     return String(value.prefix(160))

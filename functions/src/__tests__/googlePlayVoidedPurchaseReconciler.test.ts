@@ -23,32 +23,32 @@ vi.mock("googleapis", () => ({
   },
 }));
 
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ googlePlayPackageName: "com.openburnbar" }),
 }));
 
-vi.mock("../googlePlayRtdn.js", () => ({
+vi.mock("../../../functions-identity/src/domains/billing/googlePlayRtdn.js", () => ({
   processGooglePlayDeveloperNotification: state.process,
 }));
 
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logInfo: state.logInfo,
   logError: state.logError,
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   externalApiWithResilience: vi.fn(async <T>(_label: string, operation: () => Promise<T>) => operation()),
 }));
 
-vi.mock("../runtimeOptions.js", () => ({
+vi.mock("../../../packages/functions-shared/src/runtimeOptions.js", () => ({
   FUNCTIONS_REGION: "us-central1",
 }));
 
-vi.mock("../scheduledOps.js", () => ({
+vi.mock("../../../packages/functions-shared/src/scheduledOps.js", () => ({
   runScheduledJob: vi.fn(async <T>(_name: string, operation: () => Promise<T>) => operation()),
 }));
 
-import { reconcileGooglePlayVoidedPurchasesDaily } from "../googlePlayVoidedPurchaseReconciler.js";
+import { reconcileGooglePlayVoidedPurchasesDaily } from "../../../functions-identity/src/domains/billing/googlePlayVoidedPurchaseReconciler.js";
 
 function eventDigest(token: string, orderID: string, voidedTimeMillis: string): string {
   return createHash("sha256")

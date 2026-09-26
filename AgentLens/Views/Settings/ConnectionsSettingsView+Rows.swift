@@ -1,5 +1,10 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
 
 // Connection route-readiness, provider/account rows, OAuth rows, quota pills, migration/app-connect cards, sheets, and wizard target.

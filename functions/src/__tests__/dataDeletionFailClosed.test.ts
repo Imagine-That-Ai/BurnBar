@@ -17,7 +17,7 @@ vi.mock("firebase-functions/logger", () => ({
 // App Check / ownership are enforced via env; disable for the in-process call.
 process.env.ENFORCE_APP_CHECK = "false";
 
-vi.mock("../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
 
@@ -25,7 +25,7 @@ vi.mock("../callables/highRiskOwnerAction.js", () => ({
 const emptyCollection = {
   count: () => ({ get: async () => ({ data: () => ({ count: 0 }) }) }),
 };
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     collection: () => emptyCollection,
     doc: () => ({ get: async () => ({ exists: false }) }),
@@ -46,7 +46,7 @@ const { appendAuditEventRequired, appendAuditEvent } = vi.hoisted(() => ({
   }),
   appendAuditEvent: vi.fn(async () => undefined),
 }));
-vi.mock("../callables/auditLog.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/auditLog.js", () => ({
   appendAuditEventRequired,
   appendAuditEvent,
   auditActorLabel: () => "user",
@@ -56,7 +56,7 @@ vi.mock("../callables/auditLog.js", () => ({
   },
 }));
 
-import { deleteDomainData } from "../callables/dataDeletion.js";
+import { deleteDomainData } from "../domains/compliance/dataDeletion.js";
 
 function authedRequest() {
   return {

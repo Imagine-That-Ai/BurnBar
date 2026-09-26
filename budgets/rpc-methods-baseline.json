@@ -1,7 +1,10 @@
 {
   "protocolVersion": 2,
-  "supported": [1, 2],
-  "totalMethods": 185,
+  "supported": [
+    1,
+    2
+  ],
+  "totalMethods": 196,
   "methods": [
     {
       "caseName": "approvalRespond",
@@ -82,6 +85,10 @@
     {
       "caseName": "chatMessageAppend",
       "methodString": "daemon.chat.message.append"
+    },
+    {
+      "caseName": "chatThreadCreate",
+      "methodString": "daemon.chat.thread.create"
     },
     {
       "caseName": "chatThreadGet",
@@ -420,8 +427,16 @@
       "methodString": "daemon.memory.audit_trail"
     },
     {
+      "caseName": "memoryAuthorityApply",
+      "methodString": "daemon.memory.authority.apply"
+    },
+    {
       "caseName": "memoryForget",
       "methodString": "daemon.memory.forget"
+    },
+    {
+      "caseName": "memoryModelPolicy",
+      "methodString": "daemon.memory.model_policy"
     },
     {
       "caseName": "memoryRecall",
@@ -434,6 +449,26 @@
     {
       "caseName": "memoryReviewStatus",
       "methodString": "daemon.memory.review_status"
+    },
+    {
+      "caseName": "memorySnapshotDelete",
+      "methodString": "daemon.memory.snapshot.delete"
+    },
+    {
+      "caseName": "memorySnapshotDeleteAll",
+      "methodString": "daemon.memory.snapshot.delete_all"
+    },
+    {
+      "caseName": "memorySnapshotUpsert",
+      "methodString": "daemon.memory.snapshot.upsert"
+    },
+    {
+      "caseName": "memorySyncInboxAck",
+      "methodString": "daemon.memory.sync.inbox.ack"
+    },
+    {
+      "caseName": "memorySyncInboxList",
+      "methodString": "daemon.memory.sync.inbox.list"
     },
     {
       "caseName": "missionApprove",
@@ -604,12 +639,20 @@
       "methodString": "daemon.quota.signals.recent"
     },
     {
+      "caseName": "searchIndexApply",
+      "methodString": "daemon.search.index.apply"
+    },
+    {
       "caseName": "searchQuery",
       "methodString": "daemon.search.query"
     },
     {
       "caseName": "searchSQL",
       "methodString": "daemon.search.sql"
+    },
+    {
+      "caseName": "searchVectorSnapshotUpsert",
+      "methodString": "daemon.search.vector_snapshot.upsert"
     },
     {
       "caseName": "simulatorList",
@@ -622,6 +665,10 @@
     {
       "caseName": "simulatorRun",
       "methodString": "daemon.simulator.run"
+    },
+    {
+      "caseName": "switcherActiveProfileApply",
+      "methodString": "daemon.switcher.active_profile.apply"
     },
     {
       "caseName": "textExpansionConsentUpdate",
@@ -744,5 +791,5 @@
       "methodString": "workspace.toolResult"
     }
   ],
-  "note": "Baseline for scripts/debt/check-rpc-method-freeze.sh. Freezes the 185-case v1 Daemon RPC method catalog (BurnBarRPCMethod in BurnBarRPCContracts.swift) to prevent unversioned RPC drift and untyped method additions without schema-sync / TypeSpec contract generation."
+  "note": "Baseline for scripts/debt/check-rpc-method-freeze.sh. Freezes the 185-case v1 Daemon RPC method catalog (BurnBarRPCMethod in BurnBarRPCContracts.swift) to prevent unversioned RPC drift and untyped method additions without schema-sync / TypeSpec contract generation. v1 amendment 2026-09-22 (Wave 0.3): +3 memory methods (daemon.memory.model_policy for Memory Pro policy distribution; daemon.memory.sync.inbox.list/.ack for Blind Sync PR-2 inbox drain). All three are typed, handled on both ends, and covered by the N-1 suite; protocol stays v1-compatible with v2 in supported. v1 amendment 2026-09-23 (Wave 2.1 single-writer cutover, ADR-005): +6 app-lane methods that move SQLite writes from the app to the daemon, which is now the single writer of those tables: daemon.chat.thread.create (chat thread creation), daemon.memory.snapshot.upsert/.delete/.delete_all (project memory snapshots, 2.1c-i), daemon.search.vector_snapshot.upsert (vector index snapshots, 2.1c-ii), daemon.memory.authority.apply (atomic memory authority mutations, 2.1c-iii). All six are typed request/response pairs, handled on both ends (daemon applier + app writer seam), and covered by Core contract tests, daemon lane/socket tests, and app cutover tests; protocol stays v1-compatible with v2 in supported. v1 amendment 2026-09-23 (Wave 2.1c-iv search single-writer cutover, ADR-005): +1 app-lane method that moves the search-index writes from the app to the daemon, now the single writer of search_documents/search_chunks/search_chunks_fts: daemon.search.index.apply (atomic document-upsert / document-delete / chunk-mutation batch with daemon-assigned FTS rowids). It is a typed request/response pair, handled on both ends (daemon applier + app writer seam), and covered by Core contract tests, daemon lane/socket tests, and app cutover tests; protocol stays v1-compatible with v2 in supported. v1 amendment 2026-09-23 (Wave 2.1c-v switcher single-writer cutover, ADR-005): +1 app-lane method that moves the active-profile writes from the app to the daemon, now the single writer of switcher_active_profile: daemon.switcher.active_profile.apply (atomic pointer-set batch plus clear-by-profile with daemon-assigned updatedAt stamps). It is a typed request/response pair, handled on both ends (daemon applier + app writer seam), and covered by Core contract tests, daemon lane/socket tests, and app cutover tests; protocol stays v1-compatible with v2 in supported."
 }

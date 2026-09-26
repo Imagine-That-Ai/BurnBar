@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - Agent Brand-Zone Quick-Action Composer (Hermes Square §6.3)
 //

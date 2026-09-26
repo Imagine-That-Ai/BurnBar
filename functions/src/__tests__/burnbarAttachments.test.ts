@@ -59,16 +59,16 @@ const hoisted = vi.hoisted(() => {
   return { store, db: makeDb() };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: hoisted.db }));
-vi.mock("../config.js", () => ({ getConfig: () => ({ enforceAppCheck: false }) }));
-vi.mock("../appCheckAttestation.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: hoisted.db }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => ({ enforceAppCheck: false }) }));
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: false })),
 }));
-vi.mock("../callables/computerUseSecurityFirestore.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof: vi.fn(async () => ({ deviceId: "dev", platform: "iOS", signalIdentityKeyId: "s" })),
 }));
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return { ...actual, assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined) };
 });
 
@@ -88,8 +88,8 @@ import {
   setBurnbarStoragePort,
   takeComposeLog,
   ticketBurnbarAttachmentDownload,
-} from "../callables/burnbarAttachments.js";
-import { reapExpiredBurnbarAttachments, setReaperStoragePort } from "../scheduled/reapBurnbarAttachments.js";
+} from "../../../functions-media/src/domains/attachments/burnbarAttachments.js";
+import { reapExpiredBurnbarAttachments, setReaperStoragePort } from "../../../functions-media/src/domains/attachments/reapBurnbarAttachments.js";
 
 const runBegin = callableRunner(beginBurnbarAttachment);
 const runCompose = callableRunner(composeBurnbarAttachment);

@@ -18,27 +18,36 @@ const bolaStore: Map<string, Record<string, unknown>> = vi.hoisted(() => new Map
 process.env.ENFORCE_APP_CHECK = "false";
 
 vi.mock("firebase-functions/logger", () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() }));
-vi.mock("../../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   assertAuth: vi.fn(),
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
   assertOwnership: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../callables/computerUseSecurity.js", async () => {
-  const actual = await vi.importActual<typeof import("../../callables/computerUseSecurity.js")>(
-    "../../callables/computerUseSecurity.js",
+vi.mock("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js")>(
+    "../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js",
   );
   return {
     ...actual,
     requireTrustedDeviceActionProof: vi.fn(async () => undefined),
   };
 });
-vi.mock("../../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../../callables/shared.js")>("../../callables/shared.js");
+vi.mock("../../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js")
+  >("../../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js");
+  return {
+    ...actual,
+    requireTrustedDeviceActionProof: vi.fn(async () => undefined),
+  };
+});
+vi.mock("../../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/shared/entitlements.js")>("../../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     isActiveHostedQuotaEntitlement: () => true,
@@ -53,7 +62,7 @@ vi.mock("firebase-admin/firestore", () => ({
     fromMillis: (ms: number) => ({ toMillis: () => ms }),
   },
 }));
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 
 export const BOLA_MANIFEST = {
   getHermesGatewayAttachmentDownloadUrl: ["getHermesGatewayAttachmentDownloadUrl rejects cross-user object access"],
@@ -68,7 +77,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — hermesGateway callables", () => {
   it("getHermesGatewayAttachmentDownloadUrl rejects cross-user object access", async () => {
-    const mod = await import("../../callables/hermesGateway.js");
+    const mod = await import("../../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRunner(mod.getHermesGatewayAttachmentDownloadUrl);
 
     await tier2CallableProof(bolaStore, {
@@ -81,7 +90,7 @@ describe("BOLA — hermesGateway callables", () => {
   });
 
   it("approveHermesGatewayDeviceGrant rejects cross-user object access", async () => {
-    const mod = await import("../../callables/hermesGateway.js");
+    const mod = await import("../../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRunner(mod.approveHermesGatewayDeviceGrant);
 
     await tier2CallableProof(bolaStore, {
@@ -94,7 +103,7 @@ describe("BOLA — hermesGateway callables", () => {
   });
 
   it("revokeHermesGatewayClient rejects cross-user object access", async () => {
-    const mod = await import("../../callables/hermesGateway.js");
+    const mod = await import("../../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRunner(mod.revokeHermesGatewayClient);
 
     await tier2CallableProof(bolaStore, {
@@ -107,7 +116,7 @@ describe("BOLA — hermesGateway callables", () => {
   });
 
   it("rotateHermesGatewayClientToken rejects cross-user object access", async () => {
-    const mod = await import("../../callables/hermesGateway.js");
+    const mod = await import("../../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRunner(mod.rotateHermesGatewayClientToken);
 
     await tier2CallableProof(bolaStore, {
@@ -120,7 +129,7 @@ describe("BOLA — hermesGateway callables", () => {
   });
 
   it("enqueueHermesGatewayEvent rejects cross-user object access", async () => {
-    const mod = await import("../../callables/hermesGateway.js");
+    const mod = await import("../../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRunner(mod.enqueueHermesGatewayEvent);
 
     await tier2CallableProof(bolaStore, {
@@ -139,7 +148,7 @@ describe("BOLA — hermesGateway callables", () => {
   });
 
   it("setHermesGatewayOversightMode rejects cross-user object access", async () => {
-    const mod = await import("../../callables/hermesGateway.js");
+    const mod = await import("../../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRunner(mod.setHermesGatewayOversightMode);
 
     await tier2CallableProof(bolaStore, {
@@ -152,7 +161,7 @@ describe("BOLA — hermesGateway callables", () => {
   });
 
   it("respondHermesGatewayApproval rejects cross-user object access", async () => {
-    const mod = await import("../../callables/hermesGateway.js");
+    const mod = await import("../../../../functions-media/src/domains/hermes/hermesGateway.js");
     const run = callableRunner(mod.respondHermesGatewayApproval);
 
     await tier2CallableProof(bolaStore, {
@@ -175,7 +184,7 @@ describe("BOLA — hermesGateway callables", () => {
 
 describe("BOLA — burnBarHermesGateway HTTP", () => {
   it("burnBarHermesGateway rejects cross-user object access", async () => {
-    const { hashHermesGatewayBearerToken } = await import("../../hermesGateway.js");
+    const { hashHermesGatewayBearerToken } = await import("../../../../packages/functions-shared/src/hermesGateway.js");
     const aliceClientId = "hgw_alice_client";
     const aliceToken = "obb_hgw_alice_token";
     const aliceTokenHash = hashHermesGatewayBearerToken(aliceToken);
@@ -284,7 +293,7 @@ describe("BOLA — burnBarHermesGateway HTTP", () => {
       set() {},
     };
 
-    const { dispatchHermesGatewayRequest } = await import("../../callables/hermesGateway.js");
+    const { dispatchHermesGatewayRequest } = await import("../../../../functions-media/src/domains/hermes/hermesGateway.js");
     await dispatchHermesGatewayRequest(req, res);
 
     expect(captured.status).toBeGreaterThanOrEqual(400);

@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
 
 // MARK: - OpenAI Usage API
 
@@ -52,7 +53,7 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
                 )
             }
 
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON throws)
+            guard let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed JSON throws)
                 throw ProviderUsageAPIError.invalidResponse
             }
 
@@ -127,7 +128,7 @@ final class OpenAIUsageAPI: ProviderUsageAPI, Sendable {
 
         guard input > 0 || output > 0 else { return nil }
 
-        let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
+        let pricing = OpenBurnBarLogParsers.ModelPricing.lookup(model: model)
         guard let cost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try pricing.cost(
             inputTokens: uncachedInput,
             outputTokens: output,

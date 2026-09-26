@@ -1,10 +1,11 @@
 import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
 private typealias NoticeKind = ConnectionsSettingsView.ExternalOAuthCredentialNotice.Kind
-private typealias SourceKind = OpenBurnBar.ProviderQuotaSourceKind
-private typealias Confidence = OpenBurnBar.ProviderQuotaConfidence
+private typealias SourceKind = OpenBurnBarKernel.ProviderQuotaSourceKind
+private typealias Confidence = OpenBurnBarKernel.ProviderQuotaConfidence
 
 /// Pins the rule that fixed the "refresh nag" bug: a credential that is
 /// genuinely present is never reported as **"Credential not found"**, even when

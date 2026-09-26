@@ -1,0 +1,17 @@
+{
+  "touchpoints": [
+    "AgentLens/App/AgentLensApp+LiveServices.swift",
+    "AgentLens/Views/Components/BurnBarProfileMenu.swift",
+    "AgentLens/Views/Dashboard/ControlDeck/ControlDeckModel.swift",
+    "AgentLens/Views/Dashboard/ControlDeck/ControlDeckView.swift",
+    "AgentLens/Views/Dashboard/ControlDeck/ControlTileView.swift",
+    "AgentLens/Views/Settings/SettingsView.swift",
+    "AgentLensTests/Active/BehaviorTests.swift",
+    "AgentLensTests/Active/PetChatBackendAvailabilityTests.swift",
+    "AgentLensTests/Active/PetDefinitionResourcesTests.swift",
+    "AgentLensTests/Active/PetDefinitionTests.swift",
+    "AgentLensTests/Active/PetDropAttachmentTests.swift",
+    "AgentLensTests/Active/PetPropTests.swift"
+  ],
+  "note": "Non-Lab files that reference Lab-declared types inside `#if OPENBURNBAR_LAB` regions. Shrink-only; a new Core file touching Lab needs review before --update."
+}

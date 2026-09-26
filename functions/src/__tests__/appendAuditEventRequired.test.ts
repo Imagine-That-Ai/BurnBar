@@ -48,12 +48,12 @@ const { writes, runTransaction, failingRunTransaction, dbMock } = vi.hoisted(() 
   return { writes, runTransaction, failingRunTransaction, dbMock };
 });
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: dbMock,
   auth: {},
 }));
 
-import { appendAuditEvent, appendAuditEventRequired } from "../callables/auditLog.js";
+import { appendAuditEvent, appendAuditEventRequired } from "../../../packages/functions-shared/src/shared/auditLog.js";
 
 describe("appendAuditEvent — transactional head advance", () => {
   it("writes the event AND advances audit_meta/head in the same transaction", async () => {

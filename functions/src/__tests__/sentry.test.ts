@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isRecord } from "../guards.js";
+import { isRecord } from "../../../packages/functions-shared/src/guards.js";
 
 function requireRecord(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) {
@@ -11,7 +11,7 @@ function requireRecord(value: unknown): Record<string, unknown> {
 describe("sentry sanitization", () => {
   it("strips request bodies, cookies, auth headers, query strings, and nested secret extras", async () => {
     vi.stubEnv("SENTRY_DSN", "");
-    const { sanitizeSentryEvent } = await import("../sentry.js");
+    const { sanitizeSentryEvent } = await import("../../../packages/functions-shared/src/sentry.js");
 
     const rawEvent = {
       message: "callable failed",
@@ -104,7 +104,7 @@ describe("sentry sanitization", () => {
 
   it("redacts structured token strings and URL userinfo", async () => {
     vi.stubEnv("SENTRY_DSN", "");
-    const { sanitizeSentryEvent } = await import("../sentry.js");
+    const { sanitizeSentryEvent } = await import("../../../packages/functions-shared/src/sentry.js");
     const stripeToken = ["sk", "live", "12345678901234567890"].join("_");
 
     const rawEvent = {
@@ -142,7 +142,7 @@ describe("sentry sanitization", () => {
 
   it("hashes Sentry user IDs instead of truncating Firebase UIDs", async () => {
     vi.stubEnv("SENTRY_DSN", "");
-    const { sentryUserIdForUID } = await import("../sentry.js");
+    const { sentryUserIdForUID } = await import("../../../packages/functions-shared/src/sentry.js");
 
     const uid = "firebase-user-uid-1234567890";
     const sentryUserId = sentryUserIdForUID(uid);

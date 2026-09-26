@@ -18,14 +18,18 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
 
     // MARK: - Migrator wiring
 
-    func test_migrator_latestIdentifier_isV69TokenUsageEndTimeIndex() {
+    func test_migrator_latestIdentifier_isV70AgentMemoriesIndexBackfill() {
         XCTAssertEqual(
             OpenBurnBarDatabase.latestMigrationIdentifier,
-            "v69_token_usage_end_time_index"
+            "v70_agent_memories_index_backfill"
         )
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v69_token_usage_end_time_index"),
             "registerCommandBoardIndexMigrations must wire the end-time index"
+        )
+        XCTAssertTrue(
+            OpenBurnBarDatabase.migrator.migrations.contains("v70_agent_memories_index_backfill"),
+            "registerCommandBoardIndexMigrations must wire the agent-memories index backfill"
         )
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v61_usage_memory"),

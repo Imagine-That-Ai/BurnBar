@@ -1,7 +1,9 @@
 #if canImport(UIKit)
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 /// Phase 14 — Observable store that the SwiftUI chat surface watches

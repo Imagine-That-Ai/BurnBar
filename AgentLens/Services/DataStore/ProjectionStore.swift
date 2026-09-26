@@ -1,6 +1,8 @@
 import Foundation
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarData
 
 // MARK: - ProjectionStore
 
@@ -9,9 +11,14 @@ final class ProjectionStore: Sendable {
     private static let chunkEmbeddingFetchBatchSize = 900
 
     private let dbQueue: any DatabaseWriter
+    private let vectorSnapshotWriter: any VectorIndexSnapshotWriter
 
-    init(dbQueue: any DatabaseWriter) {
+    init(
+        dbQueue: any DatabaseWriter,
+        vectorSnapshotWriter: any VectorIndexSnapshotWriter = DaemonVectorIndexSnapshotWriter()
+    ) {
         self.dbQueue = dbQueue
+        self.vectorSnapshotWriter = vectorSnapshotWriter
     }
 
     // MARK: - Projection Jobs
@@ -814,47 +821,30 @@ final class ProjectionStore: Sendable {
     // MARK: - Vector Index Snapshots
 
     func upsertVectorIndexSnapshot(_ snapshot: VectorIndexSnapshotRecord) async throws {
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO vector_index_snapshots (
-                    embeddingVersionID, backendID, state, fingerprint, dimensions, distanceMetric,
-                    vectorCount, storageRelativePath, fileBytes, backendVersion, errorCode, errorMessage,
-                    createdAt, updatedAt, lastBuiltAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(embeddingVersionID, backendID) DO UPDATE SET
-                    state = excluded.state,
-                    fingerprint = excluded.fingerprint,
-                    dimensions = excluded.dimensions,
-                    distanceMetric = excluded.distanceMetric,
-                    vectorCount = excluded.vectorCount,
-                    storageRelativePath = excluded.storageRelativePath,
-                    fileBytes = excluded.fileBytes,
-                    backendVersion = excluded.backendVersion,
-                    errorCode = excluded.errorCode,
-                    errorMessage = excluded.errorMessage,
-                    updatedAt = excluded.updatedAt,
-                    lastBuiltAt = excluded.lastBuiltAt
-                """,
-                arguments: [
-                    snapshot.embeddingVersionID,
-                    snapshot.backendID,
-                    snapshot.state.rawValue,
-                    snapshot.fingerprint,
-                    snapshot.dimensions,
-                    snapshot.distanceMetric.rawValue,
-                    snapshot.vectorCount,
-                    snapshot.storageRelativePath,
-                    snapshot.fileBytes,
-                    snapshot.backendVersion,
-                    snapshot.errorCode,
-                    snapshot.errorMessage,
-                    snapshot.createdAt,
-                    snapshot.updatedAt,
-                    snapshot.lastBuiltAt
-                ]
+        // Wave 2.1c-ii: the daemon owns the table. One RPC carries the
+        // finalized row — the daemon validates and stores it verbatim — and
+        // there is deliberately no local-write fallback (single writer).
+        // `distanceMetric` rides as the app's own raw value (`dot_product`,
+        // not the daemon enum's `dotProduct`); the daemon stores it as-is.
+        try await vectorSnapshotWriter.upsertSnapshot(
+            BurnBarVectorIndexSnapshotUpsertRequest(
+                embeddingVersionID: snapshot.embeddingVersionID,
+                backendID: snapshot.backendID,
+                state: snapshot.state.rawValue,
+                fingerprint: snapshot.fingerprint,
+                dimensions: snapshot.dimensions,
+                distanceMetric: snapshot.distanceMetric.rawValue,
+                vectorCount: snapshot.vectorCount,
+                storageRelativePath: snapshot.storageRelativePath,
+                fileBytes: snapshot.fileBytes,
+                backendVersion: snapshot.backendVersion,
+                errorCode: snapshot.errorCode,
+                errorMessage: snapshot.errorMessage,
+                createdAt: ControlPlaneStore.iso8601String(snapshot.createdAt),
+                updatedAt: ControlPlaneStore.iso8601String(snapshot.updatedAt),
+                lastBuiltAt: snapshot.lastBuiltAt.map(ControlPlaneStore.iso8601String)
             )
-        }
+        )
     }
 
     func fetchVectorIndexSnapshot(

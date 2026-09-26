@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 process.env.ENFORCE_APP_CHECK = "false";
 
-vi.mock("../adminRuntime.js", () => ({ db: { doc: () => ({ get: async () => ({ exists: false }) }) } }));
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: { doc: () => ({ get: async () => ({ exists: false }) }) } }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ enforceAppCheck: false }),
 }));
 
 import { callableRunner } from "./bola/callableBolaHarness.js";
-import { writeSignalAtRestDocument } from "../callables/writeSignalAtRestDocument.js";
+import { writeSignalAtRestDocument } from "../../../functions-identity/src/domains/devices/writeSignalAtRestDocument.js";
 
 const run = callableRunner(writeSignalAtRestDocument);
 

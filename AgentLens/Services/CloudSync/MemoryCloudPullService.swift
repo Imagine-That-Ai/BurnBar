@@ -1,5 +1,6 @@
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarData
 import OpenBurnBarKernel
 
 // MARK: - Memory cloud PULL (Memory Blind Sync PR-2)

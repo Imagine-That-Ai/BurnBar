@@ -6,6 +6,14 @@ import OpenBurnBarLogParsers
 import FoundationNetworking
 #endif
 
+/// Untyped JSON object at the schemaless provider-quota boundary.
+///
+/// Provider billing/subscription payloads have no stable schema, so navigation
+/// stays dictionary-based — but every site spells the type through this alias
+/// instead of repeating the raw untyped-dictionary literal, keeping the
+/// string-any boundary countable at one choke point.
+public typealias QuotaJSONObject = [String: Any]
+
 // MARK: - Factory / Droid Quota Adapter
 
 /// Reports real Factory/droid token usage from `~/.factory/sessions/**/*.settings.json`.
@@ -20,11 +28,16 @@ import FoundationNetworking
 /// 3. **Unavailable** — when neither source yields data.
 ///
 /// ## Data returned
-/// - 5-hour window: rolling token count from recent sessions
-/// - 7-day window: token count from the past week
-/// - 30-day window: monthly token count
+/// - 5-hour window: rolling billable-token count from recent sessions
+/// - 7-day window: billable-token count from the past week
+/// - 30-day window: monthly billable-token count
 /// - Per-model breakdown (top models by session count)
-/// - Cache efficiency (cache read / total tokens)
+/// - Cache efficiency (cache read share of processed tokens)
+///
+/// "Billable" means input + output + cache creation + thinking. Cache READS
+/// are excluded from the plan-facing windows (see
+/// `FactorySessionClassifier.billableTokens`) but still feed the
+/// cache-hit-rate diagnostic.
 ///
 /// Unchanged `*.settings.json` files resume from a mtime+size disk cache of
 /// **quota facts only** (token total, cache reads, session date, lane, model).
@@ -124,7 +137,10 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         let cacheStore = ParserDiskCacheStore<FactorySessionQuotaCacheEntry>(
             cacheURL: cacheURL(context: context, sessionsURL: sessionsURL),
             fileManager: fileManager,
-            schemaVersion: 1,
+            // v2: `total` switched from the all-fields sum to the
+            // cache-read-excluded billable sum. Cached v1 totals would
+            // silently keep the old meaning, so they must be discarded.
+            schemaVersion: 2,
             logLabel: "FactoryQuotaAdapter"
         )
         var parseCache = cacheStore.load()
@@ -157,7 +173,6 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         func consume(_ facts: FactorySessionQuotaFacts) {
             guard facts.total > 0 else { return }
             filesWithUsage += 1
-            cacheReadTokens += facts.cacheRead
             laneCounts[facts.lane, default: 0] += 1
 
             switch facts.lane {
@@ -184,6 +199,10 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
             }
 
             factoryBilledSessions += 1
+            // Cache reads feed only the cache-hit-rate diagnostic, and only
+            // for Factory-billed lanes so the rate never counts custom-proxy
+            // traffic against a Factory denominator.
+            cacheReadTokens += facts.cacheRead
             if let model = facts.model, !model.isEmpty {
                 modelCounts[model] = (modelCounts[model] ?? 0) + 1
             }
@@ -381,8 +400,10 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         // Cache efficiency — informational only; intentionally filtered out
         // of the displayable quota signal (`isDisplayableQuotaSignal` excludes
         // "cache"/"hit rate" markers) but kept in the snapshot for diagnostics.
+        // The rate is the cache-read share of ALL processed tokens
+        // (cache reads + billable), so it mathematically stays ≤ 100%.
         if cacheReadTokens > 0 && thirtyDayTokens > 0 {
-            let cacheRate = Double(cacheReadTokens) / Double(thirtyDayTokens) * 100
+            let cacheRate = Double(cacheReadTokens) / Double(cacheReadTokens + thirtyDayTokens) * 100
             buckets.append(ProviderQuotaBucket(
                 key: "factory-cache",
                 label: "Cache hit rate (30d)",
@@ -413,7 +434,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
             ? " Excluded \(customProxySessions) custom-proxy session(s) — those route through your own proxies and don't count against Factory's plan."
             : ""
 
-        let statusMessage = "Real token counts from \(factoryBilledSessions) Factory-billed droid session(s). \(topModel).\(planSuffix)\(proxySuffix)"
+        let statusMessage = "Real billable token counts from \(factoryBilledSessions) Factory-billed droid session(s) — cache reads excluded. \(topModel).\(planSuffix)\(proxySuffix)"
 
         return ProviderQuotaSnapshot(
             provider: .factory,
@@ -628,14 +649,14 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         )
         let json = try JSONSerialization.jsonObject(with: data)
         let object = FlexibleQuotaBucketNormalizer.unwrapDataEnvelope(json)
-        guard let dictionary = object as? [String: Any] else {
+        guard let dictionary = object as? QuotaJSONObject else {
             throw QuotaServiceError.invalidResponse("Factory auth payload was not a JSON object.")
         }
 
-        let organization = dictionary["organization"] as? [String: Any]
-        let subscription = organization?["subscription"] as? [String: Any]
-        let orbSubscription = subscription?["orbSubscription"] as? [String: Any]
-        let plan = orbSubscription?["plan"] as? [String: Any]
+        let organization = dictionary["organization"] as? QuotaJSONObject
+        let subscription = organization?["subscription"] as? QuotaJSONObject
+        let orbSubscription = subscription?["orbSubscription"] as? QuotaJSONObject
+        let plan = orbSubscription?["plan"] as? QuotaJSONObject
 
         let planName = quotaNonEmpty(plan?["name"] as? String)
         let tier = quotaNonEmpty(subscription?["factoryTier"] as? String)
@@ -695,21 +716,21 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         )
         let json = try JSONSerialization.jsonObject(with: data)
         let object = FlexibleQuotaBucketNormalizer.unwrapDataEnvelope(json)
-        guard let dictionary = object as? [String: Any] else {
+        guard let dictionary = object as? QuotaJSONObject else {
             throw QuotaServiceError.invalidResponse("Factory usage payload was not a JSON object.")
         }
 
-        let usage = dictionary["usage"] as? [String: Any] ?? dictionary
+        let usage = dictionary["usage"] as? QuotaJSONObject ?? dictionary
         let periodEnd = FlexibleQuotaBucketNormalizer.date(in: usage, keys: ["endDate", "end_date"])
-        let standard = factoryLane(from: usage["standard"] as? [String: Any])
-        let premium = factoryLane(from: usage["premium"] as? [String: Any])
+        let standard = factoryLane(from: usage["standard"] as? QuotaJSONObject)
+        let premium = factoryLane(from: usage["premium"] as? QuotaJSONObject)
 
         // Droid Core lane — open-weight models on a separate free pool.
         // Factory's API may expose this under `droidCore`, `core`, or
         // `coreUsage` depending on release date; check all three.
-        let droidCoreDict = usage["droidCore"] as? [String: Any]
-            ?? usage["core"] as? [String: Any]
-            ?? usage["coreUsage"] as? [String: Any]
+        let droidCoreDict = usage["droidCore"] as? QuotaJSONObject
+            ?? usage["core"] as? QuotaJSONObject
+            ?? usage["coreUsage"] as? QuotaJSONObject
         let droidCore = droidCoreDict.map { factoryLane(from: $0) }
 
         // Extra Usage prepaid credit wallet. Lives at the top level of
@@ -732,16 +753,16 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
     /// because Factory's docs say the toggle is sticky — if there's
     /// money on the wallet, it'll be used.
     private func parseExtraUsage(
-        from root: [String: Any],
-        usage: [String: Any]
+        from root: QuotaJSONObject,
+        usage: QuotaJSONObject
     ) -> FactoryUsageEnvelope.ExtraUsage? {
-        let candidates: [[String: Any]?] = [
-            usage["extraUsage"] as? [String: Any],
-            usage["extra_usage"] as? [String: Any],
-            usage["additionalUsage"] as? [String: Any],
-            usage["prepaidBalance"] as? [String: Any],
-            root["extraUsage"] as? [String: Any],
-            root["extra_usage"] as? [String: Any]
+        let candidates: [QuotaJSONObject?] = [
+            usage["extraUsage"] as? QuotaJSONObject,
+            usage["extra_usage"] as? QuotaJSONObject,
+            usage["additionalUsage"] as? QuotaJSONObject,
+            usage["prepaidBalance"] as? QuotaJSONObject,
+            root["extraUsage"] as? QuotaJSONObject,
+            root["extra_usage"] as? QuotaJSONObject
         ]
         for dict in candidates.compactMap({ $0 }) {
             let balance = FlexibleQuotaBucketNormalizer.number(
@@ -795,7 +816,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         return data
     }
 
-    private func factoryLane(from dictionary: [String: Any]?) -> FactoryUsageEnvelope.Lane {
+    private func factoryLane(from dictionary: QuotaJSONObject?) -> FactoryUsageEnvelope.Lane {
         let lane = dictionary ?? [:]
         let used = FlexibleQuotaBucketNormalizer.number(in: lane, keys: ["userTokens", "user_tokens"]) ?? 0
         let allowance = FlexibleQuotaBucketNormalizer.number(in: lane, keys: ["totalAllowance", "total_allowance", "allowance"])
@@ -871,11 +892,14 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
     private func readSessionFacts(from fileURL: URL, modifiedAt: Date?) -> FactorySessionQuotaFacts? {
         contentReadCount.withLock { $0 += 1 }
         guard let data = try? Data(contentsOf: fileURL), // try?-ok(skip unreadable session)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed json)
-              let usage = json["tokenUsage"] as? [String: Any] else {
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(skip malformed json)
+              let usage = json["tokenUsage"] as? QuotaJSONObject else {
             return nil
         }
-        let total = FactorySessionClassifier.totalTokens(in: usage)
+        // `total` is the Factory-billable footprint (cache reads excluded —
+        // see FactorySessionClassifier.billableTokens); `cacheRead` stays a
+        // separate diagnostic fact for the cache-hit-rate bucket.
+        let total = FactorySessionClassifier.billableTokens(in: usage)
         let cacheRead = (usage["cacheReadTokens"] as? Int64)
             ?? (usage["cacheReadTokens"] as? Int).map(Int64.init)
             ?? 0

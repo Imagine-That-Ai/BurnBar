@@ -19,7 +19,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const providerResilientFetch = vi.fn();
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   providerResilientFetch,
 }));
 
@@ -44,7 +44,7 @@ describe("kimiAdapter.fetchQuota characterization (U11)", () => {
       throw new Error(`unexpected url ${u}`);
     });
 
-    const { kimiAdapter } = await import("../providers/kimi.js");
+    const { kimiAdapter } = await import("../../../packages/functions-shared/src/providers/kimi.js");
     const result = await kimiAdapter.fetchQuota("sk-bad-credential", "default");
 
     expect(result).toEqual({
@@ -71,7 +71,7 @@ describe("kimiAdapter.fetchQuota characterization (U11)", () => {
       throw new Error(`unexpected url ${u}`);
     });
 
-    const { kimiAdapter } = await import("../providers/kimi.js");
+    const { kimiAdapter } = await import("../../../packages/functions-shared/src/providers/kimi.js");
     const result = await kimiAdapter.fetchQuota("sk-good-credential", "plan-1");
 
     expect(result.ok).toBe(true);
@@ -110,7 +110,7 @@ describe("kimiAdapter.fetchQuota characterization (U11)", () => {
       throw new Error(`unexpected url ${u}`);
     });
 
-    const { kimiAdapter } = await import("../providers/kimi.js");
+    const { kimiAdapter } = await import("../../../packages/functions-shared/src/providers/kimi.js");
     const result = await kimiAdapter.fetchQuota("sk-good-credential", "default");
 
     expect(result.ok).toBe(true);

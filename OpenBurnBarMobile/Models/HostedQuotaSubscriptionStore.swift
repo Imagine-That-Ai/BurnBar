@@ -1,6 +1,7 @@
 import Foundation
 import StoreKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import os.log
 #if os(iOS)
 import UIKit

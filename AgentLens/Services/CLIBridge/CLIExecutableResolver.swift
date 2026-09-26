@@ -1,6 +1,6 @@
 import Darwin
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct CLIExecutableResolver: Sendable {
     private static let loginShellResolutionTimeout: TimeInterval = 2

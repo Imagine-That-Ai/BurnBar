@@ -1,7 +1,7 @@
 {
   "version": 1,
   "canonicalRoot": "tools/schema-sync/typespec",
-  "handMirrorDocs": "Hand mirror entries verify that hand-maintained native/TS schema copies still carry every field the generated canon defines (field name + optionality). check-hand-mirror.mjs loops every domain below. Each mirror entry may be a bare path string or an object { path, interfaces?, knownDrift? }. `interfaces` pins which generated interfaces the mirror must carry; omit it to auto-detect (TS mirrors: every generated interface the mirror file re-declares as `export interface`; native mirrors: every generated interface in the domain). `knownDrift` grandfathers the pre-existing divergences the checker enumerates — each token is `Interface.field` for a field present in generated output but absent from the mirror, or `Interface.field#opt` for an optionality mismatch (TS and C# mirrors). The gate FAILS closed when live drift exceeds the listed set (new drift) AND when a listed token is no longer real drift (stale grandfather), so the list ratchets down as the TypeSpec strangler migration burns it off. functions/src/types/legacy.ts is registered as a `tsHandMirror` so the doc types it re-declares a second time are field-checked against the canon; do NOT converge it by editing legacy.ts in this gate — burn the list down domain-at-a-time.",
+  "handMirrorDocs": "Hand mirror entries verify that hand-maintained native/TS schema copies still carry every field the generated canon defines (field name + optionality). check-hand-mirror.mjs loops every domain below. Each mirror entry may be a bare path string or an object { path, interfaces?, knownDrift? }. `interfaces` pins which generated interfaces the mirror must carry; omit it to auto-detect (TS mirrors: every generated interface the mirror file re-declares as `export interface`; native mirrors: every generated interface in the domain). `knownDrift` grandfathers the pre-existing divergences the checker enumerates \u2014 each token is `Interface.field` for a field present in generated output but absent from the mirror, or `Interface.field#opt` for an optionality mismatch (TS and C# mirrors). The gate FAILS closed when live drift exceeds the listed set (new drift) AND when a listed token is no longer real drift (stale grandfather), so the list ratchets down as the TypeSpec strangler migration burns it off. packages/functions-shared/src/types/legacy/connections.ts is registered as a `tsHandMirror` so the doc types it re-declares a second time are field-checked against the canon; do NOT converge drift by editing the legacy mirror in this gate \u2014 burn the list down domain-at-a-time.",
   "domains": [
     {
       "id": "usage-quota",
@@ -12,13 +12,13 @@
         "users/{uid}/quota_snapshots/{snapshotId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/usage-quota.ts",
+        "typescript": "packages/functions-shared/src/types/generated/usage-quota.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/UsageQuotaModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/UsageQuotaModels.kt"
       },
       "swiftHandMirror": [
         {
-          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/TokenUsage.swift",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarUsageModels/TokenUsage.swift",
           "interfaces": [
             "UsageEventDoc"
           ]
@@ -50,13 +50,13 @@
         "users/{uid}/provider_accounts/{accountID}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/provider-account.ts",
+        "typescript": "packages/functions-shared/src/types/generated/provider-account.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ProviderAccountModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ProviderAccountModels.kt"
       },
       "swiftHandMirror": [
         {
-          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/ProviderAccountTypes.swift",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarProviderModels/ProviderAccountTypes.swift",
           "interfaces": [
             "ProviderAccountDoc"
           ]
@@ -90,7 +90,7 @@
         "users/{uid}/hermes_relay_requests/{requestId}/chunks/{chunkId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/hermes-relay.ts",
+        "typescript": "packages/functions-shared/src/types/generated/hermes-relay.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesRelayModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesRelayModels.kt"
       },
@@ -112,7 +112,7 @@
         "users/{uid}/hermes_gateway_attachments/{attachmentId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/hermes-gateway.ts",
+        "typescript": "packages/functions-shared/src/types/generated/hermes-gateway.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HermesGatewayModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HermesGatewayModels.kt"
       },
@@ -139,7 +139,7 @@
         "users/{uid}/iroh_controller_route_challenges/{challengeId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/iroh-pairing.ts",
+        "typescript": "packages/functions-shared/src/types/generated/iroh-pairing.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/IrohPairingModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/IrohPairingModels.kt"
       },
@@ -160,13 +160,13 @@
         "users/{uid}/pi_agent_pairings/{pairingId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/pi-agent-relay.ts",
+        "typescript": "packages/functions-shared/src/types/generated/pi-agent-relay.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/PiAgentRelayModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/PiAgentRelayModels.kt"
       },
       "tsHandMirror": [
         {
-          "path": "functions/src/types/legacy/connections.ts",
+          "path": "packages/functions-shared/src/types/legacy/connections.ts",
           "interfaces": [
             "PiAgentConnectionDoc"
           ]
@@ -189,7 +189,7 @@
         "users/{uid}/computer_use_audit_signers/{signerId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/computer-use.ts",
+        "typescript": "packages/functions-shared/src/types/generated/computer-use.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ComputerUseModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ComputerUseModels.kt"
       },
@@ -219,7 +219,7 @@
         "users/{uid}/entitlement_events/{eventId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/hosted-quota.ts",
+        "typescript": "packages/functions-shared/src/types/generated/hosted-quota.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/HostedQuotaModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/HostedQuotaModels.kt"
       },
@@ -241,7 +241,7 @@
         "users/{uid}/escrow_envelopes/{envelopeId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/entitlements.ts",
+        "typescript": "packages/functions-shared/src/types/generated/entitlements.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/EntitlementModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/EntitlementModels.kt"
       },
@@ -262,7 +262,7 @@
         "users/{uid}/insight_widgets/{widgetId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/insights.ts",
+        "typescript": "packages/functions-shared/src/types/generated/insights.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/InsightModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/InsightModels.kt"
       },
@@ -284,7 +284,7 @@
         "users/{uid}/approval_policies/{policyId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/missions.ts",
+        "typescript": "packages/functions-shared/src/types/generated/missions.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MissionModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/MissionModels.kt"
       },
@@ -307,7 +307,7 @@
         "ops/media_session_daily_rollups/{document=**}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/media-analytics.ts",
+        "typescript": "packages/functions-shared/src/types/generated/media-analytics.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/MediaAnalyticsModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/MediaAnalyticsModels.kt"
       },
@@ -330,7 +330,7 @@
         "users/{uid}/provider_account_device_links/{linkId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/device-links.ts",
+        "typescript": "packages/functions-shared/src/types/generated/device-links.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/DeviceLinkModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/DeviceLinkModels.kt"
       },
@@ -348,7 +348,7 @@
         "model_benchmark_source_status/{source}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/model-benchmarks.ts",
+        "typescript": "packages/functions-shared/src/types/generated/model-benchmarks.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/ModelBenchmarkModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/ModelBenchmarkModels.kt"
       },
@@ -366,17 +366,35 @@
         "users/{uid}/war_wire_grants/{pairId}"
       ],
       "emit": {
-        "typescript": "functions/src/types/generated/war-room.ts",
+        "typescript": "packages/functions-shared/src/types/generated/war-room.ts",
         "swift": "OpenBurnBarCore/Sources/OpenBurnBarFirestoreModels/WarRoomModels.swift",
         "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/WarRoomModels.kt"
       },
       "swiftHandMirror": [
         {
-          "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/BurnBarOriginator.swift",
+          "path": "OpenBurnBarCore/Sources/OpenBurnBarProviderModels/BurnBarOriginator.swift",
           "interfaces": [
             "OriginatorRef"
           ]
         }
+      ]
+    },
+    {
+      "id": "daemon-rpc",
+      "typespec": "typespec/domains/daemon-rpc.tsp",
+      "firestoreCollections": [],
+      "emit": {
+        "typescript": "packages/functions-shared/src/types/generated/daemon-rpc.ts",
+        "swift": "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCMethod.generated.swift",
+        "kotlin": "android/app/src/main/java/com/openburnbar/data/models/generated/DaemonRpcModels.kt"
+      },
+      "tspOnlyModels": [
+        "RpcEnvelope",
+        "RpcNegotiateRequest",
+        "RpcNegotiateResponse"
+      ],
+      "tspOnlyEnums": [
+        "RpcProtocolVersion"
       ]
     }
   ],

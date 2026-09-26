@@ -1,6 +1,10 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Burn View
 //
@@ -59,7 +63,6 @@ struct BurnView: View {
                 }
             }
             .padding(.horizontal, AuroraDesign.Layout.cardInset)
-            .padding(.bottom, trayInset) // clears the tray, or nothing on iPad
             .padding(.top, MobileTheme.Spacing.sm)
         }
         .trackEasterEggScroll(tag: "burn")

@@ -16,11 +16,32 @@ baseline_key="$2"
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 baseline_file="$repo_root/budgets/knip-baseline.json"
 
-# functions script harnesses import compiled `lib/*.js`; knip must see those
-# edges on CI checkouts (no warm lib/). Build first so ratchet matches local dev.
-if [[ "$package_dir" == "functions" && -f "$repo_root/functions/package.json" ]]; then
-  npm run build --prefix "$repo_root/functions" >/dev/null
-fi
+# Admin harnesses import compiled `lib/*.js` from every 3.5 codebase plus the
+# shared runtime; knip must see those edges on CI checkouts (no warm lib/).
+# Build everything first so the ratchet matches local dev, skipping when all
+# outputs are already present so repeated lanes stay cheap. Non-functions
+# lanes (extension) never pay for this.
+case "$package_dir" in
+  functions | functions-identity | functions-sync | functions-media | packages/functions-shared)
+    needs_build=false
+    for lib in \
+      packages/functions-shared/lib \
+      functions/lib \
+      functions-identity/lib \
+      functions-sync/lib \
+      functions-media/lib; do
+      [[ -d "$repo_root/$lib" ]] || needs_build=true
+    done
+    if [[ "$needs_build" == "true" ]]; then
+      for codebase in functions functions-identity functions-sync functions-media; do
+        if [[ ! -x "$repo_root/$codebase/node_modules/.bin/tsc" ]]; then
+          npm ci --prefix "$repo_root/$codebase"
+        fi
+      done
+      bash "$repo_root/scripts/build-functions-all.sh" >/dev/null
+    fi
+    ;;
+esac
 
 output="$(cd "$repo_root/$package_dir" && npx knip --reporter compact 2>&1 || true)"
 printf '%s\n' "$output"

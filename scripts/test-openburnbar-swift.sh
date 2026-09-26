@@ -142,6 +142,11 @@ run_swift_tests() {
 if [[ "${OPENBURNBAR_SKIP_CORE_SWIFT_TESTS:-}" != "1" ]]; then
   run_swift_tests "$repo_root/OpenBurnBarCore" "${OPENBURNBAR_CORE_SWIFT_FILTER:-}"
 
+  # Wave 2.3: the generated schema doc must match the live migrator byte for
+  # byte. OpenBurnBarData is already built above, so this is seconds. It runs
+  # even under a focused Core filter: doc drift fails fast everywhere.
+  swift run --package-path "$repo_root/OpenBurnBarCore" OpenBurnBarSchemaExport --check
+
   # Preserve native BurnBarRemote coverage even though the aggregate Core test
   # graph scopes out its static archive. Focused non-remote Core filters keep
   # their cheap behavior; the full gate and remote-focused runs execute this.

@@ -3,7 +3,8 @@ import os.log
 import FirebaseFirestore
 import FirebaseAuth
 import FirebaseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Smart Hub Store
 //
@@ -26,7 +27,7 @@ final class SmartHubStore {
     private(set) var config: SmartHubConfig?
     private(set) var castState: CastState = .idle
     private(set) var isLoading = false
-    private(set) var lastPublishedActionData: [String: Any] = [:]
+    private(set) var lastPublishedActionData: MobileJSONObject = [:]
 
     private let injectedDB: Firestore?
     private var db: Firestore { injectedDB ?? Firestore.firestore() }
@@ -210,7 +211,7 @@ final class SmartHubStore {
 
     // MARK: - Decoding
 
-    private static func decode(doc data: [String: Any]) -> SmartHubConfig? {
+    private static func decode(doc data: MobileJSONObject) -> SmartHubConfig? {
         let enabled = data["enabled"] as? Bool ?? false
         let publishedRaw = data["publishedAt"] as? String
         let publishedAt = publishedRaw.flatMap(ISO8601DateFormatter().date(from:)) ?? Date.distantPast
@@ -229,14 +230,14 @@ final class SmartHubStore {
             sourceDeviceName: data["sourceDeviceName"] as? String,
             publishedAt: publishedAt,
             timePeriod: timePeriod,
-            pixelClock: decodePixelClock(data["pixelClock"] as? [String: Any]),
-            displayConfig: SmartDisplayConfigCodec.decode(data["displayConfig"] as? [String: Any]),
+            pixelClock: decodePixelClock(data["pixelClock"] as? MobileJSONObject),
+            displayConfig: SmartDisplayConfigCodec.decode(data["displayConfig"] as? MobileJSONObject),
             displayOrder: SmartDisplayConfigCodec.decodeOrder(data["displayOrder"] as? [String]),
             schemaVersion: data["schemaVersion"] as? Int ?? 1
         )
     }
 
-    private static func decodePixelClock(_ data: [String: Any]?) -> PixelClockConfig? {
+    private static func decodePixelClock(_ data: MobileJSONObject?) -> PixelClockConfig? {
         guard let data else { return nil }
         let updatedAt: Date = {
             if let raw = data["updatedAt"] as? String,
@@ -392,10 +393,10 @@ final class SmartHubStore {
     private func publishNestHubAction(
         type: String,
         display: SmartHubDisplayConfig?,
-        extra: [String: Any] = [:],
+        extra: MobileJSONObject = [:],
         timeout: TimeInterval = 45
     ) async throws -> WizardActionStatus {
-        var payload: [String: Any] = ["type": type]
+        var payload: MobileJSONObject = ["type": type]
         if let display {
             payload["displayConfig"] = SmartDisplayConfigCodec.encode(display)
         }
@@ -426,7 +427,7 @@ final class SmartHubStore {
     }
 
     private func publishPixelClockAction(type: String, pixelClock: PixelClockConfig?) async throws -> WizardActionStatus {
-        var payload: [String: Any] = ["type": type]
+        var payload: MobileJSONObject = ["type": type]
         if let pixelClock {
             payload["pixelClock"] = Self.encodePixelClock(pixelClock)
         }
@@ -448,14 +449,14 @@ final class SmartHubStore {
         pixelClock: PixelClockConfig? = nil,
         displayConfig: SmartHubDisplayConfig? = nil,
         displayOrder: SmartDisplayOrder? = nil
-    ) -> [String: Any] {
+    ) -> MobileJSONObject {
         let resolvedPixelClock = pixelClock ?? config?.pixelClock ?? .disabled
         let resolvedDisplay = displayConfig ?? config?.displayConfig ?? .default
         let resolvedOrder = displayOrder ?? config?.displayOrder ?? .default
         let resolvedPeriod = timePeriod ?? config?.timePeriod ?? .rolling5h
         let enabled = (config?.enabled ?? false) || resolvedPixelClock.enabled
 
-        var payload: [String: Any] = [
+        var payload: MobileJSONObject = [
             "enabled": enabled,
             "sourceDeviceName": config?.sourceDeviceName ?? "OpenBurnBar Mobile",
             "publishedAt": ISO8601DateFormatter().string(from: Date()),
@@ -471,8 +472,8 @@ final class SmartHubStore {
         return payload
     }
 
-    private static func encodePixelClock(_ config: PixelClockConfig) -> [String: Any] {
-        var payload: [String: Any] = [
+    private static func encodePixelClock(_ config: PixelClockConfig) -> MobileJSONObject {
+        var payload: MobileJSONObject = [
             "enabled": config.enabled,
             "host": config.host,
             "port": config.clampedPort,
@@ -532,7 +533,7 @@ final class SmartHubStore {
         // Poll for completion (up to 25 seconds).
         let deadline = Date().addingTimeInterval(25)
         var terminalStatus: String?
-        var terminalData: [String: Any] = [:]
+        var terminalData: MobileJSONObject = [:]
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 800_000_000)
             let snap = try await actionsRef.getDocument()
@@ -558,7 +559,7 @@ final class SmartHubStore {
            resultActionId != actionId {
             throw NSError(domain: "SmartHubStore", code: 5, userInfo: [NSLocalizedDescriptionKey: "Mac returned stale discovery results. Run Find again."])
         }
-        guard let raw = resultsSnap.data()?["devices"] as? [[String: Any]] else { return [] }
+        guard let raw = resultsSnap.data()?["devices"] as? [MobileJSONObject] else { return [] }
         return raw.compactMap(WizardCastDevice.init(data:))
     }
 
@@ -578,7 +579,7 @@ final class SmartHubStore {
     }
 
     private func publishAction(
-        _ payload: [String: Any],
+        _ payload: MobileJSONObject,
         collection: String = "cast_actions",
         timeout: TimeInterval = 45
     ) async throws -> WizardActionStatus {
@@ -650,7 +651,7 @@ struct WizardCastDevice: Hashable, Identifiable {
 
     var id: String { serviceName }
 
-    init?(data: [String: Any]) {
+    init?(data: MobileJSONObject) {
         guard let serviceName = data["serviceName"] as? String,
               let friendlyName = data["friendlyName"] as? String else { return nil }
         self.serviceName = serviceName

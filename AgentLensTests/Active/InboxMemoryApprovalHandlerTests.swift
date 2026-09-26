@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Proves an inbox "Remember this" takes the existing memory authority route:
 /// the record lands quarantined-then-approved through the same two audited
@@ -17,7 +18,7 @@ final class InboxMemoryApprovalHandlerTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        store = ControlPlaneStore(dbQueue: queue)
+        store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         scope = MemoryScope(userID: "user-1", appID: "inbox-app")
         handler = InboxMemoryApprovalHandler(store: store, scope: scope)
     }

@@ -2,7 +2,7 @@
 import Foundation
 import AppKit
 import CoreGraphics
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 /// Posts synthetic input events on macOS. Phase 11.

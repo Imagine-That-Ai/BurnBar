@@ -3,7 +3,9 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 
 // MARK: - Pi Agent Remote Relay Host
@@ -120,7 +122,7 @@ final class PiAgentCloudRelayHostService {
         let ref = db.collection("users").document(uid).collection("pi_agent_connections").document(connectionID)
         do {
             let snap = try await ref.getDocument()
-            var data: [String: Any] = [
+            var data: UntypedJSONObject = [
                 "id": connectionID,
                 "displayName": Host.current().localizedName.map { "\($0) Pi Relay" } ?? "Mac Pi Relay",
                 "mode": PiConnectionMode.relayLink.rawValue,
@@ -176,7 +178,7 @@ final class PiAgentCloudRelayHostService {
         )
         let status = await adapter.refreshManagedStatus(baseURL: baseURL, bearerToken: bearerToken)
         let now = Self.iso8601.string(from: Date())
-        var data: [String: Any] = [
+        var data: UntypedJSONObject = [
             "id": connectionID,
             "displayName": Host.current().localizedName.map { "\($0) Pi Relay" } ?? "Mac Pi Relay",
             "mode": PiConnectionMode.relayLink.rawValue,
@@ -213,7 +215,7 @@ final class PiAgentCloudRelayHostService {
         data["redisURL"] = FieldValue.delete()
         if !status.instances.isEmpty {
             data["instances"] = status.instances.map { instance in
-                var record: [String: Any] = [
+                var record: UntypedJSONObject = [
                     "id": instance.id,
                     "displayName": instance.displayName,
                     "endpointURL": instance.gatewayBaseURL?.absoluteString ?? baseURL.absoluteString,
@@ -328,10 +330,10 @@ final class PiAgentCloudRelayHostService {
     }
 
     private func decryptRelayRequest(
-        _ data: [String: Any],
+        _ data: UntypedJSONObject,
         uid: String,
         requestID: String
-    ) throws -> (data: [String: Any], context: PiAgentRelayRequestContext) {
+    ) throws -> (data: UntypedJSONObject, context: PiAgentRelayRequestContext) {
         guard uid.isEmpty == false,
               data["relayEncryption"] as? String == PiAgentRelayCrypto.algorithm,
               let wrappedKey = data["wrappedKey"] as? String,
@@ -394,7 +396,7 @@ final class PiAgentCloudRelayHostService {
                     continuation.resume(returning: nil)
                     return
                 }
-                guard let data = result as? [String: Any] else {
+                guard let data = result as? UntypedJSONObject else {
                     continuation.resume(returning: nil)
                     return
                 }
@@ -407,7 +409,7 @@ final class PiAgentCloudRelayHostService {
         reference: DocumentReference,
         context: PiAgentRelayRequestContext,
         operation: PiAgentRelayOperation,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) async throws {
         let request = try makeForwardRequest(operation: operation, data: data)
         let (body, response) = try await urlSession.data(for: request)
@@ -425,7 +427,7 @@ final class PiAgentCloudRelayHostService {
     private func forwardStreamingRequest(
         reference: DocumentReference,
         context: PiAgentRelayRequestContext,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) async throws {
         var request = try makeForwardRequest(operation: .chatCompletions, data: data)
         request.httpMethod = "POST"
@@ -468,7 +470,7 @@ final class PiAgentCloudRelayHostService {
         try await completeRelayRequest(reference: reference, chunkCount: sequence)
     }
 
-    private func makeForwardRequest(operation: PiAgentRelayOperation, data: [String: Any]) throws -> URLRequest {
+    private func makeForwardRequest(operation: PiAgentRelayOperation, data: UntypedJSONObject) throws -> URLRequest {
         let path = try relayPath(operation: operation, data: data)
         guard let url = URL(string: path, relativeTo: piAgentBaseURLWithTrailingSlash())?.absoluteURL else {
             throw PiAgentRelayHostError.invalidPath
@@ -489,7 +491,7 @@ final class PiAgentCloudRelayHostService {
         return request
     }
 
-    private func relayPath(operation: PiAgentRelayOperation, data: [String: Any]) throws -> String {
+    private func relayPath(operation: PiAgentRelayOperation, data: UntypedJSONObject) throws -> String {
         switch operation {
         case .chatCompletions:
             return "v1/chat/completions"
@@ -546,7 +548,7 @@ final class PiAgentCloudRelayHostService {
         let now = Self.iso8601.string(from: Date())
         let chunkID = String(format: "%08d", sequence)
         let plaintext = error ?? data ?? ""
-        let payload: [String: Any] = [
+        let payload: UntypedJSONObject = [
             "id": chunkID,
             "requestId": context.requestID,
             "sequence": sequence,
@@ -587,7 +589,7 @@ final class PiAgentCloudRelayHostService {
     ) async throws {
         guard try await relayRequestCanReceiveOutput(reference: reference) else { return }
         let now = Self.iso8601.string(from: Date())
-        var statusUpdate: [String: Any] = [
+        var statusUpdate: UntypedJSONObject = [
             "status": PiAgentRelayRequestStatus.failed.rawValue,
             "updatedAt": now
         ]
@@ -627,7 +629,7 @@ final class PiAgentCloudRelayHostService {
 
     private func piAgentBaseURL() -> URL {
         URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8765")!
+            ?? URL(staticString: "http://127.0.0.1:8765")
     }
 
     private func piAgentBaseURLWithTrailingSlash() -> URL {

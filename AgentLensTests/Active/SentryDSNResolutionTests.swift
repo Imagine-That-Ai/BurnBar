@@ -111,10 +111,10 @@ final class SentryDSNResolutionTests: XCTestCase {
             try (googleServicePlist as NSDictionary).write(to: googleURL)
         }
 
-        guard let bundle = Bundle(path: bundleURL.path) else {
-            throw XCTSkip("Could not load test bundle from \(bundleURL.path)")
-        }
-        return bundle
+        // The bundle is synthesized by this helper (valid Info.plist written
+        // just above) — a load failure is a test-setup regression that must
+        // fail loudly, never a silent skip.
+        return try XCTUnwrap(Bundle(path: bundleURL.path), "Could not load test bundle from \(bundleURL.path)")
     }
 }
 #endif

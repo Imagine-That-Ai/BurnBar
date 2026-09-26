@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarHermesModels
 @testable import OpenBurnBarKernel
 
 final class HermesRatchetCryptoTests: XCTestCase {

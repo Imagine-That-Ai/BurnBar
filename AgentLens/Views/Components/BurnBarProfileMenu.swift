@@ -23,7 +23,9 @@ struct BurnBarProfileMenu: View {
     @Environment(SettingsManager.self) private var settingsManager
     @Environment(AccountManager.self) private var accountManager
     @StateObject private var entitlement = MacCloudEntitlementStore.shared
+    #if OPENBURNBAR_LAB
     @AppStorage(PetCompanionFeature.DefaultsKey.enabled) private var petCompanionEnabled = false
+    #endif
     @AppStorage(KernelBackdropPreferences.enabledKey) private var useKernelBackdrop = false
     @AppStorage(KernelBackdropPreferences.kernelKey) private var backdropKernel = KernelCatalog.defaultID
 
@@ -354,7 +356,8 @@ struct BurnBarProfileMenu: View {
 
     private var actionsSection: some View {
         VStack(spacing: 2) {
-            // Pet Companion toggle row
+            // Pet Companion toggle row (Lab-only, 3.1)
+            #if OPENBURNBAR_LAB
             HStack(spacing: 10) {
                 Image(systemName: petCompanionEnabled ? "pawprint.fill" : "pawprint")
                     .font(.system(size: 12, weight: .semibold))
@@ -383,6 +386,7 @@ struct BurnBarProfileMenu: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
+            #endif
 
             // Mine / Refresh logs row
             if let onImport {

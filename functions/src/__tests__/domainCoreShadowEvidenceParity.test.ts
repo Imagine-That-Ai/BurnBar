@@ -7,8 +7,8 @@ import {
   DOMAIN_CORE_SHADOW_OPERATION_SLICES,
   domainCoreShadowOperationConsumers,
   parseDomainCoreShadowSampleRequest,
-} from "../domainCoreShadowEvidence.js";
-import { buildDomainCoreShadowSampleV3 } from "../domainCoreShadowEvidence.js";
+} from "../../../packages/functions-shared/src/domainCoreShadowEvidence.js";
+import { buildDomainCoreShadowSampleV3 } from "../../../packages/functions-shared/src/domainCoreShadowEvidence.js";
 
 type DomainCoreShadowSampleV3 = ReturnType<typeof buildDomainCoreShadowSampleV3>;
 

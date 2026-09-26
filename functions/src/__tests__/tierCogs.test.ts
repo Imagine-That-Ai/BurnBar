@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { tierCogsDailyDocPath } from "../tierCogs.js";
+import { tierCogsDailyDocPath } from "../../../functions-identity/src/domains/billing/tierCogs.js";
 
 describe("tier COGS daily document routing", () => {
   it("uses a valid Firestore document path beneath the days collection", () => {

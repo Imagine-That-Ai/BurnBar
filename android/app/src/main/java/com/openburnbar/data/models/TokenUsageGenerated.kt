@@ -26,7 +26,10 @@ fun tokenUsageFromGenerated(doc: FirestoreUsageEventDoc, id: String): TokenUsage
         cacheReadTokens = doc.cacheReadTokens?.toInt() ?: 0,
         cacheWriteTokens = doc.cacheWriteTokens?.toInt() ?: 0,
         totalTokens = doc.totalTokens?.toInt() ?: 0,
-        costUSD = doc.costUSD ?: 0.0,
+        // Wave 2.5: absent stays absent (null) so it falls through the
+        // shared cost rule; coercing to 0.0 here would wrongly WIN over
+        // legacy spellings.
+        costUSD = doc.costUSD,
         currency = doc.currency,
         recordedAt = recordedAt,
         eventKind = doc.eventKind,

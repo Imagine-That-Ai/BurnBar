@@ -1,4 +1,15 @@
 name: OpenBurnBar
+# Wave 2.7: ReleaseMAS is the Mac App Store configuration (release
+# optimizer + the MAS xcconfig, which compiles Path C out). The MAS
+# release lane archives with it instead of injecting compiler flags.
+configs:
+  Debug: debug
+  Release: release
+  ReleaseMAS: release
+  # Wave 3.1: Lab enables AgentLens/Lab/** (OPENBURNBAR_LAB) via
+  # config/OpenBurnBarLab.xcconfig. Core builds leave the flag unset and
+  # compile Lab files to nothing; Core references to Lab types fail closed.
+  Lab: debug
 options:
   bundleIdPrefix: com.openburnbar
   deploymentTarget:
@@ -96,6 +107,38 @@ packages:
     from: "1.18.0"
 
 schemes:
+  # Wave 2.7: the MAS scheme archives with ReleaseMAS, so
+  # `xcodebuild archive -scheme OpenBurnBarMAS` (no extra flags, no
+  # script) still excludes Path C via config/OpenBurnBarMAS.xcconfig.
+  OpenBurnBarMAS:
+    build:
+      targets:
+        OpenBurnBar: all
+    archive:
+      config: ReleaseMAS
+
+  # Wave 3.1: Lab lane. The Lab config compiles AgentLens/Lab/** in for
+  # manual QA via `xcodebuild build -scheme OpenBurnBarLab -configuration
+  # Lab` (schemes cannot pin the build action's config, so it is explicit).
+  # The test action deliberately uses Debug: Xcode builds Swift package
+  # dependencies with -enable-testing ONLY under the Debug configuration,
+  # so testing under Lab fails with #ModuleNotTestable on `@testable import
+  # OpenBurnBarCore`. The Lab flag for tests comes from the runner instead —
+  # test-openburnbar-app.sh injects -D OPENBURNBAR_LAB (Swift) and
+  # OPENBURNBAR_LAB=1 (ObjC++) when the scheme is OpenBurnBarLab — and the
+  # executed-test-count guard fails the lane loudly if the flag is ever
+  # missing (Lab-guarded tests would silently compile to nothing).
+  OpenBurnBarLab:
+    build:
+      targets:
+        OpenBurnBar: all
+        OpenBurnBarTests: test
+      parallelizeBuild: true
+    test:
+      config: Debug
+      targets:
+        - OpenBurnBarTests
+
   OpenBurnBarUITests:
     build:
       targets:
@@ -197,10 +240,10 @@ targets:
           # folder references so the per-pet structure and duplicate filenames
           # (petdef.json / spritesheet.webp) survive into the bundle instead of
           # being flattened into Resources/ (which collides). Added explicitly below.
-          - "PetCompanion/Resources/Pets"
-          - "PetCompanion/Resources/Pets/**"
-          - "PetCompanion/Resources/Models"
-          - "PetCompanion/Resources/Models/**"
+          - "Lab/PetCompanion/Resources/Pets"
+          - "Lab/PetCompanion/Resources/Pets/**"
+          - "Lab/PetCompanion/Resources/Models"
+          - "Lab/PetCompanion/Resources/Models/**"
           # The kernel backdrop is a self-contained web bundle loaded at runtime
           # via Bundle.main subdirectory "KernelBackdrop" (KernelBackdropView
           # loads index.html + its sibling kernel-backdrop.js). Ship it as a
@@ -211,13 +254,21 @@ targets:
       - path: AgentLens/Resources/KernelBackdrop
         type: folder
         buildPhase: resources
-      - path: AgentLens/PetCompanion/Resources/Pets
+      - path: AgentLens/Lab/PetCompanion/Resources/Pets
         type: folder
         buildPhase: resources
       # GLB pet models stay in-tree for Living Themes / wallpaper export but
       # are NOT copied into the default Mac app bundle (diligence: 307 MB).
       - path: packages/data-domains/gen/DataDomains.swift
       - path: packages/design-tokens/dist/swift/PensieveTokens.swift
+    # Wave 2.7: ReleaseMAS base config. The MAS flag must live here —
+    # per-target settings would serialize under the SAME
+    # ReleaseMAS XCBuildConfiguration object created by `configs:`,
+    # so a settings-only approach collides.
+    configFiles:
+      ReleaseMAS: config/OpenBurnBarMAS.xcconfig
+      # Wave 3.1: Lab base config. Same collision rule as ReleaseMAS above.
+      Lab: config/OpenBurnBarLab.xcconfig
     preBuildScripts:
       - name: Sync Imagine 3D Pets
         script: |
@@ -319,7 +370,9 @@ targets:
           }
           trap finish EXIT
 
-          if [[ "${CONFIGURATION:-}" == "Debug" ]]; then
+          # Lab is a dev/test config (3.1): debug tokens are allowed exactly
+          # like Debug. Release/ReleaseMAS still enforce.
+          if [[ "${CONFIGURATION:-}" == "Debug" || "${CONFIGURATION:-}" == "Lab" ]]; then
             exit 0
           fi
 
@@ -444,6 +497,10 @@ targets:
         embed: false
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+      # 3.4: app Analytics twins consolidated into the Core product (consent,
+      # identity, event registry, recorder); AmplitudeTransport stays in-app.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAnalytics
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
       - package: OpenBurnBarCore
@@ -478,6 +535,14 @@ targets:
       # stayed under its decomposition ceiling.
       - package: OpenBurnBarCore
         product: OpenBurnBarRecap
+      # Wave 2.2 single migrator: the AgentLens OpenBurnBarDatabase* mirror
+      # is gone, so the app links Data (migration registry + codecs) and
+      # MemoryExport directly. (Declared here in 2.7 — 2.2 only patched the
+      # pbxproj, which the xcodegen-drift gate forbids.)
+      - package: OpenBurnBarCore
+        product: OpenBurnBarData
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMemoryExport
       # AssistantModels: HermesAttachment, which MacAttachmentLandingService returns
       # to the Hermes transport. Linked explicitly rather than reached through the
       # umbrella so the file satisfies the core-decomposition umbrella-import ratchet.
@@ -485,6 +550,24 @@ targets:
       # transport wants this one, so the import here must stay narrow and explicit.
       - package: OpenBurnBarCore
         product: OpenBurnBarAssistantModels
+      # Wave 3.3 umbrella burn-down: every narrow product the codemod's
+      # explicit imports reference. Files import these directly instead of
+      # the OpenBurnBarCore umbrella (umbrella kept for module-qualified
+      # and high-fan-out tail files).
+      - package: OpenBurnBarCore
+        product: OpenBurnBarHermes
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInboxModels
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLaunchServices
+      - package: OpenBurnBarCore
+        product: OpenBurnBarPretext
+      - package: OpenBurnBarCore
+        product: OpenBurnBarTextExpansion
+      - package: OpenBurnBarCore
+        product: OpenBurnBarVectorKit
       - package: GRDB
         product: GRDB
       - package: SQLCipher
@@ -824,6 +907,11 @@ targets:
         buildPhase: resources
       - path: AgentLensTests/Active/Parsers/Fixtures/Grok/sample-session/chat_history.jsonl
         buildPhase: resources
+    # Wave 3.1: Lab base config so the OpenBurnBarLab scheme runs the suite
+    # WITH Lab types compiled in (Lab-guarded tests execute; Core-only
+    # expectations carry matching #if arms).
+    configFiles:
+      Lab: config/OpenBurnBarLab.xcconfig
     postBuildScripts:
       - name: Bundle App Store Compliance Source Fixtures
         script: |
@@ -849,6 +937,7 @@ targets:
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift" "MacCloudStoreLegalLinks.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Views/Settings/SettingsView.swift" "SettingsView.txt"
           copy_fixture "${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreView.swift" "CloudStoreView.txt"
+          copy_fixture "${PROJECT_DIR}/OpenBurnBarMobile/Views/Store/CloudStoreCards.swift" "CloudStoreCards.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/App/AgentLensApp.swift" "AgentLensApp.txt"
           copy_fixture "${PROJECT_DIR}/AgentLens/Services/OpenBurnBarAppCheckProviderFactory.swift" "OpenBurnBarAppCheckProviderFactory.txt"
           copy_fixture "${PROJECT_DIR}/project.yml" "project.yml"
@@ -860,6 +949,7 @@ targets:
           - $(PROJECT_DIR)/AgentLens/Views/Settings/MacCloudStoreLegalLinks.swift
           - $(PROJECT_DIR)/AgentLens/Views/Settings/SettingsView.swift
           - $(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreView.swift
+          - $(PROJECT_DIR)/OpenBurnBarMobile/Views/Store/CloudStoreCards.swift
           - $(PROJECT_DIR)/AgentLens/App/AgentLensApp.swift
           - $(PROJECT_DIR)/AgentLens/Services/OpenBurnBarAppCheckProviderFactory.swift
           - $(PROJECT_DIR)/project.yml
@@ -871,6 +961,7 @@ targets:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MacCloudStoreLegalLinks.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SettingsView.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreView.txt
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CloudStoreCards.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AgentLensApp.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/OpenBurnBarAppCheckProviderFactory.txt
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/project.yml
@@ -892,6 +983,11 @@ targets:
         link: false
       - package: OpenBurnBarCore
         product: OpenBurnBarComputerUseCore
+        link: false
+      # Wave 3.4 transport twins: AnalyticsConfig moved into Core, so
+      # AmplitudeTransportTests imports the narrow product directly.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAnalytics
         link: false
       - package: ViewInspector
         product: ViewInspector
@@ -1088,7 +1184,9 @@ targets:
           }
           trap finish EXIT
 
-          if [[ "${CONFIGURATION:-}" == "Debug" ]]; then
+          # Lab is a dev/test config (3.1): debug tokens are allowed exactly
+          # like Debug. Release/ReleaseMAS still enforce.
+          if [[ "${CONFIGURATION:-}" == "Debug" || "${CONFIGURATION:-}" == "Lab" ]]; then
             exit 0
           fi
 
@@ -1203,6 +1301,32 @@ targets:
       # stayed under its decomposition ceiling.
       - package: OpenBurnBarCore
         product: OpenBurnBarRecap
+      # Wave 3.3 umbrella burn-down: every narrow product the codemod's
+      # explicit imports reference. Files import these directly instead of
+      # the OpenBurnBarCore umbrella (umbrella kept for module-qualified
+      # and high-fan-out tail files).
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAssistantModels
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInboxModels
+      - package: OpenBurnBarCore
+        product: OpenBurnBarInsights
+      - package: OpenBurnBarCore
+        product: OpenBurnBarKernel
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLaunchServices
+      - package: OpenBurnBarCore
+        product: OpenBurnBarLogParsers
+      - package: OpenBurnBarCore
+        product: OpenBurnBarPretext
+      - package: OpenBurnBarCore
+        product: OpenBurnBarQuota
+      - package: OpenBurnBarCore
+        product: OpenBurnBarTextExpansion
+      - package: OpenBurnBarCore
+        product: OpenBurnBarUI
+      - package: OpenBurnBarCore
+        product: OpenBurnBarVectorKit
       - package: DebugBridge
         product: DebugBridgeCore
       - package: DebugBridge

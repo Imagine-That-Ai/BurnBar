@@ -25,7 +25,13 @@ final class CrossSurfaceUpgradeTests: XCTestCase {
 
     private func makeInMemoryStore() throws -> DataStore {
         let queue = try DatabaseQueue(path: ":memory:")
-        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        return try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
     }
 
     /// Drains all pending projection jobs across multiple sweeps.

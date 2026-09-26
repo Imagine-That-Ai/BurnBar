@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 extension OpenBurnBarOperatingComposer {
     private static let missionChangedFileScanLimit = 64

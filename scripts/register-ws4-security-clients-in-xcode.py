@@ -18,18 +18,13 @@ MAC_SERVICES_GROUP = "CAE317316D164FEB48D73BB8"
 MOBILE_SERVICES_GROUP = "C72135BF239EDFD1288EDB35"  # placeholder, discovered below
 
 ENTRIES: list[tuple[str, str, str | None, str | None]] = [
-    ("AgentLens/Services/AppCheckAttestationMonitor.swift", MAC_APP_SOURCES, MAC_SERVICES_GROUP, None),
+    # Wave 3.4: the AppCheckAttestationMonitor twins moved into
+    # OpenBurnBarComputerUseCore, so they are no longer registered here.
     (
-        "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
+        "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient+Mobile.swift",
         MOBILE_APP_SOURCES,
         MOBILE_COMPUTER_USE_GROUP,
-        "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
-    ),
-    (
-        "OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift",
-        MOBILE_APP_SOURCES,
-        None,
-        "OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift",
+        "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient+Mobile.swift",
     ),
 ]
 

@@ -15,7 +15,7 @@ import GRDB
 final class DashboardToolbarTests: XCTestCase {
 
     func test_usageModeToolbarPickerRendersCurrencyAndTokenModes() throws {
-        var selection: OpenBurnBar.UsageDisplayMode = .currency
+        var selection: OpenBurnBarKernel.UsageDisplayMode = .currency
         let picker = UsageModeToolbarPicker(selection: Binding(
             get: { selection },
             set: { selection = $0 }

@@ -15,7 +15,7 @@ vi.mock("firebase-functions/logger", () => ({
   debug: vi.fn(),
 }));
 
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logWarn: vi.fn(),
   logError: vi.fn(),
   logInfo: vi.fn(),
@@ -67,7 +67,7 @@ const { appendAuditEventRequired, appendAuditEvent, computeAuditHash } = vi.hois
     appendAuditEvent: vi.fn(),
   };
 });
-vi.mock("../callables/auditLog.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/auditLog.js", () => ({
   appendAuditEventRequired,
   appendAuditEvent,
   computeAuditHash,
@@ -83,7 +83,7 @@ import {
   eraseUserAccount,
   isAccountErasureResumable,
   verifyRetainedAccountErasureEvents,
-} from "../accountDeletion.js";
+} from "../../../packages/functions-shared/src/accountDeletion.js";
 
 type Operation =
   | { op: "create"; path: string; data: Record<string, unknown> }
@@ -300,9 +300,9 @@ describe("eraseUserAccount — durable deletion audit", () => {
       { collection: "hermes_gateway_device_sessions", ownerField: "uid" },
       { collection: "cli_link_sessions", ownerField: "ownerUid" },
     ]);
-    const credentialTransfer = readFileSync(resolve(__dirname, "../callables/credentialTransfer.ts"), "utf8");
-    const hermesApproval = readFileSync(resolve(__dirname, "../callables/hermesGatewayApprove.ts"), "utf8");
-    const cliLink = readFileSync(resolve(__dirname, "../callables/cliLink.ts"), "utf8");
+    const credentialTransfer = readFileSync(resolve(__dirname, "../../../functions-identity/src/domains/identity/credentialTransfer.ts"), "utf8");
+    const hermesApproval = readFileSync(resolve(__dirname, "../../../functions-media/src/callables/hermesGatewayApprove.ts"), "utf8");
+    const cliLink = readFileSync(resolve(__dirname, "../../../functions-identity/src/domains/devices/cliLink.ts"), "utf8");
     expect(credentialTransfer).toContain("ownerUid: uid");
     expect(hermesApproval).toContain("uid: input.uid");
     expect(cliLink).toContain("ownerUid: uid");

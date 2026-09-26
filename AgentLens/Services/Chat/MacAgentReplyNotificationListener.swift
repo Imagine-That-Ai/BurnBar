@@ -4,7 +4,7 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import UserNotifications
 
 private func agentReplyNotificationString(_ value: Any?) -> String? {

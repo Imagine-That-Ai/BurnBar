@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Source Filter
 
@@ -52,5 +55,5 @@ struct SessionLogGroup: Identifiable {
     let systemImage: String
     let accentColor: Color
     let provider: AgentProvider?
-    let logs: [OpenBurnBarCore.ConversationRecord]
+    let logs: [OpenBurnBarInboxModels.ConversationRecord]
 }

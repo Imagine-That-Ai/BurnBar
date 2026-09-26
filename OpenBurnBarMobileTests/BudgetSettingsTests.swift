@@ -1,6 +1,7 @@
 import XCTest
 @testable import OpenBurnBarMobile
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUsageModels
 
 final class BudgetSettingsTests: XCTestCase {
     @MainActor
@@ -67,7 +68,7 @@ final class BudgetSettingsTests: XCTestCase {
         XCTAssertEqual(defaults.double(forKey: key), 75.50)
 
         let settings = BudgetSettings(
-            store: BudgetRulesStore(forceTestingMode: true),
+            store: FirestoreBudgetRulesStore(forceTestingMode: true),
             legacyBudgetDefaults: defaults
         )
 
@@ -90,7 +91,7 @@ final class BudgetSettingsTests: XCTestCase {
     @MainActor
     private func makeSettings() -> BudgetSettings {
         BudgetSettings(
-            store: BudgetRulesStore(forceTestingMode: true),
+            store: FirestoreBudgetRulesStore(forceTestingMode: true),
             legacyBudgetDefaults: makeDefaults(),
             migrateLegacyBudget: false
         )

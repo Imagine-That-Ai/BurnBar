@@ -704,7 +704,13 @@ final class SearchServiceTests: XCTestCase {
         }
 
         let queue = try DatabaseQueue(path: ":memory:", configuration: configuration)
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
         let projector = ProjectionPipelineService(dataStore: store, leaseOwner: "hydration-batch")
         let base = Date(timeIntervalSince1970: 1_742_925_000)
 

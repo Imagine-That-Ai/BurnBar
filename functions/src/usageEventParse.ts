@@ -8,9 +8,9 @@
  * onto the display harness, or daily/account splits drift.
  */
 
-import { SUPPORTED_PROVIDERS } from "./types.js";
-import type { Provider, UsageEventDoc } from "./types.js";
-import { coerceFirestoreDate, isProviderAccountStorageScope, isRecord } from "./guards.js";
+import { SUPPORTED_PROVIDERS } from "@openburnbar/functions-shared/types.js";
+import type { Provider, UsageEventDoc } from "@openburnbar/functions-shared/types.js";
+import { coerceFirestoreDate, isProviderAccountStorageScope, isRecord } from "@openburnbar/functions-shared/guards.js";
 
 const PROVIDER_VALUES: ReadonlySet<string> = new Set(SUPPORTED_PROVIDERS);
 
@@ -132,6 +132,7 @@ function assignUsageEventNumberFields(doc: UsageEventDoc, raw: Record<string, un
   if (typeof raw.cacheReadTokens === "number") doc.cacheReadTokens = raw.cacheReadTokens;
   if (typeof raw.reasoningTokens === "number") doc.reasoningTokens = raw.reasoningTokens;
   if (typeof raw.totalTokens === "number") doc.totalTokens = raw.totalTokens;
+  if (typeof raw.costUSD === "number") doc.costUSD = raw.costUSD;
   if (typeof raw.costUsd === "number") doc.costUsd = raw.costUsd;
   if (typeof raw.cost === "number") doc.cost = raw.cost;
   if (typeof raw.provenanceConfidence === "string") doc.provenanceConfidence = raw.provenanceConfidence;

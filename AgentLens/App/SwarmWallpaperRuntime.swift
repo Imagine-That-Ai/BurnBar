@@ -1,5 +1,8 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import QuartzCore
 import SwiftUI
 

@@ -28,16 +28,20 @@ extension OpenBurnBarDatabase {
         // Reviewed 2026-09-20 (receipt close-monitor): one `IF NOT EXISTS`
         // index on token_usage.endTime. No pre-existing row is read,
         // rewritten or deleted.
-        "v69_token_usage_end_time_index"
+        "v69_token_usage_end_time_index",
+        // Reviewed 2026-09-23 (Wave 2.3): three `IF NOT EXISTS` index creates
+        // on agent_memories. No pre-existing row is read, rewritten or
+        // deleted, so transactional rollback is sufficient protection.
+        "v70_agent_memories_index_backfill"
     ]
 
-    enum OpenBurnBarDatabaseError: Error {
+    public enum OpenBurnBarDatabaseError: Error {
         case integrityCheckFailed(details: String)
         case backupFailed(underlying: Error)
         case migrationFailed(restoredFromBackup: Bool, underlying: Error)
     }
 
-    static func isLikelyDatabaseCorruption(_ error: Error) -> Bool {
+    public static func isLikelyDatabaseCorruption(_ error: Error) -> Bool {
         guard let dbError = error as? DatabaseError else { return false }
         return dbError.resultCode == .SQLITE_CORRUPT || dbError.resultCode == .SQLITE_NOTADB
     }
@@ -70,7 +74,7 @@ extension OpenBurnBarDatabase {
         }
     }
 
-    static func requiresFullPreMigrationProtection(
+    public static func requiresFullPreMigrationProtection(
         pendingMigrationIdentifiers: [String]
     ) -> Bool {
         pendingMigrationIdentifiers.contains {
@@ -117,7 +121,11 @@ extension OpenBurnBarDatabase {
             throw OpenBurnBarDatabaseError.backupFailed(underlying: error)
         }
 
-        pruneOldBackups(in: supportDir, keeping: 5)
+        // One restore point, not five: at multi-GB database sizes every kept
+        // copy is gigabytes of user disk that row deletes never reclaim.
+        // The newest backup is always the restore candidate; older ones are
+        // unreferenced the moment a migration succeeds.
+        pruneOldBackups(in: supportDir, keeping: 1)
         return backupURL
     }
 
@@ -172,8 +180,16 @@ extension OpenBurnBarDatabase {
             options: []
         ) else { return }
 
+        // WAL sidecars are not backups: the destination queue is still open
+        // while pruning runs, so `<name>.backup.<ts>-wal`/`-shm` exist
+        // alongside the backup itself. Counting them as candidates lets the
+        // newest-1 sort keep a sidecar and delete the live backup file.
+        let sidecarSuffixes = ["-wal", "-shm", "-journal"]
         let backups = contents
-            .filter { $0.lastPathComponent.contains(".backup.") }
+            .filter {
+                $0.lastPathComponent.contains(".backup.")
+                    && !sidecarSuffixes.contains(where: $0.lastPathComponent.hasSuffix)
+            }
             .compactMap { url -> (url: URL, date: Date)? in
                 guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]), // try?-ok(skip undated backup)
                       let date = values.contentModificationDate else { return nil }
@@ -186,6 +202,12 @@ extension OpenBurnBarDatabase {
         for item in backups[max...] {
             do {
                 try fileManager.removeItem(at: item.url)
+                for suffix in sidecarSuffixes {
+                    let sidecar = URL(fileURLWithPath: item.url.path + suffix)
+                    if fileManager.fileExists(atPath: sidecar.path) {
+                        try fileManager.removeItem(at: sidecar)
+                    }
+                }
                 AppLogger.dataStore.info("Pruned old database backup", metadata: ["path": item.url.path])
             } catch {
                 AppLogger.dataStore.silentFailure("Prune old database backup failed", error: error)

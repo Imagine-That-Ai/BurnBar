@@ -114,7 +114,10 @@ const LANE_PATTERNS = {
     // Safari bundle and ships a stale asset past the byte-for-byte dist gate.
     /^extensions\/openburnbar\/media\/app-icon-128\.png$/,
     /^scripts\/(?:test-openburnbar-app|diff-coverage)(?:[^/]*)$/,
-    /^\.github\/workflows\/app-pr-gate\.yml$/,
+    // Wave 3.8: the PR app-smoke selector and its self-test, plus the
+    // workflow that owns the lane — a change to the gate must re-run it.
+    /^scripts\/ci\/select-pr-app-tests(?:\.test)?\.sh$/,
+    /^\.github\/workflows\/(?:app-pr-gate|pr-native-fast)\.yml$/,
   ],
   mobile: [
     /^OpenBurnBarMobile\//,

@@ -1,10 +1,14 @@
 import FirebaseAuth
 import FirebaseFirestore
+import OpenBurnBarAnalytics
 @preconcurrency import FirebaseFunctions
 import Foundation
 import os
 import CryptoKit
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import OpenBurnBarSignalCore
 
 private final class SessionLogSyncProcessGate: Sendable {
@@ -30,7 +34,7 @@ private final class SessionLogSyncProcessGate: Sendable {
 /// Gated separately on `sessionLogCloudBackupEnabled`.
 /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
 final class SessionLogSyncService: CloudSyncDomain, Sendable {
-    private typealias FirestoreWrite = (data: [String: Any], document: CloudSyncDocumentGateway, merge: Bool)
+    private typealias FirestoreWrite = (data: UntypedJSONObject, document: CloudSyncDocumentGateway, merge: Bool)
     private enum FirestoreBatchOperation {
         case set(FirestoreWrite)
         case delete(CloudSyncDocumentGateway)
@@ -188,7 +192,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         )
                         continue
                     }
-                    let markdown = OpenBurnBarCore.SessionLogMarkdownFormatter.markdown(for: record)
+                    let markdown = OpenBurnBarLogParsers.SessionLogMarkdownFormatter.markdown(for: record)
                     // Project/path text is private. It is fed into keyed local
                     // search hashes, then stripped from every cloud document.
                     let privateProjectSearchText = Self.clampedPrivateSearchText(record.projectName)
@@ -335,7 +339,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         )
                     )
 
-                    var manifest: [String: Any] = [
+                    var manifest: UntypedJSONObject = [
                         "id": record.id,
                         "deviceId": deviceId,
                         "provider": record.provider.rawValue,
@@ -376,7 +380,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
                         (manifest, manifestRef, false)
                     ]
 
-                    var cloudSearchChunks: [[String: Any]] = []
+                    var cloudSearchChunks: [UntypedJSONObject] = []
                     for (idx, chunk) in chunks.enumerated() {
                         let snippet = chunk
                             .replacingOccurrences(of: "\n", with: " ")
@@ -531,8 +535,8 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private static func sessionLogTombstoneFields(for record: OpenBurnBarCore.ConversationRecord, deviceId: String, deletedAt: Date) -> [String: Any] {
-        var fields: [String: Any] = [
+    private static func sessionLogTombstoneFields(for record: OpenBurnBarInboxModels.ConversationRecord, deviceId: String, deletedAt: Date) -> UntypedJSONObject {
+        var fields: UntypedJSONObject = [
             "id": record.id,
             "deviceId": deviceId,
             "provider": record.provider.rawValue,
@@ -645,7 +649,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         "workingDirectory"
     ]
 
-    private static func legacyPlaintextFieldDeletes() -> [String: Any] {
+    private static func legacyPlaintextFieldDeletes() -> UntypedJSONObject {
         Dictionary(uniqueKeysWithValues: legacyPlaintextFields.map { ($0, FieldValue.delete()) })
     }
 
@@ -701,7 +705,7 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private static func progressLabel(for record: OpenBurnBarCore.ConversationRecord) -> String {
+    private static func progressLabel(for record: OpenBurnBarInboxModels.ConversationRecord) -> String {
         let title = record.summaryTitle ?? record.inferredTaskTitle
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
@@ -725,11 +729,11 @@ final class SessionLogSyncService: CloudSyncDomain, Sendable {
     /// Builds the server-visible cockpit facet block merged onto a session-log manifest. Pure metadata:
     /// no message text or path/project text, only counters, cost, timing, model/provider, and generic tool tags.
     static func facetFields(
-        for record: OpenBurnBarCore.ConversationRecord,
+        for record: OpenBurnBarInboxModels.ConversationRecord,
         facets: SessionUsageFacets?,
         model: String
-    ) -> [String: Any] {
-        var fields: [String: Any] = [
+    ) -> UntypedJSONObject {
+        var fields: UntypedJSONObject = [
             "facetSchemaVersion": facetSchemaVersion,
             "model": model,
             "messageCount": record.messageCount,

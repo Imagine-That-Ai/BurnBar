@@ -36,8 +36,8 @@ protocol CloudSyncCollectionGateway: AnyObject, Sendable {
 
 protocol CloudSyncDocumentGateway: AnyObject, Sendable {
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway
-    func getData() async throws -> [String: Any]?
-    func setData(_ data: [String: Any], merge: Bool) async throws
+    func getData() async throws -> UntypedJSONObject?
+    func setData(_ data: UntypedJSONObject, merge: Bool) async throws
     /// Hard-deletes the document. Used by tombstone GC to remove a conversation's
     /// session-log manifest, search-index chunks, and metadata after retention.
     func deleteDocument() async throws
@@ -70,14 +70,14 @@ protocol CloudSyncQueryGateway: AnyObject, Sendable {
 }
 
 protocol CloudSyncWriteBatchGateway: AnyObject, Sendable {
-    func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool)
+    func setData(_ data: UntypedJSONObject, forDocument document: CloudSyncDocumentGateway, merge: Bool)
     func deleteDocument(_ document: CloudSyncDocumentGateway)
     func commit() async throws
 }
 
 protocol CloudSyncTransactionGateway: AnyObject {
-    func getData(forDocument document: CloudSyncDocumentGateway) throws -> [String: Any]?
-    func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) throws
+    func getData(forDocument document: CloudSyncDocumentGateway) throws -> UntypedJSONObject?
+    func setData(_ data: UntypedJSONObject, forDocument document: CloudSyncDocumentGateway, merge: Bool) throws
 }
 
 protocol CloudSyncQuerySnapshotGateway: AnyObject, Sendable {
@@ -86,7 +86,7 @@ protocol CloudSyncQuerySnapshotGateway: AnyObject, Sendable {
 
 protocol CloudSyncDocumentSnapshotGateway: AnyObject, Sendable {
     var documentID: String { get }
-    func data() -> [String: Any]
+    func data() -> UntypedJSONObject
 }
 
 // MARK: - Live Implementations
@@ -114,8 +114,8 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
         Firestore.firestore()
     }
 
-    static func firestoreData(_ value: NSDictionary) -> [String: Any] {
-        value as? [String: Any] ?? [:]
+    static func firestoreData(_ value: NSDictionary) -> UntypedJSONObject {
+        value as? UntypedJSONObject ?? [:]
     }
 
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway {
@@ -218,11 +218,11 @@ final class CloudSyncDocumentLiveGateway: CloudSyncDocumentGateway, @unchecked S
         CloudSyncCollectionLiveGateway(reference: reference.collection(collectionPath))
     }
 
-    func getData() async throws -> [String: Any]? {
+    func getData() async throws -> UntypedJSONObject? {
         try await reference.getDocument().data()
     }
 
-    func setData(_ data: [String: Any], merge: Bool) async throws {
+    func setData(_ data: UntypedJSONObject, merge: Bool) async throws {
         try await reference.setData(data, merge: merge)
     }
 
@@ -293,7 +293,7 @@ final class CloudSyncWriteBatchLiveGateway: CloudSyncWriteBatchGateway, @uncheck
         self.batch = batch
     }
 
-    func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) {
+    func setData(_ data: UntypedJSONObject, forDocument document: CloudSyncDocumentGateway, merge: Bool) {
         guard let liveDoc = document as? CloudSyncDocumentLiveGateway else {
             AppLogger.sync.error(
                 "cloud_sync_gateway_implementation_mismatch",
@@ -327,14 +327,14 @@ final class CloudSyncTransactionLiveGateway: CloudSyncTransactionGateway {
         self.transaction = transaction
     }
 
-    func getData(forDocument document: CloudSyncDocumentGateway) throws -> [String: Any]? {
+    func getData(forDocument document: CloudSyncDocumentGateway) throws -> UntypedJSONObject? {
         guard let liveDoc = document as? CloudSyncDocumentLiveGateway else {
             throw CloudSyncGatewayError.documentImplementationMismatch(expected: "CloudSyncDocumentLiveGateway")
         }
         return try transaction.getDocument(liveDoc.reference).data()
     }
 
-    func setData(_ data: [String: Any], forDocument document: CloudSyncDocumentGateway, merge: Bool) throws {
+    func setData(_ data: UntypedJSONObject, forDocument document: CloudSyncDocumentGateway, merge: Bool) throws {
         guard let liveDoc = document as? CloudSyncDocumentLiveGateway else {
             throw CloudSyncGatewayError.documentImplementationMismatch(expected: "CloudSyncDocumentLiveGateway")
         }
@@ -374,7 +374,7 @@ final class CloudSyncDocumentSnapshotLiveGateway: CloudSyncDocumentSnapshotGatew
 
     var documentID: String { document.documentID }
 
-    func data() -> [String: Any] {
+    func data() -> UntypedJSONObject {
         document.data() ?? [:]
     }
 }

@@ -6,11 +6,19 @@ import { join, relative, resolve, sep } from "node:path";
 
 const MAX_ARTIFACT_BYTES = 128 * 1024 * 1024;
 const MAX_ARTIFACT_FILES = 10_000;
-const REQUIRED_TOP_LEVEL_ENTRIES = ["CANDIDATE_SHA", "SHA256SUMS", "functions"];
+// 3.5 deploy codebases. The artifact ships only the codebases involved in the
+// scoped targets, so any non-empty subset of these dirs is valid.
+const CODEBASE_DIRS = [
+  "functions",
+  "functions-identity",
+  "functions-sync",
+  "functions-media",
+];
+const REQUIRED_TOP_LEVEL_ENTRIES = ["CANDIDATE_SHA", "SHA256SUMS"];
 const ALLOWED_APP_STORE_CERTIFICATES = new Set([
-  "lib/appstore/certs/AppleIncRootCertificate.cer",
-  "lib/appstore/certs/AppleRootCA-G2.cer",
-  "lib/appstore/certs/AppleRootCA-G3.cer",
+  "lib/domains/billing/appstore/certs/AppleIncRootCertificate.cer",
+  "lib/domains/billing/appstore/certs/AppleRootCA-G2.cer",
+  "lib/domains/billing/appstore/certs/AppleRootCA-G3.cer",
 ]);
 const ALLOWED_VENDOR_FILES = new Set([
   "vendor/openburnbar/brace-expansion-cjs.tgz",
@@ -18,6 +26,7 @@ const ALLOWED_VENDOR_FILES = new Set([
 const ALLOWED_VENDOR_PREFIXES = [
   "vendor/openburnbar/domain-core-wasm/",
   "vendor/openburnbar/entitlements/",
+  "vendor/openburnbar/functions-shared/",
   "vendor/openburnbar/signal-envelope-contracts/",
 ];
 
@@ -100,7 +109,10 @@ function parseManifest(source) {
   const entries = new Map();
   for (const line of source.split(/\r?\n/u)) {
     if (line.length === 0) continue;
-    const match = /^([a-f0-9]{64})  (functions\/.+)$/u.exec(line);
+    const match =
+      /^([a-f0-9]{64})  ((?:functions|functions-identity|functions-sync|functions-media)\/.+)$/u.exec(
+        line,
+      );
     if (!match) throw new Error(`invalid SHA256SUMS line: ${line}`);
     const [, digest, path] = match;
     if (
@@ -142,9 +154,13 @@ function verify() {
   }
 
   const topLevelEntries = readdirSync(artifactRoot).sort();
+  const codebaseDirs = topLevelEntries.filter((entry) =>
+    CODEBASE_DIRS.includes(entry),
+  );
+  const expectedTopLevel = [...REQUIRED_TOP_LEVEL_ENTRIES, ...codebaseDirs].sort();
   if (
-    JSON.stringify(topLevelEntries) !==
-    JSON.stringify(REQUIRED_TOP_LEVEL_ENTRIES)
+    codebaseDirs.length === 0 ||
+    JSON.stringify(topLevelEntries) !== JSON.stringify(expectedTopLevel)
   ) {
     throw new Error(
       `unexpected top-level artifact entries: ${topLevelEntries.join(", ")}`,
@@ -163,7 +179,7 @@ function verify() {
 
   const files = walk(artifactRoot);
   const functionsFiles = files.filter((file) =>
-    file.artifactPath.startsWith("functions/"),
+    codebaseDirs.some((dir) => file.artifactPath.startsWith(`${dir}/`)),
   );
   if (functionsFiles.length === 0) {
     throw new Error("Functions artifact contains no deployable files");
@@ -177,60 +193,68 @@ function verify() {
   }
 
   for (const file of functionsFiles) {
-    const functionsPath = file.artifactPath.slice("functions/".length);
+    const codebaseDir = codebaseDirs.find((dir) =>
+      file.artifactPath.startsWith(`${dir}/`),
+    );
+    const functionsPath = file.artifactPath.slice(codebaseDir.length + 1);
     if (!isAllowedFunctionsPath(functionsPath)) {
-      throw new Error(`unexpected Functions artifact path: ${functionsPath}`);
+      throw new Error(`unexpected Functions artifact path: ${file.artifactPath}`);
     }
   }
 
-  const packageJson = JSON.parse(
-    readFileSync(join(artifactRoot, "functions", "package.json"), "utf8"),
-  );
-  if (Object.keys(packageJson.scripts ?? {}).length > 0) {
-    throw new Error(
-      "Functions deployment package retains executable npm scripts",
+  for (const codebaseDir of codebaseDirs) {
+    const packageJson = JSON.parse(
+      readFileSync(join(artifactRoot, codebaseDir, "package.json"), "utf8"),
     );
-  }
-  if (packageJson.devDependencies !== undefined) {
-    throw new Error(
-      "Functions deployment package retains development dependencies",
-    );
-  }
-  const overrideValues = JSON.stringify(packageJson.overrides ?? {});
-  if (overrideValues.includes('"$')) {
-    throw new Error(
-      "Functions deployment package retains an npm dependency alias override",
-    );
-  }
-
-  const lockfile = JSON.parse(
-    readFileSync(join(artifactRoot, "functions", "package-lock.json"), "utf8"),
-  );
-  if (lockfile.packages?.[""]?.devDependencies !== undefined) {
-    throw new Error(
-      "Functions deployment lockfile retains development dependencies",
-    );
-  }
-  if (lockfile.packages?.[""]?.hasInstallScript !== undefined) {
-    throw new Error(
-      "Functions deployment lockfile retains an install-script marker",
-    );
-  }
-  for (const [path, entry] of Object.entries(lockfile.packages ?? {})) {
-    if (entry?.dev === true) {
+    if (Object.keys(packageJson.scripts ?? {}).length > 0) {
       throw new Error(
-        `Functions deployment lockfile retains dev-only package ${path}`,
+        `Functions deployment package ${codebaseDir} retains executable npm scripts`,
       );
     }
-  }
-  for (const path of [
-    "node_modules/firebase-tools",
-    "node_modules/openburnbar-brace-expansion-cjs",
-  ]) {
-    if (lockfile.packages?.[path] !== undefined) {
+    if (packageJson.devDependencies !== undefined) {
       throw new Error(
-        `Functions deployment lockfile retains dev-only package ${path}`,
+        `Functions deployment package ${codebaseDir} retains development dependencies`,
       );
+    }
+    const overrideValues = JSON.stringify(packageJson.overrides ?? {});
+    if (overrideValues.includes('"$')) {
+      throw new Error(
+        `Functions deployment package ${codebaseDir} retains an npm dependency alias override`,
+      );
+    }
+
+    const lockfile = JSON.parse(
+      readFileSync(
+        join(artifactRoot, codebaseDir, "package-lock.json"),
+        "utf8",
+      ),
+    );
+    if (lockfile.packages?.[""]?.devDependencies !== undefined) {
+      throw new Error(
+        `Functions deployment lockfile ${codebaseDir} retains development dependencies`,
+      );
+    }
+    if (lockfile.packages?.[""]?.hasInstallScript !== undefined) {
+      throw new Error(
+        `Functions deployment lockfile ${codebaseDir} retains an install-script marker`,
+      );
+    }
+    for (const [path, entry] of Object.entries(lockfile.packages ?? {})) {
+      if (entry?.dev === true) {
+        throw new Error(
+          `Functions deployment lockfile ${codebaseDir} retains dev-only package ${path}`,
+        );
+      }
+    }
+    for (const path of [
+      "node_modules/firebase-tools",
+      "node_modules/openburnbar-brace-expansion-cjs",
+    ]) {
+      if (lockfile.packages?.[path] !== undefined) {
+        throw new Error(
+          `Functions deployment lockfile ${codebaseDir} retains dev-only package ${path}`,
+        );
+      }
     }
   }
 

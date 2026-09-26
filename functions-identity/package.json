@@ -1,0 +1,57 @@
+{
+  "name": "openburnbar-functions-identity",
+  "version": "1.0.0",
+  "description": "OpenBurnBar Cloud Functions v2 \u2014 identity deploy codebase (3.5).",
+  "engines": {
+    "node": "22"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "prebuild": "node ../scripts/sync-functions-vendors.mjs",
+    "postinstall": "node ../scripts/sync-functions-vendors.mjs",
+    "build": "tsc && node scripts/copy-certs.mjs",
+    "build:watch": "tsc --watch",
+    "lint": "eslint src --max-warnings 0",
+    "knip": "knip",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@apple/app-store-server-library": "^3.0.0",
+    "@simplewebauthn/server": "13.3.2",
+    "express": "5.2.1",
+    "firebase-admin": "14.2.0",
+    "firebase-functions": "^7.3.0",
+    "googleapis": "173.0.0",
+    "stripe": "19.3.0",
+    "@openburnbar/functions-shared": "file:vendor/openburnbar/functions-shared"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^24.6.0",
+    "eslint": "9.39.4",
+    "@typescript-eslint/eslint-plugin": "8.60.0",
+    "@typescript-eslint/parser": "8.60.0",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.8.3",
+    "knip": "5.88.1"
+  },
+  "overrides": {
+    "@tootallnate/once": "^3.0.1",
+    "fast-xml-builder": "^1.2.0",
+    "js-yaml": "^4.2.0",
+    "morgan": "1.12.0",
+    "uuid": "11.1.1",
+    "@opentelemetry/core": "2.8.0",
+    "@hono/node-server": "2.0.10",
+    "fast-uri": "3.1.6",
+    "hono": "4.13.5",
+    "qs": "6.16.0",
+    "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
+    "brace-expansion": "^5.0.9",
+    "minimatch": "^10.0.3",
+    "ip-address": "10.3.1",
+    "undici@^6.19.0": "6.28.0"
+  },
+  "license": "AGPL-3.0-only"
+}

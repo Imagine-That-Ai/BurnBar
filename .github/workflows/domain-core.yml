@@ -648,8 +648,23 @@ jobs:
           cache-dependency-path: functions/package-lock.json
 
       - name: Install Functions dependencies
-        working-directory: functions
-        run: npm ci
+        # All five manifests: the vitest alias resolves
+        # @openburnbar/functions-shared to packages/functions-shared/src, and
+        # domainCorePricing require.resolves the WASM package from that
+        # location — without packages/functions-shared/node_modules the WASM
+        # is unresolvable and pricing init throws.
+        run: |
+          for pkg in functions functions-identity functions-sync functions-media packages/functions-shared; do
+            npm ci --prefix "$pkg"
+          done
+
+      - name: Build local packages
+        # The typecheck/build step below compiles functions + siblings against
+        # vendored lib/ (gitignored); build then sync (the build scripts sync).
+        run: |
+          bash scripts/build-signal-envelope-contracts.sh
+          bash scripts/build-entitlements.sh
+          bash scripts/build-functions-shared.sh
 
       - name: Run Functions domain-core contracts
         working-directory: functions

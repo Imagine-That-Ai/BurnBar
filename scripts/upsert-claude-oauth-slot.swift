@@ -1,11 +1,8 @@
 #!/usr/bin/env swift
 import Foundation
 
-#if canImport(OpenBurnBarCore)
-import OpenBurnBarCore
-#endif
-
 // Minimal inline RPC client for one-off operator repair scripts.
+// (3.3: dead `import OpenBurnBarCore` removed — the client is self-contained.)
 struct UpsertRequest: Codable {
     let id: String
     let method: String

@@ -24,7 +24,7 @@ import {
   LEGACY_KIMI_WIRE_PRICING,
   estimateTokenCost,
   priceLegacyKimiEvent,
-} from "../pricing.js";
+} from "../../../packages/functions-shared/src/pricing.js";
 import {
   calculateTokenCost,
   configureDomainCorePricingShadowEvidenceSink,
@@ -32,8 +32,8 @@ import {
   flushDomainCorePricingShadowEvidence,
   loadedDomainCorePricingIdentity,
   resolveDomainCorePricingMode,
-} from "../domainCorePricing.js";
-import { isRecord } from "../guards.js";
+} from "../../../packages/functions-shared/src/domainCorePricing.js";
+import { isRecord } from "../../../packages/functions-shared/src/guards.js";
 
 // Core-decomposition: catalog.json moved from the Core monolith's Resources into
 // OpenBurnBarKernel/Resources (git mv). Repointed after the train ← main merge.
@@ -279,11 +279,14 @@ describe("shared domain-core pricing", () => {
       });
       expect(actual.isLegacy).toBe(vector.isLegacy);
       if (vector.expected) {
+        // Wave 2.5 dual-write: canon costUSD plus the legacy costUsd twin.
+        const cost = vector.expected.costNanoUsd / 1_000_000_000;
         expect(actual).toEqual({
           isLegacy: true,
           model: vector.expected.model,
           totalTokens: vector.expected.totalTokens,
-          costUsd: vector.expected.costNanoUsd / 1_000_000_000,
+          costUSD: cost,
+          costUsd: cost,
         });
       }
     }

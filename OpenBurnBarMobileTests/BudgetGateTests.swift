@@ -1,6 +1,7 @@
 import XCTest
 @testable import OpenBurnBarMobile
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUsageModels
 
 final class BudgetGateTests: XCTestCase {
     @MainActor
@@ -19,7 +20,7 @@ final class BudgetGateTests: XCTestCase {
 
         // Mock data source with $50 spend
         let mockSource = MockSpendDataSource(spend: 50.0)
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let credential = BudgetCredentialIdentity(
@@ -57,7 +58,7 @@ final class BudgetGateTests: XCTestCase {
 
         // Mock data source with $81 spend (81% used)
         let mockSource = MockSpendDataSource(spend: 81.0)
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let credential = BudgetCredentialIdentity(
@@ -98,7 +99,7 @@ final class BudgetGateTests: XCTestCase {
 
         // Mock data source with $101 spend (101% used)
         let mockSource = MockSpendDataSource(spend: 101.0)
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let credential = BudgetCredentialIdentity(
@@ -136,7 +137,7 @@ final class BudgetGateTests: XCTestCase {
         await settings.upsertRule(rule, source: "test")
 
         let mockSource = MockSpendDataSource(spend: 0, isReadable: false)
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -173,7 +174,7 @@ final class BudgetGateTests: XCTestCase {
         await settings.upsertRule(rule, source: "test")
 
         let mockSource = MockSpendDataSource(rollupsByWindow: [:], isReadable: true)
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -217,9 +218,14 @@ final class BudgetGateTests: XCTestCase {
         await oldSettings.upsertRule(rule, source: "test")
         let oldGate = BudgetGate(
             settings: oldSettings,
-            ledger: BudgetLedger(dataSource: MockSpendDataSource(spend: 150.0))
+            ledger: RollupBudgetLedger(dataSource: MockSpendDataSource(spend: 150.0))
         )
-        enforcement.configure(userID: "old-user", gate: oldGate)
+        enforcement.configure(
+            userID: "old-user",
+            gate: oldGate,
+            costEstimator: FlatRateBudgetCostEstimator.mobileDefault,
+            contextSpendFallback: .limit
+        )
 
         let oldDecision = await enforcement.evaluate(credential: credential, estimatedCost: 1.0)
         guard case .block = oldDecision else {
@@ -241,9 +247,14 @@ final class BudgetGateTests: XCTestCase {
         await newSettings.upsertRule(rule, source: "test")
         let newGate = BudgetGate(
             settings: newSettings,
-            ledger: BudgetLedger(dataSource: MockSpendDataSource(rollupsByWindow: [:], isReadable: true))
+            ledger: RollupBudgetLedger(dataSource: MockSpendDataSource(rollupsByWindow: [:], isReadable: true))
         )
-        enforcement.configure(userID: "new-user", gate: newGate)
+        enforcement.configure(
+            userID: "new-user",
+            gate: newGate,
+            costEstimator: FlatRateBudgetCostEstimator.mobileDefault,
+            contextSpendFallback: .limit
+        )
 
         let newDecision = await enforcement.evaluate(credential: credential, estimatedCost: 1.0)
         if case .allow = newDecision {
@@ -293,7 +304,7 @@ final class BudgetGateTests: XCTestCase {
                 )
             ]
         )
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let credential = BudgetCredentialIdentity(
@@ -378,7 +389,7 @@ final class BudgetGateTests: XCTestCase {
                 )
             ]
         )
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -465,7 +476,7 @@ final class BudgetGateTests: XCTestCase {
                 )
             ]
         )
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -561,7 +572,7 @@ final class BudgetGateTests: XCTestCase {
                 )
             ]
         )
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -638,7 +649,7 @@ final class BudgetGateTests: XCTestCase {
                 )
             ]
         )
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -674,7 +685,7 @@ final class BudgetGateTests: XCTestCase {
 
         // Spend is $150 (way over limit)
         let mockSource = MockSpendDataSource(spend: 150.0)
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         // Subscription key (Claude Pro OAuth key prefix `sk-ant-oat*`)
@@ -714,7 +725,7 @@ final class BudgetGateTests: XCTestCase {
 
         // Spend is $120 (over limit)
         let mockSource = MockSpendDataSource(spend: 120.0)
-        let ledger = BudgetLedger(dataSource: mockSource)
+        let ledger = RollupBudgetLedger(dataSource: mockSource)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let credential = BudgetCredentialIdentity(
@@ -746,7 +757,7 @@ final class BudgetGateTests: XCTestCase {
                 accountSummary(providerID: "openai", accountID: "acct-other", accountLabel: "Other Org", totalCost: 83)
             ]
         )
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         await ledger.recordSessionCost(providerID: "openai", accountID: "acct-a", cost: 2)
         await ledger.recordSessionCost(providerID: "anthropic", accountID: "acct-b", cost: 3)
         await ledger.recordSessionCost(providerID: "factory", accountID: "fresh-acct", accountLabel: "Acme Org", cost: 4)
@@ -774,7 +785,7 @@ final class BudgetGateTests: XCTestCase {
                 accountSummary(providerID: "openai", accountID: "acct-other", accountLabel: "Other Org", totalCost: 10)
             ]
         )
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         await ledger.recordSessionCost(providerID: "openai", accountID: "acct-other", accountLabel: "Other Org", cost: 90)
 
         let rule = BudgetRule(
@@ -811,7 +822,7 @@ final class BudgetGateTests: XCTestCase {
                 accountSummary(providerID: "openai", accountID: "acct-b", accountLabel: "Other Org", totalCost: 81)
             ]
         )
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -853,7 +864,7 @@ final class BudgetGateTests: XCTestCase {
                 accountSummary(providerID: "openai", accountID: "acct-b", accountLabel: "Other Org", totalCost: 81)
             ]
         )
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -899,7 +910,7 @@ final class BudgetGateTests: XCTestCase {
                 ]
             )
         ])
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
 
         let rule = BudgetRule(
             scope: .organization,
@@ -944,7 +955,7 @@ final class BudgetGateTests: XCTestCase {
                 ]
             )
         ])
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -971,7 +982,7 @@ final class BudgetGateTests: XCTestCase {
     @MainActor
     func testProjectScopeCurrentSpendThrowsUnsupported() async throws {
         let source = MockSpendDataSource(spend: 0)
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         let rule = BudgetRule(
             scope: .project,
             projectName: "acme-app",
@@ -1006,7 +1017,7 @@ final class BudgetGateTests: XCTestCase {
         // breakdown, so project spend is unknowable on iOS. The gate must fail closed
         // (block) rather than treat unknowable spend as $0 and silently enforce nothing.
         let source = MockSpendDataSource(spend: 0)
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -1043,7 +1054,7 @@ final class BudgetGateTests: XCTestCase {
         await settings.upsertRule(rule, source: "test")
 
         let source = MockSpendDataSource(spend: 0)
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -1104,7 +1115,7 @@ final class BudgetGateTests: XCTestCase {
                 accountSummary(providerID: "openrouter", accountID: "primary-key", accountLabel: "OpenRouter primary", totalCost: 50.0)
             ]
         )
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -1163,7 +1174,7 @@ final class BudgetGateTests: XCTestCase {
                 accountSummary(providerID: "openrouter", accountID: "primary-key", accountLabel: "OpenRouter primary", totalCost: 50.0)
             ]
         )
-        let ledger = BudgetLedger(dataSource: source)
+        let ledger = RollupBudgetLedger(dataSource: source)
         let gate = BudgetGate(settings: settings, ledger: ledger, warningThreshold: 0.8)
 
         let decision = await gate.evaluate(
@@ -1208,7 +1219,7 @@ final class BudgetGateTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return BudgetSettings(
-            store: BudgetRulesStore(forceTestingMode: true),
+            store: FirestoreBudgetRulesStore(forceTestingMode: true),
             legacyBudgetDefaults: defaults,
             migrateLegacyBudget: false
         )

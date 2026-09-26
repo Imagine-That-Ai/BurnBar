@@ -1,4 +1,6 @@
 import Foundation
+import OpenBurnBarProviderModels
+import OpenBurnBarPlatformSupport
 
 // MARK: - Switcher Profile Store Adapter (GRDB-free profile-store protocol)
 //

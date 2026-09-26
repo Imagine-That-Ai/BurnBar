@@ -219,7 +219,7 @@ public final class GrokParser: LogParser, Sendable {
             for metadataDir in metadataDirs {
                 let metadataURL = metadataDir.appendingPathComponent("meta.json")
                 guard let data = try? Data(contentsOf: metadataURL), // try?-ok(incomplete child metadata skipped)
-                      let metadata = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(malformed metadata skipped)
+                      let metadata = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(malformed metadata skipped)
                       let childSessionID = (metadata["child_session_id"] as? String)?.nilIfEmpty else {
                     continue
                 }
@@ -250,11 +250,11 @@ public final class GrokParser: LogParser, Sendable {
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date // try?-ok(mtime falls back)
         guard let summaryData = try? Data(contentsOf: summaryURL), // try?-ok(missing summary skipped)
-              let summary = try? JSONSerialization.jsonObject(with: summaryData) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+              let summary = BurnBarJSONValue.dictionary(fromJSONData: summaryData) else { // try?-ok(malformed JSON skipped)
             return nil
         }
 
-        let info = summary["info"] as? [String: Any]
+        let info = summary["info"] as? LogParserJSONObject
         let sessionId = (info?["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             ?? sessionDir.lastPathComponent
         let cwd = (info?["cwd"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -436,7 +436,7 @@ public final class GrokParser: LogParser, Sendable {
     private func loadSignals(at url: URL) -> GrokSignals? {
         guard FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url), // try?-ok(missing signals skipped)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed JSON skipped)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed JSON skipped)
             return nil
         }
         return GrokSignals(
@@ -516,13 +516,13 @@ public final class GrokParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skipped)
                 continue
             }
-            let params = json["params"] as? [String: Any]
-            let update = params?["update"] as? [String: Any] ?? json
+            let params = json["params"] as? LogParserJSONObject
+            let update = params?["update"] as? LogParserJSONObject ?? json
             guard (update["sessionUpdate"] as? String) == "turn_completed",
-                  let usage = update["usage"] as? [String: Any] else {
+                  let usage = update["usage"] as? LogParserJSONObject else {
                 continue
             }
 
@@ -574,21 +574,21 @@ public final class GrokParser: LogParser, Sendable {
         var maxTokens = 0
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skipped)
                 continue
             }
-            if let meta = json["_meta"] as? [String: Any],
+            if let meta = json["_meta"] as? LogParserJSONObject,
                let total = meta["totalTokens"] as? Int {
                 maxTokens = max(maxTokens, total)
             }
-            if let params = json["params"] as? [String: Any],
-               let meta = params["_meta"] as? [String: Any],
+            if let params = json["params"] as? LogParserJSONObject,
+               let meta = params["_meta"] as? LogParserJSONObject,
                let total = meta["totalTokens"] as? Int {
                 maxTokens = max(maxTokens, total)
             }
-            if let params = json["params"] as? [String: Any],
-               let update = params["update"] as? [String: Any],
-               let meta = update["_meta"] as? [String: Any],
+            if let params = json["params"] as? LogParserJSONObject,
+               let update = params["update"] as? LogParserJSONObject,
+               let meta = update["_meta"] as? LogParserJSONObject,
                let total = meta["totalTokens"] as? Int {
                 maxTokens = max(maxTokens, total)
             }
@@ -615,7 +615,7 @@ public final class GrokParser: LogParser, Sendable {
         var turns: [ChatTurn] = []
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skipped)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(malformed line skipped)
                 continue
             }
             let role = (json["type"] as? String)?.lowercased() ?? ""
@@ -631,7 +631,7 @@ public final class GrokParser: LogParser, Sendable {
         if let text = value as? String {
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        if let parts = value as? [[String: Any]] {
+        if let parts = value as? [LogParserJSONObject] {
             return parts.compactMap { part in
                 (part["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             }.filter { !$0.isEmpty }.joined(separator: "\n")

@@ -306,6 +306,10 @@ test("accepts a declared inactive lane with an all-legacy public-production prof
   const live = health();
   live.healthLive.domainCore.pricingMode = "legacy";
   live.healthReady.domainCore.pricingMode = "legacy";
+  // Decision 4: the legacy path never loads WASM, so legacy health docs must
+  // serve loadedCore null.
+  live.healthLive.domainCore.loadedCore = null;
+  live.healthReady.domainCore.loadedCore = null;
   const evidence = createFunctionsDeploymentEvidence(
     value,
     live,
@@ -315,6 +319,48 @@ test("accepts a declared inactive lane with an all-legacy public-production prof
     inventory,
   );
   assert.equal(evidence.provider, "firebase-functions");
+});
+
+test("rejects a legacy deployment that reports a loaded WASM identity", () => {
+  const value = proof();
+  value.domainCoreInactive = true;
+  value.releaseGate = null;
+  value.profile.value.modes = { pricing: "legacy" };
+  const live = health();
+  live.healthLive.domainCore.pricingMode = "legacy";
+  live.healthReady.domainCore.pricingMode = "legacy";
+  // loadedCore keeps the default tuple: a decision-4 violation — legacy must
+  // not load WASM.
+  assert.throws(
+    () =>
+      createFunctionsDeploymentEvidence(
+        value,
+        live,
+        runVerification(),
+        healthBytes(live),
+        providerCoordinates(),
+        inventory,
+      ),
+    /legacy deployments must serve loadedCore null/u,
+  );
+});
+
+test("rejects a rust deployment with a null loadedCore", () => {
+  const live = health();
+  live.healthLive.domainCore.loadedCore = null;
+  live.healthReady.domainCore.loadedCore = null;
+  assert.throws(
+    () =>
+      createFunctionsDeploymentEvidence(
+        proof(),
+        live,
+        runVerification(),
+        healthBytes(live),
+        providerCoordinates(),
+        inventory,
+      ),
+    /the exact loaded WASM tuple/u,
+  );
 });
 
 test("rejects a dropped release gate that does not declare the inactive lane", () => {

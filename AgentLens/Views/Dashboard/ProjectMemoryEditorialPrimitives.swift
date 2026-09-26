@@ -1,5 +1,8 @@
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
 
 // remediation(ProjectsView-decomposition): Relocated cohesive "Editorial

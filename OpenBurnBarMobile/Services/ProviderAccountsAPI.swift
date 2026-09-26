@@ -1,6 +1,8 @@
 import Foundation
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
+import OpenBurnBarKernel
+import OpenBurnBarQuota
 
 // MARK: - Provider Accounts Servicing
 
@@ -152,7 +154,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             }
         }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(
             provider: providerID.rawValue,
             accountID: accountID
         )
@@ -163,7 +165,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -197,7 +199,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             payload["deviceDisplayName"] = deviceDisplayName
         }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(
             provider: providerID.rawValue,
             accountID: accountID
         )
@@ -208,7 +210,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -238,7 +240,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             payload["deviceDisplayName"] = deviceDisplayName
         }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(
             provider: providerID.rawValue,
             accountID: accountID
         )
@@ -249,7 +251,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -343,7 +345,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         if let sourceDeviceID, sourceDeviceID.isEmpty == false { payload["sourceDeviceID"] = sourceDeviceID }
         if let deviceDisplayName, deviceDisplayName.isEmpty == false { payload["deviceDisplayName"] = deviceDisplayName }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(
             provider: providerID.rawValue,
             accountID: accountID
         )
@@ -354,7 +356,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -365,7 +367,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
 
     func deleteHostedQuotaCredentials(accountID: String = "codex_default") async throws {
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "codex", accountID: accountID)
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "codex", accountID: accountID)
         _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
             "deleteHostedQuotaCredentials",
             deviceId: deviceId,
@@ -381,7 +383,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
         if let isDefault { payload["isDefault"] = isDefault }
         if let disabled { payload["disabled"] = disabled }
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "account", accountID: accountID)
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "account", accountID: accountID)
         let result = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
             "updateProviderAccount",
             deviceId: deviceId,
@@ -389,7 +391,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             subjectId: subjectId,
             payload: payload
         )
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
               let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
@@ -400,7 +402,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
 
     func deleteProviderAccount(accountID: String) async throws {
         let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
-        let subjectId = ComputerUseSecurityCallableClient.providerAccountSubjectId(provider: "account", accountID: accountID)
+        let subjectId = ComputerUseSecurityCallableSupport.providerAccountSubjectId(provider: "account", accountID: accountID)
         _ = try await ComputerUseSecurityCallableClient.callHighRiskOwnerAction(
             "deleteProviderAccount",
             deviceId: deviceId,
@@ -427,7 +429,7 @@ final class ProviderAccountsAPI: ProviderAccountsServicing {
             throw FunctionsError.decodingFailed
         }
         let result = try await callable.call(payload)
-        guard let data = result.data as? [String: Any],
+        guard let data = BurnBarJSONValue.dictionary(from: result.data),
               let sanitized = FirestoreRepository.sanitizeForJSON(data) as? [String: Any],
               let responseData = try? JSONSerialization.data(withJSONObject: sanitized),
               let snap = try? JSONDecoder().decode(ProviderQuotaSnapshot.self, from: responseData) else {

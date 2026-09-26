@@ -247,17 +247,24 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
         }
     }
 
+    /// Schema hash over the endpoint DDL. Canonicalization matches
+    /// `OpenBurnBarSchemaExport` (`schemaEntries`/`schemaHashHex`: trimmed
+    /// per-statement SQL, sqlite-internal and NULL-SQL rows excluded, ordered
+    /// by (type, name)) and the DB byte-compat vector: the three MUST agree.
+    /// Keep them in sync — the Linux docs-mirror test asserts this hash
+    /// appears verbatim in docs/SCHEMA_SQLITE.sql.
     public func schemaHash() throws -> String {
         let schema = try pool.read { db in
             try String.fetchAll(
                 db,
                 sql: """
-                SELECT type || ':' || name || ':' || COALESCE(tbl_name, '') || ':' || COALESCE(sql, '')
-                FROM sqlite_master
-                WHERE name NOT LIKE 'sqlite_%'
-                ORDER BY type, name, tbl_name, sql
+                SELECT sql FROM sqlite_master
+                WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
+                ORDER BY type, name
                 """
-            ).joined(separator: "\n")
+            )
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .joined(separator: "\n")
         }
         return OpenBurnBarSchemaHasher.sha256Hex(Data(schema.utf8))
     }
@@ -361,135 +368,6 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
                     updatedAt = excluded.updatedAt
                 """,
                 arguments: snapshot.databaseArguments
-            )
-        }
-    }
-
-    public func indexSearchFixture(_ fixture: OpenBurnBarSearchFixture) throws {
-        try pool.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO search_documents (
-                    id, sourceKind, sourceID, sourceVersionID, provider, projectName,
-                    title, subtitle, bodyPreview, sourceUpdatedAt, indexedAt,
-                    contentHash, createdAt, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    title = excluded.title,
-                    bodyPreview = excluded.bodyPreview,
-                    indexedAt = excluded.indexedAt
-                """,
-                arguments: fixture.documentArguments
-            )
-            for chunk in fixture.chunks {
-                try db.execute(
-                    sql: """
-                    INSERT INTO search_chunks (
-                        id, documentID, sourceKind, sourceID, sourceVersionID, ordinal,
-                        startOffset, endOffset, messageStartOffset, messageEndOffset,
-                        sectionPath, text, createdAt, updatedAt
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    arguments: chunk.chunkArguments(documentID: fixture.documentID)
-                )
-                try db.execute(
-                    sql: """
-                    INSERT INTO search_chunks_fts (chunkID, documentID, title, chunkText, projectName, provider)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    arguments: [
-                        chunk.id,
-                        fixture.documentID,
-                        fixture.title,
-                        chunk.text,
-                        fixture.projectName,
-                        fixture.provider
-                    ]
-                )
-            }
-            try db.execute(
-                sql: """
-                INSERT INTO embedding_models (id, provider, modelName, dimensions, distanceMetric, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO NOTHING
-                """,
-                arguments: [
-                    fixture.embeddingModelID,
-                    "fixture",
-                    "fixture-embedding",
-                    fixture.embeddingDimension,
-                    "cosine",
-                    fixture.now,
-                    fixture.now
-                ]
-            )
-            try db.execute(
-                sql: """
-                INSERT INTO embedding_versions (
-                    id, modelID, versionTag, chunkerVersion, normalizationVersion,
-                    promptVersion, isActive, createdAt, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO NOTHING
-                """,
-                arguments: [
-                    fixture.embeddingVersionID,
-                    fixture.embeddingModelID,
-                    "fixture-v1",
-                    "fixture-chunker-v1",
-                    "fixture-l2-v1",
-                    "fixture-prompt-v1",
-                    true,
-                    fixture.now,
-                    fixture.now
-                ]
-            )
-            for chunk in fixture.chunks {
-                try db.execute(
-                    sql: """
-                    INSERT INTO chunk_embeddings (chunkID, embeddingVersionID, vectorBlob, createdAt, updatedAt)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    arguments: [
-                        chunk.id,
-                        fixture.embeddingVersionID,
-                        chunk.vectorBlob,
-                        fixture.now,
-                        fixture.now
-                    ]
-                )
-            }
-            try db.execute(
-                sql: """
-                INSERT INTO vector_index_snapshots (
-                    embeddingVersionID, backendID, state, fingerprint, dimensions,
-                    distanceMetric, vectorCount, storageRelativePath, fileBytes,
-                    backendVersion, errorCode, errorMessage, createdAt, updatedAt, lastBuiltAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(embeddingVersionID, backendID) DO UPDATE SET
-                    fingerprint = excluded.fingerprint,
-                    vectorCount = excluded.vectorCount,
-                    state = excluded.state,
-                    fileBytes = excluded.fileBytes,
-                    updatedAt = excluded.updatedAt,
-                    lastBuiltAt = excluded.lastBuiltAt
-                """,
-                arguments: [
-                    fixture.embeddingVersionID,
-                    fixture.vectorBackendID,
-                    "ready",
-                    fixture.vectorFingerprint,
-                    fixture.embeddingDimension,
-                    "cosine",
-                    fixture.chunks.count,
-                    fixture.snapshotPath,
-                    fixture.vectorMetadataJSON.utf8.count,
-                    "fixture-backend-v1",
-                    nil,
-                    nil,
-                    fixture.now,
-                    fixture.now,
-                    fixture.now
-                ]
             )
         }
     }
@@ -617,6 +495,9 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
                 throw OpenBurnBarDatabaseOpenError.codecUnavailable
             }
             if db.configuration.readonly == false {
+                // Wave 2.6: auto_vacuum FIRST — enabling WAL first seals a
+                // fresh header with NONE (see DatabaseVacuumPolicy).
+                try db.execute(sql: "PRAGMA auto_vacuum = INCREMENTAL")
                 try db.execute(sql: "PRAGMA foreign_keys = ON")
                 try db.execute(sql: "PRAGMA journal_mode = WAL")
                 try db.execute(sql: "PRAGMA wal_autocheckpoint = 1000")

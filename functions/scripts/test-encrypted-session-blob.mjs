@@ -13,7 +13,7 @@ import {
   assertUserStoragePath,
   encryptedSessionBlobDocumentIDFromStoragePath,
   resolveEncryptedSessionBlobByteCount,
-} from "../lib/callables/shared.js";
+} from "../../functions-sync/lib/shared/storage.js";
 
 const UID = "user-123";
 const DOCUMENT_ID = "device-1_session_abc";

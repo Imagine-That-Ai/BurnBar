@@ -50,6 +50,49 @@ test("TypeScript fallback scanner counts structural object and tuple assertions"
   assert.equal(report.total, 2);
 });
 
+test("TypeScript fallback scanner ignores export aliases (wave 3.5 barrels)", async () => {
+  const repo = await fixtureRepo({
+    "src/barrels.ts": `
+      export * as domainsDevices from "./domains/devices/index.js";
+      export { thing as renamedThing } from "./thing";
+      export {
+        alpha as beta,
+        gamma as delta,
+      } from "./greek";
+      import {
+        original as renamed,
+      } from "./module";
+      declare const payload: unknown;
+      const typed = payload as User;
+    `,
+  });
+
+  const report = await auditUnsafeCasts({ repoRoot: repo, tsParser: null });
+
+  assert.equal(report.scanner.tsMode, "token-fallback");
+  assert.equal(report.byKind.ts_type_assertion, 1);
+  assert.equal(report.total, 1);
+  assert.equal(report.violations[0].path, "src/barrels.ts");
+});
+
+test("TypeScript fallback scanner still flags assertions after an export block", async () => {
+  const repo = await fixtureRepo({
+    "src/mixed.ts": `
+      export {
+        alpha as beta,
+      } from "./greek";
+      declare const payload: unknown;
+      const typed = payload as User;
+      const nested = f({ key: payload as Other });
+    `,
+  });
+
+  const report = await auditUnsafeCasts({ repoRoot: repo, tsParser: null });
+
+  assert.equal(report.byKind.ts_type_assertion, 2);
+  assert.equal(report.total, 2);
+});
+
 test("Swift scanner counts force casts and force tries outside comments and strings", async () => {
   const repo = await fixtureRepo({
     "App/Example.swift": `

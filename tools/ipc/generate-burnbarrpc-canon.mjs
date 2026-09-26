@@ -2,12 +2,15 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseTspStringEnum } from "../schema-sync/emit/parse-tsp-enum.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(scriptPath), "../..");
 
 const files = {
-  contracts: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift"),
+  // Wave 3.6: the method catalog is TypeSpec-first. The Swift enum is a
+  // generated projection (BurnBarRPCMethod.generated.swift), not the source.
+  tsp: path.join(root, "tools/schema-sync/typespec/domains/daemon-rpc.tsp"),
   capability: path.join(root, "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift"),
   coverage: path.join(root, "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/RPC/BurnBarDaemonSocketRPCCoverage.swift"),
   swift: path.join(root, "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift"),
@@ -28,23 +31,11 @@ function read(file) {
   return readFileSync(file, "utf8");
 }
 
-function parseMethods(source) {
-  const start = source.indexOf("public enum BurnBarRPCMethod");
-  const end = source.indexOf("public struct BurnBarRPCRequestEnvelope", start);
-  if (start < 0 || end < 0) {
-    throw new Error("Could not isolate BurnBarRPCMethod enum body");
-  }
-  const methodSource = source.slice(start, end);
-  const methods = [];
-  const methodRe = /^\s*case\s+([A-Za-z0-9_]+)\s*=\s*"([^"]+)"/gm;
-  let match;
-  while ((match = methodRe.exec(methodSource))) {
-    methods.push({ caseName: match[1], id: match[2] });
-  }
-  if (methods.length === 0) {
-    throw new Error("No BurnBarRPCMethod cases parsed");
-  }
-  return methods;
+function parseMethods(tspPath) {
+  // .tsp member names ARE the Swift case names (verified byte-identical at
+  // the 3.6 cutover), so the canon needs no name mapping — only the shared
+  // strict parser, also used by the language emits.
+  return parseTspStringEnum(tspPath, "RpcMethod").map((member) => ({ caseName: member.name, id: member.value }));
 }
 
 function parseCapabilities(source) {
@@ -122,6 +113,10 @@ const explicitTypes = {
   "daemon.catalog": ["BurnBarRPCRequestEnvelope", "BurnBarCatalogResponse"],
   "daemon.config.get": ["BurnBarConfigGetRequest", "BurnBarConfigResponse"],
   "daemon.memory.model_policy": ["BurnBarMemoryModelPolicyRequest", "BurnBarMemoryModelPolicyResponse"],
+  "daemon.memory.snapshot.upsert": ["BurnBarProjectMemorySnapshotUpsertRequest", "BurnBarProjectMemorySnapshotUpsertResponse"],
+  "daemon.memory.snapshot.delete": ["BurnBarProjectMemorySnapshotDeleteRequest", "BurnBarProjectMemorySnapshotDeleteResponse"],
+  "daemon.memory.snapshot.delete_all": ["BurnBarProjectMemorySnapshotDeleteAllRequest", "BurnBarProjectMemorySnapshotDeleteAllResponse"],
+  "daemon.search.vector_snapshot.upsert": ["BurnBarVectorIndexSnapshotUpsertRequest", "BurnBarVectorIndexSnapshotUpsertResponse"],
   "daemon.config.update": ["BurnBarConfigUpdateRequest", "BurnBarConfigResponse"],
   "daemon.text_expansion.get": ["BurnBarRPCRequestEnvelope", "BurnBarTextExpansionSnapshot"],
   "daemon.text_expansion.upsert": ["BurnBarTextExpansionUpsertRequest", "BurnBarTextExpansionWireSnippet"],
@@ -149,6 +144,7 @@ const explicitTypes = {
   "daemon.chat.thread.list": ["BurnBarChatThreadListRequest", "BurnBarChatThreadListResponse"],
   "daemon.chat.thread.get": ["BurnBarChatThreadGetRequest", "BurnBarChatThreadGetResponse"],
   "daemon.chat.message.append": ["BurnBarChatMessageAppendRequest", "BurnBarChatMessageAppendResponse"],
+  "daemon.chat.thread.create": ["BurnBarChatThreadCreateRequest", "BurnBarChatThreadCreateResponse"],
   "daemon.usage.history": ["BurnBarActivityHistoryRequest", "BurnBarActivityHistoryResponse"],
   "daemon.usage.insights": ["BurnBarUsageInsightsRequest", "BurnBarUsageInsightsResponse"],
   "daemon.usage.projection": ["BurnBarUsageProjectionRequest", "BurnBarUsageProjectionResponse"],
@@ -187,7 +183,7 @@ function inferTypes(method) {
 }
 
 function buildCanon() {
-  const methods = parseMethods(read(files.contracts));
+  const methods = parseMethods(files.tsp);
   const capabilities = parseCapabilities(read(files.capability));
   const domains = parseDomains(read(files.coverage));
   const rows = methods.map((method) => {

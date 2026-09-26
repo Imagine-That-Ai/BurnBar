@@ -3,7 +3,7 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Mac-side producer of Smart Zoom focus context. Samples the AX tree,
 /// the focused window, and the cursor at ≤ 4 Hz and emits a

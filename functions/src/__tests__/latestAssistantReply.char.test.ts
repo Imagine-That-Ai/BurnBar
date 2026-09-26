@@ -20,7 +20,7 @@ vi.mock("firebase-admin/firestore", async () => {
 });
 vi.mock("firebase-admin/messaging", () => ({ getMessaging: () => ({ send: vi.fn() }) }));
 
-import { latestAssistantReply } from "../agentNotifications.js";
+import { latestAssistantReply } from "../../../functions-sync/src/domains/notify/agentNotificationTriggers.js";
 
 describe("latestAssistantReply characterization (U12)", () => {
   it("returns the sealed assistant reply via the sealed fast path", () => {

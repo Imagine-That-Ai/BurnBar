@@ -17,18 +17,22 @@ import CSQLite
 // `sqlite3` C API for indexed search, resume, and the switcher store. The app
 // keys that same file with SQLCipher in passphrase mode via
 // `DatabaseEncryptionService` (Keychain item `com.openburnbar.database-encryption`
-// / account `database-encryption-key-v1`). When the daemon links a SQLCipher
-// codec it MUST key the database with the SAME key so reads/writes line up — and
-// a one-time plaintext→encrypted migration must exist for an existing plaintext
-// file.
+// / account `database-encryption-key-v1`). The daemon MUST key the database
+// with the SAME key so reads/writes line up — and a one-time
+// plaintext→encrypted migration must exist for an existing plaintext file.
 //
-// Everything here is gated behind `isCipherAvailable()`: a stock-SQLite daemon
-// build (the current SPM `SQLite3` system library has no codec) keeps opening the
-// disclosed-plaintext file rather than bricking 100% of installs by applying a
-// no-op `PRAGMA key`. The moment a SQLCipher codec lands (a `SQLITE_HAS_CODEC`
-// build of the daemon's SQLite), `isCipherAvailable()` flips to `true` and the
-// key + migration paths activate with no other code change.
+// Wave 2.4 fail-closed contract (mirrors the app's
+// `DatabaseEncryptionService`): missing codec or key means REFUSE to open.
+// A codec-less daemon build exits at startup (`requireCodecForStartup`,
+// enforced in `OpenBurnBarDaemonMain`) instead of serving a
+// disclosed-plaintext file, and every keyed-open primitive below throws
+// rather than silently opening ciphertext it cannot read. There is no
+// stock-SQLite compatibility mode anymore: the daemon package links
+// SQLCipher.swift 4.16.0 on every platform it ships, so `isCipherAvailable()`
+// is true in every legitimate build and false only in a misbuilt binary,
+// which must not serve.
 //
+
 // SECURITY: the key is the app's base64 string applied in PASSPHRASE mode
 // (`sqlite3_key` with UTF-8 passphrase bytes, PBKDF2 derivation), NOT raw `x'<hex>'` mode — the two
 // derive different AES keys and are not interchangeable for an existing database,
@@ -38,25 +42,37 @@ import CSQLite
 // string literal, so injection is impossible.
 
 /// Failures raised while keying or migrating the shared daemon database.
-enum BurnBarDaemonDatabaseCipherError: Error, CustomStringConvertible {
+public enum BurnBarDaemonDatabaseCipherError: Error, CustomStringConvertible {
     /// `PRAGMA key` failed, or `PRAGMA cipher_version` came back empty after it,
     /// meaning the codec is not actually active on this handle.
     case keyApplicationFailed(detail: String)
     /// The plaintext→encrypted migration could not complete; the original
     /// plaintext file is left untouched so no data is lost.
     case migrationFailed(detail: String)
+    /// The linked SQLite has no SQLCipher codec. The daemon refuses to open
+    /// any database in this state (Wave 2.4 fail-closed, like the app's
+    /// `DatabaseEncryptionError.cipherUnavailable`).
+    case codecUnavailable(detail: String)
+    /// The database file is SQLCipher-encrypted but no key is resolvable, so
+    /// the daemon refuses to open it rather than failing late with an opaque
+    /// "file is not a database" on the first read.
+    case missingKeyForEncryptedDatabase(path: String)
 
-    var description: String {
+    public var description: String {
         switch self {
         case let .keyApplicationFailed(detail):
             return "Failed to apply SQLCipher key to the daemon database: \(detail)"
         case let .migrationFailed(detail):
             return "Failed to migrate the plaintext daemon database to SQLCipher: \(detail)"
+        case let .codecUnavailable(detail):
+            return "SQLCipher codec unavailable in this daemon build: \(detail)"
+        case let .missingKeyForEncryptedDatabase(path):
+            return "Refusing to open encrypted daemon database without a resolvable key: \(path)"
         }
     }
 }
 
-enum BurnBarDaemonDatabaseCipher {
+public enum BurnBarDaemonDatabaseCipher {
     /// Keychain coordinates of the shared database key. Kept byte-identical to
     /// `DatabaseEncryptionService` on the app side — the daemon reads the very
     /// same item the app writes.
@@ -153,6 +169,40 @@ enum BurnBarDaemonDatabaseCipher {
         return key
     }
 
+    /// Wave 2.4 fail-closed decision for GRDB `prepareDatabase` closures (the
+    /// switcher store and the Linux cloud-sync runtime share it). Pure so it is
+    /// exhaustively unit-testable on any build; the closures themselves just
+    /// execute the decision.
+    enum GRDBKeyingDecision {
+        /// Key the handle with this passphrase, then verify `cipher_version`.
+        case applyKey(String)
+        /// Open without a key: the file is plaintext, missing, or otherwise
+        /// not ciphertext (first-run creation, legacy disclosed-plaintext with
+        /// a genuinely unresolvable key).
+        case openPlaintext
+        /// Refuse the open: no codec, or ciphertext with no key.
+        case refuse(BurnBarDaemonDatabaseCipherError)
+    }
+
+    static func grdbKeyingDecision(
+        databasePath: String,
+        resolvedKey: String?,
+        codecAvailable: Bool = isCipherAvailable()
+    ) -> GRDBKeyingDecision {
+        guard codecAvailable else {
+            return .refuse(.codecUnavailable(
+                detail: "refusing GRDB open without the SQLCipher codec: \(databasePath)"
+            ))
+        }
+        guard let key = resolvedKey else {
+            if isEncryptedDatabaseFile(at: databasePath) {
+                return .refuse(.missingKeyForEncryptedDatabase(path: databasePath))
+            }
+            return .openPlaintext
+        }
+        return .applyKey(key)
+    }
+
 #if os(Linux)
     /// Returns the existing database key or provisions one for a new/plaintext
     /// profile. An encrypted database with no readable key is never given a
@@ -163,9 +213,14 @@ enum BurnBarDaemonDatabaseCipher {
     @discardableResult
     static func ensureKeyIfNeeded(
         at path: String,
-        secretStore: LinuxSecretCustodian = LinuxSecretStoreFactory.production()
+        secretStore: LinuxSecretCustodian = LinuxSecretStoreFactory.production(),
+        codecAvailable: Bool = isCipherAvailable()
     ) throws -> String? {
-        guard isCipherAvailable() else { return nil }
+        guard codecAvailable else {
+            throw BurnBarDaemonDatabaseCipherError.codecUnavailable(
+                detail: "cannot provision a database key the codec cannot use: \(path)"
+            )
+        }
 
         do {
             return try secretStore
@@ -231,20 +286,86 @@ enum BurnBarDaemonDatabaseCipher {
         sqlite3_compileoption_used("SQLITE_HAS_CODEC") != 0
     }
 
+    /// The codec probe the startup gate consults. Identical to
+    /// `isCipherAvailable()` except in DEBUG builds, where
+    /// `OPENBURNBAR_DAEMON_FORCE_NO_CODEC=1` forces absence so the
+    /// "daemon without codec exits with an error" proof can execute against a
+    /// real binary. The override is compiled out of release builds (same shape
+    /// as the `OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG` hatch): a hostile
+    /// launch environment cannot strip anything, since forced absence only
+    /// makes the daemon refuse sooner.
+    public static func startupCodecProbe() -> Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["OPENBURNBAR_DAEMON_FORCE_NO_CODEC"] == "1" {
+            return false
+        }
+        #endif
+        return isCipherAvailable()
+    }
+
+    /// Wave 2.4 startup gate (mirrors the app's
+    /// `requireLinkedSQLCipherForRelease`): throws `codecUnavailable` unless
+    /// the linked SQLite provides the SQLCipher codec. `OpenBurnBarDaemonMain`
+    /// calls this before binding anything, so a codec-less binary exits with
+    /// an error instead of serving a disclosed-plaintext database.
+    public static func requireCodecForStartup(codecAvailable: Bool = startupCodecProbe()) throws {
+        guard codecAvailable else {
+            throw BurnBarDaemonDatabaseCipherError.codecUnavailable(
+                detail: "SQLCipher codec not linked (SQLITE_HAS_CODEC absent); refusing to serve"
+            )
+        }
+    }
+
     // MARK: - Keyed Open
 
-    /// Apply the resolved SQLCipher key to an already-open handle WHEN the codec
-    /// is available. On a stock-SQLite build, or when no key has been provisioned,
-    /// this is a deliberate no-op so the daemon keeps opening the file plaintext
-    /// (do-not-brick). Call this immediately after `sqlite3_open_v2`, before any
-    /// other statement runs.
+    /// Apply the resolved SQLCipher key to an already-open handle. Wave 2.4
+    /// fail-closed: a missing codec ALWAYS throws (`codecUnavailable`) — there
+    /// is no stock-SQLite compatibility mode — and an encrypted file with no
+    /// resolvable key throws (`missingKeyForEncryptedDatabase`) instead of
+    /// failing late with an opaque "file is not a database" on the first read.
+    /// A plaintext, missing, or in-memory database with no key is still opened
+    /// as-is: first-run creation and the plaintext→encrypted migration (which
+    /// runs when a key appears) both flow through here. Call this immediately
+    /// after `sqlite3_open_v2`, before any other statement runs.
     ///
-    /// - Throws: `BurnBarDaemonDatabaseCipherError.keyApplicationFailed` when the
-    ///   codec is present and a key exists but SQLCipher rejects the key.
-    static func applyKeyIfAvailable(to handle: OpaquePointer, key explicitKey: String? = nil) throws {
-        guard isCipherAvailable() else { return }
-        guard let key = explicitKey ?? resolveKey() else { return }
+    /// - Throws: `codecUnavailable` when the codec is absent;
+    ///   `missingKeyForEncryptedDatabase` when the file is encrypted but no key
+    ///   resolves; `keyApplicationFailed` when SQLCipher rejects the key.
+    static func applyKeyIfAvailable(
+        to handle: OpaquePointer,
+        key explicitKey: String? = nil,
+        codecAvailable: Bool = isCipherAvailable()
+    ) throws {
+        guard codecAvailable else {
+            throw BurnBarDaemonDatabaseCipherError.codecUnavailable(
+                detail: "refusing to open a database the codec cannot verify"
+            )
+        }
+        try applyResolvedKey(explicitKey ?? resolveKey(), to: handle)
+    }
+
+    /// The no-key decision behind `applyKeyIfAvailable`, split out so tests can
+    /// drive it without depending on the ambient keychain: only an encrypted
+    /// file is a refusal. Plaintext files stay readable so first-run creation
+    /// and legacy disclosed-plaintext operation (key genuinely unresolvable,
+    /// e.g. locked secret store) keep working; the migration upgrades them
+    /// once a key appears.
+    static func applyResolvedKey(_ key: String?, to handle: OpaquePointer) throws {
+        guard let key else {
+            let filename = mainDatabaseFilename(for: handle)
+            if filename.isEmpty == false, isEncryptedDatabaseFile(at: filename) {
+                throw BurnBarDaemonDatabaseCipherError.missingKeyForEncryptedDatabase(path: filename)
+            }
+            return
+        }
         try applyKey(key, to: handle)
+    }
+
+    /// The filesystem path of `handle`'s `main` database, or `""` for
+    /// in-memory databases (which carry no at-rest contract to violate).
+    private static func mainDatabaseFilename(for handle: OpaquePointer) -> String {
+        guard let cString = sqlite3_db_filename(handle, "main") else { return "" }
+        return String(cString: cString)
     }
 
     /// Apply the SQLCipher passphrase to `handle` and verify the codec is
@@ -310,28 +431,37 @@ enum BurnBarDaemonDatabaseCipher {
     /// database keyed with the app's native secret-store key, then atomically
     /// replace the original. On Linux, a missing key is provisioned first for a
     /// new/plaintext profile; an encrypted profile without a readable key stays
-    /// fail-closed. No-op (returns `false`) when the codec is unavailable, the
-    /// file is missing, or the file is already encrypted — so the stock-SQLite
-    /// build never touches the file.
+    /// fail-closed. No-op (returns `false`) when the file is missing or already
+    /// encrypted. Wave 2.4 fail-closed: a plaintext file with no codec throws
+    /// (`codecUnavailable`) — the daemon refuses to leave a database it cannot
+    /// verify — and a plaintext file with no resolvable key is left in place
+    /// with a loud log, to be migrated once a key appears.
     ///
     /// The migration opens the plaintext source, ATTACHes a freshly keyed sibling
     /// database, runs `sqlcipher_export('encrypted')` to copy every page through
     /// the codec, then `rename(2)`-swaps the encrypted file into place. On any
     /// failure the original plaintext file is left untouched and the temp file is
-    /// removed, so the daemon can still open the disclosed-plaintext file.
+    /// removed.
     ///
     /// - Returns: `true` if a migration ran and the file is now encrypted; `false`
     ///   if migration was not applicable.
-    /// - Throws: `BurnBarDaemonDatabaseCipherError.migrationFailed` if migration
-    ///   was applicable but could not complete.
+    /// - Throws: `codecUnavailable` when a plaintext file exists but the codec is
+    ///   absent; `migrationFailed` if migration was applicable but could not
+    ///   complete.
     @discardableResult
     static func migratePlaintextDatabaseIfNeeded(
         at path: String,
         logger: BurnBarDaemonLogger,
-        key explicitKey: String? = nil
+        key explicitKey: String? = nil,
+        codecAvailable: Bool = isCipherAvailable()
     ) throws -> Bool {
         removeOrphanedMigrationArtifacts(forDatabaseAt: path, logger: logger)
-        guard isCipherAvailable() else { return false }
+        guard isPlaintextDatabaseFile(at: path) else { return false }
+        guard codecAvailable else {
+            throw BurnBarDaemonDatabaseCipherError.codecUnavailable(
+                detail: "cannot migrate plaintext database without the SQLCipher codec: \(path)"
+            )
+        }
         #if os(Linux)
         // Explicit keys are used by migration callers and tests; do not make
         // those paths depend on a live Secret Service lookup.
@@ -342,11 +472,32 @@ enum BurnBarDaemonDatabaseCipher {
             resolvedKey = try ensureKeyIfNeeded(at: path)
         }
         #else
-        let resolvedKey = resolveKey()
+        let resolvedKey = explicitKey ?? resolveKey()
         #endif
-        guard let key = explicitKey ?? resolvedKey else { return false }
+        return try runPlaintextMigration(at: path, logger: logger, resolvedKey: resolvedKey)
+    }
+
+    /// Execute the plaintext→encrypted migration with an already-resolved key.
+    /// Split from `migratePlaintextDatabaseIfNeeded` so tests can drive the
+    /// no-key path without depending on the ambient secret store: a `nil` key
+    /// leaves the file in place with a loud log and returns `false`.
+    @discardableResult
+    static func runPlaintextMigration(
+        at path: String,
+        logger: BurnBarDaemonLogger,
+        resolvedKey: String?
+    ) throws -> Bool {
+        guard let key = resolvedKey else {
+            logger.warning(
+                "daemon_database_plaintext_key_unresolvable",
+                metadata: [
+                    "path": path,
+                    "reason": "serving disclosed-plaintext; migration runs once a key is resolvable"
+                ]
+            )
+            return false
+        }
         try validateKey(key)
-        guard isPlaintextDatabaseFile(at: path) else { return false }
 
         let encryptedPath = path + ".sqlcipher-migrating-\(UUID().uuidString)"
         removeDatabaseFilesIfPresent(at: encryptedPath, includePrimary: true)

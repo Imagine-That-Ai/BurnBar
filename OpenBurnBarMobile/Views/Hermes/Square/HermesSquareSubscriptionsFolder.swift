@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
+import OpenBurnBarAssistantModels
 
 // MARK: - Hermes Square Subscriptions Folder (Hermes Square §6.2 / Pillar 2)
 //

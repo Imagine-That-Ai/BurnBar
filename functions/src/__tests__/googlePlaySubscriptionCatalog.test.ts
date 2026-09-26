@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({
     googlePlaySubscriptionProductID: "cloud-monthly",
     googlePlayCloudMonthlyProductID: "cloud-monthly",
@@ -18,7 +18,7 @@ vi.mock("../config.js", () => ({
   }),
 }));
 
-vi.mock("../callables/shared/entitlements.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", () => ({
   BURNBAR_PRO_ENTITLEMENT_ID: "burnbar_pro",
   BURNBAR_PRO_MAX_ENTITLEMENT_ID: "burnbar_pro_max",
   BURNBAR_ULTRA_ENTITLEMENT_ID: "burnbar_ultra",
@@ -28,7 +28,7 @@ import {
   GOOGLE_PLAY_ACTIVE_STATES,
   googlePlaySubscriptionEntitlement,
   selectGooglePlaySubscriptionLineItem,
-} from "../callables/shared/googlePlay.js";
+} from "../../../functions-identity/src/shared/googlePlay.js";
 
 describe("Google Play subscription catalog", () => {
   it("keeps canceled subscriptions entitled until their paid-through expiry", () => {

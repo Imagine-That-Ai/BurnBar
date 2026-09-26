@@ -9,7 +9,7 @@ import OpenBurnBarCore
 ///     fallback-credential set drives which credential a budget rule routes spend to
 ///     when its primary is capped; a rule that synced to other seats with a silently
 ///     dropped fallback set would mis-route enterprise spend. The wire encoding now
-///     matches the local store (`BudgetRulesStore.upsert`): empty set => absent field,
+///     matches the local store (`GRDBBudgetRulesStore.upsert`): empty set => absent field,
 ///     non-empty set => `try`-encoded JSON that round-trips back to the exact IDs, and
 ///     a genuine encode failure propagates instead of producing `nil`.
 ///
@@ -66,7 +66,7 @@ final class CloudBudgetServiceMattersTests: XCTestCase {
 
     /// The wire contract distinguishes "no fallbacks configured" (absent / nil field)
     /// from a real failure. The hardened encoder writes `nil` ONLY for an empty set,
-    /// matching `BudgetRulesStore.upsert`, never as a swallowed-error fallback.
+    /// matching `GRDBBudgetRulesStore.upsert`, never as a swallowed-error fallback.
     func test_emptyFallbackSet_encodesToNilField_matchingLocalStoreContract() throws {
         let emptyRule = makeRule(fallbackCredentialIDs: [])
 

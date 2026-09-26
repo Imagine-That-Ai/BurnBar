@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Enterprise cross-seat rollup: spend by user, project, credential, or provider.
 /// Gated behind `SettingsManager.enterpriseOrgViewEnabled` (default off).

@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 // MARK: - Elder Wand server-side tool loop
 //
@@ -71,11 +72,11 @@ struct ElderWandToolLoop: Sendable {
         maxTokens: Int? = nil,
         chat: ElderWandChatTurn
     ) async throws -> ElderWandToolLoopResult {
-        var messages: [[String: Any]] = []
+        var messages: [DaemonJSONObject] = []
         if let systemPrompt, !systemPrompt.isEmpty {
             messages.append(["role": "system", "content": systemPrompt])
         }
-        if let decoded = try? JSONSerialization.jsonObject(with: userMessagesJSON) as? [[String: Any]] {
+        if let decoded = try? JSONSerialization.jsonObject(with: userMessagesJSON) as? [DaemonJSONObject] {
             messages.append(contentsOf: decoded)
         }
 
@@ -98,7 +99,7 @@ struct ElderWandToolLoop: Sendable {
             // re-trigger. (`recursionMarkerKey`/`Value` remain available for the
             // gateway's belt-and-suspenders header/body detection but are not
             // written onto the wire body, so no non-standard key leaks upstream.)
-            var body: [String: Any] = [
+            var body: DaemonJSONObject = [
                 "model": model,
                 "stream": false,
                 "messages": messages
@@ -115,7 +116,7 @@ struct ElderWandToolLoop: Sendable {
             let response = try await chat(bodyData)
             accumulated.add(response.usage)
 
-            let object = (try? JSONSerialization.jsonObject(with: response.body) as? [String: Any]) ?? [:]
+            let object = (BurnBarJSONValue.dictionary(fromJSONData: response.body)) ?? [:]
             let toolCalls = Self.extractToolCalls(from: object)
 
             if toolCalls.isEmpty || totalToolCalls >= budget {
@@ -163,7 +164,7 @@ struct ElderWandToolLoop: Sendable {
         // Iteration ceiling hit without a tool-free turn: do one final
         // tool-less completion so we always return real model text.
         try Task.checkCancellation()
-        var finalBody: [String: Any] = [
+        var finalBody: DaemonJSONObject = [
             "model": model,
             "stream": false,
             "messages": messages,
@@ -175,7 +176,7 @@ struct ElderWandToolLoop: Sendable {
         let finalData = (try? JSONSerialization.data(withJSONObject: finalBody, options: [])) ?? Data("{}".utf8)
         let finalResponse = try await chat(finalData)
         accumulated.add(finalResponse.usage)
-        let finalObject = (try? JSONSerialization.jsonObject(with: finalResponse.body) as? [String: Any]) ?? [:]
+        let finalObject = (BurnBarJSONValue.dictionary(fromJSONData: finalResponse.body)) ?? [:]
         let content = Self.extractAssistantContent(from: finalObject) ?? ""
         return ElderWandToolLoopResult(
             text: content,
@@ -192,14 +193,14 @@ struct ElderWandToolLoop: Sendable {
         let arguments: String
     }
 
-    static func extractToolCalls(from object: [String: Any]) -> [ParsedToolCall] {
-        guard let choices = object["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
-              let toolCalls = message["tool_calls"] as? [[String: Any]] else {
+    static func extractToolCalls(from object: DaemonJSONObject) -> [ParsedToolCall] {
+        guard let choices = object["choices"] as? [DaemonJSONObject],
+              let message = choices.first?["message"] as? DaemonJSONObject,
+              let toolCalls = message["tool_calls"] as? [DaemonJSONObject] else {
             return []
         }
         return toolCalls.compactMap { raw in
-            guard let function = raw["function"] as? [String: Any],
+            guard let function = raw["function"] as? DaemonJSONObject,
                   let name = function["name"] as? String,
                   !name.isEmpty else {
                 return nil
@@ -219,27 +220,27 @@ struct ElderWandToolLoop: Sendable {
         }
     }
 
-    static func assistantMessage(from object: [String: Any]) -> [String: Any] {
-        guard let choices = object["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any] else {
+    static func assistantMessage(from object: DaemonJSONObject) -> DaemonJSONObject {
+        guard let choices = object["choices"] as? [DaemonJSONObject],
+              let message = choices.first?["message"] as? DaemonJSONObject else {
             return ["role": "assistant", "content": ""]
         }
-        var assistant: [String: Any] = ["role": "assistant"]
+        var assistant: DaemonJSONObject = ["role": "assistant"]
         if let content = message["content"] as? String {
             assistant["content"] = content
         } else {
             // OpenAI requires `content` present (may be null) alongside tool_calls.
             assistant["content"] = NSNull()
         }
-        if let toolCalls = message["tool_calls"] as? [[String: Any]] {
+        if let toolCalls = message["tool_calls"] as? [DaemonJSONObject] {
             assistant["tool_calls"] = toolCalls
         }
         return assistant
     }
 
-    static func extractAssistantContent(from object: [String: Any]) -> String? {
-        guard let choices = object["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any] else {
+    static func extractAssistantContent(from object: DaemonJSONObject) -> String? {
+        guard let choices = object["choices"] as? [DaemonJSONObject],
+              let message = choices.first?["message"] as? DaemonJSONObject else {
             return nil
         }
         return message["content"] as? String
@@ -262,7 +263,7 @@ struct ElderWandToolLoop: Sendable {
         case .array(let array):
             return array.map { foundationObject(from: $0) }
         case .object(let object):
-            var result: [String: Any] = [:]
+            var result: DaemonJSONObject = [:]
             for (key, nested) in object {
                 result[key] = foundationObject(from: nested)
             }

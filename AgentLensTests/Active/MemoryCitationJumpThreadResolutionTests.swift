@@ -19,7 +19,7 @@ import OpenBurnBarCore
 final class MemoryCitationJumpThreadResolutionTests: XCTestCase {
 
     private func makeInMemoryStore() throws -> DataStoreCoordinator {
-        try DataStoreCoordinator.makeInMemoryForTesting()
+        try DataStoreCoordinator.makeInMemoryForTesting(chatWriter: { LocalChatHistoryWriter(dbQueue: $0) })
     }
 
     func test_threadIDForChatMessageID_resolvesOwningThread_crossThread() async throws {

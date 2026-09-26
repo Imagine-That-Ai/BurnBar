@@ -1,5 +1,9 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarTextExpansion
+import OpenBurnBarUI
 
 /// Single source of truth for "how do I connect this provider?" copy and metadata.
 ///

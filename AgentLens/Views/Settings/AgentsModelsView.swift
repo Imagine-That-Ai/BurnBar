@@ -1,5 +1,8 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Settings → Agents → Models

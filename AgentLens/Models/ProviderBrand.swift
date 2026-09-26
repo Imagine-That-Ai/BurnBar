@@ -1,5 +1,7 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 /// Unified branding metadata for any provider — works for both `AgentProvider` (switcher surface)
 /// and catalog providers (daemon routed surface). Decoupled from either enum so

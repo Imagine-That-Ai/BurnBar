@@ -1,5 +1,7 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 import FirebaseAuth

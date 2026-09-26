@@ -14,13 +14,13 @@ vi.mock("firebase-functions/logger", () => ({
   warn: vi.fn(),
   debug: vi.fn(),
 }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 
 // Real validators; only the Pro entitlement gate is stubbed so the call runs
 // without Firestore entitlement docs.
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>("../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     assertActiveBurnBarProEntitlement: vi.fn(async () => undefined),
@@ -78,7 +78,7 @@ function makeDb() {
   };
 }
 
-vi.mock("../adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: makeDb(), auth: {} }));
 
 process.env.ENFORCE_APP_CHECK = "false";
 
@@ -134,7 +134,7 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
   afterEach(() => vi.clearAllMocks());
 
   it("commit stores the row at the opaque docID with no plaintext slug/name", async () => {
-    const { commitEncryptedProjectMemorySnapshot } = await import("../callables/encryptedSearch.js");
+    const { commitEncryptedProjectMemorySnapshot } = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
 
     const res = await invokeCallable<{ ok: boolean; docID: string }>(
       commitEncryptedProjectMemorySnapshot,
@@ -164,14 +164,14 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
   });
 
   it("commit rejects a missing docID", async () => {
-    const { commitEncryptedProjectMemorySnapshot } = await import("../callables/encryptedSearch.js");
+    const { commitEncryptedProjectMemorySnapshot } = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     const req = commitRequest();
     delete req.data.docID;
     await expect(invokeCallable(commitEncryptedProjectMemorySnapshot, req)).rejects.toThrow(/docID/);
   });
 
   it("commit normalizes legacy cleanup ids before deleting old plaintext rows", async () => {
-    const { commitEncryptedProjectMemorySnapshot } = await import("../callables/encryptedSearch.js");
+    const { commitEncryptedProjectMemorySnapshot } = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     const req = commitRequest();
     req.data.legacyDocID = "Legacy/Plaintext Project";
     stored.set("users/userA/project_memory_snapshots/legacy-plaintext-project", {
@@ -190,7 +190,7 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
   });
 
   it("commit ignores unusable legacy cleanup ids instead of failing the snapshot write", async () => {
-    const { commitEncryptedProjectMemorySnapshot } = await import("../callables/encryptedSearch.js");
+    const { commitEncryptedProjectMemorySnapshot } = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     const req = commitRequest();
     req.data.legacyDocID = "///";
 
@@ -205,7 +205,7 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
   });
 
   it("get round-trips by docID and echoes no plaintext name/slug", async () => {
-    const mod = await import("../callables/encryptedSearch.js");
+    const mod = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     await invokeCallable(mod.commitEncryptedProjectMemorySnapshot, commitRequest());
 
     const res = await invokeCallable<{ snapshot: Record<string, unknown> | null }>(
@@ -226,7 +226,7 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
   });
 
   it("list returns only opaque docID + sealed facets (no name/slug projection)", async () => {
-    const mod = await import("../callables/encryptedSearch.js");
+    const mod = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     await invokeCallable(mod.commitEncryptedProjectMemorySnapshot, commitRequest());
 
     const res = await invokeCallable<{ snapshots: Array<Record<string, unknown>> }>(
@@ -247,7 +247,7 @@ describe("project_memory_snapshots — opaque docID, no plaintext name/slug", ()
   });
 
   it("delete removes the opaque snapshot and writes a content-free tombstone receipt", async () => {
-    const mod = await import("../callables/encryptedSearch.js");
+    const mod = await import("../../../functions-sync/src/domains/search/encryptedSearch.js");
     await invokeCallable(mod.commitEncryptedProjectMemorySnapshot, commitRequest());
 
     const res = await invokeCallable<{

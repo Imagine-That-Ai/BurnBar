@@ -231,12 +231,19 @@ function classifyFailure({ status, conclusion, reasonCode, skipped = false } = {
  * Close mode never pages. Non-P0 lanes never page. A named blocker
  * suppresses paging because a known-red is not an actionable new alert.
  *
+ * Lanes that opt into repage-until-green (deploy-health) page on every red
+ * run instead of once: the `paged:ops` dedupe is bypassed so a standing red
+ * can never go silent. Named-blocker suppression still applies — an
+ * explicitly acknowledged known-red with an owner is not paged — and close
+ * mode still never pages. A green run closes the issue, re-arming the alarm.
+ *
  * @param {object} params
  * @param {string} params.mode       - "open" | "close"
  * @param {Array}   params.labels    - labels on the issue (strings or {name})
+ * @param {boolean} [params.repageUntilGreen] - page on every red run
  * @returns {{ shouldPage: boolean, reason: string }}
  */
-function shouldPageP0({ mode, labels }) {
+function shouldPageP0({ mode, labels, repageUntilGreen = false }) {
   if (mode !== "open") return { shouldPage: false, reason: "not-open-mode" };
   const labelNames = new Set(
     (labels || [])
@@ -245,7 +252,12 @@ function shouldPageP0({ mode, labels }) {
   );
   if (!labelNames.has(P0_LABEL)) return { shouldPage: false, reason: "not-p0" };
   if (labelNames.has(BLOCKER_LABEL)) return { shouldPage: false, reason: "named-blocker" };
-  if (labelNames.has(PAGED_LABEL)) return { shouldPage: false, reason: "already-paged" };
+  if (labelNames.has(PAGED_LABEL) && !repageUntilGreen) {
+    return { shouldPage: false, reason: "already-paged" };
+  }
+  if (labelNames.has(PAGED_LABEL)) {
+    return { shouldPage: true, reason: "p0-repage-until-green" };
+  }
   return { shouldPage: true, reason: "p0-unpaged" };
 }
 

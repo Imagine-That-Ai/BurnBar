@@ -18,7 +18,7 @@ import process from "node:process";
 
 import admin from "firebase-admin";
 
-import { buildCloudSearchPostingEdges } from "../lib/callables/encryptedSearchIndex.js";
+import { buildCloudSearchPostingEdges } from "../../functions-sync/lib/callables/encryptedSearchIndex.js";
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || "burnbar";
 const STORAGE_BUCKET = process.env.OPENBURNBAR_STORAGE_BUCKET || "burnbar-hosted-mcp-bodies-246956661961";

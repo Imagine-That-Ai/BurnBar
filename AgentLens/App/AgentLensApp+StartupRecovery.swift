@@ -1,5 +1,5 @@
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // Extracted verbatim from AgentLensApp.swift (audit wave 4, item 14).
 // Data-store startup-failure recovery: the recovery window plus its

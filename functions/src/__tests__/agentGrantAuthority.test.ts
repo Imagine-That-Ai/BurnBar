@@ -2,7 +2,7 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { __testing__ } from "../callables/computerUseSecurity.js";
+import { __testing__ } from "../../../functions-sync/src/domains/computer-use/computerUseSecurity.js";
 
 const {
   canonicalAgentGrantRequestJSON,

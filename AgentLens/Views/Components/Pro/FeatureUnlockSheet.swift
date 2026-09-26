@@ -1,6 +1,10 @@
 import SwiftUI
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Feature Gating & Evocative Upsell (macOS)
 //

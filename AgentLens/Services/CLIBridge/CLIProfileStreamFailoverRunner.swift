@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
 import OpenBurnBarComputerUseCore
 
 struct CLIProfileStreamAttempt: Sendable {

@@ -645,9 +645,7 @@ public struct RuleBasedVerdictEngine: Sendable {
         return PlatformCrypto.sha256Hex(data)
     }
 
-    private static let zeroUUID = UUID(
-        uuidString: "00000000-0000-0000-0000-000000000000"
-    )!
+    private static let zeroUUID = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
 
     /// Returns a copy of `verdict` with every synthetic UUID replaced by
     /// the zero UUID and with `generatedAt` + `contentHash` set to fixed

@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarRecap
 import OpenBurnBarAnalytics
 #if DEBUG
@@ -600,6 +604,10 @@ struct RootTabView: View {
             presentMercuryCall(connectionId: connectionId)
         case .mission(let missionId):
             presentMissionConsole(missionId: missionId)
+        case .devices:
+            selection = .you
+            youPath = NavigationPath()
+            youPath.append(YouRoute.devices)
         case nil:
             break
         }
@@ -699,7 +707,7 @@ struct RootTabView: View {
         }
         let modelID = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_MODEL"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let selectedModelID = (modelID?.isEmpty == false) ? modelID! : "default"
+        let selectedModelID = modelID.flatMap { $0.isEmpty ? nil : $0 } ?? "default"
         Self.hermesE2ELogger.info("Applying Hermes E2E prompt promptCharacters=\(prompt.count, privacy: .public) model=\(selectedModelID, privacy: .public)")
         didApplyHermesE2EPrompt = true
         selection = .hermes

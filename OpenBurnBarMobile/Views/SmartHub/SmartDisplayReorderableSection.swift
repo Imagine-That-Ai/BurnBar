@@ -1,4 +1,7 @@
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Smart Display Reorderable Section (iOS / iPadOS)

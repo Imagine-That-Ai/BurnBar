@@ -23,7 +23,10 @@ import FoundationNetworking
 /// 3. **JSONL token counting + plan cap** — sums real assistant-turn
 ///    tokens from `~/.claude/projects/**/*.jsonl`. If explicit OAuth
 ///    credentials were injected by tests, route credential slots, or CLI
-///    profiles, their plan tier can annotate JSONL buckets with plan caps.
+///    profiles, their plan tier can annotate JSONL buckets with plan caps;
+///    otherwise the plan tier Claude Code records in `~/.claude.json`
+///    (`oauthAccount.organizationRateLimitTier`) supplies the same caps
+///    without touching a credential store.
 /// 4. **Plan-only snapshot** — only for explicitly injected credentials.
 public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     public init() {}
@@ -50,10 +53,13 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private struct ClaudePlanCaps {
         let fiveHourTokens: Double
         let sevenDayTokens: Double
-        static let pro = ClaudePlanCaps(fiveHourTokens: 220_000, sevenDayTokens: 880_000)
+        /// Human-readable plan name surfaced in the snapshot status line so
+        /// the user can see WHICH allowance the percentages came from.
+        let label: String
+        static let pro = ClaudePlanCaps(fiveHourTokens: 220_000, sevenDayTokens: 880_000, label: "Pro")
         // Max-5x baseline. Max-20x scales linearly via `rateLimitTier`.
-        static let max5x = ClaudePlanCaps(fiveHourTokens: 880_000, sevenDayTokens: 7_700_000)
-        static let max20x = ClaudePlanCaps(fiveHourTokens: 3_520_000, sevenDayTokens: 30_800_000)
+        static let max5x = ClaudePlanCaps(fiveHourTokens: 880_000, sevenDayTokens: 7_700_000, label: "Max 5x")
+        static let max20x = ClaudePlanCaps(fiveHourTokens: 3_520_000, sevenDayTokens: 30_800_000, label: "Max 20x")
     }
 
     /// Token totals across the rolling Claude windows. Public so app and
@@ -215,7 +221,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
            postInstallStatus.state == .ready,
            Self.isFreshStatuslineSnapshot(postInstallStatus.lastPayloadAt),
            let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL), // try?-ok(quota snapshot, skip path)
-           let rateLimitsDict = payload["rate_limits"] as? [String: Any] {
+           let rateLimitsDict = payload["rate_limits"] as? QuotaJSONObject {
             let rateLimits = ClaudeRateLimits(from: rateLimitsDict)
             let buckets = claudeQuotaBuckets(from: rateLimits, context: context)
             if !buckets.isEmpty {
@@ -305,7 +311,15 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         )) ?? JSONLTokenWindows(fiveHourTokens: 0, sevenDayTokens: 0, latestTimestamp: nil, filesScanned: 0)
 
         if jsonlWindows.fiveHourTokens > 0 || jsonlWindows.sevenDayTokens > 0 {
-            return makeJSONLSnapshot(jsonlWindows: jsonlWindows, credentials: workingCredentials, bridgeStatus: postInstallStatus)
+            return makeJSONLSnapshot(
+                jsonlWindows: jsonlWindows,
+                credentials: workingCredentials,
+                configTierHint: Self.planTierHintFromClaudeConfig(
+                    homeDirectoryURL: context.homeDirectoryURL,
+                    fileManager: context.fileManager
+                ),
+                bridgeStatus: postInstallStatus
+            )
         }
 
         if workingCredentials == nil,
@@ -442,7 +456,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
               let lastPayloadAt = status.lastPayloadAt,
               !Self.isFreshStatuslineSnapshot(lastPayloadAt),
               let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL), // try?-ok(quota snapshot, nil skip)
-              let rateLimitsDict = payload["rate_limits"] as? [String: Any] else {
+              let rateLimitsDict = payload["rate_limits"] as? QuotaJSONObject else {
             return nil
         }
 
@@ -484,11 +498,12 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private func makeJSONLSnapshot(
         jsonlWindows: JSONLTokenWindows,
         credentials: ClaudeOAuthCredentials?,
+        configTierHint: String?,
         bridgeStatus: ClaudeQuotaBridgeStatus
     ) -> ProviderQuotaSnapshot {
         let now = Date()
         let calendar = Calendar.current
-        let caps = inferredCaps(from: credentials)
+        let caps = inferredCaps(from: credentials, configTierHint: configTierHint)
 
         var buckets: [ProviderQuotaBucket] = []
         if jsonlWindows.fiveHourTokens > 0 {
@@ -513,7 +528,15 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         }
 
         let confidence: ProviderQuotaConfidence = caps != nil ? .estimated : .exact
-        let planSuffix = credentials.map { " · Plan: \($0.planDisplayName) (inferred caps)" } ?? ""
+        let planSuffix: String = {
+            if let credentials {
+                return " · Plan: \(credentials.planDisplayName) (inferred caps)"
+            }
+            if let caps {
+                return " · Plan: \(caps.label) (from Claude Code config)"
+            }
+            return ""
+        }()
         let bridgeNudge = bridgeStatus.state == .ready
             ? ""
             : " Install OpenBurnBar's status line bridge for exact percentages."
@@ -558,14 +581,21 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// Best-effort plan cap inference. Explicit OAuth payloads can carry
     /// `rateLimitTier` values (`default_claude_max_20x`,
     /// `default_claude_pro_5x`, etc.) that identify the multiplier; we
-    /// map them to the Anthropic-published allowance. Returns `nil` when
-    /// we can't recognize the tier — in that case the JSONL buckets
-    /// render token counts only (still useful, just without percentages).
-    private func inferredCaps(from credentials: ClaudeOAuthCredentials?) -> ClaudePlanCaps? {
-        guard let credentials else { return .pro }
-        let tier = credentials.rateLimitTier.lowercased()
-        let sub = credentials.subscriptionType.lowercased()
-        let combined = tier + " " + sub
+    /// map them to the Anthropic-published allowance. When no OAuth
+    /// credentials are available, the plan tier recorded by Claude Code
+    /// itself in `~/.claude.json` (`oauthAccount.organizationRateLimitTier`)
+    /// is used instead. Returns `nil` when neither source names a
+    /// recognizable tier — in that case the JSONL buckets render token
+    /// counts only (still useful, just without percentages). Never assume
+    /// Pro: a Max-20x user shown Pro caps reads a 45x-overstatement as
+    /// "quota exhausted" while their real 5-hour window is nearly empty.
+    private func inferredCaps(
+        from credentials: ClaudeOAuthCredentials?,
+        configTierHint: String?
+    ) -> ClaudePlanCaps? {
+        let raw = credentials.map { $0.rateLimitTier + " " + $0.subscriptionType } ?? configTierHint
+        guard let raw, !raw.isEmpty else { return nil }
+        let combined = raw.lowercased()
         if combined.contains("20x") || combined.contains("max_20") {
             return .max20x
         }
@@ -575,7 +605,45 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         if combined.contains("pro") {
             return .pro
         }
-        return .pro
+        return nil
+    }
+
+    /// Reads the plan tier Claude Code itself records in `~/.claude.json`.
+    ///
+    /// That file is Claude Code's public config state — the OAuth secrets
+    /// live in the Keychain or `~/.claude/.credentials.json`, which the
+    /// default reader refuses — so reading this hint cannot trigger a
+    /// Keychain authorization prompt for a third party's credentials and
+    /// respects the security boundary documented on
+    /// `NoClaudeCredentialsReader`. `organizationRateLimitTier`
+    /// (`default_claude_max_20x`, `default_claude_pro_5x`, ...) is the
+    /// exact same tier string format the OAuth payloads carry.
+    /// Typed projection of `~/.claude.json` for the tier hint: only the
+    /// `oauthAccount` tier fields are decoded, everything else is ignored.
+    /// (Decodable instead of `[String: Any]` casts per the string-any ratchet.)
+    private struct ClaudeConfigTierHintFile: Decodable {
+        struct OAuthAccount: Decodable {
+            var organizationRateLimitTier: String?
+            var userRateLimitTier: String?
+            var organizationType: String?
+        }
+        var oauthAccount: OAuthAccount?
+    }
+
+    static func planTierHintFromClaudeConfig(
+        homeDirectoryURL: URL,
+        fileManager: FileManager
+    ) -> String? {
+        let configURL = homeDirectoryURL.appendingPathComponent(".claude.json")
+        guard fileManager.fileExists(atPath: configURL.path),
+              let data = try? Data(contentsOf: configURL), // try?-ok(hint is best-effort)
+              let file = try? JSONDecoder().decode(ClaudeConfigTierHintFile.self, from: data) else { // try?-ok(hint is best-effort)
+            return nil
+        }
+        let tier = file.oauthAccount?.organizationRateLimitTier
+            ?? file.oauthAccount?.userRateLimitTier
+            ?? file.oauthAccount?.organizationType
+        return tier?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - File Discovery
@@ -852,8 +920,8 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         defaultStateURL: URL,
         quotaLogger: any QuotaLogger = NoOpQuotaLogger()
     ) -> Bool {
-        let profileState: [String: Any]?
-        let defaultState: [String: Any]?
+        let profileState: QuotaJSONObject?
+        let defaultState: QuotaJSONObject?
         do {
             profileState = try snapshotStore.readJSONObject(from: profileStateURL)
             defaultState = try snapshotStore.readJSONObject(from: defaultStateURL)
@@ -870,8 +938,8 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         return !profileIdentity.isDisjoint(with: defaultIdentity)
     }
 
-    private static func claudeAccountIdentity(from state: [String: Any]) -> Set<String> {
-        guard let account = state["oauthAccount"] as? [String: Any] else { return [] }
+    private static func claudeAccountIdentity(from state: QuotaJSONObject) -> Set<String> {
+        guard let account = state["oauthAccount"] as? QuotaJSONObject else { return [] }
         let candidates = [
             account["accountUuid"] as? String,
             account["emailAddress"] as? String,
@@ -1051,11 +1119,12 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 return max(0, min(((limit - remaining) / limit) * 100, 100))
             }()
             let resetsAt = headers.unifiedTokensResetSeconds.map { now.addingTimeInterval($0) }
+            let unifiedUsedValue: Double? = if let limit, let remaining { limit - remaining } else { nil }
             buckets.append(ProviderQuotaBucket(
                 key: "claude-unified-header-probe",
                 label: "5-hour unified window",
                 windowKind: .rollingHours,
-                usedValue: (limit != nil && remaining != nil) ? (limit! - remaining!) : nil,
+                usedValue: unifiedUsedValue,
                 limitValue: limit,
                 remainingValue: remaining,
                 usedPercent: usedPercent,
@@ -1078,11 +1147,12 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                     guard let limit, limit > 0, let remaining else { return nil }
                     return max(0, min(((limit - remaining) / limit) * 100, 100))
                 }()
+                let usedValue: Double? = if let limit, let remaining { limit - remaining } else { nil }
                 return ProviderQuotaBucket(
                     key: "claude-rate-limit-\(prefix)",
                     label: label,
                     windowKind: .custom,
-                    usedValue: (limit != nil && remaining != nil) ? (limit! - remaining!) : nil,
+                    usedValue: usedValue,
                     limitValue: limit,
                     remainingValue: remaining,
                     usedPercent: usedPercent,
@@ -1237,11 +1307,11 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             return nil
         }
 
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed line)
+        guard let obj = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(skip malformed line)
               let type = obj["type"] as? String,
               type == "assistant",
-              let message = obj["message"] as? [String: Any],
-              let usage = message["usage"] as? [String: Any] else {
+              let message = obj["message"] as? QuotaJSONObject,
+              let usage = message["usage"] as? QuotaJSONObject else {
             return nil
         }
 

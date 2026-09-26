@@ -71,6 +71,27 @@ extension BurnBarDaemonServer {
                 return chatErrorResponse(id: request.id, error: error)
             }
 
+        case .chatThreadCreate:
+            let request = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarChatThreadCreateRequest>.self,
+                from: requestData
+            )
+            guard let chatThreadService else {
+                return chatUnavailableResponse(id: request.id)
+            }
+            do {
+                let result = try await chatThreadService.createThread(request.params)
+                return encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: request.id,
+                        protocolVersion: BurnBarProtocolVersion.current,
+                        result: result
+                    )
+                )
+            } catch {
+                return chatErrorResponse(id: request.id, error: error)
+            }
+
         default:
             preconditionFailure("Unhandled chat RPC method: \(method.rawValue)")
         }

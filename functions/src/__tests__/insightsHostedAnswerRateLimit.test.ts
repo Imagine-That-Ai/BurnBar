@@ -36,23 +36,23 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(mocks.store) }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   assertAppCheck: vi.fn(),
   assertAuth: vi.fn(),
 }));
-vi.mock("../cloudFeatureSuspensions.js", () => ({
+vi.mock("../../../packages/functions-shared/src/cloudFeatureSuspensions.js", () => ({
   assertCloudFeatureNotSuspended: vi.fn(async () => undefined),
 }));
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => mocks.config,
 }));
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   resilientFetch: mocks.fetch,
 }));
 
-import { insightsHostedAnswer } from "../insightsHostedAnswer.js";
-import { checkHostedInsightsAnswerRateLimit, isPublicRateLimitExceeded } from "../callables/publicRateLimit.js";
+import { insightsHostedAnswer } from "../../../functions-sync/src/domains/search/insightsHostedAnswer.js";
+import { checkHostedInsightsAnswerRateLimit, isPublicRateLimitExceeded } from "../../../packages/functions-shared/src/callables/publicRateLimit.js";
 
 function seedActiveEntitlement(uid: string): void {
   seedDoc(mocks.store, `users/${uid}/entitlements/burnbar_pro`, {

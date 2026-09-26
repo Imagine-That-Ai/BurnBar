@@ -144,7 +144,7 @@ vi.mock("firebase-admin/firestore", async () => {
 });
 vi.mock("firebase-admin/messaging", () => ({ getMessaging: () => ({ send: vi.fn() }) }));
 
-import { createEventFromThreadWrite, sweepStuckAgentReplyEvents } from "../agentNotifications.js";
+import { createEventFromThreadWrite, sweepStuckAgentReplyEvents } from "../../../functions-sync/src/domains/notify/agentNotificationTriggers.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

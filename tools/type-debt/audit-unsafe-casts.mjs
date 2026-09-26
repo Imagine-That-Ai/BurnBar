@@ -6,7 +6,7 @@ import { realpathSync } from "node:fs";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const SCANNER_VERSION = 1;
+const SCANNER_VERSION = 2;
 const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".swift", ".kt", ".kts"]);
 const TYPESCRIPT_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 const SWIFT_EXTENSIONS = new Set([".swift"]);
@@ -18,13 +18,17 @@ const EXCLUDED_PREFIXES = [
   ".swiftpm/",
   "Vendor/",
   "artifacts/",
-  "functions/src/types/generated/",
+  "packages/functions-shared/src/types/generated/",
   "android/app/src/main/assets/mermaid/",
   "OpenBurnBarMobile/Resources/Mermaid/",
   "tools/type-debt/fixtures/",
 ];
 const DEFAULT_SCAN_ROOTS = [
   "functions/src",
+  "functions-identity/src",
+  "functions-sync/src",
+  "functions-media/src",
+  "packages/functions-shared/src",
   "extensions",
   "services",
   "website/src",
@@ -164,7 +168,7 @@ function scanTypeScriptTokens(source, filePath, reason) {
   const asPattern = /\bas\s+([A-Za-z_$][\w$]*|any|unknown|never|object|\{|\[)/g;
   let match;
   while ((match = asPattern.exec(scrubbed)) !== null) {
-    if (match[1] === "const" || isInsideTypeScriptImport(scrubbed, match.index)) continue;
+    if (match[1] === "const" || isInsideTypeScriptModuleClause(scrubbed, match.index)) continue;
     violations.push(violationFromIndex({ source, filePath, index: match.index, language: "typescript", kind: match[1] === "any" ? "ts_as_any" : "ts_type_assertion", detail: `${reason}; token: ${match[0].trim()}` }));
   }
   const nonNullPattern = /(?:[A-Za-z_$\]\)])\s*!\s*(?=[.\[,);])/g;
@@ -173,7 +177,29 @@ function scanTypeScriptTokens(source, filePath, reason) {
   }
   return violations;
 }
-function isInsideTypeScriptImport(source, index) { const statementStart = Math.max(source.lastIndexOf(";", index), source.lastIndexOf("\n", index)) + 1; return /^\s*import\b/.test(source.slice(statementStart, index)); }
+// `as` inside an import/export clause is module syntax (`import {a as b}`,
+// `export * as ns`, `export {a as b}`), never a type assertion. Handles
+// single-line clauses via the current line, and multi-line brace clauses
+// by finding the enclosing `{` and checking the line that opened it.
+function isInsideTypeScriptModuleClause(source, index) {
+  const lineStart = source.lastIndexOf("\n", index) + 1;
+  if (/^\s*(import|export)\b/.test(source.slice(lineStart, index))) return true;
+  let depth = 0;
+  for (let i = index - 1; i >= 0; i--) {
+    const ch = source[i];
+    if (ch === "}") depth++;
+    else if (ch === "{") {
+      if (depth === 0) {
+        const braceLineStart = source.lastIndexOf("\n", i) + 1;
+        return /^\s*(import|export)\b/.test(source.slice(braceLineStart, i));
+      }
+      depth--;
+    } else if (ch === ";" && depth === 0) {
+      return false;
+    }
+  }
+  return false;
+}
 
 function scanSwift(source, filePath) {
   const scrubbed = stripCommentsAndStrings(source);

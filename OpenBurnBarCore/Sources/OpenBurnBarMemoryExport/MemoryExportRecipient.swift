@@ -33,6 +33,7 @@
 // than sealed to.
 
 import Foundation
+import OpenBurnBarKernel
 #if canImport(CryptoKit)
 import CryptoKit
 #else
@@ -130,7 +131,7 @@ public struct MemoryExportRecipient: Sendable {
 
     /// Read a descriptor, and refuse one whose id does not follow from its key.
     public static func parse(descriptor data: Data) throws -> MemoryExportRecipient {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
             throw DescriptorError.malformed("the recipient descriptor is not a JSON object")
         }
         guard let declaredID = object["recipient_key_id"] as? String,

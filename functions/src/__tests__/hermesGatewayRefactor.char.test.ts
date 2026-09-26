@@ -14,7 +14,7 @@
  * identical return values and identical thrown HttpsError codes/messages.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { HttpRequest, HttpResponse } from "../callables/hermesGatewayHttp.js";
+import type { HttpRequest, HttpResponse } from "../../../functions-media/src/callables/hermesGatewayHttp.js";
 
 vi.mock("firebase-functions/logger", () => ({
   info: vi.fn(),
@@ -22,8 +22,8 @@ vi.mock("firebase-functions/logger", () => ({
   warn: vi.fn(),
   debug: vi.fn(),
 }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
 // adminRuntime.ts runs for real here (the barrel pulls it in via shared.ts), so
 // the firebase-admin singletons it builds at import time must be mocked: it calls
 // initializeApp(), getFirestore().settings(), and getAuth(). Without getFirestore /
@@ -91,7 +91,7 @@ function responseError(body: unknown): unknown {
 
 describe("hermesGateway refactor characterization — id-contract helpers", () => {
   it("requiredHttpIdentifier accepts a canonical id and throws on bad input", async () => {
-    const { requiredHttpIdentifier } = await import("../callables/hermesGateway.js");
+    const { requiredHttpIdentifier } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     // Representative input #1: a valid id passes through trimmed.
     expect(requiredHttpIdentifier("att_abc.123:x-y", "attachmentId")).toBe("att_abc.123:x-y");
     // Representative input #2: an out-of-charset id throws the structured 400.
@@ -106,7 +106,7 @@ describe("hermesGateway refactor characterization — id-contract helpers", () =
   });
 
   it("adoptedGatewayDocId adopts a canonical client id but mints a fallback otherwise", async () => {
-    const { adoptedGatewayDocId } = await import("../callables/hermesGateway.js");
+    const { adoptedGatewayDocId } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     // Representative input #1: a valid client id is adopted verbatim.
     expect(adoptedGatewayDocId("att_ok-1", () => "FALLBACK")).toBe("att_ok-1");
     // Representative input #2: an over-charset id falls back to the minted token.
@@ -118,7 +118,7 @@ describe("hermesGateway refactor characterization — id-contract helpers", () =
 
 describe("hermesGateway refactor characterization — content-type guard", () => {
   it("legacyAttachmentContentTypeAllowed mirrors the allowlist", async () => {
-    const { legacyAttachmentContentTypeAllowed } = await import("../callables/hermesGateway.js");
+    const { legacyAttachmentContentTypeAllowed } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     // Representative input #1: a known-inert type is allowed.
     expect(legacyAttachmentContentTypeAllowed("image/png")).toBe(true);
     expect(legacyAttachmentContentTypeAllowed("application/pdf; charset=utf-8")).toBe(true);
@@ -128,7 +128,7 @@ describe("hermesGateway refactor characterization — content-type guard", () =>
   });
 
   it("assertSafeAttachmentContentType throws the structured 400 on an unsafe type", async () => {
-    const { assertSafeAttachmentContentType } = await import("../callables/hermesGateway.js");
+    const { assertSafeAttachmentContentType } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     expect(() => assertSafeAttachmentContentType("image/png")).not.toThrow();
     try {
       assertSafeAttachmentContentType("text/html");
@@ -142,7 +142,7 @@ describe("hermesGateway refactor characterization — content-type guard", () =>
 
 describe("hermesGateway refactor characterization — route method guards", () => {
   it("handleDeviceStart returns 405 on a non-POST request (pre-DB short-circuit)", async () => {
-    const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+    const { dispatchHermesGatewayRequest } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const { res, captured } = makeRes();
     await dispatchHermesGatewayRequest(makeReq("GET", "/device/start"), res);
     expect(captured.status).toBe(405);
@@ -150,7 +150,7 @@ describe("hermesGateway refactor characterization — route method guards", () =
   });
 
   it("handleRuntimeStatus returns 405 on a non-POST request", async () => {
-    const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+    const { dispatchHermesGatewayRequest } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const { res, captured } = makeRes();
     await dispatchHermesGatewayRequest(makeReq("GET", "/runtime"), res);
     expect(captured.status).toBe(405);
@@ -158,7 +158,7 @@ describe("hermesGateway refactor characterization — route method guards", () =
   });
 
   it("handleAttachmentFinalize returns 405 on a non-POST request", async () => {
-    const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+    const { dispatchHermesGatewayRequest } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const { res, captured } = makeRes();
     await dispatchHermesGatewayRequest(makeReq("GET", "/attachments/finalize"), res);
     expect(captured.status).toBe(405);
@@ -166,7 +166,7 @@ describe("hermesGateway refactor characterization — route method guards", () =
   });
 
   it("an OPTIONS preflight short-circuits with 204", async () => {
-    const { dispatchHermesGatewayRequest } = await import("../callables/hermesGateway.js");
+    const { dispatchHermesGatewayRequest } = await import("../../../functions-media/src/domains/hermes/hermesGateway.js");
     const { res, captured } = makeRes();
     await dispatchHermesGatewayRequest(makeReq("OPTIONS", "/runtime"), res);
     expect(captured.status).toBe(204);

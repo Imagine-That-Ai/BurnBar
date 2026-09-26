@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 enum VibeProxyMigrationState: Equatable {
     case idle
@@ -185,7 +186,7 @@ struct VibeProxyMigrationService: Sendable {
         let fallbackLabel = url.deletingPathExtension().lastPathComponent
 
         guard let data = try? Data(contentsOf: url), // try?-ok(malformed file falls back)
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(parse falls back needsReconnect)
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(parse falls back needsReconnect)
             return VibeProxyCredentialRecord(
                 id: fileName,
                 sourceFileName: fileName,

@@ -2,7 +2,9 @@
 import Combine
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 /// Drives the Agent Live Stage through its three layout phases. Lives in

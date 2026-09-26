@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 
 /// Closure type the host client injects so this handler can hand a
@@ -933,7 +933,7 @@ final class IrohRelayRequestHandler: Sendable {
         let rawHost = settings?.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines) ?? "127.0.0.1"
         let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
         let port = max(settings?.gatewayPort ?? 8317, 1)
-        let base = URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+        let base = URL(string: "http://\(host):\(port)") ?? URL(staticString: "http://127.0.0.1:8317")
         if base.absoluteString.hasSuffix("/") { return base }
         return URL(string: "\(base.absoluteString)/") ?? base
     }
@@ -947,7 +947,7 @@ final class IrohRelayRequestHandler: Sendable {
     @MainActor
     private func hermesBaseURLWithTrailingSlash() -> URL {
         let base = URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8642")!
+            ?? URL(staticString: "http://127.0.0.1:8642")
         if base.absoluteString.hasSuffix("/") { return base }
         return URL(string: "\(base.absoluteString)/") ?? base
     }
@@ -1150,8 +1150,8 @@ final class IrohRelayRequestHandler: Sendable {
     nonisolated static func isSSETerminalChoiceEvent(_ event: String) -> Bool {
         for dataPayload in sseDataPayloads(from: event) {
             guard let data = dataPayload.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(best-effort SSE parse)
-                  let choices = object["choices"] as? [[String: Any]] else {
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(best-effort SSE parse)
+                  let choices = object["choices"] as? [UntypedJSONObject] else {
                 continue
             }
             if choices.contains(where: { choice in
@@ -1194,7 +1194,7 @@ final class IrohRelayRequestHandler: Sendable {
     nonisolated static func requestedModel(fromBody body: String?) -> String? {
         guard let body,
               let data = body.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional body parse)
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional body parse)
               let model = object["model"] as? String else {
             return nil
         }
@@ -1212,7 +1212,7 @@ final class IrohRelayRequestHandler: Sendable {
             return ("0", "0", "0", "")
         }
         guard let data = body.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(metadata parse fallback)
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(metadata parse fallback)
             return (String(body.utf8.count), "0", "0", "")
         }
         let messages = object["messages"] as? [Any]
@@ -1237,7 +1237,7 @@ final class IrohRelayRequestHandler: Sendable {
     ) -> String? {
         for dataPayload in sseDataPayloads(from: event) {
             guard let data = dataPayload.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(error SSE parse skip)
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(error SSE parse skip)
                 continue
             }
             if let message = errorMessage(fromJSONObject: object) {
@@ -1276,8 +1276,8 @@ final class IrohRelayRequestHandler: Sendable {
         return values
     }
 
-    nonisolated private static func errorMessage(fromJSONObject object: [String: Any]) -> String? {
-        if let error = object["error"] as? [String: Any] {
+    nonisolated private static func errorMessage(fromJSONObject object: UntypedJSONObject) -> String? {
+        if let error = object["error"] as? UntypedJSONObject {
             return stringValue(error["message"])
                 ?? stringValue(error["error"])
                 ?? stringValue(error["description"])
@@ -1286,8 +1286,8 @@ final class IrohRelayRequestHandler: Sendable {
             ?? stringValue(object["message"])
     }
 
-    nonisolated private static func hermesFailureMessage(fromJSONObject object: [String: Any]) -> String? {
-        guard let hermes = object["hermes"] as? [String: Any],
+    nonisolated private static func hermesFailureMessage(fromJSONObject object: UntypedJSONObject) -> String? {
+        guard let hermes = object["hermes"] as? UntypedJSONObject,
               boolValue(hermes["failed"]) == true
                 || boolValue(hermes["completed"]) == false && stringValue(hermes["error"]) != nil else {
             return nil
@@ -1297,8 +1297,8 @@ final class IrohRelayRequestHandler: Sendable {
             ?? "Hermes reported that the upstream model request failed."
     }
 
-    nonisolated private static func terminalChoiceErrorMessage(fromJSONObject object: [String: Any]) -> String? {
-        guard let choices = object["choices"] as? [[String: Any]] else {
+    nonisolated private static func terminalChoiceErrorMessage(fromJSONObject object: UntypedJSONObject) -> String? {
+        guard let choices = object["choices"] as? [UntypedJSONObject] else {
             return nil
         }
         for choice in choices {
@@ -1316,12 +1316,12 @@ final class IrohRelayRequestHandler: Sendable {
         return nil
     }
 
-    nonisolated private static func choiceVisibleContent(_ choice: [String: Any]) -> String? {
-        if let message = choice["message"] as? [String: Any],
+    nonisolated private static func choiceVisibleContent(_ choice: UntypedJSONObject) -> String? {
+        if let message = choice["message"] as? UntypedJSONObject,
            let content = visibleContentValue(message["content"]) {
             return content
         }
-        if let delta = choice["delta"] as? [String: Any],
+        if let delta = choice["delta"] as? UntypedJSONObject,
            let content = visibleContentValue(delta["content"]) {
             return content
         }
@@ -1332,7 +1332,7 @@ final class IrohRelayRequestHandler: Sendable {
         if let value = raw as? String {
             return stringValue(value)
         }
-        if let object = raw as? [String: Any] {
+        if let object = raw as? UntypedJSONObject {
             return visibleContentValue(object["text"])
                 ?? visibleContentValue(object["value"])
                 ?? visibleContentValue(object["content"])
@@ -1340,7 +1340,7 @@ final class IrohRelayRequestHandler: Sendable {
         if let array = raw as? [Any] {
             let joined = array.compactMap { part -> String? in
                 if let text = part as? String { return text }
-                guard let object = part as? [String: Any] else { return nil }
+                guard let object = part as? UntypedJSONObject else { return nil }
                 return visibleContentValue(object["text"])
                     ?? visibleContentValue(object["value"])
                     ?? visibleContentValue(object["content"])
@@ -1408,7 +1408,7 @@ final class IrohRelayRequestHandler: Sendable {
         let message: String
         if let body,
            let data = body.data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(error body parse fallback)
+           let object = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(error body parse fallback)
            let parsed = errorMessage(fromJSONObject: object) {
             message = parsed
         } else if let body,

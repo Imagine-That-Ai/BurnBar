@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
 
 // Projection queue flow (local-first):
 // conversations/source_artifacts
@@ -123,7 +124,7 @@ actor ProjectionPipelineService {
         }
     }
 
-    func projectConversation(_ conversation: OpenBurnBarCore.ConversationRecord, sourceVersionID: String) async throws {
+    func projectConversation(_ conversation: OpenBurnBarInboxModels.ConversationRecord, sourceVersionID: String) async throws {
         let now = nowProvider()
         let title = projectedConversationTitle(conversation)
         let subtitle = "\(conversation.provider.rawValue) • \(conversation.projectName)"
@@ -178,7 +179,13 @@ actor ProjectionPipelineService {
 
         // Apply incremental chunk diff: only write changed/added/deleted chunks.
         // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
-        let chunkDiff = try await dataStore.applySearchChunkDiff(documentID: document.id, title: title, chunks: chunks)
+        let chunkDiff = try await dataStore.applySearchChunkDiff(
+            documentID: document.id,
+            title: title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
+            chunks: chunks
+        )
         self.lastChunkDiffResult = chunkDiff
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
@@ -272,7 +279,13 @@ actor ProjectionPipelineService {
 
         // Apply incremental chunk diff: only write changed/added/deleted chunks.
         // Unchanged chunks (same contentHash AND chunkID) are skipped entirely.
-        let chunkDiff = try await dataStore.applySearchChunkDiff(documentID: document.id, title: artifact.title, chunks: chunks)
+        let chunkDiff = try await dataStore.applySearchChunkDiff(
+            documentID: document.id,
+            title: artifact.title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
+            chunks: chunks
+        )
         self.lastChunkDiffResult = chunkDiff
 
         // Copy embeddings for unchanged content (same contentHash) from old to new chunk IDs.
@@ -315,13 +328,13 @@ actor ProjectionPipelineService {
         }
     }
 
-    func projectedConversationTitle(_ conversation: OpenBurnBarCore.ConversationRecord) -> String {
+    func projectedConversationTitle(_ conversation: OpenBurnBarInboxModels.ConversationRecord) -> String {
         let inferred = conversation.inferredTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         if inferred.isEmpty == false { return inferred }
         return conversation.sessionId
     }
 
-    func projectedConversationPreview(_ conversation: OpenBurnBarCore.ConversationRecord) -> String {
+    func projectedConversationPreview(_ conversation: OpenBurnBarInboxModels.ConversationRecord) -> String {
         let assistant = conversation.lastAssistantMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         if assistant.isEmpty == false {
             return String(assistant.prefix(320))

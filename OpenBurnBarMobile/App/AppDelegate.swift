@@ -6,7 +6,9 @@ import FirebaseAppCheck
 import FirebaseFirestore
 import FirebaseMessaging
 import GoogleSignIn
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarComputerUseCore
+import OpenBurnBarLaunchServices
 import OpenBurnBarMedia
 #if canImport(Sentry)
 import Sentry
@@ -143,7 +145,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     @MainActor
     private func configureMercuryFileTransfer() {
         let receiver = iOSFileTransferService(
-            service: MediaFileTransferServiceFactory.make(),
+            service: MediaFileTransferServiceFactory.make(secretKeyProvider: {
+                try IrohBlobKeyStore.shared.secretKeyMaterial().raw
+            }),
             settingsProvider: { @MainActor in
                 // Mirrors the Mac `ChatBackendSettings.mediaBlobTransferEnabled`
                 // key so Remote Config + per-device sync stays consistent.
@@ -236,7 +240,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         FirebaseApp.configure()
         Self.disableFirestoreNetworkOnIncompatibleOSIfNeeded()
         Self.configureGoogleSignIn()
-        _ = MobileAppCheckAttestationMonitor.shared
+        _ = AppCheckAttestationMonitor.shared
         Task { @MainActor in
             await Self.validateAppCheckIfNeeded()
         }
@@ -515,7 +519,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 title: "Simulator E2E Mission",
                 prompt: prompt,
                 missionKind: "custom",
-                requestedRuntime: runtime?.isEmpty == false ? runtime! : "ollama",
+                requestedRuntime: runtime.flatMap { $0.isEmpty ? nil : $0 } ?? "ollama",
                 targetProject: targetProject?.isEmpty == false ? targetProject : nil,
                 depth: "standard",
                 approvalMode: "read_only",

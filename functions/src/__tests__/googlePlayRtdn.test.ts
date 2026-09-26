@@ -31,7 +31,7 @@ vi.mock("googleapis", () => ({
   },
 }));
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     doc: (path: string) => {
       const ref = {
@@ -106,36 +106,33 @@ vi.mock("../adminRuntime.js", () => ({
   },
 }));
 
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({
     googlePlayPackageName: "com.openburnbar",
   }),
 }));
 
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logInfo: state.logInfo,
   logError: state.logError,
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   externalApiWithResilience: vi.fn(async <T>(_label: string, operation: () => Promise<T>) => operation()),
 }));
 
-vi.mock("../runtimeOptions.js", () => ({
+vi.mock("../../../packages/functions-shared/src/runtimeOptions.js", () => ({
   FUNCTIONS_REGION: "us-central1",
   GOOGLE_PLAY_RTDN_TOPIC: "play-billing-notifications",
 }));
 
-vi.mock("../callables/shared.js", async () => {
-  const actualGuards = await import("../guards.js");
+vi.mock("../../../functions-identity/src/shared/googlePlay.js", async () => {
   return {
     GOOGLE_PLAY_ACTIVE_STATES: new Set([
       "SUBSCRIPTION_STATE_ACTIVE",
       "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
       "SUBSCRIPTION_STATE_CANCELED",
     ]),
-    reconcileCloudProTopUpReversal: state.reconcileTopUp,
-    safeCloudDocumentID: (value: unknown) => String(value),
     selectGooglePlaySubscriptionLineItem: (
       purchase: { lineItems?: Array<{ productId?: unknown; expiryTime?: unknown }> },
       preferredProductIDs: string[],
@@ -155,13 +152,24 @@ vi.mock("../callables/shared.js", async () => {
           typeof lineItem.expiryTime === "string" ? Date.parse(lineItem.expiryTime) : Date.now() + 60_000,
       };
     },
-    sha256Hex: (value: string) => createHash("sha256").update(value).digest("hex"),
-    stripUndefinedObject: actualGuards.stripUndefinedObject,
+  };
+});
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  return {
+    reconcileCloudProTopUpReversal: state.reconcileTopUp,
     writeBurnBarProEntitlement: state.writeEntitlement,
   };
 });
+vi.mock("../../../packages/functions-shared/src/shared/validators.js", async () => {
+  const actualGuards = await import("../../../packages/functions-shared/src/guards.js");
+  return {
+    safeCloudDocumentID: (value: unknown) => String(value),
+    sha256Hex: (value: string) => createHash("sha256").update(value).digest("hex"),
+    stripUndefinedObject: actualGuards.stripUndefinedObject,
+  };
+});
 
-import { processGooglePlayDeveloperNotification } from "../googlePlayRtdn.js";
+import { processGooglePlayDeveloperNotification } from "../../../functions-identity/src/domains/billing/googlePlayRtdn.js";
 
 const FUTURE_EXPIRY = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 

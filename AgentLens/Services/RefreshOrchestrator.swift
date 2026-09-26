@@ -1,6 +1,10 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
+import OpenBurnBarData
 
 struct PostPersistenceResult {
     var apiUsages: [ProviderUsageRecord] = []
@@ -51,7 +55,7 @@ actor RefreshOrchestrator {
         self.memoryCloudSyncDomain = memoryCloudSyncDomain
     }
 
-    func indexConversations(_ conversations: [OpenBurnBarCore.ConversationRecord]) async -> Int {
+    func indexConversations(_ conversations: [OpenBurnBarInboxModels.ConversationRecord]) async -> Int {
         guard !conversations.isEmpty else { return 0 }
         let indexingEnabled = await MainActor.run { settingsManager.conversationIndexingEnabled }
         guard indexingEnabled else { return 0 }
@@ -64,7 +68,7 @@ actor RefreshOrchestrator {
         }
     }
 
-    func indexConversationsOffMain(_ conversations: [OpenBurnBarCore.ConversationRecord], indexingEnabled: Bool) async -> Int {
+    func indexConversationsOffMain(_ conversations: [OpenBurnBarInboxModels.ConversationRecord], indexingEnabled: Bool) async -> Int {
         guard !conversations.isEmpty, indexingEnabled else { return 0 }
         do {
             let indexingReport = try await ConversationIndexer.shared.index(conversations, in: dataStore)
@@ -84,7 +88,7 @@ actor RefreshOrchestrator {
     /// lets the caller detect failure and skip checkpoint advancement so the
     /// next tick retries the failed upserts.
     func indexConversationsOffMainThrowing(
-        _ conversations: [OpenBurnBarCore.ConversationRecord],
+        _ conversations: [OpenBurnBarInboxModels.ConversationRecord],
         indexingEnabled: Bool
     ) async throws -> ConversationIndexingReport {
         guard !conversations.isEmpty, indexingEnabled else {
@@ -109,9 +113,11 @@ actor RefreshOrchestrator {
         do {
             let reapedJobs = try await dataStore.reapTerminalProjectionJobs(olderThan: terminalCutoff)
             let reapedUsage = try await dataStore.reapUsageOlderThan(usageCutoff)
-            if reapedJobs > 0 || reapedUsage > 0 {
+            // Wave 2.6: conversations keep the same retention as usage.
+            let reapedConversations = try await dataStore.reapConversationsOlderThan(usageCutoff)
+            if reapedJobs > 0 || reapedUsage > 0 || reapedConversations > 0 {
                 AppLogger.dataStore.info(
-                    "Retention purge reaped \(reapedJobs) terminal projection job(s) and \(reapedUsage) usage row(s); usage cutoff=\(usageCutoff.timeIntervalSince1970)"
+                    "Retention purge reaped \(reapedJobs) terminal projection job(s), \(reapedUsage) usage row(s) and \(reapedConversations) conversation(s); usage cutoff=\(usageCutoff.timeIntervalSince1970)"
                 )
                 try await dataStore.incrementalVacuum()
             }
@@ -119,9 +125,28 @@ actor RefreshOrchestrator {
         } catch {
             AppLogger.dataStore.silentFailure("Retention purge of terminal projection jobs failed", error: error)
         }
+        // Wave 2.6: one-time guided VACUUM for pre-2.6 databases. Independent
+        // of the reaps above (a legacy database needs it even with nothing to
+        // reap), and its failure must never fail the purge — the next hourly
+        // tick retries, and the free-space guard defers when unsafe.
+        do {
+            let plan = try await dataStore.ensureIncrementalVacuumIfNeeded()
+            switch plan {
+            case .ready(let bytes):
+                AppLogger.dataStore.info(
+                    "One-time VACUUM migrated a \(bytes)-byte database to auto_vacuum=INCREMENTAL"
+                )
+            case .deferred(let reason):
+                AppLogger.dataStore.info("VACUUM migration deferred: \(reason)")
+            case .unneeded:
+                break
+            }
+        } catch {
+            AppLogger.dataStore.silentFailure("One-time VACUUM migration failed", error: error)
+        }
     }
 
-    func runScheduledBackfillIfNeeded(parsers: [AgentProvider: any OpenBurnBarCore.LogParser]) async {
+    func runScheduledBackfillIfNeeded(parsers: [AgentProvider: any OpenBurnBarLogParsers.LogParser]) async {
         let now = Date()
 
         for provider in parsers.keys {

@@ -9,24 +9,28 @@
  */
 
 import { FieldPath, type DocumentData, type Firestore } from "firebase-admin/firestore";
-import type {
-  UsageRollupDoc,
-  ProviderSummary,
-  ProviderAccountSummary,
-  ModelSummary,
-  DeviceSummary,
-  ExecutionSourceSummary,
-  ComboSummary,
-} from "./types.js";
-import { isProviderAccountStorageScope, parseProvider, recordOrUndefined } from "./guards.js";
-import { parseUsageEventDoc } from "./usageEventParse.js";
-import { logError, logInfo } from "./logging.js";
-import { flushDomainCorePricingShadowEvidence } from "./pricing.js";
+import type { UsageRollupDoc } from "@openburnbar/functions-shared/types.js";
+import { recordOrUndefined } from "@openburnbar/functions-shared/guards.js";
 import {
+  aggregateAccountSummaries,
+  aggregateComboSummaries,
+  aggregateDeviceSummaries,
+  aggregateExecutionSourceSummaries,
+  aggregateModelSummaries,
+  aggregateProviderSummaries,
+  sumNumber,
+} from "./rollupAggregates.js";
+import { parseUsageEventDoc } from "./usageEventParse.js";
+import { logError, logInfo } from "@openburnbar/functions-shared/logging.js";
+import { flushDomainCorePricingShadowEvidence } from "@openburnbar/functions-shared/pricing.js";
+import {
+  ALL_TIME_DAILY_SHARD_PREFIX,
   COUNTER_SCHEMA_VERSION,
   ROLLUP_SCHEMA_VERSION,
   WINDOW_KEYS,
   addContribution,
+  allTimeDailyShardID,
+  counterShardMonth,
   requireWindowRollups,
   selectCounterWinner,
   stableCounterKey,
@@ -44,10 +48,6 @@ async function queryCounterDocs(
 ): Promise<FirebaseFirestore.DocumentData[]> {
   const snapshots = await Promise.all(bucketPaths.map((path) => db.collection(`${path}/${collection}`).get()));
   return snapshots.flatMap((snapshot) => snapshot.docs.map((doc) => doc.data()));
-}
-
-function sumNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function windowDays(key: WindowKey, now: Date): string[] | undefined {
@@ -93,27 +93,57 @@ async function fetchCounterBucketDocs(db: Firestore, bucketPaths: string[]): Pro
 }
 
 /**
+ * Monthly all_time daily-map shards for one user (Wave 2.6), oldest first.
+ * One doc per active month — bounded by account age in months, a trivially
+ * small collection scan next to the per-day scans it replaces.
+ */
+async function fetchAllTimeDailyShards(db: Firestore, uid: string): Promise<DocumentData[]> {
+  const snap = await db.collection(`users/${uid}/usage_counter_totals`).get();
+  return snap.docs
+    .filter((doc) => doc.id.startsWith(ALL_TIME_DAILY_SHARD_PREFIX))
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((doc) => doc.data() ?? {});
+}
+
+/**
  * Returns the `[day, tokens]` series backing the all_time `dailyPoints` map.
  *
- * `addContribution` maintains a rolling `dailyTokens` map on the all_time
- * totals doc so this read is O(1) instead of an unbounded scan of
- * `usage_counter_days` (day docs are never deleted, so that scan grows with
- * account age forever). Totals docs written before the map existed fall back
- * to one legacy scan, and the derived map is persisted so the next compute
- * reads it incrementally. The persist is skipped when `updatedAt` moved
- * between the caller's totals read and the transaction — a counter write
- * landed mid-scan and an absolute write could overwrite its increment; the
- * next worker pass retries the backfill.
+ * `addContribution` maintains the rolling `dailyTokens` map in monthly
+ * `all_time_daily_YYYY-MM` shards so this read stays O(months) instead of an
+ * unbounded scan of `usage_counter_days` (day docs past retention are reaped,
+ * so that scan is bounded too — but it no longer carries full history). The
+ * map frozen on the pre-shard `all_time` doc is merged as legacy: a day can
+ * appear on BOTH sides (legacy partial + later shard increments), so overlap
+ * SUMS rather than overwriting.
+ *
+ * Totals docs written before any map existed fall back to one legacy day-doc
+ * scan, and the derived entries are persisted into the monthly shards (never
+ * the base doc) so the next compute reads incrementally. The persist is
+ * skipped when `updatedAt` moved between the caller's totals read and the
+ * transaction — a counter write landed mid-scan and an absolute write could
+ * overwrite its increment; the next worker pass retries the backfill. Only
+ * days absent from the target shard are filled, so live increments already
+ * in a shard are never disturbed.
  */
 async function allTimeDailyTokenEntries(
   db: Firestore,
   uid: string,
   allTimeData: DocumentData | undefined,
 ): Promise<(readonly [string, number])[]> {
-  const dailyTokens = recordOrUndefined(allTimeData?.dailyTokens);
-  if (dailyTokens) {
-    return Object.entries(dailyTokens)
-      .map(([day, tokens]) => [day, sumNumber(tokens)] as const)
+  const shards = await fetchAllTimeDailyShards(db, uid);
+  const merged = new Map<string, number>();
+  const legacy = recordOrUndefined(allTimeData?.dailyTokens);
+  if (legacy) {
+    for (const [day, tokens] of Object.entries(legacy)) merged.set(day, sumNumber(tokens));
+  }
+  for (const shard of shards) {
+    const map = recordOrUndefined(shard.dailyTokens);
+    if (!map) continue;
+    for (const [day, tokens] of Object.entries(map)) merged.set(day, (merged.get(day) ?? 0) + sumNumber(tokens));
+  }
+  if (merged.size > 0 || !allTimeData) {
+    return [...merged.entries()]
+      .map(([day, tokens]) => [day, tokens] as const)
       .sort(([dayA], [dayB]) => (dayA < dayB ? -1 : dayA > dayB ? 1 : 0));
   }
 
@@ -122,58 +152,122 @@ async function allTimeDailyTokenEntries(
   );
   const entries = scannedDays.map((doc) => [String(doc.day), sumNumber(doc.tokens)] as const);
 
-  if (allTimeData) {
-    const observedUpdatedAt = allTimeData.updatedAt;
-    const allTimeRef = db.doc(`users/${uid}/usage_counter_totals/all_time`);
-    await db.runTransaction(async (transaction) => {
-      const snap = await transaction.get(allTimeRef);
-      const data = snap.exists ? (snap.data() ?? {}) : undefined;
-      if (!data || recordOrUndefined(data.dailyTokens) || data.updatedAt !== observedUpdatedAt) return;
-      transaction.set(allTimeRef, { dailyTokens: Object.fromEntries(entries) }, { merge: true });
-    });
-  }
+  // No map anywhere (pre-map totals doc): backfill the monthly shards. Note
+  // the scan only sees day docs inside retention now — history older than
+  // the counter TTL is intentionally truncated to the retained window.
+  await backfillDailyTokenShards(db, uid, entries, allTimeData.updatedAt);
 
   return entries;
+}
+
+/**
+ * Persists scanned `[day, tokens]` entries into their monthly shards,
+ * filling only days absent from each shard. Best-effort: any concurrent
+ * counter write (observed via the base doc's `updatedAt`) aborts the persist
+ * and the next worker pass retries. Chunked so no transaction exceeds the
+ * Firestore write limit no matter the account age.
+ */
+async function backfillDailyTokenShards(
+  db: Firestore,
+  uid: string,
+  entries: (readonly [string, number])[],
+  observedUpdatedAt: unknown,
+): Promise<void> {
+  const byMonth = new Map<string, (readonly [string, number])[]>();
+  for (const entry of entries) {
+    const month = counterShardMonth(entry[0]);
+    const group = byMonth.get(month) ?? [];
+    group.push(entry);
+    byMonth.set(month, group);
+  }
+  const months = [...byMonth.keys()].sort();
+  const allTimeRef = db.doc(`users/${uid}/usage_counter_totals/all_time`);
+  for (let offset = 0; offset < months.length; offset += 100) {
+    const page = months.slice(offset, offset + 100);
+    await db.runTransaction(async (transaction) => {
+      const baseSnap = await transaction.get(allTimeRef);
+      const baseData = baseSnap.exists ? (baseSnap.data() ?? {}) : undefined;
+      // A counter write landed mid-scan, or a racing pass already built a
+      // map: abort this page; the next worker pass retries the remainder.
+      if (!baseData || baseData.updatedAt !== observedUpdatedAt) return;
+      if (recordOrUndefined(baseData.dailyTokens)) return;
+      const shardSnaps = await Promise.all(
+        page.map((month) => transaction.get(db.doc(`users/${uid}/usage_counter_totals/${allTimeDailyShardID(month)}`))),
+      );
+      for (let i = 0; i < page.length; i++) {
+        const month = page[i];
+        const existing = recordOrUndefined(shardSnaps[i].exists ? (shardSnaps[i].data() ?? {}) : undefined);
+        const existingMap = recordOrUndefined(existing?.dailyTokens) ?? {};
+        const fill: Record<string, number> = {};
+        for (const [day, tokens] of byMonth.get(month) ?? []) {
+          if (!(day in existingMap)) fill[day] = tokens;
+        }
+        if (Object.keys(fill).length === 0) continue;
+        transaction.set(
+          db.doc(`users/${uid}/usage_counter_totals/${allTimeDailyShardID(month)}`),
+          {
+            windowKey: "all_time",
+            shardMonth: month,
+            dailyTokens: fill,
+            updatedAt: new Date().toISOString(),
+            schemaVersion: COUNTER_SCHEMA_VERSION,
+          },
+          { merge: true },
+        );
+      }
+    });
+  }
 }
 
 /**
  * Returns the `day -> providerID -> tokens` map backing the all_time
  * `dailyProviderTokens` field.
  *
- * `addContribution` maintains the rolling nested map on the all_time totals
- * doc right beside `dailyTokens` (same merge-write increment semantics, one
- * level deeper). Totals docs written before the map existed fall back to one
- * legacy scan of each day doc's `providers` subcollection, and the derived
- * map is persisted under the same updatedAt-moved guard `dailyTokens` uses —
- * an in-flight counter increment is never overwritten by the scan's absolute
- * values; the next worker pass retries the backfill.
+ * `addContribution` maintains the rolling nested map in the monthly
+ * `all_time_daily_YYYY-MM` shards right beside `dailyTokens` (same
+ * merge-write increment semantics, one level deeper). The frozen legacy map
+ * on the pre-shard `all_time` doc merges underneath; overlap SUMS per
+ * provider (see `allTimeDailyTokenEntries`). Totals docs written before any
+ * map existed fall back to one legacy scan of each retained day doc's
+ * `providers` subcollection, persisted into the shards under the same
+ * updatedAt-moved guard — an in-flight counter increment is never
+ * overwritten by the scan's absolute values; the next worker pass retries.
  */
 async function allTimeDailyProviderTokenEntries(
   db: Firestore,
   uid: string,
   allTimeData: DocumentData | undefined,
 ): Promise<Record<string, Record<string, number>>> {
-  const dailyProviderTokens = recordOrUndefined(allTimeData?.dailyProviderTokens);
-  if (dailyProviderTokens) {
+  const shards = await fetchAllTimeDailyShards(db, uid);
+  const merged = new Map<string, Map<string, number>>();
+  const absorb = (day: string, providerID: string, tokens: number) => {
+    const providers = merged.get(day) ?? new Map<string, number>();
+    providers.set(providerID, (providers.get(providerID) ?? 0) + tokens);
+    merged.set(day, providers);
+  };
+  const absorbMap = (map: Record<string, unknown> | undefined) => {
+    if (!map) return;
+    for (const [day, providers] of Object.entries(map)) {
+      for (const [providerID, tokens] of Object.entries(recordOrUndefined(providers) ?? {})) {
+        absorb(day, providerID, sumNumber(tokens));
+      }
+    }
+  };
+  absorbMap(recordOrUndefined(allTimeData?.dailyProviderTokens));
+  for (const shard of shards) absorbMap(recordOrUndefined(shard.dailyProviderTokens));
+  if (merged.size > 0 || !allTimeData) {
     return Object.fromEntries(
-      Object.entries(dailyProviderTokens).map(([day, providers]) => [
-        day,
-        Object.fromEntries(
-          Object.entries(recordOrUndefined(providers) ?? {}).map(([providerID, tokens]) => [
-            providerID,
-            sumNumber(tokens),
-          ]),
-        ),
-      ]),
+      [...merged.entries()].map(([day, providers]) => [day, Object.fromEntries(providers)]),
     );
   }
 
   const dayDocs = (await db.collection(`users/${uid}/usage_counter_days`).get()).docs;
-  // Bound the fan-out. One provider-subcollection query per lifetime day, all
-  // launched at once, means a multi-year account issues thousands of concurrent
+  // Bound the fan-out. One provider-subcollection query per retained day, all
+  // launched at once, means a heavy account issues hundreds of concurrent
   // Firestore reads during a routine compute — exhausting the function's
-  // sockets/memory or timing out the rebuild on exactly the long-lived accounts
-  // this backfill exists to migrate.
+  // sockets/memory or timing out the rebuild on exactly the long-lived
+  // accounts this backfill exists to migrate. Retention bounds the scan now,
+  // but the cap stays as defense in depth.
   const BACKFILL_QUERY_CONCURRENCY = 25;
   const providerDocsByDay: { day: string; providers: FirebaseFirestore.DocumentData[] }[] = [];
   for (let offset = 0; offset < dayDocs.length; offset += BACKFILL_QUERY_CONCURRENCY) {
@@ -204,18 +298,67 @@ async function allTimeDailyProviderTokenEntries(
     entries[day] = dayProviders;
   }
 
-  if (allTimeData) {
-    const observedUpdatedAt = allTimeData.updatedAt;
-    const allTimeRef = db.doc(`users/${uid}/usage_counter_totals/all_time`);
-    await db.runTransaction(async (transaction) => {
-      const snap = await transaction.get(allTimeRef);
-      const data = snap.exists ? (snap.data() ?? {}) : undefined;
-      if (!data || recordOrUndefined(data.dailyProviderTokens) || data.updatedAt !== observedUpdatedAt) return;
-      transaction.set(allTimeRef, { dailyProviderTokens: entries }, { merge: true });
-    });
-  }
+  // No map anywhere (pre-map totals doc): backfill the monthly shards. The
+  // scan only sees retained day docs — provider history older than the
+  // counter TTL is intentionally truncated to the retained window.
+  await backfillDailyProviderTokenShards(db, uid, entries, allTimeData.updatedAt);
 
   return entries;
+}
+
+/**
+ * Persists scanned `day -> providerID -> tokens` entries into their monthly
+ * shards, filling only days absent from each shard. Same best-effort guard
+ * and chunking as `backfillDailyTokenShards`.
+ */
+async function backfillDailyProviderTokenShards(
+  db: Firestore,
+  uid: string,
+  entries: Record<string, Record<string, number>>,
+  observedUpdatedAt: unknown,
+): Promise<void> {
+  const byMonth = new Map<string, Record<string, Record<string, number>>>();
+  for (const [day, providers] of Object.entries(entries)) {
+    const month = counterShardMonth(day);
+    const group = byMonth.get(month) ?? {};
+    group[day] = providers;
+    byMonth.set(month, group);
+  }
+  const months = [...byMonth.keys()].sort();
+  const allTimeRef = db.doc(`users/${uid}/usage_counter_totals/all_time`);
+  for (let offset = 0; offset < months.length; offset += 100) {
+    const page = months.slice(offset, offset + 100);
+    await db.runTransaction(async (transaction) => {
+      const baseSnap = await transaction.get(allTimeRef);
+      const baseData = baseSnap.exists ? (baseSnap.data() ?? {}) : undefined;
+      if (!baseData || baseData.updatedAt !== observedUpdatedAt) return;
+      if (recordOrUndefined(baseData.dailyProviderTokens)) return;
+      const shardSnaps = await Promise.all(
+        page.map((month) => transaction.get(db.doc(`users/${uid}/usage_counter_totals/${allTimeDailyShardID(month)}`))),
+      );
+      for (let i = 0; i < page.length; i++) {
+        const month = page[i];
+        const existing = recordOrUndefined(shardSnaps[i].exists ? (shardSnaps[i].data() ?? {}) : undefined);
+        const existingMap = recordOrUndefined(existing?.dailyProviderTokens) ?? {};
+        const fill: Record<string, Record<string, number>> = {};
+        for (const [day, providers] of Object.entries(byMonth.get(month) ?? {})) {
+          if (!(day in existingMap)) fill[day] = providers;
+        }
+        if (Object.keys(fill).length === 0) continue;
+        transaction.set(
+          db.doc(`users/${uid}/usage_counter_totals/${allTimeDailyShardID(month)}`),
+          {
+            windowKey: "all_time",
+            shardMonth: month,
+            dailyProviderTokens: fill,
+            updatedAt: new Date().toISOString(),
+            schemaVersion: COUNTER_SCHEMA_VERSION,
+          },
+          { merge: true },
+        );
+      }
+    });
+  }
 }
 
 type WindowCounterSlice = {
@@ -281,177 +424,6 @@ function sumBucketTotals(bucketDocs: DocumentData[]): { requests: number; tokens
     },
     { requests: 0, tokens: 0, costUsd: 0 },
   );
-}
-
-function aggregateProviderSummaries(providers: DocumentData[]): ProviderSummary[] {
-  const providerMap = new Map<string, ProviderSummary>();
-  for (const doc of providers) {
-    const providerName = typeof doc.provider === "string" ? doc.provider : "unknown";
-    const provider = parseProvider(providerName);
-    if (!provider) continue;
-    const existing = providerMap.get(provider);
-    if (existing) {
-      existing.totalRequests += sumNumber(doc.requests);
-      existing.totalTokens += sumNumber(doc.tokens);
-      existing.totalCost = (existing.totalCost ?? 0) + sumNumber(doc.costUsd);
-    } else {
-      providerMap.set(provider, {
-        provider,
-        providerID: typeof doc.providerID === "string" ? doc.providerID : undefined,
-        totalRequests: sumNumber(doc.requests),
-        totalTokens: sumNumber(doc.tokens),
-        totalCost: sumNumber(doc.costUsd),
-      });
-    }
-  }
-  return Array.from(providerMap.values()).filter(
-    (entry) => entry.totalRequests !== 0 || entry.totalTokens !== 0 || (entry.totalCost ?? 0) !== 0,
-  );
-}
-
-function aggregateAccountSummaries(accounts: DocumentData[]): ProviderAccountSummary[] {
-  const accountMap = new Map<string, ProviderAccountSummary>();
-  for (const doc of accounts) {
-    const providerIDRaw = typeof doc.providerID === "string" ? doc.providerID : "unknown";
-    const providerID = parseProvider(providerIDRaw) ?? providerIDRaw;
-    const id = typeof doc.accountID === "string" ? doc.accountID : `${providerID}:unattributed`;
-    const storageScopeRaw = doc.storageScope;
-    const storageScope =
-      typeof storageScopeRaw === "string" && isProviderAccountStorageScope(storageScopeRaw)
-        ? storageScopeRaw
-        : undefined;
-    const existing = accountMap.get(id);
-    if (existing) {
-      existing.totalRequests += sumNumber(doc.requests);
-      existing.totalTokens += sumNumber(doc.tokens);
-      existing.totalCost = (existing.totalCost ?? 0) + sumNumber(doc.costUsd);
-    } else {
-      accountMap.set(id, {
-        id,
-        providerID,
-        accountID: typeof doc.accountID === "string" ? doc.accountID : undefined,
-        accountLabel: typeof doc.accountLabel === "string" ? doc.accountLabel : "Usage not linked to an account yet",
-        storageScope,
-        totalRequests: sumNumber(doc.requests),
-        totalTokens: sumNumber(doc.tokens),
-        totalCost: sumNumber(doc.costUsd),
-      });
-    }
-  }
-  return Array.from(accountMap.values()).filter(
-    (entry) => entry.totalRequests !== 0 || entry.totalTokens !== 0 || (entry.totalCost ?? 0) !== 0,
-  );
-}
-
-function aggregateModelSummaries(models: DocumentData[]): ModelSummary[] {
-  const modelMap = new Map<string, ModelSummary>();
-  for (const doc of models) {
-    const providerName = typeof doc.provider === "string" ? doc.provider : "unknown";
-    const provider = parseProvider(providerName);
-    if (!provider) continue;
-    const model = typeof doc.model === "string" ? doc.model : "";
-    if (!model) continue;
-    const id = `${provider}:${model}`;
-    const existing = modelMap.get(id);
-    if (existing) {
-      existing.requests += sumNumber(doc.requests);
-      existing.tokens += sumNumber(doc.tokens);
-      existing.cost = (existing.cost ?? 0) + sumNumber(doc.costUsd);
-    } else {
-      modelMap.set(id, {
-        provider,
-        model,
-        requests: sumNumber(doc.requests),
-        tokens: sumNumber(doc.tokens),
-        cost: sumNumber(doc.costUsd),
-      });
-    }
-  }
-  return Array.from(modelMap.values()).filter(
-    (entry) => entry.requests !== 0 || entry.tokens !== 0 || (entry.cost ?? 0) !== 0,
-  );
-}
-
-function aggregateDeviceSummaries(devices: DocumentData[]): DeviceSummary[] {
-  const deviceMap = new Map<string, DeviceSummary>();
-  for (const doc of devices) {
-    const deviceId = typeof doc.deviceId === "string" ? doc.deviceId : "";
-    if (!deviceId) continue;
-    const existing = deviceMap.get(deviceId);
-    if (existing) {
-      existing.requests += sumNumber(doc.requests);
-      existing.tokens += sumNumber(doc.tokens);
-    } else {
-      deviceMap.set(deviceId, {
-        deviceId,
-        requests: sumNumber(doc.requests),
-        tokens: sumNumber(doc.tokens),
-      });
-    }
-  }
-  return Array.from(deviceMap.values()).filter((entry) => entry.requests !== 0 || entry.tokens !== 0);
-}
-
-export function aggregateExecutionSourceSummaries(executionSources: DocumentData[]): ExecutionSourceSummary[] {
-  const sourceMap = new Map<string, ExecutionSourceSummary>();
-  for (const doc of executionSources) {
-    const sourceId = typeof doc.executionSourceId === "string" ? doc.executionSourceId : "";
-    if (!sourceId) continue;
-    const sourceName = typeof doc.executionSourceName === "string" ? doc.executionSourceName : "";
-    const existing = sourceMap.get(sourceId);
-    if (existing) {
-      if (!existing.sourceName && sourceName) existing.sourceName = sourceName;
-      existing.totalRequests += sumNumber(doc.requests);
-      existing.totalTokens += sumNumber(doc.tokens);
-      existing.totalCost += sumNumber(doc.costUsd);
-    } else {
-      sourceMap.set(sourceId, {
-        sourceId,
-        sourceName,
-        totalRequests: sumNumber(doc.requests),
-        totalTokens: sumNumber(doc.tokens),
-        totalCost: sumNumber(doc.costUsd),
-      });
-    }
-  }
-  return Array.from(sourceMap.values())
-    .filter((entry) => entry.totalRequests !== 0 || entry.totalTokens !== 0 || entry.totalCost !== 0)
-    .sort((a, b) => b.totalTokens - a.totalTokens || b.totalRequests - a.totalRequests);
-}
-
-export function aggregateComboSummaries(combos: DocumentData[]): ComboSummary[] {
-  const comboMap = new Map<string, ComboSummary>();
-  for (const doc of combos) {
-    const sourceId = typeof doc.executionSourceId === "string" ? doc.executionSourceId : "";
-    if (!sourceId) continue;
-    const providerName = typeof doc.provider === "string" ? doc.provider : "unknown";
-    const provider = parseProvider(providerName);
-    if (!provider) continue;
-    const model = typeof doc.model === "string" ? doc.model : "";
-    if (!model) continue;
-    const sourceName = typeof doc.executionSourceName === "string" ? doc.executionSourceName : "";
-    const id = `${sourceId}:${provider}:${model}`;
-    const existing = comboMap.get(id);
-    if (existing) {
-      if (!existing.sourceName && sourceName) existing.sourceName = sourceName;
-      existing.requests += sumNumber(doc.requests);
-      existing.tokens += sumNumber(doc.tokens);
-      existing.cost += sumNumber(doc.costUsd);
-    } else {
-      comboMap.set(id, {
-        sourceId,
-        sourceName,
-        provider,
-        model,
-        requests: sumNumber(doc.requests),
-        tokens: sumNumber(doc.tokens),
-        cost: sumNumber(doc.costUsd),
-      });
-    }
-  }
-  return Array.from(comboMap.values())
-    .filter((entry) => entry.requests !== 0 || entry.tokens !== 0 || entry.cost !== 0)
-    .sort((a, b) => b.tokens - a.tokens || b.requests - a.requests);
 }
 
 /** Builds one window's rollup doc from its selected counter slice. */

@@ -667,7 +667,7 @@ final class HybridRetrievalServiceTests: XCTestCase {
                 createdAt: base,
                 updatedAt: base
             )
-            try await store.replaceSearchChunks(documentID: docID, title: title, chunks: [chunk])
+            try await store.replaceSearchChunks(documentID: docID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: [chunk])
 
             let vector = try await embedder.embedding(for: chunkText)
             try await store.upsertChunkEmbedding(

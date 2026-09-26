@@ -4,14 +4,14 @@ import Observation
 @preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Data Control Center view model
 //
 // The callable hub for the macOS Data & Privacy Control Center (governance
 // workbench). Mirrors `AccountManager`'s callable conventions
 // (`Functions.functions(region: "us-central1").httpsCallable(...).call(...)`,
-// `result.data as? [String: Any]`) and the CloudStore "user-facing error"
+// `BurnBarJSONValue.dictionary(from: result.data)`) and the CloudStore "user-facing error"
 // distillation so the workbench never leaks a raw Functions error string.
 //
 // The domain inventory is built from the generated registry
@@ -169,7 +169,7 @@ final class DataControlCenterViewModel {
         defer { isLoadingUsage = false }
         do {
             let result = try await functions().httpsCallable("getDataDomainUsage").call()
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
             applyUsage(dict)
@@ -179,12 +179,12 @@ final class DataControlCenterViewModel {
         }
     }
 
-    private func applyUsage(_ dict: [String: Any]) {
+    private func applyUsage(_ dict: UntypedJSONObject) {
         if let rawTier = dict["tier"] as? String, let parsed = Tier(rawValue: rawTier) {
             tier = parsed
         }
-        if let limits = dict["limits"] as? [String: Any],
-           let pensieve = limits["pensieve"] as? [String: Any] {
+        if let limits = dict["limits"] as? UntypedJSONObject,
+           let pensieve = limits["pensieve"] as? UntypedJSONObject {
             pensieveLimits = PensieveLimits(
                 sources: intValue(pensieve["sources"]),
                 chunks: intValue(pensieve["chunks"]),
@@ -192,7 +192,7 @@ final class DataControlCenterViewModel {
             )
         }
         var usageByID: [String: (count: Int, bytes: Int64, countable: Bool?)] = [:]
-        if let domains = dict["domains"] as? [[String: Any]] {
+        if let domains = dict["domains"] as? [UntypedJSONObject] {
             for entry in domains {
                 guard let id = entry["id"] as? String else { continue }
                 usageByID[id] = (
@@ -263,7 +263,7 @@ final class DataControlCenterViewModel {
                 subjectId: "all",
                 payload: payload
             )
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
             return try JSONSerialization.data(
@@ -312,10 +312,10 @@ final class DataControlCenterViewModel {
                     "confirm": true
                 ]
             )
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
-            let deleted = dict["deleted"] as? [String: Any]
+            let deleted = dict["deleted"] as? UntypedJSONObject
             let outcome = DeleteResult(
                 firestoreDocs: intValue(deleted?["firestoreDocs"]),
                 storageObjects: intValue(deleted?["storageObjects"])
@@ -337,8 +337,8 @@ final class DataControlCenterViewModel {
         defer { isLoadingRecovery = false }
         do {
             let result = try await functions().httpsCallable("listRecovery").call()
-            guard let dict = result.data as? [String: Any],
-                  let methods = dict["methods"] as? [[String: Any]] else { return }
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data),
+                  let methods = dict["methods"] as? [UntypedJSONObject] else { return }
             recoveryMethods = methods.compactMap { entry in
                 guard let recoveryId = entry["recoveryId"] as? String,
                       let kind = entry["kind"] as? String else { return nil }
@@ -358,7 +358,7 @@ final class DataControlCenterViewModel {
     enum RecoveryKind: String { case recoveryKey = "recovery_key", recoveryContact = "recovery_contact" }
 
     @discardableResult
-    func setupRecovery(method: RecoveryKind, payload: [String: Any]) async -> String? {
+    func setupRecovery(method: RecoveryKind, payload: UntypedJSONObject) async -> String? {
         guard isSignedIn else {
             actionError = "Sign in to OpenBurnBar to set up recovery."
             return nil
@@ -372,7 +372,7 @@ final class DataControlCenterViewModel {
                 "payload": payload as NSDictionary
             ] as NSDictionary
             let result = try await functions().httpsCallable("setupRecovery").call(body)
-            guard let dict = result.data as? [String: Any],
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data),
                   let recoveryId = dict["recoveryId"] as? String else {
                 throw DataControlError.malformedResponse
             }
@@ -421,7 +421,7 @@ final class DataControlCenterViewModel {
         actionError = nil
         defer { isMutating = false }
         do {
-            var payload: [String: Any] = ["recoveryId": recoveryId]
+            var payload: UntypedJSONObject = ["recoveryId": recoveryId]
             if let verificationHash { payload["verificationHash"] = verificationHash }
             _ = try await functions().httpsCallable("confirmRecovery").call(payload as NSDictionary)
             await refreshRecovery()
@@ -475,10 +475,10 @@ final class DataControlCenterViewModel {
                 subjectId: scope.rawValue,
                 payload: ["scope": scope.rawValue]
             )
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
-            let revoked = dict["revoked"] as? [String: Any]
+            let revoked = dict["revoked"] as? UntypedJSONObject
             let outcome = RevokeResult(
                 mcpClients: intValue(revoked?["mcpClients"]),
                 devices: intValue(revoked?["devices"]),
@@ -501,11 +501,11 @@ final class DataControlCenterViewModel {
         isLoadingAudit = true
         defer { isLoadingAudit = false }
         do {
-            var payload: [String: Any] = ["limit": 100]
+            var payload: UntypedJSONObject = ["limit": 100]
             if reset == false, let cursor = auditNextCursor { payload["cursor"] = cursor }
             let result = try await functions().httpsCallable("getAuditLog").call(payload as NSDictionary)
-            guard let dict = result.data as? [String: Any],
-                  let events = dict["events"] as? [[String: Any]] else { return }
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data),
+                  let events = dict["events"] as? [UntypedJSONObject] else { return }
             let parsed = events.compactMap { Self.parseAuditEvent($0) }
             if reset { auditEvents = parsed } else { auditEvents.append(contentsOf: parsed) }
             auditNextCursor = dict["nextCursor"] as? String
@@ -522,7 +522,7 @@ final class DataControlCenterViewModel {
         defer { isMutating = false }
         do {
             let result = try await functions().httpsCallable("verifyAuditLog").call()
-            guard let dict = result.data as? [String: Any] else {
+            guard let dict = BurnBarJSONValue.dictionary(from: result.data) else {
                 throw DataControlError.malformedResponse
             }
             auditVerification = AuditVerification(
@@ -567,7 +567,7 @@ final class DataControlCenterViewModel {
         return nil
     }
 
-    private static func parseAuditEvent(_ entry: [String: Any]) -> AuditEvent? {
+    private static func parseAuditEvent(_ entry: UntypedJSONObject) -> AuditEvent? {
         guard let seq = (entry["seq"] as? Int) ?? (entry["seq"] as? NSNumber)?.intValue else { return nil }
         return AuditEvent(
             seq: seq,

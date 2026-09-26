@@ -18,8 +18,8 @@ import type {
   ModelBenchmarkSourceStatusDoc,
   ModelBenchmarkSource,
   ModelBenchmarkTaskCategory,
-} from "./types.js";
-import { isRecord } from "./guards.js";
+} from "@openburnbar/functions-shared/types.js";
+import { isRecord } from "@openburnbar/functions-shared/guards.js";
 
 export const ROUTER_RUNDOWN_SCHEMA_VERSION = 1;
 

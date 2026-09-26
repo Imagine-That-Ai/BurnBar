@@ -415,12 +415,13 @@ final class CodexSessionLogScannerTests: XCTestCase {
     private func makeRow(
         threadId: String,
         tokensUsed: Int = 999,
-        rolloutPath: String?
+        rolloutPath: String?,
+        rawTitle: String? = nil
     ) -> CodexThreadRow {
         CodexThreadRow(
             threadId: threadId,
             model: "openai/gpt-5.2-codex",
-            rawTitle: "title-\(threadId)",
+            rawTitle: rawTitle ?? "title-\(threadId)",
             projectName: "OpenBurnBar",
             tokensUsed: tokensUsed,
             startTime: Date(timeIntervalSince1970: 1_766_577_600),
@@ -1005,5 +1006,117 @@ final class CodexSessionLogScannerTests: XCTestCase {
         XCTAssertEqual(usage.provenanceMethod, .heuristicEstimate)
         XCTAssertEqual(usage.provenanceConfidence, .lowConfidenceEstimate)
         XCTAssertEqual(usage.estimatorVersion, "tokens-used-split-v1")
+    }
+
+    // MARK: - Conversation markdown budget
+
+    func test_scanConversation_capsRetainedMarkdown_countsEveryTurn() throws {
+        // 40 turns x ~60KB each: far past the 1MB retention budget. Metrics
+        // must count every turn while retained text stays bounded — the same
+        // contract `ClaudeConversationAccumulator` keeps.
+        let marker = "CODEX_PREFIX_MARKER"
+        var lines = [messageEvent(role: "user", text: "\(marker) open the session")]
+        for turn in 1...40 {
+            let padding = String(repeating: "z", count: 60_000)
+            lines.append(messageEvent(role: turn.isMultiple(of: 2) ? "assistant" : "user", text: "turn \(turn) \(padding)"))
+        }
+        let file = try write(lines.joined(separator: "\n") + "\n", to: "rollout-huge-conversation.jsonl")
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [makeRow(threadId: "thread-huge", rolloutPath: file.path)],
+            options: LogParseOptions(includeConversationBodies: true),
+            fileManager: fileManager,
+            cacheStore: makeCacheStore()
+        )
+
+        XCTAssertEqual(result.conversations.count, 1)
+        let conversation = try XCTUnwrap(result.conversations.first)
+        XCTAssertEqual(conversation.messageCount, 41, "every turn counts toward metrics, capped or not")
+        XCTAssertLessThanOrEqual(
+            conversation.fullText.utf8.count,
+            CodexSessionLogScanner.maxConversationMarkdownBytes,
+            "retained markdown must respect the byte budget"
+        )
+        XCTAssertTrue(
+            conversation.fullText.contains(marker),
+            "the cap keeps the prefix — search still finds how the session opened"
+        )
+        XCTAssertTrue(
+            conversation.inferredTaskTitle.contains(marker),
+            "the title still derives from the first user turn"
+        )
+    }
+
+    func test_scanConversation_underBudget_matchesGolden() throws {
+        // Equivalence anchor for the streaming rewrite: under the byte
+        // budget every field must equal the historical retained-array
+        // behavior exactly. If this golden drifts, the rewrite drifted.
+        let lines = [
+            messageEvent(role: "user", text: "first question here"),
+            messageEvent(role: "assistant", text: "first answer here"),
+            messageEvent(role: "user", text: "second question here")
+        ]
+        let file = try write(lines.joined(separator: "\n") + "\n", to: "rollout-golden.jsonl")
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [makeRow(threadId: "thread-golden", rolloutPath: file.path)],
+            options: LogParseOptions(includeConversationBodies: true),
+            fileManager: fileManager,
+            cacheStore: makeCacheStore()
+        )
+
+        let conversation = try XCTUnwrap(result.conversations.first)
+        XCTAssertEqual(conversation.messageCount, 3)
+        XCTAssertEqual(conversation.userWordCount, 6)
+        XCTAssertEqual(conversation.assistantWordCount, 3)
+        XCTAssertEqual(conversation.inferredTaskTitle, "first question here")
+        XCTAssertEqual(
+            conversation.fullText,
+            "## User\n\nfirst question here\n\n## Assistant\n\nfirst answer here\n\n## User\n\nsecond question here"
+        )
+        XCTAssertEqual(conversation.lastAssistantMessage, "first answer here")
+        XCTAssertTrue(conversation.keyFiles.isEmpty)
+        XCTAssertTrue(conversation.keyCommands.isEmpty)
+        XCTAssertTrue(conversation.keyTools.isEmpty)
+    }
+
+    func test_scanConversation_assistantOnly_titlesFromRawTitleFirstLine() throws {
+        // No user turns: the title falls back to the thread's raw title,
+        // first line trimmed — not the raw multi-line string.
+        let file = try write(
+            messageEvent(role: "assistant", text: "working on it") + "\n",
+            to: "rollout-assistant-only.jsonl"
+        )
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [makeRow(threadId: "thread-assistant-only", rolloutPath: file.path, rawTitle: "Fix bug\nmore context")],
+            options: LogParseOptions(includeConversationBodies: true),
+            fileManager: fileManager,
+            cacheStore: makeCacheStore()
+        )
+
+        let conversation = try XCTUnwrap(result.conversations.first)
+        XCTAssertEqual(conversation.messageCount, 1)
+        XCTAssertEqual(conversation.inferredTaskTitle, "Fix bug")
+        XCTAssertEqual(conversation.fullText, "## Assistant\n\nworking on it")
+    }
+
+    func test_scanConversation_blankUserTurn_isDropped_titlesFromRawTitleFirstLine() throws {
+        // Whitespace-only turns never survive extraction, so a blank user
+        // turn neither counts nor titles: this rollout behaves as
+        // assistant-only and titles from the raw title's first line.
+        let lines = [
+            messageEvent(role: "user", text: "   "),
+            messageEvent(role: "assistant", text: "working on it")
+        ]
+        let file = try write(lines.joined(separator: "\n") + "\n", to: "rollout-blank-user.jsonl")
+        let result = try CodexSessionLogScanner.processThreadRows(
+            [makeRow(threadId: "thread-blank-user", rolloutPath: file.path, rawTitle: "Fix bug\nmore context")],
+            options: LogParseOptions(includeConversationBodies: true),
+            fileManager: fileManager,
+            cacheStore: makeCacheStore()
+        )
+
+        let conversation = try XCTUnwrap(result.conversations.first)
+        XCTAssertEqual(conversation.messageCount, 1)
+        XCTAssertEqual(conversation.inferredTaskTitle, "Fix bug")
+        XCTAssertEqual(conversation.fullText, "## Assistant\n\nworking on it")
     }
 }

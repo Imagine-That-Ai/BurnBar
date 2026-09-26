@@ -1,6 +1,8 @@
 import AppKit
 import LocalAuthentication
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import SwiftUI
 
 // Extracted verbatim from AgentLensApp.swift (audit wave 4, item 14).

@@ -5,6 +5,7 @@ import Glibc
 #endif
 import Foundation
 import OpenBurnBarEngine
+import OpenBurnBarKernel
 
 // MARK: - ClaudeInteractiveHandoffService (Part B1)
 
@@ -314,7 +315,7 @@ public final class ClaudeInteractiveHandoffService: Sendable {
     ) -> [String] {
         let prefix = projectDirectory?.standardizedFileURL.path
         return snapshot.perFileTokens.keys
-            .filter { prefix == nil || $0.hasPrefix(prefix!) }
+            .filter { file in prefix.map { file.hasPrefix($0) } ?? true }
             .map { ($0 as NSString).lastPathComponent }
             .sorted()
     }
@@ -528,7 +529,7 @@ struct ClaudeCodeJSONLUsageProbe: Sendable {
         var total = 0
         content.enumerateLines { line, _ in
             guard let data = line.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                 return
             }
             guard let message = object["message"] as? [String: Any],

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension DataStore {
     func fetchDevices() async throws -> [DeviceRecord] {

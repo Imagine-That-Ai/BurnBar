@@ -98,16 +98,58 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: functions/package-lock.json
+          cache-dependency-path: |
+            functions/package-lock.json
+            functions-identity/package-lock.json
+            functions-sync/package-lock.json
+            functions-media/package-lock.json
+            packages/functions-shared/package-lock.json
 
-      - name: Install functions dependencies
-        run: npm ci --prefix functions
+      - name: Install Functions codebase dependencies
+        run: |
+          set -euo pipefail
+          for pkg in functions functions-identity functions-sync functions-media packages/functions-shared; do
+            npm ci --prefix "$pkg"
+          done
 
-      - name: Run knip ratchet (functions)
+      - name: Run knip ratchet (Functions codebases)
         # Enforcing via count baseline (budgets/knip-baseline.json): new
         # findings fail, existing debt is tracked and may only shrink. The
         # previous advisory pipe let findings accumulate invisibly.
-        run: bash scripts/ci/knip-ratchet.sh functions functions
+        # 3.5 runs one lane per deploy codebase plus the shared runtime; the
+        # ratchet builds all lib/ outputs once before the first lane.
+        run: |
+          set -euo pipefail
+          bash scripts/ci/knip-ratchet.sh functions functions
+          bash scripts/ci/knip-ratchet.sh functions-identity functions-identity
+          bash scripts/ci/knip-ratchet.sh functions-sync functions-sync
+          bash scripts/ci/knip-ratchet.sh functions-media functions-media
+          bash scripts/ci/knip-ratchet.sh packages/functions-shared functions-shared
+
+      - name: Functions test seams stay live
+        # Every src/testing.ts namespace re-export must have a knip-invisible
+        # importer; drop the seam when its tests move or die.
+        run: node scripts/ci/verify-functions-test-seams.mjs
+
+      - name: Functions test-seam verifier self-test
+        run: node scripts/ci/verify-functions-test-seams.test.mjs
+
+      - name: Functions vendor pins stay identical
+        # Pinned vendor blobs (brace-expansion-cjs, domain-core-wasm) are
+        # duplicated per codebase for self-contained deploys; they must stay
+        # byte-identical or deploys silently diverge.
+        run: node scripts/ci/verify-functions-vendor-pins.mjs
+
+      - name: Functions vendor-pin verifier self-test
+        run: node scripts/ci/verify-functions-vendor-pins.test.mjs
+
+      - name: Functions codebases stay isolated
+        # Runtime sources must not import across codebase boundaries; tests
+        # own the sibling-src channel and harnesses the sibling-lib channel.
+        run: node scripts/ci/verify-functions-codebase-isolation.mjs
+
+      - name: Functions isolation verifier self-test
+        run: node scripts/ci/verify-functions-codebase-isolation.test.mjs
 
   unused-deps-extension:
     name: Unused Dependencies (extension)
@@ -308,6 +350,11 @@ jobs:
 
       - name: Time functions build
         run: |
+          # Local packages first (outside the timer): functions' prebuild sync
+          # skips unbuilt packages, leaving vendor lib/ empty and tsc red.
+          bash scripts/build-signal-envelope-contracts.sh
+          bash scripts/build-entitlements.sh
+          bash scripts/build-functions-shared.sh
           START=$(python3 -c 'import time; print(time.time_ns() // 1_000_000)')
           npm ci --prefix functions
           npm run build --prefix functions

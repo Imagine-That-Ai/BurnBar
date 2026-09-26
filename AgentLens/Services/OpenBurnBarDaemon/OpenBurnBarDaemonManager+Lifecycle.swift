@@ -1,6 +1,6 @@
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - TODO(per-user-models)
 //
@@ -411,7 +411,7 @@ extension OpenBurnBarDaemonManager {
         try launchAgentPlistStep("validate_installed_binary") {
             try validateDaemonBinary(at: paths.installedBinaryURL)
         }
-        let indexDbPath = OpenBurnBarCore.OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
+        let indexDbPath = OpenBurnBarKernel.OpenBurnBarAppPaths.live(fileManager: dependencies.fileManager).databaseURL.path
         _ = try launchAgentPlistStep("rotate_socket_token") {
             try rotateDaemonSocketAuthToken()
         }

@@ -16,7 +16,7 @@ const { dbAccesses, deleteFieldSentinel, entitlementAllowedUids, firestoreDocs }
   firestoreDocs: new Map<string, Record<string, unknown>>(),
 }));
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     doc(path: string) {
       dbAccesses.push(path);
@@ -77,28 +77,28 @@ vi.mock("firebase-admin/firestore", () => ({
   },
 }));
 
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   assertAuth: vi.fn(),
   assertAppCheck: vi.fn(),
   assertOwnership: vi.fn(),
   enforceAuthAndAppCheck: vi.fn(),
 }));
 
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({ enforceAppCheck: true, requireHighRiskNonce: true }),
 }));
 
-vi.mock("../appCheckAttestation.js", async () => {
-  const actual = await vi.importActual<typeof import("../appCheckAttestation.js")>("../appCheckAttestation.js");
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/appCheckAttestation.js")>("../../../packages/functions-shared/src/appCheckAttestation.js");
   return {
     ...actual,
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
   };
 });
 
-vi.mock("../callables/shared/entitlements.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared/entitlements.js")>(
-    "../callables/shared/entitlements.js",
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>(
+    "../../../packages/functions-shared/src/shared/entitlements.js",
   );
   const { HttpsError } = await import("firebase-functions/v2/https");
   return {
@@ -114,17 +114,17 @@ vi.mock("../callables/shared/entitlements.js", async () => {
   };
 });
 
-vi.mock("../sentry.js", () => ({
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({
   captureException: vi.fn(),
   setSentryUser: vi.fn(),
 }));
 
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: vi.fn(), logWarn: vi.fn() };
 });
 
-vi.mock("../signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
+vi.mock("../../../packages/functions-shared/src/signalDirectoryRuntime.js", () => ({ revokeSignalSessionsForDevice: vi.fn(async () => 0) }));
 
 const UID = "uid-no-agent-control";
 const MAC_DEVICE_ID = "mac-cleanup";
@@ -169,7 +169,7 @@ describe("Computer Use callables require hosted Agent Control entitlement", () =
     "queueAgentCapabilityGrantRequest",
     "respondMissionApproval",
   ] as const)("%s fails closed before Firestore state access for non-entitled callers", async (exportedName) => {
-    const mod = await import("../callables/computerUseSecurity.js");
+    const mod = await import("../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const callable = mod[exportedName];
     const data =
       exportedName === "issueIrohControllerRouteChallenge" || exportedName === "registerIrohControllerRoute"
@@ -199,7 +199,7 @@ describe("Computer Use callables require hosted Agent Control entitlement", () =
       publishedByDeviceId: MAC_DEVICE_ID,
       authorizedControllerDeviceIds: ["phone-approved"],
     });
-    const { revokeIrohPairingRecord } = await import("../callables/computerUseSecurity.js");
+    const { revokeIrohPairingRecord } = await import("../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
 
     await expect(
       run(revokeIrohPairingRecord, {

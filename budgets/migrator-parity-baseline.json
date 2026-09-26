@@ -1,8 +1,8 @@
 {
   "description": "Annotated, exact-set schema divergence baseline for scripts/check-migrator-parity.mjs. Every entry is an intentional, explained divergence between the canonical Swift migrator endpoint schema (OpenBurnBarCore/Sources/OpenBurnBarData) and a mirror surface. New divergences and stale entries both fail CI; keep reasons real.",
   "updateCommand": "node scripts/check-migrator-parity.mjs --update-baseline",
-  "migrationEndpoint": "v61_usage_memory",
-  "migrationCount": 62,
+  "migrationEndpoint": "v70_agent_memories_index_backfill",
+  "migrationCount": 71,
   "divergences": [
     {
       "key": "windows:missing-table:agent_memories",

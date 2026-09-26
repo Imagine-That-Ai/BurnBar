@@ -9,7 +9,7 @@ const state = vi.hoisted(() => {
   };
 });
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   auth: {
     getUser: vi.fn(async () => ({
       email: "member@example.com",
@@ -32,11 +32,11 @@ vi.mock("../adminRuntime.js", () => ({
   },
 }));
 
-vi.mock("../resilienceHelpers.js", () => ({
+vi.mock("../../../packages/functions-shared/src/resilienceHelpers.js", () => ({
   stripeWithResilience: vi.fn(async <T>(_name: string, fn: () => Promise<T>) => fn()),
 }));
 
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logWarn: vi.fn(),
 }));
 
@@ -45,7 +45,7 @@ import {
   expireOpenStripeSubscriptionCheckoutSessions,
   findReusableStripeSubscriptionCheckoutSession,
   getOrCreateStripeCustomer,
-} from "../callables/shared/stripe.js";
+} from "../../../functions-identity/src/shared/stripe.js";
 
 // The guards under test take a Stripe client; each stub covers the client surface its test exercises.
 function stripeClient(stub: object): Stripe {

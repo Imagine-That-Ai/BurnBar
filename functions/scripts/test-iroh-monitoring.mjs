@@ -4,7 +4,7 @@ const {
   previousUtcDay,
   summarizeIrohAuditEvents,
   utcDayWindow,
-} = await import("../lib/irohMonitoring.js");
+} = await import("../../functions-media/lib/domains/relay/irohMonitoring.js");
 
 const window = utcDayWindow(new Date("2026-05-14T17:20:00.000Z"));
 assert.equal(window.date, "2026-05-14");

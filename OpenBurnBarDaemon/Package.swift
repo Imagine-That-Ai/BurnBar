@@ -280,6 +280,7 @@ if !buildForLinuxBoundary {
     daemonTestDependencies.append(.product(name: "OpenBurnBarMemoryExport", package: "OpenBurnBarCore"))
 } else {
     daemonTestExcludes.append("OpenBurnBarMemoryExportSigningKeyTests.swift")
+    daemonTestExcludes.append("BurnBarMemoryAuthorityLaneTests.swift")
 }
 
 packageProducts.append(contentsOf: [

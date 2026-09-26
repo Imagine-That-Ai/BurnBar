@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertOutboundFetchTarget, normalizeIpv4 } from "../ssrfGuard.js";
+import { assertOutboundFetchTarget, normalizeIpv4 } from "../../../packages/functions-shared/src/ssrfGuard.js";
 
 describe("normalizeIpv4", () => {
   it("normalizes decimal, hex, octal, and short-form IPv4 literals", () => {

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
 
 /// Adapter from the macOS `DataStore` (a.k.a. `DataStoreCoordinator`) to
 /// the cross-platform `InsightDataSource` protocol consumed by the

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import OpenBurnBarKernel
+import OpenBurnBarAnalytics
 
 // MARK: - Shared segment behavior
 

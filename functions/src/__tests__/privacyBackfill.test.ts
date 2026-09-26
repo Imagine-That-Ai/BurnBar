@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
-import { __testing__ } from "../callables/privacyBackfill.js";
+import { __testing__ } from "../domains/compliance/privacyBackfill.js";
 
 const {
   gatedDeletions,

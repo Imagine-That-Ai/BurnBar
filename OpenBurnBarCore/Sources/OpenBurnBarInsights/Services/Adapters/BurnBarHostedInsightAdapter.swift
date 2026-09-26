@@ -285,7 +285,7 @@ public struct BurnBarHostedInsightAdapter: InsightModelGateway {
             // Surface the server's error code/message when present so
             // the UI banner can show "App Check rejected" /
             // "unauthenticated" instead of a generic HTTP code.
-            if let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            if let parsed = BurnBarJSONValue.dictionary(fromJSONData: data),
                let error = parsed["error"] as? [String: Any] {
                 let message = (error["message"] as? String) ?? "HTTP \(http.statusCode)"
                 #if canImport(os.log)

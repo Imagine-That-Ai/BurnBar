@@ -1,6 +1,9 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
+import OpenBurnBarData
 
 extension UsageStore {
     // MARK: - Delete
@@ -40,6 +43,22 @@ extension UsageStore {
         try await dbQueue.writeWithoutTransaction { db in
             try db.execute(sql: "PRAGMA incremental_vacuum(\(bounded))")
         }
+    }
+
+    /// One-time guided VACUUM for pre-2.6 databases (Wave 2.6). Reads the
+    /// `auto_vacuum` mode and rebuilds the database with INCREMENTAL only
+    /// when the policy says it is safe (free-space guard inside). Returns the
+    /// plan so the purge can log what happened; deferred plans are a silent
+    /// no-op, while IO/migration failures propagate for the purge to log.
+    @discardableResult
+    func ensureIncrementalVacuumIfNeeded() async throws -> DatabaseVacuumPolicy.MigrationPlan {
+        let plan = try await dbQueue.read { db in
+            try DatabaseVacuumPolicy.migrationPlan(db)
+        }
+        if case .ready = plan {
+            try DatabaseVacuumPolicy.migrateToIncrementalVacuum(dbQueue)
+        }
+        return plan
     }
 
     // VAL-PERSIST-013: Reconciliation cleanup is source-scoped.

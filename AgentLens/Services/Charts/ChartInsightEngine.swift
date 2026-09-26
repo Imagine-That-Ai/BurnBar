@@ -1,6 +1,10 @@
 import Foundation
 import OpenBurnBarRecap
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarInboxModels
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Chart Insight Models
 

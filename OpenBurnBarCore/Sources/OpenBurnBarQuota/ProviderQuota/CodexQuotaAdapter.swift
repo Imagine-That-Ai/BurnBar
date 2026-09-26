@@ -181,7 +181,7 @@ public struct CodexQuotaAdapter: ProviderQuotaAdapter {
 }
 
 enum CodexOAuthQuotaFetcher {
-    private static let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
+    private static let usageURL = URL(staticString: "https://chatgpt.com/backend-api/wham/usage")
     private static let authRefreshGrace: TimeInterval = 8 * 24 * 60 * 60
 
     static func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {

@@ -119,9 +119,12 @@ if let reportPath = ProcessInfo.processInfo.environment["DOMAIN_CORE_OBSERVED_ID
     }
 }
 
+let agentFixtureKey = Data(base64Encoded: "BGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfU=")
+let phoneFixtureKey = Data(base64Encoded: "BHzyexiNA09+ilI4AwS1GsPAiWnid/IbNaYLSPxHZpl4B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E=")
+require(agentFixtureKey != nil && phoneFixtureKey != nil, "invalid safety-code fixture keys")
 let safetyCode = try OpenBurnBarDomainCoreFFI.hermesGatewayRelaySafetyCode(
-    agentPublicKey: Data(base64Encoded: "BGsX0fLhLEJH+Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT+NC4v4af5uO5+tKfA+eFivOM1drMV7Oy7ZAaDe/UfU=")!,
-    phonePublicKey: Data(base64Encoded: "BHzyexiNA09+ilI4AwS1GsPAiWnid/IbNaYLSPxHZpl4B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E=")!
+    agentPublicKey: agentFixtureKey ?? Data(),
+    phonePublicKey: phoneFixtureKey ?? Data()
 )
 require(safetyCode == "97AB 6CD8 FEF0 9594 D5ED FAF1 1D10 B6F7", "Hermes safety-code mismatch")
 

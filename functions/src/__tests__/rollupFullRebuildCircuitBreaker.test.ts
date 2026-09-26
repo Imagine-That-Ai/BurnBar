@@ -27,8 +27,8 @@ import { resolve } from "node:path";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
 const { logInfoMock, logErrorMock } = vi.hoisted(() => ({ logInfoMock: vi.fn(), logErrorMock: vi.fn() }));
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: logInfoMock, logError: logErrorMock };
 });
 
@@ -44,7 +44,7 @@ import {
   refreshUserRollups,
   RollupRebuildUnavailableError,
 } from "../rollups.js";
-import type { UsageEventDoc } from "../types.js";
+import type { UsageEventDoc } from "../../../packages/functions-shared/src/types.js";
 
 type Doc = Record<string, unknown>;
 
@@ -767,7 +767,7 @@ describe("alertable structured log event keys", () => {
   it("keeps the exact jsonPayload.event strings the alert policies key on", () => {
     const read = (relative: string) => readFileSync(resolve(__dirname, relative), "utf8");
     const scheduled = read("../scheduled.ts");
-    const misc = read("../callables/misc.ts");
+    const misc = read("../domains/ops/misc.ts");
     // rollups.ts was split into rollup*.ts sibling modules and is now a
     // re-export barrel, so the log-emitting code paths (and their event-string
     // literals) live in those siblings. Scan the whole rollup* surface.

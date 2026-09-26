@@ -1,3 +1,4 @@
+import OpenBurnBarUI
 import SwiftUI
 
 /// Specular shine sweep view that provides a high-fidelity diagonal gloss shimmer.

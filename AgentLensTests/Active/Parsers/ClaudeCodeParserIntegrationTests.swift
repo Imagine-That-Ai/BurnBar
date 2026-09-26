@@ -104,9 +104,9 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
 
         // Simulate a REAL legacy (pre-privacy-fix, schemaVersion-2) cache
         // that still carries a persisted conversation body. The reworked
-        // parser (schemaVersion 3, conversation-free entries by construction)
+        // parser (schemaVersion 4, conversation-free entries by construction)
         // must drop the stale-schema cache wholesale on the next parse and
-        // re-persist a body-free v3 cache — an in-place upgrade scrub.
+        // re-persist a body-free v4 cache — an in-place upgrade scrub.
         try injectLegacyCachedConversation(
             cacheURL: cacheURL,
             sessionFile: sessionFile,
@@ -138,7 +138,7 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
                 from: Data(contentsOf: cacheURL), options: [], format: nil
             ) as? [String: Any]
         )
-        XCTAssertEqual(upgradedRoot["schemaVersion"] as? Int, 3)
+        XCTAssertEqual(upgradedRoot["schemaVersion"] as? Int, 4)
         let upgradedEntries = try XCTUnwrap(upgradedRoot["fileEntries"] as? [String: Any])
         for (key, value) in upgradedEntries {
             let entry = try XCTUnwrap(value as? [String: Any], key)
@@ -153,9 +153,9 @@ final class ClaudeCodeParserIntegrationTests: XCTestCase {
 
     /// Simulates a REAL legacy (pre-2026-07-16, schemaVersion-2) Claude
     /// parser cache: v2 entries carried an optional `conversation` body.
-    /// The reworked parser is at schemaVersion 3 (whose entry type cannot
+    /// The reworked parser is at schemaVersion 4 (whose entry type cannot
     /// represent a conversation), so `ParserDiskCacheStore.load()` drops a
-    /// v2 cache wholesale, re-scans, and re-persists a body-free v3 cache —
+    /// v2 cache wholesale, re-scans, and re-persists a body-free v4 cache —
     /// that upgrade path is what the caller asserts. Uses schema-agnostic
     /// plist surgery because `ClaudeCodeCacheEntry` is parser-private.
     private func injectLegacyCachedConversation(

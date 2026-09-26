@@ -74,15 +74,15 @@ vi.mock("firebase-admin/firestore", () => ({
   },
 }));
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: dbMock,
 }));
 
-vi.mock("../cloudFeatureSuspensions.js", () => ({
+vi.mock("../../../packages/functions-shared/src/cloudFeatureSuspensions.js", () => ({
   assertCloudFeatureNotSuspended: vi.fn(async () => undefined),
 }));
 
-vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
+vi.mock("../../../packages/functions-shared/src/cloudProAllowanceRemoteConfig.js", () => ({
   loadCloudProAllowanceConfig: vi.fn(async () => ({
     includedHostedActionsMonthly: 500,
     includedRelayGBMonthly: 50,
@@ -99,16 +99,16 @@ vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
   })),
 }));
 
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
 }));
 
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   wrapCallableHandler: (_name: string, handler: (request: unknown) => Promise<unknown>) => handler,
 }));
 
-import { BURNBAR_PRO_MAX_ENTITLEMENT_ID, creditCloudProTopUp } from "../callables/shared/entitlements.js";
-import { reserveAgentControlActionBudget } from "../cloudProAllowance.js";
+import { BURNBAR_PRO_MAX_ENTITLEMENT_ID, creditCloudProTopUp } from "../../../packages/functions-shared/src/shared/entitlements.js";
+import { reserveAgentControlActionBudget } from "../../../functions-identity/src/domains/billing/cloudProAllowance.js";
 
 const UID = "uid-topup-replay";
 const PAYMENT_ID = "google-pay-token-hash";

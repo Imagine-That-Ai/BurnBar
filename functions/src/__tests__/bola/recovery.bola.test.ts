@@ -9,7 +9,7 @@ import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callab
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {
@@ -18,15 +18,15 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../appCheckAttestation.js", async () => {
-  const actual = await vi.importActual<typeof import("../../appCheckAttestation.js")>("../../appCheckAttestation.js");
+vi.mock("../../../../packages/functions-shared/src/appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/appCheckAttestation.js")>("../../../../packages/functions-shared/src/appCheckAttestation.js");
   return {
     ...actual,
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
@@ -38,7 +38,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — recovery", () => {
   it("confirmRecovery rejects cross-user object access", async () => {
-    const mod = await import("../../callables/recovery.js");
+    const mod = await import("../../domains/ops/recovery.js");
     const exported = mod.confirmRecovery;
     if (!exported) throw new Error("missing export confirmRecovery");
     const run = callableRunner(exported);

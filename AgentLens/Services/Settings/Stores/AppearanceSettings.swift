@@ -1,6 +1,8 @@
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 enum DesktopWallpaperBackground: String, CaseIterable, Codable, Hashable, Identifiable {
     case macOSDesktop

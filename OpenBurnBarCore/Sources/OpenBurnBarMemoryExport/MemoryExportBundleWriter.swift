@@ -141,9 +141,9 @@ public enum MemoryExportBundleWriter {
         var segments: [MIFSection: [Data]] = [:]
         var subroots: [MIFSection: String] = [:]
         for buffer in ordered {
-            // reason: every section was written above
-            // swiftlint:disable:next force_unwrapping
-            let plaintext = plaintexts[buffer.section]!
+            // Every section was serialized above; re-serialize rather than
+            // crash if the table ever stops holding one.
+            let plaintext = plaintexts[buffer.section] ?? ndjson(buffer)
             let key = MemoryExportCrypto.segmentKey(bundleKey: inputs.context.bundleKey, section: buffer.section)
             // §2 rotates a section at `max_section_bytes` of CIPHERTEXT, and
             // each sealed segment carries a 16-byte tag (the nonce is derived,

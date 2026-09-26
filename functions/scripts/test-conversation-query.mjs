@@ -24,7 +24,7 @@ import {
   mapSessionLogManifestRow,
   resolveConversationSort,
   sessionLogManifestIsVisible,
-} from "../lib/callables/conversationQuery.js";
+} from "../../functions-sync/lib/callables/conversationQuery.js";
 
 /**
  * Chainable stand-in for a Firestore `Query`. Every `where`/`orderBy` records its arguments and

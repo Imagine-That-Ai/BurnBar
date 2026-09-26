@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension OpenBurnBarError {
     /// Maps daemon manager / socket client failures into the shared taxonomy.
@@ -23,6 +23,8 @@ extension OpenBurnBarError {
             return .daemon("empty_response", message: error.localizedDescription)
         case .rpcError(let message):
             return .daemon("rpc_error", message: message)
+        case .rpcConflict(let message):
+            return .daemon("rpc_conflict", message: message)
         case .rpcTimedOut(let seconds):
             return .daemon("rpc_timeout", message: "OpenBurnBarDaemon RPC timed out after \(seconds)s.")
         case .lifecycleStepFailed:

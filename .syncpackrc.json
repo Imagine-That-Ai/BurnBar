@@ -2,6 +2,10 @@
   "source": [
     "package.json",
     "functions/package.json",
+    "functions-identity/package.json",
+    "functions-sync/package.json",
+    "functions-media/package.json",
+    "packages/functions-shared/package.json",
     "extensions/openburnbar/package.json",
     "extensions/safari/package.json",
     "website/package.json",
@@ -13,37 +17,58 @@
   "semverGroups": [
     {
       "label": "Pin exact versions for security-sensitive packages",
-      "packages": ["**"],
-      "dependencies": ["stripe", "firebase-admin"],
+      "packages": [
+        "**"
+      ],
+      "dependencies": [
+        "stripe",
+        "firebase-admin"
+      ],
       "range": ""
     }
   ],
   "versionGroups": [
     {
       "label": "Published OpenBurnBar CLI owns its npm release version",
-      "dependencies": ["openburnbar"],
-      "dependencyTypes": ["local"],
+      "dependencies": [
+        "openburnbar"
+      ],
+      "dependencyTypes": [
+        "local"
+      ],
       "isIgnored": true
     },
     {
       "label": "Local workspace packages use package-relative file: paths",
-      "packages": ["**"],
+      "packages": [
+        "**"
+      ],
       "dependencies": [
         "@openburnbar/entitlements",
-        "@openburnbar/signal-envelope-contracts"
+        "@openburnbar/signal-envelope-contracts",
+        "@openburnbar/functions-shared",
+        "@openburnbar/domain-core-wasm"
       ],
-      "specifierTypes": ["file"],
+      "specifierTypes": [
+        "file"
+      ],
       "isIgnored": true
     },
     {
-      "label": "TypeScript — all packages must use the highest version seen in the monorepo",
-      "packages": ["**"],
-      "dependencies": ["typescript"],
+      "label": "TypeScript \u2014 all packages must use the highest version seen in the monorepo",
+      "packages": [
+        "**"
+      ],
+      "dependencies": [
+        "typescript"
+      ],
       "policy": "highestSemver"
     },
     {
       "label": "ESLint toolchain must match across TS packages",
-      "packages": ["**"],
+      "packages": [
+        "**"
+      ],
       "dependencies": [
         "eslint",
         "@typescript-eslint/parser",
@@ -53,8 +78,12 @@
     },
     {
       "label": "Prettier must be the same version everywhere",
-      "packages": ["**"],
-      "dependencies": ["prettier"],
+      "packages": [
+        "**"
+      ],
+      "dependencies": [
+        "prettier"
+      ],
       "policy": "highestSemver"
     }
   ]

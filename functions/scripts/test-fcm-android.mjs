@@ -6,8 +6,8 @@ const {
   processStuckFcmPush,
   pushAndroidFcm,
   sweepStuckFcmPushes,
-} = await import("../lib/fcmAndroidSender.js");
-const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../lib/voipPush.js");
+} = await import("../../functions-media/lib/domains/push/fcmAndroidSender.js");
+const { macHasActiveMediaEntitlement, resolveFanOut } = await import("../../functions-media/lib/voipPush.js");
 
 // ---------------------------------------------------------------------------
 // pushAndroidFcm — happy path

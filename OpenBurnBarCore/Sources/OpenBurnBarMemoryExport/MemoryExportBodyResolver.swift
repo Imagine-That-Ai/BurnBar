@@ -17,6 +17,7 @@
 // NOT NULL in the target and there is no body to key it from.
 
 import Foundation
+import OpenBurnBarKernel
 
 public struct MemoryExportResolvedBody: Sendable, Equatable {
     public var body: String
@@ -281,7 +282,7 @@ public enum MemoryExportBodyResolver {
     /// `pages[].sections[]` where `id == memoryID`, `body` being the plaintext.
     static func section(named memoryID: String, inSnapshotJSON json: String) -> String? {
         guard let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data),
               let pages = object["pages"] as? [[String: Any]] else {
             return nil
         }

@@ -103,7 +103,7 @@ const WIRED_IN_EVIDENCE = [
   "AgentLens/Services/MacCloudVaultSignalPayloads.swift",
   "OpenBurnBarMobile/Services/MobileCloudVaultSignalPayloads.swift",
   "android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloads.kt",
-  "functions/src/signalAtRestWrite.ts",
+  "functions-sync/src/signalAtRestWrite.ts",
   "packages/libsignal-bridge/src/index.ts"
 ];
 for (const rel of WIRED_IN_EVIDENCE) {
@@ -125,14 +125,14 @@ if (
 ) {
   fail('firestore.rules no longer path-gates direct signalEnvelope writes — "wired in" is unbacked');
 }
-const adminValidator = readFileSync(join(REPO_ROOT, "functions", "src", "signalAtRestWrite.ts"), "utf8");
+const adminValidator = readFileSync(join(REPO_ROOT, "functions-sync", "src", "signalAtRestWrite.ts"), "utf8");
 if (
   !adminValidator.includes("validateSignalAtRestEnvelopeForWrite") ||
   !adminValidator.includes("assertSignalAtRestEnvelopeForWrite") ||
   !adminValidator.includes("sanitizeCloudVaultSignalEnvelope")
 ) {
   fail(
-    'functions/src/signalAtRestWrite.ts no longer deep-validates Admin signalEnvelope writes — "wired in" is unbacked'
+    'functions-sync/src/signalAtRestWrite.ts no longer deep-validates Admin signalEnvelope writes — "wired in" is unbacked'
   );
 }
 const adminValidatorTests = readFileSync(
@@ -158,11 +158,11 @@ if (
   );
 }
 const missionCallable = [
-  readFileSync(join(REPO_ROOT, "functions", "src", "callables", "cliAgentMissions.ts"), "utf8"),
-  readFileSync(join(REPO_ROOT, "functions", "src", "callables", "cliAgentMissionsSupport.ts"), "utf8"),
+  readFileSync(join(REPO_ROOT, "functions-sync", "src", "domains", "missions", "cliAgentMissions.ts"), "utf8"),
+  readFileSync(join(REPO_ROOT, "functions-sync", "src", "callables", "cliAgentMissionsSupport.ts"), "utf8"),
 ].join("\n");
 const retiredMissionWrite = readFileSync(
-  join(REPO_ROOT, "functions", "src", "callables", "writeSignalAtRestDocument.ts"),
+  join(REPO_ROOT, "functions-identity", "src", "domains", "devices", "writeSignalAtRestDocument.ts"),
   "utf8"
 );
 if (

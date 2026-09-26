@@ -1,6 +1,7 @@
 import AppKit
 import OpenBurnBarCore
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // Extracted verbatim from AppDelegate.swift (audit wave 4, item 14).
 // The menu-bar status item + NSPopover host: icon style/update badge

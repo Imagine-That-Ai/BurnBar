@@ -1,5 +1,6 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarAnalytics
 
 // MARK: - Credential Lane
 

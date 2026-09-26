@@ -1,7 +1,7 @@
 import Foundation
 
 #if canImport(OpenBurnBarCore)
-import OpenBurnBarCore
+import OpenBurnBarKernel
 #endif
 
 extension CursorConnectorManager {

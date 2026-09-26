@@ -42,6 +42,37 @@ public struct BurnBarChatAttachmentMetadata: Codable, Equatable, Sendable {
     }
 }
 
+/// One ordered transcript segment for an assistant message (text interleaved
+/// with tool calls), mirroring the app's `ChatTranscriptPiece` field for
+/// field (`id`, `kind`, `value`, `detail`) so the daemon persists
+/// byte-compatible `transcriptPiecesJSON`.
+public struct BurnBarChatTranscriptPiece: Codable, Equatable, Hashable, Sendable {
+    public enum Kind: String, Codable, Hashable, Sendable {
+        case text
+        case reasoning
+        case refusal
+        case toolUse
+        case toolResult
+    }
+
+    public let id: String
+    public let kind: Kind
+    public let value: String
+    public let detail: String?
+
+    public init(
+        id: String,
+        kind: Kind,
+        value: String,
+        detail: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.value = value
+        self.detail = detail
+    }
+}
+
 public struct BurnBarChatMessage: Codable, Equatable, Sendable {
     public let id: String
     public let threadID: String
@@ -50,6 +81,7 @@ public struct BurnBarChatMessage: Codable, Equatable, Sendable {
     public let timestamp: String
     public let backendID: String?
     public let attachments: [BurnBarChatAttachmentMetadata]?
+    public let transcriptPieces: [BurnBarChatTranscriptPiece]?
 
     public init(
         id: String,
@@ -58,7 +90,8 @@ public struct BurnBarChatMessage: Codable, Equatable, Sendable {
         content: String,
         timestamp: String,
         backendID: String? = nil,
-        attachments: [BurnBarChatAttachmentMetadata]? = nil
+        attachments: [BurnBarChatAttachmentMetadata]? = nil,
+        transcriptPieces: [BurnBarChatTranscriptPiece]? = nil
     ) {
         self.id = id
         self.threadID = threadID
@@ -67,6 +100,7 @@ public struct BurnBarChatMessage: Codable, Equatable, Sendable {
         self.timestamp = timestamp
         self.backendID = backendID
         self.attachments = attachments
+        self.transcriptPieces = transcriptPieces
     }
 }
 
@@ -165,6 +199,22 @@ public struct BurnBarChatMessageAppendRequest: Codable, Equatable, Sendable {
     public let timestamp: String
     public let backendID: String?
     public let attachments: [BurnBarChatAttachmentMetadata]?
+    /// Ordered transcript segments (tool-call interleavings). Persisted to
+    /// `transcriptPiecesJSON`; without this the daemon would silently drop
+    /// tool-call transcripts on the app cutover (Wave 2.1).
+    public let transcriptPieces: [BurnBarChatTranscriptPiece]?
+    /// Streaming re-save: the same message ID re-committed with evolved
+    /// content (placeholder → final). When false (gateway default) a
+    /// differing re-append is a `conflict`; when true the daemon replaces
+    /// the row, matching the app's historical `INSERT OR REPLACE`.
+    public let replace: Bool
+    /// Opaque app-encoded attachment JSON (`[HermesAttachment]`), stored
+    /// verbatim in `attachmentsJSON` when present. The typed `attachments`
+    /// metadata cannot represent app display fields (workspace path,
+    /// thumbnail, text preview); converging the two column formats is
+    /// follow-up work — until then the daemon must not re-encode this blob.
+    /// Mutually exclusive with `attachments`: setting both is invalid.
+    public let appAttachmentsJSON: String?
 
     public init(
         threadID: String,
@@ -173,7 +223,10 @@ public struct BurnBarChatMessageAppendRequest: Codable, Equatable, Sendable {
         content: String,
         timestamp: String,
         backendID: String? = nil,
-        attachments: [BurnBarChatAttachmentMetadata]? = nil
+        attachments: [BurnBarChatAttachmentMetadata]? = nil,
+        transcriptPieces: [BurnBarChatTranscriptPiece]? = nil,
+        replace: Bool = false,
+        appAttachmentsJSON: String? = nil
     ) {
         self.threadID = threadID
         self.messageID = messageID
@@ -182,15 +235,73 @@ public struct BurnBarChatMessageAppendRequest: Codable, Equatable, Sendable {
         self.timestamp = timestamp
         self.backendID = backendID
         self.attachments = attachments
+        self.transcriptPieces = transcriptPieces
+        self.replace = replace
+        self.appAttachmentsJSON = appAttachmentsJSON
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case threadID, messageID, role, content, timestamp, backendID
+        case attachments, transcriptPieces, replace, appAttachmentsJSON
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        threadID = try container.decode(String.self, forKey: .threadID)
+        messageID = try container.decode(String.self, forKey: .messageID)
+        role = try container.decode(BurnBarChatMessageRole.self, forKey: .role)
+        content = try container.decode(String.self, forKey: .content)
+        timestamp = try container.decode(String.self, forKey: .timestamp)
+        backendID = try container.decodeIfPresent(String.self, forKey: .backendID)
+        attachments = try container.decodeIfPresent([BurnBarChatAttachmentMetadata].self, forKey: .attachments)
+        transcriptPieces = try container.decodeIfPresent([BurnBarChatTranscriptPiece].self, forKey: .transcriptPieces)
+        replace = try container.decodeIfPresent(Bool.self, forKey: .replace) ?? false
+        appAttachmentsJSON = try container.decodeIfPresent(String.self, forKey: .appAttachmentsJSON)
     }
 }
 
 public struct BurnBarChatMessageAppendResponse: Codable, Equatable, Sendable {
     public let message: BurnBarChatMessage
     public let inserted: Bool
+    /// True when an existing row was replaced (`replace: true` re-save).
+    /// Leniently decoded so older daemons' responses (without the key) still
+    /// decode.
+    public let replaced: Bool
 
-    public init(message: BurnBarChatMessage, inserted: Bool) {
+    public init(message: BurnBarChatMessage, inserted: Bool, replaced: Bool = false) {
         self.message = message
         self.inserted = inserted
+        self.replaced = replaced
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case message, inserted, replaced
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        message = try container.decode(BurnBarChatMessage.self, forKey: .message)
+        inserted = try container.decode(Bool.self, forKey: .inserted)
+        replaced = try container.decodeIfPresent(Bool.self, forKey: .replaced) ?? false
+    }
+}
+
+public struct BurnBarChatThreadCreateRequest: Codable, Equatable, Sendable {
+    public let threadID: String
+    public let createdAt: String
+
+    public init(threadID: String, createdAt: String) {
+        self.threadID = threadID
+        self.createdAt = createdAt
+    }
+}
+
+public struct BurnBarChatThreadCreateResponse: Codable, Equatable, Sendable {
+    public let threadID: String
+    public let created: Bool
+
+    public init(threadID: String, created: Bool) {
+        self.threadID = threadID
+        self.created = created
     }
 }

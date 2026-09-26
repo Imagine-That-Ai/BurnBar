@@ -21,7 +21,9 @@ public struct OpenAIQuotaAdapter: ProviderQuotaAdapter {
 
         let now = Date()
         let start = now.addingTimeInterval(-24 * 60 * 60)
-        var components = URLComponents(string: "https://api.openai.com/v1/organization/usage/completions")!
+        guard var components = URLComponents(string: "https://api.openai.com/v1/organization/usage/completions") else {
+            return unavailableSnapshot(for: .openAI, source: .officialAPI, message: "OpenAI usage URL could not be built.")
+        }
         components.queryItems = [
             URLQueryItem(name: "start_time", value: String(Int(start.timeIntervalSince1970))),
             URLQueryItem(name: "end_time", value: String(Int(now.timeIntervalSince1970))),
@@ -82,15 +84,15 @@ public struct OpenAIQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private func parseUsageTotals(from data: Data) throws -> (tokens: Int, requests: Int) {
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? QuotaJSONObject else {
             throw QuotaServiceError.invalidResponse("OpenAI usage payload was not a JSON object.")
         }
-        let buckets = object["data"] as? [[String: Any]] ?? []
+        let buckets = object["data"] as? [QuotaJSONObject] ?? []
         var tokens = 0
         var requests = 0
 
         for bucket in buckets {
-            let results = bucket["results"] as? [[String: Any]] ?? [bucket]
+            let results = bucket["results"] as? [QuotaJSONObject] ?? [bucket]
             for result in results {
                 let input = result["input_tokens"] as? Int ?? 0
                 let output = result["output_tokens"] as? Int ?? 0
@@ -141,7 +143,7 @@ public struct DeepSeekQuotaAdapter: ProviderQuotaAdapter {
             return unavailableSnapshot(for: .deepSeek, source: .officialAPI, message: inlineError)
         }
 
-        guard let dictionary = object as? [String: Any] else {
+        guard let dictionary = object as? QuotaJSONObject else {
             return unavailableSnapshot(
                 for: .deepSeek,
                 source: .officialAPI,
@@ -205,9 +207,9 @@ public struct DeepSeekQuotaAdapter: ProviderQuotaAdapter {
             .appendingPathComponent("balance", isDirectory: false)
     }
 
-    private func balanceBuckets(from dictionary: [String: Any]) -> [ProviderQuotaBucket] {
-        let balanceInfos = dictionary["balance_infos"] as? [[String: Any]]
-            ?? dictionary["balanceInfos"] as? [[String: Any]]
+    private func balanceBuckets(from dictionary: QuotaJSONObject) -> [ProviderQuotaBucket] {
+        let balanceInfos = dictionary["balance_infos"] as? [QuotaJSONObject]
+            ?? dictionary["balanceInfos"] as? [QuotaJSONObject]
             ?? []
 
         return balanceInfos.compactMap { info in
@@ -237,8 +239,8 @@ public struct DeepSeekQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private func inlineErrorMessage(from object: Any) -> String? {
-        guard let dictionary = object as? [String: Any] else { return nil }
-        if let error = dictionary["error"] as? [String: Any] {
+        guard let dictionary = object as? QuotaJSONObject else { return nil }
+        if let error = dictionary["error"] as? QuotaJSONObject {
             let message = FlexibleQuotaBucketNormalizer.string(in: error, keys: ["message", "msg", "error"])
                 ?? "request failed"
             return "DeepSeek returned an API error: \(message)"

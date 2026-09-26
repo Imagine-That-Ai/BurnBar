@@ -4,7 +4,9 @@ import os.log
 import Security
 import SwiftUI
 import UIKit
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Observable wrapper around the Insights services for the mobile shell.
 ///
@@ -459,7 +461,8 @@ final class InsightsStore {
         let envURL = ProcessInfo.processInfo.environment["INSIGHTS_HOSTED_FALLBACK_URL"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let defaultURL = "https://us-central1-burnbar.cloudfunctions.net/insightsHostedAnswer"
-        guard let url = URL(string: (envURL?.isEmpty == false ? envURL! : defaultURL)) else {
+        let resolvedURLString = envURL.flatMap { $0.isEmpty ? nil : $0 } ?? defaultURL
+        guard let url = URL(string: resolvedURLString) else {
             return nil
         }
         return BurnBarHostedInsightAdapter(

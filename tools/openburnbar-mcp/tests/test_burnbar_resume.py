@@ -11,6 +11,8 @@ import types
 import uuid
 from pathlib import Path
 
+import pytest
+
 
 _HERE = Path(__file__).resolve().parent
 _PARENT = _HERE.parent
@@ -206,18 +208,22 @@ def _make_claude_subagent_only(home: Path, handle: str) -> None:
     (path / f"{handle}.jsonl").write_text("{}", encoding="utf-8")
 
 
+def _write_codex_threads(home: Path, handle: str, rollout_path: str) -> None:
+    state = home / ".codex" / "state_5.sqlite"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(state)
+    conn.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT)")
+    conn.execute("INSERT INTO threads (id, rollout_path) VALUES (?, ?)", (handle, rollout_path))
+    conn.commit()
+    conn.close()
+
+
 def _make_codex_state(home: Path, handle: str) -> None:
     sessions = home / ".codex" / "sessions" / "2026" / "05" / "01"
     sessions.mkdir(parents=True, exist_ok=True)
     rollout = sessions / f"rollout-2026-05-01T10-00-00-{handle}.jsonl"
     rollout.write_text("{}", encoding="utf-8")
-    state = home / ".codex" / "state_5.sqlite"
-    state.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(state)
-    conn.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT)")
-    conn.execute("INSERT INTO threads (id, rollout_path) VALUES (?, ?)", (handle, str(rollout)))
-    conn.commit()
-    conn.close()
+    _write_codex_threads(home, handle, str(rollout))
 
 
 def _make_codex_archive(home: Path, handle: str) -> None:
@@ -375,6 +381,64 @@ def test_missing_native_codex_falls_back_to_port(tmp_path):
 
     assert payload["kind"] == "ported"
     assert payload["note"] == "native_handle_invalid_fell_back_to_port"
+
+
+def test_codex_rollout_traversal_does_not_validate_native(tmp_path):
+    # Wave 2.7: the escape target is a REAL file outside ~/.codex. Pre-fix
+    # the bare is_file() gate returns True and the handle validates native
+    # (red); post-fix the jail refuses and validation falls through (green).
+    env, _ = _fixture(tmp_path)
+    handle = str(uuid.uuid4())
+    secret = tmp_path / "secret.txt"
+    secret.write_text("x", encoding="utf-8")
+    home = env.resolved_home
+    _write_codex_threads(home, handle, str(home / ".codex" / ".." / ".." / "secret.txt"))
+
+    assert resume_core.validate_native_handle("codex", handle, env) is None
+
+
+def test_codex_rollout_symlink_escape_does_not_validate_native(tmp_path):
+    # A symlink inside ~/.codex pointing outside must not smuggle validation.
+    env, _ = _fixture(tmp_path)
+    handle = str(uuid.uuid4())
+    secret = tmp_path / "secret.txt"
+    secret.write_text("x", encoding="utf-8")
+    sessions = env.resolved_home / ".codex" / "sessions"
+    sessions.mkdir(parents=True, exist_ok=True)
+    link = sessions / f"rollout-{handle}.jsonl"
+    link.symlink_to(secret)
+    _write_codex_threads(env.resolved_home, handle, str(link))
+
+    assert resume_core.validate_native_handle("codex", handle, env) is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "",  # Empty: no path at all.
+        "~",  # Home itself is outside the jail.
+        "~otheruser/.codex/sessions/a.jsonl",  # ~otheruser: refused outright.
+        "sessions/a.jsonl",  # Relative: no defined base.
+        "/etc/passwd",  # Absolute escape.
+        "~/.codex/../secret.txt",  # Tilde traversal out.
+        "~/.codex/../../secret.txt",  # Deep traversal out.
+        "~/.codex-evil/a.jsonl",  # Sibling directory, not the jail.
+        "~/.codex",  # The jail root itself is not a contained file.
+    ],
+)
+def test_codex_rollout_contained_path_refuses_escapes(tmp_path, raw):
+    # Direct contract test for the Wave 2.7 jail: every escape form must
+    # resolve to None. Mirrors Swift CodexRolloutJailTests.test_jailContract.
+    assert resume_core.codex_rollout_contained_path(raw, tmp_path) is None
+
+
+def test_codex_rollout_contained_path_accepts_inside(tmp_path):
+    home = tmp_path
+    inner = home / ".codex" / "sessions" / "a.jsonl"
+    inner.parent.mkdir(parents=True, exist_ok=True)
+    inner.write_text("{}", encoding="utf-8")
+    assert resume_core.codex_rollout_contained_path("~/.codex/sessions/a.jsonl", home) == inner.resolve()
+    assert resume_core.codex_rollout_contained_path(str(inner), home) == inner.resolve()
 
 
 def test_non_native_source_requires_target_then_ports(tmp_path):

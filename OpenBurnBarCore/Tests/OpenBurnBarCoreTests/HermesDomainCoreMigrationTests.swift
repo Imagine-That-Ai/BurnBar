@@ -7,6 +7,15 @@ import OpenBurnBarDomainCoreFFI
 #endif
 
 final class HermesDomainCoreMigrationTests: XCTestCase {
+    // Wave 4: one class-wide native gate instead of a per-test guard in every
+    // method. Every test here shells to the native domain core.
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
+            throw XCTSkip("native-required in domain-core CI") // env-guard: OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE=1
+        }
+    }
+
     private func assertNativeDomainCoreLoaded() {
         #if canImport(OpenBurnBarDomainCoreFFI)
         XCTAssertEqual(OpenBurnBarDomainCoreFFI.domainCoreAbiVersion(), 3)
@@ -16,9 +25,6 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
     }
 
     func testRustModeMatchesCanonicalAadAndCrossOpensLegacyCiphertext() throws {
-        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
-            throw XCTSkip("native-required in domain-core CI")
-        }
         assertNativeDomainCoreLoaded()
         setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
         defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
@@ -45,9 +51,6 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
     }
 
     func testRustModeMatchesCanonicalSafetyCode() throws {
-        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
-            throw XCTSkip("native-required in domain-core CI")
-        }
         assertNativeDomainCoreLoaded()
         setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
         defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
@@ -74,9 +77,6 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
     /// calls `HermesRelayLegacyCrypto` directly, bypassing the adapter entirely,
     /// so no `seal_combined`/`open_combined` comparison is ever recorded.
     func testShadowModeRecordsKeyWrapAeadComparisonEvidence() throws {
-        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
-            throw XCTSkip("native-required in domain-core CI")
-        }
         assertNativeDomainCoreLoaded()
 
         var comparisons: [DomainCoreShadowComparison] = []
@@ -126,9 +126,6 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
     /// domain-core library. The loaded native identity (ABI version 3) is the
     /// evidence that the Rust path is live, not a mocked fallback.
     func testRustModeRoundTripsKeyWrapThroughNativeDomainCore() throws {
-        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
-            throw XCTSkip("native-required in domain-core CI")
-        }
         assertNativeDomainCoreLoaded()
         setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
         defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
@@ -158,9 +155,6 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
     /// verification failure must propagate as an error, never silently succeed
     /// or fall back to legacy.
     func testRustModeFailsClosedOnTamperedWrappedKey() throws {
-        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
-            throw XCTSkip("native-required in domain-core CI")
-        }
         assertNativeDomainCoreLoaded()
         setenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE", "rust", 1)
         defer { unsetenv("OPENBURNBAR_DOMAIN_CORE_HERMES_MODE") }
@@ -197,9 +191,6 @@ final class HermesDomainCoreMigrationTests: XCTestCase {
     /// round-trips and the recorded `seal_combined`/`open_combined` comparisons
     /// report `match` (Rust agrees with legacy), never `mismatch`.
     func testShadowModeKeyWrapComparisonReportsMatchNotMismatch() throws {
-        guard ProcessInfo.processInfo.environment["OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE"] == "1" else {
-            throw XCTSkip("native-required in domain-core CI")
-        }
         assertNativeDomainCoreLoaded()
 
         var comparisons: [DomainCoreShadowComparison] = []

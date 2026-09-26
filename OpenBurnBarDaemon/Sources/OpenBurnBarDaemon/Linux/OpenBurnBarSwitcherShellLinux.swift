@@ -84,12 +84,19 @@ public protocol BurnBarSwitcherProfileStoreProviding: Sendable {
 
 /// Linux profile store: synthesizes PATH-discovered CLI profiles (no keychain).
 public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStoreProviding, Sendable {
-    private let lock = Locked(StoreState())
+    // Internal (not private) so the Wave 2.1c-v app lane — the single write
+    // choke point, in BurnBarSwitcherSQLiteProfileStore+ActiveProfileLane —
+    // shares this state. Still module-confined; no API change.
+    let lock = Locked(StoreState())
 
-    private struct StoreState: Sendable {
+    struct StoreState: Sendable {
         var activeID: String?
         var cache: [SwitcherProfileRecord] = []
         var loaded = false
+        // Per-provider drain targets for the Wave 2.1c-v app lane, so RPC
+        // semantics stay uniform across platforms (in-memory, like the rest
+        // of the Linux store).
+        var drainTargets: [String: String] = [:]
     }
 
     public init(databaseURL: URL = BurnBarDaemonPaths.supportDirectoryURL.appendingPathComponent("openburnbar.sqlite")) throws {
@@ -112,7 +119,13 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
     }
 
     public func setActiveProfileID(_ profileID: String?) {
-        lock.withLock { $0.activeID = profileID }
+        // Wave 2.1c-v: the app lane is the single write choke point (see the
+        // macOS twin). Validation rejects only empty-string IDs — which
+        // previously stored a garbage row — so dropping them here is
+        // fail-closed; `try?` preserves the void contract.
+        try? switcherActiveProfileApply(
+            BurnBarSwitcherActiveProfileApplyRequest(sets: [.init(profileID: profileID)])
+        )
     }
 
     public func updateProfile(_ profile: SwitcherProfileRecord) {

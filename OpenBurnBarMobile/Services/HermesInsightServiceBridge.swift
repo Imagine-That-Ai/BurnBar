@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Bridges the mobile shell's `HermesService` into the OpenBurnBarCore
 /// Insights gateway machinery.

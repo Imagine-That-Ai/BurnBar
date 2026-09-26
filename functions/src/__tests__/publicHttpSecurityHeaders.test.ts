@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { setPublicJsonSecurityHeaders } from "../publicHttpSecurityHeaders.js";
+import { setPublicJsonSecurityHeaders } from "../../../packages/functions-shared/src/publicHttpSecurityHeaders.js";
 
 describe("setPublicJsonSecurityHeaders", () => {
   it("sets the security headers expected by the public JSON DAST lane", () => {

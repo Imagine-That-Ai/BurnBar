@@ -1,7 +1,10 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarKernel
+import OpenBurnBarVectorKit
 import OpenBurnBarComputerUseCore
+import OpenBurnBarAnalytics
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -201,6 +204,131 @@ extension ChatSessionController {
         sendInFlight = true
         defer { sendInFlight = false }
 
+        await commitUserTurn(trimmed: trimmed, attachmentsToSend: attachmentsToSend)
+
+        guard await checkModelRouting() else { return }
+
+        guard let retrieval = await runRetrievalPhase(trimmed: trimmed) else { return }
+        let assistantId = retrieval.assistantId
+        let streamStartedAt = retrieval.streamStartedAt
+
+        guard let prompt = await assemblePrompt(trimmed: trimmed, retrieval: retrieval) else { return }
+        let augmentedSystem = prompt.augmentedSystem
+        let multiTurnHistory = prompt.multiTurnHistory
+        let requestModel = prompt.requestModel
+        let activeToolBroker = prompt.activeToolBroker
+        let activeDesktopGrant = prompt.activeDesktopGrant
+
+        // `requestModel` is resolved above (G9 prompt token arbiter) and reused here.
+        // Load bytes for any attachments referenced by history. We load lazily
+        // so re-opened threads don't pay the cost when nothing was attached.
+        let attachmentByteMap: [String: Data] = Self.collectAttachmentBytes(
+            history: multiTurnHistory,
+            workspaceURL: chatWorkspaceURL
+        )
+        let backendCapabilities = backendCapabilities(for: chatBackend, modelID: requestModel)
+
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            var didRouteThroughFusion = false
+            do {
+                let elderWandPlugins = await MainActor.run {
+                    self.settingsManager.elderWandPluginsPayload()
+                }
+                let fusionActive = elderWandPlugins != nil
+                didRouteThroughFusion = fusionActive
+                let fusionGatewayBaseURL = fusionActive
+                    ? await MainActor.run { self.burnBarGatewayBaseURL }
+                    : nil
+                let hostedSearchHeaders: [String: String]
+                if let fusionGatewayBaseURL {
+                    hostedSearchHeaders = await Self.elderWandHostedSearchHeaders(for: fusionGatewayBaseURL)
+                } else {
+                    hostedSearchHeaders = [:]
+                }
+                let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
+                    self.makeBackendStream(
+                        augmentedSystem: augmentedSystem,
+                        multiTurnHistory: multiTurnHistory,
+                        requestModel: requestModel,
+                        attachmentByteMap: attachmentByteMap,
+                        backendCapabilities: backendCapabilities,
+                        activeToolBroker: activeToolBroker,
+                        activeDesktopGrant: activeDesktopGrant,
+                        elderWandPlugins: elderWandPlugins,
+                        fusionActive: fusionActive,
+                        fusionGatewayBaseURL: fusionGatewayBaseURL,
+                        hostedSearchHeaders: hostedSearchHeaders,
+                        trimmed: trimmed
+                    )
+                }
+                let consumption = try await Self.consumeChatStream(
+                    stream,
+                    onCommit: { [weak self] joined, snapshot in
+                        guard let self else { return }
+                        await Task { @MainActor in
+                            if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
+                                // In-place mutation keeps each commit bounded
+                                // while the streaming tick remains the single
+                                // observation broadcast for mirror views.
+                                self.messages[idx].content = joined
+                                self.messages[idx].transcriptPieces = snapshot
+                                self.streamingTick &+= 1
+                            }
+                        }.value
+                    },
+                    onStructuralEvent: { [weak self] event in
+                        guard let self else { return }
+                        switch event {
+                        case .toolUse(let name, _):
+                            Task { @MainActor in
+                                Analytics.shared.track(.chatToolInvoked, [
+                                    "tool_name": .string(AnalyticsBuckets.toolName(name)),
+                                    "backend": .string(self.chatBackend.rawValue)
+                                ])
+                            }
+                        case .sessionID(let sessionID):
+                            // fx multi-turn: remember the provider session so
+                            // the next send continues it via `--resume`.
+                            self.fxResumeSessionID = sessionID
+                        case .toolResult(let name, let detail):
+                            #if canImport(AppKit) && !DISTRIBUTION_MAS
+                            if let detail {
+                                Task { @MainActor in
+                                    await SystemPermissionToolFailureWatcher.shared.observe(
+                                        toolName: name,
+                                        detail: detail,
+                                        toolCallId: assistantId
+                                    )
+                                }
+                            }
+                            #endif
+                        default:
+                            break
+                        }
+                    }
+                )
+                let usageSnapshot = consumption.usageSnapshot
+                await self.settleStreamSuccess(
+                    assistantId: assistantId,
+                    requestModel: requestModel,
+                    streamStartedAt: streamStartedAt,
+                    usageSnapshot: usageSnapshot,
+                    didRouteThroughFusion: didRouteThroughFusion
+                )
+            } catch {
+                await self.settleStreamFailure(
+                    assistantId: assistantId,
+                    error: error,
+                    didRouteThroughFusion: didRouteThroughFusion
+                )
+            }
+        }
+    }
+
+    /// Commits the accepted user turn: resets per-turn UI state, appends the
+    /// user message, persists it, and clears the composer. Phase 1 of `send()`.
+    private func commitUserTurn(trimmed: String, attachmentsToSend: [HermesAttachment]) async {
         streamError = nil
         completedFusionSessionToken = nil
         conversationJumpTargets = []
@@ -224,8 +352,15 @@ extension ChatSessionController {
         inputText = ""
         pendingAttachments = []
         attachmentError = nil
+    }
 
-        guard await validateChatBackendAvailability() else { return }
+    /// Phase 2 of `send()`: route + backend availability. Backend gates model
+    /// selection — selection can force a reroute, but availability never
+    /// rewrites selection. Re-probes once on a stale empty-catalog error, then
+    /// fails closed with a red bubble before paying retrieval. Returns false
+    /// when the send must stop.
+    private func checkModelRouting() async -> Bool {
+        guard await validateChatBackendAvailability() else { return false }
 
         // Hermes gate hardening (build #769 symptom "could not read its live model
         // catalog"): the routing error fires when `liveAdvertisedModels` is empty,
@@ -269,9 +404,27 @@ extension ChatSessionController {
             }
             refreshHistory()
             selectedContext = nil
-            return
+            return false
         }
+        return true
+    }
 
+    /// Phase 3 output: everything later phases of `send()` need from retrieval.
+    private struct RetrievalPhaseOutput {
+        let promptHistory: [ChatMessageRecord]
+        let assistantId: String
+        let streamStartedAt: Date
+        let searchService: SearchService?
+        let retrievalResults: [RetrievalResult]
+        let queryRun: OpenBurnBarQueryRunResult
+        let oracleContextSection: String
+    }
+
+    /// Phase 3 of `send()`: paint the thinking placeholder, run typed or
+    /// fallback retrieval, build jump targets, and run the local-index oracle.
+    /// Returns nil when the send must stop (superseded stream, or the oracle
+    /// settled the turn locally without an LLM call).
+    private func runRetrievalPhase(trimmed: String) async -> RetrievalPhaseOutput? {
         // Capture the transcript the model should see *before* the empty
         // assistant placeholder is appended. Hermes/OpenClaw/Pi send the
         // in-memory history; an empty assistant turn would look like a reply.
@@ -369,7 +522,7 @@ extension ChatSessionController {
             conversationJumpTargets = oracleResult.jumpTargets
         }
 
-        guard isStreaming, activeStreamMessageId == assistantId else { return }
+        guard isStreaming, activeStreamMessageId == assistantId else { return nil }
 
         if indexedResponseStrategy == .localOracle, let oracleResult {
             let response = oracleResult.message.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -382,7 +535,7 @@ extension ChatSessionController {
                 isTerminalAssistantCommit: true
             )
             selectedContext = nil
-            return
+            return nil
         }
 
         let oracleContextSection: String
@@ -402,14 +555,39 @@ extension ChatSessionController {
             oracleContextSection = ""
         }
 
+        return RetrievalPhaseOutput(
+            promptHistory: promptHistory,
+            assistantId: assistantId,
+            streamStartedAt: streamStartedAt,
+            searchService: searchSvc,
+            retrievalResults: retrievalResults,
+            queryRun: queryRun,
+            oracleContextSection: oracleContextSection
+        )
+    }
+
+    /// Phase 4 output: the assembled prompt plus the dispatch inputs derived
+    /// alongside it (tool broker, workspace path, desktop grant).
+    private struct AssembledPrompt {
+        let augmentedSystem: String
+        let multiTurnHistory: [ChatMessageRecord]
+        let requestModel: String
+        let activeToolBroker: AgentToolBroker?
+        let activeDesktopGrant: AgentCapabilityGrant?
+    }
+
+    /// Phase 4 of `send()`: format evidence, build prompt sections, and
+    /// assemble the augmented system prompt under the token arbiter. Returns
+    /// nil when the stream was superseded before dispatch.
+    private func assemblePrompt(trimmed: String, retrieval: RetrievalPhaseOutput) async -> AssembledPrompt? {
         let retrievalPack = OpenBurnBarChatEvidenceFormatting.formatPack(
-            results: retrievalResults,
+            results: retrieval.retrievalResults,
             maxTotalChars: OpenBurnBarChatContextBudget.maxEvidenceChars
         )
         let aggregateSection = OpenBurnBarChatEvidenceFormatting.formatAggregateSection(
-            patterns: queryRun.plan.aggregatePatterns,
-            totalOccurrences: queryRun.aggregateOccurrenceCount,
-            windowDescription: queryRun.aggregateWindowDescription
+            patterns: retrieval.queryRun.plan.aggregatePatterns,
+            totalOccurrences: retrieval.queryRun.aggregateOccurrenceCount,
+            windowDescription: retrieval.queryRun.aggregateWindowDescription
         )
         let evidencePack = OpenBurnBarChatEvidenceFormatting.composeEvidenceAndAggregate(
             retrievalPack: retrievalPack,
@@ -418,19 +596,19 @@ extension ChatSessionController {
 
         let promptSections = await ContextBuilder.buildDatabaseAnalystSystemPromptSections(
             from: dataStore,
-            intelligenceService: searchSvc,
+            intelligenceService: retrieval.searchService,
             indexingEnabled: settingsManager.conversationIndexingEnabled,
             health: retrievalHealthSnapshot
         )
 
-        let focusSection = focusSessionSection(retrievalResults: retrievalResults)
+        let focusSection = focusSessionSection(retrievalResults: retrieval.retrievalResults)
 
         ensureChatWorkspaceDirectoryExists()
         let workspacePath = chatWorkspaceURL.path
         let activeDesktopGrant = activeDesktopControlGrant
         let activeToolBroker = activeAgentToolBroker()
         let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw || chatBackend == .piAgent)
-            ? promptHistory
+            ? retrieval.promptHistory
             : []
 
         // G9: assemble augmentedSystem under one token-aware arbiter so a future
@@ -480,7 +658,7 @@ extension ChatSessionController {
             PromptTokenSection(id: .core, content: corePrompt),
             PromptTokenSection(id: .toolDefs, content: toolDefsSection),
             PromptTokenSection(id: .focus, content: focusSection),
-            PromptTokenSection(id: .evidence, content: evidencePack + oracleContextSection),
+            PromptTokenSection(id: .evidence, content: evidencePack + retrieval.oracleContextSection),
             // F-2 recall snippets (wrapped, G8) + ephemeral usage rollups both share the
             // arbiter's pool below evidence; neither enters the trusted `.core`.
             PromptTokenSection(id: .memory, content: memorySection + petPersonaSection),
@@ -499,332 +677,289 @@ extension ChatSessionController {
         }
         let augmentedSystem = assembledPrompt.systemPrompt
 
-        guard isStreaming, activeStreamMessageId == assistantId else { return }
+        guard isStreaming, activeStreamMessageId == retrieval.assistantId else { return nil }
 
-        // `requestModel` is resolved above (G9 prompt token arbiter) and reused here.
-        // Load bytes for any attachments referenced by history. We load lazily
-        // so re-opened threads don't pay the cost when nothing was attached.
-        let attachmentByteMap: [String: Data] = Self.collectAttachmentBytes(
-            history: multiTurnHistory,
-            workspaceURL: chatWorkspaceURL
+        return AssembledPrompt(
+            augmentedSystem: augmentedSystem,
+            multiTurnHistory: multiTurnHistory,
+            requestModel: requestModel,
+            activeToolBroker: activeToolBroker,
+            activeDesktopGrant: activeDesktopGrant
         )
-        let backendCapabilities = backendCapabilities(for: chatBackend, modelID: requestModel)
+    }
 
-        streamTask = Task { [weak self] in
-            guard let self else { return }
-            var didRouteThroughFusion = false
-            do {
-                let elderWandPlugins = await MainActor.run {
-                    self.settingsManager.elderWandPluginsPayload()
-                }
-                let fusionActive = elderWandPlugins != nil
-                didRouteThroughFusion = fusionActive
-                let fusionGatewayBaseURL = fusionActive
-                    ? await MainActor.run { self.burnBarGatewayBaseURL }
-                    : nil
-                let hostedSearchHeaders: [String: String]
-                if let fusionGatewayBaseURL {
-                    hostedSearchHeaders = await Self.elderWandHostedSearchHeaders(for: fusionGatewayBaseURL)
-                } else {
-                    hostedSearchHeaders = [:]
-                }
-                let stream = await MainActor.run { () -> AsyncThrowingStream<CLIChatStreamEvent, Error> in
-                    // The Elder Wand: when a model-fusion preset is active, the
-                    // OpenAI-compatible chat backends carry the `plugins:[{id:"fusion",…}]`
-                    // block AND redirect to the BurnBar daemon gateway (8317), where the
-                    // fusion orchestrator lives — not the Hermes CLI gateway (8642).
-                    switch self.chatBackend {
-                    case .hermes:
-                        // Keep Hermes system-prompt construction shared with iOS.
-                        let hermesPrompt = HermesSystemPromptBuilder(
-                            dashboardContext: augmentedSystem,
-                            includesAtomDirective: true
-                        ).build()
-                        return self.cliBridge.chatHermes(
-                            baseURL: fusionGatewayBaseURL ?? self.hermesGatewayBaseURL,
-                            systemPrompt: hermesPrompt,
-                            history: multiTurnHistory,
-                            bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.hermesBearerToken,
-                            model: requestModel,
-                            attachmentBytes: attachmentByteMap,
-                            capabilities: backendCapabilities,
-                            workspaceURL: self.chatWorkspaceURL,
-                            toolBroker: activeToolBroker,
-                            plugins: elderWandPlugins,
-                            additionalHeaders: hostedSearchHeaders
-                        )
-                    case .openclaw:
-                        let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
-                            ?? URL(string: "http://127.0.0.1:18789")!
-                        return self.cliBridge.chatOpenClaw(
-                            baseURL: fusionGatewayBaseURL ?? base,
-                            systemPrompt: augmentedSystem,
-                            history: multiTurnHistory,
-                            bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.openClawBearerToken,
-                            model: requestModel,
-                            attachmentBytes: attachmentByteMap,
-                            capabilities: backendCapabilities,
-                            workspaceURL: self.chatWorkspaceURL,
-                            toolBroker: activeToolBroker,
-                            plugins: elderWandPlugins,
-                            additionalHeaders: hostedSearchHeaders
-                        )
-                    case .piAgent:
-                        // Attribute the responder to the active Pi agent without user-visible leakage.
-                        let piPrompt = Self.piSystemPrompt(
-                            base: augmentedSystem,
-                            instanceID: self.settingsManager.piAgentSelectedInstanceID
-                        )
-                        return self.cliBridge.chatPiAgent(
-                            baseURL: fusionGatewayBaseURL ?? self.piAgentGatewayBaseURL,
-                            systemPrompt: piPrompt,
-                            history: multiTurnHistory,
-                            bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.piAgentBearerToken,
-                            model: requestModel,
-                            attachmentBytes: attachmentByteMap,
-                            capabilities: backendCapabilities,
-                            workspaceURL: self.chatWorkspaceURL,
-                            toolBroker: activeToolBroker,
-                            plugins: elderWandPlugins,
-                            additionalHeaders: hostedSearchHeaders
-                        )
-                    case .codex:
-                        return self.cliBridge.chatCodexStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant,
-                            profileStore: self.makeCLIProfileStoreAdapter(),
-                            fallbackPlanner: self.makeCLIStreamFallbackPlanner()
-                        )
-                    case .claude:
-                        return self.cliBridge.chatClaudeStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant
-                        )
-                    case .droid:
-                        return self.cliBridge.chatDroidStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant
-                        )
-                    case .forge:
-                        return self.cliBridge.chatForgeStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant
-                        )
-                    case .antigravity:
-                        return self.cliBridge.chatAntigravityStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            capabilityGrant: activeDesktopGrant
-                        )
-                    case .cursorAgent:
-                        return self.cliBridge.chatCursorAgentStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant
-                        )
-                    case .openClaude:
-                        return self.cliBridge.chatOpenClaudeStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant
-                        )
-                    case .omp:
-                        return self.cliBridge.chatOMPStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant
-                        )
-                    case .junie:
-                        return self.cliBridge.chatJunieStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant
-                        )
-                    case .fx:
-                        return self.cliBridge.chatFxStream(
-                            systemPrompt: augmentedSystem,
-                            userMessage: trimmed,
-                            workspaceDirectory: self.chatWorkspaceURL,
-                            model: requestModel,
-                            capabilityGrant: activeDesktopGrant,
-                            resumeSessionID: self.fxResumeSessionID
-                        )
-                    case .grok, .kimi:
-                        let backendName = self.chatBackend.displayName
-                        return AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
-                            continuation.finish(throwing: CLIBridgeError.acpChatUnavailable(backendName))
-                        }
-                    }
-                }
-                let consumption = try await Self.consumeChatStream(
-                    stream,
-                    onCommit: { [weak self] joined, snapshot in
-                        guard let self else { return }
-                        await Task { @MainActor in
-                            if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                                // In-place mutation keeps each commit bounded
-                                // while the streaming tick remains the single
-                                // observation broadcast for mirror views.
-                                self.messages[idx].content = joined
-                                self.messages[idx].transcriptPieces = snapshot
-                                self.streamingTick &+= 1
-                            }
-                        }.value
-                    },
-                    onStructuralEvent: { [weak self] event in
-                        guard let self else { return }
-                        switch event {
-                        case .toolUse(let name, _):
-                            Task { @MainActor in
-                                Analytics.shared.track(.chatToolInvoked, [
-                                    "tool_name": .string(AnalyticsBuckets.toolName(name)),
-                                    "backend": .string(self.chatBackend.rawValue)
-                                ])
-                            }
-                        case .sessionID(let sessionID):
-                            // fx multi-turn: remember the provider session so
-                            // the next send continues it via `--resume`.
-                            self.fxResumeSessionID = sessionID
-                        case .toolResult(let name, let detail):
-                            #if canImport(AppKit) && !DISTRIBUTION_MAS
-                            if let detail {
-                                Task { @MainActor in
-                                    await SystemPermissionToolFailureWatcher.shared.observe(
-                                        toolName: name,
-                                        detail: detail,
-                                        toolCallId: assistantId
-                                    )
-                                }
-                            }
-                            #endif
-                        default:
-                            break
-                        }
-                    }
-                )
-                let usageSnapshot = consumption.usageSnapshot
-                await Task { @MainActor in
-                    self.isStreaming = false
-                    self.activeStreamMessageId = nil
-                    if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                        let final = self.messages[idx]
-                        Analytics.shared.track(.chatGenerationCompleted, [
-                            "backend": .string(self.chatBackend.rawValue),
-                            "model": .string(requestModel),
-                            "duration_ms": .string(AnalyticsBuckets.durationMs(
-                                final.timestamp.timeIntervalSince(streamStartedAt) * 1000
-                            )),
-                            "has_tools": .bool(final.transcriptPieces.contains { $0.kind == .toolUse })
-                        ])
-                        do {
-                            try await self.dataStore.saveChatMessage(
-                                final,
-                                threadID: self.activeThreadID,
-                                isTerminalAssistantCommit: true,
-                                memoryService: self.memoryServiceForExtraction,
-                                extractionContext: self.makeMemoryExtractionContext()
-                            )
-                            // PR-D3: kick the drain for the just-enqueued extraction job
-                            // (no-op when extraction is off).
-                            self.scheduleMemoryDrainAfterCommit()
-                            await self.saveUsageIfNeeded(
-                                usageSnapshot,
-                                backend: self.chatBackend,
-                                requestModel: requestModel,
-                                responseMessageID: assistantId,
-                                startedAt: streamStartedAt,
-                                endedAt: final.timestamp
-                            )
-                        } catch {
-                            AppLogger.chat.silentFailure("saveChatMessage (streaming final)", error: error)
-                        }
-                        self.refreshHistory()
-                        // Mirror the full transcript (text + tool pills) to
-                        // Firestore so the iOS Assistants tab can render
-                        // this Codex/Claude/OpenClaw session inline. No-op
-                        // for hermes / piAgent — those have their own
-                        // existing mirror path.
-                        let mirrorMessages = self.messages
-                        let mirrorThreadID = self.activeThreadID
-                        let mirrorBackend = self.chatBackend
-                        let mirrorModel = requestModel
-                        let mirrorWorkspace = self.chatWorkspaceURL.lastPathComponent
-                        let mirrorUsage = usageSnapshot
-                        Task { @MainActor in
-                            await CLIAgentSessionMirror.shared.mirror(
-                                threadID: mirrorThreadID,
-                                backend: mirrorBackend,
-                                modelName: mirrorModel,
-                                workspaceLabel: mirrorWorkspace,
-                                messages: mirrorMessages,
-                                usage: mirrorUsage
-                            )
-                        }
-                        self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion)
-                    }
-                    self.selectedContext = nil
-                    self.onStreamSettled?(.completed)
-                }.value
-            } catch {
-                await Task { @MainActor in
-                    self.isStreaming = false
-                    self.activeStreamMessageId = nil
-                    let shouldPersistFailure = !(error is CancellationError)
-                    // Don't surface cancellation as an error — cancelGeneration() already cleaned up
-                    if shouldPersistFailure {
-                        let nsError = error as NSError
-                        Analytics.shared.track(.chatGenerationFailed, [
-                            "backend": .string(self.chatBackend.rawValue),
-                            "error_type": .string(String(describing: type(of: error)))
-                        ])
-                        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut {
-                            self.streamError = "Chat request timed out — try again or simplify the request."
-                        } else {
-                            self.streamError = error.localizedDescription
-                        }
-                    }
-                    if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                        if self.messages[idx].content.isEmpty {
-                            self.messages[idx].content = self.streamError ?? "Error"
-                        }
-                        if shouldPersistFailure {
-                            do {
-                                try await self.dataStore.saveChatMessage(
-                                    self.messages[idx],
-                                    threadID: self.activeThreadID
-                                )
-                                self.refreshHistory()
-                            } catch {
-                                AppLogger.chat.silentFailure("saveChatMessage (streaming failure)", error: error)
-                            }
-                        }
-                    }
-                    self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion, error: error)
-                    self.onStreamSettled?(.failed(cancelled: error is CancellationError))
-                }.value
+    /// Phase 5 of `send()`: builds the backend stream for the selected chat
+    /// backend. Called on the main actor from inside the stream task.
+    private func makeBackendStream(
+        augmentedSystem: String,
+        multiTurnHistory: [ChatMessageRecord],
+        requestModel: String,
+        attachmentByteMap: [String: Data],
+        backendCapabilities: HermesBackendCapabilities,
+        activeToolBroker: AgentToolBroker?,
+        activeDesktopGrant: AgentCapabilityGrant?,
+        elderWandPlugins: [[String: any Sendable]]?,
+        fusionActive: Bool,
+        fusionGatewayBaseURL: URL?,
+        hostedSearchHeaders: [String: String],
+        trimmed: String
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        // The Elder Wand: when a model-fusion preset is active, the
+        // OpenAI-compatible chat backends carry the `plugins:[{id:"fusion",…}]`
+        // block AND redirect to the BurnBar daemon gateway (8317), where the
+        // fusion orchestrator lives — not the Hermes CLI gateway (8642).
+        switch self.chatBackend {
+        case .hermes:
+            // Keep Hermes system-prompt construction shared with iOS.
+            let hermesPrompt = HermesSystemPromptBuilder(
+                dashboardContext: augmentedSystem,
+                includesAtomDirective: true
+            ).build()
+            return self.cliBridge.chatHermes(
+                baseURL: fusionGatewayBaseURL ?? self.hermesGatewayBaseURL,
+                systemPrompt: hermesPrompt,
+                history: multiTurnHistory,
+                bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.hermesBearerToken,
+                model: requestModel,
+                attachmentBytes: attachmentByteMap,
+                capabilities: backendCapabilities,
+                workspaceURL: self.chatWorkspaceURL,
+                toolBroker: activeToolBroker,
+                plugins: elderWandPlugins,
+                additionalHeaders: hostedSearchHeaders
+            )
+        case .openclaw:
+            let base = URL(string: self.settingsManager.openClawGatewayBaseURL)
+                ?? URL(staticString: "http://127.0.0.1:18789")
+            return self.cliBridge.chatOpenClaw(
+                baseURL: fusionGatewayBaseURL ?? base,
+                systemPrompt: augmentedSystem,
+                history: multiTurnHistory,
+                bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.openClawBearerToken,
+                model: requestModel,
+                attachmentBytes: attachmentByteMap,
+                capabilities: backendCapabilities,
+                workspaceURL: self.chatWorkspaceURL,
+                toolBroker: activeToolBroker,
+                plugins: elderWandPlugins,
+                additionalHeaders: hostedSearchHeaders
+            )
+        case .piAgent:
+            // Attribute the responder to the active Pi agent without user-visible leakage.
+            let piPrompt = Self.piSystemPrompt(
+                base: augmentedSystem,
+                instanceID: self.settingsManager.piAgentSelectedInstanceID
+            )
+            return self.cliBridge.chatPiAgent(
+                baseURL: fusionGatewayBaseURL ?? self.piAgentGatewayBaseURL,
+                systemPrompt: piPrompt,
+                history: multiTurnHistory,
+                bearerToken: fusionActive ? self.burnBarGatewayBearerToken : self.piAgentBearerToken,
+                model: requestModel,
+                attachmentBytes: attachmentByteMap,
+                capabilities: backendCapabilities,
+                workspaceURL: self.chatWorkspaceURL,
+                toolBroker: activeToolBroker,
+                plugins: elderWandPlugins,
+                additionalHeaders: hostedSearchHeaders
+            )
+        case .codex:
+            return self.cliBridge.chatCodexStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                model: requestModel,
+                capabilityGrant: activeDesktopGrant,
+                profileStore: self.makeCLIProfileStoreAdapter(),
+                fallbackPlanner: self.makeCLIStreamFallbackPlanner()
+            )
+        case .claude:
+            return self.cliBridge.chatClaudeStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                model: requestModel,
+                capabilityGrant: activeDesktopGrant
+            )
+        case .droid:
+            return self.cliBridge.chatDroidStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                model: requestModel,
+                capabilityGrant: activeDesktopGrant
+            )
+        case .forge:
+            return self.cliBridge.chatForgeStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                model: requestModel,
+                capabilityGrant: activeDesktopGrant
+            )
+        case .antigravity:
+            return self.cliBridge.chatAntigravityStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                capabilityGrant: activeDesktopGrant
+            )
+        case .cursorAgent:
+            return self.cliBridge.chatCursorAgentStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                model: requestModel,
+                capabilityGrant: activeDesktopGrant
+            )
+        case .openClaude:
+            return self.cliBridge.chatOpenClaudeStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                capabilityGrant: activeDesktopGrant
+            )
+        case .omp:
+            return self.cliBridge.chatOMPStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                model: requestModel,
+                capabilityGrant: activeDesktopGrant
+            )
+        case .junie:
+            return self.cliBridge.chatJunieStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                model: requestModel,
+                capabilityGrant: activeDesktopGrant
+            )
+        case .fx:
+            return self.cliBridge.chatFxStream(
+                systemPrompt: augmentedSystem,
+                userMessage: trimmed,
+                workspaceDirectory: self.chatWorkspaceURL,
+                model: requestModel,
+                capabilityGrant: activeDesktopGrant,
+                resumeSessionID: self.fxResumeSessionID
+            )
+        case .grok, .kimi:
+            let backendName = self.chatBackend.displayName
+            return AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
+                continuation.finish(throwing: CLIBridgeError.acpChatUnavailable(backendName))
             }
         }
+    }
+
+    /// Phase 6 of `send()`: settles a successfully consumed stream — terminal
+    /// persist + usage attribution + iOS mirror + fusion receipt.
+    private func settleStreamSuccess(
+        assistantId: String,
+        requestModel: String,
+        streamStartedAt: Date,
+        usageSnapshot: CLIUsageSnapshot?,
+        didRouteThroughFusion: Bool
+    ) async {
+        self.isStreaming = false
+        self.activeStreamMessageId = nil
+        if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
+            let final = self.messages[idx]
+            Analytics.shared.track(.chatGenerationCompleted, [
+                "backend": .string(self.chatBackend.rawValue),
+                "model": .string(requestModel),
+                "duration_ms": .string(AnalyticsBuckets.durationMs(
+                    final.timestamp.timeIntervalSince(streamStartedAt) * 1000
+                )),
+                "has_tools": .bool(final.transcriptPieces.contains { $0.kind == .toolUse })
+            ])
+            do {
+                try await self.dataStore.saveChatMessage(
+                    final,
+                    threadID: self.activeThreadID,
+                    isTerminalAssistantCommit: true,
+                    memoryService: self.memoryServiceForExtraction,
+                    extractionContext: self.makeMemoryExtractionContext()
+                )
+                // PR-D3: kick the drain for the just-enqueued extraction job
+                // (no-op when extraction is off).
+                self.scheduleMemoryDrainAfterCommit()
+                await self.saveUsageIfNeeded(
+                    usageSnapshot,
+                    backend: self.chatBackend,
+                    requestModel: requestModel,
+                    responseMessageID: assistantId,
+                    startedAt: streamStartedAt,
+                    endedAt: final.timestamp
+                )
+            } catch {
+                AppLogger.chat.silentFailure("saveChatMessage (streaming final)", error: error)
+            }
+            self.refreshHistory()
+            // Mirror the full transcript (text + tool pills) to
+            // Firestore so the iOS Assistants tab can render
+            // this Codex/Claude/OpenClaw session inline. No-op
+            // for hermes / piAgent — those have their own
+            // existing mirror path.
+            let mirrorMessages = self.messages
+            let mirrorThreadID = self.activeThreadID
+            let mirrorBackend = self.chatBackend
+            let mirrorModel = requestModel
+            let mirrorWorkspace = self.chatWorkspaceURL.lastPathComponent
+            let mirrorUsage = usageSnapshot
+            Task { @MainActor in
+                await CLIAgentSessionMirror.shared.mirror(
+                    threadID: mirrorThreadID,
+                    backend: mirrorBackend,
+                    modelName: mirrorModel,
+                    workspaceLabel: mirrorWorkspace,
+                    messages: mirrorMessages,
+                    usage: mirrorUsage
+                )
+            }
+            self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion)
+        }
+        self.selectedContext = nil
+        self.onStreamSettled?(.completed)
+    }
+
+    /// Phase 7 of `send()`: settles a failed or cancelled stream — red bubble
+    /// (unless cancelled) + conditional persist + fusion receipt.
+    private func settleStreamFailure(assistantId: String, error: Error, didRouteThroughFusion: Bool) async {
+        self.isStreaming = false
+        self.activeStreamMessageId = nil
+        let shouldPersistFailure = !(error is CancellationError)
+        // Don't surface cancellation as an error — cancelGeneration() already cleaned up
+        if shouldPersistFailure {
+            let nsError = error as NSError
+            Analytics.shared.track(.chatGenerationFailed, [
+                "backend": .string(self.chatBackend.rawValue),
+                "error_type": .string(String(describing: type(of: error)))
+            ])
+            if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut {
+                self.streamError = "Chat request timed out — try again or simplify the request."
+            } else {
+                self.streamError = error.localizedDescription
+            }
+        }
+        if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
+            if self.messages[idx].content.isEmpty {
+                self.messages[idx].content = self.streamError ?? "Error"
+            }
+            if shouldPersistFailure {
+                do {
+                    try await self.dataStore.saveChatMessage(
+                        self.messages[idx],
+                        threadID: self.activeThreadID
+                    )
+                    self.refreshHistory()
+                } catch {
+                    AppLogger.chat.silentFailure("saveChatMessage (streaming failure)", error: error)
+                }
+            }
+        }
+        self.completeFusionSessionReceiptIfNeeded(didRouteThroughFusion, error: error)
+        self.onStreamSettled?(.failed(cancelled: error is CancellationError))
     }
 
     /// Empty assistant row shown the moment a send is accepted, so retrieval

@@ -3,7 +3,8 @@ import FirebaseAppCheck
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
 import OSLog
 
 // MARK: - CLI Agent Chat Reader

@@ -44,12 +44,12 @@ function tsFilesUnder(dir: string): string[] {
 
 describe("lazy googleapis loading", () => {
   it("importing secrets.ts does not load googleapis", async () => {
-    await import("../secrets.js");
+    await import("../../../packages/functions-shared/src/secrets.js");
     expect(googleapisLoads).toBe(0);
   });
 
   it("first credential operation loads googleapis on demand", async () => {
-    const { destroyCredential } = await import("../secrets.js");
+    const { destroyCredential } = await import("../../../packages/functions-shared/src/secrets.js");
     await destroyCredential("projects/p/secrets/obb-test/versions/1");
     expect(googleapisLoads).toBe(1);
     expect(destroy).toHaveBeenCalledWith({ name: "projects/p/secrets/obb-test/versions/1" });

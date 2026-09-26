@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
 /// Unit tests for formatting utilities — pure functions with no
 /// external dependencies. These are the display formatters used

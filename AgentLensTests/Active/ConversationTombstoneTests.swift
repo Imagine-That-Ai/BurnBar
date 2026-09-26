@@ -3,6 +3,7 @@ import GRDB
 import FirebaseFirestore
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// B-DATA-2 — Cross-device delete propagation (tombstones).
 ///

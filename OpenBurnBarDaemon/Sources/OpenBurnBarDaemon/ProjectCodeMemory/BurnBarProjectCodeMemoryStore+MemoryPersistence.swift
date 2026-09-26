@@ -299,8 +299,8 @@ extension BurnBarProjectCodeMemoryStore {
         now: String
     ) throws {
         var snapshot = try loadProjectMemorySnapshot(projectID: projectID, projectDisplayName: projectDisplayName, now: now)
-        var pages = snapshot["pages"] as? [[String: Any]] ?? []
-        let section: [String: Any] = [
+        var pages = snapshot["pages"] as? [DaemonJSONObject] ?? []
+        let section: DaemonJSONObject = [
             "id": memoryID,
             "title": Self.memorySectionTitle(kind: kind, scope: scope, tags: tags),
             "body": body,
@@ -309,7 +309,7 @@ extension BurnBarProjectCodeMemoryStore {
 
         if let index = pages.firstIndex(where: { ($0["id"] as? String) == Self.agentMemoryPageID }) {
             var page = pages[index]
-            var sections = page["sections"] as? [[String: Any]] ?? []
+            var sections = page["sections"] as? [DaemonJSONObject] ?? []
             sections.removeAll { ($0["id"] as? String) == memoryID }
             sections.append(section)
             sections.sort { (($0["id"] as? String) ?? "") < (($1["id"] as? String) ?? "") }
@@ -333,12 +333,12 @@ extension BurnBarProjectCodeMemoryStore {
 
     func removeProjectMemorySection(projectID: String, projectDisplayName: String, memoryID: String, now: String) throws {
         var snapshot = try loadProjectMemorySnapshot(projectID: projectID, projectDisplayName: projectDisplayName, now: now)
-        var pages = snapshot["pages"] as? [[String: Any]] ?? []
+        var pages = snapshot["pages"] as? [DaemonJSONObject] ?? []
         guard let index = pages.firstIndex(where: { ($0["id"] as? String) == Self.agentMemoryPageID }) else {
             return
         }
         var page = pages[index]
-        var sections = page["sections"] as? [[String: Any]] ?? []
+        var sections = page["sections"] as? [DaemonJSONObject] ?? []
         sections.removeAll { ($0["id"] as? String) == memoryID }
         page["sections"] = sections
         page["summary"] = "\(sections.count) agent-maintained notes with provenance metadata."
@@ -349,11 +349,11 @@ extension BurnBarProjectCodeMemoryStore {
 
     func projectMemorySectionBody(projectID: String, memoryID: String) throws -> String? {
         guard let snapshot = try loadExistingProjectMemorySnapshot(projectID: projectID),
-              let pages = snapshot["pages"] as? [[String: Any]] else {
+              let pages = snapshot["pages"] as? [DaemonJSONObject] else {
             return nil
         }
         for page in pages {
-            guard let sections = page["sections"] as? [[String: Any]] else { continue }
+            guard let sections = page["sections"] as? [DaemonJSONObject] else { continue }
             if let section = sections.first(where: { ($0["id"] as? String) == memoryID }) {
                 return section["body"] as? String
             }
@@ -451,14 +451,14 @@ extension BurnBarProjectCodeMemoryStore {
         )
     }
 
-    func loadProjectMemorySnapshot(projectID: String, projectDisplayName: String, now: String) throws -> [String: Any] {
+    func loadProjectMemorySnapshot(projectID: String, projectDisplayName: String, now: String) throws -> DaemonJSONObject {
         if let existing = try loadExistingProjectMemorySnapshot(projectID: projectID) {
             return existing
         }
         return Self.baseProjectMemorySnapshot(projectID: projectID, projectDisplayName: projectDisplayName, now: now)
     }
 
-    func loadExistingProjectMemorySnapshot(projectID: String) throws -> [String: Any]? {
+    func loadExistingProjectMemorySnapshot(projectID: String) throws -> DaemonJSONObject? {
         let slug = Self.projectMemorySlug(for: projectID)
         guard let json = try queryRows(
             "SELECT snapshotJSON FROM project_memory_snapshots WHERE projectSlug = ? LIMIT 1",
@@ -466,11 +466,11 @@ extension BurnBarProjectCodeMemoryStore {
         ).first?.optionalString(0), let data = json.data(using: .utf8) else {
             return nil
         }
-        return (try JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return (try JSONSerialization.jsonObject(with: data)) as? DaemonJSONObject
     }
 
     func writeProjectMemorySnapshot(
-        _ snapshot: [String: Any],
+        _ snapshot: DaemonJSONObject,
         projectID: String,
         projectDisplayName: String,
         now: String
@@ -519,7 +519,7 @@ extension BurnBarProjectCodeMemoryStore {
         )
     }
 
-    static func baseProjectMemorySnapshot(projectID: String, projectDisplayName: String, now: String) -> [String: Any] {
+    static func baseProjectMemorySnapshot(projectID: String, projectDisplayName: String, now: String) -> DaemonJSONObject {
         [
             "projectSlug": projectMemorySlug(for: projectID),
             "projectDisplayName": projectDisplayName,
@@ -539,7 +539,7 @@ extension BurnBarProjectCodeMemoryStore {
         ]
     }
 
-    static func agentMemoryPage(sections: [[String: Any]]) -> [String: Any] {
+    static func agentMemoryPage(sections: [DaemonJSONObject]) -> DaemonJSONObject {
         [
             "id": agentMemoryPageID,
             "title": "Agent Notes",
@@ -549,7 +549,7 @@ extension BurnBarProjectCodeMemoryStore {
         ]
     }
 
-    static func memoryCitations(memoryID: String, sourcePath: String?, now: String) -> [[String: Any]] {
+    static func memoryCitations(memoryID: String, sourcePath: String?, now: String) -> [DaemonJSONObject] {
         guard let sourcePath, sourcePath.isEmpty == false else { return [] }
         return [[
             "id": "cite_" + String(sha256Hex("\(memoryID):\(sourcePath)").prefix(16)),

@@ -3,7 +3,9 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 
@@ -108,7 +110,9 @@ final class HermesRelayHostService {
                 // file-transfer service AND the persistent media
                 // control-stream registry. Returns nil on builds that
                 // don't link the xcframework (loopback dev path).
-                if let fileTransferService = MediaFileTransferServiceFactory.make() {
+                if let fileTransferService = MediaFileTransferServiceFactory.make(secretKeyProvider: {
+                    try IrohBlobKeyStore.shared.secretKeyMaterial().raw
+                }) {
                     let controlRegistry = MediaControlStreamRegistry()
                     self.mercuryControlStreamRegistry = controlRegistry
                     let macFileTransfer = MacFileTransferService(
@@ -345,7 +349,7 @@ final class HermesRelayHostService {
         let ref = db.collection("users").document(uid).collection("hermes_connections").document(connectionID)
         do {
             let snap = try await ref.getDocument()
-            var data: [String: Any] = [
+            var data: UntypedJSONObject = [
                 "id": connectionID,
                 "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
                 "mode": HermesConnectionMode.relayLink.rawValue,
@@ -435,7 +439,7 @@ final class HermesRelayHostService {
         if realtimeReady {
             capabilities.append(HermesRealtimeRelayProtocol.capability)
         }
-        var data: [String: Any] = [
+        var data: UntypedJSONObject = [
             "id": connectionID,
             "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
             "mode": HermesConnectionMode.relayLink.rawValue,
@@ -491,7 +495,7 @@ final class HermesRelayHostService {
         let legacyID = legacyConnectionID
         guard legacyID != connectionID else { return }
         let ref = db.collection("users").document(uid).collection("hermes_connections").document(legacyID)
-        var data: [String: Any] = [
+        var data: UntypedJSONObject = [
             "id": legacyID,
             "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
             "mode": HermesConnectionMode.relayLink.rawValue,
@@ -648,7 +652,7 @@ final class HermesRelayHostService {
     private func forwardCLIRuntimeModelCatalogRequest(
         reference: DocumentReference,
         context: HermesRelayRequestContext,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) async throws {
         guard let cliModelCatalogDispatcher else {
             throw HermesRelayHostError.cliModelCatalogUnavailable
@@ -674,7 +678,7 @@ final class HermesRelayHostService {
     private func forwardCLIAgentChatRequest(
         reference: DocumentReference,
         context: HermesRelayRequestContext,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) async throws {
         guard let cliChatDispatcher else {
             throw HermesRelayHostError.cliAgentChatUnavailable
@@ -711,7 +715,7 @@ final class HermesRelayHostService {
     private func forwardCLIAgentSessionActionRequest(
         reference: DocumentReference,
         context: HermesRelayRequestContext,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) async throws {
         guard let cliSessionActionDispatcher else {
             throw HermesRelayHostError.cliAgentSessionActionUnavailable
@@ -741,10 +745,10 @@ final class HermesRelayHostService {
     }
 
     private func decryptRelayRequest(
-        _ data: [String: Any],
+        _ data: UntypedJSONObject,
         uid: String,
         requestID: String
-    ) async throws -> (data: [String: Any], context: HermesRelayRequestContext) {
+    ) async throws -> (data: UntypedJSONObject, context: HermesRelayRequestContext) {
         guard uid.isEmpty == false,
               let operationText = data["operation"] as? String,
               let operation = HermesRelayOperation(rawValue: operationText) else {
@@ -835,7 +839,7 @@ final class HermesRelayHostService {
                     continuation.resume(returning: nil)
                     return
                 }
-                guard let data = result as? [String: Any] else {
+                guard let data = result as? UntypedJSONObject else {
                     continuation.resume(returning: nil)
                     return
                 }
@@ -848,7 +852,7 @@ final class HermesRelayHostService {
         reference: DocumentReference,
         context: HermesRelayRequestContext,
         operation: HermesRelayOperation,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) async throws {
         let request = try makeForwardRequest(operation: operation, data: data)
         let (body, response) = try await urlSession.data(for: request)
@@ -878,7 +882,7 @@ final class HermesRelayHostService {
     private func forwardStreamingRequest(
         reference: DocumentReference,
         context: HermesRelayRequestContext,
-        data: [String: Any]
+        data: UntypedJSONObject
     ) async throws {
         var request = try makeForwardRequest(operation: .chatCompletions, data: data)
         request.httpMethod = "POST"
@@ -927,7 +931,7 @@ final class HermesRelayHostService {
         try await completeRelayRequest(reference: reference, chunkCount: sequence)
     }
 
-    private func makeForwardRequest(operation: HermesRelayOperation, data: [String: Any]) throws -> URLRequest {
+    private func makeForwardRequest(operation: HermesRelayOperation, data: UntypedJSONObject) throws -> URLRequest {
         let path = try relayPath(operation: operation, data: data)
         let useBurnBarGateway = Self.usesBurnBarGateway(operation)
         let base = useBurnBarGateway
@@ -1014,7 +1018,7 @@ final class HermesRelayHostService {
         }
     }
 
-    private func relayPath(operation: HermesRelayOperation, data: [String: Any]) throws -> String {
+    private func relayPath(operation: HermesRelayOperation, data: UntypedJSONObject) throws -> String {
         switch operation {
         case .chatCompletions:
             return "v1/chat/completions"
@@ -1090,7 +1094,7 @@ final class HermesRelayHostService {
     ) async throws {
         let now = Self.iso8601.string(from: Date())
         let chunkID = String(format: "%08d", sequence)
-        var payload: [String: Any] = [
+        var payload: UntypedJSONObject = [
             "id": chunkID,
             "requestId": context.requestID,
             "sequence": sequence,
@@ -1137,7 +1141,7 @@ final class HermesRelayHostService {
             return
         }
         let now = Self.iso8601.string(from: Date())
-        var statusUpdate: [String: Any] = [
+        var statusUpdate: UntypedJSONObject = [
             "status": HermesRelayRequestStatus.failed.rawValue,
             "updatedAt": now
         ]
@@ -1198,7 +1202,7 @@ final class HermesRelayHostService {
 
     private func hermesBaseURL() -> URL {
         URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8642")!
+            ?? URL(staticString: "http://127.0.0.1:8642")
     }
 
     private func hermesBaseURLWithTrailingSlash() -> URL {
@@ -1211,7 +1215,7 @@ final class HermesRelayHostService {
         let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
         let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
         let port = max(settingsManager.gatewayPort, 1)
-        let url = URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+        let url = URL(string: "http://\(host):\(port)") ?? URL(staticString: "http://127.0.0.1:8317")
         if url.absoluteString.hasSuffix("/") { return url }
         return URL(string: "\(url.absoluteString)/") ?? url
     }
@@ -1266,7 +1270,7 @@ final class HermesRelayHostService {
     /// algorithm) so a record can never advertise a partial / keyless crypto
     /// surface.
     nonisolated static func applyRelayKeyFields(
-        to data: inout [String: Any],
+        to data: inout UntypedJSONObject,
         publicKey: String,
         keyVersion: Int,
         encryption: String
@@ -1327,8 +1331,8 @@ final class HermesRelayHostService {
         }
 
         var seen = Set<String>()
-        var merged: [[String: Any]] = []
-        for item in (primary["data"] as? [[String: Any]] ?? []) + (secondary["data"] as? [[String: Any]] ?? []) {
+        var merged: [UntypedJSONObject] = []
+        for item in (primary["data"] as? [UntypedJSONObject] ?? []) + (secondary["data"] as? [UntypedJSONObject] ?? []) {
             guard let id = item["id"] as? String, !id.isEmpty else { continue }
             if seen.insert(id).inserted {
                 merged.append(item)
@@ -1339,8 +1343,8 @@ final class HermesRelayHostService {
         return try? JSONSerialization.data(withJSONObject: primary, options: [.sortedKeys]) // try?-ok(optional json encode)
     }
 
-    private nonisolated static func jsonObject(from data: Data) -> [String: Any]? {
-        (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] // try?-ok(optional json decode)
+    private nonisolated static func jsonObject(from data: Data) -> UntypedJSONObject? {
+        (try? JSONSerialization.jsonObject(with: data)) as? UntypedJSONObject // try?-ok(optional json decode)
     }
 }
 

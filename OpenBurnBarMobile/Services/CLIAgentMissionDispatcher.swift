@@ -4,7 +4,7 @@ import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import os
 
@@ -130,7 +130,7 @@ final class CLIAgentMissionDispatcher {
             vaultKeyID: resolvedKey.vaultKeyID
         )
         let created = try await ComputerUseSecurityCallableClient.createCliAgentMission(
-            payload: ComputerUseSecurityCallableClient.sendableJSONPayload(
+            payload: ComputerUseSecurityCallableSupport.sendableJSONPayload(
                 CLIAgentMissionRequestPayloadFactory.createLeafPayload(
                     requestId: id,
                     remoteCommandID: id,

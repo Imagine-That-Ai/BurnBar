@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarAnalytics
 
 /// First-run opt-in prompt for usage analytics. Analytics is **off by default**;
 /// this prompt records the user's decision in `AnalyticsConsentStore.shared` and,

@@ -1,6 +1,10 @@
 import Foundation
 import os
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 extension ProviderQuotaService {
     func isRefreshing(_ provider: AgentProvider) -> Bool {

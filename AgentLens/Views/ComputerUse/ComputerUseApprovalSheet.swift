@@ -1,6 +1,10 @@
 #if canImport(SwiftUI) && canImport(AppKit) && !DISTRIBUTION_MAS
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 /// Mac approval sheet. 1pt `mercuryGradient` border, pre-action

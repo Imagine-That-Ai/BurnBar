@@ -50,7 +50,9 @@ class TokenUsageGeneratedTest {
         assertEquals(11, usage.inputTokens)
         assertEquals(7, usage.outputTokens)
         assertEquals(0, usage.totalTokens)
-        assertEquals(0.0, usage.costUSD, 0.0)
+        // Wave 2.5: absent costUSD stays null (falls through the rule).
+        assertNull(usage.costUSD)
+        assertEquals(0.0, usage.effectiveCost, 0.0)
         assertEquals("2026-01-01T00:00:00Z", usage.recordedAt)
         assertEquals("usage", usage.eventKind)
         assertEquals("idem-1", usage.idempotencyKey)

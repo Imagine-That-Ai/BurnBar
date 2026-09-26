@@ -15,6 +15,8 @@
 #   ./scripts/rollback.sh                    # Roll back to the previous release tag
 #   ./scripts/rollback.sh v1.0.1             # Roll back to a specific tag
 #   ./scripts/rollback.sh --dry-run          # Preview what would be rolled back
+#   ./scripts/rollback.sh --print-target     # Dry-run that also prints machine-readable
+#                                            # TARGET_TAG= / TARGET_COMMIT= lines for CI
 #   ./scripts/rollback.sh --yes              # Non-interactive (skip confirmation)
 #   ./scripts/rollback.sh --force            # Override the live-source ancestry guard
 #   ./scripts/rollback.sh --allow-stale      # Permit auto-targeting a tag older
@@ -51,6 +53,7 @@ SEMVER_TAG_RE='^v[0-9]{1,3}\.[0-9]+\.[0-9]+([-+].*)?$'
 STALE_TAG_MAX_AGE_DAYS="${STALE_TAG_MAX_AGE_DAYS:-30}"
 
 DRY_RUN=false
+PRINT_TARGET=false
 ASSUME_YES=false
 ALLOW_STALE=false
 FORCE=false
@@ -58,6 +61,7 @@ TARGET_TAG=""
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=true ;;
+    --print-target) PRINT_TARGET=true; DRY_RUN=true ;;
     --yes|-y) ASSUME_YES=true ;;
     --force) FORCE=true ;;
     --allow-stale) ALLOW_STALE=true ;;
@@ -230,6 +234,13 @@ fi
 echo ""
 
 if [[ "$DRY_RUN" == "true" ]]; then
+  if [[ "$PRINT_TARGET" == "true" ]]; then
+    # Machine-readable target for the deploy-production auto-rollback job.
+    # All guards above (live-source ancestry, freshness window, SemVer
+    # grammar) still apply; only the mutation half of the script is skipped.
+    echo "TARGET_TAG=${TARGET_TAG}"
+    echo "TARGET_COMMIT=${TARGET_COMMIT}"
+  fi
   echo "DRY RUN: No changes made."
   exit 0
 fi

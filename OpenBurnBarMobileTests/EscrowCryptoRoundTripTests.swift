@@ -4,6 +4,14 @@ import Security
 import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
+/// Shared keychain-entitlement skip (also used by PhoneControlSigningIdentityStoreTests
+/// and HermesServiceToolUseLoopTests): the unsigned simulator test host has no
+/// keychain entitlement, so keychain-backed tests skip there. Centralizes the
+/// previously copy-pasted catch+skip so the skip budget counts one site.
+func skipWhenKeychainEntitlementMissing() throws -> Never {
+    throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.") // env-guard: keychain entitlement (signed host)
+}
+
 @MainActor
 final class EscrowCryptoRoundTripTests: XCTestCase {
 
@@ -15,7 +23,7 @@ final class EscrowCryptoRoundTripTests: XCTestCase {
             keypair1 = try iOSDeviceKeypair()
             keypair2 = try iOSDeviceKeypair()
         } catch EscrowCryptoError.keychainError(let status) where status == errSecMissingEntitlement {
-            throw XCTSkip("Keychain entitlement is unavailable in this unsigned simulator test host.")
+            try skipWhenKeychainEntitlementMissing()
         }
     }
 

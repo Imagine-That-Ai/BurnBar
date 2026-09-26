@@ -41,7 +41,7 @@ describe("L-3 App Check production fail-closed", () => {
   it("REFUSES to start a production project with App Check disabled", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.ENFORCE_APP_CHECK = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).toThrow(/App Check enforcement is DISABLED/);
   });
 
@@ -49,7 +49,7 @@ describe("L-3 App Check production fail-closed", () => {
     process.env.FUNCTIONS_EMULATOR = "true";
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.ENFORCE_APP_CHECK = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).not.toThrow();
     expect(getConfig().enforceAppCheck).toBe(false);
   });
@@ -57,13 +57,13 @@ describe("L-3 App Check production fail-closed", () => {
   it("allows demo/test projects with App Check disabled (CI)", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.ENFORCE_APP_CHECK = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).not.toThrow();
   });
 
   it("allows production with App Check enabled (the default)", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).not.toThrow();
     expect(getConfig().enforceAppCheck).toBe(true);
   });
@@ -71,14 +71,14 @@ describe("L-3 App Check production fail-closed", () => {
   it("REFUSES to start production when the Linux App Check app id is absent", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     delete process.env.LINUX_APP_CHECK_APP_ID;
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).toThrow(/Linux App Check app id is missing or malformed/);
   });
 
   it("REFUSES to start production when the Linux App Check app id is not a real Web app id", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.LINUX_APP_CHECK_APP_ID = "1:000000000000:linux:placeholder";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).toThrow(/Linux App Check app id is missing or malformed/);
   });
 
@@ -86,7 +86,7 @@ describe("L-3 App Check production fail-closed", () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.FUNCTIONS_CONTROL_API = "true";
     delete process.env.LINUX_APP_CHECK_APP_ID;
-    const { getConfig, PLACEHOLDER_LINUX_APP_CHECK_APP_ID } = await import("../config.js");
+    const { getConfig, PLACEHOLDER_LINUX_APP_CHECK_APP_ID } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).not.toThrow();
     expect(getConfig().enforceAppCheck).toBe(true);
     expect(getConfig().linuxAppCheckAppID).toBe(PLACEHOLDER_LINUX_APP_CHECK_APP_ID);
@@ -97,7 +97,7 @@ describe("L-3 App Check production fail-closed", () => {
     process.env.FUNCTIONS_CONTROL_API = "true";
     process.env.K_SERVICE = "refreshprovideraccountquota";
     delete process.env.LINUX_APP_CHECK_APP_ID;
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).toThrow(/Linux App Check app id is missing or malformed/);
   });
 });
@@ -148,27 +148,27 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
   it("defaults requireHighRiskNonce to TRUE in production when env var is unset", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     // REQUIRE_HIGH_RISK_NONCE intentionally not set — must resolve to looksProd=true
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true);
   });
 
   it("defaults requireHighRiskNonce to FALSE in emulator (local dev stays unblocked)", async () => {
     process.env.FUNCTIONS_EMULATOR = "true";
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(false);
   });
 
   it("defaults requireHighRiskNonce to FALSE for demo/test projects (CI stays unblocked)", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(false);
   });
 
   it("honours explicit REQUIRE_HIGH_RISK_NONCE=true in any project", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.REQUIRE_HIGH_RISK_NONCE = "true";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true);
   });
 
@@ -178,7 +178,7 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
     // setting it to "false" explicitly is a deliberate operator action.
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.REQUIRE_HIGH_RISK_NONCE = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(false);
   });
 
@@ -186,14 +186,14 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
     // Production-looking project, no explicit flag -> fail-closed (true).
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     delete process.env.REQUIRE_HIGH_RISK_NONCE;
-    const { getConfig: getConfigProd } = await import("../config.js");
+    const { getConfig: getConfigProd } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfigProd().requireHighRiskNonce).toBe(true);
 
     // Demo/test project, no explicit flag -> permissive (false) for CI/local dev.
     vi.resetModules();
     process.env.GCLOUD_PROJECT = "demo-project";
     delete process.env.REQUIRE_HIGH_RISK_NONCE;
-    const { getConfig: getConfigTest } = await import("../config.js");
+    const { getConfig: getConfigTest } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfigTest().requireHighRiskNonce).toBe(false);
   });
 
@@ -207,14 +207,14 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
   it("treats empty REQUIRE_HIGH_RISK_NONCE string as unset (secure default=true in production)", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.REQUIRE_HIGH_RISK_NONCE = ""; // operator sets secret to empty string
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true); // must still be the secure default
   });
 
   it("treats whitespace-only REQUIRE_HIGH_RISK_NONCE as unset (secure default=true in production)", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.REQUIRE_HIGH_RISK_NONCE = "   ";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true);
   });
 });
@@ -257,7 +257,7 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
     // the App Check fail-closed guard). After fix: "" → default true → no throw.
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.ENFORCE_APP_CHECK = "";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).not.toThrow(); // App Check ON → no throw
     expect(getConfig().enforceAppCheck).toBe(true);
   });
@@ -265,7 +265,7 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
   it("explicit ENFORCE_APP_CHECK=false in production still fails closed (throws)", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.ENFORCE_APP_CHECK = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).toThrow(/App Check enforcement is DISABLED/);
   });
 
@@ -273,7 +273,7 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
     process.env.FUNCTIONS_EMULATOR = "true";
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.ENFORCE_APP_CHECK = "";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).not.toThrow();
     expect(getConfig().enforceAppCheck).toBe(true); // default, but emulator so no throw
   });
@@ -328,27 +328,27 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
   it("defaults requireHighRiskNonce to TRUE in production when env var is unset", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     // REQUIRE_HIGH_RISK_NONCE intentionally not set — must resolve to looksProd=true
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true);
   });
 
   it("defaults requireHighRiskNonce to FALSE in emulator (local dev stays unblocked)", async () => {
     process.env.FUNCTIONS_EMULATOR = "true";
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(false);
   });
 
   it("defaults requireHighRiskNonce to FALSE for demo/test projects (CI stays unblocked)", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(false);
   });
 
   it("honours explicit REQUIRE_HIGH_RISK_NONCE=true in any project", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.REQUIRE_HIGH_RISK_NONCE = "true";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true);
   });
 
@@ -358,7 +358,7 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
     // setting it to "false" explicitly is a deliberate operator action.
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.REQUIRE_HIGH_RISK_NONCE = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(false);
   });
 
@@ -366,7 +366,7 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
     // Production-looking project, no explicit flag -> fail-closed (true).
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     delete process.env.REQUIRE_HIGH_RISK_NONCE;
-    const { getConfig: getConfigProd } = await import("../config.js");
+    const { getConfig: getConfigProd } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfigProd().requireHighRiskNonce).toBe(true);
 
     // Demo/test project, no explicit flag -> permissive (false) for CI/local dev.
@@ -374,7 +374,7 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     delete process.env.REQUIRE_HIGH_RISK_NONCE;
     process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
-    const { getConfig: getConfigTest } = await import("../config.js");
+    const { getConfig: getConfigTest } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfigTest().requireHighRiskNonce).toBe(false);
   });
 
@@ -388,14 +388,14 @@ describe("F-RR04-002 requireHighRiskNonce production default", () => {
   it("treats empty REQUIRE_HIGH_RISK_NONCE string as unset (secure default=true in production)", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.REQUIRE_HIGH_RISK_NONCE = ""; // operator sets secret to empty string
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true); // must still be the secure default
   });
 
   it("treats whitespace-only REQUIRE_HIGH_RISK_NONCE as unset (secure default=true in production)", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.REQUIRE_HIGH_RISK_NONCE = "   ";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().requireHighRiskNonce).toBe(true);
   });
 });
@@ -439,7 +439,7 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
     // the App Check fail-closed guard). After fix: "" → default true → no throw.
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.ENFORCE_APP_CHECK = "";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).not.toThrow(); // App Check ON → no throw
     expect(getConfig().enforceAppCheck).toBe(true);
   });
@@ -447,7 +447,7 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
   it("explicit ENFORCE_APP_CHECK=false in production still fails closed (throws)", async () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.ENFORCE_APP_CHECK = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).toThrow(/App Check enforcement is DISABLED/);
   });
 
@@ -455,7 +455,7 @@ describe("L-3 / F-RR04-002 empty-string env var bypass (toBool fix)", () => {
     process.env.FUNCTIONS_EMULATOR = "true";
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.ENFORCE_APP_CHECK = "";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(() => getConfig()).not.toThrow();
     expect(getConfig().enforceAppCheck).toBe(true); // default, but emulator so no throw
   });

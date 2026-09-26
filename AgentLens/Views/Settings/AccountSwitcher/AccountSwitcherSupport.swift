@@ -1,7 +1,11 @@
 import AppKit
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 struct BrowserServiceStatusDisplay: Identifiable, Equatable {
     let id: String
@@ -88,9 +92,9 @@ func browserServiceStatusDisplays(
         return BrowserServiceStatusDisplay(
             id: identity.provider.rawValue,
             providerName: identity.provider.displayName,
-            accountLabel: identity.accountLabel?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                ? identity.accountLabel!.trimmingCharacters(in: .whitespacesAndNewlines)
-                : "signed in",
+            accountLabel: identity.accountLabel
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .flatMap { $0.isEmpty ? nil : $0 } ?? "signed in",
             fiveHour: snapshot?.hourlyBucket?.remainingText ?? "--",
             sevenDay: snapshot?.weeklyBucket?.remainingText ?? "--"
         )
@@ -318,13 +322,13 @@ enum AccountChangeDestination: Hashable {
     var url: URL {
         switch self {
         case .openAI:
-            return URL(string: "https://chatgpt.com/")!
+            return URL(staticString: "https://chatgpt.com/")
         case .claude:
-            return URL(string: "https://claude.ai/")!
+            return URL(staticString: "https://claude.ai/")
         case .googleAccount:
-            return URL(string: "https://accounts.google.com/AccountChooser?continue=https://myaccount.google.com/")!
+            return URL(staticString: "https://accounts.google.com/AccountChooser?continue=https://myaccount.google.com/")
         case .appleID:
-            return URL(string: "https://appleid.apple.com/sign-in")!
+            return URL(staticString: "https://appleid.apple.com/sign-in")
         }
     }
 }

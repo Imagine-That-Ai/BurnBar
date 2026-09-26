@@ -388,7 +388,7 @@
       "iosSurface": {
         "ipad": [],
         "services": [
-          "OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift",
+          "OpenBurnBarCore/Sources/OpenBurnBarComputerUseCore/AppCheckAttestationMonitor.swift",
           "OpenBurnBarMobile/Services/ComputerUse/MobileAppCheckAttestationReader.swift"
         ],
         "stores": [],
@@ -2102,7 +2102,7 @@
       "iosSurface": {
         "ipad": [],
         "services": [
-          "OpenBurnBarMobile/Services/HermesAttachmentLoader.swift",
+          "OpenBurnBarMobile/Services/HermesAttachmentLoader+Mobile.swift",
           "OpenBurnBarMobile/Services/HermesAttachmentWorkspace.swift"
         ],
         "stores": [],
@@ -2645,7 +2645,7 @@
         "ipad": [],
         "services": [],
         "stores": [
-          "OpenBurnBarMobile/Models/BudgetRulesStore.swift"
+          "OpenBurnBarMobile/Models/FirestoreBudgetRulesStore.swift"
         ],
         "tests": [
           "OpenBurnBarMobileTests/BudgetSettingsTests.swift"
@@ -2716,7 +2716,7 @@
           "OpenBurnBarMobile/Models/BudgetGate+Mobile.swift"
         ],
         "stores": [
-          "OpenBurnBarMobile/Models/BudgetEnforcement.swift"
+          "OpenBurnBarCore/Sources/OpenBurnBarKernel/Budget/BudgetEnforcement.swift"
         ],
         "tests": [
           "OpenBurnBarMobileTests/BudgetGateTests.swift"
@@ -3336,7 +3336,7 @@
       "iosSurface": {
         "ipad": [],
         "services": [
-          "OpenBurnBarMobile/Services/Media/MercuryPeerSource.swift"
+          "OpenBurnBarMobile/Services/Media/MercuryPeerSource+Mobile.swift"
         ],
         "stores": [
           "OpenBurnBarMobile/Features/Mercury/Stores"
@@ -3605,7 +3605,7 @@
       "iosSurface": {
         "ipad": [],
         "services": [
-          "OpenBurnBarMobile/Services/Media/MercuryPeerSource.swift"
+          "OpenBurnBarMobile/Services/Media/MercuryPeerSource+Mobile.swift"
         ],
         "stores": [
           "OpenBurnBarMobile/Features/Mercury/Stores"
@@ -4387,7 +4387,7 @@
       "iosSurface": {
         "ipad": [],
         "services": [
-          "OpenBurnBarMobile/Services/SmartHubDisplaySettingsAdapter.swift"
+          "OpenBurnBarMobile/Services/MobileSmartHubDisplayOperationsAdapter.swift"
         ],
         "stores": [
           "OpenBurnBarMobile/Models/SmartHubStore.swift"
@@ -4455,7 +4455,7 @@
       "iosSurface": {
         "ipad": [],
         "services": [
-          "OpenBurnBarMobile/Services/PixelClockSettingsAdapter.swift"
+          "OpenBurnBarMobile/Services/MobilePixelClockOperationsAdapter.swift"
         ],
         "stores": [
           "OpenBurnBarMobile/Models/SmartHubStore.swift"
@@ -5214,7 +5214,7 @@
       "iosSurface": {
         "ipad": [],
         "services": [
-          "OpenBurnBarMobile/Services/Analytics/AnalyticsShared.swift"
+          "OpenBurnBarMobile/Services/Analytics/MobileAnalytics.swift"
         ],
         "stores": [],
         "tests": [

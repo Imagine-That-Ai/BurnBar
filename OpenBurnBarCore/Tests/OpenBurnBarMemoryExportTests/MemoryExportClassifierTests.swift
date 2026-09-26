@@ -930,7 +930,7 @@ final class MemoryExportClassifierTests: XCTestCase {
     private func classify(_ queue: DatabaseQueue, id: String) throws -> MemoryExportClassification {
         let snapshot = try MemoryExportFixtureStore.snapshot(queue)
         guard let memory = snapshot.memories.first(where: { $0.id == id }) else {
-            // R7 — this was `throw XCTSkip`, which XCTest reports GREEN. Had
+            // R7 — this was a thrown skip, which XCTest reports GREEN. Had
             // `insertAppMemory` ever stopped writing (renamed column, schema
             // drift), rows 2, 3, 4, 6, 7, 8 and 9 would silently stop testing
             // while the suite still read "0 failures". A fixture that cannot

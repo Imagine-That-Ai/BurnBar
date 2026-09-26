@@ -88,7 +88,9 @@ public final class CodexParser: LogParser, Sendable {
         )
     }
 
-    private func fetchThreadRows(
+    /// Internal (not private) for the Wave 2.7 traversal tests, which drive
+    /// the production expansion path with a fixture database.
+    func fetchThreadRows(
         dbPath: String,
         governor: ParserResourceGovernor?
     ) throws -> (rows: [CodexThreadRow], usageSessionIDsToDelete: [String]) {
@@ -112,9 +114,12 @@ public final class CodexParser: LogParser, Sendable {
             subagentSessionIDs = Set(try reader.query(
                 "SELECT id, rollout_path FROM threads"
             ).compactMap { row -> String? in
+                // Wave 2.7: jail before the probe OPENS the file — an escaping
+                // path is treated as absent (not a subagent sidecar).
                 guard let threadID = row.string("id"),
-                      let rolloutPath = row.string("rollout_path") else { return nil }
-                let expandedPath = (rolloutPath as NSString).expandingTildeInPath
+                      let rolloutPath = row.string("rollout_path"),
+                      let expandedPath = CodexRolloutJail.containedPath(rolloutPath, homeDirectoryURL: homeDirectoryURL)
+                else { return nil }
                 return isCodexSubagentRollout(expandedPath) ? threadID : nil
             })
         } else {
@@ -176,7 +181,12 @@ public final class CodexParser: LogParser, Sendable {
                     tokensUsed: row.int("tokens_used") ?? 0,
                     startTime: Date(timeIntervalSince1970: Double(createdAt)),
                     endTime: Date(timeIntervalSince1970: Double(updatedAt)),
-                    expandedRolloutPath: rolloutPath.map { ($0 as NSString).expandingTildeInPath }
+                    // Wave 2.7: escapes resolve to nil — the thread still
+                    // parses from its database row, but the scanner never
+                    // stats/reads a file outside ~/.codex.
+                    expandedRolloutPath: rolloutPath.flatMap {
+                        CodexRolloutJail.containedPath($0, homeDirectoryURL: homeDirectoryURL)
+                    }
                 )
             )
         }
@@ -218,7 +228,7 @@ public final class CodexParser: LogParser, Sendable {
         let text = String(decoding: prefix, as: UTF8.self)
         for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
             guard let data = String(line).data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data),
                   json["type"] as? String == "session_meta",
                   let payload = json["payload"] as? [String: Any],
                   let source = payload["source"] as? [String: Any] else { continue }

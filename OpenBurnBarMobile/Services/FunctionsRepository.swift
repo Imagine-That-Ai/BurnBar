@@ -4,7 +4,8 @@ import Foundation
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarQuota
 import OpenBurnBarFirestoreModels
 
 // AUDIT(@unchecked Sendable): immutable bridged NSDictionary of untyped callable
@@ -14,12 +15,12 @@ import OpenBurnBarFirestoreModels
 struct FirebaseCallablePayload: @unchecked Sendable {
     let rawValue: NSDictionary
 
-    init(_ payload: [String: Any]) {
+    init(_ payload: MobileJSONObject) {
         self.rawValue = Self.bridgeDictionary(payload)
     }
 
-    private static func bridgeDictionary(_ dictionary: [String: Any]) -> NSDictionary {
-        var bridged: [String: Any] = [:]
+    private static func bridgeDictionary(_ dictionary: MobileJSONObject) -> NSDictionary {
+        var bridged: MobileJSONObject = [:]
         for (key, value) in dictionary {
             bridged[key] = bridgeValue(value)
         }
@@ -31,7 +32,7 @@ struct FirebaseCallablePayload: @unchecked Sendable {
     }
 
     private static func bridgeValue(_ value: Any) -> Any {
-        if let dictionary = value as? [String: Any] {
+        if let dictionary = value as? MobileJSONObject {
             return bridgeDictionary(dictionary)
         }
         if let array = value as? [Any] {
@@ -150,9 +151,9 @@ final class FirebaseCallableExecutor: @unchecked Sendable {
 
     /// Encode an `Encodable` request into the JSON-object dictionary that the
     /// callable payload bridge expects.
-    static func encodeToJSONObject<Req: Encodable>(_ request: Req) throws -> [String: Any] {
+    static func encodeToJSONObject<Req: Encodable>(_ request: Req) throws -> MobileJSONObject {
         let data = try JSONEncoder().encode(request)
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? MobileJSONObject else {
             throw FunctionsError.responseDecodingFailed(
                 "Request \(Req.self) did not encode to a JSON object."
             )
@@ -163,8 +164,8 @@ final class FirebaseCallableExecutor: @unchecked Sendable {
     /// Decode a callable's `result.data` into `Res`, surfacing `DecodingError`
     /// context (rather than swallowing it) when the cloud response is malformed.
     static func decodeResponse<Res: Decodable>(_ type: Res.Type, from raw: Any?) throws -> Res {
-        guard let object = raw as? [String: Any],
-              let sanitized = FirestoreRepository.sanitizeForJSON(object) as? [String: Any] else {
+        guard let object = raw as? MobileJSONObject,
+              let sanitized = FirestoreRepository.sanitizeForJSON(object) as? MobileJSONObject else {
             throw FunctionsError.responseDecodingFailed(
                 "Cloud response for \(Res.self) was not a JSON object."
             )
@@ -629,7 +630,7 @@ final class FunctionsRepository: HermesGatewayRepository {
     /// to `GatewayEventSealer.sealGatewayEventPayload` (mechanical extraction,
     /// tech-debt finding-67). Signature, defaults, and behavior are unchanged.
     nonisolated static func sealGatewayEventPayload(
-        into payload: inout [String: Any],
+        into payload: inout MobileJSONObject,
         text: String,
         senderDisplayName: String,
         threadId: String,
@@ -638,7 +639,7 @@ final class FunctionsRepository: HermesGatewayRepository {
         uid: String,
         pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore(),
         kind: String? = nil,
-        extraSealedFields: [String: Any] = [:]
+        extraSealedFields: MobileJSONObject = [:]
     ) throws {
         try GatewayEventSealer.sealGatewayEventPayload(
             into: &payload,

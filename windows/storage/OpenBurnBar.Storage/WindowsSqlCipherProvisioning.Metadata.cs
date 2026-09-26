@@ -79,6 +79,7 @@ public sealed partial class WindowsSqlCipherProvisioner
         "v66_agent_memory_bodies",
         "v67_agent_memory_inbox",
         "v68_agent_memories_review_default_repair",
+        "v69_token_usage_end_time_index",
         CurrentMigrationEndpoint,
     };
 

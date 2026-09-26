@@ -68,16 +68,25 @@ function requireHealthDocument(document, expectedStatus, proof, label) {
       file.path ===
       "vendor/openburnbar/domain-core-wasm/openburnbar_domain_core_bg.wasm",
   );
+  // Decision 4 (wave 3.7): the legacy path never loads WASM, so a legacy
+  // deployment must serve loadedCore null — a non-null identity there proves
+  // the legacy contract was violated. Shadow/rust deployments must serve the
+  // exact loaded tuple, as before.
+  const servedPricingMode = proof.profile.value.modes.pricing;
+  const expectedLoadedCore =
+    servedPricingMode === "legacy"
+      ? null
+      : {
+          version: candidate.coreVersion,
+          abiVersion: candidate.abiVersion,
+          sourceSha256: candidate.sourceSha256,
+          wasmSha256: wasm?.sha256,
+        };
   if (
     domainCore?.profile !== proof.profile.value.name ||
     !isDeepStrictEqual(domainCore?.candidateIdentity, candidate) ||
-    domainCore?.pricingMode !== proof.profile.value.modes.pricing ||
-    !isDeepStrictEqual(domainCore?.loadedCore, {
-      version: candidate.coreVersion,
-      abiVersion: candidate.abiVersion,
-      sourceSha256: candidate.sourceSha256,
-      wasmSha256: wasm?.sha256,
-    }) ||
+    domainCore?.pricingMode !== servedPricingMode ||
+    !isDeepStrictEqual(domainCore?.loadedCore, expectedLoadedCore) ||
     !isDeepStrictEqual(domainCore?.artifactManifest, {
       fileName: proof.runtimeArtifact.fileName,
       sha256: proof.runtimeArtifact.sha256,
@@ -90,7 +99,11 @@ function requireHealthDocument(document, expectedStatus, proof, label) {
     )
   ) {
     throw new Error(
-      `${label} does not bind the exact loaded WASM, runtime manifest, and immutable revision`,
+      `${label} does not bind the expected loaded-core identity` +
+        (servedPricingMode === "legacy"
+          ? " (legacy deployments must serve loadedCore null — WASM must not load on the legacy path)"
+          : " (the exact loaded WASM tuple)") +
+        ", runtime manifest, and immutable revision",
     );
   }
 }

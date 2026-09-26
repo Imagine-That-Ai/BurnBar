@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
 
 // MARK: - Chart Studio Hermes Bridge
 //
@@ -192,7 +194,7 @@ final class ChartStudioHermesBridge {
                 }
                 if payload == "[DONE]" { continue }
                 guard let data = payload.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                      let json = BurnBarJSONValue.dictionary(fromJSONData: data) else {
                     continue
                 }
                 if let choices = json["choices"] as? [[String: Any]],

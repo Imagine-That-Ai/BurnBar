@@ -75,13 +75,13 @@ final class ParserFixtureExtractionParityTests: XCTestCase {
         var validated = 0
         for fixture in ParserContractCorpus.fixtures {
             let rendered = ParserContractCorpus.builderArtifacts(for: fixture)
-            guard let committed = try ParserContractCorpus.committedArtifacts(for: fixture, bundle: bundle) else {
-                throw XCTSkip(
-                    "Extracted fixture files are not bundled yet. Generate them via "
-                    + "ParserOutputContractGoldenTests (see its header), copy into "
-                    + "AgentLensTests/Fixtures/ParserContract/, regenerate the project, and re-run."
-                )
-            }
+            // The extracted fixture files are committed at
+            // AgentLensTests/Fixtures/ParserContract/ and bundled as
+            // OpenBurnBarTests resources — a missing file is a packaging
+            // regression that must fail loudly, never a silent skip.
+            let committedOpt = try ParserContractCorpus.committedArtifacts(for: fixture, bundle: bundle)
+            let committed = try XCTUnwrap(committedOpt,
+                "Extracted fixture files for \(fixture.id) are not bundled — regenerate the project so AgentLensTests/Fixtures/ParserContract/* bundles as test resources.")
             XCTAssertEqual(
                 rendered.count, committed.count,
                 "Fixture \(fixture.id): committed file count != builder artifact count."
@@ -103,9 +103,9 @@ final class ParserFixtureExtractionParityTests: XCTestCase {
     func test_parserOutput_isIdenticalOldInlineVsExtractedFile() async throws {
         let bundle = Bundle(for: ParserExtractionBundleMarker.self)
         for fixture in ParserContractCorpus.fixtures {
-            guard let committed = try ParserContractCorpus.committedArtifacts(for: fixture, bundle: bundle) else {
-                throw XCTSkip("Extracted fixture files are not bundled yet (see the header workflow).")
-            }
+            let committedOpt = try ParserContractCorpus.committedArtifacts(for: fixture, bundle: bundle)
+            let committed = try XCTUnwrap(committedOpt,
+                "Extracted fixture files for \(fixture.id) are not bundled — regenerate the project so AgentLensTests/Fixtures/ParserContract/* bundles as test resources.")
             let inlineContract = try await ParserContractCorpus.contract(
                 for: fixture, artifacts: ParserContractCorpus.builderArtifacts(for: fixture)
             )

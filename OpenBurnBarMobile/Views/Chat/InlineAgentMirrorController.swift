@@ -4,7 +4,10 @@ import Combine
 import FirebaseAuth
 import Foundation
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 import OSLog
 import UIKit
@@ -382,9 +385,7 @@ final class InlineAgentMirrorController: ObservableObject {
             startFirstFrameTimeout(sessionID: ack.sessionId)
         default:
             let reason = ack.detail?.trimmingCharacters(in: .whitespacesAndNewlines)
-            phase = .error(reason?.isEmpty == false
-                           ? reason!
-                           : "Mac declined the mirror request.")
+            phase = .error(reason.flatMap { $0.isEmpty ? nil : $0 } ?? "Mac declined the mirror request.")
             activeMirrorRequestID = nil
             activeMirrorSessionId = nil
         }

@@ -1,6 +1,9 @@
 import SwiftUI
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Cache Constellation Scene
 //

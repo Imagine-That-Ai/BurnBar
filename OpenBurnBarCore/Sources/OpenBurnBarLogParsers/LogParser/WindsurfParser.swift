@@ -379,7 +379,7 @@ public final class WindsurfParser: LogParser, Sendable {
 
         guard let valueString = rows.first?.string("value") else { return false }
         guard let jsonData = valueString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { // try?-ok(parse 3rd-party JSON)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: jsonData) else { // try?-ok(parse 3rd-party JSON)
             return false
         }
 

@@ -417,9 +417,9 @@ public enum MIFSection: String, Sendable, CaseIterable {
     case findings = "10-findings"
 
     public var rank: Int {
-        // reason: self is always a member of allCases
-        // swiftlint:disable:next force_unwrapping
-        MIFSection.allCases.firstIndex(of: self)!
+        // self is always a member of allCases; sort last rather than crash
+        // if that ever stops holding.
+        MIFSection.allCases.firstIndex(of: self) ?? MIFSection.allCases.count
     }
 
     /// The name the **crypto** uses: `tombstones`, not `00-tombstones`.

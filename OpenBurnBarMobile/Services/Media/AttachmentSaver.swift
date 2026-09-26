@@ -7,7 +7,7 @@ import UIKit
 import Photos
 #endif
 
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// iOS-side save router for inbound Mercury attachments. Implements
 /// Decision 3 (`plans/2026-05-15-mercury-media-master-plan.md`):

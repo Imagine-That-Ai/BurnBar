@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarProviderModels
 
 public enum BurnBarProxyRouteFinalStatus: String, Codable, Hashable, CaseIterable, Sendable {
     case exact

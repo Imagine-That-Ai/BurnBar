@@ -1,7 +1,7 @@
 import CryptoKit
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import UIKit
 

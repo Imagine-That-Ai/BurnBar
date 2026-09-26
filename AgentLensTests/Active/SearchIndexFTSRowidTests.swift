@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Covers the `v55_search_chunks_fts_rowid` performance fix: chunk FTS rows are
 /// deleted by recorded rowid instead of `WHERE chunkID = ?` (an UNINDEXED FTS5
@@ -21,6 +22,8 @@ final class SearchIndexFTSRowidTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: document.id,
             title: document.title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
             chunks: [
                 makeChunk(id: "chunk-1", document: document, ordinal: 0, text: "alpha bravo", now: now),
                 makeChunk(id: "chunk-2", document: document, ordinal: 1, text: "charlie delta", now: now)
@@ -56,6 +59,8 @@ final class SearchIndexFTSRowidTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: document.id,
             title: document.title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
             chunks: [
                 makeChunk(id: "chunk-1", document: document, ordinal: 0, text: "keepable text", now: now),
                 makeChunk(id: "chunk-2", document: document, ordinal: 1, text: "deletable text", now: now)
@@ -65,6 +70,8 @@ final class SearchIndexFTSRowidTests: XCTestCase {
         _ = try await store.applySearchChunkDiff(
             documentID: document.id,
             title: document.title,
+            projectName: document.projectName ?? "",
+            provider: document.provider ?? "",
             chunks: [
                 makeChunk(id: "chunk-1", document: document, ordinal: 0, text: "keepable text", now: now)
             ]
@@ -107,7 +114,7 @@ final class SearchIndexFTSRowidTests: XCTestCase {
             )
         }
 
-        try await store.replaceSearchChunks(documentID: document.id, title: document.title, chunks: [])
+        try await store.replaceSearchChunks(documentID: document.id, title: document.title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: [])
 
         let ftsCount = try await queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM search_chunks_fts") ?? -1
@@ -272,7 +279,12 @@ final class SearchIndexFTSRowidTests: XCTestCase {
 
     private func makeInMemoryStore() throws -> (DataStore, DatabaseQueue) {
         let queue = try DatabaseQueue(path: ":memory:")
-        let store = try DataStore(databaseQueue: queue, runMigrations: true)
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
         return (store, queue)
     }
 

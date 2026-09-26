@@ -24,7 +24,7 @@ final class SwitcherPopoverUITests: XCTestCase {
         try await super.setUp()
         dbQueue = try DatabaseQueue()
         try await Self.addMigrationv32(to: dbQueue)
-        store = SwitcherProfileStore(dbQueue: dbQueue)
+        store = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
 
         // Create adapter for launch services
         let adapter = PopoverTestSwitcherProfileAdapter(store: store)
@@ -675,7 +675,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view - it will load data on appear (profiles exist in empty database)
@@ -698,7 +699,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view with skip load (empty state)
@@ -726,7 +728,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Note: We can't directly test isLoading state since it's internal to the view
@@ -752,11 +755,12 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profiles in the database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -795,7 +799,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view with injected error state
@@ -828,7 +833,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let errorMessage = "Database connection failed"
@@ -857,7 +863,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let view = PopoverQuickSwitchView(
@@ -885,7 +892,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let view = PopoverQuickSwitchView(
@@ -913,7 +921,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create view with error state
@@ -947,7 +956,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view with skip load to verify basic structure
@@ -972,7 +982,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view with skip load (empty state has settings button)
@@ -1002,7 +1013,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view with skip load (empty state)
@@ -1032,11 +1044,12 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profiles in the database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1073,11 +1086,12 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profiles in the SAME database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         _ = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1130,7 +1144,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Ensure no profiles exist in the database
@@ -1175,11 +1190,12 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create profiles in the SAME database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let p1 = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1234,7 +1250,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let first = try store.create(SwitcherProfileRecord(
@@ -1271,7 +1288,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let first = try store.create(SwitcherProfileRecord(
@@ -1312,7 +1330,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         let first = try store.create(SwitcherProfileRecord(
@@ -1350,11 +1369,12 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create a browser profile in the SAME database
-        let localStore = SwitcherProfileStore(dbQueue: dbQueue)
+        let localStore = SwitcherProfileStore(dbQueue: dbQueue, activeProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue))
         let profile = try localStore.create(SwitcherProfileRecord(
             targetKind: .browser,
             browserType: .chrome,
@@ -1410,7 +1430,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         let dataStore = try DataStore(
             databaseQueue: dbQueue,
             runMigrations: false,
-            refreshOnInit: false
+            refreshOnInit: false,
+            switcherActiveProfileWriter: LocalSwitcherActiveProfileWriter(dbQueue: dbQueue)
         )
 
         // Create the view

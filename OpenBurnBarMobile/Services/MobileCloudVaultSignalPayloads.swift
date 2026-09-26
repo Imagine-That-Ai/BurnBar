@@ -2,7 +2,7 @@ import FirebaseCore
 import FirebaseFirestore
 import FirebaseRemoteConfig
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 
 enum MobileCloudVaultSignalPayloadError: LocalizedError {

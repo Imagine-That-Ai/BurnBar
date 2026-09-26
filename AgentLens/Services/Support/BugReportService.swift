@@ -4,6 +4,7 @@ import AppKit
 #endif
 @preconcurrency import FirebaseFunctions
 import OSLog
+import OpenBurnBarKernel
 
 public struct BugReportSubmission: Sendable {
     public let title: String
@@ -96,7 +97,7 @@ public enum BugReportService {
         logger.info("Submitting bug report: '\(submission.title, privacy: .public)' (platform: \(submission.platform, privacy: .public))")
 
         let result = try await functions.httpsCallable("submitBugReport").call(payload)
-        guard let data = result.data as? [String: Any] else {
+        guard let data = BurnBarJSONValue.dictionary(from: result.data) else {
             throw NSError(domain: "BugReportService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response from server."])
         }
 

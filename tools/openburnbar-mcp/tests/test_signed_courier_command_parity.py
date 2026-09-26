@@ -49,8 +49,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SERVER_PATH = _PARENT / "server.py"
 _PROVIDERS_PATH = _PARENT / "memory_engine" / "providers.py"
 _CLI_RUNNER_PATH = _REPO_ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift"
+_CLI_COMMANDS_PATH = _REPO_ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarCLIRunner+Commands.swift"
 _CLI_MAIN_PATH = _REPO_ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarCLI/OpenBurnBarCLIMain.swift"
-_RPC_CONTRACTS_PATH = _REPO_ROOT / "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift"
+_RPC_CONTRACTS_PATH = (
+    _REPO_ROOT / "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCMethod.generated.swift"
+)
 _RPC_CAPABILITY_PATH = _REPO_ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift"
 
 # The write-authority helpers, and which positional argument carries the daemon
@@ -222,7 +225,7 @@ _COURIER_TABLE_INVOCATION = "courierCommand.run("
 
 def _courier_table_commands() -> set[str]:
     """The raw values of `BurnBarCLIRunner.ProjectCodeCourierCommand`."""
-    source = _CLI_RUNNER_PATH.read_text(encoding="utf-8")
+    source = _CLI_COMMANDS_PATH.read_text(encoding="utf-8")
     start = source.index(_COURIER_TABLE_DECLARATION)
     open_brace = source.index("{", start)
     depth = 0
@@ -420,7 +423,7 @@ def test_every_courier_method_is_a_real_daemon_rpc() -> None:
 
 def test_the_swift_sources_this_test_reads_are_present() -> None:
     """A silently missing source file would make every check above vacuous."""
-    for path in (_CLI_RUNNER_PATH, _CLI_MAIN_PATH, _RPC_CONTRACTS_PATH, _RPC_CAPABILITY_PATH):
+    for path in (_CLI_RUNNER_PATH, _CLI_COMMANDS_PATH, _CLI_MAIN_PATH, _RPC_CONTRACTS_PATH, _RPC_CAPABILITY_PATH):
         assert path.is_file(), f"{path} moved; this parity test reads it by path"
     assert _direct_command_names(), "directCommandNames parsed empty"
     assert _cli_support_methods(), "cliSupport parsed empty"

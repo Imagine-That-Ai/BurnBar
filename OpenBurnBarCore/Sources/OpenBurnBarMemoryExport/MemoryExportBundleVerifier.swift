@@ -38,6 +38,7 @@
 // can say those — and `verify` says so rather than implying otherwise.
 
 import Foundation
+import OpenBurnBarKernel
 #if canImport(CryptoKit)
 import CryptoKit
 #else
@@ -78,7 +79,7 @@ public enum MemoryExportBundleVerifier {
         guard let manifestData = try? Data(contentsOf: url.appendingPathComponent("manifest.json")) else {
             throw VerifyError.unreadable("no manifest.json at \(url.path)")
         }
-        guard let manifest = try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any] else {
+        guard let manifest = BurnBarJSONValue.dictionary(fromJSONData: manifestData) else {
             throw VerifyError.unreadable("manifest.json is not a JSON object")
         }
 
@@ -164,7 +165,7 @@ public enum MemoryExportBundleVerifier {
         result.checksRun.append("hashtree.json ↔ manifest")
         let headers = manifest["sections"] as? [[String: Any]] ?? []
         if let treeData = try? Data(contentsOf: url.appendingPathComponent("hashtree.json")),
-           let tree = try? JSONSerialization.jsonObject(with: treeData) as? [String: Any] {
+           let tree = BurnBarJSONValue.dictionary(fromJSONData: treeData) {
             let manifestTree = manifest["hashtree"] as? [String: Any]
             if (tree["root"] as? String) != (manifestTree?["root"] as? String) {
                 result.problems.append("hashtree.json's root disagrees with the manifest's")
@@ -244,7 +245,7 @@ public enum MemoryExportBundleVerifier {
             )
         }
         if let treeData = try? Data(contentsOf: url.appendingPathComponent("hashtree.json")),
-           let tree = try? JSONSerialization.jsonObject(with: treeData) as? [String: Any],
+           let tree = BurnBarJSONValue.dictionary(fromJSONData: treeData),
            let chunkSHA = tree["chunk_sha256"] as? [String: [String]] {
             let chunkBytes = MemoryExportCrypto.hashTreeChunkBytes
             for header in headers {
@@ -361,7 +362,7 @@ public enum MemoryExportBundleVerifier {
     /// therefore a lane this build cannot reason about — reported, not ignored.
     static func reconciliationProblems(bundleAt url: URL, headers: [[String: Any]]) -> [String] {
         guard let data = try? Data(contentsOf: url.appendingPathComponent("report.json")),
-              let report = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let report = BurnBarJSONValue.dictionary(fromJSONData: data),
               let tables = report["tables"] as? [[String: Any]] else {
             return ["report.json is missing or carries no tables[], so no count can be reconciled"]
         }

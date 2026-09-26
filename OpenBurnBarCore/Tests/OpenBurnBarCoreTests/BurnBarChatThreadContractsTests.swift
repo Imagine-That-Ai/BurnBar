@@ -90,4 +90,64 @@ final class BurnBarChatThreadContractsTests: XCTestCase {
         XCTAssertEqual(object["beforeMessageID"] as? String, "message-c")
         XCTAssertEqual(try JSONDecoder().decode(BurnBarChatThreadGetRequest.self, from: data), request)
     }
+
+    func testTranscriptPieceUsesStableWireKeys() throws {
+        let piece = BurnBarChatTranscriptPiece(id: "k1", kind: .toolUse, value: "Read", detail: "{\"path\":\"a.ts\"}")
+        let request = BurnBarChatMessageAppendRequest(
+            threadID: "thread-pieces",
+            messageID: "message-pieces",
+            role: .assistant,
+            content: "tools",
+            timestamp: "2026-07-10T12:01:00Z",
+            transcriptPieces: [piece],
+            replace: true
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let pieces = try XCTUnwrap(object["transcriptPieces"] as? [[String: Any]])
+        XCTAssertEqual(pieces.first?["id"] as? String, "k1")
+        XCTAssertEqual(pieces.first?["kind"] as? String, "toolUse")
+        XCTAssertEqual(pieces.first?["value"] as? String, "Read")
+        XCTAssertEqual(pieces.first?["detail"] as? String, "{\"path\":\"a.ts\"}")
+        XCTAssertEqual(object["replace"] as? Bool, true)
+        XCTAssertEqual(try JSONDecoder().decode(BurnBarChatMessageAppendRequest.self, from: data), request)
+    }
+
+    func testThreadCreateRoundTripsWithStableWireKeys() throws {
+        let request = BurnBarChatThreadCreateRequest(threadID: "thread-new", createdAt: "2026-07-10T12:01:00Z")
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["threadID"] as? String, "thread-new")
+        XCTAssertEqual(object["createdAt"] as? String, "2026-07-10T12:01:00Z")
+        XCTAssertEqual(try JSONDecoder().decode(BurnBarChatThreadCreateRequest.self, from: data), request)
+        let response = BurnBarChatThreadCreateResponse(threadID: "thread-new", created: true)
+        XCTAssertEqual(
+            try JSONDecoder().decode(BurnBarChatThreadCreateResponse.self, from: JSONEncoder().encode(response)),
+            response
+        )
+        XCTAssertEqual(BurnBarRPCMethod.chatThreadCreate.rawValue, "daemon.chat.thread.create")
+    }
+
+    func testAppendRequestDecodesPreWave21PayloadsWithGatewayDefaults() throws {
+        let data = Data(
+            #"{"threadID":"thread-old","messageID":"message-old","role":"user","content":"Old client","timestamp":"2026-07-10T12:01:00Z","backendID":"hermes"}"#.utf8
+        )
+        let decoded = try JSONDecoder().decode(BurnBarChatMessageAppendRequest.self, from: data)
+        XCTAssertEqual(decoded.threadID, "thread-old")
+        XCTAssertEqual(decoded.messageID, "message-old")
+        XCTAssertNil(decoded.attachments)
+        XCTAssertNil(decoded.transcriptPieces)
+        XCTAssertFalse(decoded.replace)
+        XCTAssertNil(decoded.appAttachmentsJSON)
+    }
+
+    func testAppendResponseDecodesPreWave21PayloadsAsNotReplaced() throws {
+        let data = Data(
+            #"{"message":{"id":"message-old","threadID":"thread-old","role":"user","content":"Old client","timestamp":"2026-07-10T12:01:00.000Z","backendID":"hermes"},"inserted":false}"#.utf8
+        )
+        let decoded = try JSONDecoder().decode(BurnBarChatMessageAppendResponse.self, from: data)
+        XCTAssertFalse(decoded.inserted)
+        XCTAssertFalse(decoded.replaced)
+        XCTAssertNil(decoded.message.transcriptPieces)
+    }
 }

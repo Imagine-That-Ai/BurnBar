@@ -45,7 +45,7 @@ public enum FlexibleQuotaBucketNormalizer {
     }
 
     static func recurseBuckets(in object: Any, provider: AgentProvider, path: [String]) -> [ProviderQuotaBucket] {
-        if let dictionary = object as? [String: Any] {
+        if let dictionary = object as? QuotaJSONObject {
             if let bucket = makeBucket(from: dictionary, provider: provider, path: path) {
                 return [bucket]
             }
@@ -66,7 +66,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return []
     }
 
-    static func makeBucket(from dictionary: [String: Any], provider: AgentProvider, path: [String]) -> ProviderQuotaBucket? {
+    static func makeBucket(from dictionary: QuotaJSONObject, provider: AgentProvider, path: [String]) -> ProviderQuotaBucket? {
         let usageRatio = ratio(in: dictionary, keys: [
             "usage", "usageInfo", "usage_info", "quotaUsage", "quota_usage", "quotaStatus", "quota_status", "status", "summary"
         ])
@@ -249,7 +249,7 @@ public enum FlexibleQuotaBucketNormalizer {
     static func inferUnit(
         provider: AgentProvider,
         label: String,
-        dictionary: [String: Any],
+        dictionary: QuotaJSONObject,
         usedPercent: Double?,
         limitValue: Double?
     ) -> ProviderQuotaUnit {
@@ -283,7 +283,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return min(max((usedValue / limitValue) * 100, 0), 100)
     }
 
-    static func resolvedResetDate(in dictionary: [String: Any], now: Date = Date()) -> Date? {
+    static func resolvedResetDate(in dictionary: QuotaJSONObject, now: Date = Date()) -> Date? {
         if let explicitReset = date(in: dictionary, keys: [
             "resets_at", "reset_at", "resetTime", "reset_time", "nextResetAt", "next_reset_at", "next_reset_time",
             "expireAt", "expiresAt", "end_time", "endTime"
@@ -412,7 +412,7 @@ public enum FlexibleQuotaBucketNormalizer {
 
     // MARK: - JSON Parsing Helpers
 
-    public static func number(in dictionary: [String: Any], keys: [String]) -> Double? {
+    public static func number(in dictionary: QuotaJSONObject, keys: [String]) -> Double? {
         for key in keys {
             if let value = value(in: dictionary, matching: key) {
                 if let number = value as? NSNumber {
@@ -426,7 +426,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return nil
     }
 
-    public static func string(in dictionary: [String: Any], keys: [String]) -> String? {
+    public static func string(in dictionary: QuotaJSONObject, keys: [String]) -> String? {
         for key in keys {
             if let value = value(in: dictionary, matching: key) as? String, !value.isEmpty {
                 return value
@@ -435,7 +435,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return nil
     }
 
-    static func date(in dictionary: [String: Any], keys: [String]) -> Date? {
+    static func date(in dictionary: QuotaJSONObject, keys: [String]) -> Date? {
         for key in keys {
             guard let value = value(in: dictionary, matching: key) else { continue }
             if let date = parseDateValue(value) {
@@ -445,7 +445,7 @@ public enum FlexibleQuotaBucketNormalizer {
         return nil
     }
 
-    static func value(in dictionary: [String: Any], matching requestedKey: String) -> Any? {
+    static func value(in dictionary: QuotaJSONObject, matching requestedKey: String) -> Any? {
         let normalizedRequested = normalizeJSONKey(requestedKey)
         var bestMatch: (score: Int, value: Any)?
         let allowAffixFuzzyMatch = normalizedRequested.count >= 8
@@ -491,7 +491,7 @@ public enum FlexibleQuotaBucketNormalizer {
             || key.contains("period")
     }
 
-    static func ratio(in dictionary: [String: Any], keys: [String]) -> (used: Double, limit: Double)? {
+    static func ratio(in dictionary: QuotaJSONObject, keys: [String]) -> (used: Double, limit: Double)? {
         for key in keys {
             guard let value = value(in: dictionary, matching: key) else { continue }
             if let string = value as? String, let parsed = parseRatioValues(from: string) {
@@ -548,7 +548,7 @@ public enum FlexibleQuotaBucketNormalizer {
     }
 
     public static func unwrapDataEnvelope(_ object: Any) -> Any {
-        guard let dictionary = object as? [String: Any] else { return object }
+        guard let dictionary = object as? QuotaJSONObject else { return object }
         if let data = dictionary["data"] {
             return data
         }

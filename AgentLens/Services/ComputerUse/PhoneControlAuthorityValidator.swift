@@ -1,7 +1,11 @@
 #if canImport(AppKit)
 import Foundation
 import CryptoKit
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 /// Mac-side validator for phone-issued `PhoneControlAuthority`

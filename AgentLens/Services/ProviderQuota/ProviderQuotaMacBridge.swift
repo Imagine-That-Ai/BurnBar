@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarQuota
 
 // MARK: - macOS platform injections (WS-C2 / phase2 quota seam lift)
 
@@ -7,8 +8,8 @@ struct KeychainQuotaSecretStore: SecretStore {
     private let keychain: KeychainStore
 
     init(keychain: KeychainStore = KeychainStore(
-        service: OpenBurnBarCore.OpenBurnBarIdentity.cursorConnectorKeychainService,
-        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
+        service: OpenBurnBarKernel.OpenBurnBarIdentity.cursorConnectorKeychainService,
+        legacyServices: OpenBurnBarKernel.OpenBurnBarIdentity.legacyCursorConnectorKeychainServices
     )) {
         self.keychain = keychain
     }

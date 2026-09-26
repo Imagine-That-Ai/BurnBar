@@ -1,6 +1,11 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 #if DEBUG
 private final class PopoverQuickSwitchTransitionProbe {

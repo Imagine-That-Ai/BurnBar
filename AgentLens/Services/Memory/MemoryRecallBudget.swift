@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Maps the "High-recall (per reply)" toggle to concrete `MemoryRecallRequest`
 /// parameters, and exposes the wrapper-envelope overhead the recall packer must charge.

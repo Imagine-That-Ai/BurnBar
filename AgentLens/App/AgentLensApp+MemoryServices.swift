@@ -10,11 +10,12 @@ import Foundation
 //      live db queue and hands the SAME instance to `OpenBurnBarMemoryService` (the
 //      enqueue path) and to `MemoryExtractionEngine` (the drain loop). No second store, no
 //      second scope over the same queue — the worker is the sole provenance authority.
-//   #2 The transactional enqueue branch is used. `OpenBurnBarMemoryService` conforms to
-//      `TransactionalMemoryExtractionServing` (a `nonisolated func enqueueExtraction(_:in:
-//      Database)`), so `saveChatMessage` enqueues the outbox row INSIDE the chat-message
-//      write transaction (atomic outbox; no dual-write window). This file only wires the
-//      service in; the branch selection lives in `ConversationStore+Chat.saveChatMessage`.
+//   #2 The enqueue runs after the chat write, not inside it. Since Wave 2.1 the
+//      daemon persists the chat row over RPC, so cross-process atomicity is
+//      impossible; `saveChatMessage` enqueues via the async `MemoryServing`
+//      API after a successful RPC. A crash between the two is repaired by
+//      re-save (the idempotency key dedupes), and a failed RPC enqueues
+//      nothing. This file only wires the service in.
 //   #3 The architectural guard (the engine never calls `addChatMemoryAuthorityRecord`
 //      directly — it only hands `MemoryAddRequest`s to the worker, whose preflight/quarantine
 //      cannot be bypassed) is enforced by the `MemoryExtractionEngine` API surface (it has no
@@ -64,10 +65,10 @@ extension OpenBurnBarApp {
         // ONE store over the live queue, shared by the service and the engine (must-fix #1).
         let store = ControlPlaneStore(dbQueue: dataStore.actor.dbQueue)
 
-        // The actor service wired through the TRANSACTIONAL slot (must-fix #2): because it
-        // conforms to `TransactionalMemoryExtractionServing`, `saveChatMessage` enqueues the
-        // outbox row inside the chat-message transaction. The service also binds caller
-        // scopes to the current OpenBurnBar app/account boundary before touching memory rows.
+        // The actor service wired as the extraction enqueue path (must-fix #2):
+        // `saveChatMessage` calls its async `enqueueExtraction` after the daemon
+        // persists the chat row. The service also binds caller scopes to the
+        // current OpenBurnBar app/account boundary before touching memory rows.
         // Behavior stays gated by the G4 kill switch in the controller and the shared
         // authority-write default.
         let service = OpenBurnBarMemoryService(

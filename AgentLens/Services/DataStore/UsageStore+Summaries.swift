@@ -1,6 +1,8 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 extension UsageStore {
     // MARK: - Summary Builders
@@ -100,7 +102,10 @@ extension UsageStore {
                     provenanceMethod: data.bestMethod,
                     hasEstimatedContributions: data.hasEstimated
                 )
-            }.sorted { $0.cost > $1.cost }
+            // Cost ties break on the model key: `modelData` iterates in
+            // arbitrary dictionary order. Applies to every summary sort in
+            // this file.
+            }.sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.modelName, rhsKey: $1.modelName) }
 
             return ProviderSummary(
                 provider: provider,
@@ -115,7 +120,7 @@ extension UsageStore {
                 hasEstimatedContributions: hasAnyEstimated,
                 cacheEfficiency: CacheEfficiency.aggregate(providerUsages)
             )
-        }.sorted { $0.totalCost > $1.totalCost }
+        }.sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.provider.rawValue, rhsKey: $1.provider.rawValue) }
     }
 
     /// Aggregates `token_usage` rows by `(provider, providerAccountID)` to power the
@@ -237,7 +242,7 @@ extension UsageStore {
                     provenanceMethod: data.bestMethod,
                     hasEstimatedContributions: data.hasEstimated
                 )
-            }.sorted { $0.cost > $1.cost }
+            }.sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.modelName, rhsKey: $1.modelName) }
 
             return CredentialSummary(
                 provider: key.provider,
@@ -256,7 +261,7 @@ extension UsageStore {
                 cacheEfficiency: CacheEfficiency.aggregate(rows)
             )
         }
-        .sorted { $0.totalCost > $1.totalCost }
+        .sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.stableKey, rhsKey: $1.stableKey) }
     }
 
     /// Aggregates `token_usage` rows by `projectName` to power the "Spend by Project" lane.
@@ -292,7 +297,7 @@ extension UsageStore {
                     cacheEfficiency: CacheEfficiency.aggregate(providerRows)
                 )
             }
-            .sorted { $0.cost > $1.cost }
+            .sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.provider.rawValue, rhsKey: $1.provider.rawValue) }
 
             // Model rollup within this project.
             var modelData: [String: ModelRollup] = [:]
@@ -363,7 +368,7 @@ extension UsageStore {
                     provenanceMethod: data.bestMethod,
                     hasEstimatedContributions: data.hasEstimated
                 )
-            }.sorted { $0.cost > $1.cost }
+            }.sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.modelName, rhsKey: $1.modelName) }
 
             return ProjectSpendSummary(
                 projectName: projectName,
@@ -380,12 +385,12 @@ extension UsageStore {
                 cacheEfficiency: CacheEfficiency.aggregate(rows)
             )
         }
-        .sorted { $0.totalCost > $1.totalCost }
+        .sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.projectName, rhsKey: $1.projectName) }
     }
 
     static func makeModelSummaries(from usages: [TokenUsage]) -> [ModelSummary] {
         let grouped = Dictionary(grouping: usages) {
-            OpenBurnBarCore.TokenExtractionUtility.normalizeModelKey($0.model)
+            OpenBurnBarLogParsers.TokenExtractionUtility.normalizeModelKey($0.model)
         }
         return grouped.compactMap { key, modelUsages -> ModelSummary? in
             guard !modelUsages.isEmpty else { return nil }
@@ -406,11 +411,11 @@ extension UsageStore {
                     percentage: totalCost > 0 ? (pCost / totalCost) * 100 : 0,
                     cacheEfficiency: CacheEfficiency.aggregate(pUsages)
                 )
-            }.sorted { $0.cost > $1.cost }
+            }.sorted { compareSummaryOrder(lhsCost: $0.cost, rhsCost: $1.cost, lhsKey: $0.provider.rawValue, rhsKey: $1.provider.rawValue) }
 
             return ModelSummary(
                 modelName: key,
-                displayName: OpenBurnBarCore.TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
+                displayName: OpenBurnBarLogParsers.TokenExtractionUtility.displayNameForModel(modelUsages.first?.model ?? key),
                 totalCost: totalCost,
                 totalTokens: totalTokens,
                 totalInputTokens: totalInputTokens,
@@ -423,6 +428,6 @@ extension UsageStore {
                 ),
                 cacheEfficiency: CacheEfficiency.aggregate(modelUsages)
             )
-        }.sorted { $0.totalCost > $1.totalCost }
+        }.sorted { compareSummaryOrder(lhsCost: $0.totalCost, rhsCost: $1.totalCost, lhsKey: $0.modelName, rhsKey: $1.modelName) }
     }
 }

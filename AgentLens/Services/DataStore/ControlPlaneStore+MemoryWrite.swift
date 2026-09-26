@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension ControlPlaneStore {
     /// How a reseal treats the sealed snapshot's A-MEM `context` sentence.
@@ -86,24 +86,33 @@ extension ControlPlaneStore {
             "source_kind:\(existing.sourceKind.rawValue)"
         ]
         let nowString = Self.iso8601String(now)
-        let preservedContextLabels = try await dbQueue.write { db -> [String] in
-            // Read the stored snapshot inside the write transaction so a
-            // concurrent reseal cannot slip between the read and the rewrite.
-            let stored = try resealsSnapshot ? Self.memoryBodySnapshot(db: db, id: id) : nil
-            // `stored?.body` only carries a context-only edit; a body patch
+        // Wave 2.1c-iii: daemon-owned tables — the stored snapshot is
+        // pre-read locally and the reseal commits through the writer seam
+        // with a compare-and-swap precondition, the cross-process form of
+        // the legacy in-transaction snapshot read. A conflicting reseal
+        // applies nothing; the loop re-reads and retries, so two racing
+        // reseals serialize exactly like the legacy transaction did.
+        var attempt = 0
+        while true {
+            attempt += 1
+            let seal = try await memoryAuthoritySnapshotSeal(id: id)
+            var reseal: BurnBarMemoryAuthorityReseal?
+            // `seal.body` only carries a context-only edit; a body patch
             // reseals even when the snapshot row is somehow absent, exactly as
             // this path did before.
-            if resealsSnapshot, let resealBody = patchedBody ?? stored?.body {
+            if resealsSnapshot, let resealBody = patchedBody ?? seal.body {
                 let resealContext: String?
                 switch context {
-                case .preserve: resealContext = stored?.context
+                case .preserve: resealContext = seal.context
                 case .replace: resealContext = replacementContext
                 }
                 // A preserved sentence may predate the add-path G7 scan, so it is
-                // scanned here; a hit returns before anything is written.
+                // scanned here; a hit rejects before anything is committed.
                 if context == .preserve, let resealContext {
                     let labels = Self.memoryGateFindingIDs(in: resealContext)
-                    if labels.isEmpty == false { return labels }
+                    if labels.isEmpty == false {
+                        try await rejectSecrets(labels)
+                    }
                 }
                 let bodyHash = Self.sha256Hex(resealBody)
                 let bodyRef = Self.memorySnapshotRef(snapshotSlug)
@@ -116,61 +125,46 @@ extension ControlPlaneStore {
                     sourceKind: existing.sourceKind,
                     context: resealContext
                 )
-                try db.execute(
-                    sql: """
-                    INSERT INTO memory_body_snapshots (
-                        id, memory_id, body_ref, snapshot_json, body_hash, source_kind, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(memory_id) DO UPDATE SET
-                        body_ref = excluded.body_ref,
-                        snapshot_json = excluded.snapshot_json,
-                        body_hash = excluded.body_hash,
-                        source_kind = excluded.source_kind,
-                        updated_at = excluded.updated_at
-                    """,
-                    arguments: [
-                        snapshotSlug,
-                        id,
-                        bodyRef,
-                        snapshotJSON,
-                        bodyHash,
-                        existing.sourceKind.rawValue,
-                        existing.createdAt,
-                        now
-                    ]
+                reseal = BurnBarMemoryAuthorityReseal(
+                    expectedBodyHash: seal.bodyHash,
+                    expectedUpdatedAtText: seal.updatedAtText,
+                    snapshot: Self.memoryAuthoritySnapshotRow(
+                        id: snapshotSlug,
+                        memoryID: id,
+                        bodyRef: bodyRef,
+                        snapshotJSON: snapshotJSON,
+                        bodyHash: bodyHash,
+                        sourceKind: existing.sourceKind,
+                        createdAt: existing.createdAt,
+                        updatedAt: now
+                    )
                 )
             }
-            try db.execute(
-                sql: """
-                UPDATE agent_memories
-                SET kind = COALESCE(?, kind),
-                    confidence = COALESCE(?, confidence),
-                    updated_at = ?
-                WHERE id = ?
-                  AND source_kind = ?
-                """,
-                arguments: [
-                    patch.kind?.rawValue,
-                    patch.confidence,
-                    now,
-                    id,
-                    existing.sourceKind.rawValue
-                ]
-            )
-            try Self.insertMemoryAuditEvent(
-                db: db,
+            let audit = try Self.memoryAuthorityAuditEvent(
                 action: "memory.update",
                 projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
                 subjectID: id,
                 labels: auditLabels,
                 nowString: nowString
             )
-            return []
+            let operation = BurnBarMemoryAuthorityOperation.updateBody(BurnBarMemoryAuthorityUpdate(
+                memoryID: id,
+                sourceKind: existing.sourceKind.rawValue,
+                kind: patch.kind?.rawValue,
+                confidence: patch.confidence,
+                updatedAtText: Self.memoryAuthorityTimestampText(now),
+                reseal: reseal,
+                audit: audit
+            ))
+            do {
+                _ = try await commitMemoryAuthorityOperations([operation])
+                return true
+            } catch OpenBurnBarDaemonManagerError.rpcConflict {
+                guard attempt < Self.memoryAuthorityMaxResealAttempts else {
+                    throw ChatMemoryAuthorityError.conflictRetryExhausted
+                }
+            }
         }
-        if preservedContextLabels.isEmpty == false {
-            try await rejectSecrets(preservedContextLabels)
-        }
-        return true
     }
 
     func setChatMemoryReviewStatus(id: MemoryID, status: MemoryReviewStatus, now: Date = Date()) async throws -> Bool {
@@ -196,49 +190,46 @@ extension ControlPlaneStore {
             "source_kind:\(existing.sourceKind.rawValue)"
         ]
         let nowString = Self.iso8601String(now)
-        try await dbQueue.write { db in
-            if existing.reviewStatus == .approved,
-               status != .approved,
-               existing.scope.userID != nil {
-                try Self.insertMemoryFactTombstone(
-                    db: db,
-                    memory: existing,
-                    reason: "review_status_\(status.rawValue)",
-                    now: now
-                )
-            }
-            if existing.reviewStatus != .approved,
-               status == .approved,
-               existing.scope.userID != nil {
-                try db.execute(
-                    sql: """
-                    UPDATE memory_fact_tombstones
-                    SET replicated_at = ?
-                    WHERE memory_id = ?
-                      AND replicated_at IS NULL
-                    """,
-                    arguments: [now, id]
-                )
-            }
-            try db.execute(
-                sql: """
-                UPDATE agent_memories
-                SET review_status = ?,
-                    updated_at = ?
-                WHERE id = ?
-                  AND source_kind = ?
-                """,
-                arguments: [status.rawValue, nowString, id, existing.sourceKind.rawValue]
-            )
-            try Self.insertMemoryAuditEvent(
-                db: db,
-                action: status == .approved ? "memory.approve" : "memory.reject",
-                projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
-                subjectID: id,
-                labels: auditLabels,
-                nowString: nowString
+        // Wave 2.1c-iii: daemon-owned tables — the verdict commits through
+        // the writer seam. `updatedAtText` keeps the legacy ISO 8601 stamp
+        // (not GRDB text); the daemon binds it verbatim.
+        var factTombstone: BurnBarMemoryAuthorityFactTombstoneRow?
+        var markFactTombstoneReplicated = false
+        var replicatedAtText: String?
+        if existing.reviewStatus == .approved,
+           status != .approved,
+           existing.scope.userID != nil {
+            factTombstone = try Self.memoryAuthorityChatFactTombstone(
+                memory: existing,
+                reason: "review_status_\(status.rawValue)",
+                createdAt: now
             )
         }
+        if existing.reviewStatus != .approved,
+           status == .approved,
+           existing.scope.userID != nil {
+            markFactTombstoneReplicated = true
+            replicatedAtText = Self.memoryAuthorityTimestampText(now)
+        }
+        let audit = try Self.memoryAuthorityAuditEvent(
+            action: status == .approved ? "memory.approve" : "memory.reject",
+            projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
+            subjectID: id,
+            labels: auditLabels,
+            nowString: nowString
+        )
+        _ = try await commitMemoryAuthorityOperationsChecked([
+            .setReviewStatus(BurnBarMemoryAuthorityReview(
+                memoryID: id,
+                sourceKind: existing.sourceKind.rawValue,
+                reviewStatus: status.rawValue,
+                updatedAtText: nowString,
+                factTombstone: factTombstone,
+                markFactTombstoneReplicated: markFactTombstoneReplicated,
+                replicatedAtText: replicatedAtText,
+                audit: audit
+            ))
+        ])
         // The verdict is durable and audited above; publishing the BODY is the
         // daemon's, so an agent-lane verdict is handed to
         // `daemon.memory.review_status` and the daemon stays the single
@@ -309,62 +300,59 @@ extension ControlPlaneStore {
             engineMemoryID = nil
         }
 
-        try await dbQueue.write { db in
-            // The sealed cloud copy deletes through a fact tombstone — keyed on
-            // the engine id for a mirrored row, the same spelling
-            // `enqueueTombstonesForUnsyncableAgentMemories` uses, because that
-            // is what the cloud document is named. A mirrored row that was ever
-            // owned may have been uploaded under ANY earlier verdict, so the
-            // tombstone is not gated on `review_status` the way the chat path's
-            // is: a rejected or still-parked row can still have a cloud copy.
-            if existing.sourceKind == .agent {
-                if let owner = existing.scope.userID ?? actingAccountUserID {
-                    try Self.insertAgentMemoryFactTombstone(
-                        db: db,
-                        memoryID: id,
-                        userID: owner,
-                        engineMemoryID: engineMemoryID,
-                        reason: "user_delete",
-                        now: now
-                    )
-                }
-            } else if existing.reviewStatus == .approved,
-                      existing.scope.userID != nil {
-                try Self.insertMemoryFactTombstone(
-                    db: db,
-                    memory: existing,
+        // Wave 2.1c-iii: daemon-owned tables — the cascade commits through
+        // the writer seam (tombstones first, then deletes, then the
+        // mirrored-row halves, then audit — the legacy order). The
+        // agent-lane daemon forget above still runs first and fail-closed.
+        var agent: BurnBarMemoryAuthorityAgentDelete?
+        var factTombstone: BurnBarMemoryAuthorityFactTombstoneRow?
+        // The sealed cloud copy deletes through a fact tombstone — keyed on
+        // the engine id for a mirrored row, the same spelling
+        // `enqueueTombstonesForUnsyncableAgentMemories` uses, because that
+        // is what the cloud document is named. A mirrored row that was ever
+        // owned may have been uploaded under ANY earlier verdict, so the
+        // tombstone is not gated on `review_status` the way the chat path's
+        // is: a rejected or still-parked row can still have a cloud copy.
+        if existing.sourceKind == .agent {
+            var agentTombstone: BurnBarMemoryAuthorityFactTombstoneRow?
+            if let owner = existing.scope.userID ?? actingAccountUserID {
+                agentTombstone = Self.memoryAuthorityAgentFactTombstone(
+                    memoryID: id,
+                    userID: owner,
+                    engineMemoryID: engineMemoryID,
                     reason: "user_delete",
-                    now: now
+                    createdAt: now
                 )
             }
-            try db.execute(sql: "DELETE FROM memory_embedding_refs WHERE memory_id = ?", arguments: [id])
-            try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
-            try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, existing.sourceKind.rawValue])
-            try db.execute(sql: "DELETE FROM memory_body_snapshots WHERE memory_id = ?", arguments: [id])
-            // The daemon's forget already removed its own copies; these are the
-            // same shared tables, so the deletes are belt-and-suspenders for a
-            // pre-forget daemon build or a row it never saw. The sync-body row
-            // is BLANKED, not deleted: `engine_memory_id` is a routing label,
-            // not memory content, and it is the only handle the fact-tombstone
-            // drain has on the sealed cloud document — deleting the row would
-            // make `cloudFactIdentity` fall back to the local id and leave the
-            // engine-keyed copy behind for ever.
-            if existing.sourceKind == .agent {
-                try db.execute(sql: "DELETE FROM memory_quarantine_bodies WHERE memory_id = ?", arguments: [id])
-                try db.execute(
-                    sql: "UPDATE agent_memory_bodies SET body = '', body_hash = '', updated_at = ? WHERE memory_id = ?",
-                    arguments: [nowString, id]
-                )
-            }
-            try Self.insertMemoryAuditEvent(
-                db: db,
-                action: "memory.delete",
-                projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
-                subjectID: id,
-                labels: auditLabels,
-                nowString: nowString
+            agent = BurnBarMemoryAuthorityAgentDelete(factTombstone: agentTombstone)
+        } else if existing.reviewStatus == .approved,
+                  existing.scope.userID != nil {
+            factTombstone = try Self.memoryAuthorityChatFactTombstone(
+                memory: existing,
+                reason: "user_delete",
+                createdAt: now
             )
         }
+        let audit = try Self.memoryAuthorityAuditEvent(
+            action: "memory.delete",
+            projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
+            subjectID: id,
+            labels: auditLabels,
+            nowString: nowString
+        )
+        _ = try await commitMemoryAuthorityOperationsChecked([
+            .deleteMemory(BurnBarMemoryAuthorityDelete(
+                memoryID: id,
+                sourceKind: existing.sourceKind.rawValue,
+                agent: agent,
+                factTombstone: factTombstone,
+                // Legacy ISO quirk, verbatim: the sync-body row is BLANKED,
+                // not deleted — `engine_memory_id` is the only handle the
+                // fact-tombstone drain keeps on the sealed cloud document.
+                blankedBodyUpdatedAtText: existing.sourceKind == .agent ? nowString : nil,
+                audit: audit
+            ))
+        ])
         return true
     }
 

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Hermes Runtime Store
 //
@@ -69,7 +69,7 @@ final class HermesRuntimeStore {
 
     init(
         defaults: UserDefaults = .standard,
-        baseURL: URL = URL(string: "http://127.0.0.1:8642")!
+        baseURL: URL = URL(staticString: "http://127.0.0.1:8642")
     ) {
         self.baseURL = baseURL
         self.selectedModelID = HermesService.restoredModelID(

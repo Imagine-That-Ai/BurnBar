@@ -11,7 +11,13 @@ import GRDB
 final class ProjectionPipelineServiceTests: XCTestCase {
     func test_markVectorIndexSnapshotStale_preservesSnapshotCountWithoutEmbeddingRecount() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
         let embedder = DeterministicFakeEmbeddingProvider(
             dimensions: 8,
             versionTag: "stale-count-v1",
@@ -1642,11 +1648,15 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         try await store.replaceSearchChunks(
             documentID: eligibleDocument.id,
             title: eligibleDocument.title,
+            projectName: eligibleDocument.projectName ?? "",
+            provider: eligibleDocument.provider ?? "",
             chunks: [eligibleChunk]
         )
         try await store.replaceSearchChunks(
             documentID: codeDocument.id,
             title: codeDocument.title,
+            projectName: codeDocument.projectName ?? "",
+            provider: codeDocument.provider ?? "",
             chunks: [codeChunk]
         )
 
@@ -2363,7 +2373,7 @@ extension ProjectionPipelineServiceTests {
             SearchChunkRecord(id: "chunk-3", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-1", sourceVersionID: "v1", ordinal: 2, startOffset: 200, endOffset: 300, text: "Third chunk text", contentHash: "hash-c", createdAt: base, updatedAt: base)
         ]
 
-        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
+        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: chunks)
 
         XCTAssertEqual(result.added, 3, "All three chunks should be added on first projection.")
         XCTAssertEqual(result.deleted, 0)
@@ -2407,12 +2417,12 @@ extension ProjectionPipelineServiceTests {
         ]
 
         // First projection — all added
-        let firstResult = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
+        let firstResult = try await store.applySearchChunkDiff(documentID: documentID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: chunks)
         XCTAssertEqual(firstResult.added, 2)
         XCTAssertFalse(firstResult.isNoOp)
 
         // Second projection with IDENTICAL chunks — should be a complete no-op
-        let secondResult = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
+        let secondResult = try await store.applySearchChunkDiff(documentID: documentID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: chunks)
         XCTAssertTrue(secondResult.isNoOp, "Identical chunk set should be a complete no-op.")
         XCTAssertEqual(secondResult.unchanged, 2, "Both chunks should be classified as unchanged.")
         XCTAssertEqual(secondResult.writeCount, 0, "No writes should occur for unchanged chunks.")
@@ -2458,7 +2468,7 @@ extension ProjectionPipelineServiceTests {
             SearchChunkRecord(id: "chunk-v1-a", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v1", ordinal: 0, startOffset: 0, endOffset: 100, text: "Same text", contentHash: "hash-same", createdAt: base, updatedAt: base),
             SearchChunkRecord(id: "chunk-v1-b", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 200, text: "Also same", contentHash: "hash-also-same", createdAt: base, updatedAt: base)
         ]
-        _ = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v1Chunks)
+        _ = try await store.applySearchChunkDiff(documentID: documentID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: v1Chunks)
 
         // Second projection with v2 chunk IDs but SAME content hashes.
         // This simulates metadata-only change where sourceVersionID changed chunk IDs
@@ -2467,7 +2477,7 @@ extension ProjectionPipelineServiceTests {
             SearchChunkRecord(id: "chunk-v2-a", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v2", ordinal: 0, startOffset: 0, endOffset: 100, text: "Same text", contentHash: "hash-same", createdAt: base, updatedAt: base),
             SearchChunkRecord(id: "chunk-v2-b", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-3", sourceVersionID: "v2", ordinal: 1, startOffset: 100, endOffset: 200, text: "Also same", contentHash: "hash-also-same", createdAt: base, updatedAt: base)
         ]
-        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v2Chunks)
+        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: v2Chunks)
 
         // ID drift reconciliation: new chunks inserted, old chunks deleted per feature requirement.
         // Hash-set equality does not trigger no-op when chunk IDs differ.
@@ -2528,7 +2538,7 @@ extension ProjectionPipelineServiceTests {
                 updatedAt: base
             )
         }
-        _ = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v1Chunks)
+        _ = try await store.applySearchChunkDiff(documentID: documentID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: v1Chunks)
 
         let v2Chunks = (0..<chunkCount).map { index in
             SearchChunkRecord(
@@ -2547,7 +2557,7 @@ extension ProjectionPipelineServiceTests {
             )
         }
 
-        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: v2Chunks)
+        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: v2Chunks)
 
         XCTAssertEqual(result.rekeyed, chunkCount)
         XCTAssertEqual(result.added, chunkCount)
@@ -2588,7 +2598,7 @@ extension ProjectionPipelineServiceTests {
             SearchChunkRecord(id: "chunk-mid", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 200, text: "Middle content", contentHash: "hash-mid", createdAt: base, updatedAt: base),
             SearchChunkRecord(id: "chunk-tail", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 2, startOffset: 200, endOffset: 300, text: "Tail content", contentHash: "hash-tail", createdAt: base, updatedAt: base)
         ]
-        _ = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: initialChunks)
+        _ = try await store.applySearchChunkDiff(documentID: documentID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: initialChunks)
 
         // Partial edit: head unchanged, middle changed (new content), tail removed
         let editedChunks = [
@@ -2596,7 +2606,7 @@ extension ProjectionPipelineServiceTests {
             SearchChunkRecord(id: "chunk-mid-v2", documentID: documentID, sourceKind: .conversation, sourceID: "conv-incr-4", sourceVersionID: "v1", ordinal: 1, startOffset: 100, endOffset: 250, text: "Modified middle content", contentHash: "hash-mid-v2", createdAt: base, updatedAt: base)
         ]
 
-        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: editedChunks)
+        let result = try await store.applySearchChunkDiff(documentID: documentID, title: title, projectName: document.projectName ?? "", provider: document.provider ?? "", chunks: editedChunks)
 
         XCTAssertEqual(result.unchanged, 1, "Head chunk should be unchanged.")
         XCTAssertEqual(result.added, 1, "Modified middle chunk should be added (new contentHash).")
@@ -4165,7 +4175,13 @@ extension ProjectionPipelineServiceTests {
 
     func test_embedderDriftCheck_enqueuesOneReembedAndNeverDuplicates() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
         let now = Date(timeIntervalSince1970: 1_755_300_000)
 
         // A prior generation of the index stamped its lineage active (e.g. the
@@ -4208,7 +4224,13 @@ extension ProjectionPipelineServiceTests {
 
     func test_embedderDriftCheck_quietWhenConfiguredVersionIsActive() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
         let embedder = DeterministicFakeEmbeddingProvider(versionTag: "steady-v1", seed: "steady")
         let service = ProjectionPipelineService(
             dataStore: store,
@@ -4239,7 +4261,13 @@ extension ProjectionPipelineServiceTests {
 
         // 1. The pre-upgrade install: one conversation projected under ci-v1.
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
         let legacyService = ProjectionPipelineService(
             dataStore: store,
             leaseOwner: "worker-upgrade-legacy",
@@ -4325,7 +4353,13 @@ extension ProjectionPipelineServiceTests {
 
     func test_embedderDriftCheck_quietOnFreshStore() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
-        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let store = try DataStore(
+            databaseQueue: queue,
+            runMigrations: true,
+            refreshOnInit: false,
+            vectorSnapshotWriter: LocalVectorIndexSnapshotWriter(dbQueue: queue),
+            searchIndexWriter: LocalSearchIndexWriter(dbQueue: queue)
+        )
         let service = ProjectionPipelineService(
             dataStore: store,
             leaseOwner: "worker-drift-fresh",

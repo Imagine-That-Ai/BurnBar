@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarAnalytics
 
 /// Top-level environment object that owns the Insights tab's mutable state
 /// on macOS: the canvas store, the model catalog, the cache, the audit
@@ -357,7 +359,8 @@ final class InsightsMacEnvironment {
                 let envURL = environment["INSIGHTS_HOSTED_FALLBACK_URL"]?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let defaultURL = "https://us-central1-burnbar.cloudfunctions.net/insightsHostedAnswer"
-                guard let url = URL(string: (envURL?.isEmpty == false ? envURL! : defaultURL)) else {
+                let resolvedURLString = envURL.flatMap { $0.isEmpty ? nil : $0 } ?? defaultURL
+                guard let url = URL(string: resolvedURLString) else {
                     return nil
                 }
                 return BurnBarHostedInsightAdapter(
@@ -380,7 +383,7 @@ final class InsightsMacEnvironment {
     nonisolated static func hermesInsightBaseURL(environment: [String: String]) -> URL {
         environment["HERMES_BASE_URL"]
             .flatMap { URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-            ?? URL(string: "http://127.0.0.1:8642")!
+            ?? URL(staticString: "http://127.0.0.1:8642")
     }
 
     nonisolated static func makeHermesInsightAdapter(

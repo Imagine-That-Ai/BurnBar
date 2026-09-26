@@ -1,6 +1,10 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 #if canImport(AppKit)
 import AppKit
 #endif

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -21,7 +22,7 @@ import FoundationNetworking
 /// only the trailing four characters are surfaced as a `redactedLabel`.
 public struct AnthropicCredentialProbe: Sendable {
 
-    public static let defaultBaseURL = URL(string: "https://api.anthropic.com/v1")!
+    public static let defaultBaseURL = URL(staticString: "https://api.anthropic.com/v1")
     /// Anthropic Messages API version header. Mirror the daemon's
     /// `BurnBarAnthropicProviderExecutor.defaultAnthropicVersion` — bump in
     /// lockstep when Anthropic ships a new pinned version.

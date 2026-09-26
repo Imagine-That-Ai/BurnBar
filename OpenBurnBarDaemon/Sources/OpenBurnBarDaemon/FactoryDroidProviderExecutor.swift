@@ -296,10 +296,10 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
     """
 
     private static func chatCompletionPrompt(from body: Data) throws -> (prompt: String, stream: Bool) {
-        guard let object = try JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+        guard let object = try JSONSerialization.jsonObject(with: body) as? DaemonJSONObject else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
-        let messages = (object["messages"] as? [[String: Any]]) ?? []
+        let messages = (object["messages"] as? [DaemonJSONObject]) ?? []
         var parts = [backendGuardrail]
         for message in messages {
             let role = (message["role"] as? String ?? "user").capitalized
@@ -308,7 +308,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
                 parts.append("\(role):\n\(content)")
             }
         }
-        if let responseFormat = object["response_format"] as? [String: Any],
+        if let responseFormat = object["response_format"] as? DaemonJSONObject,
            (responseFormat["type"] as? String) == "json_object" {
             parts.append("Return valid JSON only.")
         }
@@ -316,7 +316,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
     }
 
     private static func responsesPrompt(from body: Data) throws -> (prompt: String, stream: Bool) {
-        guard let object = try JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+        guard let object = try JSONSerialization.jsonObject(with: body) as? DaemonJSONObject else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
         var parts = [backendGuardrail]
@@ -338,7 +338,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
             return string
         case let array as [Any]:
             return array.map(text(from:)).filter { !$0.isEmpty }.joined(separator: "\n")
-        case let object as [String: Any]:
+        case let object as DaemonJSONObject:
             if let text = object["text"] as? String {
                 return text
             }
@@ -371,13 +371,13 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
             let joined = array.compactMap(textCandidate(in:)).filter { !$0.isEmpty }.joined(separator: "\n")
             return joined.isEmpty ? nil : joined
         }
-        guard let object = value as? [String: Any] else { return nil }
+        guard let object = value as? DaemonJSONObject else { return nil }
         for key in ["result", "response", "content", "message", "text", "output", "summary"] {
             if let candidate = object[key], let text = textCandidate(in: candidate), !text.isEmpty {
                 return text
             }
         }
-        if let choices = object["choices"] as? [[String: Any]],
+        if let choices = object["choices"] as? [DaemonJSONObject],
            let first = choices.first,
            let message = first["message"],
            let text = textCandidate(in: message) {
@@ -502,7 +502,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
     private static func chatCompletionResponseBody(modelID: String, output: String, stream: Bool) throws -> Data {
         let id = "chatcmpl-openburnbar-factory-\(UUID().uuidString)"
         if stream {
-            let chunk: [String: Any] = [
+            let chunk: DaemonJSONObject = [
                 "id": id,
                 "object": "chat.completion.chunk",
                 "created": Int(Date().timeIntervalSince1970),
@@ -513,7 +513,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
                     "finish_reason": NSNull()
                 ]]
             ]
-            let done: [String: Any] = [
+            let done: DaemonJSONObject = [
                 "id": id,
                 "object": "chat.completion.chunk",
                 "created": Int(Date().timeIntervalSince1970),
@@ -526,7 +526,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
             ]
             return try sseBody(events: [chunk, done])
         }
-        let body: [String: Any] = [
+        let body: DaemonJSONObject = [
             "id": id,
             "object": "chat.completion",
             "created": Int(Date().timeIntervalSince1970),
@@ -565,7 +565,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
                 modelID: modelID
             ).body
         }
-        let body: [String: Any] = [
+        let body: DaemonJSONObject = [
             "id": id,
             "object": "response",
             "created_at": Date().timeIntervalSince1970,
@@ -588,7 +588,7 @@ public struct FactoryDroidProviderExecutor: BurnBarProviderExecuting, Sendable {
         return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
     }
 
-    private static func sseBody(events: [[String: Any]]) throws -> Data {
+    private static func sseBody(events: [DaemonJSONObject]) throws -> Data {
         var text = ""
         for event in events {
             let data = try JSONSerialization.data(withJSONObject: event, options: [.sortedKeys])

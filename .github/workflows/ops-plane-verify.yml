@@ -27,6 +27,8 @@ on:
       - "scripts/ops/check-ops-alert-plane-drift.*"
       - "scripts/ops/check-billing-budget-drift.*"
       - "governance/ops-billing-budget.json"
+      - "scripts/ops/check-artifact-retention-drift.*"
+      - "governance/ops-artifact-retention.json"
       - "scripts/ops/verify-github-governance.sh"
       - "governance/branch-protection.main.json"
       - "functions/scripts/ops-alert-policy-definitions.mjs"
@@ -64,6 +66,9 @@ jobs:
 
       - name: Billing budget drift check — offline self-test
         run: node --test scripts/ops/check-billing-budget-drift.test.mjs
+
+      - name: Artifact retention drift check — offline self-test
+        run: node --test scripts/ops/check-artifact-retention-drift.test.mjs
 
       - name: Syntax-check reworked GitHub governance verifier
         run: bash -n scripts/ops/verify-github-governance.sh
@@ -138,6 +143,10 @@ jobs:
         env:
           OPS_BILLING_ACCOUNT: ${{ vars.OPS_BILLING_ACCOUNT }}
         run: node scripts/ops/check-billing-budget-drift.mjs
+
+      - name: Artifact retention drift — live gcf-artifacts policies vs committed contract
+        if: always() && steps.auth.outcome == 'success'
+        run: node scripts/ops/check-artifact-retention-drift.mjs
 
   detect-secrets:
     runs-on: ubuntu-latest
@@ -245,6 +254,10 @@ jobs:
         env:
           OPS_BILLING_ACCOUNT: ${{ vars.OPS_BILLING_ACCOUNT }}
         run: node scripts/ops/check-billing-budget-drift.mjs
+
+      - name: Artifact retention drift — live gcf-artifacts policies vs committed contract
+        if: always()
+        run: node scripts/ops/check-artifact-retention-drift.mjs
 
       - name: Collect Firebase security evidence
         env:

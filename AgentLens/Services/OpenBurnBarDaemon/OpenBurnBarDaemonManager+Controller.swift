@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension OpenBurnBarDaemonManager {
 
@@ -179,11 +179,11 @@ extension OpenBurnBarDaemonManager {
         let trimmedChatID = settingsManager.controllerTelegramChatID.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if trimmedToken.isEmpty {
-            try Self.controllerRuntimeSecrets.delete(account: OpenBurnBarCore.OpenBurnBarIdentity.controllerTelegramBotTokenAccount)
+            try Self.controllerRuntimeSecrets.delete(account: OpenBurnBarKernel.OpenBurnBarIdentity.controllerTelegramBotTokenAccount)
         } else {
             try Self.controllerRuntimeSecrets.set(
                 trimmedToken,
-                for: OpenBurnBarCore.OpenBurnBarIdentity.controllerTelegramBotTokenAccount
+                for: OpenBurnBarKernel.OpenBurnBarIdentity.controllerTelegramBotTokenAccount
             )
         }
 

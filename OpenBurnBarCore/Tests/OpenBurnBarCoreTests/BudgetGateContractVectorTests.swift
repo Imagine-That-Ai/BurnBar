@@ -127,9 +127,13 @@ final class BudgetGateContractVectorTests: XCTestCase {
     // MARK: - Loading
 
     private func loadSuite() throws -> Suite {
-        guard let url = Bundle.module.url(forResource: "budget-enforcement-vectors", withExtension: "json") else {
-            throw XCTSkip("budget-enforcement-vectors.json missing from OpenBurnBarCoreTests Fixtures bundle")
-        }
+        // The fixture is committed at OpenBurnBarCoreTests/Fixtures/ and
+        // bundled via Bundle.module — a missing fixture is a regression that
+        // must fail loudly, never a silent skip.
+        let url = try XCTUnwrap(
+            Bundle.module.url(forResource: "budget-enforcement-vectors", withExtension: "json"),
+            "budget-enforcement-vectors.json missing from OpenBurnBarCoreTests Fixtures bundle"
+        )
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { d in
             let raw = try d.singleValueContainer().decode(String.self)

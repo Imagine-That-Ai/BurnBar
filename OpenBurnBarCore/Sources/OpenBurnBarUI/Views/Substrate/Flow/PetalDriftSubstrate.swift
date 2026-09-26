@@ -92,12 +92,12 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         g.clip()
 
         // 1) Soft core→rim radial: warm cream/white core fading to translucent.
-        let cream = CGGradient(colorsSpace: cs, colors: [
+        guard let cream = CGGradient(colorsSpace: cs, colors: [
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.95),
             CGColor(srgbRed: 1, green: 250.0 / 255, blue: 252.0 / 255, alpha: 0.62),
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.24),
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.0)
-        ] as CFArray, locations: [0, 0.28, 0.62, 1])!
+        ] as CFArray, locations: [0, 0.28, 0.62, 1]) else { return nil }
         let creamC = CGPoint(x: cx + len * 0.34, y: cy)
         g.drawRadialGradient(cream, startCenter: creamC, startRadius: 0,
                              endCenter: creamC, endRadius: len * 0.95, options: [])
@@ -114,11 +114,14 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         g.setLineCap(.butt)
         g.replacePathWithStrokedPath()
         g.clip()
-        let spec = CGGradient(colorsSpace: cs, colors: [
+        guard let spec = CGGradient(colorsSpace: cs, colors: [
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.0),
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.5),
             CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.0)
-        ] as CFArray, locations: [0, 0.5, 1])!
+        ] as CFArray, locations: [0, 0.5, 1]) else {
+            g.restoreGState()
+            return nil
+        }
         g.drawLinearGradient(spec, start: CGPoint(x: cx, y: cy - halfW),
                              end: CGPoint(x: cx + len, y: cy + halfW * 0.2), options: [])
         g.restoreGState()
@@ -126,11 +129,11 @@ public final class PetalDriftSubstrate: SwarmSubstrate {
         // 3) A faint darker mauve tint at the base (the fold/shadow where petals
         //    overlap), source-over within the teardrop clip.
         let mr = 120.0 / 255, mg = 70.0 / 255, mb = 95.0 / 255
-        let fold = CGGradient(colorsSpace: cs, colors: [
+        guard let fold = CGGradient(colorsSpace: cs, colors: [
             CGColor(srgbRed: mr, green: mg, blue: mb, alpha: 0.30),
             CGColor(srgbRed: mr, green: mg, blue: mb, alpha: 0.05),
             CGColor(srgbRed: mr, green: mg, blue: mb, alpha: 0.0)
-        ] as CFArray, locations: [0, 0.7, 1])!
+        ] as CFArray, locations: [0, 0.7, 1]) else { return nil }
         let foldC = CGPoint(x: cx, y: cy)
         g.drawRadialGradient(fold, startCenter: foldC, startRadius: 0,
                              endCenter: foldC, endRadius: len * 0.5, options: [])

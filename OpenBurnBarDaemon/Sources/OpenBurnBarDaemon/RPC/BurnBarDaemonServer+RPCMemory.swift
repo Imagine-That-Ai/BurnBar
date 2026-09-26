@@ -100,9 +100,74 @@ extension BurnBarDaemonServer {
             } catch {
                 return encodeErrorResponse(id: typedRequest.id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
             }
+        case .memorySnapshotUpsert:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProjectMemorySnapshotUpsertRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: try projectCodeMemory.snapshotUpsertAppLane(typedRequest.params)))
+            } catch {
+                return snapshotErrorResponse(id: typedRequest.id, error: error)
+            }
+        case .memorySnapshotDelete:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProjectMemorySnapshotDeleteRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: try projectCodeMemory.snapshotDeleteAppLane(typedRequest.params)))
+            } catch {
+                return snapshotErrorResponse(id: typedRequest.id, error: error)
+            }
+        case .memorySnapshotDeleteAll:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarProjectMemorySnapshotDeleteAllRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: try projectCodeMemory.snapshotDeleteAllAppLane()))
+            } catch {
+                return snapshotErrorResponse(id: typedRequest.id, error: error)
+            }
+        case .memoryAuthorityApply:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarMemoryAuthorityApplyRequest>.self,
+                from: requestData
+            )
+            do {
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: try projectCodeMemory.memoryAuthorityApplyAppLane(typedRequest.params)))
+            } catch {
+                return memoryAuthorityErrorResponse(id: typedRequest.id, error: error)
+            }
         default:
             preconditionFailure("Unhandled memory RPC method: \(method.rawValue)")
         }
+    }
+
+    /// Error mapping for the snapshot app lane only: validation failures are
+    /// the caller's fault (`invalidParams`, matching the chat cutover lane),
+    /// never an `internalError`. The older memory cases keep their existing
+    /// mapping untouched.
+    private func snapshotErrorResponse(id: String, error: Error) -> Data {
+        if case BurnBarProjectCodeMemoryStoreError.snapshotInvalidRequest = error {
+            return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.invalidParams, message: error.localizedDescription)
+        }
+        return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
+    }
+
+    /// Error mapping for the memory authority app lane: validation failures
+    /// are the caller's fault (`invalidParams`); a failed reseal
+    /// precondition is a retryable `conflict` the app answers with a fresh
+    /// read, never a crash and never a partial apply.
+    private func memoryAuthorityErrorResponse(id: String, error: Error) -> Data {
+        if case BurnBarProjectCodeMemoryStoreError.memoryAuthorityInvalidRequest = error {
+            return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.invalidParams, message: error.localizedDescription)
+        }
+        if case BurnBarProjectCodeMemoryStoreError.memoryAuthorityConflict = error {
+            return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.conflict, message: error.localizedDescription)
+        }
+        return encodeErrorResponse(id: id, code: BurnBarRPCErrorCode.internalError, message: error.localizedDescription)
     }
 }
 

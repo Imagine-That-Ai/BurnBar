@@ -9,8 +9,11 @@ bash scripts/ci/verify-iroh-release-artifact.sh
 
 team_id="${OPENBURNBAR_APPLE_TEAM_ID:-4Y367DF25B}"
 entitlements="AgentLens/Resources/OpenBurnBarMAS.entitlements"
-configuration="${OPENBURNBAR_CONFIGURATION:-Release}"
-scheme="${OPENBURNBAR_SCHEME:-OpenBurnBar}"
+# Wave 2.7: the MAS flag lives in config/OpenBurnBarMAS.xcconfig, wired as
+# the ReleaseMAS base config in project.yml. The lane archives that
+# configuration and must NOT inject DISTRIBUTION_MAS on the command line.
+configuration="${OPENBURNBAR_CONFIGURATION:-ReleaseMAS}"
+scheme="${OPENBURNBAR_SCHEME:-OpenBurnBarMAS}"
 project="${OPENBURNBAR_PROJECT:-OpenBurnBar.xcodeproj}"
 upload="${OPENBURNBAR_UPLOAD_MAC_APP_STORE:-0}"
 auth_key_file=""
@@ -183,8 +186,6 @@ xcodebuild archive \
   DEVELOPMENT_TEAM="$team_id" \
   CODE_SIGN_STYLE=Automatic \
   OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS="$entitlements" \
-  GCC_PREPROCESSOR_DEFINITIONS='$(inherited) DISTRIBUTION_MAS=1' \
-  OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' \
   2>&1 | tee "$log_path" | tail -120
 
 app_path="$archive_path/Products/Applications/OpenBurnBar.app"

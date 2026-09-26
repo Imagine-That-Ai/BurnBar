@@ -249,11 +249,11 @@ final class DirectDownloadArtifactVerifierTests: XCTestCase {
 
     func testBundledPublicKeyReadsSUPublicEDKey() throws {
         // The unit-test host bundles the app's Info.plist, which pins
-        // SUPublicEDKey. If this ever goes missing the updater fails closed,
-        // so surface it here too.
-        guard let key = DirectDownloadArtifactVerifier.bundledPublicKeyBase64() else {
-            throw XCTSkip("Test host bundle does not carry SUPublicEDKey; covered by release verification job.")
-        }
+        // SUPublicEDKey (project.yml OpenBurnBar info). If this ever goes
+        // missing the updater fails closed, so surface it here too: fail,
+        // never skip.
+        let key = try XCTUnwrap(DirectDownloadArtifactVerifier.bundledPublicKeyBase64(),
+            "Test host bundle does not carry SUPublicEDKey")
         let raw = Data(base64Encoded: key)
         XCTAssertEqual(raw?.count, 32, "SUPublicEDKey must be a raw 32-byte Ed25519 public key")
     }

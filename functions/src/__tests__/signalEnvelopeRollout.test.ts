@@ -22,7 +22,7 @@ import {
   gatewaySignalEnvelopeV4Disabled,
   productionGatewaySignalEnvelopeVersions,
   sanitizeGatewayRelayEnvelopeCapabilities,
-} from "../hermesGateway.js";
+} from "../../../packages/functions-shared/src/hermesGateway.js";
 import {
   SIGNAL_ENVELOPE_V4_ENABLED_PARAM,
   isSignalEnvelopeV4RemoteConfigEnabled,

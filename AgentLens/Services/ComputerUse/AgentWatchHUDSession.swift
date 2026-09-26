@@ -1,6 +1,6 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarMedia
 
 /// Mac-side Agent Watch session.

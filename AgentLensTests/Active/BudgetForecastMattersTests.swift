@@ -3,7 +3,7 @@ import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
-/// Locks in the fail-closed behavior hardened in `BudgetForecast.forecast(forRule:)`.
+/// Locks in the fail-closed behavior hardened in `GRDBBudgetForecast.forecast(forRule:)`.
 ///
 /// The forecast feeds a BUDGET projection off the `token_usage` spend history. Two `try?`
 /// sites used to collapse ANY read fault (missing/corrupt `token_usage`, locked SQLCipher
@@ -35,7 +35,7 @@ final class BudgetForecastMattersTests: XCTestCase {
     }
 
     /// Builds an in-memory queue whose `token_usage` table exists with exactly the columns
-    /// `BudgetForecast.sumCost` reads. Optionally seeds spend rows.
+    /// `GRDBBudgetForecast.sumCost` reads. Optionally seeds spend rows.
     private func makeQueueWithLedger(rows: [(cost: Double, startTime: Date)] = []) async throws -> DatabaseQueue {
         let queue = try DatabaseQueue(path: ":memory:")
         try await queue.write { db in
@@ -73,7 +73,7 @@ final class BudgetForecastMattersTests: XCTestCase {
 
     func test_emptyLedger_producesAvailableUnderBudgetProjection() async throws {
         let queue = try await makeQueueWithLedger() // table exists, no rows
-        let forecast = BudgetForecast(dbQueue: queue)
+        let forecast = GRDBBudgetForecast(dbQueue: queue)
         let rule = makeRule(amountUSD: 100, period: .month)
 
         let projection = await forecast.forecast(forRule: rule)
@@ -97,7 +97,7 @@ final class BudgetForecastMattersTests: XCTestCase {
             (cost: 30, startTime: reference.addingTimeInterval(-3_600)),
             (cost: 12, startTime: reference.addingTimeInterval(-7_200))
         ])
-        let forecast = BudgetForecast(dbQueue: queue)
+        let forecast = GRDBBudgetForecast(dbQueue: queue)
         let rule = makeRule(amountUSD: 100, period: .month)
 
         let projection = await forecast.forecast(forRule: rule, reference: reference)
@@ -112,7 +112,7 @@ final class BudgetForecastMattersTests: XCTestCase {
 
     func test_readFault_failsClosed_notSilentlyUnderBudget() async throws {
         let queue = try await makeQueueWithoutLedger() // SELECT ... FROM token_usage throws
-        let forecast = BudgetForecast(dbQueue: queue)
+        let forecast = GRDBBudgetForecast(dbQueue: queue)
         let rule = makeRule(amountUSD: 100, period: .month)
 
         let projection = await forecast.forecast(forRule: rule)
@@ -128,7 +128,7 @@ final class BudgetForecastMattersTests: XCTestCase {
 
     func test_readFault_preservesRuleIdentityForUI() async throws {
         let queue = try await makeQueueWithoutLedger()
-        let forecast = BudgetForecast(dbQueue: queue)
+        let forecast = GRDBBudgetForecast(dbQueue: queue)
         let rule = makeRule(amountUSD: 250, period: .week)
 
         let projection = await forecast.forecast(forRule: rule)
@@ -140,7 +140,7 @@ final class BudgetForecastMattersTests: XCTestCase {
 
     func test_readFault_acrossPeriods_allFailClosed() async throws {
         let queue = try await makeQueueWithoutLedger()
-        let forecast = BudgetForecast(dbQueue: queue)
+        let forecast = GRDBBudgetForecast(dbQueue: queue)
 
         for period in BudgetPeriod.allCases {
             let rule = makeRule(amountUSD: 100, period: period)

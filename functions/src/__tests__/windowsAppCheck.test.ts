@@ -21,8 +21,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   __testing__,
-} from "../callables/windowsAppCheck.js";
-import { PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } from "../config.js";
+} from "../../../functions-identity/src/domains/app-check/windowsAppCheck.js";
+import { PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } from "../../../packages/functions-shared/src/config.js";
 
 const {
   buildWindowsAttestationVerifiers,
@@ -537,13 +537,16 @@ describe("VAL-P0-AC-013 production TPM verifier and challenge binding", () => {
 });
 
 describe("VAL-P0-AC-011B index.ts registration-presence (wiring)", () => {
-  it("re-exports mintWindowsAppCheckToken from ./callables/windowsAppCheck.js", () => {
-    const indexSource = readFileSync(resolve(__dirname, "../index.ts"), "utf8");
+  it("re-exports mintWindowsAppCheckToken from ./domains/app-check/windowsAppCheck.js", () => {
+    const indexSource = readFileSync(
+      resolve(__dirname, "../../../functions-identity/src/index.ts"),
+      "utf8",
+    );
     expect(indexSource).toMatch(/issueWindowsAppCheckChallenge, mintWindowsAppCheckToken/);
   });
 
   it("exposes the callable object from the module", async () => {
-    const mod = await import("../callables/windowsAppCheck.js");
+    const mod = await import("../../../functions-identity/src/domains/app-check/windowsAppCheck.js");
     expect(mod.mintWindowsAppCheckToken).toBeDefined();
   });
 });

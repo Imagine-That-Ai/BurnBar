@@ -1,6 +1,7 @@
 import XCTest
 import GRDB
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Regression coverage for the previously-silent `try?` error-swallows in
 /// `OpenBurnBarDatabase.swift` and `WorkingDirectoryBackfillService`.

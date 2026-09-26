@@ -1,6 +1,8 @@
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
 
 // MARK: - CLI Agent Mobile Chat Service
 //

@@ -15,11 +15,11 @@ const { createToken, consumeChallenge } = vi.hoisted(() => ({
 const APP_ID = "1:123:linux:production";
 
 vi.mock("firebase-admin/app-check", () => ({ getAppCheck: () => ({ createToken }) }));
-vi.mock("../callables/linuxAppCheckDevices.js", () => ({
+vi.mock("../../../functions-identity/src/domains/app-check/linuxAppCheckDevices.js", () => ({
   consumeLinuxAppCheckChallenge: consumeChallenge,
   LINUX_APP_CHECK_REJECTION_REASON: { appNotAllowlisted: "linux_app_not_allowlisted" },
 }));
-vi.mock("../config.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({
   getConfig: () => ({
     allowMockAppCheckAttestation: false,
     allowedAppCheckAppIDs: ["1:123:linux:production"],
@@ -28,14 +28,14 @@ vi.mock("../config.js", () => ({
   isAppCheckAppIdAllowed: (appId: unknown, config: { allowedAppCheckAppIDs: string[] }) =>
     typeof appId === "string" && config.allowedAppCheckAppIDs.includes(appId),
 }));
-vi.mock("../auth.js", () => ({ assertAuth: vi.fn() }));
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ assertAuth: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logInfo: vi.fn(),
   wrapCallableHandler: (_name: string, handler: (request: unknown) => Promise<unknown>) => handler,
 }));
-vi.mock("../callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: vi.fn(async () => undefined) }));
+vi.mock("../../../packages/functions-shared/src/callables/publicRateLimit.js", () => ({ checkPublicHttpEndpointRateLimit: vi.fn(async () => undefined) }));
 
-import { mintLinuxAppCheckToken } from "../callables/linuxAppCheck.js";
+import { mintLinuxAppCheckToken } from "../../../functions-identity/src/domains/app-check/linuxAppCheck.js";
 import { callableRunner, tier2CallableProof } from "./bola/callableBolaHarness.js";
 
 const bolaStore = new Map<string, Record<string, unknown>>();

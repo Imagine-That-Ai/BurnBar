@@ -751,11 +751,14 @@ public actor BurnBarParallelDAGScheduler {
             guard let neighbors = adjacency[nodeID] else { continue }
             for neighbor in neighbors {
                 // Assume each node takes ~1 unit of time for initial estimate
-                let newDist = dist[nodeID]! + 1.0
-                if newDist > dist[neighbor]! {
+                guard let nodeDist = dist[nodeID],
+                      let neighborDist = dist[neighbor],
+                      let nodePath = pathNodes[nodeID] else { continue }
+                let newDist = nodeDist + 1.0
+                if newDist > neighborDist {
                     dist[neighbor] = newDist
                     predecessor[neighbor] = nodeID
-                    pathNodes[neighbor] = pathNodes[nodeID]! + [neighbor]
+                    pathNodes[neighbor] = nodePath + [neighbor]
                 }
             }
         }
@@ -837,7 +840,8 @@ public actor BurnBarParallelDAGScheduler {
             topoOrder.append(current)
 
             for neighbor in adjacency[current] ?? [] where !completedSet.contains(neighbor) {
-                inDegree[neighbor]! -= 1
+                guard let degree = inDegree[neighbor] else { continue }
+                inDegree[neighbor] = degree - 1
                 if inDegree[neighbor] == 0 {
                     queue.append(neighbor)
                 }
@@ -860,11 +864,14 @@ public actor BurnBarParallelDAGScheduler {
                     nodeDuration = 1.0
                 }
 
-                let newDist = dist[nodeID]! + nodeDuration
-                if newDist > dist[neighbor]! {
+                guard let nodeDist = dist[nodeID],
+                      let neighborDist = dist[neighbor],
+                      let nodePath = pathNodes[nodeID] else { continue }
+                let newDist = nodeDist + nodeDuration
+                if newDist > neighborDist {
                     dist[neighbor] = newDist
                     predecessor[neighbor] = nodeID
-                    pathNodes[neighbor] = pathNodes[nodeID]! + [neighbor]
+                    pathNodes[neighbor] = nodePath + [neighbor]
                 }
             }
         }

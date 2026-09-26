@@ -54,6 +54,34 @@ public struct IrohPairingRecord: Codable, Sendable, Equatable {
             .filter { !$0.isEmpty }))
             .sorted()
     }
+
+    /// Wave 3.4 union of the Firestore document decoders both
+    /// `FirestoreIrohPairingDirectory` backs carried privately. Decodes a
+    /// `/users/{uid}/iroh_pairing/{connectionId}` snapshot into a record;
+    /// `nil` when required fields are missing. Schema matches
+    /// `IrohPairingRecordDoc` in `functions/src/types.ts`.
+    public static func decodeFirestoreDocument(_ data: [String: Any], uid: String) -> IrohPairingRecord? {
+        guard let id = data["id"] as? String,
+              let nodeId = data["nodeId"] as? String,
+              let publishedAtMillis = data["publishedAtMillis"] as? Int64
+                ?? (data["publishedAtMillis"] as? NSNumber)?.int64Value,
+              let signature = data["signature"] as? String else {
+            return nil
+        }
+        let protocolVersion = (data["protocolVersion"] as? Int)
+            ?? (data["protocolVersion"] as? NSNumber)?.intValue
+            ?? IrohRelayProtocol.frameProtocolVersion
+        return IrohPairingRecord(
+            uid: uid,
+            connectionId: id,
+            nodeId: nodeId,
+            relayURL: data["relayURL"] as? String,
+            directAddresses: data["directAddresses"] as? [String] ?? [],
+            publishedAtMillis: publishedAtMillis,
+            protocolVersion: protocolVersion,
+            signature: signature
+        )
+    }
 }
 
 public enum IrohPairingError: Error, Equatable, Sendable {

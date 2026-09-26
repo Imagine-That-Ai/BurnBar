@@ -2,11 +2,12 @@ import XCTest
 import SwiftUI
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
-private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
-private typealias ProviderQuotaWindowKind = OpenBurnBar.ProviderQuotaWindowKind
-private typealias ProviderQuotaUnit = OpenBurnBar.ProviderQuotaUnit
-private typealias UsageDisplayMode = OpenBurnBar.UsageDisplayMode
+private typealias ProviderQuotaBucket = OpenBurnBarKernel.ProviderQuotaBucket
+private typealias ProviderQuotaWindowKind = OpenBurnBarKernel.ProviderQuotaWindowKind
+private typealias ProviderQuotaUnit = OpenBurnBarKernel.ProviderQuotaUnit
+private typealias UsageDisplayMode = OpenBurnBarKernel.UsageDisplayMode
 
 /// Coverage for the popover's collapsed quota row copy (`QuotaPopoverCopy`),
 /// the shared bar fill thresholds (`QuotaBarFill`), the per-appearance

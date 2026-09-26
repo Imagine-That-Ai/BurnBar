@@ -46,7 +46,7 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
   it("defaults the desktop app ids to clearly non-prod placeholders and allowlists them", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     const { getConfig, PLACEHOLDER_LINUX_APP_CHECK_APP_ID, PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } = await import(
-      "../config.js"
+      "../../../packages/functions-shared/src/config.js"
     );
     const cfg = getConfig();
     expect(cfg.windowsAppCheckAppID).toBe(PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID);
@@ -64,7 +64,7 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
   it("ACCEPTS the allowlisted placeholder app id and REJECTS a non-allowlisted one", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     const { getConfig, isAppCheckAppIdAllowed, PLACEHOLDER_LINUX_APP_CHECK_APP_ID, PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } =
-      await import("../config.js");
+      await import("../../../packages/functions-shared/src/config.js");
     const cfg = getConfig();
     expect(isAppCheckAppIdAllowed(PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID, cfg)).toBe(true);
     expect(isAppCheckAppIdAllowed(PLACEHOLDER_LINUX_APP_CHECK_APP_ID, cfg)).toBe(true);
@@ -77,7 +77,7 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
   it("merges operator-configured extra app ids into the allowlist (deduped)", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.APP_CHECK_ALLOWED_APP_IDS = "1:123:windows:realwin, 1:123:windows:realwin"; // dup on purpose
-    const { getConfig, isAppCheckAppIdAllowed, PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } = await import("../config.js");
+    const { getConfig, isAppCheckAppIdAllowed, PLACEHOLDER_WINDOWS_APP_CHECK_APP_ID } = await import("../../../packages/functions-shared/src/config.js");
     const cfg = getConfig();
     expect(isAppCheckAppIdAllowed("1:123:windows:realwin", cfg)).toBe(true);
     // Placeholder still present, and the duplicate collapsed to one entry.
@@ -90,7 +90,7 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.WINDOWS_APP_CHECK_APP_ID = "1:123:windows:overridden";
     process.env.LINUX_APP_CHECK_APP_ID = "1:123:linux:overridden";
-    const { getConfig, isAppCheckAppIdAllowed } = await import("../config.js");
+    const { getConfig, isAppCheckAppIdAllowed } = await import("../../../packages/functions-shared/src/config.js");
     const cfg = getConfig();
     expect(cfg.windowsAppCheckAppID).toBe("1:123:windows:overridden");
     expect(cfg.linuxAppCheckAppID).toBe("1:123:linux:overridden");
@@ -102,7 +102,7 @@ describe("VAL-P0-AC-011B config.ts App Check allowlist surface", () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.WINDOWS_TPM_VERIFIER_URL = "https://attestation.example.test/verify";
     process.env.WINDOWS_TPM_VERIFIER_TOKEN = "must-not-enter-get-config";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     const cfg = getConfig();
     expect(cfg.windowsTpmVerifierURL).toBe("https://attestation.example.test/verify");
     expect(cfg).not.toHaveProperty("windowsTpmVerifierToken");
@@ -127,14 +127,14 @@ describe("VAL-P0-AC-011 mock-attestation prod fence (config gate)", () => {
 
   it("allows the mock verifier in demo/test config", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().allowMockAppCheckAttestation).toBe(true);
   });
 
   it("allows the mock verifier under the emulator", async () => {
     process.env.FUNCTIONS_EMULATOR = "true";
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().allowMockAppCheckAttestation).toBe(true);
   });
 
@@ -142,14 +142,14 @@ describe("VAL-P0-AC-011 mock-attestation prod fence (config gate)", () => {
     process.env.GCLOUD_PROJECT = "openburnbar-prod";
     process.env.LINUX_APP_CHECK_APP_ID = VALID_LINUX_APP_CHECK_APP_ID;
     process.env.ALLOW_MOCK_APP_CHECK_ATTESTATION = "true"; // operator attempt to enable in prod
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().allowMockAppCheckAttestation).toBe(false);
   });
 
   it("can be explicitly disabled in non-prod config", async () => {
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.ALLOW_MOCK_APP_CHECK_ATTESTATION = "false";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     expect(getConfig().allowMockAppCheckAttestation).toBe(false);
   });
 });
@@ -174,7 +174,7 @@ describe("VAL-P0-AC-011B existing Apple gate is unchanged by the Windows allowli
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.APP_STORE_APPLE_APP_ID = "1234567890";
     process.env.WINDOWS_APP_CHECK_APP_ID = "1:123:windows:realwin";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     const cfg = getConfig();
     // The Apple gate value is untouched by adding a Windows app id/allowlist.
     expect(cfg.appStore.appAppleId).toBe(1234567890);
@@ -184,7 +184,7 @@ describe("VAL-P0-AC-011B existing Apple gate is unchanged by the Windows allowli
     process.env.GCLOUD_PROJECT = "demo-project";
     process.env.APP_STORE_ENV = "Sandbox";
     process.env.WINDOWS_APP_CHECK_APP_ID = "1:123:windows:realwin";
-    const { getConfig } = await import("../config.js");
+    const { getConfig } = await import("../../../packages/functions-shared/src/config.js");
     // appAppleId parsing is unchanged: absent env ⇒ undefined (Sandbox contract).
     expect(getConfig().appStore.appAppleId).toBeUndefined();
   });

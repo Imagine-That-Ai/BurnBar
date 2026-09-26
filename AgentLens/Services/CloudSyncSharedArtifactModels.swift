@@ -2,7 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // Shared-artifact + memory sync boundary types and Firestore codecs used by `CloudSyncService`.
 
@@ -224,7 +224,7 @@ enum SharedArtifactOptimisticWriteGate {
     }
 
     private static func staleWriteError(expectedRevisionID: String?, observedRevisionID: String?) -> NSError {
-        var userInfo: [String: Any] = [
+        var userInfo: UntypedJSONObject = [
             NSLocalizedDescriptionKey:
                 "Shared artifact write was rejected because the remote head changed from \(expectedRevisionID ?? "nil") to \(observedRevisionID ?? "nil")."
         ]
@@ -259,7 +259,7 @@ enum SharedArtifactCloudCodec {
     /// compatibility write. Those mixed envelopes are cleanup-required too because
     /// `encodeSealed(..., merge: true)` preserves the encrypted payload while deleting
     /// the leftover plaintext fields.
-    static func isLegacyPlaintext(data: [String: Any]) -> Bool {
+    static func isLegacyPlaintext(data: UntypedJSONObject) -> Bool {
         return stringValue(data["title"]) != nil
             || stringValue(data["body"]) != nil
             || stringValue(data["contentHash"]) != nil
@@ -275,8 +275,8 @@ enum SharedArtifactCloudCodec {
         JSONDecoder()
     }
 
-    static func encode(_ record: SharedArtifactCloudRecord, useServerTimestamp: Bool) -> [String: Any] {
-        var payload: [String: Any] = [
+    static func encode(_ record: SharedArtifactCloudRecord, useServerTimestamp: Bool) -> UntypedJSONObject {
+        var payload: UntypedJSONObject = [
             "artifactID": record.artifactID,
             "workspaceID": record.workspaceID,
             "teamID": record.teamID,
@@ -320,7 +320,7 @@ enum SharedArtifactCloudCodec {
         ownerUserID: String,
         aadCollection: String,
         aadDocumentID: String
-    ) throws -> [String: Any] {
+    ) throws -> UntypedJSONObject {
         let sealedPayload = SharedArtifactSealedPayload(
             title: record.title,
             body: record.body,
@@ -363,7 +363,7 @@ enum SharedArtifactCloudCodec {
 
     static func decode(
         documentID: String,
-        data: [String: Any],
+        data: UntypedJSONObject,
         vaultKeyData: Data? = nil,
         ownerUserID: String? = nil,
         aadCollection: String = artifactAADCollection,
@@ -437,7 +437,7 @@ enum SharedArtifactCloudCodec {
         )
     }
 
-    static func revisionID(data: [String: Any]?) -> String? {
+    static func revisionID(data: UntypedJSONObject?) -> String? {
         guard let data else { return nil }
         return stringValue(data["revisionID"])
     }
@@ -453,8 +453,8 @@ enum SharedArtifactCloudCodec {
         _ record: SharedArtifactCloudRecord,
         useServerTimestamp: Bool,
         ownerUserID: String
-    ) -> [String: Any] {
-        var payload: [String: Any] = [
+    ) -> UntypedJSONObject {
+        var payload: UntypedJSONObject = [
             "artifactID": record.artifactID,
             "workspaceID": record.workspaceID,
             "teamID": record.teamID,
@@ -486,7 +486,7 @@ enum SharedArtifactCloudCodec {
     private static func decodedPrivatePayloadIfPresent(
         artifactID: String,
         workspaceID: String,
-        data: [String: Any],
+        data: UntypedJSONObject,
         vaultKeyData: Data?,
         ownerUserID: String?,
         aadCollection: String,

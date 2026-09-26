@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import OpenBurnBarCore
+import OpenBurnBarData
 
 // MARK: - ConversationStore
 
@@ -48,9 +49,22 @@ final class ConversationStore: Sendable {
     static let projectionHashCacheKeyPrefix = "projection.conversation.content-hash:"
 
     let dbQueue: any DatabaseWriter
+    /// Wave 2.1: chat writes go through the daemon (single writer, ADR-005).
+    /// Injected so tests can use a local double; production always passes the
+    /// default daemon writer.
+    let chatWriter: any ChatHistoryWriter
+    /// Wave 2.1c: snapshot writes go through the daemon the same way. The
+    /// indexed-data wipe needs it; per-slug writes live on ControlPlaneStore.
+    let snapshotWriter: any ProjectMemorySnapshotWriter
 
-    init(dbQueue: any DatabaseWriter) {
+    init(
+        dbQueue: any DatabaseWriter,
+        chatWriter: any ChatHistoryWriter = DaemonChatHistoryWriter(),
+        snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter()
+    ) {
         self.dbQueue = dbQueue
+        self.chatWriter = chatWriter
+        self.snapshotWriter = snapshotWriter
     }
 
     // MARK: - Row Decoding
@@ -205,24 +219,6 @@ final class ConversationStore: Sendable {
     }
 
     // MARK: - Private Helpers
-
-    static func upsertChatThread(_ threadID: String, at timestamp: Date, db: Database) throws {
-        try db.execute(
-            sql: """
-            INSERT OR IGNORE INTO chat_threads (id, createdAt, updatedAt)
-            VALUES (?, ?, ?)
-            """,
-            arguments: [threadID, timestamp, timestamp]
-        )
-        try db.execute(
-            sql: """
-            UPDATE chat_threads
-            SET updatedAt = CASE WHEN updatedAt > ? THEN updatedAt ELSE ? END
-            WHERE id = ?
-            """,
-            arguments: [timestamp, timestamp, threadID]
-        )
-    }
 
     static func compactChatSnippet(_ source: String, limit: Int) -> String {
         let compact = source

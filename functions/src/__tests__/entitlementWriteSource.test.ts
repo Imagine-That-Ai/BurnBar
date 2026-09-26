@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sameEntitlementWriteSource } from "../callables/shared/entitlementWriteSource.js";
+import { sameEntitlementWriteSource } from "../../../packages/functions-shared/src/shared/entitlementWriteSource.js";
 
 describe("sameEntitlementWriteSource", () => {
   const stripeOperatorBridge = {

@@ -8,13 +8,13 @@ public enum AgentDesktopToolDefinitions {
         public let name: String
         public let description: String
         public let requiredCapabilities: [AgentDesktopCapability]
-        public let parameters: [String: Any]
+        public let parameters: ComputerUseJSONObject
 
         public init(
             name: String,
             description: String,
             requiredCapabilities: [AgentDesktopCapability],
-            parameters: [String: Any]
+            parameters: ComputerUseJSONObject
         ) {
             self.name = name
             self.description = description
@@ -52,7 +52,7 @@ public enum AgentDesktopToolDefinitions {
         return all.filter { grant.supportsAll($0.requiredCapabilities, now: now) }
     }
 
-    public static func openAITools(for grant: AgentCapabilityGrant, now: Date = Date()) -> [[String: Any]] {
+    public static func openAITools(for grant: AgentCapabilityGrant, now: Date = Date()) -> [ComputerUseJSONObject] {
         tools(for: grant, now: now).map { tool in
             [
                 "type": "function",
@@ -73,14 +73,14 @@ public enum AgentDesktopToolDefinitions {
         BurnBarToolKind(rawValue: name)
     }
 
-    nonisolated(unsafe) private static let emptyObjectSchema: [String: Any] = [
+    nonisolated(unsafe) private static let emptyObjectSchema: ComputerUseJSONObject = [
         "type": "object",
         "additionalProperties": false,
         "required": [],
         "properties": [:]
     ]
 
-    nonisolated(unsafe) private static let browserTargetProperties: [String: Any] = [
+    nonisolated(unsafe) private static let browserTargetProperties: ComputerUseJSONObject = [
         "selector": ["type": "string", "description": "CSS selector when available."],
         "text": ["type": "string", "description": "Text to type."],
         "url": ["type": "string", "description": "URL to navigate to."],
@@ -91,7 +91,7 @@ public enum AgentDesktopToolDefinitions {
         "timeoutMillis": ["type": "integer", "description": "Optional action timeout in milliseconds."]
     ]
 
-    private static func browserSchema(required: [String]) -> [String: Any] {
+    private static func browserSchema(required: [String]) -> ComputerUseJSONObject {
         [
             "type": "object",
             "additionalProperties": false,
@@ -100,7 +100,7 @@ public enum AgentDesktopToolDefinitions {
         ]
     }
 
-    nonisolated(unsafe) private static let macInputProperties: [String: Any] = [
+    nonisolated(unsafe) private static let macInputProperties: ComputerUseJSONObject = [
         "displayX": ["type": "integer", "description": "Main-display x coordinate."],
         "displayY": ["type": "integer", "description": "Main-display y coordinate."],
         "dragEndX": ["type": "integer", "description": "Drag destination x coordinate."],
@@ -117,7 +117,7 @@ public enum AgentDesktopToolDefinitions {
         ]
     ]
 
-    private static func macInputSchema(required: [String]) -> [String: Any] {
+    private static func macInputSchema(required: [String]) -> ComputerUseJSONObject {
         [
             "type": "object",
             "additionalProperties": false,

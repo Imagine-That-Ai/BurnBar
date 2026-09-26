@@ -13,10 +13,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { endpointAuthorizationCatalog } from "../security/endpointAuthorizationCatalog.generated.js";
-import { RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS } from "../callables/publicRateLimit.js";
+import { RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS } from "../../../packages/functions-shared/src/callables/publicRateLimit.js";
 
-// Tests run from functions/, so the source tree is at src/.
-const SRC_DIR = resolve(process.cwd(), "src");
+// Tests run from functions/; module paths are repo-relative (3.5 codebases).
+const REPO_DIR = resolve(process.cwd(), "..");
 
 const RATE_LIMITED_NAMES = new Set(RATE_LIMITED_PUBLIC_HTTP_ENDPOINTS);
 
@@ -32,7 +32,15 @@ const SIGNATURE_PROTECTED_WEBHOOKS = new Set([
 // Low-cost public endpoints that are read-only / cache-backed and explicitly
 // exempted from product-layer rate limits. Any addition here must be justified
 // in the catalog's publicJustification field.
-const DOCUMENTED_EXEMPTIONS = new Set<string>([]);
+const DOCUMENTED_EXEMPTIONS = new Set<string>([
+  // healthLive: liveness performs no I/O (static identity + timestamps) and
+  // must answer 200 whenever the process is alive — the limiter is
+  // Firestore-backed, so limiting liveness would 429 under monitor bursts and
+  // 500 during a Firestore outage, both misread as DOWN. Contract: health.ts
+  // LIVENESS CONTRACT. Catalog justification: "Read-only health endpoints
+  // expose no user objects" (endpointAuthorizationCatalog.generated.ts).
+  "healthLive",
+]);
 
 describe("public endpoint rate-limit inventory", () => {
   const publicEntries = endpointAuthorizationCatalog.filter(
@@ -73,17 +81,17 @@ describe("per-uid rate limit call-site coverage", () => {
    * the abuse vector.
    */
   const CALLABLES_REQUIRING_UID_RATE_LIMIT: Array<{ exportedName: string; checker: string; module: string }> = [
-    { exportedName: "triggerVoIPCall", checker: "checkVoIPCallRateLimit", module: "callables/voipPush.ts" },
-    { exportedName: "searchKnowledge", checker: "checkKnowledgeSearchRateLimit", module: "callables/knowledgeSearch.ts" },
-    { exportedName: "listKnowledgeChunks", checker: "checkKnowledgeSearchRateLimit", module: "callables/knowledgeSearch.ts" },
-    { exportedName: "submitAgentNotificationReply", checker: "checkAgentNotificationReplyRateLimit", module: "callables/agentNotifications.ts" },
-    { exportedName: "insightsHostedAnswer", checker: "checkHostedInsightsAnswerRateLimit", module: "insightsHostedAnswer.ts" },
-    { exportedName: "benchAssistant", checker: "checkBenchAssistantRateLimit", module: "benchAssistant.ts" },
+    { exportedName: "triggerVoIPCall", checker: "checkVoIPCallRateLimit", module: "functions-media/src/domains/push/voipPush.ts" },
+    { exportedName: "searchKnowledge", checker: "checkKnowledgeSearchRateLimit", module: "functions-sync/src/domains/knowledge/knowledgeSearch.ts" },
+    { exportedName: "listKnowledgeChunks", checker: "checkKnowledgeSearchRateLimit", module: "functions-sync/src/domains/knowledge/knowledgeSearch.ts" },
+    { exportedName: "submitAgentNotificationReply", checker: "checkAgentNotificationReplyRateLimit", module: "functions-sync/src/domains/notify/agentNotifications.ts" },
+    { exportedName: "insightsHostedAnswer", checker: "checkHostedInsightsAnswerRateLimit", module: "functions-sync/src/domains/search/insightsHostedAnswer.ts" },
+    { exportedName: "benchAssistant", checker: "checkBenchAssistantRateLimit", module: "functions-sync/src/domains/telemetry/benchAssistant.ts" },
   ];
 
   for (const entry of CALLABLES_REQUIRING_UID_RATE_LIMIT) {
     it(`${entry.exportedName} imports and calls ${entry.checker}`, () => {
-      const source = readFileSync(resolve(SRC_DIR, entry.module), "utf8");
+      const source = readFileSync(resolve(REPO_DIR, entry.module), "utf8");
 
       const importPattern = new RegExp(`import.*${entry.checker}.*from.*publicRateLimit`);
       expect(importPattern.test(source), `${entry.module} must import ${entry.checker} from publicRateLimit`).toBe(true);

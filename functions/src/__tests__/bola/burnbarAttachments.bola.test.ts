@@ -8,21 +8,21 @@ import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callab
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../../callables/shared.js")>("../../callables/shared.js");
+vi.mock("../../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/shared/entitlements.js")>("../../../../packages/functions-shared/src/shared/entitlements.js");
   return { ...actual, assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined) };
 });
-vi.mock("../../appCheckAttestation.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
 }));
-vi.mock("../../callables/computerUseSecurityFirestore.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof: vi.fn(async () => ({ deviceId: "dev", platform: "iOS", signalIdentityKeyId: "s" })),
 }));
 
@@ -37,7 +37,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — burnbarAttachments", () => {
   it("beginBurnbarAttachment rejects cross-user object access", async () => {
-    const mod = await import("../../callables/burnbarAttachments.js");
+    const mod = await import("../../../../functions-media/src/domains/attachments/burnbarAttachments.js");
     const run = callableRunner(mod.beginBurnbarAttachment);
     await tier2CallableProof(bolaStore, {
       exportedName: "beginBurnbarAttachment",
@@ -48,7 +48,7 @@ describe("BOLA — burnbarAttachments", () => {
   });
 
   it("mintBurnbarAttachmentPartURL rejects cross-user object access", async () => {
-    const mod = await import("../../callables/burnbarAttachments.js");
+    const mod = await import("../../../../functions-media/src/domains/attachments/burnbarAttachments.js");
     const run = callableRunner(mod.mintBurnbarAttachmentPartURL);
     await tier2CallableProof(bolaStore, {
       exportedName: "mintBurnbarAttachmentPartURL",
@@ -59,7 +59,7 @@ describe("BOLA — burnbarAttachments", () => {
   });
 
   it("composeBurnbarAttachment rejects cross-user object access", async () => {
-    const mod = await import("../../callables/burnbarAttachments.js");
+    const mod = await import("../../../../functions-media/src/domains/attachments/burnbarAttachments.js");
     const run = callableRunner(mod.composeBurnbarAttachment);
     await tier2CallableProof(bolaStore, {
       exportedName: "composeBurnbarAttachment",
@@ -70,7 +70,7 @@ describe("BOLA — burnbarAttachments", () => {
   });
 
   it("finalizeBurnbarAttachment rejects cross-user object access", async () => {
-    const mod = await import("../../callables/burnbarAttachments.js");
+    const mod = await import("../../../../functions-media/src/domains/attachments/burnbarAttachments.js");
     const run = callableRunner(mod.finalizeBurnbarAttachment);
     await tier2CallableProof(bolaStore, {
       exportedName: "finalizeBurnbarAttachment",
@@ -81,7 +81,7 @@ describe("BOLA — burnbarAttachments", () => {
   });
 
   it("deleteBurnbarAttachment rejects cross-user object access", async () => {
-    const mod = await import("../../callables/burnbarAttachments.js");
+    const mod = await import("../../../../functions-media/src/domains/attachments/burnbarAttachments.js");
     const run = callableRunner(mod.deleteBurnbarAttachment);
     await tier2CallableProof(bolaStore, {
       exportedName: "deleteBurnbarAttachment",
@@ -92,7 +92,7 @@ describe("BOLA — burnbarAttachments", () => {
   });
 
   it("ticketBurnbarAttachmentDownload rejects cross-user object access", async () => {
-    const mod = await import("../../callables/burnbarAttachments.js");
+    const mod = await import("../../../../functions-media/src/domains/attachments/burnbarAttachments.js");
     const run = callableRunner(mod.ticketBurnbarAttachmentDownload);
     await tier2CallableProof(bolaStore, {
       exportedName: "ticketBurnbarAttachmentDownload",

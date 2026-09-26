@@ -50,10 +50,8 @@ android/app/src/main/java/com/openburnbar/ui/control/RecoveryAndPanicSections.kt
 OpenBurnBarMobile/Models/ActivityStore.swift ::: zero-knowledge ::: 1
 OpenBurnBarMobile/Views/Control/DataVaultRecoveryView.swift ::: zero-knowledge ::: 1
 functions/src/__tests__/knowledgeMemoryDedupHash.test.ts ::: zero-knowledge ::: 1
-functions/src/callables/encryptedSearch.ts ::: zero-knowledge ::: 1
-functions/src/callables/knowledgeMemory.ts ::: zero-knowledge ::: 1
-functions/src/callables/knowledgeSearch.ts ::: zero-knowledge ::: 1
-functions/src/callables/recovery.ts ::: zero-knowledge ::: 2
+# Wave 3.5: the callables/ entries above moved to domains/; comment-only hits.
+functions/src/domains/ops/recovery.ts ::: zero-knowledge ::: 2
 # apps/console (app.burnbar.ai) developer comments — NOT user-facing copy. The
 # rendered console copy (domain summaries, dashboard) is the caveated form; these two
 # are a JSDoc crypto-model note and a section-divider comment. (Remediation R3.)

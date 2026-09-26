@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarProviderModels
 
 public enum OpenBurnBarIdentity {
     public static let productName = "OpenBurnBar"
@@ -55,6 +56,9 @@ public enum OpenBurnBarIdentity {
         "com.burnbar.deviceId",
         "com.agentlens.deviceId"
     ]
+
+    /// Wave 0.5 consent: master cloud-sync switch. Absent = never chose = off.
+    public static let cloudSyncEnabledKey = "com.openburnbar.cloudSyncEnabled"
 }
 
 public struct OpenBurnBarAppPaths: Sendable {
@@ -73,7 +77,10 @@ public struct OpenBurnBarAppPaths: Sendable {
             try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
             return OpenBurnBarAppPaths(applicationSupportRoot: root)
         }
-        let appSupportRoot = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        // Application Support always resolves on Apple platforms; fall back to a
+        // writable isolated directory rather than crashing if it ever does not.
+        let appSupportRoot = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fileManager.temporaryDirectory
         return OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
     }
 

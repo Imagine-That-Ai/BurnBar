@@ -8,7 +8,7 @@ import {
   safeEqualHex,
   sanitizeHermesCapabilities,
   validateHermesEndpointURL,
-} from "../lib/hermes.js";
+} from "../../functions-media/lib/hermes.js";
 import {
   assertConsolidatedServerOnlyCollection,
   firestoreFunctionBlock,

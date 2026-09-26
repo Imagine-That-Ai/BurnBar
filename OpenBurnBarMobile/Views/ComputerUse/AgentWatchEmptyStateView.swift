@@ -1,6 +1,7 @@
 #if canImport(SwiftUI) && canImport(UIKit)
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 /// Editorial onboarding surface that replaces the dashed-rectangle placeholder
 /// when the Computer Use mirror has nothing to show. It explains what
@@ -138,13 +139,13 @@ struct AgentWatchEmptyStateView: View {
                 title: "Hermes Remote Relay selected",
                 detail: hasRelaySelected
                     ? "\(selectedConnection.displayName) is paired."
-                    : suggestedRelay != nil
-                        ? "Found \(suggestedRelay!.displayName) online — one tap to connect."
-                        : (connectionMessage ?? "Open Hermes, sign in on the Mac, and enable Remote Relay."),
+                    : suggestedRelay
+                        .map { "Found \($0.displayName) online — one tap to connect." }
+                        ?? (connectionMessage ?? "Open Hermes, sign in on the Mac, and enable Remote Relay."),
                 isDone: hasRelaySelected,
                 actionLabel: hasRelaySelected
                     ? nil
-                    : (suggestedRelay != nil ? "Use \(suggestedRelay!.displayName)" : "Open Hermes"),
+                    : suggestedRelay.map { "Use \($0.displayName)" } ?? "Open Hermes",
                 action: { suggestedRelay != nil ? onUseSuggestedRelay() : onOpenHermes() }
             )
 

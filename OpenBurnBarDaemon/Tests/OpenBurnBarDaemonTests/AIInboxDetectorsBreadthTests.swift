@@ -487,11 +487,7 @@ final class AIInboxDetectorsBreadthTests: XCTestCase {
         let root = home.appendingPathComponent(".hermes/sessions", isDirectory: true)
         let parentExisted = manager.fileExists(atPath: parent.path)
         let rootExisted = manager.fileExists(atPath: root.path)
-        do {
-            try manager.createDirectory(at: root, withIntermediateDirectories: true)
-        } catch {
-            throw XCTSkip("Home directory is not writable in this environment: \(error)")
-        }
+        try createDirectoryOrSkipWhenHomeUnwritable(at: root)
 
         let marker = root.appendingPathComponent("ai-inbox-index-health-\(UUID().uuidString).jsonl")
         defer {

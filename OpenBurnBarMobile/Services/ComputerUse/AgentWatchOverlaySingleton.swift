@@ -1,7 +1,9 @@
 #if canImport(UIKit)
 import Combine
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarMedia
 
 /// Process-scoped owner of the persistent Computer Use control stream.

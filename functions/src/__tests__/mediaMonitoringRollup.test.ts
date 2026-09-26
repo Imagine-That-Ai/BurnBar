@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { rollupMediaSessionsForDay } from "../mediaMonitoring.js";
+import { rollupMediaSessionsForDay } from "../../../functions-sync/src/domains/usage/mediaMonitoring.js";
 
 type FakeMediaDoc = {
   path: string;

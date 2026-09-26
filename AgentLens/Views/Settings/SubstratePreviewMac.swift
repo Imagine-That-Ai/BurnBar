@@ -1,6 +1,9 @@
 import AppKit
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Substrate thumbnail rasterizer (macOS)
 //

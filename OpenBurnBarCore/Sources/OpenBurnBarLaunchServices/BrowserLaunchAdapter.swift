@@ -82,7 +82,9 @@ public enum BrowserLaunchAdapter {
 
         // Reject null bytes and control characters
         let clean = trimmed.filter { char in
-            let scalar = char.unicodeScalars.first!
+            // A Character always carries at least one scalar; reject the
+            // character rather than crash if that ever stops holding.
+            guard let scalar = char.unicodeScalars.first else { return false }
             // Allow printable ASCII and common Unicode letters/numbers
             return scalar.value >= 0x20 && scalar.value < 0x7F
         }

@@ -1,0 +1,4 @@
+{
+  "total": 68,
+  "note": "Shrink-only stale-docs count (orphan + untouched >90d under docs/, point-in-time trees excluded). Bootstrap: first --update locks the measured floor."
+}

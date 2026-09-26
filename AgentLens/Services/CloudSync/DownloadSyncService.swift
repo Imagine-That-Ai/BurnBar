@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarAnalytics
 
 /// Sync domain for downloading remote data from Firestore.
 ///
@@ -527,7 +528,11 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                     cacheCreationTokens: data["cacheCreationTokens"] as? Int ?? 0,
                     cacheReadTokens: data["cacheReadTokens"] as? Int ?? 0,
                     reasoningTokens: reasoning,
-                    costUSD: data["cost"] as? Double ?? 0,
+                    costUSD: CostRule.effectiveCostUSD(
+                        costUSD: data["costUSD"] as? Double,
+                        costUsd: data["costUsd"] as? Double,
+                        cost: data["cost"] as? Double
+                    ),
                     startTime: startTime,
                     endTime: (data["endTime"] as? Timestamp)?.dateValue() ?? startTime,
                     usageSource: usageSource,

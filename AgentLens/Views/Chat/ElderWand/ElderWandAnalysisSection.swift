@@ -1,5 +1,6 @@
-import OpenBurnBarCore
+import OpenBurnBarUI
 import SwiftUI
+import OpenBurnBarKernel
 
 // MARK: - Elder Wand Analysis Section
 //

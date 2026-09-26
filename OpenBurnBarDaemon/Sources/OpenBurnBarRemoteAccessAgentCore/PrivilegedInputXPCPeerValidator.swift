@@ -15,8 +15,11 @@ public enum PrivilegedInputXPCPeerValidator: Sendable {
             throw PrivilegedPeerAuthenticationFailure.auditTokenUnavailable
         }
         var token = audit_token_t()
-        _ = data.withUnsafeBytes { raw in
-            memcpy(&token, raw.baseAddress!, MemoryLayout<audit_token_t>.size)
+        try data.withUnsafeBytes { raw in
+            guard let baseAddress = raw.baseAddress else {
+                throw PrivilegedPeerAuthenticationFailure.auditTokenUnavailable
+            }
+            memcpy(&token, baseAddress, MemoryLayout<audit_token_t>.size)
         }
         try PrivilegedPeerAuthenticator.defaultCodeSignatureValidation(auditToken: token)
     }

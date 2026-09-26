@@ -11,7 +11,7 @@ import { callableRunner, pathKeyedFirestore, tier2CallableProof } from "./callab
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {
@@ -20,22 +20,22 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../../callables/shared.js")>("../../callables/shared.js");
+vi.mock("../../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/shared/entitlements.js")>("../../../../packages/functions-shared/src/shared/entitlements.js");
   return {
     ...actual,
     assertActiveBurnBarCloudProEntitlement: vi.fn(async () => undefined),
   };
 });
-vi.mock("../../appCheckAttestation.js", async () => {
-  const actual = await vi.importActual<typeof import("../../appCheckAttestation.js")>("../../appCheckAttestation.js");
+vi.mock("../../../../packages/functions-shared/src/appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/appCheckAttestation.js")>("../../../../packages/functions-shared/src/appCheckAttestation.js");
   return {
     ...actual,
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
@@ -61,7 +61,7 @@ export const BOLA_MANIFEST = {
 
 describe("BOLA — computerUse", () => {
   it("registerEscrowDevice rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.registerEscrowDevice;
     if (!exported) throw new Error("missing export registerEscrowDevice");
     const run = callableRunner(exported);
@@ -75,7 +75,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("approveEscrowDeviceTrust rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.approveEscrowDeviceTrust;
     if (!exported) throw new Error("missing export approveEscrowDeviceTrust");
     const run = callableRunner(exported);
@@ -89,7 +89,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("revokeEscrowDeviceTrust rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.revokeEscrowDeviceTrust;
     if (!exported) throw new Error("missing export revokeEscrowDeviceTrust");
     const run = callableRunner(exported);
@@ -103,7 +103,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("publishIrohPairingPublicKey rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.publishIrohPairingPublicKey;
     if (!exported) throw new Error("missing export publishIrohPairingPublicKey");
     const run = callableRunner(exported);
@@ -117,7 +117,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("publishIrohPairingRecord rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.publishIrohPairingRecord;
     if (!exported) throw new Error("missing export publishIrohPairingRecord");
     const run = callableRunner(exported);
@@ -131,7 +131,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("revokeIrohPairingRecord rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.revokeIrohPairingRecord;
     if (!exported) throw new Error("missing export revokeIrohPairingRecord");
     const run = callableRunner(exported);
@@ -145,7 +145,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("publishPhoneControlAuthority rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.publishPhoneControlAuthority;
     if (!exported) throw new Error("missing export publishPhoneControlAuthority");
     const run = callableRunner(exported);
@@ -159,7 +159,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("publishRelaySenderKey rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.publishRelaySenderKey;
     if (!exported) throw new Error("missing export publishRelaySenderKey");
     const run = callableRunner(exported);
@@ -173,7 +173,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("publishAgentGrantAuthority rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.publishAgentGrantAuthority;
     if (!exported) throw new Error("missing export publishAgentGrantAuthority");
     const run = callableRunner(exported);
@@ -187,7 +187,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("queueAgentCapabilityGrantRequest rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.queueAgentCapabilityGrantRequest;
     if (!exported) throw new Error("missing export queueAgentCapabilityGrantRequest");
     const run = callableRunner(exported);
@@ -201,7 +201,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("respondMissionApproval rejects cross-user object access", async () => {
-    const mod = await import("../../callables/computerUseSecurity.js");
+    const mod = await import("../../../../functions-sync/src/domains/computer-use/computerUseSecurity.js");
     const exported = mod.respondMissionApproval;
     if (!exported) throw new Error("missing export respondMissionApproval");
     const run = callableRunner(exported);
@@ -215,7 +215,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("issueTrustedSignalIdentityRepairChallenge rejects cross-user object access", async () => {
-    const mod = await import("../../callables/signalIdentityRepair.js");
+    const mod = await import("../../../../functions-sync/src/callables/signalIdentityRepair.js");
     const run = callableRunner(mod.issueTrustedSignalIdentityRepairChallenge);
 
     await tier2CallableProof(bolaStore, {
@@ -228,7 +228,7 @@ describe("BOLA — computerUse", () => {
   });
 
   it("repairTrustedSignalIdentity rejects cross-user object access", async () => {
-    const mod = await import("../../callables/signalIdentityRepair.js");
+    const mod = await import("../../../../functions-sync/src/callables/signalIdentityRepair.js");
     const run = callableRunner(mod.repairTrustedSignalIdentity);
     const signalPublicKey = Buffer.concat([Buffer.from([0x05]), Buffer.alloc(32, 0x42)]);
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Wizard Step
 

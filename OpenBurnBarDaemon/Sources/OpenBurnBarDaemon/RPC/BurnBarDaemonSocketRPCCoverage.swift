@@ -70,7 +70,8 @@ enum BurnBarDaemonSocketRPCCoverage {
     static let chat: Set<BurnBarRPCMethod> = [
         .chatThreadList,
         .chatThreadGet,
-        .chatMessageAppend
+        .chatMessageAppend,
+        .chatThreadCreate
     ]
 
     static let observability: Set<BurnBarRPCMethod> = [
@@ -185,7 +186,13 @@ enum BurnBarDaemonSocketRPCCoverage {
 
     static let search: Set<BurnBarRPCMethod> = [
         .searchQuery,
-        .searchSQL
+        .searchSQL,
+        .searchVectorSnapshotUpsert,
+        .searchIndexApply
+    ]
+
+    static let switcher: Set<BurnBarRPCMethod> = [
+        .switcherActiveProfileApply
     ]
 
     static let memory: Set<BurnBarRPCMethod> = [
@@ -197,7 +204,11 @@ enum BurnBarDaemonSocketRPCCoverage {
         .memoryAnalytics,
         .memoryModelPolicy,
         .memorySyncInboxList,
-        .memorySyncInboxAck
+        .memorySyncInboxAck,
+        .memorySnapshotUpsert,
+        .memorySnapshotDelete,
+        .memorySnapshotDeleteAll,
+        .memoryAuthorityApply
     ]
 
     static let code: Set<BurnBarRPCMethod> = [
@@ -270,6 +281,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(client)
             .union(runWorkspaceApproval)
             .union(search)
+            .union(switcher)
             .union(memory)
             .union(code)
             .union(databaseRecovery)
@@ -293,6 +305,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if client.contains(method) { return "client" }
         if runWorkspaceApproval.contains(method) { return "run_workspace_approval" }
         if search.contains(method) { return "search" }
+        if switcher.contains(method) { return "switcher" }
         if memory.contains(method) { return "memory" }
         if code.contains(method) { return "code" }
         if databaseRecovery.contains(method) { return "database_recovery" }

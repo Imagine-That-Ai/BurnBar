@@ -6,7 +6,7 @@ process.env.ENFORCE_APP_CHECK = "false";
 
 const piAgentStore = vi.hoisted(() => new Map<string, Record<string, unknown>>());
 
-vi.mock("../adminRuntime.js", () => ({ db: pathKeyedFirestore(piAgentStore) }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(piAgentStore) }));
 vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {
@@ -14,19 +14,37 @@ vi.mock("firebase-admin/firestore", async () => {
     getFirestore: () => pathKeyedFirestore(piAgentStore),
   };
 });
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
 }));
-vi.mock("../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../callables/shared.js", async () => {
-  const actual = await vi.importActual<typeof import("../callables/shared.js")>("../callables/shared.js");
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/entitlements.js")>(
+    "../../../packages/functions-shared/src/shared/entitlements.js",
+  );
   return {
     ...actual,
     assertActiveHostedQuotaEntitlement: vi.fn(async () => undefined),
+  };
+});
+vi.mock("../../../packages/functions-shared/src/shared/providerConnect.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/providerConnect.js")>(
+    "../../../packages/functions-shared/src/shared/providerConnect.js",
+  );
+  return {
+    ...actual,
     checkPiAgentRateLimit: vi.fn(async () => undefined),
+  };
+});
+vi.mock("../../../packages/functions-shared/src/shared/accounts.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/shared/accounts.js")>(
+    "../../../packages/functions-shared/src/shared/accounts.js",
+  );
+  return {
+    ...actual,
     writePiAgentAuditEvent: vi.fn(async () => undefined),
   };
 });
@@ -43,7 +61,7 @@ describe("Pi Agent pairing privacy boundary", () => {
   });
 
   it("rejects client-supplied Redis URLs before pairing state is written", async () => {
-    const mod = await import("../callables/piAgent.js");
+    const mod = await import("../../../functions-identity/src/domains/identity/piAgent.js");
     const run = callableRunner(mod.completePiAgentPairing);
 
     await expect(
@@ -64,8 +82,8 @@ describe("Pi Agent pairing privacy boundary", () => {
   });
 
   it("removes legacy Redis URLs when completing a normal pairing", async () => {
-    const mod = await import("../callables/piAgent.js");
-    const { piAgentPairingCodeDigest } = await import("../piAgent.js");
+    const mod = await import("../../../functions-identity/src/domains/identity/piAgent.js");
+    const { piAgentPairingCodeDigest } = await import("../../../functions-identity/src/piAgent.js");
     const run = callableRunner(mod.completePiAgentPairing);
     const now = new Date().toISOString();
 

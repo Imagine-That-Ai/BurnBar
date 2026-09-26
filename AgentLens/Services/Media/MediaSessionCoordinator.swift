@@ -2,7 +2,8 @@ import Foundation
 import AVFoundation
 import AppKit
 import Combine
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
 
@@ -196,6 +197,9 @@ final class MediaSessionCoordinator: ObservableObject {
                 // surface the permission prompt synchronously, tear the half-started
                 // encoder down, and rethrow so the router reports the failure instead of
                 // holding an "active" session that never delivers a frame.
+                // The monitor compiles out on MAS; teardown + rethrow below are
+                // the fail-closed behavior there.
+                #if !DISTRIBUTION_MAS
                 await SystemPermissionMonitor.shared.emitRequesting(
                     kind: .screenRecording,
                     bundleId: nil,
@@ -204,6 +208,7 @@ final class MediaSessionCoordinator: ObservableObject {
                     instructions: "Screen Recording is off. Enable it in System Settings → Privacy & Security → Screen Recording.",
                     failureCategory: "screen_recording_denied"
                 )
+                #endif
                 self.videoEncoder?.stop()
                 self.videoEncoder = nil
                 self.streamSinks.removeAll()

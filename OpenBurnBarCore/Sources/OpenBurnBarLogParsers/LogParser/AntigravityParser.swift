@@ -340,7 +340,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip malformed)
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(per-line decode, skip malformed)
                 continue
             }
 

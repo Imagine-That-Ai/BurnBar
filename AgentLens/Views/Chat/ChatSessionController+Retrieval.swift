@@ -1,7 +1,11 @@
 import Foundation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
+import OpenBurnBarVectorKit
 import OpenBurnBarComputerUseCore
+import OpenBurnBarAnalytics
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -111,7 +115,7 @@ extension ChatSessionController {
             }
         }()
 
-        let pricing = OpenBurnBarCore.ModelPricing.lookup(model: model)
+        let pricing = OpenBurnBarLogParsers.ModelPricing.lookup(model: model)
         let cost: Double
         do {
             cost = try pricing.cost(

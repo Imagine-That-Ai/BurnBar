@@ -482,7 +482,7 @@ public enum CLIRuntimeModelCatalog {
     }
 
     public static func parseCodexDebugModels(_ data: Data) -> [CLIRuntimeModelOption] {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data),
               let models = object["models"] as? [[String: Any]] else {
             return []
         }
@@ -560,7 +560,7 @@ public enum CLIRuntimeModelCatalog {
     }
 
     public static func parseGrokModelsCache(_ data: Data) -> [CLIRuntimeModelOption] {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data),
               let models = object["models"] as? [String: Any] else {
             return []
         }
@@ -651,7 +651,7 @@ public enum CLIRuntimeModelCatalog {
     /// and gateway can route local traffic to `localhost:11434` and cloud
     /// traffic to Ollama Cloud.
     public static func parseOllamaTags(_ data: Data) -> [CLIRuntimeModelOption] {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let object = BurnBarJSONValue.dictionary(fromJSONData: data),
               let models = object["models"] as? [[String: Any]] else {
             return []
         }

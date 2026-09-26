@@ -13,7 +13,7 @@ import { Timestamp } from "firebase-admin/firestore";
 process.env.ENFORCE_APP_CHECK = "false";
 
 const bolaStore = vi.hoisted(() => new Map());
-vi.mock("../../adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
+vi.mock("../../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: pathKeyedFirestore(bolaStore) }));
 vi.mock("firebase-admin/firestore", async () => {
   const actual = await vi.importActual<typeof import("firebase-admin/firestore")>("firebase-admin/firestore");
   return {
@@ -22,15 +22,15 @@ vi.mock("firebase-admin/firestore", async () => {
   };
 });
 
-vi.mock("../../auth.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/auth.js", () => ({
   enforceAuthAndAppCheck: vi.fn(),
   assertAppCheck: vi.fn(),
 }));
-vi.mock("../../callables/highRiskOwnerAction.js", () => ({
+vi.mock("../../../../packages/functions-shared/src/callables/highRiskOwnerAction.js", () => ({
   enforceHighRiskOwnerAction: vi.fn(async () => undefined),
 }));
-vi.mock("../../appCheckAttestation.js", async () => {
-  const actual = await vi.importActual<typeof import("../../appCheckAttestation.js")>("../../appCheckAttestation.js");
+vi.mock("../../../../packages/functions-shared/src/appCheckAttestation.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../../packages/functions-shared/src/appCheckAttestation.js")>("../../../../packages/functions-shared/src/appCheckAttestation.js");
   return {
     ...actual,
     enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
@@ -104,7 +104,7 @@ describe("BOLA — pairing", () => {
       socket: { remoteAddress: "127.0.0.1" },
     };
 
-    const { pollCliLink } = await import("../../callables/cliLink.js");
+    const { pollCliLink } = await import("../../../../functions-identity/src/domains/devices/cliLink.js");
     await runHttpHandler(pollCliLink, req, res);
 
     // Catalog expectedCode: permission-denied — HTTP 403 when deviceSecret does not match session.
@@ -113,7 +113,7 @@ describe("BOLA — pairing", () => {
   });
 
   it("completeCliLink rejects cross-user object access", async () => {
-    const mod = await import("../../callables/cliLink.js");
+    const mod = await import("../../../../functions-identity/src/domains/devices/cliLink.js");
     const run = callableRunner(mod.completeCliLink);
 
     await tier2CallableProof(bolaStore, {
@@ -125,7 +125,7 @@ describe("BOLA — pairing", () => {
   });
 
   it("createHermesPairing rejects cross-user object access", async () => {
-    const mod = await import("../../callables/hermes.js");
+    const mod = await import("../../../../functions-media/src/domains/hermes/hermes.js");
     const run = callableRunner(mod.createHermesPairing);
 
     await tier2CallableProof(bolaStore, {
@@ -137,7 +137,7 @@ describe("BOLA — pairing", () => {
   });
 
   it("completeHermesPairing rejects cross-user object access", async () => {
-    const mod = await import("../../callables/hermes.js");
+    const mod = await import("../../../../functions-media/src/domains/hermes/hermes.js");
     const run = callableRunner(mod.completeHermesPairing);
 
     await tier2CallableProof(bolaStore, {
@@ -149,7 +149,7 @@ describe("BOLA — pairing", () => {
   });
 
   it("createPiAgentPairing rejects cross-user object access", async () => {
-    const mod = await import("../../callables/piAgent.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/piAgent.js");
     const run = callableRunner(mod.createPiAgentPairing);
 
     await tier2CallableProof(bolaStore, {
@@ -161,7 +161,7 @@ describe("BOLA — pairing", () => {
   });
 
   it("completePiAgentPairing rejects cross-user object access", async () => {
-    const mod = await import("../../callables/piAgent.js");
+    const mod = await import("../../../../functions-identity/src/domains/identity/piAgent.js");
     const run = callableRunner(mod.completePiAgentPairing);
 
     await tier2CallableProof(bolaStore, {

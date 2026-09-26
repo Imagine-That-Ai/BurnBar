@@ -3,7 +3,9 @@ import Observation
 import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - Agent Subscription Topic Store (Hermes Square §6.3)
 //

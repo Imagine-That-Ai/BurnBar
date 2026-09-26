@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarPlatformSupport
 
 // MARK: - CLI Terminal Session Supervisor (Foundation-pure stream supervision)
 //

@@ -85,10 +85,25 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: functions/package-lock.json
+          cache-dependency-path: |
+            functions/package-lock.json
+            functions-identity/package-lock.json
+            functions-sync/package-lock.json
+            functions-media/package-lock.json
+            packages/functions-shared/package-lock.json
 
       - name: Install functions dependencies
-        run: npm ci --prefix functions
+        # All five codebases: the unified vitest suite aliases them together
+        # and ESLint (incl. the Wave 4 raw-fetch ban) runs in each one.
+        run: |
+          for pkg in functions functions-identity functions-sync functions-media packages/functions-shared; do
+            npm ci --prefix "$pkg"
+          done
+
+      - name: Build functions-shared runtime package
+        # @openburnbar/functions-shared exports resolve to lib/ (tsc output,
+        # not committed). tsc/vitest/builds in every codebase need it built first.
+        run: bash scripts/build-functions-shared.sh
 
       - name: Build Signal envelope contracts
         run: bash scripts/build-signal-envelope-contracts.sh
@@ -110,7 +125,14 @@ jobs:
         run: cd functions && npx tsc --noEmit
 
       - name: ESLint
-        run: npm run lint --prefix functions
+        # Every deploy codebase, not just functions: the fetch ban and max-lines
+        # floors must hold wherever Cloud Functions code ships (wave 4).
+        run: |
+          for pkg in functions functions-identity functions-sync functions-media packages/functions-shared; do
+            echo "::group::ESLint $pkg"
+            npm run lint --prefix "$pkg"
+            echo "::endgroup::"
+          done
 
       - name: Unit tests (vitest)
         run: npm run test:unit --prefix functions
@@ -307,6 +329,12 @@ jobs:
         if: steps.ts.outputs.changed == 'true'
         run: bash scripts/build-entitlements.sh
 
+      - name: Build functions-shared runtime package
+        # The coverage vitest aliases shared->src but still resolves sibling
+        # vendors + the domain-core WASM through installed node_modules.
+        if: steps.ts.outputs.changed == 'true'
+        run: bash scripts/build-functions-shared.sh
+
       - name: Compute TypeScript diff coverage (≥80% of changed lines)
         env:
           COVERAGE_THRESHOLD: "80"
@@ -477,17 +505,19 @@ jobs:
         with:
           filter: blob:none
           # Directory-level pins (not file pins) so split/renamed migration
-          # files and the AgentLens↔OpenBurnBarData byte-identical mirror
-          # pairs stay visible. File pins missed
+          # files stay visible. File pins missed
           # OpenBurnBarDatabase+MemoryMigrations.swift after it landed in
-          # OpenBurnBarData (ENOENT on the mirror-pair check).
+          # OpenBurnBarData (ENOENT on the old mirror-pair check).
           sparse-checkout: |
-            AgentLens/Services/DataStore
             OpenBurnBarCore/Sources/OpenBurnBarData
-            OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory
+            AgentLensTests/Fixtures/DBByteCompat
+            budgets/migrator-parity-baseline.json
             docs/SCHEMA_SQLITE.sql
+            scripts/check-migrator-parity.mjs
             scripts/ci/verify-sqlite-schema-doc.mjs
-            tools/openburnbar-mcp/project_code_memory.py
+            scripts/ci/verify-sqlite-schema-doc.test.mjs
+            scripts/ci/generate-windows-subset-doc.mjs
+            windows/storage/OpenBurnBar.Storage
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -495,6 +525,12 @@ jobs:
 
       - name: Verify SQLite schema doc covers migration sources
         run: node scripts/ci/verify-sqlite-schema-doc.mjs
+
+      - name: Schema-doc splitter tests (node --test)
+        run: node --test scripts/ci/verify-sqlite-schema-doc.test.mjs
+
+      - name: Verify Windows subset doc is fresh
+        run: node scripts/ci/generate-windows-subset-doc.mjs --check
 
   migrator-parity:
     name: Swift↔Windows↔Linux migrator parity
@@ -510,7 +546,6 @@ jobs:
           sparse-checkout: |
             OpenBurnBarCore/Sources/OpenBurnBarData
             OpenBurnBarCore/Tests/OpenBurnBarDataTests
-            AgentLens/Services/DataStore
             AgentLensTests/Fixtures/DBByteCompat
             windows/storage/OpenBurnBar.Storage
             scripts/linux-port
@@ -524,9 +559,10 @@ jobs:
       # Extracts the ordered migration identifiers + endpoint schema surface
       # (tables/columns/indexes/triggers + FTS5 config incl. the standalone
       # conversations_fts ftsRowid trigger contract) from the canonical Swift
-      # migrator and asserts the AgentLens copy, the Windows port's
-      # windows-migration-journal + SchemaStatements, and the Linux pins all
-      # match — or are explicitly annotated in budgets/migrator-parity-baseline.json.
+      # migrator (OpenBurnBarData is the single migrator since wave 2.2) and
+      # asserts the Windows port's windows-migration-journal +
+      # SchemaStatements and the Linux pins all match — or are explicitly
+      # annotated in budgets/migrator-parity-baseline.json.
       - name: Migrator parity unit + golden tests
         run: node --test scripts/check-migrator-parity.test.mjs
 
@@ -824,17 +860,17 @@ jobs:
             packages/hermes-wire-protocol/gen/HermesWireProtocol.kt \
             packages/hermes-wire-protocol/gen/wire_protocol.rs \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated/HermesRealtimeRelayGeneratedTypes.kt \
-            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated
+            OpenBurnBarCore/Sources/OpenBurnBarHermesModels
           node packages/hermes-wire-protocol/codegen.mjs
           # codegen.mjs writes ALL generated surfaces (the gen/ references AND the real
-          # consumed payload types: Kotlin android Generated/ + Swift SharedModels/Generated/).
+          # consumed payload types: Kotlin android Generated/ + Swift OpenBurnBarHermesModels/).
           # Diff every one of them so a stale committed payload type fails CI — without the
           # real Generated dirs here, drift only surfaces inside the apps (silent interop break).
           git diff --exit-code -- \
             services/hermes-realtime-relay/src/generated/wireProtocol.ts \
             packages/hermes-wire-protocol/gen \
             android/openburnbar-iroh-relay/src/main/java/com/openburnbar/irohrelay/Generated \
-            OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Generated \
+            OpenBurnBarCore/Sources/OpenBurnBarHermesModels \
             || { echo "::error::Hermes wire-protocol generated files are stale — run 'node packages/hermes-wire-protocol/codegen.mjs' and commit."; exit 1; }
           node packages/hermes-wire-protocol/parity.mjs
           node --test packages/hermes-wire-protocol/protocol.test.mjs
@@ -1185,6 +1221,11 @@ jobs:
       - name: Build entitlements contracts
         run: bash scripts/build-entitlements.sh
 
+      - name: Build functions-shared runtime package
+        # @openburnbar/functions-shared exports resolve to lib/ (tsc output,
+        # not committed). tsc/vitest/builds in every codebase need it built first.
+        run: bash scripts/build-functions-shared.sh
+
       - name: Build Signal envelope contracts
         run: bash scripts/build-signal-envelope-contracts.sh
 
@@ -1518,6 +1559,11 @@ jobs:
       - name: Install functions dependencies
         run: npm ci --prefix functions
 
+      - name: Build functions-shared runtime package
+        # @openburnbar/functions-shared exports resolve to lib/ (tsc output,
+        # not committed). tsc/vitest/builds in every codebase need it built first.
+        run: bash scripts/build-functions-shared.sh
+
       - name: Build Signal envelope contracts
         run: bash scripts/build-signal-envelope-contracts.sh
 
@@ -1526,6 +1572,13 @@ jobs:
 
       - name: Build functions
         run: npm run build --prefix functions
+
+      - name: Build functions-identity
+        # The billing harnesses import functions-identity/lib (App Store JWS
+        # verifier, rollups); it must be installed and built like functions.
+        run: |
+          npm ci --prefix functions-identity
+          npm run build --prefix functions-identity
 
       - name: App Store JWS verifier regression
         working-directory: functions
@@ -1642,10 +1695,35 @@ jobs:
       - name: Usage refresh-tick budget (shrink-only ratchet)
         run: ./scripts/debt/check-usage-refresh-tick-budget.sh
 
+      # Wave 3.1 Core/Lab boundary: every AgentLens/Lab file carries the
+      # file-level OPENBURNBAR_LAB gate, non-Lab references to Lab types
+      # live in guard-marked files, and the Core touchpoint set is
+      # shrink-only. Pure rg + python3.
+      - name: Lab boundary (shrink-only ratchet)
+        run: ./scripts/debt/check-lab-boundary.sh
+
+      # Wave 4 XCTSkip ratchet: the skip count may only shrink, and every
+      # site carries a revive-by: date (debt) or env-guard: condition
+      # (permanent gate) marker. Pure python3.
+      - name: XCTSkip budget (shrink-only ratchet)
+        run: ./scripts/debt/check-xctskip-budget.sh
+
+      # Wave 4 DESIGN palette: every table row must carry exactly the
+      # shipped DesignSystem.swift hexes, and the shared token constants
+      # must mirror the literals. Pure python3.
+      - name: Design tokens match shipped source
+        run: ./scripts/ci/check-design-tokens.sh
+
+      # Wave 4 docs freshness: orphaned docs untouched for >90 days may
+      # only shrink (link, refresh, or archive to docs/archive/YYYY-MM/).
+      # Pure git + python3.
+      - name: Docs freshness budget (shrink-only ratchet)
+        run: ./scripts/ci/check-docs-freshness.sh
+
       - name: BurnBarRPC IPC canon is current
         run: node tools/ipc/generate-burnbarrpc-canon.mjs --check
 
-      - name: Migration rollback catalog covers both migrators
+      - name: Migration rollback catalog covers the single migrator
         run: |
           node --test scripts/ci/verify-migration-rollback-catalog.test.mjs
           node scripts/ci/verify-migration-rollback-catalog.mjs

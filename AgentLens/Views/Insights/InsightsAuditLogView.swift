@@ -1,5 +1,10 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
+import OpenBurnBarAnalytics
 
 /// Surface for the local Insights audit log — every investigation that
 /// has been started, succeeded, cancelled, or failed.

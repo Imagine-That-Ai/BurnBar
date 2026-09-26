@@ -1,55 +1,106 @@
 #!/usr/bin/env bash
-# Shrink-only XCTSkip ratchet. XCTSkip is a second quarantine; the count may
-# only fall. Regenerate: scripts/debt/check-xctskip-budget.sh --update
+# check-xctskip-budget.sh — shrink-only ratchet for XCTSkip sites (wave 4).
+#
+# Every skip is either time-boxed debt or a permanent environment guard, and
+# the code must SAY which: each skip site requires a marker comment on the
+# guard line or the line directly above it —
+#   * `revive-by: YYYY-MM-DD — <what unblocks it>` for debt (bundled goldens,
+#     missing fixtures, sandbox-exec, ...). The date is a revival TARGET, not
+#     an expiry: when it passes, revive the test or move the date with a
+#     reason in the same edit.
+#   * `env-guard: <condition>` for permanent gates (OS version, keychain or
+#     Secure Enclave entitlement, physical device, opt-in E2E env vars,
+#     Firebase/plist provisioning). These run when the env exists; no date.
+# This gate fails on (a) a total above the baseline, (b) any unmarked site.
+#
+# Usage:
+#   scripts/debt/check-xctskip-budget.sh           # fail on growth/unmarked
+#   scripts/debt/check-xctskip-budget.sh --update  # lower the ceiling (never raise)
 set -euo pipefail
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-baseline_path="${repo_root}/budgets/xctskip-baseline.json"
-mode="${1:-}"
-python3 - "${repo_root}" "${baseline_path}" "${mode}" <<'PY'
+cd "$(dirname "$0")/../.."
+
+MODE="${1:-}"
+
+ROOTS=(AgentLensTests OpenBurnBarMobileTests OpenBurnBarCore OpenBurnBarDaemon)
+
+python3 - "$MODE" "${ROOTS[@]}" <<'PY'
 import json
-import subprocess
+import re
 import sys
 from pathlib import Path
 
-repo = Path(sys.argv[1])
-baseline_path = Path(sys.argv[2])
-mode = sys.argv[3] if len(sys.argv) > 3 else ""
-roots = [
-    "AgentLensTests",
-    "OpenBurnBarMobileTests",
-    "OpenBurnBarDaemon/Tests",
-    "OpenBurnBarCore/Tests",
-]
-cmd = ["rg", "-c", r"XCTSkip", "--glob", "*.swift"]
-total = 0
-by_file = {}
-for root in roots:
-    path = repo / root
-    if not path.exists():
-        continue
-    result = subprocess.run(cmd + [str(path)], capture_output=True, text=True)
-    for line in result.stdout.splitlines():
-        if ":" not in line:
-            continue
-        file_path, count = line.rsplit(":", 1)
-        n = int(count)
-        rel = str(Path(file_path).relative_to(repo)) if Path(file_path).is_absolute() else file_path
-        by_file[rel] = n
-        total += n
+mode = sys.argv[1] if len(sys.argv) > 1 else ""
+roots = sys.argv[2:]
+if mode not in ("", "--check", "--update"):
+    print("usage: check-xctskip-budget.sh [--check|--update]", file=sys.stderr)
+    sys.exit(2)
 
-live = {"total": total, "byFile": by_file}
-if mode == "--print-live":
-    print(json.dumps(live, indent=2, sort_keys=True))
-    raise SystemExit(0)
-if mode == "--update" or not baseline_path.exists():
-    baseline_path.write_text(json.dumps({"total": total, "note": "Shrink-only XCTSkip count across first-party test trees."}, indent=2) + "\n")
-    print(f"wrote {baseline_path} total={total}")
-    raise SystemExit(0)
-baseline = json.loads(baseline_path.read_text())
-print(f"XCTSkip budget: live={total} baseline={baseline['total']}")
-if total > baseline["total"]:
-    raise SystemExit(f"XCTSkip rose from {baseline['total']} to {total}")
-if total < baseline["total"]:
-    print(f"Improved: XCTSkip dropped {baseline['total']} -> {total}; run --update to lock in")
-print("XCTSkip ratchet OK")
+skip_re = re.compile(r"(?:throw\s+XCTSkip|XCTSkip)\s*\(")
+marker_re = re.compile(r"(revive-by:\s*\d{4}-\d{2}-\d{2}|env-guard:)")
+
+sites: list[str] = []
+unmarked: list[str] = []
+SKIP_DIR_PREFIXES = (".build", ".swiftpm", ".derived-data", "build", ".muse")
+for root in roots:
+    for path in sorted(Path(root).rglob("*.swift")):
+        if not path.is_file():
+            continue
+        if "Quarantine" in path.parts:
+            continue
+        # Build checkouts and derived data a fresh CI checkout never has.
+        if any(part == prefix or part.startswith(prefix + "-") or part.startswith(prefix + ".") for part in path.parts for prefix in SKIP_DIR_PREFIXES):
+            continue
+        try:
+            lines = path.read_text().splitlines()
+        except OSError:
+            continue
+        for index, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("//"):
+                continue
+            if not skip_re.search(line):
+                continue
+            # A trailing `//` comment may itself mention XCTSkip (e.g. docs);
+            # only count real invocations: the match must precede any comment.
+            code = line.split("//", 1)[0]
+            if not skip_re.search(code):
+                continue
+            location = f"{path}:{index + 1}"
+            sites.append(location)
+            window = "\n".join(lines[max(0, index - 1) : index + 1])
+            if not marker_re.search(window):
+                unmarked.append(location)
+
+with open("budgets/xctskip-baseline.json") as handle:
+    baseline = json.load(handle)
+
+if mode == "--update":
+    if len(sites) > baseline["total"]:
+        print(
+            f"::error::--update refused: live {len(sites)} > baseline {baseline['total']}. "
+            "The ceiling may only shrink — revive or consolidate skips first."
+        )
+        sys.exit(1)
+    baseline["total"] = len(sites)
+    with open("budgets/xctskip-baseline.json", "w") as handle:
+        json.dump(baseline, handle, indent=2)
+        handle.write("\n")
+    print(f"XCTSkip baseline updated: {len(sites)} site(s).")
+    sys.exit(0)
+
+print(f"  XCTSkip sites: live {len(sites)} vs ceiling {baseline['total']}")
+failed = False
+if len(sites) > baseline["total"]:
+    print(f"FAIL: XCTSkip sites grew {baseline['total']} -> {len(sites)}.", file=sys.stderr)
+    failed = True
+if unmarked:
+    print(f"FAIL: {len(unmarked)} skip site(s) lack a revive-by:/env-guard: marker:", file=sys.stderr)
+    for location in unmarked[:20]:
+        print(f"  {location}", file=sys.stderr)
+    if len(unmarked) > 20:
+        print(f"  ... and {len(unmarked) - 20} more", file=sys.stderr)
+    failed = True
+if failed:
+    sys.exit(1)
+print("XCTSkip ratchet OK.")
 PY

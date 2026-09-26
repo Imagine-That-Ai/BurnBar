@@ -142,7 +142,7 @@ public struct OpenAICompatibleInsightAdapter: InsightModelGateway {
         startedAt: Date,
         completedAt: Date
     ) -> InsightTokenUsage? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data),
               let usage = json["usage"] as? [String: Any] else {
             return nil
         }

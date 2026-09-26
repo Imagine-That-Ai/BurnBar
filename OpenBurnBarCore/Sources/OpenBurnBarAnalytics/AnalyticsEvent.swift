@@ -1,7 +1,7 @@
 import Foundation
 
-/// The canonical event registry — the single source of iOS/widget/keyboard event
-/// names, mirroring docs/analytics/event-taxonomy.md. Call sites reference cases,
+/// The canonical event registry — the single source of macOS + iOS/widget/keyboard
+/// event names, mirroring docs/analytics/event-taxonomy.md. Call sites reference cases,
 /// so an off-taxonomy name can't be invented; `rawValue` is the wire name.
 ///
 /// Tier 1 names are SHARED across every platform and are byte-identical to the
@@ -71,21 +71,65 @@ public enum AnalyticsEvent: String, CaseIterable, Sendable {
     /// never the snippet text, never keystrokes, never the document context).
     case keyboardSnippetInserted = "keyboard.snippet.inserted"
 
+    // MARK: Tier 2 — macOS platform-specific additions
+    /// Emitted by the TelemetryService fan-out for an existing privacy-preserving
+    /// feature-usage record (feature id + outcome + bucketed duration).
+    case featureUsed = "feature.used"
+    case dashboardScanRun = "dashboard.scan.run"
+    case dashboardRecountRun = "dashboard.recount.run"
+    case chatToolInvoked = "chat.tool.invoked"
+    case chatPersonaSelected = "chat.persona.selected"
+    case chatAttachmentFailed = "chat.attachment.failed"
+    case chatHistoryCleared = "chat.history.cleared"
+    case chatPanelAction = "chat.panel.action"
+    case chatDesktopControlGranted = "chat.desktop_control.granted"
+    case chatSearchPerformed = "chat.search.performed"
+    case insightsCanvasCreated = "insights.canvas.created"
+    case insightsCanvasSelected = "insights.canvas.selected"
+    case insightsCanvasDeleted = "insights.canvas.deleted"
+    case insightsWidgetChanged = "insights.widget.changed"
+    case insightsAnalysisRequested = "insights.analysis.requested"
+    case insightsAnalysisCompleted = "insights.analysis.completed"
+    case insightsPrivacyModeToggled = "insights.privacy_mode.toggled"
+    case insightsVerdictRefreshed = "insights.verdict.refreshed"
+    case insightsAuditlogCleared = "insights.auditlog.cleared"
+    case quotaRefreshStarted = "quota.refresh.started"
+    case quotaSetupSaved = "quota.setup.saved"
+    case quotaWorkspaceFilterChanged = "quota.workspace.filter_changed"
+    case budgetThresholdWarning = "budget.threshold.warning"
+    case budgetThresholdBlocked = "budget.threshold.blocked"
+    case cloudsyncCompleted = "cloudsync.completed"
+    case cloudsyncFailed = "cloudsync.failed"
+    case cloudsyncManualBackupRun = "cloudsync.manual_backup.run"
+    case menubarPopoverShown = "menubar.popover.shown"
+    case menubarAction = "menubar.action"
+    case missionConsoleOpened = "mission_console.opened"
+    case wallpaperToggled = "wallpaper.toggled"
+    case wallpaperConfigChanged = "wallpaper.config.changed"
+    /// Privacy-preserving surface selection for the visual capture toggle. Params:
+    /// `provider` (persistedToken), `surface` (cli_pty|desktop_app), `trigger`
+    /// (settings|session_header|mobile), `fallback_used` (Bool), `is_eligible` (Bool).
+    /// Never includes window titles, bundle IDs beyond persistedToken, or pixel hashes.
+    case visualCaptureSurfaceSelected = "visual_capture.surface_selected"
+
     /// Amplitude category metadata for this event (set via the SDK, never
     /// embedded in the name). Default is `primaryAction`.
     public var category: AnalyticsCategory {
         switch self {
         case .appSessionStarted, .appSessionEnded, .appForegrounded, .appBackgrounded,
              .authSignedOut, .onboardingStarted, .onboardingDismissed, .consentAnalyticsGranted,
-             .chatGenerationCompleted, .quotaRefreshSucceeded, .keyboardActivated:
+             .chatGenerationCompleted, .quotaRefreshStarted, .quotaRefreshSucceeded, .keyboardActivated:
             return .lifecycle
-        case .appStartupFailed, .errorHandled, .chatGenerationFailed, .quotaRefreshFailed:
+        case .appStartupFailed, .errorHandled, .chatGenerationFailed, .chatAttachmentFailed,
+             .quotaRefreshFailed, .budgetThresholdBlocked, .cloudsyncFailed:
             return .error
         case .screenViewed, .navRouteChanged, .onboardingStepViewed,
-             .mobileTabSelected, .widgetRendered:
+             .mobileTabSelected, .widgetRendered,
+             .menubarPopoverShown, .missionConsoleOpened:
             return .screenView
         case .authSignInCompleted, .authSignUpCompleted, .authAccountDeleted,
-             .onboardingCompleted, .subscriptionUpgradeInitiated:
+             .onboardingCompleted, .subscriptionUpgradeInitiated,
+             .chatDesktopControlGranted, .cloudsyncCompleted:
             return .conversionAuth
         default:
             return .primaryAction

@@ -116,8 +116,15 @@ public struct ComputerUseAuditExportWriter {
             signatureURL = nil
         }
 
+        // Export only needs the recomputed head hash for the result record —
+        // it is not a verification verdict, so it opts out of the strict
+        // head-anchor default (Wave 0.4).
         let headHashHex = try ComputerUseAuditChain(hasher: hasher)
-            .validate(at: chainURL, sessionManifestHashHex: hasher.hash(data: entries[0].content))
+            .validate(
+                at: chainURL,
+                sessionManifestHashHex: hasher.hash(data: entries[0].content),
+                requireExpectedHead: false
+            )
             .headHashHex ?? ""
 
         return ExportResult(
@@ -148,6 +155,47 @@ public struct ComputerUseAuditExportWriter {
         }
         let tar = try gzipDecompress(archive)
         return try parseTar(tar)
+    }
+
+    /// Wave 0.4: session-file contents for `audit-verify --archive`, so the CLI
+    /// routes archives through the real chain verifier instead of asserting a
+    /// literal `fully_verified=true`. Runs the same signature/gzip/required-
+    /// entry checks as `verify`, then returns only the three verifier inputs
+    /// by fixed name — nothing attacker-controlled ever becomes a file path.
+    public struct ArchiveSessionFiles: Sendable {
+        public let manifestJSON: Data
+        public let chainJSONL: Data
+        public let signedHeadJSON: Data?
+    }
+
+    public func extractSessionFiles(
+        archive archiveURL: URL,
+        signatureURL: URL? = nil,
+        signatureTrust: ComputerUseAuditExportSignatureTrust = .sidecarOnly
+    ) throws -> ArchiveSessionFiles {
+        let archive = try Data(contentsOf: archiveURL)
+        if let signatureURL {
+            try verifySignature(
+                archive: archive,
+                signatureURL: signatureURL,
+                archiveFilename: archiveURL.lastPathComponent,
+                signatureTrust: signatureTrust
+            )
+        }
+        let tar = try gzipDecompress(archive)
+        let contents = try parseTarEntries(tar)
+        func content(named name: String) -> Data? {
+            contents.first { $0.path == name }?.content
+        }
+        guard let manifestJSON = content(named: "manifest.json"),
+              let chainJSONL = content(named: "chain.jsonl") else {
+            throw WriterError.verificationFailed("archive is missing manifest.json or chain.jsonl")
+        }
+        return ArchiveSessionFiles(
+            manifestJSON: manifestJSON,
+            chainJSONL: chainJSONL,
+            signedHeadJSON: content(named: ComputerUseAuditHeadFinalizer.signedHeadFilename)
+        )
     }
 
     private func collectEntries(
@@ -222,8 +270,16 @@ public struct ComputerUseAuditExportWriter {
     }
 
     private func parseTar(_ tar: Data) throws -> [(path: String, sha256: Data, size: Int)] {
+        try parseTarEntries(tar).map { entry in
+            (path: entry.path, sha256: hashSHA256(entry.content), size: entry.content.count)
+        }
+    }
+
+    /// Raw tar entries (path + content). Single parse loop shared by `verify`
+    /// (hashes only) and `extractSessionFiles` (contents for verification).
+    private func parseTarEntries(_ tar: Data) throws -> [(path: String, content: Data)] {
         var offset = 0
-        var results: [(path: String, sha256: Data, size: Int)] = []
+        var results: [(path: String, content: Data)] = []
         while offset + 512 <= tar.count {
             let block = tar.subdata(in: offset..<(offset + 512))
             offset += 512
@@ -249,7 +305,7 @@ public struct ComputerUseAuditExportWriter {
             offset += size
             let padding = (512 - (size % 512)) % 512
             offset += padding
-            results.append((path, hashSHA256(content), size))
+            results.append((path, content))
         }
         return results
     }

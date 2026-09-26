@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension DataStore {
     func upsertSourceArtifact(_ artifact: SourceArtifactRecord) async throws -> SourceArtifactWriteDisposition {

@@ -1,14 +1,14 @@
 /**
- * Per-day per-provider token map (`dailyProviderTokens`) on the all_time
- * rollup doc.
+ * Per-day per-provider token map (`dailyProviderTokens`) in the monthly
+ * `all_time_daily_YYYY-MM` shards (Wave 2.6; the frozen map on the
+ * `usage_counter_totals/all_time` counter doc merges as legacy).
  *
- * Pins the rolling nested map on the `usage_counter_totals/all_time` counter
- * doc (`addContribution`), the reference vs pending-delta queue-drain
- * equivalence, the legacy fallback that rebuilds the map from day-doc
- * `providers` subcollections (with the updatedAt-moved guard), and the
- * omit-when-empty output contract. The in-memory Firestore mirrors the fake
- * in rollupExecutionSource.test.ts (same set() merge / FieldValue.increment
- * semantics).
+ * Pins the rolling nested map sharding (`addContribution`), the reference vs
+ * pending-delta queue-drain equivalence, the legacy fallback that rebuilds
+ * the map from day-doc `providers` subcollections into the shards (with the
+ * updatedAt-moved guard), and the omit-when-empty output contract. The
+ * in-memory Firestore mirrors the fake in rollupExecutionSource.test.ts
+ * (same set() merge / FieldValue.increment semantics).
  */
 import { describe, expect, it } from "vitest";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
@@ -16,7 +16,7 @@ import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { applyUsageCounterDelta, COUNTER_SCHEMA_VERSION } from "../rollupCounters.js";
 import { computeUserRollupsFromCounters, rebuildUserRollupCounters } from "../rollupCompute.js";
 import { drainPendingCounterDeltas, enqueueUsageCounterDelta } from "../rollupPendingDeltas.js";
-import type { UsageEventDoc } from "../types.js";
+import type { UsageEventDoc } from "../../../packages/functions-shared/src/types.js";
 
 type Doc = Record<string, unknown>;
 
@@ -188,6 +188,16 @@ class FakeFirestore {
 
 const UID = "u-daily-provider";
 const ALL_TIME_PATH = `users/${UID}/usage_counter_totals/all_time`;
+const SHARD_PATH = `users/${UID}/usage_counter_totals/all_time_daily_2026-06`;
+
+/** Deletes every monthly shard doc: simulates a writer from before sharding. */
+function deleteShards(fake: FakeFirestore): void {
+  for (const path of [...fake.store.keys()]) {
+    if (path.startsWith(`users/${UID}/usage_counter_totals/all_time_daily_`)) {
+      fake.store.delete(path);
+    }
+  }
+}
 const DAY_A = "2026-06-09";
 const DAY_B = "2026-06-08";
 const T_A = `${DAY_A}T12:00:00.000Z`;
@@ -232,15 +242,45 @@ const EXPECTED_MAP = {
 };
 
 describe("dailyProviderTokens rolling counter map", () => {
-  it("addContribution increments the nested per-day per-provider map on the all_time totals doc", async () => {
+  it("addContribution increments the nested per-day per-provider map in the monthly shard, not the all_time doc", async () => {
     const fake = new FakeFirestore();
     seedUsageDocs(fake);
     await rebuildUserRollupCounters(fake.asFirestore(), UID, { pageSize: 500 });
 
     const totals = fake.store.get(ALL_TIME_PATH);
     expect(totals?.schemaVersion).toBe(COUNTER_SCHEMA_VERSION);
-    expect(totals?.dailyProviderTokens).toEqual(EXPECTED_MAP);
-    expect(totals?.dailyTokens).toEqual({ [DAY_A]: 325, [DAY_B]: 125 });
+    // Wave 2.6: the base doc no longer grows daily maps (1 MiB destiny).
+    expect(totals?.dailyProviderTokens).toBeUndefined();
+    expect(totals?.dailyTokens).toBeUndefined();
+    const shard = fake.store.get(SHARD_PATH);
+    expect(shard?.shardMonth).toBe("2026-06");
+    expect(shard?.dailyProviderTokens).toEqual(EXPECTED_MAP);
+    expect(shard?.dailyTokens).toEqual({ [DAY_A]: 325, [DAY_B]: 125 });
+  });
+
+  it("merges the frozen legacy base map with shard increments by summing overlap", async () => {
+    const fake = new FakeFirestore();
+    seedUsageDocs(fake);
+    await rebuildUserRollupCounters(fake.asFirestore(), UID, { pageSize: 500 });
+    // Simulate a pre-shard era: part of DAY_A's tokens frozen on the base
+    // doc, the rest arriving later as shard increments.
+    deleteShards(fake);
+    fake.store.set(ALL_TIME_PATH, {
+      ...fake.store.get(ALL_TIME_PATH),
+      dailyTokens: { [DAY_A]: 300 },
+      dailyProviderTokens: { [DAY_A]: { codex: 100 } },
+    });
+    fake.store.set(SHARD_PATH, {
+      windowKey: "all_time",
+      shardMonth: "2026-06",
+      dailyTokens: { [DAY_A]: 25, [DAY_B]: 125 },
+      dailyProviderTokens: { [DAY_A]: { codex: 25, "claude-code": 200 }, [DAY_B]: { codex: 125 } },
+    });
+
+    const rollups = await computeUserRollupsFromCounters(fake.asFirestore(), UID);
+
+    expect(rollups.all_time.dailyPoints?.[DAY_A]).toBe(325);
+    expect(rollups.all_time.dailyProviderTokens).toEqual(EXPECTED_MAP);
   });
 
   it("emits identical dailyProviderTokens from the reference and pending-delta queue-drain paths", async () => {
@@ -267,8 +307,8 @@ describe("dailyProviderTokens rolling counter map", () => {
     }
     await drainPendingCounterDeltas(queued.asFirestore(), UID);
 
-    expect(queued.store.get(ALL_TIME_PATH)?.dailyProviderTokens).toEqual(
-      reference.store.get(ALL_TIME_PATH)?.dailyProviderTokens,
+    expect(queued.store.get(SHARD_PATH)?.dailyProviderTokens).toEqual(
+      reference.store.get(SHARD_PATH)?.dailyProviderTokens,
     );
 
     const referenceRollups = await computeUserRollupsFromCounters(reference.asFirestore(), UID);
@@ -290,19 +330,25 @@ describe("dailyProviderTokens rolling counter map", () => {
     }
   });
 
-  it("legacy totals docs fall back to the day-doc providers subcollections and persist the derived map", async () => {
+  it("legacy totals docs fall back to the day-doc providers subcollections and persist the derived map into shards", async () => {
     const fake = new FakeFirestore();
     seedUsageDocs(fake);
     await rebuildUserRollupCounters(fake.asFirestore(), UID, { pageSize: 500 });
-    // Simulate a totals doc written before the map existed (schema v2).
+    // Simulate totals written before any map existed: strip both maps from
+    // the base doc AND delete the shards the rebuild just wrote.
     const legacyTotals = { ...fake.store.get(ALL_TIME_PATH) };
     delete legacyTotals.dailyProviderTokens;
+    delete legacyTotals.dailyTokens;
     fake.store.set(ALL_TIME_PATH, legacyTotals);
+    deleteShards(fake);
 
     const rollups = await computeUserRollupsFromCounters(fake.asFirestore(), UID);
 
     expect(rollups.all_time.dailyProviderTokens).toEqual(EXPECTED_MAP);
-    expect(fake.store.get(ALL_TIME_PATH)?.dailyProviderTokens).toEqual(EXPECTED_MAP);
+    // The backfill lands in the monthly shard, never the base doc.
+    expect(fake.store.get(ALL_TIME_PATH)?.dailyProviderTokens).toBeUndefined();
+    expect(fake.store.get(SHARD_PATH)?.dailyProviderTokens).toEqual(EXPECTED_MAP);
+    expect(fake.store.get(SHARD_PATH)?.dailyTokens).toEqual({ [DAY_A]: 325, [DAY_B]: 125 });
   });
 
   it("skips the fallback persist when a counter write lands mid-scan (updatedAt moved)", async () => {
@@ -311,7 +357,9 @@ describe("dailyProviderTokens rolling counter map", () => {
     await rebuildUserRollupCounters(fake.asFirestore(), UID, { pageSize: 500 });
     const legacyTotals = { ...fake.store.get(ALL_TIME_PATH) };
     delete legacyTotals.dailyProviderTokens;
+    delete legacyTotals.dailyTokens;
     fake.store.set(ALL_TIME_PATH, legacyTotals);
+    deleteShards(fake);
 
     // The fallback scans usage_counter_days without a where() filter; the
     // 90-day union query filters by documentId. Mutate updatedAt only on the
@@ -346,12 +394,13 @@ describe("dailyProviderTokens rolling counter map", () => {
 
     // The computed doc still carries the map; the stale absolute write is skipped.
     expect(rollups.all_time.dailyProviderTokens).toEqual(EXPECTED_MAP);
-    expect(fake.store.get(ALL_TIME_PATH)?.dailyProviderTokens).toBeUndefined();
+    expect(fake.store.get(SHARD_PATH)).toBeUndefined();
 
-    // The next pass persists the backfill once the totals doc is quiet.
+    // The next pass persists the backfill into the shard once quiet.
     const retried = await computeUserRollupsFromCounters(fake.asFirestore(), UID);
     expect(retried.all_time.dailyProviderTokens).toEqual(EXPECTED_MAP);
-    expect(fake.store.get(ALL_TIME_PATH)?.dailyProviderTokens).toEqual(EXPECTED_MAP);
+    expect(fake.store.get(ALL_TIME_PATH)?.dailyProviderTokens).toBeUndefined();
+    expect(fake.store.get(SHARD_PATH)?.dailyProviderTokens).toEqual(EXPECTED_MAP);
   });
 
   it("omits the field entirely when there is no provider-attributed usage", async () => {
@@ -371,7 +420,7 @@ describe("dailyProviderTokens rolling counter map", () => {
     await applyUsageCounterDelta(fake.asFirestore(), UID, "usage-0", event, undefined);
 
     // The rolling map keeps the zeroed entry (like dailyTokens)…
-    expect(fake.store.get(ALL_TIME_PATH)?.dailyProviderTokens).toEqual({ [DAY_A]: { codex: 0 } });
+    expect(fake.store.get(SHARD_PATH)?.dailyProviderTokens).toEqual({ [DAY_A]: { codex: 0 } });
 
     // …but the rollup output filters it and omits the now-empty field.
     const rollups = await computeUserRollupsFromCounters(fake.asFirestore(), UID);

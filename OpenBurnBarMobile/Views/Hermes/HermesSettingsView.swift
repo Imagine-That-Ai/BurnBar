@@ -4,7 +4,12 @@ import SwiftUI
 import UIKit
 #endif
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 let hermesSettingsLogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesSettings")
 

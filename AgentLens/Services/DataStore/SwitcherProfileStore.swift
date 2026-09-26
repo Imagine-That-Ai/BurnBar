@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - Log Emitter
 
@@ -54,17 +55,39 @@ public struct LogEmitter: Sendable {
 public final class SwitcherProfileStore: Sendable {
     private let dbQueue: any DatabaseWriter
     private let logEmitter: LogEmitter
+    // Wave 2.1c-v: the daemon owns `switcher_active_profile` (ADR-005).
+    // Active-pointer writes commit through this seam; `switcher_profiles`
+    // CRUD and all reads stay on the local queue.
+    private let activeProfileWriter: any SwitcherActiveProfileWriter
 
     public init(dbQueue: any DatabaseWriter) {
         self.dbQueue = dbQueue
         self.logEmitter = LogEmitter()
+        self.activeProfileWriter = DaemonSwitcherActiveProfileWriter()
     }
 
     /// Internal initializer for test injection of log emitter.
     /// Allows tests to capture log output for verification.
-    internal init(dbQueue: any DatabaseWriter, logEmitter: LogEmitter) {
+    internal init(
+        dbQueue: any DatabaseWriter,
+        logEmitter: LogEmitter,
+        activeProfileWriter: any SwitcherActiveProfileWriter = DaemonSwitcherActiveProfileWriter()
+    ) {
         self.dbQueue = dbQueue
         self.logEmitter = logEmitter
+        self.activeProfileWriter = activeProfileWriter
+    }
+
+    /// Internal initializer for test injection of the active-profile writer
+    /// (Wave 2.1c-v). Tests without a live daemon pass a local writer that
+    /// applies the same statements to the fixture queue.
+    internal init(
+        dbQueue: any DatabaseWriter,
+        activeProfileWriter: any SwitcherActiveProfileWriter
+    ) {
+        self.dbQueue = dbQueue
+        self.logEmitter = LogEmitter()
+        self.activeProfileWriter = activeProfileWriter
     }
 
     /// Creates a new profile with logging for startup/sync verification.
@@ -116,44 +139,15 @@ public final class SwitcherProfileStore: Sendable {
     // MARK: - Active Profile State
 
     /// Fetches the current active profile state.
-    /// Performs cleanup of legacy duplicate rows if present during hydration.
     /// Uses ORDER BY activeProfileID IS NOT NULL, updatedAt DESC to deterministically select
     /// the most recent row with a non-NULL activeProfileID (preferring active rows over NULL).
+    ///
+    /// Wave 2.1c-v: read-only. The legacy fetch-time dedup DELETE is gone —
+    /// the daemon is the only writer now and never creates duplicates (every
+    /// set rewrites its scope), so any pre-cutover duplicate rows simply heal
+    /// on the next set. The SELECT is byte-identical to the snapshot query.
     public func fetchActiveProfileState() throws -> SwitcherActiveProfileState {
-        try dbQueue.write { db in
-            // Clean up legacy duplicate GLOBAL rows if any exist. Per-provider
-            // drain-target rows (providerID IS NOT NULL) are left untouched —
-            // this dedup only governs the single global pointer used by browser
-            // launching and legacy callers.
-            try db.execute(sql: """
-                DELETE FROM switcher_active_profile
-                WHERE providerID IS NULL
-                  AND rowid NOT IN (
-                    SELECT rowid FROM switcher_active_profile
-                    WHERE providerID IS NULL AND activeProfileID IS NOT NULL
-                    ORDER BY COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
-                    LIMIT 1
-                )
-            """)
-
-            // Now select the remaining global row with proper ordering
-            let row = try Row.fetchOne(
-                db,
-                sql: """
-                    SELECT activeProfileID, updatedAt FROM switcher_active_profile
-                    WHERE providerID IS NULL
-                    ORDER BY activeProfileID IS NOT NULL DESC,
-                             COALESCE(updatedAt, '1970-01-01T00:00:00Z') DESC
-                    LIMIT 1
-                """
-            )
-            guard let row else {
-                return SwitcherActiveProfileState(activeProfileID: nil)
-            }
-            let activeProfileID: String? = row["activeProfileID"]
-            let updatedAt: Date = Self.parseDateValue(row["updatedAt"]) ?? Date()
-            return SwitcherActiveProfileState(activeProfileID: activeProfileID, updatedAt: updatedAt)
-        }
+        try fetchActiveProfileStateSnapshot()
     }
 
     /// Fetches the active profile state without mutating legacy duplicate rows.
@@ -183,29 +177,37 @@ public final class SwitcherProfileStore: Sendable {
     /// Sets the active profile. Pass nil to clear active selection.
     /// Uses DELETE + INSERT to guarantee exactly one row in the active profile table.
     /// This avoids the non-deterministic LIMIT 1 behavior when multiple rows exist.
+    ///
+    /// Wave 2.1c-v: the mirror lookup runs against the local read of the
+    /// app-owned `switcher_profiles` table, and the global set plus the
+    /// mirror commit as one atomic apply — the same single transaction the
+    /// pre-cutover path used.
     public func setActiveProfile(_ profileID: String?) throws {
-        try dbQueue.write { db in
-            let now = Date()
-            // Rewrite the single global pointer (providerID IS NULL). Browser
-            // launching and legacy callers read this.
-            try db.execute(sql: "DELETE FROM switcher_active_profile WHERE providerID IS NULL")
-            try db.execute(
-                sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, NULL, ?)",
-                arguments: [profileID, now]
-            )
+        // Mirror into the per-provider drain target so callers that only
+        // know the global setter still populate per-provider state. A
+        // browser profile (cliType == nil) has no provider and is skipped.
+        var sets = [BurnBarSwitcherActiveProfileSet(profileID: profileID)]
+        if let profileID,
+           let mirrorProviderID = try fetchMirrorProviderID(for: profileID) {
+            sets.append(BurnBarSwitcherActiveProfileSet(profileID: profileID, providerID: mirrorProviderID))
+        }
+        _ = try activeProfileWriter.apply(BurnBarSwitcherActiveProfileApplyRequest(sets: sets))
+    }
 
-            // Mirror into the per-provider drain target so callers that only
-            // know the global setter still populate per-provider state. A
-            // browser profile (cliType == nil) has no provider and is skipped.
-            if let profileID,
-               let cliTypeRaw = try String.fetchOne(
-                   db,
-                   sql: "SELECT cliType FROM switcher_profiles WHERE id = ?",
-                   arguments: [profileID]
-               ),
-               let cliType = SwitcherCLIProfileType(rawValue: cliTypeRaw) {
-                try Self.writeActiveProfile(db, profileID: profileID, providerID: cliType.providerID, now: now)
+    /// The per-provider drain target the global setter mirrors into, if the
+    /// profile is a CLI profile with a known provider. Local read of the
+    /// app-owned `switcher_profiles` table — finalized before the apply.
+    private func fetchMirrorProviderID(for profileID: String) throws -> String? {
+        try dbQueue.read { db in
+            guard let cliTypeRaw = try String.fetchOne(
+                db,
+                sql: "SELECT cliType FROM switcher_profiles WHERE id = ?",
+                arguments: [profileID]
+            ),
+            let cliType = SwitcherCLIProfileType(rawValue: cliTypeRaw) else {
+                return nil
             }
+            return cliType.providerID.rawValue
         }
     }
 
@@ -254,10 +256,14 @@ public final class SwitcherProfileStore: Sendable {
 
     /// Sets the drain target for a single provider. Other providers' drain
     /// targets are left untouched. Pass nil to clear this provider's target.
+    ///
+    /// Wave 2.1c-v: commits through the active-profile writer (single writer).
     public func setActiveProfile(_ profileID: String?, for providerID: ProviderID) throws {
-        try dbQueue.write { db in
-            try Self.writeActiveProfile(db, profileID: profileID, providerID: providerID, now: Date())
-        }
+        _ = try activeProfileWriter.apply(
+            BurnBarSwitcherActiveProfileApplyRequest(
+                sets: [.init(profileID: profileID, providerID: providerID.rawValue)]
+            )
+        )
     }
 
     /// All current per-provider drain targets keyed by providerID raw value.
@@ -280,24 +286,6 @@ public final class SwitcherProfileStore: Sendable {
             }
             return result
         }
-    }
-
-    /// Upserts exactly one per-provider row, guaranteeing a single drain target
-    /// per provider.
-    private static func writeActiveProfile(
-        _ db: Database,
-        profileID: String?,
-        providerID: ProviderID,
-        now: Date
-    ) throws {
-        try db.execute(
-            sql: "DELETE FROM switcher_active_profile WHERE providerID = ?",
-            arguments: [providerID.rawValue]
-        )
-        try db.execute(
-            sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, ?, ?)",
-            arguments: [profileID, providerID.rawValue, now]
-        )
     }
 
     // MARK: - Profile CRUD
@@ -525,22 +513,23 @@ public final class SwitcherProfileStore: Sendable {
 
     /// Deletes a profile by ID.
     /// If the deleted profile was active, selects a deterministic fallback (lowest sortKey).
+    ///
+    /// Wave 2.1c-v: the pointer clear commits through the writer BEFORE the
+    /// local profile delete. A failed clear aborts the delete (fail-closed:
+    /// no dangling pointer); the reverse order would leave the pointer aimed
+    /// at a deleted profile. The clear is unconditional — like the
+    /// pre-cutover UPDATE it also clears per-provider rows pointing at the
+    /// deleted profile, even when the global pointer sits elsewhere.
     public func deleteProfile(id: String) throws {
         // First check if this profile is the active one
         let state = try fetchActiveProfileState()
         let wasActive = state.activeProfileID == id
 
+        _ = try activeProfileWriter.apply(
+            BurnBarSwitcherActiveProfileApplyRequest(clearProfileID: id)
+        )
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM switcher_profiles WHERE id = ?", arguments: [id])
-            // Clear active state if this was the active profile
-            try db.execute(
-                sql: """
-                UPDATE switcher_active_profile
-                SET activeProfileID = NULL, updatedAt = ?
-                WHERE activeProfileID = ?
-                """,
-                arguments: [Date(), id]
-            )
         }
 
         // If this was the active profile, select a fallback
@@ -581,8 +570,13 @@ public final class SwitcherProfileStore: Sendable {
     /// the profile with the lowest sortKey (and createdAt as tiebreaker).
     /// If no profiles remain, clears active state.
     /// Uses DELETE + INSERT to guarantee exactly one row in the active profile table.
+    ///
+    /// Wave 2.1c-v: the fallback lookup is a local read of the app-owned
+    /// `switcher_profiles` table; the global-pointer rewrite commits through
+    /// the writer. Per-provider drain targets are governed independently and
+    /// must survive this — the apply carries only the global set.
     public func selectFallbackActiveProfile() throws {
-        try dbQueue.write { db in
+        let fallbackID: String? = try dbQueue.read { db in
             let fallback = try Row.fetchOne(
                 db,
                 sql: """
@@ -591,15 +585,11 @@ public final class SwitcherProfileStore: Sendable {
                 LIMIT 1
                 """
             )
-            let fallbackID: String? = fallback?["id"]
-            // Rewrite only the global pointer (providerID IS NULL) — per-provider
-            // drain targets are governed independently and must survive this.
-            try db.execute(sql: "DELETE FROM switcher_active_profile WHERE providerID IS NULL")
-            try db.execute(
-                sql: "INSERT INTO switcher_active_profile (activeProfileID, providerID, updatedAt) VALUES (?, NULL, ?)",
-                arguments: [fallbackID, Date()]
-            )
+            return fallback?["id"]
         }
+        _ = try activeProfileWriter.apply(
+            BurnBarSwitcherActiveProfileApplyRequest(sets: [.init(profileID: fallbackID)])
+        )
     }
 
     // MARK: - Stale Active Profile Recovery

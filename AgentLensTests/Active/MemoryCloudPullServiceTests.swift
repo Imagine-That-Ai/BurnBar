@@ -3,6 +3,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Memory Blind Sync PR-2 — the PULL half.
 ///
@@ -39,7 +40,7 @@ final class MemoryCloudPullServiceTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let gateway = sharedGateway ?? CloudSyncFirestoreFakeGateway()
         return Fixture(
             queue: queue,

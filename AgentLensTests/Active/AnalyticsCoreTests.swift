@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarAnalytics
 
 /// Bucketing is the anti-fingerprinting core: raw counts/durations/amounts are
 /// never sent; they map to coarse, canonical buckets identical on every platform.

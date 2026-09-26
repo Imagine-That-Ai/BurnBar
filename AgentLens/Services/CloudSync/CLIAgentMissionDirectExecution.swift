@@ -1,7 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
 import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 import OSLog
@@ -366,7 +366,7 @@ extension CLIAgentMissionRequestListener {
                 deviceId: handle.deviceId,
                 status: "waiting_for_approval",
                 hostWriteNonce: handle.hostWriteNonce,
-                sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState),
+                sealedStatePayload: ComputerUseSecurityCallableSupport.sendableJSONPayload(sealedState),
                 approvalRequestId: approvalID
             )
             await recordEvent(
@@ -419,7 +419,7 @@ extension CLIAgentMissionRequestListener {
             deviceId: handle.deviceId,
             status: "running",
             hostWriteNonce: handle.hostWriteNonce,
-            sealedStatePayload: ComputerUseSecurityCallableClient.sendableJSONPayload(sealedState)
+            sealedStatePayload: ComputerUseSecurityCallableSupport.sendableJSONPayload(sealedState)
         )
     }
 
@@ -455,7 +455,7 @@ extension CLIAgentMissionRequestListener {
         parkedCeilingByRequest[requestID] = (digest, grant)
         // `as? any Sendable` does not compile: Sendable is a marker protocol and cannot
         // appear in a conditional cast. The callable boundary owns this conversion.
-        let sendable = ComputerUseSecurityCallableClient.sendableJSONPayload(canonical)
+        let sendable = ComputerUseSecurityCallableSupport.sendableJSONPayload(canonical)
         try await ComputerUseSecurityCallableClient.publishMissionApprovalCeiling(
             requestId: requestID,
             deviceId: deviceId,

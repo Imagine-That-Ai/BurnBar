@@ -1,3 +1,4 @@
+#if OPENBURNBAR_LAB
 import XCTest
 @testable import OpenBurnBar
 
@@ -90,3 +91,4 @@ final class PetPropTests: XCTestCase {
         XCTAssertFalse(always.isVisible(in: "sleep"))
     }
 }
+#endif

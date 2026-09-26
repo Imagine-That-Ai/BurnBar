@@ -359,11 +359,13 @@ check("App aggregate emits its exact required context once and binds both prereq
     "classify",
     "merge-group-product-lanes",
     "app-build-test",
+    "app-lab-gate",
     "mobile-build-gate",
   ]);
   assert.equal(jobField(appGate, "if"), "always()");
   assert.deepEqual(stepEnvironment(appStep), {
     AGENTLENS_RESULT: "${{ needs.app-build-test.result }}",
+    LAB_RESULT: "${{ needs.app-lab-gate.result }}",
     MOBILE_RESULT: "${{ needs.mobile-build-gate.result }}",
     CLASSIFIER_RESULT: "${{ needs.classify.result }}",
     MERGE_GROUP_LANES: "${{ needs.merge-group-product-lanes.result }}",
@@ -379,6 +381,7 @@ expectShell(
   {
     EVENT_NAME: "push",
     AGENTLENS_RESULT: "success",
+    LAB_RESULT: "success",
     MOBILE_RESULT: "success",
     CLASSIFIER_RESULT: "success",
     MERGE_GROUP_LANES: "skipped",
@@ -394,6 +397,7 @@ expectShell(
   {
     EVENT_NAME: "push",
     AGENTLENS_RESULT: "skipped",
+    LAB_RESULT: "skipped",
     MOBILE_RESULT: "skipped",
     CLASSIFIER_RESULT: "success",
     MERGE_GROUP_LANES: "skipped",
@@ -409,6 +413,7 @@ expectShell(
   {
     EVENT_NAME: "merge_group",
     AGENTLENS_RESULT: "success",
+    LAB_RESULT: "success",
     MOBILE_RESULT: "success",
     CLASSIFIER_RESULT: "skipped",
     MERGE_GROUP_LANES: "success",
@@ -424,6 +429,7 @@ expectShell(
   {
     EVENT_NAME: "merge_group",
     AGENTLENS_RESULT: "skipped",
+    LAB_RESULT: "skipped",
     MOBILE_RESULT: "success",
     CLASSIFIER_RESULT: "skipped",
     MERGE_GROUP_LANES: "success",
@@ -433,7 +439,23 @@ expectShell(
   1,
 );
 
-for (const prerequisite of ["AGENTLENS_RESULT", "MOBILE_RESULT"]) {
+expectShell(
+  "App aggregate rejects skipped Lab on merge_group",
+  appScript,
+  {
+    EVENT_NAME: "merge_group",
+    AGENTLENS_RESULT: "success",
+    LAB_RESULT: "skipped",
+    MOBILE_RESULT: "success",
+    CLASSIFIER_RESULT: "skipped",
+    MERGE_GROUP_LANES: "success",
+    MACOS_REQUIRED: "",
+    MOBILE_REQUIRED: "",
+  },
+  1,
+);
+
+for (const prerequisite of ["AGENTLENS_RESULT", "LAB_RESULT", "MOBILE_RESULT"]) {
   for (const [resultName, result] of [
     ["missing", ""],
     ["skipped", "skipped"],
@@ -446,6 +468,7 @@ for (const prerequisite of ["AGENTLENS_RESULT", "MOBILE_RESULT"]) {
       {
         EVENT_NAME: "push",
         AGENTLENS_RESULT: "success",
+        LAB_RESULT: "success",
         MOBILE_RESULT: "success",
         CLASSIFIER_RESULT: "success",
         MERGE_GROUP_LANES: "skipped",
@@ -552,6 +575,38 @@ check("PR App Gate uses the bounded smoke catalog and leaves the full suite to h
   assert.match(
     stepRun(harnessAppTestStep),
     /OPENBURNBAR_ENABLE_COVERAGE=YES \.\/scripts\/test-openburnbar-app\.sh/u,
+  );
+});
+
+check("Lab lane runs in its own parallel job with restore-only caches", () => {
+  const labJob = workflowJob(appWorkflow, "app-lab-gate");
+  assert.equal(jobField(labJob, "name"), "AgentLens Lab build + test");
+  assert.equal(jobField(labJob, "timeout-minutes"), "90");
+  assert.equal(
+    jobField(labJob, "if"),
+    jobField(appBuildJob, "if"),
+    "Lab lane must gate on the same event/classifier expression as app-build-test",
+  );
+  const labRun = stepRun(
+    workflowStep(labJob, "Build + run Lab lane (Lab-gated code proof)"),
+  );
+  assert.match(labRun, /OPENBURNBAR_APP_TEST_SCHEME=OpenBurnBarLab/u);
+  assert.match(labRun, /\.derived-data\/macos-lab-gate/u);
+  const labGuard = stepRun(
+    workflowStep(labJob, "Guard against zero-test false greens (Lab lane)"),
+  );
+  assert.match(labGuard, /--min 134/u);
+  for (const uses of labJob.matchAll(/uses: (actions\/cache[^@\s]*@)/gu)) {
+    assert.equal(
+      uses[1],
+      "actions/cache/restore@",
+      "Lab lane caches must be restore-only so app-build-test stays the single writer",
+    );
+  }
+  assert.doesNotMatch(
+    appBuildJob,
+    /OpenBurnBarLab/u,
+    "app-build-test must no longer carry the Lab lane",
   );
 });
 
@@ -839,15 +894,21 @@ check("App and Headless AgentLens builds are post-merge/nightly, not PR walls", 
 
   const classify = workflowJob(appWorkflow, "classify");
   const appBuild = workflowJob(appWorkflow, "app-build-test");
+  const lab = workflowJob(appWorkflow, "app-lab-gate");
   const mobile = workflowJob(appWorkflow, "mobile-build-gate");
   const mergeGroupLanes = workflowJob(appWorkflow, "merge-group-product-lanes");
   assert.match(appOn, /^  merge_group:\s*$/mu);
   assert.match(jobField(classify, "if"), /github\.event_name != 'merge_group'/u);
   assert.match(jobField(mergeGroupLanes, "if"), /github\.event_name == 'merge_group'/u);
   assert.match(jobField(appBuild, "if"), /github\.event_name == 'merge_group'/u);
+  assert.match(jobField(lab, "if"), /github\.event_name == 'merge_group'/u);
   assert.match(jobField(mobile, "if"), /github\.event_name == 'merge_group'/u);
   assert.match(
     jobField(appBuild, "if"),
+    /needs\.merge-group-product-lanes\.result == 'success'/u,
+  );
+  assert.match(
+    jobField(lab, "if"),
     /needs\.merge-group-product-lanes\.result == 'success'/u,
   );
   assert.match(
@@ -878,11 +939,11 @@ check("macOS gates never run pull-request or merge-group code on persistent self
   // isolation boundary as pull_request: GitHub-hosted macos-26, or the
   // explicitly selected isolated paid runner group.
   for (const [workflow, expectedCount] of [
-    [APP_WORKFLOW, 2],
+    [APP_WORKFLOW, 3],
     [DAEMON_WORKFLOW, 2],
     [DOMAIN_CORE_WORKFLOW, 2],
     [HEADLESS_WORKFLOW, 1],
-    [NATIVE_WORKFLOW, 2],
+    [NATIVE_WORKFLOW, 3],
   ]) {
     const source = readFileSync(join(REPO_ROOT, workflow), "utf8");
     // Paid opt-in arm present and still the isolated capped pool (never inline group:).

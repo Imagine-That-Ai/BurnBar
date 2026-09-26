@@ -1,6 +1,8 @@
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 protocol RoamingProfileLocalStoring: Sendable {
     func currentPayload(uid: String, deviceID: String, context: CloudSyncContext) async throws -> RoamingProfilePayload

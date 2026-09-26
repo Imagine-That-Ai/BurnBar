@@ -203,7 +203,7 @@ public final class PrimeAgentParser: LogParser, Sendable {
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                  let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { continue }
             guard let type = json["type"] as? String else { continue }
 
             if type == "session" {
@@ -257,15 +257,18 @@ public final class PrimeAgentParser: LogParser, Sendable {
                     // keep for debugging; model is more specific
                     _ = provider
                 }
-                if let model = msg["model"] as? String, !model.isEmpty {
+                if let model = msg["model"] as? String,
+                   !TokenExtractionUtility.isPlaceholderModelName(model) {
                     lastModel = model
-                } else if let inner = msg["modelId"] as? String, !inner.isEmpty {
+                } else if let inner = msg["modelId"] as? String,
+                          !TokenExtractionUtility.isPlaceholderModelName(inner) {
                     lastModel = inner
                 }
             } else {
                 // Some messages may have provider/model without usage (user/tool) — still track model
                 if role == "assistant" {
-                    if let model = msg["model"] as? String, !model.isEmpty {
+                    if let model = msg["model"] as? String,
+                       !TokenExtractionUtility.isPlaceholderModelName(model) {
                         lastModel = model
                     }
                 }

@@ -1,6 +1,7 @@
 import XCTest
 import GRDB
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Marker so `Bundle(for:)` resolves the `OpenBurnBarTests` resource bundle,
 /// where the committed DB-compat fixture + vector are copied (they live under
@@ -128,6 +129,10 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
             "FTS5 bm25()/snippet() result set is not deterministic across regeneration."
         )
         XCTAssertEqual(genA.migrationCount, genB.migrationCount)
+        XCTAssertEqual(
+            genA.statements, genB.statements,
+            "Endpoint DDL corpus is not stable across regeneration."
+        )
 
         // (3) The candidate fixture file must be genuinely encrypted (no plaintext
         //     SQLite magic header).
@@ -144,7 +149,8 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
             schemaEndpoint: DatabaseByteCompatVector.expectedSchemaEndpoint,
             migrationCount: genA.migrationCount,
             schemaHashSHA256: genA.schemaHash,
-            ftsQueries: genA.fts
+            ftsQueries: genA.fts,
+            endpointStatements: genA.statements
         )
         try writeCandidateArtifacts(vector: vector, params: genA.params, to: outputDir)
         print("[db-compat] Candidate artifacts written to \(outputDir.path)")
@@ -183,6 +189,10 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
         XCTAssertEqual(
             opened.fts, committedVector.ftsQueries,
             "Committed fixture FTS result set != committed vector — the artifact is inconsistent."
+        )
+        XCTAssertEqual(
+            opened.statements, committedVector.endpointStatements,
+            "Committed fixture DDL corpus != committed vector — the artifact is inconsistent."
         )
     }
 
@@ -233,6 +243,7 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
         let migrationCount: Int
         let fts: [DatabaseByteCompatVector.FTSQueryVector]
         let params: [DatabaseByteCompatVector.ObservedParam]
+        let statements: [String]
     }
 
     /// Migrate a fresh keyed DB to the live endpoint, seed the corpus, and measure the schema
@@ -245,24 +256,26 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
             passphrase: DatabaseByteCompatVector.fixturePassphrase
         )
         try queue.write { db in try DatabaseByteCompatVector.seedCorpus(db) }
-        let measured = try queue.read { db -> (String, [DatabaseByteCompatVector.FTSQueryVector], [DatabaseByteCompatVector.ObservedParam]) in
+        let measured = try queue.read { db -> (String, [DatabaseByteCompatVector.FTSQueryVector], [DatabaseByteCompatVector.ObservedParam], [String]) in
             (
                 try DatabaseByteCompatVector.computeSchemaHash(db),
                 try DatabaseByteCompatVector.runFTSQueries(db),
-                try DatabaseByteCompatVector.readSQLCipherParams(db)
+                try DatabaseByteCompatVector.readSQLCipherParams(db),
+                try DatabaseByteCompatVector.endpointStatements(db)
             )
         }
         return Generated(
             schemaHash: measured.0,
             migrationCount: OpenBurnBarDatabase.migrator.migrations.count,
             fts: measured.1,
-            params: measured.2
+            params: measured.2,
+            statements: measured.3
         )
     }
 
     /// Open a committed encrypted fixture (copied out of the read-only bundle)
-    /// and reproduce the schema hash + FTS vector.
-    private func openAndMeasure(fixtureURL: URL) throws -> (schemaHash: String, fts: [DatabaseByteCompatVector.FTSQueryVector]) {
+    /// and reproduce the schema hash + FTS vector + DDL corpus.
+    private func openAndMeasure(fixtureURL: URL) throws -> (schemaHash: String, fts: [DatabaseByteCompatVector.FTSQueryVector], statements: [String]) {
         let workingCopy = try makeTempDir().appendingPathComponent("committed-open.sqlcipher")
         try FileManager.default.copyItem(at: fixtureURL, to: workingCopy)
         let config = try DatabaseEncryptionService.makeConfiguration(
@@ -272,7 +285,8 @@ final class DatabaseByteCompatVectorTests: XCTestCase {
         return try queue.read { db in
             (
                 try DatabaseByteCompatVector.computeSchemaHash(db),
-                try DatabaseByteCompatVector.runFTSQueries(db)
+                try DatabaseByteCompatVector.runFTSQueries(db),
+                try DatabaseByteCompatVector.endpointStatements(db)
             )
         }
     }

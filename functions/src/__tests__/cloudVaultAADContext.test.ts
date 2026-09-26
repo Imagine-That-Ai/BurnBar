@@ -1,7 +1,7 @@
 import { HttpsError } from "firebase-functions/v2/https";
 import { describe, expect, it } from "vitest";
 
-import { cloudVaultAADContext } from "../callables/shared.js";
+import { cloudVaultAADContext } from "../../../packages/functions-shared/src/shared/validators.js";
 
 function expectInvalidArgument(action: () => unknown): void {
   expect(action).toThrow(HttpsError);

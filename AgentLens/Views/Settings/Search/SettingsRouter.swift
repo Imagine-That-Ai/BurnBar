@@ -168,9 +168,12 @@ final class SettingsRouter {
              .textExpansionRoot,
              .mediaRoot,
              .dataControlCenterRoot,
-             .computerUseRoot,
-             .petsRoot:
+             .computerUseRoot:
             return []
+        #if OPENBURNBAR_LAB
+        case .petsRoot:
+            return []
+        #endif
 
         // Agents sub-pages: single drill from the agents landing.
         case .agentsAccounts, .agentsCLIs, .agentsRuntimes, .agentsModels, .agentsAdvanced:

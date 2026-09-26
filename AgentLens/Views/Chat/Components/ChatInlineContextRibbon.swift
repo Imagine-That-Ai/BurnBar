@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 struct ChatInlineContextRibbon: View {
     @Bindable var controller: ChatSessionController

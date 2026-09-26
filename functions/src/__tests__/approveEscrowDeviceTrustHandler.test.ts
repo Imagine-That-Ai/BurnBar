@@ -122,12 +122,12 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
   return { store, dbMock, FieldValueMock, FakeTimestamp };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 vi.mock("firebase-admin/firestore", () => ({ FieldValue: FieldValueMock, Timestamp: FakeTimestamp }));
 
 // Auth / App Check assertions are no-ops; the nonce + signature logic under test
 // is driven by config + Firestore state, exercised through the real handler.
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   assertAuth: vi.fn(),
   assertAppCheck: vi.fn(),
   assertOwnership: vi.fn(),
@@ -137,11 +137,11 @@ vi.mock("../auth.js", () => ({
 const { configMock } = vi.hoisted(() => ({
   configMock: { enforceAppCheck: true, requireHighRiskNonce: false },
 }));
-vi.mock("../config.js", () => ({ getConfig: () => configMock }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => configMock }));
 
 // Real logging is noisy; stub to keep test output clean (behavior unaffected).
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return {
     ...actual,
     logInfo: vi.fn(),
@@ -150,8 +150,8 @@ vi.mock("../logging.js", async () => {
   };
 });
 
-import { approveEscrowDeviceTrust } from "../callables/computerUseSecurity.js";
-import { APP_CHECK_ATTESTATION_CLAIM_KEY, issueHighRiskNonceForUid } from "../appCheckAttestation.js";
+import { approveEscrowDeviceTrust } from "../../../functions-sync/src/domains/computer-use/computerUseSecurity.js";
+import { APP_CHECK_ATTESTATION_CLAIM_KEY, issueHighRiskNonceForUid } from "../../../packages/functions-shared/src/appCheckAttestation.js";
 
 const APP_ID = "1:123:ios:abc";
 

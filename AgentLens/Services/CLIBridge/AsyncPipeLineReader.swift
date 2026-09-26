@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Asynchronous, non-blocking line reader for `Pipe` stdout/stderr.
 ///

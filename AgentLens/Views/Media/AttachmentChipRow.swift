@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Mercury attachment row used by the Mac chat thread. Three states —
 /// in-flight, complete, error — all wrapped in `ChatBubbleStyle.toolShape`

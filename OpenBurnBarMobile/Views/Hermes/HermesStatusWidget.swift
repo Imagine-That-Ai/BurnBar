@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // remediation(hermes-decomposition): relocated verbatim from HermesTabView.swift
 // to shrink that god-file. This is the self-contained Hermes connection/status

@@ -24,6 +24,7 @@ public protocol BurnBarChatThreadServing: Sendable {
     func listThreads(_ request: BurnBarChatThreadListRequest) async throws -> BurnBarChatThreadListResponse
     func getThread(_ request: BurnBarChatThreadGetRequest) async throws -> BurnBarChatThreadGetResponse
     func appendMessage(_ request: BurnBarChatMessageAppendRequest) async throws -> BurnBarChatMessageAppendResponse
+    func createThread(_ request: BurnBarChatThreadCreateRequest) async throws -> BurnBarChatThreadCreateResponse
 }
 
 enum BurnBarChatThreadServiceError: Error, LocalizedError {
@@ -54,8 +55,19 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
     static let maxGetMessages = 500
     static let maxIdentifierBytes = 256
     static let maxQueryBytes = 512
-    static let maxAppendContentBytes = 48 * 1024
+    /// Wave 2.1: raised from 48 KiB. The Mac app (first-party, same release)
+    /// saves user pastes and long streaming finals through this method now;
+    /// 48 KiB turned large-but-legitimate saves into silent history loss
+    /// (app callers log-and-continue). One coherent bound: appends may be as
+    /// large as what reads accept.
+    static let maxAppendContentBytes = 256 * 1024
     static let maxStoredContentBytes = 256 * 1024
+    /// Bounds for the Wave 2.1 app-cutover fields. Transcript pieces mirror
+    /// one assistant message's tool interleavings; the passthrough blob is
+    /// app-encoded `[HermesAttachment]` JSON stored verbatim.
+    static let maxTranscriptPieces = 512
+    static let maxTranscriptPiecesBytes = 256 * 1024
+    static let maxAppAttachmentsJSONBytes = 256 * 1024
     static let maxResponseContentBytes = 2 * 1024 * 1024
     static let maxBackendIDBytes = 64
     static let maxAttachmentCount = 8
@@ -212,9 +224,9 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
 
         let statement = try prepare(
             """
-            SELECT id, threadId, role, content, timestamp, cliUsed, attachmentsJSON
+            SELECT id, threadId, role, content, timestamp, cliUsed, attachmentsJSON, transcriptPiecesJSON
             FROM (
-                SELECT id, threadId, role, content, timestamp, cliUsed, attachmentsJSON
+                SELECT id, threadId, role, content, timestamp, cliUsed, attachmentsJSON, transcriptPiecesJSON
                 FROM chat_messages
                 WHERE \(pagePredicate)
                 ORDER BY timestamp DESC, id DESC
@@ -271,6 +283,11 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         let timestamp = try Self.parseRequestTimestamp(request.timestamp)
         let backendID = try Self.validatedBackendID(request.backendID)
         let attachments = try Self.validatedAttachments(request.attachments)
+        let transcriptPieces = try Self.validatedTranscriptPieces(request.transcriptPieces)
+        let appAttachmentsJSON = try Self.validatedAppAttachmentsJSON(
+            request.appAttachmentsJSON,
+            typedAttachmentsPresent: attachments != nil
+        )
         let canonicalMessage = BurnBarChatMessage(
             id: messageID,
             threadID: threadID,
@@ -278,7 +295,21 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             content: request.content,
             timestamp: Self.iso8601(timestamp),
             backendID: backendID,
-            attachments: attachments
+            attachments: attachments,
+            transcriptPieces: transcriptPieces
+        )
+        // Store timestamps in GRDB's default `Date` text representation
+        // ("yyyy-MM-dd HH:mm:ss.SSS", UTC) — the exact format the macOS app
+        // writes through GRDB. SQLite orders storage classes before values,
+        // so writing REAL here would rank every Linux row after (or before)
+        // all macOS TEXT rows in `ORDER BY timestamp` / `MAX(timestamp)`,
+        // scrambling mixed macOS/Linux threads. Lexicographic order of this
+        // fixed-width format is chronological, so text comparisons stay valid.
+        let storedTimestamp = Self.grdbStorageTimestamp(timestamp)
+        let storedPiecesJSON = try Self.encodeTranscriptPieces(transcriptPieces)
+        let storedAttachmentsJSON = try Self.storedAttachmentsJSON(
+            typed: attachments,
+            passthrough: appAttachmentsJSON
         )
 
         try execute("BEGIN IMMEDIATE")
@@ -289,25 +320,114 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             }
         }
 
-        if let existing = try fetchMessage(messageID: messageID) {
-            guard Self.messagesAreEquivalent(existing, canonicalMessage) else {
+        if let stored = try fetchMessage(messageID: messageID) {
+            let existing = stored.message
+            // Foreign blobs decode to `nil` attachments, so decoded equality
+            // alone cannot see an evolved opaque blob. When either side is
+            // foreign, compare the stored bytes instead of the decoded value;
+            // typed metadata keeps semantic comparison (encoder key order is
+            // not a content change).
+            let foreignInvolved = appAttachmentsJSON != nil
+                || Self.isForeignAttachmentsJSON(stored.attachmentsJSON)
+            let equivalent: Bool
+            if foreignInvolved {
+                equivalent = Self.messagesAreEquivalent(
+                    existing,
+                    canonicalMessage,
+                    compareAttachments: false
+                ) && stored.attachmentsJSON == storedAttachmentsJSON
+            } else {
+                equivalent = Self.messagesAreEquivalent(existing, canonicalMessage)
+            }
+            if equivalent {
+                try execute("COMMIT")
+                committed = true
+                return BurnBarChatMessageAppendResponse(message: existing, inserted: false)
+            }
+            // Wave 2.1 streaming re-save: same ID, evolved content
+            // (placeholder → final). The gateway default stays conflict-only;
+            // the Mac app sets `replace` to keep its `INSERT OR REPLACE`.
+            guard request.replace else {
                 throw BurnBarChatThreadServiceError.conflict(
                     "messageID '\(messageID)' already belongs to different content or thread"
                 )
             }
+            try execute(
+                """
+                UPDATE chat_messages
+                SET role = ?, content = ?, timestamp = ?, cliUsed = ?,
+                    threadId = ?, attachmentsJSON = ?, transcriptPiecesJSON = ?
+                WHERE id = ?
+                """,
+                bindings: [
+                    .text(request.role.rawValue),
+                    .text(request.content),
+                    .text(storedTimestamp),
+                    backendID.map(BindValue.text) ?? .null,
+                    .text(threadID),
+                    storedAttachmentsJSON.map(BindValue.text) ?? .null,
+                    storedPiecesJSON.map(BindValue.text) ?? .null,
+                    .text(messageID)
+                ]
+            )
+            try upsertThread(id: threadID, storedTimestamp: storedTimestamp)
             try execute("COMMIT")
             committed = true
-            return BurnBarChatMessageAppendResponse(message: existing, inserted: false)
+            logger.debug(
+                "chat_message_replaced",
+                metadata: ["thread_id": threadID, "message_id": messageID, "role": request.role.rawValue]
+            )
+            return BurnBarChatMessageAppendResponse(message: canonicalMessage, inserted: false, replaced: true)
         }
 
-        // Store timestamps in GRDB's default `Date` text representation
-        // ("yyyy-MM-dd HH:mm:ss.SSS", UTC) — the exact format the macOS app
-        // writes through GRDB. SQLite orders storage classes before values,
-        // so writing REAL here would rank every Linux row after (or before)
-        // all macOS TEXT rows in `ORDER BY timestamp` / `MAX(timestamp)`,
-        // scrambling mixed macOS/Linux threads. Lexicographic order of this
-        // fixed-width format is chronological, so text comparisons stay valid.
-        let storedTimestamp = Self.grdbStorageTimestamp(timestamp)
+        try upsertThread(id: threadID, storedTimestamp: storedTimestamp)
+        try execute(
+            """
+            INSERT INTO chat_messages (id, role, content, timestamp, cliUsed, threadId, attachmentsJSON, transcriptPiecesJSON)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            bindings: [
+                .text(messageID),
+                .text(request.role.rawValue),
+                .text(request.content),
+                .text(storedTimestamp),
+                backendID.map(BindValue.text) ?? .null,
+                .text(threadID),
+                storedAttachmentsJSON.map(BindValue.text) ?? .null,
+                storedPiecesJSON.map(BindValue.text) ?? .null
+            ]
+        )
+        try execute("COMMIT")
+        committed = true
+        logger.debug(
+            "chat_message_appended",
+            metadata: ["thread_id": threadID, "message_id": messageID, "role": request.role.rawValue]
+        )
+        return BurnBarChatMessageAppendResponse(message: canonicalMessage, inserted: true)
+    }
+
+    /// Wave 2.1: pre-mint an empty thread row. Idempotent (`INSERT OR
+    /// IGNORE` + max-`updatedAt` bump), mirroring the app's historical
+    /// `upsertChatThread`, so retries and double-mints are safe.
+    func createThread(_ request: BurnBarChatThreadCreateRequest) throws -> BurnBarChatThreadCreateResponse {
+        let threadID = try Self.validatedIdentifier(request.threadID, field: "threadID")
+        let createdAt = try Self.parseRequestTimestamp(request.createdAt)
+        let storedTimestamp = Self.grdbStorageTimestamp(createdAt)
+        try execute("BEGIN IMMEDIATE")
+        var committed = false
+        defer {
+            if committed == false {
+                try? execute("ROLLBACK")
+            }
+        }
+        let preexisting = try fetchSummary(threadID: threadID) != nil
+        try upsertThread(id: threadID, storedTimestamp: storedTimestamp)
+        try execute("COMMIT")
+        committed = true
+        return BurnBarChatThreadCreateResponse(threadID: threadID, created: preexisting == false)
+    }
+
+    private func upsertThread(id threadID: String, storedTimestamp: String) throws {
         try execute(
             """
             INSERT INTO chat_threads (id, createdAt, updatedAt)
@@ -320,28 +440,6 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             """,
             bindings: [.text(threadID), .text(storedTimestamp), .text(storedTimestamp)]
         )
-        try execute(
-            """
-            INSERT INTO chat_messages (id, role, content, timestamp, cliUsed, threadId, attachmentsJSON)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            bindings: [
-                .text(messageID),
-                .text(request.role.rawValue),
-                .text(request.content),
-                .text(storedTimestamp),
-                backendID.map(BindValue.text) ?? .null,
-                .text(threadID),
-                try Self.encodeAttachments(attachments).map(BindValue.text) ?? .null
-            ]
-        )
-        try execute("COMMIT")
-        committed = true
-        logger.debug(
-            "chat_message_appended",
-            metadata: ["thread_id": threadID, "message_id": messageID, "role": request.role.rawValue]
-        )
-        return BurnBarChatMessageAppendResponse(message: canonicalMessage, inserted: true)
     }
 
     private func fetchSummary(threadID: String) throws -> BurnBarChatThreadSummary? {
@@ -363,9 +461,9 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         return try summary(from: statement)
     }
 
-    private func fetchMessage(messageID: String) throws -> BurnBarChatMessage? {
+    private func fetchMessage(messageID: String) throws -> (message: BurnBarChatMessage, attachmentsJSON: String?)? {
         let statement = try prepare(
-            "SELECT id, threadId, role, content, timestamp, cliUsed, attachmentsJSON FROM chat_messages WHERE id = ? LIMIT 1",
+            "SELECT id, threadId, role, content, timestamp, cliUsed, attachmentsJSON, transcriptPiecesJSON FROM chat_messages WHERE id = ? LIMIT 1",
             bindings: [.text(messageID)]
         )
         defer { sqlite3_finalize(statement) }
@@ -374,7 +472,10 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         guard step == SQLITE_ROW else {
             throw sqliteError(operation: "load existing chat message")
         }
-        return try message(from: statement)
+        // The raw blob rides alongside the decoded message: foreign attachment
+        // formats decode to `nil`, so idempotency needs the stored bytes to
+        // tell an identical retry from an evolved opaque blob.
+        return (try message(from: statement), optionalText(statement, column: 6))
     }
 
     private func summary(from statement: OpaquePointer) throws -> BurnBarChatThreadSummary {
@@ -416,6 +517,10 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             optionalText(statement, column: 6),
             messageID: id
         )
+        let transcriptPieces = try Self.decodeTranscriptPieces(
+            optionalText(statement, column: 7),
+            messageID: id
+        )
         return BurnBarChatMessage(
             id: id,
             threadID: threadID,
@@ -423,7 +528,8 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             content: content,
             timestamp: Self.iso8601(timestamp),
             backendID: backendID,
-            attachments: attachments
+            attachments: attachments,
+            transcriptPieces: transcriptPieces
         )
     }
 
@@ -557,7 +663,14 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
             )
             messageColumns.insert("attachmentsJSON")
         }
-        let requiredMessageColumns: Set<String> = ["id", "role", "content", "timestamp", "cliUsed", "threadId", "attachmentsJSON"]
+        if messageColumns.contains("transcriptPiecesJSON") == false {
+            try execute(
+                db: db,
+                sql: "ALTER TABLE chat_messages ADD COLUMN transcriptPiecesJSON TEXT"
+            )
+            messageColumns.insert("transcriptPiecesJSON")
+        }
+        let requiredMessageColumns: Set<String> = ["id", "role", "content", "timestamp", "cliUsed", "threadId", "attachmentsJSON", "transcriptPiecesJSON"]
         let missingMessageColumns = requiredMessageColumns.subtracting(messageColumns)
         guard missingMessageColumns.isEmpty else {
             throw BurnBarChatThreadServiceError.unavailable(
@@ -778,6 +891,112 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         }
     }
 
+    private static func validatedTranscriptPieces(
+        _ raw: [BurnBarChatTranscriptPiece]?
+    ) throws -> [BurnBarChatTranscriptPiece]? {
+        guard let raw, raw.isEmpty == false else { return nil }
+        guard raw.count <= maxTranscriptPieces else {
+            throw BurnBarChatThreadServiceError.invalidRequest(
+                "transcriptPieces exceeds \(maxTranscriptPieces) entries"
+            )
+        }
+        for (index, piece) in raw.enumerated() {
+            guard piece.id.utf8.count <= maxIdentifierBytes else {
+                throw BurnBarChatThreadServiceError.invalidRequest(
+                    "transcriptPieces[\(index)].id exceeds \(maxIdentifierBytes) UTF-8 bytes"
+                )
+            }
+        }
+        return raw
+    }
+
+    private static func encodeTranscriptPieces(
+        _ pieces: [BurnBarChatTranscriptPiece]?
+    ) throws -> String? {
+        guard let pieces, pieces.isEmpty == false else { return nil }
+        do {
+            let data = try JSONEncoder().encode(pieces)
+            guard data.count <= maxTranscriptPiecesBytes else {
+                throw BurnBarChatThreadServiceError.invalidRequest(
+                    "transcriptPieces exceeds \(maxTranscriptPiecesBytes) UTF-8 bytes"
+                )
+            }
+            guard let json = String(data: data, encoding: .utf8) else {
+                throw BurnBarChatThreadServiceError.database("transcript pieces JSON is not UTF-8")
+            }
+            return json
+        } catch let error as BurnBarChatThreadServiceError {
+            throw error
+        } catch {
+            throw BurnBarChatThreadServiceError.database(
+                "transcript pieces could not be encoded: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private static func decodeTranscriptPieces(
+        _ raw: String?,
+        messageID: String
+    ) throws -> [BurnBarChatTranscriptPiece]? {
+        guard let raw else { return nil }
+        guard raw.isEmpty == false,
+              let data = raw.data(using: .utf8) else {
+            throw BurnBarChatThreadServiceError.corruptData(
+                "message '\(messageID)' has invalid transcript pieces"
+            )
+        }
+        do {
+            return try JSONDecoder().decode([BurnBarChatTranscriptPiece].self, from: data)
+        } catch {
+            throw BurnBarChatThreadServiceError.corruptData(
+                "message '\(messageID)' has invalid transcript pieces: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    /// Validates the opaque app attachment blob WITHOUT depending on the
+    /// app's `[HermesAttachment]` shape: bounded, non-blank, structurally
+    /// JSON. Stored verbatim; never re-encoded.
+    private static func validatedAppAttachmentsJSON(
+        _ raw: String?,
+        typedAttachmentsPresent: Bool
+    ) throws -> String? {
+        guard let raw else { return nil }
+        guard typedAttachmentsPresent == false else {
+            throw BurnBarChatThreadServiceError.invalidRequest(
+                "attachments and appAttachmentsJSON are mutually exclusive"
+            )
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else {
+            throw BurnBarChatThreadServiceError.invalidRequest("appAttachmentsJSON must not be blank")
+        }
+        guard raw.utf8.count <= maxAppAttachmentsJSONBytes else {
+            throw BurnBarChatThreadServiceError.invalidRequest(
+                "appAttachmentsJSON exceeds \(maxAppAttachmentsJSONBytes) UTF-8 bytes"
+            )
+        }
+        guard let data = raw.data(using: .utf8) else {
+            throw BurnBarChatThreadServiceError.invalidRequest("appAttachmentsJSON must be valid JSON")
+        }
+        do {
+            _ = try JSONSerialization.jsonObject(with: data, options: [])
+        } catch {
+            throw BurnBarChatThreadServiceError.invalidRequest("appAttachmentsJSON must be valid JSON")
+        }
+        return raw
+    }
+
+    private static func storedAttachmentsJSON(
+        typed: [BurnBarChatAttachmentMetadata]?,
+        passthrough: String?
+    ) throws -> String? {
+        if let passthrough {
+            return passthrough
+        }
+        return try encodeAttachments(typed)
+    }
+
     private static func decodeAttachments(
         _ raw: String?,
         messageID: String
@@ -789,8 +1008,18 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
                 "message '\(messageID)' has invalid attachment metadata"
             )
         }
+        // Wave 2.1: the column holds TWO formats — gateway-typed metadata
+        // and the app's opaque `[HermesAttachment]` passthrough (plus
+        // pre-cutover app rows). A row that is valid JSON but not
+        // metadata-shaped is a foreign format, not corruption: surface no
+        // attachments rather than failing the whole read.
+        let decoded: [BurnBarChatAttachmentMetadata]
         do {
-            let decoded = try JSONDecoder().decode([BurnBarChatAttachmentMetadata].self, from: data)
+            decoded = try JSONDecoder().decode([BurnBarChatAttachmentMetadata].self, from: data)
+        } catch {
+            return nil
+        }
+        do {
             return try validatedAttachments(decoded)
         } catch let error as BurnBarChatThreadServiceError {
             switch error {
@@ -864,17 +1093,41 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
         ThreadSafeISO8601DateFormatter.formatFractional(date)
     }
 
-    private static func messagesAreEquivalent(_ lhs: BurnBarChatMessage, _ rhs: BurnBarChatMessage) -> Bool {
+    private static func messagesAreEquivalent(
+        _ lhs: BurnBarChatMessage,
+        _ rhs: BurnBarChatMessage,
+        compareAttachments: Bool = true
+    ) -> Bool {
         guard let lhsDate = parseISO8601(lhs.timestamp), let rhsDate = parseISO8601(rhs.timestamp) else {
             return false
         }
-        return lhs.id == rhs.id
+        guard lhs.id == rhs.id
             && lhs.threadID == rhs.threadID
             && lhs.role == rhs.role
             && lhs.content == rhs.content
             && lhs.backendID == rhs.backendID
-            && lhs.attachments == rhs.attachments
+            && lhs.transcriptPieces == rhs.transcriptPieces
             && abs(lhsDate.timeIntervalSince1970 - rhsDate.timeIntervalSince1970) < 0.001
+        else {
+            return false
+        }
+        if compareAttachments == false {
+            return true
+        }
+        return lhs.attachments == rhs.attachments
+    }
+
+    /// True when the stored blob is present but not gateway-typed metadata
+    /// (the app's opaque passthrough or a pre-cutover row). Mirrors the
+    /// `decodeAttachments` foreign-format rule so idempotency and reads agree.
+    private static func isForeignAttachmentsJSON(_ raw: String?) -> Bool {
+        guard let raw, let data = raw.data(using: .utf8) else { return false }
+        do {
+            _ = try JSONDecoder().decode([BurnBarChatAttachmentMetadata].self, from: data)
+            return false
+        } catch {
+            return true
+        }
     }
 
     private static func escapeLike(_ raw: String) -> String {

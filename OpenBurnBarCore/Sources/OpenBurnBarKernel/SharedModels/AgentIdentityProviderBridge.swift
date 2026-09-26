@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarProviderModels
 
 // MARK: - Agent Identity → Provider Bridge
 //

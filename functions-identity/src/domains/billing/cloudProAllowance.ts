@@ -1,0 +1,276 @@
+/**
+ * @fileoverview Cloud Pro prepaid allowance reservation callables.
+ */
+
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
+
+import { db } from "@openburnbar/functions-shared/adminRuntime.js";
+import { getConfig } from "@openburnbar/functions-shared/config.js";
+import { enforceAuthAndAppCheck } from "@openburnbar/functions-shared/auth.js";
+import { wrapCallableHandler } from "@openburnbar/functions-shared/logging.js";
+import { assertCloudFeatureNotSuspended } from "@openburnbar/functions-shared/cloudFeatureSuspensions.js";
+import {
+  allowanceDocPath,
+  CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+  defaultsForAllowanceMeter,
+  evaluateCloudProAllowanceReservation,
+  isMatchingCloudProAllowanceReservation,
+  monthKeyForDate,
+  type CloudProAllowanceMeter,
+} from "@openburnbar/functions-shared/cloudProAllowanceCore.js";
+import { loadCloudProAllowanceConfig } from "@openburnbar/functions-shared/cloudProAllowanceRemoteConfig.js";
+import { assertActiveBurnBarCloudProEntitlement } from "@openburnbar/functions-shared/shared/entitlements.js";
+import { boundedTrimmedString, requiredIdentifier } from "@openburnbar/functions-shared/shared/validators.js";
+import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
+
+interface ReserveAllowanceRequest {
+  sessionId?: unknown;
+  reservationId?: unknown;
+  actionCount?: unknown;
+  relayGB?: unknown;
+}
+
+interface ReserveAllowanceResponse {
+  monthKey: string;
+  reservationId: string;
+  meter: CloudProAllowanceMeter;
+  requestedUnits: number;
+  usedAfter: number;
+  availableUnitsBefore: number;
+  monthlyCapRemainingBefore: number;
+  idempotent: boolean;
+}
+
+function numericUnits(raw: unknown, fieldName: string, options: { integer: boolean; max: number }): number {
+  const value = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(value) || value <= 0 || value > options.max) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be greater than 0 and at most ${options.max}.`);
+  }
+  if (options.integer && !Number.isInteger(value)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an integer.`);
+  }
+  return value;
+}
+
+function numberFromDoc(raw: FirebaseFirestore.DocumentData | undefined, field: string, fallback: number): number {
+  const value = raw?.[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function reservationDocumentID(meter: CloudProAllowanceMeter, sessionId: string, reservationId: string | undefined) {
+  const scoped = reservationId ?? sessionId;
+  return requiredIdentifier(`${meter}_${scoped}`, "reservationId");
+}
+
+function allowanceFieldNames(meter: CloudProAllowanceMeter): {
+  included: string;
+  used: string;
+  topUp: string;
+  cap: string;
+} {
+  if (meter === "relay_gb") {
+    return {
+      included: "includedRelayGB",
+      used: "relayGBUsed",
+      topUp: "topupRelayGBPurchased",
+      cap: "monthlyRelayGBCap",
+    };
+  }
+  if (meter === "fusion_searches") {
+    return {
+      included: "includedFusionSearches",
+      used: "fusionSearchesUsed",
+      topUp: "topupFusionSearchesPurchased",
+      cap: "monthlyFusionSearchCap",
+    };
+  }
+  return {
+    included: "includedHostedActions",
+    used: "hostedActionsUsed",
+    topUp: "topupActionsPurchased",
+    cap: "monthlyHostedActionCap",
+  };
+}
+
+async function reserveCloudProAllowance(args: {
+  uid: string;
+  meter: CloudProAllowanceMeter;
+  sessionId: string;
+  reservationId?: string;
+  requestedUnits: number;
+}): Promise<ReserveAllowanceResponse> {
+  const monthKey = monthKeyForDate(new Date());
+  const allowanceRef = db.doc(allowanceDocPath(args.uid, monthKey));
+  const reservationDocID = reservationDocumentID(args.meter, args.sessionId, args.reservationId);
+  const reservationRef = allowanceRef.collection("reservations").doc(reservationDocID);
+  const fields = allowanceFieldNames(args.meter);
+  const allowanceConfig = await loadCloudProAllowanceConfig();
+  const defaults = defaultsForAllowanceMeter(args.meter, allowanceConfig);
+
+  return db.runTransaction(async (transaction) => {
+    const existingReservation = await transaction.get(reservationRef);
+    if (existingReservation.exists) {
+      const existing = existingReservation.data();
+      if (
+        !isMatchingCloudProAllowanceReservation(existing, {
+          uid: args.uid,
+          monthKey,
+          meter: args.meter,
+          sessionId: args.sessionId,
+          reservationId: reservationDocID,
+          requestedUnits: args.requestedUnits,
+        })
+      ) {
+        throw new HttpsError(
+          "already-exists",
+          "reservationId was already used for a different allowance reservation.",
+          {
+            meter: args.meter,
+            monthKey,
+            reservationId: reservationDocID,
+          },
+        );
+      }
+      const requestedUnits = numberFromDoc(existing, "requestedUnits", args.requestedUnits);
+      return {
+        monthKey,
+        reservationId: reservationDocID,
+        meter: args.meter,
+        requestedUnits,
+        usedAfter: numberFromDoc(existing, "usedAfter", requestedUnits),
+        availableUnitsBefore: numberFromDoc(existing, "availableUnitsBefore", 0),
+        monthlyCapRemainingBefore: numberFromDoc(existing, "monthlyCapRemainingBefore", 0),
+        idempotent: true,
+      };
+    }
+
+    const allowance = await transaction.get(allowanceRef);
+    const data = allowance.data();
+    const snapshot = {
+      includedUnits: numberFromDoc(data, fields.included, defaults.includedUnits),
+      usedUnits: numberFromDoc(data, fields.used, defaults.usedUnits),
+      topUpUnits: numberFromDoc(data, fields.topUp, defaults.topUpUnits),
+      monthlyCap: numberFromDoc(data, fields.cap, defaults.monthlyCap),
+    };
+    const evaluation = evaluateCloudProAllowanceReservation({
+      ...snapshot,
+      requestedUnits: args.requestedUnits,
+    });
+
+    if (!evaluation.ok) {
+      throw new HttpsError(
+        "resource-exhausted",
+        evaluation.reason === "monthly_cap_exceeded"
+          ? "Cloud Pro monthly cap reached for this meter."
+          : "Cloud Pro prepaid allowance is exhausted for this meter.",
+        {
+          meter: args.meter,
+          monthKey,
+          requestedUnits: args.requestedUnits,
+          availableUnits: evaluation.availableUnits,
+          monthlyCapRemaining: evaluation.monthlyCapRemaining,
+          reason: evaluation.reason,
+        },
+      );
+    }
+
+    const now = Timestamp.now();
+    transaction.set(
+      allowanceRef,
+      {
+        includedHostedActions: allowanceConfig.includedHostedActionsMonthly,
+        includedRelayGB: allowanceConfig.includedRelayGBMonthly,
+        includedFusionSearches: allowanceConfig.includedFusionSearchesMonthly,
+        hostedActionsUsed:
+          args.meter === "hosted_actions" ? FieldValue.increment(args.requestedUnits) : FieldValue.increment(0),
+        relayGBUsed: args.meter === "relay_gb" ? FieldValue.increment(args.requestedUnits) : FieldValue.increment(0),
+        fusionSearchesUsed:
+          args.meter === "fusion_searches" ? FieldValue.increment(args.requestedUnits) : FieldValue.increment(0),
+        topupActionsPurchased: FieldValue.increment(0),
+        topupRelayGBPurchased: FieldValue.increment(0),
+        topupFusionSearchesPurchased: FieldValue.increment(0),
+        monthlyHostedActionCap: allowanceConfig.monthlyHostedActionCap,
+        monthlyRelayGBCap: allowanceConfig.monthlyRelayGBCap,
+        monthlyFusionSearchCap: allowanceConfig.monthlyFusionSearchCap,
+        updatedAt: now,
+        schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+      },
+      { merge: true },
+    );
+    transaction.set(reservationRef, {
+      uid: args.uid,
+      monthKey,
+      meter: args.meter,
+      sessionId: args.sessionId,
+      reservationId: reservationDocID,
+      requestedUnits: args.requestedUnits,
+      availableUnitsBefore: evaluation.availableUnits,
+      monthlyCapRemainingBefore: evaluation.monthlyCapRemaining,
+      usedAfter: evaluation.usedAfter,
+      createdAt: now,
+      schemaVersion: CLOUD_PRO_ALLOWANCE_SCHEMA_VERSION,
+    });
+
+    return {
+      monthKey,
+      reservationId: reservationDocID,
+      meter: args.meter,
+      requestedUnits: args.requestedUnits,
+      usedAfter: evaluation.usedAfter,
+      availableUnitsBefore: evaluation.availableUnits,
+      monthlyCapRemainingBefore: evaluation.monthlyCapRemaining,
+      idempotent: false,
+    };
+  });
+}
+
+export const reserveAgentControlActionBudget = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  wrapCallableHandler("reserveAgentControlActionBudget", async (request: CallableRequest<ReserveAllowanceRequest>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before reserving Agent Control budget.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertCloudFeatureNotSuspended(db, uid, "hosted_agent_control");
+    await assertActiveBurnBarCloudProEntitlement(uid);
+    const sessionId = boundedTrimmedString(request.data.sessionId, "sessionId", 256, true);
+    const reservationId = boundedTrimmedString(request.data.reservationId, "reservationId", 256, false);
+    const requestedUnits = numericUnits(request.data.actionCount, "actionCount", { integer: true, max: 100 });
+    return reserveCloudProAllowance({
+      uid,
+      meter: "hosted_actions",
+      sessionId,
+      reservationId,
+      requestedUnits,
+    });
+  }),
+);
+
+export const reserveFlooRelayBudget = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  wrapCallableHandler("reserveFlooRelayBudget", async (request: CallableRequest<ReserveAllowanceRequest>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before reserving Floo relay budget.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertCloudFeatureNotSuspended(db, uid, "floo_relay");
+    await assertActiveBurnBarCloudProEntitlement(uid);
+    const sessionId = boundedTrimmedString(request.data.sessionId, "sessionId", 256, true);
+    const reservationId = boundedTrimmedString(request.data.reservationId, "reservationId", 256, false);
+    const requestedUnits = numericUnits(request.data.relayGB, "relayGB", { integer: false, max: 50 });
+    return reserveCloudProAllowance({
+      uid,
+      meter: "relay_gb",
+      sessionId,
+      reservationId,
+      requestedUnits,
+    });
+  }),
+);

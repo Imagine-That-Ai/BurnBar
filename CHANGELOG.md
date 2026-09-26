@@ -8,6 +8,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Cloud sync is now opt-in** — the master switch defaults to off and
+  persists on-device; nothing leaves the Mac until it is turned on in
+  Settings → Devices & Sync, where a real toggle now lives. Fresh installs
+  perform zero Firestore writes. Existing installs: sync turns off on
+  upgrade until re-enabled (the flag was never persisted, so no prior
+  opt-in exists to honor); per-scope backup choices are preserved and
+  resume when the master switch is flipped. Settings and SECURITY.md copy
+  now states plainly that synced usage metadata is plaintext while
+  credentials and vault contents stay sealed.
+- **Audit verification now fails closed** — the offline verifier requires a
+  signed head anchor by default (`audit-verify` on a session or archive
+  without `signed_head.json` reports `fully_verified=false` with
+  `head_anchor_missing` instead of passing), an unevaluable head seal
+  (malformed signature/key) is recorded distinctly as
+  `audit_seal_unavailable`, and `audit-verify --archive` runs the real
+  chain verifier instead of printing a literal `fully_verified=true`.
+  `--archive` output keys changed: the tar listing count moved to
+  `archive_entry_count`, `entry_count` now reports chain entries, and the
+  tautological `contains_manifest`/`contains_chain` lines were replaced by
+  the verifier's `chain_valid`/`head_signature_valid` lines.
+- **Claude Charts (`<synthetic>` band)** — Claude Code stamps synthesized
+  messages (e.g. API-error notices) with `"model":"<synthetic>"`, and the
+  parser took that marker verbatim into the session's model set. `<`
+  sorts before alphanumerics, so the placeholder won model selection and
+  the Home MODEL breakdown rendered a `<synthetic>` band instead of the
+  exact model that did the work. Parsers now reject harness placeholder
+  model names (`<…>` markers plus the empty/unknown/default/none
+  sentinels) before they enter a session's model set, so the exact model wins;
+  sessions with only placeholder messages fall back to the provider
+  default. The Claude parser cache schema bumped (v3→v4) so affected
+  sessions re-parse, and inserts delete same-session placeholder rows
+  when the corrected exact-model row arrives (Kimi `chatcmpl-` precedent),
+  so no ghost placeholder row survives next to the real one.
+- **Claude transcripts ≥8MB no longer lose their prefix** — bodies passes
+  resumed token accumulation from the persisted byte offset but rebuilt
+  conversation text from the tail alone, so the next index replaced the
+  stored transcript (and its message counts and title) with the tail.
+  Bodies passes now re-read from offset 0 while usage-only ticks keep
+  the incremental resume; covered by a generated-8MB two-pass regression
+  test plus a small-file control.
+- **Codex conversations are memory-bounded (1MB)** — rollout scans
+  retained every turn's full text. Accumulation is now streaming with
+  the same byte budget as the Claude accumulator (metrics still count
+  every turn; under-budget output is pinned identical by a golden test,
+  including the assistant-only first-line title), sharing one UTF-8-safe
+  truncation helper instead of a second copy.
+- **Vault crypto accessors fail to legacy instead of trapping** — the
+  non-throwing AAD / SHA-256 accessors called `preconditionFailure` when
+  the domain-core adapter threw (only possible outside legacy mode).
+  They now log at fault level and return the deterministic legacy value;
+  a forced-rust-mode test pins the contract.
+- **Pre-migration backups capped at one restore point** — the pruner kept
+  five full-database copies (tens of GB at current sizes). Only the
+  newest backup survives; older ones are pruned when a new one lands.
+- **Routing-decision audit log rotates (5MB + 3 generations)** — the
+  write-only `provider-routing-decisions.jsonl` trail now uses the same
+  ring as `metrics.jsonl`. The usage ledger is explicitly excluded (its
+  byte-offset index makes rotation data loss; compaction is the answer).
+- **CI honesty ratchets** — the PR harness now runs the shrink-only
+  XCTSkip budget (153, with the load probe converted to always-on
+  instead of env-skipped) and the quarantine freshness check; the
+  migrator-parity gate fails on a stale baseline header (which was
+  v61/62 against a v69/70 migrator); the diff-coverage waiver allowlist
+  is frozen at 69 entries; the quarantine freshness gate now fails
+  closed on malformed entry rows. The quarantine manifest's cipher-version row
+  is corrected to Done (the test runs unconditionally).
+- **Computer Use keep-awake is asserted on every end path** — the
+  session coordinator's idle-sleep hold is now injected (defaulting to
+  the process singleton), with tests proving hold-on-start and
+  release-on-end/panic/budget-cap.
 - **Muse Charts (this morning missing)** — `~/.local/share/muse/sessions` on
   Alberto's machine is ~4k `session.jsonl` / ~11GB. The parser walked
   oldest-first and charged the shared 256MB refresh budget *before* the

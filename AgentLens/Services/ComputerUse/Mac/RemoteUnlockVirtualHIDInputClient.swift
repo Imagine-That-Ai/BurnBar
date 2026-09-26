@@ -1,7 +1,7 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import Darwin
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 
 /// User-session client for the privileged input leaf. Prefers XPC (native audit token); falls back to

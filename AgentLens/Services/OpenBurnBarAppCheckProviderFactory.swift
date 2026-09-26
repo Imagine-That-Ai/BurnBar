@@ -2,7 +2,8 @@ import DeviceCheck
 import FirebaseAppCheck
 import FirebaseCore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLaunchServices
 
 /// App Check provider factory that selects the appropriate attestation provider:
 /// - **Debug/internal builds**: Uses `AppCheckDebugProvider` only when the shared

@@ -99,6 +99,37 @@ for notneedle in test_exemptLegacy test_stillFresh test_alreadyRevived; do
   fi
 done
 
+# Malformed entry rows fail closed instead of silently skipping the gate.
+cat >"$tmp/badcells.md" <<'EOF'
+# Quarantine (fixture)
+
+| Test Name | Status | Reason | Owner | Source Subsystem | Revival Criteria | Target Date |
+|-----------|--------|--------|-------|------------------|------------------|-------------|
+| `test_typoRow` | Skipped-with-issue | Stale | AgentLens | Example | 2020-01-01 |
+EOF
+run_case "entry row with 6 cells fails" "$tmp/badcells.md" 1 "want 7"
+
+cat >"$tmp/baddate.md" <<'EOF'
+# Quarantine (fixture)
+
+| Test Name | Status | Reason | Owner | Source Subsystem | Revival Criteria | Target Date |
+|-----------|--------|--------|-------|------------------|------------------|-------------|
+| `test_typoDate` | Skipped-with-issue | Stale | AgentLens | Example | Fix it | 2026-9-30 |
+EOF
+run_case "entry row with unparseable date fails" "$tmp/baddate.md" 1 "unparseable Target Date"
+
+cat >"$tmp/emptytarget.md" <<'EOF'
+# Quarantine (fixture)
+
+| Test Name | Status | Reason | Owner | Source Subsystem | Revival Criteria | Target Date |
+|-----------|--------|--------|-------|------------------|------------------|-------------|
+| `test_noTarget` | Open | Stale | AgentLens | Example | Fix it |  |
+EOF
+run_case "entry row with empty target fails" "$tmp/emptytarget.md" 1 "unparseable Target Date"
+
+make_manifest "$tmp/tbd.md" "Open" "TBD" "test_explicitTBD"
+run_case "entry row with TBD target stays untracked" "$tmp/tbd.md" 0
+
 # Fail closed when the manifest is missing.
 run_case "missing manifest fails closed" "$tmp/does-not-exist.md" 1
 

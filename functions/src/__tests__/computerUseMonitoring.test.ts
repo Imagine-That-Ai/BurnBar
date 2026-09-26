@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { __testing__ } from "../computerUseMonitoring.js";
+import { __testing__ } from "../../../functions-sync/src/domains/computer-use/computerUseMonitoring.js";
 
 describe("computer use monitoring rollup guards", () => {
   it("derives the rollup owner only from canonical user collection paths", () => {

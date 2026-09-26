@@ -1,7 +1,9 @@
 @preconcurrency import AppKit
 import Combine
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - BackgroundCadenceCoordinator
 //

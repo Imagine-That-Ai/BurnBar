@@ -14,7 +14,7 @@ import {
   assertCloudSearchIndexWriteBudget,
   buildCloudSearchPostingEdges,
   cloudSearchFallbackHashes,
-} from "../lib/callables/encryptedSearchIndex.js";
+} from "../../functions-sync/lib/callables/encryptedSearchIndex.js";
 
 const HASH_A = "a".repeat(32);
 const HASH_B = "b".repeat(32);

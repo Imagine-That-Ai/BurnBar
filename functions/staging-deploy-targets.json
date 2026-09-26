@@ -1,101 +1,125 @@
 {
-  "schemaVersion": "openburnbar.staging-function-targets.v1",
+  "schemaVersion": "openburnbar.staging-function-targets.v2",
   "targets": {
-    "getWindowsRuntimeSafetyConfig": {
-      "module": "./callables/windowsRuntimeSafetyConfig.js",
-      "export": "getWindowsRuntimeSafetyConfig"
+    "appStoreServerNotificationsV2": {
+      "codebase": "identity",
+      "module": "./domains/billing/appstore/index.js",
+      "export": "appStoreServerNotificationsV2"
     },
-    "issueWindowsAppCheckChallenge": {
-      "module": "./callables/windowsAppCheck.js",
-      "export": "issueWindowsAppCheckChallenge"
-    },
-    "mintWindowsAppCheckToken": {
-      "module": "./callables/windowsAppCheck.js",
-      "export": "mintWindowsAppCheckToken"
-    },
-    "submitDomainCoreShadowSamples": {
-      "module": "./callables/domainCoreShadowEvidence.js",
-      "export": "submitDomainCoreShadowSamples"
-    },
-    "burnBarHermesGateway": {
-      "module": "./callables/hermesGateway.js",
-      "export": "burnBarHermesGateway"
-    },
-    "latestRouterRundown": {
-      "module": "./routerRundown.js",
-      "export": "latestRouterRundown"
-    },
-    "startCliLink": {
-      "module": "./callables/cliLink.js",
-      "export": "startCliLink"
-    },
-    "pollCliLink": {
-      "module": "./callables/cliLink.js",
-      "export": "pollCliLink"
+    "beginEntitlementBinding": {
+      "codebase": "identity",
+      "module": "./domains/billing/appstore/index.js",
+      "export": "beginEntitlementBinding"
     },
     "bindAppCheckAttestation": {
-      "module": "./callables/escrowDeviceCallables.js",
+      "codebase": "sync",
+      "module": "./domains/computer-use/computerUseSecurity.js",
       "export": "bindAppCheckAttestation"
     },
-    "issueHighRiskActionNonce": {
-      "module": "./callables/escrowDeviceCallables.js",
-      "export": "issueHighRiskActionNonce"
-    },
-    "publishPhoneControlAuthority": {
-      "module": "./callables/phoneControlCallables.js",
-      "export": "publishPhoneControlAuthority"
+    "burnBarHermesGateway": {
+      "codebase": "media",
+      "module": "./domains/hermes/hermesGateway.js",
+      "export": "burnBarHermesGateway"
     },
     "createStripeBurnBarProCheckoutSession": {
-      "module": "./callables/stripe.js",
+      "codebase": "identity",
+      "module": "./domains/billing/stripe.js",
       "export": "createStripeBurnBarProCheckoutSession"
     },
     "createStripeBurnBarProPortalSession": {
-      "module": "./callables/stripe.js",
+      "codebase": "identity",
+      "module": "./domains/billing/stripe.js",
       "export": "createStripeBurnBarProPortalSession"
     },
+    "getWindowsRuntimeSafetyConfig": {
+      "codebase": "identity",
+      "module": "./domains/app-check/windowsRuntimeSafetyConfig.js",
+      "export": "getWindowsRuntimeSafetyConfig"
+    },
+    "googlePlayDeveloperNotifications": {
+      "codebase": "identity",
+      "module": "./domains/billing/googlePlayRtdn.js",
+      "export": "googlePlayDeveloperNotifications"
+    },
+    "issueHighRiskActionNonce": {
+      "codebase": "sync",
+      "module": "./domains/computer-use/computerUseSecurity.js",
+      "export": "issueHighRiskActionNonce"
+    },
+    "issueWindowsAppCheckChallenge": {
+      "codebase": "identity",
+      "module": "./domains/app-check/windowsAppCheck.js",
+      "export": "issueWindowsAppCheckChallenge"
+    },
+    "latestRouterRundown": {
+      "codebase": "admin",
+      "module": "./domains/scheduled/scheduledExports.js",
+      "export": "latestRouterRundown"
+    },
+    "mintWindowsAppCheckToken": {
+      "codebase": "identity",
+      "module": "./domains/app-check/windowsAppCheck.js",
+      "export": "mintWindowsAppCheckToken"
+    },
+    "pollCliLink": {
+      "codebase": "identity",
+      "module": "./domains/devices/cliLink.js",
+      "export": "pollCliLink"
+    },
+    "publishPhoneControlAuthority": {
+      "codebase": "sync",
+      "module": "./domains/computer-use/computerUseSecurity.js",
+      "export": "publishPhoneControlAuthority"
+    },
+    "reconcileGooglePlayVoidedPurchasesDaily": {
+      "codebase": "identity",
+      "module": "./domains/billing/googlePlayVoidedPurchaseReconciler.js",
+      "export": "reconcileGooglePlayVoidedPurchasesDaily"
+    },
+    "reconcileHostedEntitlementsDaily": {
+      "codebase": "identity",
+      "module": "./domains/billing/appstore/index.js",
+      "export": "reconcileHostedEntitlementsDaily"
+    },
+    "restoreHostedQuotaEntitlement": {
+      "codebase": "identity",
+      "module": "./domains/billing/appstore/index.js",
+      "export": "restoreHostedQuotaEntitlement"
+    },
+    "startCliLink": {
+      "codebase": "identity",
+      "module": "./domains/devices/cliLink.js",
+      "export": "startCliLink"
+    },
+    "stripeBurnBarProWebhook": {
+      "codebase": "identity",
+      "module": "./domains/billing/stripe.js",
+      "export": "stripeBurnBarProWebhook"
+    },
+    "submitDomainCoreShadowSamples": {
+      "codebase": "sync",
+      "module": "./domains/support/domainCoreShadowEvidence.js",
+      "export": "submitDomainCoreShadowSamples"
+    },
+    "verifyCloudProTopUp": {
+      "codebase": "identity",
+      "module": "./domains/billing/appstore/index.js",
+      "export": "verifyCloudProTopUp"
+    },
     "verifyGooglePlayBurnBarProSubscription": {
-      "module": "./callables/stripe.js",
+      "codebase": "identity",
+      "module": "./domains/billing/stripe.js",
       "export": "verifyGooglePlayBurnBarProSubscription"
     },
     "verifyGooglePlayCloudProTopUp": {
-      "module": "./callables/stripe.js",
+      "codebase": "identity",
+      "module": "./domains/billing/stripe.js",
       "export": "verifyGooglePlayCloudProTopUp"
     },
-    "stripeBurnBarProWebhook": {
-      "module": "./callables/stripe.js",
-      "export": "stripeBurnBarProWebhook"
-    },
-    "googlePlayDeveloperNotifications": {
-      "module": "./googlePlayRtdn.js",
-      "export": "googlePlayDeveloperNotifications"
-    },
-    "reconcileGooglePlayVoidedPurchasesDaily": {
-      "module": "./googlePlayVoidedPurchaseReconciler.js",
-      "export": "reconcileGooglePlayVoidedPurchasesDaily"
-    },
-    "beginEntitlementBinding": {
-      "module": "./appstore/index.js",
-      "export": "beginEntitlementBinding"
-    },
     "verifyHostedQuotaEntitlement": {
-      "module": "./appstore/index.js",
+      "codebase": "identity",
+      "module": "./domains/billing/appstore/index.js",
       "export": "verifyHostedQuotaEntitlement"
-    },
-    "verifyCloudProTopUp": {
-      "module": "./appstore/index.js",
-      "export": "verifyCloudProTopUp"
-    },
-    "restoreHostedQuotaEntitlement": {
-      "module": "./appstore/index.js",
-      "export": "restoreHostedQuotaEntitlement"
-    },
-    "appStoreServerNotificationsV2": {
-      "module": "./appstore/index.js",
-      "export": "appStoreServerNotificationsV2"
-    },
-    "reconcileHostedEntitlementsDaily": {
-      "module": "./appstore/index.js",
-      "export": "reconcileHostedEntitlementsDaily"
     }
   }
 }

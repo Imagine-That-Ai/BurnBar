@@ -24,87 +24,89 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         from body: Data,
         modelID: String
     ) throws -> (Data, Bool) {
-        let json = try JSONSerialization.jsonObject(with: body)
-        guard var object = json as? [String: Any] else {
-            throw BurnBarProviderExecutorError.invalidResponse
-        }
+        var request = try BurnBarBridgeJSON.decodeBridgeRequest(OllamaNativeBridgeRequest.self, from: body)
 
-        let streamRequested = object["stream"] as? Bool ?? false
-        object["model"] = modelID
-        object["stream"] = streamRequested
+        let streamRequested = request.stream?.bool ?? false
+        request.model = .string(modelID)
+        request.stream = .bool(streamRequested)
 
-        if let responseFormat = object.removeValue(forKey: "response_format") as? [String: Any] {
-            if (responseFormat["type"] as? String) == "json_object" {
-                object["format"] = "json"
-            } else if let jsonSchema = responseFormat["json_schema"] as? [String: Any],
-                      let schema = jsonSchema["schema"] {
-                object["format"] = schema
+        if let responseFormat = request.responseFormat, responseFormat.object != nil {
+            if responseFormat["type"]?.string == "json_object" {
+                request.additionalFields["format"] = .string("json")
+            } else if let schema = responseFormat["json_schema"]?["schema"] {
+                request.additionalFields["format"] = schema
             }
         }
+        request.responseFormat = nil
 
-        var options = object["options"] as? [String: Any] ?? [:]
-        moveOpenAIOption("max_completion_tokens", to: "num_predict", from: &object, options: &options)
-        moveOpenAIOption("max_tokens", to: "num_predict", from: &object, options: &options)
-        moveOpenAIOption("temperature", to: "temperature", from: &object, options: &options)
-        moveOpenAIOption("top_p", to: "top_p", from: &object, options: &options)
+        var options = request.options?.object ?? [:]
+        moveOpenAIOption("max_completion_tokens", to: "num_predict", from: &request, options: &options)
+        moveOpenAIOption("max_tokens", to: "num_predict", from: &request, options: &options)
+        moveOpenAIOption("temperature", to: "temperature", from: &request, options: &options)
+        moveOpenAIOption("top_p", to: "top_p", from: &request, options: &options)
         if !options.isEmpty {
-            object["options"] = options
+            request.options = .object(options)
         }
 
-        if let reasoning = object.removeValue(forKey: "reasoning") as? [String: Any],
-           let effort = reasoning["effort"] as? String {
-            applyOllamaThinkValue(effort, to: &object)
+        if let effort = request.reasoning?["effort"]?.string {
+            applyOllamaThinkValue(effort, to: &request)
         }
-        if let effort = object.removeValue(forKey: "reasoning_effort") as? String {
-            applyOllamaThinkValue(effort, to: &object)
+        request.reasoning = nil
+        if let effort = request.reasoningEffort?.string {
+            applyOllamaThinkValue(effort, to: &request)
         }
+        request.reasoningEffort = nil
 
         for unsupportedKey in ["n", "user", "logit_bias", "presence_penalty", "frequency_penalty", "stream_options", "tool_choice"] {
-            object.removeValue(forKey: unsupportedKey)
+            request.additionalFields.removeValue(forKey: unsupportedKey)
         }
 
-        normalizeOllamaNativeMessages(in: &object)
+        normalizeOllamaNativeMessages(in: &request)
 
-        return (try JSONSerialization.data(withJSONObject: object, options: []), streamRequested)
+        return (try BurnBarBridgeJSON.encode(request, sortedKeys: false), streamRequested)
     }
 
-    static func normalizeOllamaNativeMessages(in object: inout [String: Any]) {
-        guard let messages = object["messages"] as? [[String: Any]] else { return }
-        object["messages"] = messages.map { message in
-            var normalized = message
-            normalizeOllamaNativeToolCalls(at: "tool_calls", in: &normalized)
-            normalizeOllamaNativeToolCalls(at: "toolCalls", in: &normalized)
-            if normalized["content"] is NSNull {
-                normalized["content"] = ""
-            } else if let content = normalized["content"],
-                      !(content is String) {
-                normalized["content"] = responsesContentText(content)
+    static func normalizeOllamaNativeMessages(in request: inout OllamaNativeBridgeRequest) {
+        guard let messages = request.messages?.array, messages.allSatisfy({ $0.object != nil }) else { return }
+        request.messages = .array(messages.map { message in
+            guard var view = try? message.decoded(as: OllamaBridgeMessage.self) else { return message }
+            view.toolCalls = normalizeOllamaNativeToolCalls(view.toolCalls)
+            view.toolCallsCamel = normalizeOllamaNativeToolCalls(view.toolCallsCamel)
+            if view.content == .some(.null) {
+                view.content = .string("")
+            } else if let content = view.content,
+                      content.string == nil {
+                view.content = .string(responsesBridgeContentText(content))
             }
-            return normalized
+            return view.bridgeValue()
+        })
+    }
+
+    static func normalizeOllamaNativeToolCalls(_ value: BurnBarBridgeValue?) -> BurnBarBridgeValue? {
+        guard let value,
+              let calls = value.array,
+              calls.allSatisfy({ $0.object != nil }) else {
+            return value
         }
+        return .array(calls.map { call in
+            guard var view = try? call.decoded(as: OllamaBridgeToolCall.self),
+                  let function = view.function?.object,
+                  let arguments = function["arguments"]?.string else {
+                return call
+            }
+            var updated = function
+            updated["arguments"] = ollamaNativeArgumentsObject(from: arguments)
+            view.function = .object(updated)
+            return view.bridgeValue()
+        })
     }
 
-    static func normalizeOllamaNativeToolCalls(at key: String, in message: inout [String: Any]) {
-        guard let calls = message[key] as? [[String: Any]] else { return }
-        message[key] = calls.map { call in
-            var normalizedCall = call
-            guard var function = normalizedCall["function"] as? [String: Any] else {
-                return normalizedCall
-            }
-            if let arguments = function["arguments"] as? String {
-                function["arguments"] = ollamaNativeArgumentsObject(from: arguments)
-                normalizedCall["function"] = function
-            }
-            return normalizedCall
-        }
-    }
-
-    static func ollamaNativeArgumentsObject(from string: String) -> Any {
+    static func ollamaNativeArgumentsObject(from string: String) -> BurnBarBridgeValue {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               let data = trimmed.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) else {
-            return [:] as [String: Any]
+              let object = try? BurnBarBridgeJSON.decode(BurnBarBridgeValue.self, from: data) else {
+            return .object([:])
         }
         return object
     }
@@ -112,19 +114,36 @@ extension BurnBarOpenAICompatibleProviderExecutor {
     static func moveOpenAIOption(
         _ sourceKey: String,
         to targetKey: String,
-        from object: inout [String: Any],
-        options: inout [String: Any]
+        from request: inout OllamaNativeBridgeRequest,
+        options: inout [String: BurnBarBridgeValue]
     ) {
-        guard let value = object.removeValue(forKey: sourceKey) else { return }
+        let value: BurnBarBridgeValue?
+        switch sourceKey {
+        case "max_completion_tokens":
+            value = request.maxCompletionTokens
+            request.maxCompletionTokens = nil
+        case "max_tokens":
+            value = request.maxTokens
+            request.maxTokens = nil
+        case "temperature":
+            value = request.temperature
+            request.temperature = nil
+        case "top_p":
+            value = request.topP
+            request.topP = nil
+        default:
+            return
+        }
+        guard let value else { return }
         options[targetKey] = value
     }
 
-    static func applyOllamaThinkValue(_ rawEffort: String, to object: inout [String: Any]) {
+    static func applyOllamaThinkValue(_ rawEffort: String, to request: inout OllamaNativeBridgeRequest) {
         switch rawEffort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "high", "medium", "low":
-            object["think"] = rawEffort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            request.additionalFields["think"] = .string(rawEffort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
         case "none", "off", "false":
-            object["think"] = false
+            request.additionalFields["think"] = .bool(false)
         default:
             break
         }
@@ -272,41 +291,46 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         modelID: String
     ) throws -> Data {
         let content = response.message?.content ?? ""
-        var message: [String: Any] = [
-            "role": response.message?.role ?? "assistant",
-            "content": content
-        ]
         let toolCalls = openAIToolCalls(from: response, includeIndex: false)
-        if let toolCalls, !toolCalls.isEmpty {
-            message["tool_calls"] = toolCalls
+        let toolCallsValue: BurnBarBridgeValue?
+        if let toolCalls {
+            toolCallsValue = try BurnBarBridgeJSON.bridgeValue(toolCalls)
+        } else {
+            toolCallsValue = nil
         }
-        let choice: [String: Any] = [
-            "index": 0,
-            "message": message,
-            "finish_reason": finishReason(
-                from: response.doneReason,
-                hasToolCalls: toolCalls?.isEmpty == false
-            )
-        ]
-        let body: [String: Any] = [
-            "id": "chatcmpl-\(UUID().uuidString)",
-            "object": "chat.completion",
-            "created": Int(Date().timeIntervalSince1970),
-            "model": response.model ?? modelID,
-            "choices": [choice],
-            "usage": openAIUsageFromOllama(response)
-        ]
-        return try JSONSerialization.data(withJSONObject: body, options: [])
+        let message = ChatBridgeOutboundMessage(
+            role: response.message?.role ?? "assistant",
+            content: .string(content),
+            toolCalls: toolCallsValue
+        )
+        let completion = ChatBridgeCompletion(
+            id: "chatcmpl-\(UUID().uuidString)",
+            object: "chat.completion",
+            created: Int(Date().timeIntervalSince1970),
+            model: response.model ?? modelID,
+            choices: [
+                ChatBridgeCompletion.ChatBridgeCompletionChoice(
+                    index: 0,
+                    message: message,
+                    finishReason: .value(finishReason(
+                        from: response.doneReason,
+                        hasToolCalls: toolCalls?.isEmpty == false
+                    ))
+                )
+            ],
+            usage: openAIUsageFromOllama(response)
+        )
+        return try BurnBarBridgeJSON.encode(completion, sortedKeys: false)
     }
 
-    static func openAIUsageFromOllama(_ response: OllamaNativeChatResponse) -> [String: Any] {
+    static func openAIUsageFromOllama(_ response: OllamaNativeChatResponse) -> ChatBridgeUsage {
         let promptTokens = max(response.promptEvalCount ?? 0, 0)
         let completionTokens = max(response.evalCount ?? 0, 0)
-        return [
-            "prompt_tokens": promptTokens,
-            "completion_tokens": completionTokens,
-            "total_tokens": promptTokens + completionTokens
-        ]
+        return ChatBridgeUsage(
+            promptTokens: promptTokens,
+            completionTokens: completionTokens,
+            totalTokens: promptTokens + completionTokens
+        )
     }
 
     static func openAIStreamChunk(
@@ -314,36 +338,46 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         created: Int,
         modelID: String,
         content: String?,
-        toolCalls: [[String: Any]]?,
+        toolCalls: [ChatBridgeOutboundToolCall]?,
         finishReason: String?
-    ) -> [String: Any] {
-        var delta: [String: Any] = [:]
+    ) -> ChatBridgeStreamChunk {
+        var delta = ChatBridgeStreamChunk.ChatBridgeStreamDelta()
         if let content {
-            delta["content"] = content
+            delta.content = content
         }
         if let toolCalls, !toolCalls.isEmpty {
-            delta["tool_calls"] = toolCalls
+            delta.toolCalls = toolCalls.map { call in
+                ChatBridgeStreamChunk.ChatBridgeStreamToolCall(
+                    index: call.index,
+                    id: call.id,
+                    type: call.type,
+                    function: ChatBridgeStreamChunk.ChatBridgeStreamToolCall.ChatBridgeStreamFunction(
+                        name: call.function.name,
+                        arguments: call.function.arguments
+                    )
+                )
+            }
         }
         if finishReason == nil {
-            delta["role"] = "assistant"
+            delta.role = "assistant"
         }
-        return [
-            "id": id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": modelID,
-            "choices": [
-                [
-                    "index": 0,
-                    "delta": delta,
-                    "finish_reason": finishReason.map { $0 as Any } ?? NSNull()
-                ]
+        return ChatBridgeStreamChunk(
+            id: id,
+            object: "chat.completion.chunk",
+            created: created,
+            model: modelID,
+            choices: [
+                ChatBridgeStreamChunk.ChatBridgeStreamChoice(
+                    index: 0,
+                    delta: delta,
+                    finishReason: finishReason.map(ChatBridgeFinishReason.value) ?? .null
+                )
             ]
-        ]
+        )
     }
 
-    static func appendServerSentEvent(chunk: [String: Any], to data: inout Data) throws {
-        let payload = try JSONSerialization.data(withJSONObject: chunk, options: [])
+    static func appendServerSentEvent(chunk: ChatBridgeStreamChunk, to data: inout Data) throws {
+        let payload = try BurnBarBridgeJSON.encode(chunk, sortedKeys: false)
         data.append(Data("data: ".utf8))
         data.append(payload)
         data.append(Data("\n\n".utf8))
@@ -352,7 +386,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
     static func openAIToolCalls(
         from response: OllamaNativeChatResponse,
         includeIndex: Bool
-    ) -> [[String: Any]]? {
+    ) -> [ChatBridgeOutboundToolCall]? {
         guard let calls = response.message?.toolCalls, !calls.isEmpty else {
             return nil
         }
@@ -366,7 +400,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         from call: OllamaNativeToolCall,
         index: Int,
         includeIndex: Bool
-    ) -> [String: Any]? {
+    ) -> ChatBridgeOutboundToolCall? {
         guard let function = call.function,
               let name = function.name?.trimmingCharacters(in: .whitespacesAndNewlines),
               !name.isEmpty else {
@@ -374,18 +408,17 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         }
         let id = call.id?.trimmingCharacters(in: .whitespacesAndNewlines)
         let type = call.type?.trimmingCharacters(in: .whitespacesAndNewlines)
-        var mapped: [String: Any] = [
-            "id": id?.isEmpty == false ? id! : "call_ollama_\(index)",
-            "type": type?.isEmpty == false ? type! : "function",
-            "function": [
-                "name": name,
-                "arguments": openAIToolArguments(function.arguments)
-            ]
-        ]
-        if includeIndex {
-            mapped["index"] = index
-        }
-        return mapped
+        let resolvedID = (id?.isEmpty == false ? id : nil) ?? "call_ollama_\(index)"
+        let resolvedType = (type?.isEmpty == false ? type : nil) ?? "function"
+        return ChatBridgeOutboundToolCall(
+            id: resolvedID,
+            type: resolvedType,
+            function: ChatBridgeOutboundToolCall.ChatBridgeOutboundFunction(
+                name: name,
+                arguments: openAIToolArguments(function.arguments)
+            ),
+            index: includeIndex ? index : nil
+        )
     }
 
     static func openAIToolArguments(_ arguments: BurnBarJSONValue?) -> String {

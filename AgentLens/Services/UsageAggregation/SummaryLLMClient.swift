@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Session Summary Payload
 
@@ -27,7 +28,7 @@ enum OpenAICompatibleChatResponse {
     /// choice, or carries a `content` this client cannot read. An all-empty block
     /// array is `nil` rather than `""`, matching what both call sites did before.
     static func assistantText(fromResponseBody data: Data) -> String? {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
+        guard let root = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(decode LLM JSON)
               let choices = root["choices"] as? [[String: Any]],
               let first = choices.first,
               let message = first["message"] as? [String: Any]
@@ -167,7 +168,7 @@ struct SummaryLLMClient: Sendable {
             return (nil, cooldown)
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
+        guard let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(decode LLM JSON)
               let text = json["response"] as? String
         else {
             return (nil, false)

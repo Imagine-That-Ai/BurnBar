@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Freeze check for Daemon RPC methods catalog (BurnBarRPCContracts.swift).
+# Freeze check for Daemon RPC methods catalog (BurnBarRPCMethod.generated.swift).
 #
 # Part of Tech Debt Remediation Program (Item #8): prevents unversioned, untyped
 # RPC additions to the v1 protocol without TypeSpec / schema-sync generation and
 # contract version negotiation.
+#
+# Wave 3.6 moved the `BurnBarRPCMethod` enum into the TypeSpec-generated file;
+# the protocol version constants stayed in BurnBarRPCContracts.swift, so the
+# check reads cases from the generated file and versions from the hand file.
 #
 # Baseline: budgets/rpc-methods-baseline.json
 set -euo pipefail
@@ -11,9 +15,10 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 baseline_path="${repo_root}/budgets/rpc-methods-baseline.json"
 contracts_file="${repo_root}/OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCContracts.swift"
+methods_file="${repo_root}/OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCMethod.generated.swift"
 mode="${1:-}"
 
-python3 - "${contracts_file}" "${baseline_path}" "${mode}" <<'PY'
+python3 - "${contracts_file}" "${baseline_path}" "${mode}" "${methods_file}" <<'PY'
 import json
 import re
 import sys
@@ -22,12 +27,16 @@ from pathlib import Path
 contracts_path = Path(sys.argv[1])
 baseline_path = Path(sys.argv[2])
 mode = sys.argv[3] if len(sys.argv) > 3 else ""
+methods_path = Path(sys.argv[4]) if len(sys.argv) > 4 else contracts_path
 
 if not contracts_path.exists():
     print(f"::error::Contracts file not found: {contracts_path}", file=sys.stderr)
     sys.exit(1)
+if not methods_path.exists():
+    print(f"::error::Methods file not found: {methods_path}", file=sys.stderr)
+    sys.exit(1)
 
-lines = contracts_path.read_text(encoding="utf-8").splitlines()
+lines = methods_path.read_text(encoding="utf-8").splitlines()
 cases = []
 in_enum = False
 for line in lines:

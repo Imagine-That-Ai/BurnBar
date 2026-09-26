@@ -62,7 +62,7 @@ extension CloudSyncService {
                 "semanticHashes": semanticHashes,
                 "limit": max(1, min(limit, 50))
             ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let hits = dict["hits"] as? [[String: Any]] else { return [] }
 
         return hits.compactMap { Self.decodeEncryptedSearchHit($0, vaultKey: vaultKey, uid: uid) }

@@ -1,7 +1,9 @@
 #if canImport(SwiftUI) && canImport(AppKit) && !DISTRIBUTION_MAS
 import SwiftUI
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 /// First-run setup wizard for Computer Use Path C (Mac System).

@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarAnalytics
 
 /// The opt-in gate is the spine: no Amplitude init and no egress until `isGranted`
 /// is true. These pin that contract — default dark, `unset`/`declined` identical

@@ -30,7 +30,7 @@ describe("hosted quota runner endpoint boundary", () => {
     process.env.HOSTED_QUOTA_RUNNER_URL = "https://OPENBURNBAR-QUOTA-RUNNER-ABC-UC.A.RUN.APP/custom/base?ignored=true";
     process.env.HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS = "openburnbar-quota-runner-abc-uc.a.run.app,other-runner.a.run.app";
 
-    const { hostedQuotaRunnerRefreshEndpoint } = await import("../hostedRunnerConfig.js");
+    const { hostedQuotaRunnerRefreshEndpoint } = await import("../../../packages/functions-shared/src/hostedRunnerConfig.js");
 
     expect(hostedQuotaRunnerRefreshEndpoint().href).toBe(
       "https://openburnbar-quota-runner-abc-uc.a.run.app/v1/quota/refresh",
@@ -41,14 +41,14 @@ describe("hosted quota runner endpoint boundary", () => {
     process.env.HOSTED_QUOTA_RUNNER_URL = "https://untrusted-runner.example/v1/quota/refresh";
     process.env.HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS = "openburnbar-quota-runner-abc-uc.a.run.app";
 
-    const { hostedQuotaRunnerRefreshEndpoint } = await import("../hostedRunnerConfig.js");
+    const { hostedQuotaRunnerRefreshEndpoint } = await import("../../../packages/functions-shared/src/hostedRunnerConfig.js");
 
     expect(() => hostedQuotaRunnerRefreshEndpoint()).toThrow(/host is not allowlisted/);
   });
 
   it("rejects runner URLs with embedded credentials or non-default HTTPS ports", async () => {
     process.env.HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS = "openburnbar-quota-runner-abc-uc.a.run.app";
-    const { hostedQuotaRunnerRefreshEndpoint } = await import("../hostedRunnerConfig.js");
+    const { hostedQuotaRunnerRefreshEndpoint } = await import("../../../packages/functions-shared/src/hostedRunnerConfig.js");
 
     expect(() =>
       hostedQuotaRunnerRefreshEndpoint("https://operator@openburnbar-quota-runner-abc-uc.a.run.app"),

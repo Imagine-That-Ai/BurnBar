@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Penultimate wizard step. Shows the freshly-connected accounts as a list of
 /// chips and offers a "Refresh now" action to confirm data is flowing.

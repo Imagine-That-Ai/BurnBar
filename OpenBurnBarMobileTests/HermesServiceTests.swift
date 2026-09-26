@@ -2604,7 +2604,7 @@ final class HermesServiceTests: XCTestCase {
     func testLivePhysicalDeviceRemoteRelayE2E() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["OPENBURNBAR_LIVE_HERMES_RELAY_E2E"] == "1" else {
-            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_RELAY_E2E=1 with a live relay host to run this physical-device test.")
+            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_RELAY_E2E=1 with a live relay host to run this physical-device test.") // env-guard: OPENBURNBAR_LIVE_HERMES_RELAY_E2E=1 + live relay host
         }
         let connectionID = try XCTUnwrap(environment["OPENBURNBAR_LIVE_RELAY_CONNECTION_ID"])
         let relayPublicKey = try XCTUnwrap(environment["OPENBURNBAR_LIVE_RELAY_PUBLIC_KEY"])
@@ -2645,11 +2645,17 @@ final class HermesServiceTests: XCTestCase {
         print("OPENBURNBAR_LIVE_E2E_ASSISTANT_PREFIX=\(assistant.text.prefix(120))")
     }
 
+    /// Shared gate for the live Hermes Gateway client E2E tests (was: an
+    /// identical guard+skip in each).
+    private func requireLiveHermesGatewayClientE2E() throws {
+        guard ProcessInfo.processInfo.environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E"] == "1" else {
+            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E=1 with a live Hermes Gateway client to run this physical-device test.") // env-guard: OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E=1 + live client
+        }
+    }
+
     func testLiveHermesGatewayClientMessageE2E() async throws {
         let environment = ProcessInfo.processInfo.environment
-        guard environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E"] == "1" else {
-            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E=1 with a live Hermes Gateway client to run this physical-device test.")
-        }
+        try requireLiveHermesGatewayClientE2E()
 
         try configureFirebaseForLiveE2EIfNeeded()
         let user = try await ensureLiveE2EUser()
@@ -2695,9 +2701,7 @@ final class HermesServiceTests: XCTestCase {
 
     func testLiveHermesGatewayClientModelSwitchE2E() async throws {
         let environment = ProcessInfo.processInfo.environment
-        guard environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E"] == "1" else {
-            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_CLIENT_E2E=1 with a live Hermes Gateway client to run this physical-device test.")
-        }
+        try requireLiveHermesGatewayClientE2E()
 
         try configureFirebaseForLiveE2EIfNeeded()
         let user = try await ensureLiveE2EUser()
@@ -2742,7 +2746,7 @@ final class HermesServiceTests: XCTestCase {
     func testLiveHermesGatewayApprovalResponseE2E() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_RESPONSE_E2E"] == "1" else {
-            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_RESPONSE_E2E=1 to arm, approve, reject, and expire live gateway approvals from this iPad.")
+            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_RESPONSE_E2E=1 to arm, approve, reject, and expire live gateway approvals from this iPad.") // env-guard: OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_RESPONSE_E2E=1
         }
         let apiBase = try XCTUnwrap(
             firstNonEmpty(
@@ -2808,7 +2812,7 @@ final class HermesServiceTests: XCTestCase {
     func testLiveHermesGatewayDeviceGrantApproval() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard let userCode = firstNonEmpty(environment["OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_CODE"]) else {
-            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_CODE to approve a live Hermes Gateway device-code grant.")
+            throw XCTSkip("Set OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_CODE to approve a live Hermes Gateway device-code grant.") // env-guard: OPENBURNBAR_LIVE_HERMES_GATEWAY_APPROVAL_CODE set
         }
 
         try configureFirebaseForLiveE2EIfNeeded()

@@ -2,7 +2,9 @@
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Escrow seal (producer side)
 
@@ -405,16 +407,16 @@ struct MacLiveEscrowCredentialSecretReader: MacEscrowCredentialSecretReader {
     /// This Mac's stable install id, used as the switcher profile scope. Mirrors
     /// `MacLiveDeviceTrustGateway.loadOrCreateDeviceId`.
     static func installProfileID(defaults: UserDefaults = .standard) -> String {
-        if let stored = defaults.string(forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
+        if let stored = defaults.string(forKey: OpenBurnBarKernel.OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
             return stored
         }
-        for legacyKey in OpenBurnBarCore.OpenBurnBarIdentity.legacyDeviceIDKeys {
+        for legacyKey in OpenBurnBarKernel.OpenBurnBarIdentity.legacyDeviceIDKeys {
             if let stored = defaults.string(forKey: legacyKey), !stored.isEmpty {
                 return stored
             }
         }
         let created = UUID().uuidString
-        defaults.set(created, forKey: OpenBurnBarCore.OpenBurnBarIdentity.deviceIDKey)
+        defaults.set(created, forKey: OpenBurnBarKernel.OpenBurnBarIdentity.deviceIDKey)
         return created
     }
 }

@@ -364,7 +364,7 @@ public struct ClaudeOAuthUsageFetcher {
         guard let (data, response) = try? await session.data(for: request), // try?-ok(network fetch skip)
               let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional refresh parse)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional refresh parse)
               let newAccess = quotaNonEmpty(json["access_token"] as? String) else {
             return nil
         }
@@ -424,9 +424,9 @@ public struct ClaudeOAuthUsageFetcher {
         // A present-but-corrupt cache is also worth surfacing: it means the
         // cache will never satisfy a read and we'll keep paying the live
         // call (and its 429 risk) until the file is overwritten.
-        let json: [String: Any]?
+        let json: QuotaJSONObject?
         do {
-            json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            json = try JSONSerialization.jsonObject(with: data) as? QuotaJSONObject
         } catch {
             quotaLogger.log("claude_oauth_usage.cache_parse_failed: \(error)")
             json = nil
@@ -438,7 +438,7 @@ public struct ClaudeOAuthUsageFetcher {
         let fiveHourResetsAt = (json["fiveHourResetsAt"] as? String).flatMap { ThreadSafeISO8601DateFormatter.parseBasic($0) }
         let sevenDayResetsAt = (json["sevenDayResetsAt"] as? String).flatMap { ThreadSafeISO8601DateFormatter.parseBasic($0) }
         guard let fetchedAt,
-              let payloadDict = json["payload"] as? [String: Any] else {
+              let payloadDict = json["payload"] as? QuotaJSONObject else {
             return nil
         }
         let payload = ClaudeRateLimits(from: payloadDict)
@@ -452,7 +452,7 @@ public struct ClaudeOAuthUsageFetcher {
     }
 
     private func writeCache(payload: ClaudeRateLimits, fetchedAt: Date) {
-        var envelope: [String: Any] = [
+        var envelope: QuotaJSONObject = [
             "fetchedAt": ThreadSafeISO8601DateFormatter.formatBasic(fetchedAt),
             "payload": payload.rawDictionary
         ]
@@ -482,7 +482,7 @@ public struct ClaudeOAuthUsageFetcher {
 
     private func readLastFetchAttempt() -> Date? {
         guard let data = try? Data(contentsOf: attemptMarkerURL), // try?-ok(best-effort marker read)
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional marker parse)
+              let json = BurnBarJSONValue.dictionary(fromJSONData: data), // try?-ok(optional marker parse)
               let iso = json["lastAttempt"] as? String else { return nil }
         return ThreadSafeISO8601DateFormatter.parseBasic(iso)
     }
@@ -522,8 +522,8 @@ public struct ClaudeRateLimits: Sendable, Equatable {
     /// cross-actor handoff.
     private let _rawJSON: Data
 
-    var rawDictionary: [String: Any] {
-        (try? JSONSerialization.jsonObject(with: _rawJSON) as? [String: Any]) ?? [:] // try?-ok(optional decode fallback)
+    var rawDictionary: QuotaJSONObject {
+        (BurnBarJSONValue.dictionary(fromJSONData: _rawJSON)) ?? [:] // try?-ok(optional decode fallback)
     }
 
     var isEmpty: Bool { windows.isEmpty }
@@ -552,18 +552,18 @@ public struct ClaudeRateLimits: Sendable, Equatable {
     /// `{"rate_limits": {...}}` or the bare `{...}` map — we accept
     /// both for forward-compatibility.
     init(from data: Data) {
-        guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional decode fallback)
+        guard let raw = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(optional decode fallback)
             self = .empty
             return
         }
-        let bucket = (raw["rate_limits"] as? [String: Any]) ?? raw
+        let bucket = (raw["rate_limits"] as? QuotaJSONObject) ?? raw
         self.init(from: bucket)
     }
 
-    init(from dictionary: [String: Any]) {
+    init(from dictionary: QuotaJSONObject) {
         var parsed: [String: Window] = [:]
         for (key, value) in dictionary {
-            guard let payload = value as? [String: Any] else { continue }
+            guard let payload = value as? QuotaJSONObject else { continue }
             let used = Self.firstNumber(
                 in: payload,
                 keys: ["used_percentage", "usedPercent", "percentage", "utilization", "used"]
@@ -586,7 +586,7 @@ public struct ClaudeRateLimits: Sendable, Equatable {
         self.init(windows: parsed, rawJSON: raw)
     }
 
-    private static func firstNumber(in payload: [String: Any], keys: [String]) -> Double? {
+    private static func firstNumber(in payload: QuotaJSONObject, keys: [String]) -> Double? {
         for key in keys {
             if let v = payload[key] as? Double { return v }
             if let v = payload[key] as? Int { return Double(v) }
@@ -595,7 +595,7 @@ public struct ClaudeRateLimits: Sendable, Equatable {
         return nil
     }
 
-    private static func firstDate(in payload: [String: Any], keys: [String]) -> Date? {
+    private static func firstDate(in payload: QuotaJSONObject, keys: [String]) -> Date? {
         for key in keys {
             if let v = payload[key] as? Double { return Date(timeIntervalSince1970: v) }
             if let v = payload[key] as? Int { return Date(timeIntervalSince1970: Double(v)) }

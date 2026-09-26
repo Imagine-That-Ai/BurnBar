@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseProviderAccountDoc } from "../guards.js";
+import { parseProviderAccountDoc } from "../../../packages/functions-shared/src/guards.js";
 import { parseUsageEventDoc } from "../usageEventParse.js";
 
 /**

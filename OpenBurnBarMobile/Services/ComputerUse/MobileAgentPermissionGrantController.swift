@@ -6,7 +6,8 @@ import FirebaseCore
 import Foundation
 import LocalAuthentication
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 
 @MainActor
 final class MobileAgentPermissionGrantController {

@@ -81,12 +81,19 @@ budgets/raw-firestore-baseline.json
 budgets/singleton-baseline.json
 budgets/string-any-boundary-baseline.json
 budgets/swift-file-size-baseline.json
+# Wave 4: per-rule shrink-only ceilings for the five brownfield SwiftLint
+# opt-ins; scripts/debt/check-swiftlint-rules-budget.sh fails on any growth.
+budgets/swiftlint-rules-baseline.json
 budgets/port-file-size-baseline.json
 budgets/windows-tree-baseline.json
 budgets/core-ui-purity-baseline.json
 budgets/mission-splitbrain-baseline.json
+budgets/docs-freshness-baseline.json
 budgets/core-target-membership-baseline.json
 budgets/core-umbrella-imports-baseline.json
+# Wave 3.1 Core/Lab split: frozen count of Lab->Core boundary references;
+# scripts/debt/check-lab-boundary.sh fails on any increase.
+budgets/lab-boundary-baseline.json
 budgets/linux-desktop.perf.json
 budgets/usage-refresh-tick-baseline.json
 # macOS idle/occluded CPU regression tripwire (P-PERF-3): structural assertion
@@ -114,7 +121,6 @@ budgets/force-unwrap-baseline.json
 .github/workflows/linux-release-baseline.yml
 
 # --- File-level TypeScript suppressions (token-scoped) ---
-functions/src/types/legacy.ts | eslint-disable
 website/src/scripts/dotConstellation.ts | ts-suppress
 website/src/scripts/easterEggFx.ts | ts-suppress
 website/src/scripts/emberSwarm.ts | ts-suppress
@@ -218,46 +224,31 @@ different stream-integration model, so wrapping it would mean reimplementing
 the parser plumbing that `auth:import` and `database:import` feed user data
 through.
 
-## Mac/iOS Swift twin-basename allowlist
+## Mac/iOS/Core Swift twin-basename allowlist
 
 [`scripts/ci/check-twin-basenames.sh`](../scripts/ci/check-twin-basenames.sh)
-blocks new `.swift` files that share a basename across `AgentLens/` and
-`OpenBurnBarMobile/`. The current twins are allowed only as explicit exact-path
-pairs so new forks cannot slip in behind the existing debt. Asset twins are not
-in scope.
+blocks new `.swift` files that share a basename across `AgentLens/` ×
+`OpenBurnBarMobile/` and `AgentLens/` × `OpenBurnBarCore/`. The current twins
+are allowed only as explicit exact-path pairs so new forks cannot slip in
+behind the existing debt. Asset twins are not in scope. Wave 2.2 added the
+Core pair when it deleted the AgentLens migration mirror, so a second tree
+cannot silently return.
 
 Categories:
 
 - `storage-backend-divergence`: shared domain concept with intentionally different local storage, Firestore, or platform persistence.
 - `platform-ui`: parallel SwiftUI surface with platform-specific layout or navigation.
 - `transport`: shared realtime, attachment, media, relay, or attestation concept with platform-specific runtime wiring.
+- `pending-core-consolidation`: known app/Core basename twin awaiting Wave 3.4 (move the non-view twin into Core, or confirm the fork).
 
 <!-- BEGIN:twin-basename-allowlist -->
 
 ```text
 # Exact AgentLens path | exact OpenBurnBarMobile path | category
 AgentLens/App/AppDelegate.swift | OpenBurnBarMobile/App/AppDelegate.swift | storage-backend-divergence
+# Wave 3.4 confirmed fork: AmplitudeTransport stays in-app on both hosts
+# (OpenBurnBarAnalytics is SDK-free by design; project.yml documents this).
 AgentLens/Services/Analytics/AmplitudeTransport.swift | OpenBurnBarMobile/Services/Analytics/AmplitudeTransport.swift | transport
-AgentLens/Services/Analytics/AnalyticsConfig.swift | OpenBurnBarMobile/Services/Analytics/AnalyticsConfig.swift | transport
-AgentLens/Services/Analytics/AnalyticsShared.swift | OpenBurnBarMobile/Services/Analytics/AnalyticsShared.swift | platform-ui
-AgentLens/Services/AppCheckAttestationMonitor.swift | OpenBurnBarMobile/Services/AppCheckAttestationMonitor.swift | transport
-AgentLens/Services/Chat/HermesAttachmentLoader.swift | OpenBurnBarMobile/Services/HermesAttachmentLoader.swift | transport
-AgentLens/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift | transport
-AgentLens/Services/DataStore/BudgetEnforcement.swift | OpenBurnBarMobile/Models/BudgetEnforcement.swift | storage-backend-divergence
-AgentLens/Services/DataStore/BudgetForecast.swift | OpenBurnBarMobile/Models/BudgetForecast.swift | storage-backend-divergence
-AgentLens/Services/DataStore/BudgetLedger.swift | OpenBurnBarMobile/Models/BudgetLedger.swift | storage-backend-divergence
-AgentLens/Services/DataStore/BudgetNotificationCenter.swift | OpenBurnBarMobile/Services/BudgetNotificationCenter.swift | storage-backend-divergence
-AgentLens/Services/DataStore/BudgetRulesStore.swift | OpenBurnBarMobile/Models/BudgetRulesStore.swift | storage-backend-divergence
-AgentLens/Services/DataStore/BudgetSettings.swift | OpenBurnBarMobile/Models/BudgetSettings.swift | storage-backend-divergence
-AgentLens/Services/IrohRelay/FirestoreIrohPairingDirectory.swift | OpenBurnBarMobile/Services/IrohRelay/FirestoreIrohPairingDirectory.swift | transport
-AgentLens/Services/IrohRelay/IrohRelayKeyStore.swift | OpenBurnBarMobile/Services/IrohRelay/IrohRelayKeyStore.swift | transport
-AgentLens/Services/IrohRelay/IrohTransportAuditLogger.swift | OpenBurnBarMobile/Services/IrohRelay/IrohTransportAuditLogger.swift | transport
-AgentLens/Services/Media/IrohBlobKeyStore.swift | OpenBurnBarMobile/Services/Media/IrohBlobKeyStore.swift | transport
-AgentLens/Services/Media/MediaFileTransferServiceFactory.swift | OpenBurnBarMobile/Services/Media/MediaFileTransferServiceFactory.swift | transport
-AgentLens/Services/Media/MercuryPeerSource.swift | OpenBurnBarMobile/Services/Media/MercuryPeerSource.swift | transport
-AgentLens/Services/Settings/Stores/ElderWandSettings.swift | OpenBurnBarMobile/Services/Hermes/ElderWandSettings.swift | platform-ui
-AgentLens/Services/SmartHub/PixelClockSettingsAdapter.swift | OpenBurnBarMobile/Services/PixelClockSettingsAdapter.swift | storage-backend-divergence
-AgentLens/Services/SmartHub/SmartHubDisplaySettingsAdapter.swift | OpenBurnBarMobile/Services/SmartHubDisplaySettingsAdapter.swift | storage-backend-divergence
 AgentLens/Theme/LiquidGlass.swift | OpenBurnBarMobile/Theme/LiquidGlass.swift | platform-ui
 AgentLens/Theme/ProTheme.swift | OpenBurnBarMobile/Theme/ProTheme.swift | platform-ui
 AgentLens/Views/Chat/BudgetBlockedCard.swift | OpenBurnBarMobile/Views/Chat/BudgetBlockedCard.swift | storage-backend-divergence
@@ -300,6 +291,8 @@ AgentLens/Views/Settings/Search/SettingsSearchResultsView.swift | OpenBurnBarMob
 AgentLens/Views/Settings/SmartDisplays/NestHubSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/NestHubSettingsCard.swift | storage-backend-divergence
 AgentLens/Views/Settings/SmartDisplays/PixelClockSettingsCard.swift | OpenBurnBarMobile/Views/SmartHub/PixelClockSettingsCard.swift | storage-backend-divergence
 AgentLens/Views/Settings/TextExpansionSettingsView.swift | OpenBurnBarMobile/Views/You/TextExpansionSettingsView.swift | platform-ui
+# Exact AgentLens path | exact OpenBurnBarCore path | category (Wave 2.2 widening)
+AgentLens/Views/Components/CardRowPacker.swift | OpenBurnBarCore/Sources/OpenBurnBarUI/Views/CardRowPacker.swift | platform-ui
 ```
 
 <!-- END:twin-basename-allowlist -->

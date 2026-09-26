@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { paidEntitlementWriteWouldDowngrade } from "../callables/shared.js";
+import { paidEntitlementWriteWouldDowngrade } from "../../../packages/functions-shared/src/shared/entitlements.js";
 
 describe("paidEntitlementWriteWouldDowngrade", () => {
   const nowMillis = Date.parse("2026-06-02T06:00:00Z");

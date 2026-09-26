@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
 /// Covers the pure `FusionSearchQuotaReader.bucket(from:)` mapping — the
 /// Firestore-free seam that turns the `openburnbar_elder_wand_fusion` snapshot

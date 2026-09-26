@@ -8,7 +8,7 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 copy_base_fixture() {
   local dst="$1"
-  mkdir -p "$dst/.github/workflows" "$dst/scripts/ci" "$dst/functions" "$dst/services/hosted-mcp"
+  mkdir -p "$dst/.github/workflows" "$dst/scripts/ci" "$dst/functions" "$dst/functions-identity" "$dst/functions-sync" "$dst/functions-media" "$dst/services/hosted-mcp"
   cp "$SOURCE_ROOT/.github/workflows/deploy-hosting.yml" "$dst/.github/workflows/deploy-hosting.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-production.yml" "$dst/.github/workflows/deploy-production.yml"
   cp "$SOURCE_ROOT/.github/workflows/deploy-firestore.yml" "$dst/.github/workflows/deploy-firestore.yml"

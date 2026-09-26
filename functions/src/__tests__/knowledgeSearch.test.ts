@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { requireCloakedQueryVector, clampLimit } from "../callables/knowledgeSearch.js";
+import { requireCloakedQueryVector, clampLimit } from "../../../functions-sync/src/domains/knowledge/knowledgeSearch.js";
 
 describe("searchKnowledge input validation", () => {
   it("accepts exactly 384 finite numbers", () => {

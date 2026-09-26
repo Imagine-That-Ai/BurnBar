@@ -20,7 +20,7 @@ import {
   HERMES_GATEWAY_PROTOCOL_VERSION,
   HERMES_GATEWAY_RELAY_ENCRYPTION,
   HERMES_GATEWAY_SCHEMA_VERSION,
-} from "../hermesGateway.js";
+} from "../../../packages/functions-shared/src/hermesGateway.js";
 
 import { RELAY_PUBKEY_B64 } from "./hermesGatewayTestKit.js";
 

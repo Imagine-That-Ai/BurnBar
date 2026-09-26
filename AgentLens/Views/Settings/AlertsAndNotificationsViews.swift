@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Alerts Settings View (iOS-style landing)
 
@@ -27,9 +28,8 @@ struct AlertsSettingsView: View {
                             iconTint: DesignSystem.Colors.coral,
                             title: "Cost Threshold",
                             subtitle: "Highlight unusually expensive days before spend drifts upward",
-                            value: settingsManager.costAlertThreshold == nil
-                                ? "Off"
-                                : "$\(settingsManager.costAlertThreshold!.formatted(.number.precision(.fractionLength(0...2))))",
+                            value: settingsManager.costAlertThreshold
+                                .map { "$\($0.formatted(.number.precision(.fractionLength(0...2))))" } ?? "Off",
                             valueTint: settingsManager.costAlertThreshold == nil
                                 ? DesignSystem.Colors.textMuted
                                 : DesignSystem.Colors.success

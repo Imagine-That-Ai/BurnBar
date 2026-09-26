@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarPlatformSupport
 
 /// Passphrase-wrapped payload format for Linux local privacy exports.
 ///

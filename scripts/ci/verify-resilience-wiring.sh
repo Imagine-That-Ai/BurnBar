@@ -1,48 +1,16 @@
 #!/usr/bin/env bash
-# Fail when functions/src uses raw fetch outside the resilience allowlist.
+# Assert resilienceHelpers.ts owns the canonical fetch() call all wrappers build on.
+# Wave 4: the raw-fetch BAN moved to ESLint (no-restricted-globals +
+# no-restricted-properties in each codebase's eslint.config.mjs, enforced on
+# the PR door by fast-feedback). AST analysis catches spellings the old regex
+# missed (globalThis.fetch). This script keeps only the structural half the
+# linter cannot express: the canonical fetch must live in resilienceHelpers.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-python3 <<'PY'
-import re
-from pathlib import Path
-
-ROOT = Path("functions/src")
-ALLOWLIST = {
-    ROOT / "resilienceHelpers.ts",
-}
-
-await_violations: list[str] = []
-fetch_violations: list[str] = []
-for path in sorted(ROOT.rglob("*.ts")):
-    if path in ALLOWLIST:
-        continue
-    if "/__tests__/" in path.as_posix():
-        continue
-    text = path.read_text()
-    for match in re.finditer(r"await fetch\(", text):
-        line = text[: match.start()].count("\n") + 1
-        await_violations.append(f"{path}:{line}")
-    for match in re.finditer(r"(?<![\w.])fetch\(", text):
-        line = text[: match.start()].count("\n") + 1
-        fetch_violations.append(f"{path}:{line}")
-
-if await_violations:
-    print("FAIL: raw await fetch() outside allowlist:")
-    for v in await_violations:
-        print(f"  {v}")
-    raise SystemExit(1)
-
-if fetch_violations:
-    print("FAIL: raw fetch() outside allowlist:")
-    for v in fetch_violations:
-        print(f"  {v}")
-    print("Use providerFetch, resilientFetch, or *WithResilience helpers.")
-    raise SystemExit(1)
-
-helpers = Path("functions/src/resilienceHelpers.ts").read_text()
-if "resilientFetch" not in helpers or "fetch(url" not in helpers:
-    raise SystemExit("FAIL: resilienceHelpers.ts must own the canonical fetch() call")
-
-print("PASS: no unallowlisted fetch in functions/src")
-PY
+helpers="packages/functions-shared/src/resilienceHelpers.ts"
+if ! grep -q "resilientFetch" "$helpers" || ! grep -q "fetch(url" "$helpers"; then
+  echo "FAIL: resilienceHelpers.ts must own the canonical fetch() call" >&2
+  exit 1
+fi
+echo "PASS: resilienceHelpers.ts owns the canonical fetch() call"

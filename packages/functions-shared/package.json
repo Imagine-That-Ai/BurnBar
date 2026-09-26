@@ -1,0 +1,49 @@
+{
+  "name": "@openburnbar/functions-shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenBurnBar Cloud Functions shared runtime: validators, billing/stripe helpers, audit-log chain, OTS stamping, admin/config/logging/guards. Deep imports only (@openburnbar/functions-shared/<path>.js).",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "lint": "eslint src --max-warnings 0",
+    "knip": "knip",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@openburnbar/domain-core-wasm": "file:../../functions/vendor/openburnbar/domain-core-wasm",
+    "@openburnbar/entitlements": "file:../entitlements",
+    "@openburnbar/signal-envelope-contracts": "file:../signal-envelope-contracts",
+    "@sentry/core": "10.69.0",
+    "@sentry/node": "10.69.0",
+    "cockatiel": "3.2.1",
+    "express": "5.2.1",
+    "firebase-admin": "14.2.0",
+    "firebase-functions": "^7.3.0",
+    "googleapis": "173.0.0",
+    "stripe": "19.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^24.6.0",
+    "eslint": "9.39.4",
+    "@typescript-eslint/eslint-plugin": "8.60.0",
+    "@typescript-eslint/parser": "8.60.0",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.8.3",
+    "knip": "5.88.1"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    "./*.js": "./lib/*.js",
+    "./*/*.js": "./lib/*/*.js",
+    "./*/*/*.js": "./lib/*/*/*.js"
+  },
+  "overrides": {
+    "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
+    "brace-expansion": "^5.0.9",
+    "uuid": "11.1.1"
+  }
+}

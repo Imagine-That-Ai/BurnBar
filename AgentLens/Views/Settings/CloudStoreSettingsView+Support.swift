@@ -5,7 +5,11 @@ import StoreKit
 import FirebaseCore
 @preconcurrency import FirebaseFirestore
 import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // Aurora card/button styles, Mac pricing tiers + purchase store, and remote-MCP client store/sections.
 // Extracted from CloudStoreSettingsView.swift (god-file decomposition) — same module, verbatim.
@@ -667,7 +671,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
             "clientPlatform": "macos"
         ])
         guard
-            let dict = result.data as? [String: Any],
+            let dict = BurnBarJSONValue.dictionary(from: result.data),
             let rawToken = dict["appAccountToken"] as? String,
             let token = UUID(uuidString: rawToken)
         else {
@@ -882,8 +886,8 @@ final class MacRemoteMCPClientStore: ObservableObject {
         let grantMode = (data["grantMode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return MacRemoteMCPClientRecord(
-            id: clientID?.isEmpty == false ? clientID! : documentID,
-            displayName: displayName?.isEmpty == false ? displayName! : "OpenBurnBar MCP client",
+            id: clientID.flatMap { $0.isEmpty ? nil : $0 } ?? documentID,
+            displayName: displayName.flatMap { $0.isEmpty ? nil : $0 } ?? "OpenBurnBar MCP client",
             clientType: clientType ?? "",
             allowedScopes: scopes,
             grantMode: grantMode ?? "local_decrypt_shim",
@@ -1032,5 +1036,18 @@ struct MacRemoteMCPClientRow: View {
                     lineWidth: 0.6
                 )
         )
+    }
+}
+
+// MARK: - Backup elapsed-time formatting
+
+extension CloudStoreSettingsView {
+    func formatElapsed(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return String(format: "%.0fs", seconds)
+        }
+        let minutes = Int(seconds) / 60
+        let remainder = Int(seconds) % 60
+        return "\(minutes)m \(remainder)s"
     }
 }

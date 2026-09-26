@@ -2,7 +2,7 @@
 # Team-roster reason-code mirror gate (memory program D16 / P22).
 #
 # The nine team-roster callables attach a machine-readable `details.reason` to
-# every refusal (`functions/src/teamRosterReasons.ts`) and the Mac app switches
+# every refusal (`functions-identity/src/teamRosterReasons.ts`) and the Mac app switches
 # on it (`TeamRosterReasonCode` in
 # `AgentLens/Services/CloudSync/TeamRosterDirectory.swift`). That replaced
 # matching substrings of the server's English message, which was a text contract
@@ -34,9 +34,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-TS_SOURCE="functions/src/teamRosterReasons.ts"
+TS_SOURCE="functions-identity/src/teamRosterReasons.ts"
 SWIFT_SOURCE="AgentLens/Services/CloudSync/TeamRosterDirectory.swift"
-THROW_ROOT="functions/src"
+THROW_ROOT="functions-identity/src"
 
 # Server-declared reasons: `KEY: { code: "...", reason: "KEY" },` one per line.
 # The key and the reason must be the SAME string — a mismatch is reported rather

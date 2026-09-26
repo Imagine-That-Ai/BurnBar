@@ -1,6 +1,6 @@
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OpenBurnBarSignalCore
 
 struct CloudVaultResolvedKey: Sendable {

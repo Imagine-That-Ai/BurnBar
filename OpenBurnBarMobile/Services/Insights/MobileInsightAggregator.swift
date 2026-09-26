@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 /// Mobile aggregator. Pulls a Firestore-backed `InsightDataSnapshot` from
 /// `MobileInsightDataSource` and asks the shared core aggregator to convert

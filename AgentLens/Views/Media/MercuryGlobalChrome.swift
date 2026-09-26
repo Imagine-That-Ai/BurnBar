@@ -1,7 +1,8 @@
 import AppKit
 import Combine
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarMedia
 import OSLog
 

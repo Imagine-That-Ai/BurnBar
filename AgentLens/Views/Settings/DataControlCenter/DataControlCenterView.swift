@@ -1,7 +1,10 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Data & Privacy Control Center (macOS governance workbench)
 //

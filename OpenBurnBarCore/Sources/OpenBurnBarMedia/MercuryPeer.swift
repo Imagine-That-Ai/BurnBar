@@ -100,7 +100,7 @@ public struct MercuryPeer: Hashable, Sendable, Codable {
         // whole struct's decode. Capability discovery is best-effort,
         // not load-bearing.
         let rawCapabilities = try container.decode([String].self, forKey: .capabilities)
-        self.capabilities = Set(rawCapabilities.compactMap { Feature(rawValue: $0) })
+        self.capabilities = Self.advertisedFeatures(from: rawCapabilities)
         self.blurredWallpaperBase64 = try container.decodeIfPresent(String.self, forKey: .blurredWallpaperBase64)
     }
 
@@ -118,6 +118,14 @@ public struct MercuryPeer: Hashable, Sendable, Codable {
 }
 
 extension MercuryPeer {
+    /// Wave 3.4 union of the heartbeat-capability parsing both
+    /// `MercuryPeerSource` resolvers carried privately. Unknown raw values
+    /// are filtered (forward-compat: older builds keep working when newer
+    /// peers advertise new capabilities).
+    public static func advertisedFeatures(from rawValues: [String]) -> Set<Feature> {
+        Set(rawValues.compactMap { Feature(rawValue: $0) })
+    }
+
     /// Sensible default capability set when a Mac is online but no
     /// heartbeat has been received yet. Mirrors what older Mac builds
     /// implicitly support before the Phase 8 heartbeat code path landed.

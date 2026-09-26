@@ -32,9 +32,9 @@ const { refreshUserRollupsMock, seedDemoMock, enforceMock, logInfoMock, logError
   },
 }));
 
-vi.mock("../adminRuntime.js", () => ({ db: dbStub }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: enforceMock }));
-vi.mock("../config.js", () => ({ getConfig: () => ({ enforceAppCheck: false }) }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbStub }));
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: enforceMock }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => ({ enforceAppCheck: false }) }));
 // Keep the REAL RollupRebuildUnavailableError class: the callable's catch
 // discriminates gate refusals with `instanceof`, so replacing the whole
 // module would crash the error path with "instanceof undefined".
@@ -43,17 +43,17 @@ vi.mock("../rollups.js", async () => {
   return { ...actual, refreshUserRollups: refreshUserRollupsMock };
 });
 vi.mock("../demoSeed.js", () => ({ seedAndroidDemoAccount: seedDemoMock }));
-vi.mock("../sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/sentry.js", () => ({ setSentryUser: vi.fn(), captureException: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: logInfoMock, logError: logErrorMock };
 });
 
 import { HttpsError } from "firebase-functions/v2/https";
 
-import { rebuildUsageRollups, seedAndroidDemoAccount } from "../callables/misc.js";
+import { rebuildUsageRollups, seedAndroidDemoAccount } from "../domains/ops/misc.js";
 import { RollupRebuildUnavailableError } from "../rollups.js";
-import { FULL_USAGE_REBUILD_RUNTIME } from "../runtimeOptions.js";
+import { FULL_USAGE_REBUILD_RUNTIME } from "../../../packages/functions-shared/src/runtimeOptions.js";
 
 const UID = "user-rollups-1";
 const COMPUTED_AT = "2026-06-10T12:00:00.000Z";

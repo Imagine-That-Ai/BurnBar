@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarAnalytics
 
 @MainActor
 final class AnalyticsSharedTests: XCTestCase {

@@ -55,12 +55,12 @@ vi.mock("firebase-admin/firestore", () => ({ getFirestore: () => firestoreMock, 
 // Kill-switch sync writes to Remote Config; stub so the test stays hermetic and
 // we can assert the level it was handed.
 const { syncKillSwitchMock } = vi.hoisted(() => ({ syncKillSwitchMock: vi.fn(async () => {}) }));
-vi.mock("../mediaRemoteConfig.js", () => ({ syncKillSwitchForMediaBudgetLevel: syncKillSwitchMock }));
+vi.mock("../../../functions-sync/src/mediaRemoteConfig.js", () => ({ syncKillSwitchForMediaBudgetLevel: syncKillSwitchMock }));
 
 const { getTemplateMock } = vi.hoisted(() => ({ getTemplateMock: vi.fn() }));
 vi.mock("firebase-admin/remote-config", () => ({ getRemoteConfig: () => ({ getTemplate: getTemplateMock }) }));
 
-import { evaluateBudget } from "../mediaBudget.js";
+import { evaluateBudget } from "../../../functions-sync/src/domains/usage/mediaBudget.js";
 
 describe("evaluateMediaBudget — RR-9 fail-closed on Remote Config failure", () => {
   beforeEach(() => {

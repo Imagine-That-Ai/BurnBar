@@ -3,8 +3,10 @@ import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
 import OpenBurnBarMedia
+import OpenBurnBarUI
 
 // MARK: - Agent Identity Registry (Hermes Square §6.2)
 //

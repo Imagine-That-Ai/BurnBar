@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Auth
 
@@ -130,7 +132,7 @@ public protocol DeviceTrustGateway: AnyObject {
 // MARK: - Credential transfer
 
 // EscrowCredentialKind is defined in OpenBurnBarCore/EscrowModels.swift
-public typealias EscrowCredentialKind = OpenBurnBarCore.EscrowCredentialKind
+public typealias EscrowCredentialKind = OpenBurnBarKernel.EscrowCredentialKind
 
 public struct AvailableEnvelope: Sendable, Equatable, Identifiable {
     public let id: String

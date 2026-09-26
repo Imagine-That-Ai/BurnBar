@@ -13,7 +13,7 @@ import {
   bucketPercent,
   bucketSizeBytes,
   bucketDurationSeconds,
-} from "../analytics/buckets.js";
+} from "../../../functions-identity/src/analytics/buckets.js";
 
 describe("bucketDurationMs", () => {
   it("maps each band", () => {

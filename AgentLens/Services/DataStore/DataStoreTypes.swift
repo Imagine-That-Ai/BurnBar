@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Rolling Average + Mood
 
@@ -69,6 +69,7 @@ enum RetrievalSubsystem: String, Codable, CaseIterable, Sendable {
     case rebuild
     case collaboration
     case insightRollups = "insight_rollups"
+    case dashboardRollups = "dashboard_rollups"
 }
 
 enum RetrievalHealthStatus: String, Codable, CaseIterable, Sendable {

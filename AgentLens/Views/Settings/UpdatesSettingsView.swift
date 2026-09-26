@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 // Settings → Updates. Shows the current version + channel, the live update
 // banner when something is pending, a manual "Check for Updates" action, and
@@ -12,7 +13,7 @@ struct UpdatesSettingsView: View {
     @AppStorage(DirectDownloadUpdateChecker.oneClickSourceUpdateKey) private var oneClickSource = false
 
     private static let releasesPageURL =
-        URL(string: "https://github.com/Imagine-That-Ai/BurnBar/releases")!
+        URL(staticString: "https://github.com/Imagine-That-Ai/BurnBar/releases")
 
     var body: some View {
         let checker = DirectDownloadUpdateChecker.shared

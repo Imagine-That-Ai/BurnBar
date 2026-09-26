@@ -2,6 +2,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// B8, app half: `ControlPlaneStore.memoryTimeline` reads the APP's own
 /// hash-chained `memory_audit` ledger — not the engine's revision bodies, which

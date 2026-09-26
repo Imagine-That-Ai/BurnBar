@@ -2,7 +2,10 @@ import OSLog
 import SwiftUI
 import UIKit
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // Hermes gateway settings store (pairing/connection state machine).
 // Extracted from HermesSettingsView.swift (god-file decomposition) — same module, verbatim.

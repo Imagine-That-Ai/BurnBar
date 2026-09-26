@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "rule": "effectiveCostUSD is the first value in [costUSD, costUsd, cost] that is a JSON number, finite, and >= 0; otherwise 0. Total is the IEEE-754 double sum in order.",
+  "expectedTotal": 5.5,
+  "events": [
+    { "id": "canon-wins", "costUSD": 1.25, "costUsd": 999.0, "cost": 888.0, "expectedEffective": 1.25 },
+    { "id": "legacy-usd-only", "costUsd": 0.5, "expectedEffective": 0.5 },
+    { "id": "legacy-cost-only", "cost": 2.0, "expectedEffective": 2.0 },
+    { "id": "none", "expectedEffective": 0 },
+    { "id": "nulls", "costUSD": null, "costUsd": null, "cost": null, "expectedEffective": 0 },
+    { "id": "negative-canon-falls-through", "costUSD": -1.0, "costUsd": 0.25, "cost": 5.0, "expectedEffective": 0.25 },
+    { "id": "negative-all", "costUSD": -1.0, "costUsd": -2.0, "cost": -3.0, "expectedEffective": 0 },
+    { "id": "zero-canon-wins", "costUSD": 0.0, "costUsd": 4.0, "cost": 4.0, "expectedEffective": 0.0 },
+    { "id": "strings-skipped", "costUSD": "1.5", "costUsd": "2.5", "cost": "3.5", "expectedEffective": 0 },
+    { "id": "string-canon-falls-through", "costUSD": "9.99", "costUsd": 1.5, "expectedEffective": 1.5 }
+  ]
+}

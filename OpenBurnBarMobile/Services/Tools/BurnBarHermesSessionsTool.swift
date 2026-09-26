@@ -39,7 +39,7 @@ public struct BurnBarHermesSessionsTool: MobileTool {
         """
     }
 
-    public var parametersSchema: [String: Any] {
+    public var parametersSchema: MobileToolParametersSchema {
         MobileToolJSONSchema.object(
             properties: [
                 "limit": MobileToolJSONSchema.integer(

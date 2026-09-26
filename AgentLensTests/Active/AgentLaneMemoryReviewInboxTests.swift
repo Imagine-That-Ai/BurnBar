@@ -4,6 +4,7 @@ import GRDB
 import OpenBurnBarCore
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// The macOS half of the agent-lane quarantine (D-0005 / R10).
 ///
@@ -171,7 +172,8 @@ final class AgentLaneMemoryReviewInboxTests: XCTestCase {
             },
             forgetAgentMemory: { memoryID, projectPath in
                 try forgetter.forget(memoryID, projectPath)
-            }
+            },
+            memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue)
         )
         return (queue, store)
     }

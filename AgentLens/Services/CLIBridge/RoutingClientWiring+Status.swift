@@ -13,7 +13,7 @@ extension RoutingClientWiring {
             guard fileManager.fileExists(atPath: url.path),
                   let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)
             if let root = try? readJSONObject(at: url), // try?-ok(malformed config falls back)
-               let env = root["env"] as? [String: Any] {
+               let env = root["env"] as? UntypedJSONObject {
                 if env["OPENBURNBAR_WIRED"] != nil { return true }
                 if let baseURL = env["ANTHROPIC_BASE_URL"] as? String,
                    isLocalGatewayURL(baseURL) {
@@ -25,14 +25,14 @@ extension RoutingClientWiring {
             guard fileManager.fileExists(atPath: url.path),
                   let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not wired)
             if let root = try? readJSONObject(at: url), // try?-ok(malformed config falls back)
-               let providers = root["provider"] as? [String: Any],
-               let provider = providers["openburnbar"] as? [String: Any] {
-                if let options = provider["options"] as? [String: Any],
+               let providers = root["provider"] as? UntypedJSONObject,
+               let provider = providers["openburnbar"] as? UntypedJSONObject {
+                if let options = provider["options"] as? UntypedJSONObject,
                    let baseURL = options["baseURL"] as? String,
                    isLocalGatewayURL(baseURL) {
                     return true
                 }
-                if let models = provider["models"] as? [String: Any], !models.isEmpty {
+                if let models = provider["models"] as? UntypedJSONObject, !models.isEmpty {
                     return true
                 }
             }
@@ -44,8 +44,8 @@ extension RoutingClientWiring {
                     return false
                 }
                 if let root = try? readJSONObject(at: url) { // try?-ok(malformed config falls back)
-                    let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
-                    let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
+                    let settingsModels = (root["customModels"] as? [UntypedJSONObject]) ?? []
+                    let configModels = (root["custom_models"] as? [UntypedJSONObject]) ?? []
                     if (settingsModels + configModels).contains(where: { isOpenBurnBarDroidModel($0) }) {
                         return true
                     }
@@ -89,7 +89,7 @@ extension RoutingClientWiring {
             guard fileManager.fileExists(atPath: url.path),
                   let text = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(unreadable means not OpenBurnBar-owned)
             if let root = try? readJSONObject(at: url), // try?-ok(malformed config falls back)
-               let env = root["env"] as? [String: Any] {
+               let env = root["env"] as? UntypedJSONObject {
                 if env["OPENBURNBAR_WIRED"] != nil { return true }
                 if env[Self.claudeCatalogIDsKey] != nil { return true }
                 if env[Self.claudeCatalogFingerprintKey] != nil { return true }
@@ -110,8 +110,8 @@ extension RoutingClientWiring {
                     return false
                 }
                 if let root = try? readJSONObject(at: url) { // try?-ok(malformed config falls back)
-                    let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
-                    let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
+                    let settingsModels = (root["customModels"] as? [UntypedJSONObject]) ?? []
+                    let configModels = (root["custom_models"] as? [UntypedJSONObject]) ?? []
                     if (settingsModels + configModels).contains(where: { hasOpenBurnBarDroidOwnershipMarker($0) }) {
                         return true
                     }

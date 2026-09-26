@@ -34,8 +34,8 @@ vi.mock("firebase-admin/firestore", async () => {
 });
 vi.mock("firebase-admin/messaging", () => ({ getMessaging: () => ({ send: vi.fn() }) }));
 
-import { buildFcmMessage, shouldSuppressForDevice } from "../agentNotifications.js";
-import { inboxAlertRouting, inboxEventIdFor, inboxKindLabel } from "../aiInboxNotifications.js";
+import { buildFcmMessage, shouldSuppressForDevice } from "../../../functions-sync/src/domains/notify/agentNotificationTriggers.js";
+import { inboxAlertRouting, inboxEventIdFor, inboxKindLabel } from "../../../functions-sync/src/domains/notify/aiInboxNotifications.js";
 
 type BuildFcmMessageArgs = Parameters<typeof buildFcmMessage>[0];
 type AgentReplyNotificationEvent = BuildFcmMessageArgs["event"];
@@ -267,7 +267,7 @@ describe("inbox events ride the shared durable-event machinery", () => {
  * only path that matters: recovery.
  */
 async function parseEventForSweeper(event: Record<string, unknown>): Promise<boolean> {
-  const { sweepStuckAgentReplyEvents } = await import("../agentNotifications.js");
+  const { sweepStuckAgentReplyEvents } = await import("../../../functions-sync/src/domains/notify/agentNotificationTriggers.js");
   const eventRef = {
     async get() {
       return { exists: true, data: () => event };

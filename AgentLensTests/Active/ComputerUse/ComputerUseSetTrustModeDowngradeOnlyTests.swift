@@ -1,7 +1,9 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
+import CryptoKit
 import XCTest
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+import OpenBurnBarIrohRelay
 @testable import OpenBurnBar
 
 /// R-L5 (Computer Use safety): the Mac-side authoritative `setTrustMode` is
@@ -156,6 +158,76 @@ final class ComputerUseSetTrustModeDowngradeOnlyTests: XCTestCase {
         XCTAssertEqual(hud.stopCount, 1, "panic teardown must stop the live HUD session")
     }
 
+    func testStartSessionHoldsComputerUseKeepAwake() async throws {
+        let coordinator = makeCoordinator()
+        let keepAwake = FakeKeepAwakeController()
+        coordinator.keepAwakeController = keepAwake
+        try await startSession(coordinator, trustMode: .manual)
+        XCTAssertEqual(keepAwake.holds, [.computerUse], "a live session must hold idle-sleep")
+        XCTAssertTrue(keepAwake.releases.isEmpty)
+    }
+
+    func testEndSessionReleasesComputerUseKeepAwake() async throws {
+        let coordinator = makeCoordinator()
+        let keepAwake = FakeKeepAwakeController()
+        coordinator.keepAwakeController = keepAwake
+        try await startSession(coordinator, trustMode: .manual)
+        XCTAssertEqual(keepAwake.holds, [.computerUse])
+
+        // endSessionNow releases on a detached task; the expectation (not a
+        // sleep) is what waits for it.
+        let released = expectation(description: "keep-awake released on endSession")
+        keepAwake.onRelease = { released.fulfill() }
+        await coordinator.endSession(reason: .userHalt)
+        await fulfillment(of: [released], timeout: 5)
+        XCTAssertEqual(keepAwake.releases, [.computerUse])
+    }
+
+    func testPanicHaltReleasesComputerUseKeepAwake() async throws {
+        let coordinator = makeCoordinator()
+        let keepAwake = FakeKeepAwakeController()
+        coordinator.keepAwakeController = keepAwake
+        try await startSession(coordinator, trustMode: .manual)
+        await coordinator.panicHalt(source: .phoneGesture)
+        XCTAssertEqual(
+            keepAwake.releases, [.computerUse],
+            "panic teardown must release the hold or the Mac stays awake after halt"
+        )
+    }
+
+    func testBudgetHardCapReleasesComputerUseKeepAwake() async throws {
+        let coordinator = makeCoordinator()
+        let keepAwake = FakeKeepAwakeController()
+        coordinator.keepAwakeController = keepAwake
+        try await startSession(coordinator, trustMode: .manual)
+        XCTAssertEqual(keepAwake.holds, [.computerUse])
+
+        let released = expectation(description: "keep-awake released on budget hard cap")
+        keepAwake.onRelease = { released.fulfill() }
+        coordinator.haltForBudgetHardCap()
+        await fulfillment(of: [released], timeout: 5)
+        XCTAssertEqual(keepAwake.releases, [.computerUse])
+    }
+
+    func testRememberKeepAwakeToggleKey_cachesEd25519KeyOnly() throws {
+        let coordinator = makeCoordinator()
+        let keepAwake = FakeKeepAwakeController()
+        coordinator.keepAwakeController = keepAwake
+
+        let edBytes = Data(repeating: 0x11, count: 32)
+        let edKey = try PhoneControlVerifyingKey(kind: .ed25519, publicKeyRepresentation: edBytes)
+        coordinator.rememberKeepAwakeToggleKey(nodeId: "node-ed", key: edKey)
+        XCTAssertEqual(keepAwake.rememberedKeys["node-ed"], edBytes)
+
+        let p256Bytes = P256.KeyAgreement.PrivateKey().publicKey.x963Representation
+        let p256Key = try PhoneControlVerifyingKey(kind: .secureEnclaveP256, publicKeyRepresentation: p256Bytes)
+        coordinator.rememberKeepAwakeToggleKey(nodeId: "node-p256", key: p256Key)
+        XCTAssertNil(
+            keepAwake.rememberedKeys["node-p256"],
+            "non-Ed25519 keys cannot sign toggles and must not be cached"
+        )
+    }
+
     func testPhoneSetTrustModeIntentRefusesElevation() async throws {
         let coordinator = makeCoordinator()
         try await startSession(coordinator, trustMode: .manual)
@@ -181,6 +253,26 @@ final class ComputerUseSetTrustModeDowngradeOnlyTests: XCTestCase {
 }
 
 @MainActor
+private final class FakeKeepAwakeController: KeepAwakeControlling {
+    var holds: [KeepAwakeReason] = []
+    var releases: [KeepAwakeReason] = []
+    var rememberedKeys: [String: Data] = [:]
+    var onRelease: (() -> Void)?
+
+    func set(_ reason: KeepAwakeReason, held: Bool) {
+        if held {
+            holds.append(reason)
+        } else {
+            releases.append(reason)
+            onRelease?()
+        }
+    }
+
+    func rememberTogglePublicKey(_ publicKey: Data, for deviceId: String) {
+        rememberedKeys[deviceId] = publicKey
+    }
+}
+
 private final class FakeWatchHUDSession: AgentWatchHUDControlling {
     var startCount = 0
     var stopCount = 0

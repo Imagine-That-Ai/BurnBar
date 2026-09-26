@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import GRDB
 import OpenBurnBarComputerUseCore
+import OpenBurnBarData
 import Security
 #if canImport(Darwin)
 import Darwin
@@ -124,13 +125,13 @@ enum DatabaseEncryptionError: Error, CustomStringConvertible, LocalizedError {
 }
 
 // AUDIT(@unchecked Sendable): Security.framework Keychain calls require
-// non-Sendable `[String: Any]` / `AnyObject` query payloads; access to the
+// non-Sendable `UntypedJSONObject` / `AnyObject` query payloads; access to the
 // injectable client is serialized by DatabaseEncryptionKeychainClientBox.
 // sendable-allowlist: foundation-sdk-shim
 struct DatabaseEncryptionKeychainClient: @unchecked Sendable {
-    var copyMatching: (_ query: [String: Any]) -> (status: OSStatus, result: AnyObject?)
-    var add: (_ query: [String: Any]) -> OSStatus
-    var delete: (_ query: [String: Any]) -> OSStatus
+    var copyMatching: (_ query: UntypedJSONObject) -> (status: OSStatus, result: AnyObject?)
+    var add: (_ query: UntypedJSONObject) -> OSStatus
+    var delete: (_ query: UntypedJSONObject) -> OSStatus
 }
 
 // AUDIT(@unchecked Sendable): mutable test injection state is guarded by
@@ -144,17 +145,17 @@ private final class DatabaseEncryptionKeychainClientBox: @unchecked Sendable {
         current = client
     }
 
-    func copyMatching(_ query: [String: Any]) -> (status: OSStatus, result: AnyObject?) {
+    func copyMatching(_ query: UntypedJSONObject) -> (status: OSStatus, result: AnyObject?) {
         let client = withLockedClient()
         return client.copyMatching(query)
     }
 
-    func add(_ query: [String: Any]) -> OSStatus {
+    func add(_ query: UntypedJSONObject) -> OSStatus {
         let client = withLockedClient()
         return client.add(query)
     }
 
-    func delete(_ query: [String: Any]) -> OSStatus {
+    func delete(_ query: UntypedJSONObject) -> OSStatus {
         let client = withLockedClient()
         return client.delete(query)
     }
@@ -353,7 +354,7 @@ enum DatabaseEncryptionService {
             return .found(testKey)
         }
         #endif
-        let query: [String: Any] = [
+        let query: UntypedJSONObject = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: keyIdentifierAccount,
@@ -391,7 +392,7 @@ enum DatabaseEncryptionService {
     /// path can prompt by accident, and this is the one place allowed to, under direct
     /// user instruction.
     private static func interactiveCopyMatching(
-        _ query: [String: Any]
+        _ query: UntypedJSONObject
     ) -> (status: OSStatus, result: AnyObject?) {
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -509,7 +510,7 @@ enum DatabaseEncryptionService {
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         let key = Data(bytes).base64EncodedString()
 
-        let addQuery: [String: Any] = [
+        let addQuery: UntypedJSONObject = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: keyIdentifierAccount,
@@ -530,7 +531,7 @@ enum DatabaseEncryptionService {
     /// Deletes the encryption key from the Keychain.
     /// WARNING: This will make any existing encrypted database unreadable.
     static func deleteKey() {
-        let query: [String: Any] = [
+        let query: UntypedJSONObject = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: keyIdentifierAccount
@@ -662,7 +663,7 @@ enum DatabaseEncryptionService {
             let decrypted = try AES.GCM.open(sealedBox, using: symmetricKey)
             guard let key = String(data: decrypted, encoding: .utf8) else { return nil }
             // Re-import the recovered key into the Keychain for future use.
-            let addQuery: [String: Any] = [
+            let addQuery: UntypedJSONObject = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: keyIdentifierAccount,

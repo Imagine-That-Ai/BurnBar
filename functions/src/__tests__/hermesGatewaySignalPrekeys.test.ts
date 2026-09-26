@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   parseGatewaySignalPrekeyBundle,
   sameGatewaySignalIdentity,
-} from "../hermesGatewaySignalPrekeys.js";
-import { parsePhoneSignalPairing } from "../callables/hermesGatewayApproveSignal.js";
-import { sanitizeGatewayRelayEnvelopeCapabilities } from "../hermesGatewayEnvelope.js";
-import type { HermesGatewaySignalPrekeyBundleDoc } from "../types/generated/hermes-gateway.js";
+} from "../../../functions-media/src/hermesGatewaySignalPrekeys.js";
+import { parsePhoneSignalPairing } from "../../../functions-media/src/callables/hermesGatewayApproveSignal.js";
+import { sanitizeGatewayRelayEnvelopeCapabilities } from "../../../packages/functions-shared/src/hermesGatewayEnvelope.js";
+import type { HermesGatewaySignalPrekeyBundleDoc } from "../../../packages/functions-shared/src/types/generated/hermes-gateway.js";
 
 function validBundle(overrides: Partial<HermesGatewaySignalPrekeyBundleDoc> = {}): HermesGatewaySignalPrekeyBundleDoc {
   return {

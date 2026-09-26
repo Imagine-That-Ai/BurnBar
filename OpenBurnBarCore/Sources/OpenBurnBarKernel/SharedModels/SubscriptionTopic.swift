@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarHermesModels
 
 // MARK: - Subscription Topic (Hermes Square §6.2 / Pillar 2 / S4)
 //

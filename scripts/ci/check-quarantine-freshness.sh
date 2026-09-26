@@ -47,7 +47,15 @@ trim() {
 }
 
 overdue=()
+malformed=()
 checked=0
+table_cols=0
+
+# Terminal (non-date) Target values: an entry carrying one of these is
+# explicitly untracked. Anything else non-date on an entry row is a typo
+# that would otherwise evade the gate, so it fails closed below.
+terminal_target_re='^(Done|Archive|TBD|N/A|—|-)$'
+separator_cell_re='^:?-+:?$'
 
 while IFS= read -r line || [[ -n "$line" ]]; do
   row="$(trim "$line")"
@@ -61,6 +69,28 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   row="${row#|}"
   row="${row%|}"
   IFS='|' read -r -a cells <<< "$row"
+
+  # Separator rows declare their table's width; strictness below is
+  # relative to the enclosing table, so the 2-column totals table (which
+  # has a backtick row of its own) never trips entry validation.
+  is_separator=true
+  for cell in "${cells[@]}"; do
+    [[ "$(trim "$cell")" =~ $separator_cell_re ]] || { is_separator=false; break; }
+  done
+  if [[ "$is_separator" == true ]]; then
+    table_cols="${#cells[@]}"
+    continue
+  fi
+
+  # Entry-shaped rows (backtick test name) inside a 7-column entry table
+  # must be well-formed: a typo'd row that silently skips the gate is
+  # worse than no gate. Anything outside an entry table stays ignored.
+  is_entry_row=false
+  [[ "$table_cols" -eq 7 && "$(trim "$row")" == '`'* ]] && is_entry_row=true
+  if [[ "$is_entry_row" == true && "${#cells[@]}" -ne 7 ]]; then
+    malformed+=("entry row has ${#cells[@]} cells, want 7: $(trim "$line")")
+    continue
+  fi
   [[ "${#cells[@]}" -eq 7 ]] || continue
 
   name="$(trim "${cells[0]}")"
@@ -70,15 +100,22 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   # Skip the table header row.
   [[ "$name" == "Test Name" ]] && continue
 
-  # Only rows carrying a real Target Date are revival-tracked. "Done",
-  # "Archive", "—", separators, etc. carry no date obligation.
-  [[ "$target" =~ $date_re ]] || continue
-
   # LegacyReference / permanent entries are documentation-only: exempt.
   status_key="$(printf '%s' "$status" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
   case "$status_key" in
     *legacyreference*|*permanent*) continue ;;
   esac
+
+  # Only rows carrying a real Target Date are revival-tracked. Terminal
+  # values ("Done", "Archive", "TBD", …) carry no date obligation; any
+  # other non-date value on an entry row is a typo that fails closed.
+  if [[ ! "$target" =~ $date_re ]]; then
+    if [[ "$is_entry_row" == true && ! "$target" =~ $terminal_target_re ]]; then
+      display="${name//\`/}"
+      malformed+=("$display — unparseable Target Date '$target' (status: ${status:-unset}); use YYYY-MM-DD or a terminal value (Done/Archive/TBD)")
+    fi
+    continue
+  fi
 
   checked=$((checked + 1))
 
@@ -88,6 +125,17 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     overdue+=("$display — Target Date $target (status: ${status:-unset})")
   fi
 done < "$manifest"
+
+if [[ "${#malformed[@]}" -gt 0 ]]; then
+  echo "FAIL: ${#malformed[@]} malformed quarantine manifest entr(ies) in $manifest:" >&2
+  for entry in "${malformed[@]}"; do
+    echo "  - $entry" >&2
+  done
+  echo >&2
+  echo "Entry rows must be well-formed 7-cell rows with a YYYY-MM-DD Target" >&2
+  echo "Date or an explicit terminal value (Done/Archive/TBD). Fix the row." >&2
+  exit 1
+fi
 
 if [[ "${#overdue[@]}" -gt 0 ]]; then
   echo "FAIL: ${#overdue[@]} quarantined test(s) past revival Target Date (as of $today):" >&2

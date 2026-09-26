@@ -1,7 +1,7 @@
 import FirebaseAppCheck
 @preconcurrency import FirebaseAuth
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 @MainActor
 protocol HermesRealtimeRelayHosting: AnyObject {
@@ -634,7 +634,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
 
     private func hermesBaseURL() -> URL {
         URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8642")!
+            ?? URL(staticString: "http://127.0.0.1:8642")
     }
 
     private func hermesBaseURLWithTrailingSlash() -> URL {
@@ -647,7 +647,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
         let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
         let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
         let port = max(settingsManager.gatewayPort, 1)
-        let url = URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+        let url = URL(string: "http://\(host):\(port)") ?? URL(staticString: "http://127.0.0.1:8317")
         if url.absoluteString.hasSuffix("/") { return url }
         return URL(string: "\(url.absoluteString)/") ?? url
     }

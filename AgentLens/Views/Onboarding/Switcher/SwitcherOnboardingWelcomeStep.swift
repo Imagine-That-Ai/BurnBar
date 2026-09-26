@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 struct SwitcherOnboardingWelcomeStep: View {
     @ObservedObject var discoveryService: SwitcherDiscoveryService
@@ -131,8 +132,8 @@ struct SwitcherOnboardingWelcomeStep: View {
                 .frame(width: 12)
 
             Group {
-                if provider.hasBundledLogo {
-                    Image(provider.bundledLogoName!)
+                if provider.hasBundledLogo, let logoName = provider.bundledLogoName {
+                    Image(logoName)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                 } else {

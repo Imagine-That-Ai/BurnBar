@@ -40,6 +40,25 @@ const REPO_ROOT = process.env.PRIVACY_GATE_ROOT
   : join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FUNCTIONS_SRC = join(REPO_ROOT, "functions", "src");
 const INDEXES_PATH = join(REPO_ROOT, "firestore.indexes.json");
+// Wave 3.5: production functions live in four deploy codebases plus the shared
+// runtime package. Every root below is scanned; missing roots are skipped so
+// the self-test fixture (functions/src only) keeps working.
+const FUNCTIONS_CODEBASE_SRCS = [
+  "functions",
+  "functions-identity",
+  "functions-sync",
+  "functions-media",
+  "packages/functions-shared",
+].map((pkg) => join(REPO_ROOT, pkg, "src"));
+// Ordered candidate homes for files the gate reads by path: the live location
+// first, the pre-3.5 monolith location as fallback (also the self-test layout).
+function firstExistingRepoPath(candidates) {
+  for (const rel of candidates) {
+    const full = join(REPO_ROOT, rel);
+    if (existsSync(full)) return full;
+  }
+  return join(REPO_ROOT, candidates[0]);
+}
 
 /**
  * Root collections that persist a uid together with push tokens and/or
@@ -574,10 +593,14 @@ const ttlByCollection = new Map(
 );
 
 // --- Load production functions source ---------------------------------------
-const prodFiles = productionTsFiles(FUNCTIONS_SRC).map((f) => ({
-  path: f,
-  text: readFileSync(f, "utf8"),
-}));
+const prodFiles = FUNCTIONS_CODEBASE_SRCS.filter((root) =>
+  existsSync(root),
+)
+  .flatMap((root) => productionTsFiles(root))
+  .map((f) => ({
+    path: f,
+    text: readFileSync(f, "utf8"),
+  }));
 const allProdText = prodFiles.map((f) => f.text).join("\n");
 
 // === I1: ephemeral PII collections must declare a TTL override ==============
@@ -653,7 +676,10 @@ if (rawLoggerImporters.length === 0) {
 }
 
 // === I4: structured logger keeps UID-path redaction =========================
-const loggingPath = join(FUNCTIONS_SRC, "logging.ts");
+const loggingPath = firstExistingRepoPath([
+  "packages/functions-shared/src/logging.ts",
+  "functions/src/logging.ts",
+]);
 const loggingText = readOrDie(loggingPath);
 const redactUidPathsBody = extractFunctionBody(loggingText, "redactUidPaths");
 const scrubStringBody = extractFunctionBody(loggingText, "scrubString");
@@ -677,17 +703,27 @@ if (
 }
 
 // === I5: push payload builders omit stable correlators ======================
-// Map builder name to the file that defines it.
+// Map builder name to the ordered candidate homes of the file that defines it
+// (live location first, pre-3.5 monolith location as fallback).
 const PUSH_BUILDER_FILES = {
-  buildVoipApnsPayload: "voipPush.ts",
-  buildFcmCallPayload: "voipPush.ts",
-  buildFcmMessage: "agentNotifications.ts",
+  buildVoipApnsPayload: [
+    "functions-media/src/voipPush.ts",
+    "functions/src/voipPush.ts",
+  ],
+  buildFcmCallPayload: [
+    "functions-media/src/voipPush.ts",
+    "functions/src/voipPush.ts",
+  ],
+  buildFcmMessage: [
+    "functions-sync/src/domains/notify/agentNotificationTriggers.ts",
+    "functions/src/agentNotifications.ts",
+  ],
 };
 const pushSourceCache = {};
 function pushSourceText(fileName) {
   if (pushSourceCache[fileName] == null) {
-    const path = join(FUNCTIONS_SRC, fileName);
-    pushSourceCache[fileName] = readOrDie(path);
+    const candidates = Array.isArray(fileName) ? fileName : [fileName];
+    pushSourceCache[fileName] = readOrDie(firstExistingRepoPath(candidates));
   }
   return pushSourceCache[fileName];
 }
@@ -700,11 +736,16 @@ for (const builder of PUSH_PAYLOAD_BUILDERS) {
     );
     continue;
   }
+  const resolvedCandidates = Array.isArray(fileName) ? fileName : [fileName];
+  const resolvedName = relative(
+    REPO_ROOT,
+    firstExistingRepoPath(resolvedCandidates),
+  );
   const body = extractFunctionBody(pushSourceText(fileName), builder);
   if (body === null) {
     fail(
       "I5",
-      `${fileName} no longer defines ${builder}() — the push-payload-minimization invariant cannot be checked`,
+      `${resolvedName} no longer defines ${builder}() — the push-payload-minimization invariant cannot be checked`,
     );
     continue;
   }
@@ -717,17 +758,17 @@ for (const builder of PUSH_PAYLOAD_BUILDERS) {
   if (offending.length > 0) {
     fail(
       "I5",
-      `${builder}() in ${fileName} includes banned correlator key(s) [${offending.join(", ")}] — these must never ride to APNs/FCM (F-RR09-008)`,
+      `${builder}() in ${resolvedName} includes banned correlator key(s) [${offending.join(", ")}] — these must never ride to APNs/FCM (F-RR09-008)`,
     );
   } else if (spreads) {
     fail(
       "I5",
-      `${builder}() in ${fileName} spreads an object into the payload (\`...\`) — it must enumerate fields explicitly so a correlator cannot leak through a spread (F-RR09-008)`,
+      `${builder}() in ${resolvedName} spreads an object into the payload (\`...\`) — it must enumerate fields explicitly so a correlator cannot leak through a spread (F-RR09-008)`,
     );
   } else {
     ok(
       "I5",
-      `${builder}() in ${fileName} omits stable correlators and uses no spread (F-RR09-008)`,
+      `${builder}() in ${resolvedName} omits stable correlators and uses no spread (F-RR09-008)`,
     );
   }
 }

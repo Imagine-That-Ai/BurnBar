@@ -14,7 +14,7 @@ function snapFor(path: string) {
   };
 }
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: {
     doc: (path: string) => ({
       get: async () => snapFor(path),
@@ -23,7 +23,7 @@ vi.mock("../adminRuntime.js", () => ({
   auth: {},
 }));
 
-import { __testing__ } from "../callables/computerUseSecurity.js";
+import { __testing__ } from "../../../functions-sync/src/domains/computer-use/computerUseSecurity.js";
 
 const { requireTrustedDeviceActionProof } = __testing__;
 

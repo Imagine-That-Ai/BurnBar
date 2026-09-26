@@ -183,7 +183,7 @@ public final class CopilotParser: LogParser, Sendable {
 
     private func parseMetadata(_ url: URL) -> Metadata? {
         guard let data = try? Data(contentsOf: url),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+              let object = BurnBarJSONValue.dictionary(fromJSONData: data)
         else { return nil }
         let usage = object["usage"] as? [String: Any] ?? object["tokenUsage"] as? [String: Any]
         guard let usage else { return nil }
@@ -242,7 +242,7 @@ public final class CopilotParser: LogParser, Sendable {
             var linesInThisSegment = Set<String>()
             for line in handle.readAllUTF8Lines() {
                 guard let data = line.data(using: .utf8),
-                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                      let object = BurnBarJSONValue.dictionary(fromJSONData: data)
                 else { continue }
                 if let eventID = object["id"] as? String, !eventID.isEmpty {
                     guard seenEventIDs.insert(eventID).inserted else { continue }
@@ -351,7 +351,7 @@ public final class CopilotParser: LogParser, Sendable {
             state.end = state.end.map { max($0, timestamp) } ?? timestamp
         }
         if let model = object["model"] as? String ?? eventData?["model"] as? String,
-           !model.isEmpty {
+           !TokenExtractionUtility.isPlaceholderModelName(model) {
             state.model = model
         }
 

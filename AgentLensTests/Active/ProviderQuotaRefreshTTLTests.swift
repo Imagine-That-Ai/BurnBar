@@ -4,9 +4,10 @@ import XCTest
 @testable import OpenBurnBarCore
 @testable import OpenBurnBar
 @testable import OpenBurnBarQuota
+import OpenBurnBarKernel
 
-private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
-private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot
+private typealias ProviderQuotaBucket = OpenBurnBarKernel.ProviderQuotaBucket
+private typealias ProviderQuotaSnapshot = OpenBurnBarKernel.ProviderQuotaSnapshot
 
 /// Adaptive quota TTL cases extracted from `ProviderQuotaServiceTests` so that
 /// type-body length stays under the SwiftLint `--strict` ratchet.

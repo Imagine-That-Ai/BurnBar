@@ -1,5 +1,10 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarHermes
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarPretext
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 // MARK: - Hermes Atom Components (macOS)
 //

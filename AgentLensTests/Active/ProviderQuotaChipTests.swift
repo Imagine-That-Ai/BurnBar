@@ -2,13 +2,14 @@ import XCTest
 import SwiftUI
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarKernel
 
-private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
-private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot
-private typealias ProviderQuotaWindowKind = OpenBurnBar.ProviderQuotaWindowKind
-private typealias ProviderQuotaUnit = OpenBurnBar.ProviderQuotaUnit
-private typealias ProviderQuotaSourceKind = OpenBurnBar.ProviderQuotaSourceKind
-private typealias ProviderQuotaConfidence = OpenBurnBar.ProviderQuotaConfidence
+private typealias ProviderQuotaBucket = OpenBurnBarKernel.ProviderQuotaBucket
+private typealias ProviderQuotaSnapshot = OpenBurnBarKernel.ProviderQuotaSnapshot
+private typealias ProviderQuotaWindowKind = OpenBurnBarKernel.ProviderQuotaWindowKind
+private typealias ProviderQuotaUnit = OpenBurnBarKernel.ProviderQuotaUnit
+private typealias ProviderQuotaSourceKind = OpenBurnBarKernel.ProviderQuotaSourceKind
+private typealias ProviderQuotaConfidence = OpenBurnBarKernel.ProviderQuotaConfidence
 
 @MainActor
 final class ProviderQuotaChipTests: XCTestCase {

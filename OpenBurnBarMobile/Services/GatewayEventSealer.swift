@@ -1,6 +1,6 @@
 import CryptoKit
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 typealias GatewaySignalSessionProvider = OBBSignalGatewayEnvelopeProvider
 
 /// E2EE sealing core for phone→agent Hermes Gateway events, extracted
@@ -14,7 +14,7 @@ typealias GatewaySignalSessionProvider = OBBSignalGatewayEnvelopeProvider
 /// and the no-plaintext-payload bans — to this file.
 @MainActor
 enum GatewayEventSealer {
-    nonisolated static func gatewayDestinationID(in payload: [String: Any]) -> String {
+    nonisolated static func gatewayDestinationID(in payload: MobileJSONObject) -> String {
         if let value = payload["destinationId"] as? String {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { return trimmed }
@@ -82,8 +82,8 @@ enum GatewayEventSealer {
     }
 
     nonisolated static func applyExtraSealedFields(
-        _ fields: [String: Any],
-        to sealedPayload: inout [String: Any]
+        _ fields: MobileJSONObject,
+        to sealedPayload: inout MobileJSONObject
     ) throws {
         try validateExtraSealedFields(fields)
         for (rawKey, value) in fields {
@@ -92,7 +92,7 @@ enum GatewayEventSealer {
         }
     }
 
-    private nonisolated static func validateExtraSealedFields(_ fields: [String: Any]) throws {
+    private nonisolated static func validateExtraSealedFields(_ fields: MobileJSONObject) throws {
         for rawKey in fields.keys {
             let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty, !gatewaySealedPayloadReservedKeys.contains(key) else {
@@ -105,7 +105,7 @@ enum GatewayEventSealer {
     /// to seal unless the target can seal AND its advertised relay pubkey passes
     /// the phone's TOFU pin check. Fails closed on every gap.
     nonisolated static func sealGatewayEventPayload(
-        into payload: inout [String: Any],
+        into payload: inout MobileJSONObject,
         text: String,
         senderDisplayName: String,
         threadId: String,
@@ -114,7 +114,7 @@ enum GatewayEventSealer {
         uid: String,
         pinStore: HermesGatewayAgentKeyPinStore = HermesGatewayAgentKeyPinStore(),
         kind: String? = nil,
-        extraSealedFields: [String: Any] = [:]
+        extraSealedFields: MobileJSONObject = [:]
     ) throws {
         guard let targetClient, !uid.isEmpty else {
             throw FunctionsError.gatewayTargetMissingRelayKey
@@ -171,7 +171,7 @@ enum GatewayEventSealer {
             clientId: targetClient.id,
             phoneRelayPublicKey: keypair.relayPublicKeyBase64
         )
-        var sealedPayload: [String: Any] = [
+        var sealedPayload: MobileJSONObject = [
             "text": text,
             "destinationId": destinationId,
             "replayCounter": replayCounter,
@@ -193,7 +193,7 @@ enum GatewayEventSealer {
             aad: try HermesRelayCrypto.gatewayEventAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
         )
         let keyAAD = try HermesRelayCrypto.gatewayEventKeyAAD(uid: uid, clientId: targetClient.id, eventId: eventId)
-        var relayEnvelope: [String: Any] = [
+        var relayEnvelope: MobileJSONObject = [
             "payloadCiphertext": payloadCiphertext,
             "senderPublicKey": keypair.relayPublicKeyBase64
         ]
@@ -232,7 +232,7 @@ enum GatewayEventSealer {
     /// session actor and the server-claimed, identity-pinned peer bundle; this
     /// method never falls back to HPKE or the legacy custom ratchet.
     static func sealGatewayEventSignalPayload(
-        into payload: inout [String: Any],
+        into payload: inout MobileJSONObject,
         text: String,
         senderDisplayName: String,
         threadId: String,
@@ -241,10 +241,10 @@ enum GatewayEventSealer {
         uid: String,
         provider: any GatewaySignalSessionProvider,
         kind: String? = nil,
-        extraSealedFields: [String: Any] = [:]
+        extraSealedFields: MobileJSONObject = [:]
     ) async throws {
         try validateExtraSealedFields(extraSealedFields)
-        var privatePayload: [String: Any] = [
+        var privatePayload: MobileJSONObject = [
             "text": text,
             "destinationId": gatewayDestinationID(in: payload),
             "senderDisplayName": senderDisplayName,
@@ -261,7 +261,7 @@ enum GatewayEventSealer {
             clientId: targetClient.id,
             slotId: kind ?? "message"
         )
-        guard let signalEnvelope = try JSONSerialization.jsonObject(with: signalEnvelopeData) as? [String: Any] else {
+        guard let signalEnvelope = try JSONSerialization.jsonObject(with: signalEnvelopeData) as? MobileJSONObject else {
             throw FunctionsError.gatewayInvalidSealedControlPayload
         }
         for key in ["text", "senderDisplayName", "threadId", "modelId", "kind", "relayEnvelope", "ratchetEnvelope"] {
@@ -272,7 +272,7 @@ enum GatewayEventSealer {
     }
 
     nonisolated static func sealGatewayEventRatchetPayload(
-        into payload: inout [String: Any],
+        into payload: inout MobileJSONObject,
         text: String,
         senderDisplayName: String,
         threadId: String,
@@ -281,7 +281,7 @@ enum GatewayEventSealer {
         uid: String,
         pinStore: HermesGatewayAgentKeyPinStore,
         kind: String? = nil,
-        extraSealedFields: [String: Any] = [:]
+        extraSealedFields: MobileJSONObject = [:]
     ) throws {
         let localRelayKeypair = try HermesGatewayRelayKeypair.loadOrCreate()
         guard targetClient.isPairedWithThisDevice(relayPublicKeyBase64: localRelayKeypair.relayPublicKeyBase64) else {
@@ -320,7 +320,7 @@ enum GatewayEventSealer {
             clientId: targetClient.id,
             phoneRelayPublicKey: localRelayKeypair.relayPublicKeyBase64
         )
-        var sealedPayload: [String: Any] = [
+        var sealedPayload: MobileJSONObject = [
             "text": text,
             "destinationId": destinationId,
             "replayCounter": replayCounter,
@@ -380,7 +380,7 @@ enum GatewayEventSealer {
         try HermesGatewayRatchetSessionStore.save(state)
         try HermesGatewayRatchetSessionStore.saveCurrentChatSessionID(state.sessionID, uid: uid, clientId: targetClient.id)
         let envelopeData = try JSONEncoder().encode(envelope)
-        guard let envelopeJSON = try JSONSerialization.jsonObject(with: envelopeData) as? [String: Any] else {
+        guard let envelopeJSON = try JSONSerialization.jsonObject(with: envelopeData) as? MobileJSONObject else {
             throw HermesRatchetError.invalidEnvelope
         }
         payload["eventId"] = eventId

@@ -11,4 +11,4 @@ export {
   gatewaySignalRequiredMode,
   productionGatewaySignalEnvelopeVersions,
   productionGatewayRelayKeyVersions,
-} from "./hermesGateway.js";
+} from "@openburnbar/functions-shared/hermesGateway.js";

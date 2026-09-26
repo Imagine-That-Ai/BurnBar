@@ -306,6 +306,29 @@ def _uuid_like(value: str) -> bool:
         return False
 
 
+def codex_rollout_contained_path(raw: str, home: Path) -> Path | None:
+    """Jail a Codex `rollout_path` under `~/.codex` (Wave 2.7).
+
+    The path comes from Codex's own SQLite database (attacker-influenced).
+    Expands `~/` against the given home, resolves `..` and symlinks, and
+    returns the path only when it stays strictly inside `home/.codex`;
+    otherwise None. Bare `~`, `~otheruser`, and relative paths are refused
+    outright. Mirrors Swift `CodexRolloutJail`.
+    """
+    if raw.startswith("~/"):
+        expanded = home / raw[2:]
+    elif raw.startswith("~") or not raw.startswith("/"):
+        return None
+    else:
+        expanded = Path(raw)
+    try:
+        jail = (home / ".codex").resolve()
+        resolved = expanded.resolve()
+    except OSError:
+        return None
+    return resolved if jail in resolved.parents else None
+
+
 def validate_native_handle(
     provider_normalized: str | None, raw_handle: str | None, env: ResumeEnvironment | None = None
 ) -> str | None:
@@ -337,7 +360,10 @@ def validate_native_handle(
                     ).fetchone()
                     if row:
                         rollout_path = row["rollout_path"]
-                        if not rollout_path or Path(str(rollout_path)).expanduser().is_file():
+                        # Wave 2.7: jail the DB-supplied path before the
+                        # existence probe — an escape is not a valid handle.
+                        jailed = codex_rollout_contained_path(str(rollout_path or ""), home)
+                        if not rollout_path or (jailed and jailed.is_file()):
                             result = raw_handle
             except sqlite3.Error:
                 pass
@@ -345,7 +371,10 @@ def validate_native_handle(
             sessions_root = home / ".codex" / "sessions"
             if sessions_root.exists():
                 for path in sessions_root.rglob(f"*{raw_handle}*.jsonl"):
-                    if path.is_file():
+                    # Wave 2.7: the glob walks inside the jail, but a hit may
+                    # be a symlink pointing out — resolve before trusting it.
+                    jailed = codex_rollout_contained_path(str(path), home)
+                    if jailed and jailed.is_file():
                         result = raw_handle
                         break
 

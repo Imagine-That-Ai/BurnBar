@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import OpenBurnBarKernel
 
 // MARK: - Control Deck
 //
@@ -51,7 +52,18 @@ struct ControlDeckView: View {
     // Live reads the header summary needs. Held here (rather than only inside
     // the tiles) so the summary re-renders the moment a tile's value changes.
     @AppStorage(ChartsPageView.aiToggleKey) private var chartsAIInsights = false
+    #if OPENBURNBAR_LAB
     @AppStorage(PetCompanionFeature.DefaultsKey.enabled) private var petCompanionEnabled = false
+    #endif
+
+    /// Core builds have no companion: the readout input stays `false`.
+    private var petCompanionEnabledValue: Bool {
+        #if OPENBURNBAR_LAB
+        petCompanionEnabled
+        #else
+        false
+        #endif
+    }
     #if !DISTRIBUTION_MAS
     @AppStorage(DirectDownloadUpdateChecker.automaticChecksKey) private var updatesAutomaticChecks = true
     #endif
@@ -69,7 +81,7 @@ struct ControlDeckView: View {
             textExpansionEverywhere: settingsManager.textExpansion.macGlobalExpansionEnabled,
             chartsAIInsights: chartsAIInsights,
             spendAlertThreshold: settingsManager.costAlertThreshold,
-            petCompanionEnabled: petCompanionEnabled,
+            petCompanionEnabled: petCompanionEnabledValue,
             aiInboxEnabled: model.inboxConfig?.enabled ?? false,
             modelRouterEnabled: settingsManager.gatewayEnabled,
             wandCastsRunning: castsRunning,

@@ -1,6 +1,9 @@
 import Charts
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 import SwiftUI
+import OpenBurnBarAnalytics
 
 // MARK: - Shared concept building blocks
 //

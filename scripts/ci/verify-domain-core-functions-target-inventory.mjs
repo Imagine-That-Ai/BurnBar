@@ -13,6 +13,13 @@ const OBSERVER_TARGETS = Object.freeze([
   "healthReady",
 ]);
 const STATIC_IMPORT = /(?:\bfrom\s*|\bimport\s*)(["'])(\.{1,2}\/[^"']+)\1/gmu;
+// Wave 3.5 moved the pricing implementation into the shared workspace
+// package. Functions origins reach it through this bare specifier, so the
+// graph must resolve the prefix instead of treating it as an opaque
+// third-party import. No other bare specifier is followed.
+const SHARED_PACKAGE_PREFIX = "@openburnbar/functions-shared/";
+const SHARED_IMPORT =
+  /(?:\bfrom\s*|\bimport\s*)(["'])@openburnbar\/functions-shared\/([^"']+)\1/gmu;
 const NAMED_REEXPORT =
   /\bexport\s*\{([^}]*)\}\s*from\s*(["'])(\.{1,2}\/[^"']+)\2\s*;/gmu;
 
@@ -118,7 +125,15 @@ export function deriveDomainCoreFunctionsTargets(
   repoRoot = ROOT,
   sourceRoot = resolve(repoRoot, "functions/src"),
 ) {
-  const paths = sourceFiles(sourceRoot);
+  // The shared package holds the post-split pricing implementation. Fixtures
+  // that copy functions/ alone (see the fail-closed self-test) have no
+  // packages/ directory; bare shared imports there stay invisible, exactly
+  // as before the split.
+  const sharedRoot = resolve(repoRoot, "packages/functions-shared/src");
+  const roots = existsSync(sharedRoot)
+    ? [sourceRoot, sharedRoot]
+    : [sourceRoot];
+  const paths = roots.flatMap((root) => sourceFiles(root));
   const modules = new Map();
   const graph = new Map();
   for (const path of paths) {
@@ -130,6 +145,26 @@ export function deriveDomainCoreFunctionsTargets(
     const imports = new Set();
     for (const match of syntax.matchAll(STATIC_IMPORT))
       imports.add(resolveModule(path, match[2]));
+    if (roots.length > 1) {
+      for (const match of syntax.matchAll(SHARED_IMPORT)) {
+        const raw = resolve(sharedRoot, match[2]);
+        const candidates = [
+          raw.replace(/\.js$/u, ".ts"),
+          raw.replace(/\.mjs$/u, ".ts"),
+          `${raw}.ts`,
+          resolve(raw, "index.ts"),
+        ];
+        const target = candidates.find((candidate) => existsSync(candidate));
+        if (!target)
+          throw new Error(
+            `${path} references missing shared module ${SHARED_PACKAGE_PREFIX}${match[2]}`,
+          );
+        const stat = lstatSync(target);
+        if (!stat.isFile() || stat.isSymbolicLink())
+          throw new Error(`source graph module must be a regular file: ${target}`);
+        imports.add(target);
+      }
+    }
     modules.set(path, {
       source: syntax,
       reexports: parseReexports(path, syntax),
@@ -143,10 +178,18 @@ export function deriveDomainCoreFunctionsTargets(
     throw new Error(
       "Functions source graph lacks index.ts or domainCorePricing.ts",
     );
+  // functions/src/domainCorePricing.ts is a legacy-deletion shim that
+  // re-exports the shared implementation through a bare specifier the graph
+  // cannot traverse backwards, so both the shim and the real implementation
+  // are pricing sinks.
+  const pricingSinks = new Set([pricingPath]);
+  const sharedPricingPath = resolve(sharedRoot, "domainCorePricing.ts");
+  if (modules.has(sharedPricingPath)) pricingSinks.add(sharedPricingPath);
   const targets = new Set(OBSERVER_TARGETS);
   for (const name of index.reexports.keys()) {
     const origin = exportOrigin(modules, indexPath, name);
-    if (reaches(graph, origin, pricingPath)) targets.add(name);
+    if ([...pricingSinks].some((sink) => reaches(graph, origin, sink)))
+      targets.add(name);
   }
   for (const observer of OBSERVER_TARGETS)
     exportOrigin(modules, indexPath, observer);

@@ -3,7 +3,8 @@ import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import Observation
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 
 // MARK: - Rollback Service (Hermes Square §6.10)
 //

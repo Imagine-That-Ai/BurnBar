@@ -589,6 +589,72 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch", "major"]
 
+  # Wave 3.5 Functions split packages: each ships its own lockfile, so each
+  # needs an npm owner or the OSV required gate has no auto-fix bot here.
+  - package-ecosystem: "npm"
+    directory: "/functions-identity"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
+    directory: "/functions-media"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
+    directory: "/functions-sync"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
+    directory: "/packages/functions-shared"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
   # Security updates for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

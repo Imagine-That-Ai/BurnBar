@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarVaultModels
 @testable import OpenBurnBarKernel
 
 final class CloudVaultDocumentRewrapDomainCoreAdapterTests: XCTestCase {

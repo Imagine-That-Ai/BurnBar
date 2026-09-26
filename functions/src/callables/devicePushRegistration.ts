@@ -5,12 +5,12 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 
-import { db } from "../adminRuntime.js";
-import { enforceAuthAndAppCheck } from "../auth.js";
-import { getConfig } from "../config.js";
-import { logInfo, wrapCallableHandler } from "../logging.js";
-import { FUNCTIONS_REGION } from "../runtimeOptions.js";
-import { boundedTrimmedString } from "./shared.js";
+import { db } from "@openburnbar/functions-shared/adminRuntime.js";
+import { enforceAuthAndAppCheck } from "@openburnbar/functions-shared/auth.js";
+import { getConfig } from "@openburnbar/functions-shared/config.js";
+import { logInfo, wrapCallableHandler } from "@openburnbar/functions-shared/logging.js";
+import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
+import { boundedTrimmedString } from "@openburnbar/functions-shared/shared/validators.js";
 
 const PUSH_TOKEN_MAX_LENGTH = 4096;
 const DEVICE_ID_MAX_LENGTH = 160;

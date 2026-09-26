@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension SessionLogSyncService {
     func uploadProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot) async throws {

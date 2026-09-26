@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Home Assistant Blueprint Installer
 //
@@ -21,10 +22,10 @@ struct HomeAssistantBlueprintInstaller: Sendable {
 
     /// Default hosted blueprint URL. Stored in a constant so changing
     /// the host (e.g. moving from a gist to a repo) is one diff.
-    static let defaultBlueprintURL = URL(string: "https://raw.githubusercontent.com/openburnbar/openburnbar/main/integrations/home-assistant/openburnbar_smart_display_recovery.yaml")!
+    static let defaultBlueprintURL = URL(staticString: "https://raw.githubusercontent.com/openburnbar/openburnbar/main/integrations/home-assistant/openburnbar_smart_display_recovery.yaml")
 
     /// HA's My Home Assistant import-redirect URL.
-    static let myHARedirectBaseURL = URL(string: "https://my.home-assistant.io/redirect/blueprint_import/")!
+    static let myHARedirectBaseURL = URL(staticString: "https://my.home-assistant.io/redirect/blueprint_import/")
 
     /// Generates the deep link the user clicks. HA's own blueprint
     /// importer accepts a single `blueprint_url` query parameter.

@@ -1,7 +1,9 @@
 import Foundation
 import CryptoKit
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarVectorKit
 
 extension ControlPlaneStore {
     func registerMemoryEmbeddingVersion(
@@ -75,47 +77,10 @@ extension ControlPlaneStore {
         )
     }
 
-    func upsertMemoryEmbeddingRef(
-        memoryID: MemoryID,
-        embeddingVersionID: String,
-        vector: [Float],
-        now: Date = Date()
-    ) async throws {
-        guard vector.isEmpty == false else { throw MemoryEmbeddingStoreError.emptyVector }
-        try await dbQueue.write { db in
-            let expectedDimension = try Int.fetchOne(
-                db,
-                sql: """
-                SELECT embedding_models.dimensions
-                FROM embedding_versions
-                JOIN embedding_models ON embedding_models.id = embedding_versions.modelID
-                WHERE embedding_versions.id = ?
-                """,
-                arguments: [embeddingVersionID]
-            )
-            guard let expectedDimension else {
-                throw MemoryEmbeddingStoreError.unknownEmbeddingVersion(embeddingVersionID)
-            }
-            guard vector.count == expectedDimension else {
-                throw MemoryEmbeddingStoreError.dimensionMismatch(expected: expectedDimension, actual: vector.count)
-            }
-            let vectorBlob = BurnBarVectorBlobCodec.encode(vector)
-            let norm = Self.vectorNorm(vector)
-            try db.execute(
-                sql: """
-                INSERT INTO memory_embedding_refs (
-                    memory_id, embedding_version_id, dimension, vector, norm, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(memory_id, embedding_version_id) DO UPDATE SET
-                    dimension = excluded.dimension,
-                    vector = excluded.vector,
-                    norm = excluded.norm,
-                    created_at = excluded.created_at
-                """,
-                arguments: [memoryID, embeddingVersionID, expectedDimension, vectorBlob, norm, now]
-            )
-        }
-    }
+    // NOTE: `memory_embedding_refs` is daemon-written (ADR-005); the app reads it
+    // via `memoryEmbeddingMatches` below and must not upsert. An app-side
+    // upsert existed here with zero callers and was removed (Wave 0.3) to
+    // enforce single-writer ownership.
 
     func memoryEmbeddingMatches(
         queryVector: [Float],
@@ -154,11 +119,5 @@ extension ControlPlaneStore {
             }
             return Array(matches.prefix(max(1, limit)))
         }
-    }
-
-    private static func vectorNorm(_ vector: [Float]) -> Double {
-        vector.reduce(0.0) { partial, value in
-            partial + Double(value * value)
-        }.squareRoot()
     }
 }

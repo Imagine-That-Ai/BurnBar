@@ -1,7 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
 import OpenBurnBarComputerUseCore
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import OSLog
 
 // Mission event recording, transcript mirroring, and summaries.

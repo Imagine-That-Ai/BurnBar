@@ -23,8 +23,14 @@ let package = Package(
         ),
         .executableTarget(
             name: "OpenBurnBarStreamPerfProbe",
+            // 3.3: narrowed off the OpenBurnBarCore umbrella (leaf types
+            // resolve through Kernel's re-exports).
             dependencies: [
-                .product(name: "OpenBurnBarCore", package: "OpenBurnBarCore")
+                .product(name: "OpenBurnBarComputerUseCore", package: "OpenBurnBarCore"),
+                .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore"),
+                .product(name: "OpenBurnBarKernel", package: "OpenBurnBarCore"),
+                .product(name: "OpenBurnBarMedia", package: "OpenBurnBarCore"),
+                .product(name: "OpenBurnBarQuota", package: "OpenBurnBarCore")
             ]
         )
     ],

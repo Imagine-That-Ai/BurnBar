@@ -121,15 +121,15 @@ const { store, dbMock, FieldValueMock, FakeTimestamp } = vi.hoisted(() => {
   return { store, dbMock, FieldValueMock, FakeTimestamp };
 });
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock, auth: {} }));
 vi.mock("firebase-admin/firestore", () => ({ FieldValue: FieldValueMock, Timestamp: FakeTimestamp }));
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   assertAuth: vi.fn(),
   assertAppCheck: vi.fn(),
   assertOwnership: vi.fn(),
   enforceAuthAndAppCheck: vi.fn(),
 }));
-vi.mock("../appCheckAttestation.js", () => ({
+vi.mock("../../../packages/functions-shared/src/appCheckAttestation.js", () => ({
   enforceHighRiskComputerUseCallableWithNonce: vi.fn(async () => ({ nonceConsumed: true })),
 }));
 const { requireTrustedDeviceActionProof } = vi.hoisted(() => ({
@@ -139,17 +139,20 @@ const { requireTrustedDeviceActionProof } = vi.hoisted(() => ({
     signalIdentityKeyId: "phone-survivor_1",
   })),
 }));
-vi.mock("../callables/computerUseSecurity.js", () => ({
+vi.mock("../../../functions-sync/src/domains/computer-use/computerUseSecurity.js", () => ({
+  requireTrustedDeviceActionProof,
+}));
+vi.mock("../../../packages/functions-shared/src/callables/computerUseSecurityFirestore.js", () => ({
   requireTrustedDeviceActionProof,
 }));
 const { configMock } = vi.hoisted(() => ({ configMock: { enforceAppCheck: true, requireHighRiskNonce: false } }));
-vi.mock("../config.js", () => ({ getConfig: () => configMock }));
-vi.mock("../logging.js", async () => {
-  const actual = await vi.importActual<typeof import("../logging.js")>("../logging.js");
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => configMock }));
+vi.mock("../../../packages/functions-shared/src/logging.js", async () => {
+  const actual = await vi.importActual<typeof import("../../../packages/functions-shared/src/logging.js")>("../../../packages/functions-shared/src/logging.js");
   return { ...actual, logInfo: vi.fn(), logWarn: vi.fn() };
 });
 
-import { rotateCloudVaultKey } from "../callables/cloudVaultRotation.js";
+import { rotateCloudVaultKey } from "../../../functions-identity/src/domains/devices/cloudVaultRotation.js";
 
 const UID = "uidRotate";
 const CURRENT_KEY = "v1_" + "a".repeat(32);

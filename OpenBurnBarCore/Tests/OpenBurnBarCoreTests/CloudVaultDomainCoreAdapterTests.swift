@@ -2,6 +2,7 @@ import Foundation
 import OpenBurnBarDomainCoreRuntime
 import XCTest
 @testable import OpenBurnBarCore
+@testable import OpenBurnBarVaultModels
 @testable import OpenBurnBarKernel
 
 final class CloudVaultDomainCoreAdapterTests: XCTestCase {

@@ -1,6 +1,9 @@
 import FirebaseFirestore
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Uploads non-secret provider account metadata so iOS/iPad can show the same
 /// account list as macOS. Credentials remain in Keychain or server-private

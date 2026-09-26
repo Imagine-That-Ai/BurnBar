@@ -168,11 +168,18 @@ class DomainCoreLegacyDeletionGateTests(unittest.TestCase):
             {
                 "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/ClaudeQuotaLegacy.swift",
                 "OpenBurnBarCore/Sources/OpenBurnBarQuota/ProviderQuota/Legacy/CodexQuotaLegacy.swift",
+                # Wave 3.2 moved the implementations; the ledger tracks both the
+                # pinned legacy paths (re-export shims) and the new homes.
                 "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyCrypto.swift",
                 "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacyDocumentRewrap.swift",
                 "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/CloudVaultLegacySearch.swift",
                 "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRelayLegacyCrypto.swift",
                 "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/HermesRatchetLegacyCrypto.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarVaultModels/CloudVaultLegacyCrypto.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarVaultModels/CloudVaultLegacyDocumentRewrap.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarVaultModels/CloudVaultLegacySearch.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarHermesModels/HermesRelayLegacyCrypto.swift",
+                "OpenBurnBarCore/Sources/OpenBurnBarHermesModels/HermesRatchetLegacyCrypto.swift",
                 "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyCrypto.kt",
                 "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacySearch.kt",
                 "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultLegacyDocumentRewrap.kt",

@@ -1,5 +1,7 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Settings Manifest (macOS)
 
@@ -17,7 +19,33 @@ import OpenBurnBarCore
 ///    `@FocusState` in the destination.
 enum SettingsManifest {
 
-    static let all: [SettingsItem] = baseItems + localDBoxItems + providerItems
+    static let all: [SettingsItem] = baseItems + labPetsItems + localDBoxItems + providerItems
+
+    // Lab: the pets manifest entry ships only in Lab builds (3.1). A
+    // separate gated declaration — #if cannot appear inside the array
+    // literals below (the toolchain rejects it) — same shape as the
+    // DISTRIBUTION_MAS localDBoxItems pair.
+    #if OPENBURNBAR_LAB
+    private static let labPetsItems: [SettingsItem] = [
+        SettingsItem(
+            id: "pets.companion",
+            tab: .pets,
+            pageRoute: .petsRoot,
+            anchorID: SettingsAnchor.petsCompanion,
+            title: "Desktop Pet",
+            subtitle: "Show, pick, and summon the companion, including the pet's answering agent",
+            keywords: [
+                "pet", "pets", "companion", "desktop pet", "summon", "hide",
+                "hotkey", "paw", "agent", "brain", "answering agent", "mascot"
+            ],
+            helpText: "Opens the desktop companion controls for visibility, pet form selection, and the enabled answering-agent picker."
+        )
+    ]
+    private static let labPetsAnchorIDs: [String] = [SettingsAnchor.petsCompanion]
+    #else
+    private static let labPetsItems: [SettingsItem] = []
+    private static let labPetsAnchorIDs: [String] = []
+    #endif
 
     private static let baseItems: [SettingsItem] = [
         // MARK: Home
@@ -889,22 +917,6 @@ enum SettingsManifest {
             helpText: "Reopens the step-by-step Mac permissions wizard so an existing user can grant anything they skipped during onboarding."
         ),
 
-        // MARK: Pets
-
-        SettingsItem(
-            id: "pets.companion",
-            tab: .pets,
-            pageRoute: .petsRoot,
-            anchorID: SettingsAnchor.petsCompanion,
-            title: "Desktop Pet",
-            subtitle: "Show, pick, and summon the companion, including the pet's answering agent",
-            keywords: [
-                "pet", "pets", "companion", "desktop pet", "summon", "hide",
-                "hotkey", "paw", "agent", "brain", "answering agent", "mascot"
-            ],
-            helpText: "Opens the desktop companion controls for visibility, pet form selection, and the enabled answering-agent picker."
-        ),
-
         // MARK: Account Switcher — now lives inside Agents → CLIs / Advanced.
 
         SettingsItem(
@@ -1122,7 +1134,6 @@ enum SettingsManifest {
         SettingsAnchor.dataControlCenterInventory,
         SettingsAnchor.computerUseReadiness,
         SettingsAnchor.computerUsePermissionsSetup,
-        SettingsAnchor.petsCompanion,
         SettingsAnchor.switcherBrowser,
         SettingsAnchor.switcherCLI,
         SettingsAnchor.hermesConnections,
@@ -1134,7 +1145,7 @@ enum SettingsManifest {
         SettingsAnchor.hermesPiRelay,
         SettingsAnchor.analysisConfigurator,
         SettingsAnchor.fusionImpact
-    ]).union(providerItems.map(\.anchorID)).union(localDBoxAnchors)
+    ] + labPetsAnchorIDs).union(providerItems.map(\.anchorID)).union(localDBoxAnchors)
 
 #if !DISTRIBUTION_MAS
     private static let localDBoxItems: [SettingsItem] = [

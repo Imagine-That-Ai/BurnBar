@@ -64,30 +64,77 @@ enum BurnBarCLIAuditVerify {
 
         let archiveURL = URL(fileURLWithPath: archivePath)
         let signatureURL = signaturePath.map { URL(fileURLWithPath: $0) }
+        let writer = ComputerUseAuditExportWriter()
+        let entries: [(path: String, sha256: Data, size: Int)]
+        let sessionFiles: ComputerUseAuditExportWriter.ArchiveSessionFiles
         do {
-            let entries = try ComputerUseAuditExportWriter().verify(
-                archive: archiveURL,
-                signatureURL: signatureURL
-            )
-            let paths = entries.map(\.path).sorted()
-            return BurnBarCLIInvocationResult(
-                output: [
-                    "archive_valid=true",
-                    "entry_count=\(entries.count)",
-                    "contains_manifest=\(paths.contains("manifest.json"))",
-                    "contains_chain=\(paths.contains("chain.jsonl"))",
-                    "contains_signed_head=\(paths.contains(ComputerUseAuditHeadFinalizer.signedHeadFilename))",
-                    "signature_checked=\(signatureURL != nil)",
-                    "fully_verified=true"
-                ].joined(separator: "\n"),
-                exitCode: EXIT_SUCCESS
-            )
+            entries = try writer.verify(archive: archiveURL, signatureURL: signatureURL)
+            sessionFiles = try writer.extractSessionFiles(archive: archiveURL, signatureURL: signatureURL)
         } catch {
             return BurnBarCLIInvocationResult(
                 output: [
                     "archive_valid=false",
                     "first_invalid_reason=\(error.localizedDescription)",
                     "fully_verified=false"
+                ].joined(separator: "\n"),
+                exitCode: EXIT_FAILURE
+            )
+        }
+        // Wave 0.4: route archives through the real chain verifier instead of
+        // asserting a literal fully_verified=true. A corrupt signed head is an
+        // unevaluable seal, not a pass.
+        let signedHead: ComputerUseAuditSignedHead?
+        if let signedHeadJSON = sessionFiles.signedHeadJSON {
+            do {
+                signedHead = try ComputerUseAuditHasher.canonicalJSONDecoder.decode(
+                    ComputerUseAuditSignedHead.self,
+                    from: signedHeadJSON
+                )
+            } catch {
+                return BurnBarCLIInvocationResult(
+                    output: [
+                        "archive_valid=true",
+                        "signature_checked=\(signatureURL != nil)",
+                        "fully_verified=false",
+                        "first_invalid_reason=\(ComputerUseAuditChain.InvalidReason.auditSealUnavailable.rawValue)"
+                    ].joined(separator: "\n"),
+                    exitCode: EXIT_FAILURE
+                )
+            }
+        } else {
+            signedHead = nil
+        }
+        do {
+            let manifest = try ComputerUseAuditHasher.canonicalJSONDecoder.decode(
+                ComputerUseSessionManifest.self,
+                from: sessionFiles.manifestJSON
+            )
+            let manifestHashHex = try ComputerUseAuditChain().hashSessionManifest(manifest)
+            let report = ComputerUseAuditVerifier().verify(
+                chainJSONL: sessionFiles.chainJSONL,
+                sessionManifestHashHex: manifestHashHex,
+                signedHead: signedHead,
+                maxEntryIndexInclusive: nil,
+                openTimestampsProofURL: nil
+            )
+            var lines = [
+                "archive_valid=true",
+                "signature_checked=\(signatureURL != nil)",
+                "archive_entry_count=\(entries.count)",
+                "contains_signed_head=\(signedHead != nil)"
+            ]
+            lines.append(contentsOf: format(report: report, maxEntryIndex: nil))
+            return BurnBarCLIInvocationResult(
+                output: lines.joined(separator: "\n"),
+                exitCode: report.isFullyVerified ? EXIT_SUCCESS : EXIT_FAILURE
+            )
+        } catch {
+            return BurnBarCLIInvocationResult(
+                output: [
+                    "archive_valid=true",
+                    "signature_checked=\(signatureURL != nil)",
+                    "fully_verified=false",
+                    "first_invalid_reason=\(error.localizedDescription)"
                 ].joined(separator: "\n"),
                 exitCode: EXIT_FAILURE
             )

@@ -4,7 +4,10 @@ import FirebaseFirestore
 import Foundation
 import Observation
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 
 // MARK: - Mobile Mission Console Host (iOS)
 //

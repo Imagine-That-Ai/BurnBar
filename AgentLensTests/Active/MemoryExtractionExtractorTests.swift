@@ -3,6 +3,7 @@ import CryptoKit
 import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 // MARK: - PR-D1 LLM Extractor tests
 //
@@ -169,7 +170,7 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_100_000)
 
         let threadID = "thread-prov"
@@ -245,7 +246,7 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_100_100)
 
         let intent = ExtractionIntent(
@@ -309,7 +310,7 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_100_200)
 
         let threadID = "thread-e2e"
@@ -392,7 +393,7 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_100_250)
 
         let threadID = "thread-remote-url"
@@ -482,7 +483,7 @@ final class MemoryExtractionExtractorTests: XCTestCase {
         let queue = try DatabaseQueue()
         let database = OpenBurnBarDatabase(databaseQueue: queue)
         try database.runMigrationsSafely()
-        let store = ControlPlaneStore(dbQueue: queue)
+        let store = ControlPlaneStore(dbQueue: queue, memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: queue))
         let now = Date(timeIntervalSince1970: 1_800_100_300)
         // No chat_messages inserted → empty transcript → benign empty, no model call.
         MemoryExtractionExtractorHTTPStub.responseJSON = "{\"memories\":[]}"
@@ -694,7 +695,10 @@ final class AgentConversationExtractionSourceTests: XCTestCase {
         // control plane shares the data store's queue.
         return Stores(
             dataStore: dataStore,
-            controlPlane: ControlPlaneStore(dbQueue: dataStore.actor.dbQueue)
+            controlPlane: ControlPlaneStore(
+                dbQueue: dataStore.actor.dbQueue,
+                memoryAuthorityWriter: LocalMemoryAuthorityWriter(dbQueue: dataStore.actor.dbQueue)
+            )
         )
     }
 

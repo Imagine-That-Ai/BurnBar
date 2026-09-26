@@ -1,6 +1,6 @@
 import Foundation
 import os.log
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 private let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
 

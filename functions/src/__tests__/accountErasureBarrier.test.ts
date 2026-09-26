@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { getTombstone } = vi.hoisted(() => ({ getTombstone: vi.fn() }));
 
-vi.mock("../adminRuntime.js", () => ({
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({
   db: { doc: () => ({ get: getTombstone }) },
 }));
-vi.mock("../accountErasureConstants.js", () => ({
+vi.mock("../../../packages/functions-shared/src/accountErasureConstants.js", () => ({
   ACCOUNT_ERASURE_TOMBSTONE_COLLECTION: "account_erasure_tombstones",
 }));
 
-import { assertAccountErasureAllowsCallable } from "../accountErasureBarrier.js";
+import { assertAccountErasureAllowsCallable } from "../../../packages/functions-shared/src/accountErasureBarrier.js";
 
 describe("account erasure callable barrier", () => {
   beforeEach(() => vi.clearAllMocks());

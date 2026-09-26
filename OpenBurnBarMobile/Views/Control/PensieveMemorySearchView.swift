@@ -1,6 +1,10 @@
 import SwiftUI
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
+import OpenBurnBarVectorKit
 import OpenBurnBarSignalCore
 
 // MARK: - Pensieve memory search
@@ -250,7 +254,7 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
             "embeddingModelVersion": cloaked.modelVersion,
             "limit": max(1, min(limit, 50))
         ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let rawHits = dict["hits"] as? [[String: Any]] else {
             throw DataVaultError.malformedResponse
         }
@@ -304,7 +308,7 @@ struct FunctionsPensieveMemorySearcher: PensieveMemorySearching {
         var category: String?
         if let sealedMetadata = Self.decodeSealed(raw["sealedMetadata"]),
            let metadataString = try? PensieveKnowledgeChunker.openChunkMetadata(sealedMetadata, keyData: vaultKey, uid: uid, vectorId: stableDocumentID),
-           let metadata = try? JSONSerialization.jsonObject(with: Data(metadataString.utf8)) as? [String: Any] {
+           let metadata = BurnBarJSONValue.dictionary(fromJSONData: Data(metadataString.utf8)) {
             sourcePath = metadata["source_path"] as? String
             title = metadata["page_title"] as? String
             category = metadata["category"] as? String

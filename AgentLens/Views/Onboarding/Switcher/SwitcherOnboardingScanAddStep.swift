@@ -1,5 +1,9 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 
 /// Maximum accounts per provider during onboarding.
 enum SwitcherOnboardingLimits {
@@ -177,8 +181,8 @@ struct SwitcherOnboardingScanAddStep: View {
             // Section header with count
             HStack(spacing: DesignSystem.Spacing.xs) {
                 Group {
-                    if provider.hasBundledLogo {
-                        Image(provider.bundledLogoName!)
+                    if provider.hasBundledLogo, let logoName = provider.bundledLogoName {
+                        Image(logoName)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                     } else {

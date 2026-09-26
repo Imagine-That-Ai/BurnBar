@@ -57,11 +57,13 @@ jobs:
     # stays unchanged. Set repo var MACOS_GATE_POOL=paid to force the capped
     # hosted pool for a billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
-    # Cold cache + libsignal FFI + the full app build and bounded smoke catalog
-    # routinely take ~55–70 minutes on macos-26 hosted runners (CPU budget gate
-    # alone can take ~30m). Keep a 90m ceiling so a post-merge/nightly run does
-    # not cancel mid-smoke. The full XCTest corpus belongs to the
-    # post-merge/nightly harness, not this lane.
+    # Cold cache + libsignal FFI + the full app build plus the bounded smoke
+    # catalog run serially here. Observed on merge_group 2026-09-26 (run
+    # 36254294865): CPU-gate build ~32m + smoke ~32m ≈ 65m of this 90m budget.
+    # The Lab lane no longer lives in this job — a second xcodebuild of the
+    # Lab scheme doubled the wall clock and got the job cancelled at the cap
+    # mid-compile; it now runs in parallel as app-lab-gate. The full XCTest
+    # corpus stays in the post-merge/nightly harness.
     timeout-minutes: 90
     needs: [classify, merge-group-product-lanes]
     if: ${{ always() && ((github.event_name == 'merge_group' && needs.merge-group-product-lanes.result == 'success') || (github.event_name != 'merge_group' && needs.classify.result == 'success' && needs.classify.outputs.macos == 'true')) }}
@@ -198,7 +200,110 @@ jobs:
           retention-days: 7
 
       - name: Guard against zero-test false greens
-        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
+        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" --min 137 # smoke catalog recorded 137 on merge_group 35762858131; net-zero churn since
+
+  app-lab-gate:
+    name: AgentLens Lab build + test
+    # Routing (cost + security): same pool policy as app-build-test — hosted
+    # macOS lanes, MACOS_GATE_POOL=paid still opts into the capped paid group.
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    # A separate job, not a second step inside app-build-test: the Lab lane is
+    # a second full xcodebuild of a different scheme (OpenBurnBarLab), and
+    # running it serially doubled app-build-test's wall clock — merge_group
+    # run 36254294865 was cancelled at its 90m cap still compiling
+    # OpenBurnBarTests. In parallel it adds no queue latency.
+    # Its caches are restore-only so app-build-test stays the single writer
+    # of the signal-ffi-macos and app-spm keys — two jobs must never race a
+    # cache save. Its derived data (.derived-data/macos-lab-gate) is cold each
+    # run: nothing saves Lab build products, and the compile hides behind
+    # app-build-test's longer critical path.
+    timeout-minutes: 90
+    needs: [classify, merge-group-product-lanes]
+    if: ${{ always() && ((github.event_name == 'merge_group' && needs.merge-group-product-lanes.result == 'success') || (github.event_name != 'merge_group' && needs.classify.result == 'success' && needs.classify.outputs.macos == 'true')) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: false
+
+      - name: Initialize libsignal submodule with retry
+        run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      - name: Resolve Signal FFI cache identity
+        id: signal-ffi-cache
+        run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore macOS Signal FFI artifact
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
+          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
+
+      - name: Restore Swift Package Manager dependencies
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache-new
+            .build
+            .derived-data
+            ~/.cache/org.swift.swiftpm
+            ~/.cargo/registry
+            ~/.cargo/git
+          # Restore-only under a key nothing ever saves (app-lab-spm-*):
+          # app-build-test stays the single writer of the app-spm-* key, and
+          # scripts/ci/verify-ci-cache-warm.test.mjs requires that full
+          # app-spm key expression to appear exactly once in this workflow.
+          key: ${{ runner.os }}-app-lab-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-app-spm-
+
+      - name: Install Rust toolchain for libsignal Swift FFI
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
+        with:
+          toolchain: "1.96.0" # pin: crates/openburnbar-iroh (libsignal lineage)
+
+      - name: Ensure libsignal native toolchain (protoc + cmake)
+        uses: ./.github/actions/ensure-libsignal-toolchain
+
+      - name: Prepare macOS libsignal FFI for Lab lane
+        # No-op when the restored xcframework satisfies the requested targets
+        # (prepare-signal-ffi-xcframework.sh exits early on a matching
+        # artifact); it rebuilds only on a cache miss.
+        run: >-
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin
+          ./scripts/lib/prepare-signal-ffi-xcframework.sh
+
+      - name: Build + run Lab lane (Lab-gated code proof)
+        # Wave 3.1: compiles AgentLens/Lab/** (OPENBURNBAR_LAB injected by the
+        # script; the scheme tests under Debug because Xcode builds SPM
+        # packages testable only under Debug) and runs the Lab catalog: the
+        # Lab-guarded suites plus the suites with Lab-aware arms.
+        run: |
+          set -euo pipefail
+          OPENBURNBAR_ENABLE_COVERAGE=YES \
+          OPENBURNBAR_APP_TEST_ATTEMPTS=2 \
+          OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180 \
+          OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360 \
+          OPENBURNBAR_APP_TEST_SCHEME=OpenBurnBarLab \
+          OPENBURNBAR_APP_TEST_FILTERS="OpenBurnBarTests/BehaviorTests,OpenBurnBarTests/PetDefinitionTests,OpenBurnBarTests/PetDefinitionResourcesTests,OpenBurnBarTests/PetPropTests,OpenBurnBarTests/PetDropAttachmentTests,OpenBurnBarTests/PetChatBackendAvailabilityTests,OpenBurnBarTests/ControlDeckRegistryTests,OpenBurnBarTests/ControlDeckLayoutTests,OpenBurnBarTests/SettingsManifestCoverageTests" \
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin \
+          OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-lab-gate" \
+          ./scripts/test-openburnbar-app.sh
+
+      - name: Upload Lab test xcresult bundles (hang/failure diagnostics)
+        # Same diagnostics contract as app-build-test's upload step.
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: openburnbar-lab-test-xcresults
+          path: |
+            .derived-data/test-openburnbar-app-diagnostics
+            .derived-data/test-openburnbar-app-attempts.jsonl
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Guard against zero-test false greens (Lab lane)
+        run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBarLab_TestCoverage.xcresult" --min 134 # Lab catalog: 134 methods; trips if the Lab flag is ever missing (Lab suites compile to nothing)
 
   mobile-build-gate:
     name: Mobile build + unit test
@@ -331,7 +436,7 @@ jobs:
             -only-testing:OpenBurnBarMobileTests/HermesServiceToolUseLoopTests
 
       - name: Guard against zero-test false greens
-        run: ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult"
+        run: ./scripts/ci/check-executed-test-count.sh "$RUNNER_TEMP/Mobile_TestResults.xcresult" --min 9 # 3 filtered classes hold 11 tests (4 keychain-conditional but counted); trips on any file loss
 
   app-pr-gate:
     name: App build + test (AgentLens)
@@ -339,6 +444,7 @@ jobs:
       - classify
       - merge-group-product-lanes
       - app-build-test
+      - app-lab-gate
       - mobile-build-gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -347,6 +453,7 @@ jobs:
       - name: Require every Rust and Swift prerequisite job
         env:
           AGENTLENS_RESULT: ${{ needs.app-build-test.result }}
+          LAB_RESULT: ${{ needs.app-lab-gate.result }}
           MOBILE_RESULT: ${{ needs.mobile-build-gate.result }}
           CLASSIFIER_RESULT: ${{ needs.classify.result }}
           MERGE_GROUP_LANES: ${{ needs.merge-group-product-lanes.result }}
@@ -358,6 +465,7 @@ jobs:
           if [[ "$EVENT_NAME" == "merge_group" ]]; then
             [[ "$MERGE_GROUP_LANES" == "success" ]] || { echo "::error::merge-group product lanes failed."; exit 1; }
             [[ "$AGENTLENS_RESULT" == "success" ]] || { echo "::error::macOS compile-or-test was required on merge_group but ended $AGENTLENS_RESULT."; exit 1; }
+            [[ "$LAB_RESULT" == "success" ]] || { echo "::error::macOS Lab compile-or-test was required on merge_group but ended $LAB_RESULT."; exit 1; }
             [[ "$MOBILE_RESULT" == "success" ]] || { echo "::error::iOS compile-or-test was required on merge_group but ended $MOBILE_RESULT."; exit 1; }
             exit 0
           fi
@@ -372,6 +480,7 @@ jobs:
             fi
           }
           require_or_skip "$MACOS_REQUIRED" "$AGENTLENS_RESULT" macOS
+          require_or_skip "$MACOS_REQUIRED" "$LAB_RESULT" "macOS Lab"
           require_or_skip "$MOBILE_REQUIRED" "$MOBILE_RESULT" mobile
 
   standing-failure:

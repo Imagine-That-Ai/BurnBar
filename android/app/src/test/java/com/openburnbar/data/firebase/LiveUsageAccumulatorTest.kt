@@ -48,7 +48,7 @@ class LiveUsageAccumulatorTest {
         val rows = accumulator.snapshot()
         assertEquals(1, rows.size)
         assertEquals(250L, rows.first().endTime)
-        assertEquals(2.5, rows.first().cost, 0.0)
+        assertEquals(2.5, rows.first().effectiveCost, 0.0)
     }
 
     @Test

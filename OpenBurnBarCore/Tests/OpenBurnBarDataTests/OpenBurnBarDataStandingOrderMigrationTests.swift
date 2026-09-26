@@ -2,9 +2,9 @@ import GRDB
 import XCTest
 @testable import OpenBurnBarData
 
-/// Core-side coverage for `v63_standing_orders`. The AgentLens copy is
-/// byte-identical (enforced by `scripts/ci/verify-sqlite-schema-doc.mjs`), so
-/// running the Core migrator here proves both.
+/// Core-side coverage for `v63_standing_orders`. OpenBurnBarData is the single
+/// migrator (Wave 2.2 deleted the AgentLens copy), so running the Core
+/// migrator here proves the migration.
 final class OpenBurnBarDataStandingOrderMigrationTests: XCTestCase {
 
     private func migrated() throws -> DatabaseQueue {

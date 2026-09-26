@@ -1,7 +1,9 @@
 import Foundation
 import CryptoKit
 @preconcurrency import GRDB
-import OpenBurnBarCore
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarData
 
 // MARK: - ControlPlaneStore
 
@@ -32,16 +34,32 @@ final class ControlPlaneStore: Sendable {
     /// local row untouched. See `deleteMemoryAuthorityRecord`.
     let forgetAgentMemory: AgentMemoryForgetting
 
+    /// How project-memory snapshot writes reach the daemon, which owns the
+    /// table (Wave 2.1c, ADR-005). Injected like the chat writer so a test
+    /// can drive a reachable and an unreachable daemon; production takes the
+    /// default, which is one socket RPC per call.
+    let snapshotWriter: any ProjectMemorySnapshotWriter
+
+    /// How memory authority writes reach the daemon, which owns the tables
+    /// (Wave 2.1c-iii, ADR-005). The app finalizes the write set locally and
+    /// commits it through this seam; production takes the default, which is
+    /// one socket RPC per mutation, failing closed when unreachable.
+    let memoryAuthorityWriter: any MemoryAuthorityWriter
+
     init(
         dbQueue: any DatabaseWriter,
         publishAgentMemoryReviewStatus: @escaping AgentMemoryReviewPublishing =
             ControlPlaneStore.liveAgentMemoryReviewPublisher,
         forgetAgentMemory: @escaping AgentMemoryForgetting =
-            ControlPlaneStore.liveAgentMemoryForgetter
+            ControlPlaneStore.liveAgentMemoryForgetter,
+        snapshotWriter: any ProjectMemorySnapshotWriter = DaemonProjectMemorySnapshotWriter(),
+        memoryAuthorityWriter: any MemoryAuthorityWriter = DaemonMemoryAuthorityWriter()
     ) {
         self.dbQueue = dbQueue
         self.publishAgentMemoryReviewStatus = publishAgentMemoryReviewStatus
         self.forgetAgentMemory = forgetAgentMemory
+        self.snapshotWriter = snapshotWriter
+        self.memoryAuthorityWriter = memoryAuthorityWriter
     }
 
     // MARK: - Operating Action History
@@ -259,36 +277,22 @@ final class ControlPlaneStore: Sendable {
             ])
         }
 
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO project_memory_snapshots (
-                    projectSlug, projectDisplayName, snapshotJSON, contentHash,
-                    sourceSessionCount, sourceConversationCount, generatedAt, schemaVersion, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(projectSlug) DO UPDATE SET
-                    projectDisplayName = excluded.projectDisplayName,
-                    snapshotJSON = excluded.snapshotJSON,
-                    contentHash = excluded.contentHash,
-                    sourceSessionCount = excluded.sourceSessionCount,
-                    sourceConversationCount = excluded.sourceConversationCount,
-                    generatedAt = excluded.generatedAt,
-                    schemaVersion = excluded.schemaVersion,
-                    updatedAt = excluded.updatedAt
-                """,
-                arguments: [
-                    snapshot.projectSlug,
-                    snapshot.projectDisplayName,
-                    snapshotJSON,
-                    snapshot.contentHash,
-                    snapshot.sourceSessionIDs.count,
-                    snapshot.sourceConversationIDs.count,
-                    snapshot.generatedAt,
-                    snapshot.schemaVersion,
-                    updatedAt
-                ]
+        // Wave 2.1c: the daemon owns the table. One RPC carries the finalized
+        // bytes — the JSON and hash stay one atomic unit on the daemon side —
+        // and there is deliberately no local-write fallback (single writer).
+        try await snapshotWriter.upsertSnapshot(
+            BurnBarProjectMemorySnapshotUpsertRequest(
+                projectSlug: snapshot.projectSlug,
+                projectDisplayName: snapshot.projectDisplayName,
+                snapshotJSON: snapshotJSON,
+                contentHash: snapshot.contentHash,
+                sourceSessionCount: snapshot.sourceSessionIDs.count,
+                sourceConversationCount: snapshot.sourceConversationIDs.count,
+                generatedAt: Self.iso8601String(snapshot.generatedAt),
+                schemaVersion: snapshot.schemaVersion,
+                updatedAt: Self.iso8601String(updatedAt)
             )
-        }
+        )
     }
 
     func fetchProjectMemorySnapshot(projectSlug: String) async throws -> ProjectMemorySnapshot? {
@@ -348,12 +352,8 @@ final class ControlPlaneStore: Sendable {
         let normalized = projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalized.isEmpty == false else { return }
 
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: "DELETE FROM project_memory_snapshots WHERE projectSlug = ?",
-                arguments: [normalized]
-            )
-        }
+        // Wave 2.1c: daemon-owned table — delete goes through the writer seam.
+        try await snapshotWriter.deleteSnapshot(projectSlug: normalized)
     }
 
     func mutateControllerRuntimeMirror(
@@ -365,42 +365,14 @@ final class ControlPlaneStore: Sendable {
         try await saveControllerRuntimeMirror(snapshot, cacheKey: cacheKey)
     }
 
-    private static func auditLabelsJSON(_ labels: [String]) throws -> String {
+    static func auditLabelsJSON(_ labels: [String]) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: labels.sorted(), options: [.sortedKeys])
         return String(data: data, encoding: .utf8) ?? "[]"
     }
 
-    private static func auditPayloadData(
-        sequence: Int,
-        timestamp: String,
-        actor: String,
-        action: String,
-        domain: String,
-        projectID: String?,
-        subjectID: String?,
-        labels: [String],
-        prevHash: String?
-    ) throws -> Data {
-        try JSONSerialization.data(
-            withJSONObject: [
-                "schema": "openburnbar.memory_audit.v2",
-                "seq": sequence,
-                "ts": timestamp,
-                "actor": actor,
-                "action": action,
-                "domain": domain,
-                "projectID": projectID.map { $0 as Any } ?? NSNull(),
-                "subjectID": subjectID.map { $0 as Any } ?? NSNull(),
-                "labels": labels.sorted(),
-                "prevHash": prevHash ?? ""
-            ],
-            options: [.sortedKeys]
-        )
-    }
-
-    private static func sha256Hex(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    }
+    // Wave 2.1c-iii: the v2 audit hash payload moved to the daemon
+    // (`memoryAuditPayloadData`); the app finalizes labels and the daemon
+    // assigns the chain fields in-transaction.
 
     static func iso8601String(_ date: Date) -> String {
         let formatter = ISO8601DateFormatter()
@@ -408,53 +380,8 @@ final class ControlPlaneStore: Sendable {
         return formatter.string(from: date)
     }
 
-    static func insertMemoryAuditEvent(
-        db: Database,
-        action: String,
-        projectID: String,
-        subjectID: String,
-        labels: [String],
-        nowString: String
-    ) throws {
-        let normalizedLabels = labels.sorted()
-        let labelsJSON = try auditLabelsJSON(normalizedLabels)
-        let previousAudit = try Row.fetchOne(
-            db,
-            sql: "SELECT seq, hash FROM memory_audit ORDER BY seq DESC LIMIT 1"
-        )
-        let prevHash: String? = previousAudit?["hash"]
-        let previousSequence: Int = previousAudit?["seq"] ?? 0
-        let auditHash = try sha256Hex(
-            auditPayloadData(
-                sequence: previousSequence + 1,
-                timestamp: nowString,
-                actor: "app",
-                action: action,
-                domain: "memory",
-                projectID: projectID,
-                subjectID: subjectID,
-                labels: normalizedLabels,
-                prevHash: prevHash
-            )
-        )
-        try db.execute(
-            sql: """
-            INSERT INTO memory_audit (
-                ts, actor, action, domain, project_id, subject_id, labels_json, prev_hash, hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            arguments: [
-                nowString,
-                "app",
-                action,
-                "memory",
-                projectID,
-                subjectID,
-                labelsJSON,
-                prevHash,
-                auditHash
-            ]
-        )
-    }
+    // Wave 2.1c-iii: audit appends commit through the writer seam
+    // (`memoryAuthorityAuditEvent` + `commitMemoryAuthorityOperations`);
+    // the daemon assigns the chain fields from the live head.
 
 }

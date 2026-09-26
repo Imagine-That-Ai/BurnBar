@@ -1,0 +1,234 @@
+/**
+ * @fileoverview Daily rollups of Mercury media session events for the
+ * operator dashboard. Mirrors `rollupIrohTransportDaily` but ranges over
+ * `users/{uid}/media_session_events/*`.
+ */
+
+import { getFirestore } from "firebase-admin/firestore";
+import type { SetOptions, WhereFilterOp } from "firebase-admin/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { numberField, stringField } from "@openburnbar/functions-shared/guards.js";
+import { forEachInPages } from "@openburnbar/functions-shared/rollupPagination.js";
+import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
+import { StreamingPercentileSketch } from "../../streamingPercentiles.js";
+import type { MediaFeature, MediaSessionDailyRollupDoc } from "@openburnbar/functions-shared/types.js";
+
+const ROLLUP_SCHEMA_VERSION = 2;
+const ROLLUP_COLLECTION = "ops/media_session_daily_rollups/days";
+const FEATURES: MediaFeature[] = ["fileTransfer", "screenShare", "videoCall"];
+const RTT_ANCHORS = [25, 100, 275, 600];
+const BITS_PER_SECOND_ANCHORS = [200_000, 450_000, 800_000, 1_500_000, 3_000_000, 6_000_000, 12_000_000];
+const FREEZE_COUNT_ANCHORS = Array.from({ length: 51 }, (_value, index) => index);
+const MAX_FREEZE_COUNT = 50;
+
+type MediaSessionRollupDoc = {
+  ref: { path: string };
+  data(): Record<string, unknown>;
+};
+
+interface MediaSessionRollupQuery {
+  where(field: string, op: WhereFilterOp, value: string): MediaSessionRollupQuery;
+  orderBy(field: string): MediaSessionRollupQuery;
+  startAfter(cursor: MediaSessionRollupDoc): MediaSessionRollupQuery;
+  limit(limit: number): MediaSessionRollupQuery;
+  get(): Promise<{
+    readonly empty: boolean;
+    readonly size: number;
+    readonly docs: readonly MediaSessionRollupDoc[];
+  }>;
+}
+
+interface MediaSessionRollupFirestore {
+  collectionGroup(name: string): MediaSessionRollupQuery;
+  doc(path: string): {
+    set(data: MediaSessionDailyRollupDoc, options: SetOptions): Promise<unknown>;
+  };
+}
+
+interface RollupOptions {
+  dateUTC: Date;
+  firestore?: MediaSessionRollupFirestore;
+}
+
+function utcDayWindow(date: Date) {
+  const dateId = date.toISOString().slice(0, 10);
+  const start = new Date(`${dateId}T00:00:00.000Z`);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return { date: dateId, start, end };
+}
+
+function previousUtcDay(now: Date): Date {
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return new Date(today.getTime() - 24 * 60 * 60 * 1000);
+}
+
+function buildEmptyPerFeature(): MediaSessionDailyRollupDoc["perFeature"] {
+  return {
+    fileTransfer: emptyFeatureBucket(),
+    screenShare: emptyFeatureBucket(),
+    videoCall: emptyFeatureBucket(),
+  };
+}
+
+function isMediaFeature(value: unknown): value is MediaFeature {
+  return value === "fileTransfer" || value === "screenShare" || value === "videoCall";
+}
+
+function emptyFeatureBucket(): MediaSessionDailyRollupDoc["perFeature"][MediaFeature] {
+  return {
+    sessionCount: 0,
+    successRate: 0,
+    fallbackRate: 0,
+    totalSeconds: 0,
+    totalBytes: 0,
+    rttMillis: { count: 0 },
+    bitsPerSecond: { count: 0 },
+    freezeCount: { count: 0 },
+  };
+}
+
+function bucketRtt(b: string | undefined): number | undefined {
+  switch (b) {
+    case "lt_50ms":
+      return 25;
+    case "50_150ms":
+      return 100;
+    case "150_400ms":
+      return 275;
+    case "gte_400ms":
+      return 600;
+    default:
+      return undefined;
+  }
+}
+
+function bucketBitsPerSecond(b: string | undefined): number | undefined {
+  switch (b) {
+    case "lt_300kbps":
+      return 200_000;
+    case "300_600kbps":
+      return 450_000;
+    case "600kbps_1mbps":
+      return 800_000;
+    case "1_2mbps":
+      return 1_500_000;
+    case "2_4mbps":
+      return 3_000_000;
+    case "4_8mbps":
+      return 6_000_000;
+    case "gte_8mbps":
+      return 12_000_000;
+    default:
+      return undefined;
+  }
+}
+
+function boundedFreezeCount(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isInteger(value) || value < 0 || value > MAX_FREEZE_COUNT) return undefined;
+  return value;
+}
+
+function buildSketches(anchors: readonly number[]): Record<MediaFeature, StreamingPercentileSketch> {
+  return {
+    fileTransfer: new StreamingPercentileSketch(anchors),
+    screenShare: new StreamingPercentileSketch(anchors),
+    videoCall: new StreamingPercentileSketch(anchors),
+  };
+}
+
+export async function rollupMediaSessionsForDay(options: RollupOptions): Promise<MediaSessionDailyRollupDoc> {
+  const firestore: MediaSessionRollupFirestore = options.firestore ?? getFirestore();
+  const window = utcDayWindow(options.dateUTC);
+
+  const query = firestore
+    .collectionGroup("media_session_events")
+    .where("startedAt", ">=", window.start.toISOString())
+    .where("startedAt", "<", window.end.toISOString());
+
+  const perFeature = buildEmptyPerFeature();
+  const rttSketches = buildSketches(RTT_ANCHORS);
+  const bpsSketches = buildSketches(BITS_PER_SECOND_ANCHORS);
+  const freezeSketches = buildSketches(FREEZE_COUNT_ANCHORS);
+  const successesByFeature: Record<MediaFeature, { ok: number; total: number }> = {
+    fileTransfer: { ok: 0, total: 0 },
+    screenShare: { ok: 0, total: 0 },
+    videoCall: { ok: 0, total: 0 },
+  };
+
+  const uniqueUids = new Set<string>();
+
+  // Stream the day in bounded pages so a high-volume day cannot OOM the rollup.
+  const totalEvents = await forEachInPages(query, "startedAt", (doc) => {
+    const raw = doc.data();
+    const segments = doc.ref.path.split("/");
+    if (segments.length === 4 && segments[0] === "users" && segments[1]) {
+      uniqueUids.add(segments[1]);
+    }
+    const feature = stringField(raw, "feature");
+    if (!isMediaFeature(feature)) return;
+
+    const bucket = perFeature[feature];
+    bucket.sessionCount += 1;
+    bucket.totalBytes += (numberField(raw, "byteCountInbound") ?? 0) + (numberField(raw, "byteCountOutbound") ?? 0);
+
+    successesByFeature[feature].total += 1;
+    if (stringField(raw, "endReason") === "completedSuccess") {
+      successesByFeature[feature].ok += 1;
+    }
+
+    const rtt = bucketRtt(stringField(raw, "p95RoundTripMillisBucket"));
+    rttSketches[feature].add(rtt);
+    const bps = bucketBitsPerSecond(stringField(raw, "p95BitsPerSecondBucket"));
+    bpsSketches[feature].add(bps);
+    const freezeCount = boundedFreezeCount(numberField(raw, "freezeCount"));
+    freezeSketches[feature].add(freezeCount);
+
+    const startedAt = stringField(raw, "startedAt");
+    const endedAt = stringField(raw, "endedAt");
+    if (startedAt && endedAt) {
+      const startedMs = Date.parse(startedAt);
+      const endedMs = Date.parse(endedAt);
+      if (Number.isFinite(startedMs) && Number.isFinite(endedMs) && endedMs > startedMs) {
+        bucket.totalSeconds += Math.round((endedMs - startedMs) / 1000);
+      }
+    }
+  });
+
+  for (const feature of FEATURES) {
+    const bucket = perFeature[feature];
+    const tally = successesByFeature[feature];
+    bucket.successRate = tally.total > 0 ? tally.ok / tally.total : 0;
+    bucket.rttMillis = rttSketches[feature].summary();
+    bucket.bitsPerSecond = bpsSketches[feature].summary();
+    bucket.freezeCount = freezeSketches[feature].summary();
+  }
+
+  const rollup: MediaSessionDailyRollupDoc = {
+    id: window.date,
+    date: window.date,
+    windowStart: window.start.toISOString(),
+    windowEnd: window.end.toISOString(),
+    generatedAt: new Date().toISOString(),
+    totalEvents,
+    uniqueUsers: uniqueUids.size,
+    perFeature,
+    schemaVersion: ROLLUP_SCHEMA_VERSION,
+  };
+
+  await firestore.doc(`${ROLLUP_COLLECTION}/${window.date}`).set(rollup, { merge: true });
+  return rollup;
+}
+
+export const rollupMediaSessionDaily = onSchedule(
+  {
+    schedule: "every 24 hours",
+    timeZone: "UTC",
+    region: FUNCTIONS_REGION,
+    memory: "1GiB",
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const target = previousUtcDay(new Date());
+    await rollupMediaSessionsForDay({ dateUTC: target });
+  },
+);

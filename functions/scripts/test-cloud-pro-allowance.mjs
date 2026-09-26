@@ -18,7 +18,7 @@ import {
   normalizeCloudProAllowanceConfig,
   monthKeyForDate,
   unitsForCloudProTopUp,
-} from "../lib/cloudProAllowanceCore.js";
+} from "../../packages/functions-shared/lib/cloudProAllowanceCore.js";
 
 const monthKey = monthKeyForDate(new Date("2026-05-30T12:00:00Z"));
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -125,13 +125,16 @@ const invalidConfig = normalizeCloudProAllowanceConfig({
 });
 assert.equal(invalidConfig.monthlyHostedActionCap, CLOUD_PRO_MONTHLY_HOSTED_ACTION_CAP);
 
-const stripeCallableSource = readFileSync(join(root, "src/callables/stripe.ts"), "utf8");
+// Wave 3.5 split the single functions/ codebase; the callables under test now
+// live in functions-identity, functions-sync, and packages/functions-shared.
+const repoRoot = join(root, "..");
+const stripeCallableSource = readFileSync(join(repoRoot, "functions-identity/src/domains/billing/stripe.ts"), "utf8");
 assert.match(stripeCallableSource, /verifyGooglePlayCloudProTopUp/);
 assert.match(stripeCallableSource, /purchases\.products\.get/);
 assert.match(stripeCallableSource, /purchases\.products\.consume/);
 assert.match(stripeCallableSource, /creditCloudProTopUp/);
 
-const entitlementSource = readFileSync(join(root, "src/callables/shared/entitlements.ts"), "utf8");
+const entitlementSource = readFileSync(join(repoRoot, "packages/functions-shared/src/shared/entitlements.ts"), "utf8");
 assert.match(entitlementSource, /isActiveBurnBarCloudProEntitlement/);
 assert.match(entitlementSource, /isActiveBurnBarUltraEntitlement\(ultraSnap\.data\(\)\)/);
 assert.match(entitlementSource, /ensureCloudProAllowanceLedger/);
@@ -150,16 +153,16 @@ assert.doesNotMatch(
 // Line-item selection lives in shared/googlePlay.ts (the duplicate helper in
 // shared/stripe.ts was removed as dead code). The invariant is unchanged:
 // products are matched by exact productId, never by a lineItems[0] fallback.
-const sharedGooglePlaySource = readFileSync(join(root, "src/callables/shared/googlePlay.ts"), "utf8");
+const sharedGooglePlaySource = readFileSync(join(repoRoot, "functions-identity/src/shared/googlePlay.ts"), "utf8");
 assert.match(
   sharedGooglePlaySource,
   /candidate\.target\.canonicalProductID === preferredProductID/,
 );
 assert.doesNotMatch(sharedGooglePlaySource, /\?\? lineItems\[0\]/);
-const sharedStripeSource = readFileSync(join(root, "src/callables/shared/stripe.ts"), "utf8");
+const sharedStripeSource = readFileSync(join(repoRoot, "functions-identity/src/shared/stripe.ts"), "utf8");
 assert.doesNotMatch(sharedStripeSource, /\?\? lineItems\[0\]/);
 
-const mediaSkuSource = readFileSync(join(root, "src/callables/mediaSku.ts"), "utf8");
+const mediaSkuSource = readFileSync(join(repoRoot, "functions-sync/src/domains/usage/mediaSku.ts"), "utf8");
 assert.match(mediaSkuSource, /standalone media subscription is retired/i);
 assert.doesNotMatch(mediaSkuSource, /media_purchase_validated/);
 

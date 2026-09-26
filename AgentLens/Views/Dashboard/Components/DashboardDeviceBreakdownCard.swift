@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import WebKit
+import OpenBurnBarKernel
 struct DeviceBreakdownCard: View {
     var dataStore: DataStore
     let isSyncing: Bool

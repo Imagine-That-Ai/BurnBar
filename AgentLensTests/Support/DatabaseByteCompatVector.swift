@@ -2,6 +2,7 @@ import Foundation
 import GRDB
 import CryptoKit
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 /// Portable DB **byte-compat de-risk kit** shared by the macOS generator/validator
 /// (`VAL-P0-DB-009`) and the future Windows open-side check (`VAL-P0-DB-010`).
@@ -44,7 +45,7 @@ enum DatabaseByteCompatVector {
     /// The last registered migration identifier the fixture is migrated to.
     /// Kept in one place so a future migration bump fails the test loudly and
     /// forces a conscious fixture/vector refresh.
-    static let expectedSchemaEndpoint = "v69_token_usage_end_time_index"
+    static let expectedSchemaEndpoint = "v70_agent_memories_index_backfill"
 
     // MARK: - Pinned SQLCipher parameters (SQLCipher.swift 4.16.0 defaults)
 
@@ -171,6 +172,12 @@ enum DatabaseByteCompatVector {
         let schemaHashSHA256: String
         /// The frozen FTS5 result set.
         let ftsQueries: [FTSQueryVector]
+        /// The endpoint `sqlite_master` DDL itself: every trimmed statement in
+        /// `(type, name)` order. Wave 2.3: the node schema-doc check diffs this
+        /// against the generated `docs/SCHEMA_SQLITE.sql` statement-for-statement,
+        /// so a hand edit that preserves table/column names but changes a type,
+        /// default, or trigger body still fails the door.
+        let endpointStatements: [String]
     }
 
     // MARK: - Encrypted-queue construction (live migrator)
@@ -223,8 +230,11 @@ enum DatabaseByteCompatVector {
     /// issued, so the same migrator on Mac and Windows yields the same bytes and
     /// therefore the same hash. Only outer whitespace is trimmed so a genuine
     /// DDL difference still changes the hash.
-    static func computeSchemaHash(_ db: Database) throws -> String {
-        let statements = try Row.fetchAll(
+    /// The normalized endpoint DDL corpus the schema hash covers: trimmed
+    /// statements in `(type, name)` order. Committed into the vector so the
+    /// node door can diff the generated schema doc statement-for-statement.
+    static func endpointStatements(_ db: Database) throws -> [String] {
+        try Row.fetchAll(
             db,
             sql: """
             SELECT sql FROM sqlite_master
@@ -232,8 +242,10 @@ enum DatabaseByteCompatVector {
             ORDER BY type, name
             """
         ).compactMap { ($0["sql"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
 
-        let canonical = statements.joined(separator: "\n")
+    static func computeSchemaHash(_ db: Database) throws -> String {
+        let canonical = try endpointStatements(db).joined(separator: "\n")
         let digest = SHA256.hash(data: Data(canonical.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
     }

@@ -1,6 +1,7 @@
 import AppKit
 import AuthenticationServices
 import CryptoKit
+import OpenBurnBarAnalytics
 @preconcurrency import FirebaseAuth
 import FirebaseCore
 import FirebaseFunctions
@@ -33,7 +34,9 @@ final class AccountManager {
     private(set) var lastOAuthToken: String?
     private(set) var lastOAuthEmail: String?
     private(set) var lastOAuthDisplayName: String?
-    private(set) var isCloudSyncEnabled = true
+    /// Master cloud-sync switch. Off by default (Wave 0.5 consent): nothing
+    /// leaves the Mac until the user turns it on. Persisted on-device.
+    private(set) var isCloudSyncEnabled: Bool
     private(set) var isFirebaseAvailable = false
 
     /// The signed-in account's profile photo. Surfaced to UI (e.g. the Mercury
@@ -46,6 +49,7 @@ final class AccountManager {
 
     // MARK: - Private
 
+    private let userDefaults: UserDefaults
     private var authStateListenerHandle: AuthStateDidChangeListenerHandle?
     /// Callbacks registered through `observeAccountIdentityChanges(_:)`, fired
     /// on every uid transition. Retained for the process's lifetime by design —
@@ -71,8 +75,14 @@ final class AccountManager {
 
     // MARK: - Init
 
-    init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         deviceId = Self.loadOrCreateDeviceId()
+        // A missing key means "never chose" → off. No grandfathering: the
+        // flag was never persisted before, so nobody opted in.
+        isCloudSyncEnabled = (userDefaults.object(
+            forKey: OpenBurnBarCore.OpenBurnBarIdentity.cloudSyncEnabledKey
+        ) as? Bool) ?? false
         configureFirebase()
     }
 
@@ -147,7 +157,7 @@ final class AccountManager {
     /// (`<TeamID>.<bundle-id>`). Returns nil when no Keychain Sharing
     /// entitlement is present (writes fail with `errSecMissingEntitlement`).
     private static func discoverKeychainAccessGroup() -> String? {
-        let probe: [String: Any] = [
+        let probe: UntypedJSONObject = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: "openburnbar.firebase-auth-access-group-probe",
             kSecAttrService as String: "openburnbar.firebase-auth-access-group-probe",
@@ -166,7 +176,7 @@ final class AccountManager {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(read as CFDictionary, &item)
         guard status == errSecSuccess,
-              let attrs = item as? [String: Any],
+              let attrs = item as? UntypedJSONObject,
               let group = attrs[kSecAttrAccessGroup as String] as? String,
               group.contains(".") else {
             return nil
@@ -505,7 +515,7 @@ final class AccountManager {
 
     private static func firebasePlistValue(_ key: String) -> String? {
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
-              let values = NSDictionary(contentsOfFile: path) as? [String: Any] else {
+              let values = NSDictionary(contentsOfFile: path) as? UntypedJSONObject else {
             return nil
         }
         return values[key] as? String
@@ -662,6 +672,7 @@ final class AccountManager {
 
     func setCloudSyncEnabled(_ enabled: Bool) {
         isCloudSyncEnabled = enabled
+        userDefaults.set(enabled, forKey: OpenBurnBarCore.OpenBurnBarIdentity.cloudSyncEnabledKey)
     }
 
     // MARK: - Device UUID
@@ -885,8 +896,8 @@ final class AccountManager {
         accessGroup: String,
         service: String,
         synchronizable: Bool
-    ) -> [String: Any] {
-        var query: [String: Any] = [
+    ) -> UntypedJSONObject {
+        var query: UntypedJSONObject = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccessGroup as String: accessGroup,
             kSecAttrService as String: service,
@@ -902,7 +913,7 @@ final class AccountManager {
     private static func firebaseAuthDefaultAccessGrouplessStoredUserDeleteQuery(
         service: String,
         synchronizable: Bool
-    ) -> [String: Any] {
+    ) -> UntypedJSONObject {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -922,7 +933,7 @@ final class AccountManager {
     private static func firebaseAuthDefaultStoredUserDeleteQuery(
         service: String,
         appName: String
-    ) -> [String: Any] {
+    ) -> UntypedJSONObject {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -937,7 +948,7 @@ final class AccountManager {
         ) as CFDictionary)
     }
 
-    private static func firebaseAuthLegacyDefaultStoredUserDeleteQuery(appName: String) -> [String: Any] {
+    private static func firebaseAuthLegacyDefaultStoredUserDeleteQuery(appName: String) -> UntypedJSONObject {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: "\(appName)_firebase_user"
@@ -945,7 +956,7 @@ final class AccountManager {
     }
 
     private static func deleteServiceScopedLegacyAuthUser(service: String, appName: String) -> OSStatus {
-        let query: [String: Any] = [
+        let query: UntypedJSONObject = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: "\(appName)_firebase_user",
@@ -1000,7 +1011,7 @@ final class AccountManager {
     /// is logged via `logAuthKeychainFailure(_:)` instead of being silenced.
     /// Returns `nil` (skipping the dangerous keychain deletes) so the caller
     /// fails closed rather than constructing queries from garbage identifiers.
-    static func loadFirebaseConfigPlist(at url: URL) -> [String: Any]? {
+    static func loadFirebaseConfigPlist(at url: URL) -> UntypedJSONObject? {
         let data: Data
         do {
             data = try Data(contentsOf: url)
@@ -1015,7 +1026,7 @@ final class AccountManager {
             logAuthKeychainFailure(error)
             return nil
         }
-        guard let values = plist as? [String: Any] else {
+        guard let values = plist as? UntypedJSONObject else {
             logAuthKeychainFailure(AccountError.malformedFirebaseConfigResource)
             return nil
         }
@@ -1026,7 +1037,7 @@ final class AccountManager {
     /// Factored out so the failure-logging and identifier-shape paths are unit
     /// testable without `Bundle.main`.
     static func firebaseAuthKeychainIdentifiers(
-        from values: [String: Any],
+        from values: UntypedJSONObject,
         appName: String
     ) -> (
         apiKey: String,
@@ -1133,7 +1144,7 @@ final class AccountManager {
         accessGroup: String,
         service: String,
         synchronizable: Bool
-    ) -> [String: Any] {
+    ) -> UntypedJSONObject {
         firebaseAuthStoredUserDeleteQuery(
             accessGroup: accessGroup,
             service: service,
@@ -1144,7 +1155,7 @@ final class AccountManager {
     static func firebaseAuthDefaultAccessGrouplessStoredUserDeleteQueryForTesting(
         service: String,
         synchronizable: Bool
-    ) -> [String: Any] {
+    ) -> UntypedJSONObject {
         firebaseAuthDefaultAccessGrouplessStoredUserDeleteQuery(
             service: service,
             synchronizable: synchronizable
@@ -1154,13 +1165,13 @@ final class AccountManager {
     static func firebaseAuthDefaultStoredUserDeleteQueryForTesting(
         service: String,
         appName: String
-    ) -> [String: Any] {
+    ) -> UntypedJSONObject {
         firebaseAuthDefaultStoredUserDeleteQuery(service: service, appName: appName)
     }
 
     static func firebaseAuthLegacyDefaultStoredUserDeleteQueryForTesting(
         appName: String
-    ) -> [String: Any] {
+    ) -> UntypedJSONObject {
         firebaseAuthLegacyDefaultStoredUserDeleteQuery(appName: appName)
     }
     #endif

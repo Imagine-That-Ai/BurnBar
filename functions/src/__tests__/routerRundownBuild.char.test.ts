@@ -18,7 +18,7 @@ import type {
   ModelBenchmarkSourceStatusDoc,
   ModelBenchmarkSource,
   ModelBenchmarkTaskCategory,
-} from "../types.js";
+} from "../../../packages/functions-shared/src/types.js";
 
 const GENERATED_AT = "2026-06-14T12:00:00.000Z";
 const FRESH_FETCHED_AT = "2026-06-14T06:00:00.000Z"; // 6h old → freshness 1.0

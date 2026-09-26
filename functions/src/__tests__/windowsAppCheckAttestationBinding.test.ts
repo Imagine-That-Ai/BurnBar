@@ -17,23 +17,23 @@ import type { CallableRequest } from "firebase-functions/v2/https";
 
 // The equality gate needs neither Firestore nor a live admin app; stub them so
 // importing the module under test does not initialize Firebase.
-vi.mock("../adminRuntime.js", () => ({ db: {}, auth: {} }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: {}, auth: {} }));
 
 // auth guards are covered elsewhere; here the assertion under test is the
 // attestation appId-equality, so make the auth/App-Check guards no-ops.
-vi.mock("../auth.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({
   assertAuth: vi.fn(),
   assertAppCheck: vi.fn(),
   assertOwnership: vi.fn(),
   enforceAuthAndAppCheck: vi.fn(),
 }));
 
-vi.mock("../config.js", () => ({ getConfig: () => ({ enforceAppCheck: true }) }));
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => ({ enforceAppCheck: true }) }));
 
 import {
   APP_CHECK_ATTESTATION_CLAIM_KEY,
   enforceHighRiskComputerUseCallable,
-} from "../appCheckAttestation.js";
+} from "../../../packages/functions-shared/src/appCheckAttestation.js";
 
 const WINDOWS_PLACEHOLDER = "1:000000000000:windows:0000000000000000placeholder";
 const APPLE_APP_ID = "1:123:ios:abc";

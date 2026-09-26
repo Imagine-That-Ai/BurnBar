@@ -3,7 +3,11 @@ import FirebaseCore
 import Foundation
 import FirebaseRemoteConfig
 import Network
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarIrohRelay
 import os
 
@@ -869,7 +873,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             let payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
             if payload == "[DONE]" { return true }
             guard let data = payload.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let object = BurnBarJSONValue.dictionary(fromJSONData: data),
                   let choices = object["choices"] as? [[String: Any]] else {
                 continue
             }

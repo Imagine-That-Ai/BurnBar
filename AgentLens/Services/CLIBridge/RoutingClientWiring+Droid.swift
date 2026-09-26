@@ -66,7 +66,7 @@ extension RoutingClientWiring {
         liveModels: [RoutingClientAdvertisedModel]
     ) throws -> URL? {
         var (root, backupURL) = try loadJSONObjectWithBackup(at: url)
-        var customModels = (root["customModels"] as? [[String: Any]]) ?? []
+        var customModels = (root["customModels"] as? [UntypedJSONObject]) ?? []
         customModels.removeAll { isOpenBurnBarDroidModel($0, gateway: gateway) }
         let startIndex = customModels.count
         let openBurnBarModels = liveModels.enumerated().map { offset, model in
@@ -92,7 +92,7 @@ extension RoutingClientWiring {
         liveModels: [RoutingClientAdvertisedModel]
     ) throws {
         var (root, _) = try loadJSONObjectWithBackup(at: url)
-        var customModels = (root["custom_models"] as? [[String: Any]]) ?? []
+        var customModels = (root["custom_models"] as? [UntypedJSONObject]) ?? []
         customModels.removeAll { isOpenBurnBarDroidModel($0, gateway: gateway) }
         customModels.append(contentsOf: liveModels.map { model in
             [
@@ -102,7 +102,7 @@ extension RoutingClientWiring {
                 "api_key": gateway.effectiveClientToken,
                 "max_output_tokens": 8192,
                 "provider": model.droidProviderType
-            ] as [String: Any]
+            ] as UntypedJSONObject
         })
         root["custom_models"] = customModels
         try writeJSONObject(root, to: url)
@@ -112,7 +112,7 @@ extension RoutingClientWiring {
         model: RoutingClientAdvertisedModel,
         gateway: RoutingClientGateway,
         index: Int
-    ) -> [String: Any] {
+    ) -> UntypedJSONObject {
         [
             "model": model.id,
             "id": droidCustomModelID(for: model, index: index),
@@ -162,7 +162,7 @@ extension RoutingClientWiring {
         return "custom:OpenBurnBar-\(slug)-\(index)"
     }
 
-    func preferredDroidDefaultModelID(from models: [[String: Any]]) -> String? {
+    func preferredDroidDefaultModelID(from models: [UntypedJSONObject]) -> String? {
         let nonAnthropic = models.first {
             (($0["provider"] as? String)?.lowercased() ?? "") != "anthropic"
         }
@@ -171,9 +171,9 @@ extension RoutingClientWiring {
 
     func removeOpenBurnBarDroidModels(
         key: String,
-        from root: inout [String: Any]
+        from root: inout UntypedJSONObject
     ) -> Bool {
-        guard var customModels = root[key] as? [[String: Any]],
+        guard var customModels = root[key] as? [UntypedJSONObject],
               customModels.contains(where: { isOpenBurnBarDroidModel($0) }) else {
             return false
         }
@@ -195,7 +195,7 @@ extension RoutingClientWiring {
     }
 
     func isOpenBurnBarDroidModel(
-        _ entry: [String: Any],
+        _ entry: UntypedJSONObject,
         gateway: RoutingClientGateway? = nil
     ) -> Bool {
         let provider = (entry["provider"] as? String)?.lowercased()
@@ -219,7 +219,7 @@ extension RoutingClientWiring {
                 && isGatewayEntry)
     }
 
-    func hasOpenBurnBarDroidOwnershipMarker(_ entry: [String: Any]) -> Bool {
+    func hasOpenBurnBarDroidOwnershipMarker(_ entry: UntypedJSONObject) -> Bool {
         let provider = (entry["provider"] as? String)?.lowercased()
         let id = (entry["id"] as? String)?.lowercased()
         let displayName = (entry["displayName"] as? String)?.lowercased()
@@ -235,7 +235,7 @@ extension RoutingClientWiring {
     }
 
     func updateDroidDefaultModelIfManaged(
-        root: inout [String: Any],
+        root: inout UntypedJSONObject,
         fallbackModelID: String?
     ) {
         guard let fallbackModelID else { return }
@@ -245,7 +245,7 @@ extension RoutingClientWiring {
         if shouldReplaceDroidDefaultModel(root["defaultModel"] as? String) {
             root["defaultModel"] = fallbackModelID
         }
-        if var sessionDefaultSettings = root["sessionDefaultSettings"] as? [String: Any],
+        if var sessionDefaultSettings = root["sessionDefaultSettings"] as? UntypedJSONObject,
            shouldReplaceDroidDefaultModel(sessionDefaultSettings["model"] as? String) {
             sessionDefaultSettings["model"] = fallbackModelID
             root["sessionDefaultSettings"] = sessionDefaultSettings
@@ -270,7 +270,7 @@ extension RoutingClientWiring {
     }
 
     @discardableResult
-    func removeManagedDroidDefaultModel(from root: inout [String: Any]) -> Bool {
+    func removeManagedDroidDefaultModel(from root: inout UntypedJSONObject) -> Bool {
         var removed = false
         if isManagedDroidDefaultModel(root["model"] as? String) {
             root.removeValue(forKey: "model")
@@ -280,7 +280,7 @@ extension RoutingClientWiring {
             root.removeValue(forKey: "defaultModel")
             removed = true
         }
-        if var sessionDefaultSettings = root["sessionDefaultSettings"] as? [String: Any],
+        if var sessionDefaultSettings = root["sessionDefaultSettings"] as? UntypedJSONObject,
            isManagedDroidDefaultModel(sessionDefaultSettings["model"] as? String) {
             sessionDefaultSettings.removeValue(forKey: "model")
             if sessionDefaultSettings.isEmpty {
@@ -358,8 +358,8 @@ extension RoutingClientWiring {
         var installed: [String] = []
         for url in droidConfigURLs() where fileManager.fileExists(atPath: url.path) {
             guard let root = try? readJSONObject(at: url) else { continue } // try?-ok(skip unparseable config)
-            let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
-            let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
+            let settingsModels = (root["customModels"] as? [UntypedJSONObject]) ?? []
+            let configModels = (root["custom_models"] as? [UntypedJSONObject]) ?? []
             for entry in settingsModels + configModels where isOpenBurnBarDroidModel(entry, gateway: gateway) {
                 guard let model = entry["model"] as? String,
                       !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -378,14 +378,14 @@ extension RoutingClientWiring {
     func droidAPIKeyMatchesGateway(gateway: RoutingClientGateway) -> Bool {
         let expectedKey = gateway.effectiveClientToken
         for url in droidConfigURLs() where fileManager.fileExists(atPath: url.path) {
-            let root: [String: Any]
+            let root: UntypedJSONObject
             do {
                 root = try readJSONObject(at: url)
             } catch {
                 continue
             }
-            let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
-            let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
+            let settingsModels = (root["customModels"] as? [UntypedJSONObject]) ?? []
+            let configModels = (root["custom_models"] as? [UntypedJSONObject]) ?? []
             for entry in settingsModels + configModels where isOpenBurnBarDroidModel(entry, gateway: gateway) {
                 let storedKey = (entry["apiKey"] as? String)
                     ?? (entry["api_key"] as? String)

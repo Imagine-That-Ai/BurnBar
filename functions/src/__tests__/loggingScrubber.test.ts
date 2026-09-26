@@ -17,7 +17,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { logError, logInfo, logWarn } from "../logging.js";
+import { logError, logInfo, logWarn } from "../../../packages/functions-shared/src/logging.js";
 
 const FULL_UID = "AbCdEf0123456789AbCdEf012345"; // 28-char Firebase-style UID
 // Tests + the npm scripts run from the `functions/` package root.

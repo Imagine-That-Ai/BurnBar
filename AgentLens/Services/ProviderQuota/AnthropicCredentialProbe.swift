@@ -1,4 +1,0 @@
-import Foundation
-import OpenBurnBarCore
-
-typealias AnthropicCredentialProbe = OpenBurnBarCore.AnthropicCredentialProbe

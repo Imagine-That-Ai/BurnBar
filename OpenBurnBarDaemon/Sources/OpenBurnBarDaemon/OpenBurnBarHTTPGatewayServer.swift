@@ -142,7 +142,11 @@ public actor BurnBarHTTPGatewayServer {
 
         let host = configuration.normalizedHost
         let port = UInt16(configuration.port)
-        let nwPort = NWEndpoint.Port(rawValue: port)!
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            let message = "gateway port \(configuration.port) is not a usable TCP port"
+            logger.error("gateway_config_invalid", metadata: ["error": message])
+            throw BurnBarHTTPGatewayError.invalidConfiguration(message)
+        }
         let params = NWParameters.tcp
         params.requiredLocalEndpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: nwPort)
 

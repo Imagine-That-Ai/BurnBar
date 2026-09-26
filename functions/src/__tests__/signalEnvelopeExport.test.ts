@@ -10,8 +10,8 @@ import {
   HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,
   HERMES_GATEWAY_SIGNAL_RELAY_KEY_VERSION,
   HERMES_GATEWAY_SIGNAL_TRANSPORT_ENCRYPTION,
-} from "../hermesGateway.js";
-import type { GatewaySignalEnvelopeDoc } from "../types/generated/hermes-gateway.js";
+} from "../../../packages/functions-shared/src/hermesGateway.js";
+import type { GatewaySignalEnvelopeDoc } from "../../../packages/functions-shared/src/types/generated/hermes-gateway.js";
 
 const transportEnvelope: GatewaySignalEnvelopeDoc = {
   signalEnvelopeFormatVersion: HERMES_GATEWAY_SIGNAL_ENVELOPE_FORMAT_VERSION,

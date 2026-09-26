@@ -2,6 +2,7 @@ import XCTest
 import GRDB
 @testable import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarData
 
 // MARK: - ReceiptStore Tests
 

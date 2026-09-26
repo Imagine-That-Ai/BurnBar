@@ -1,6 +1,7 @@
 import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
+import OpenBurnBarAnalytics
 
 /// Subagent E — QA & telemetry for Visual Capture Source Toggle.
 /// Proves critical toggle + telemetry behavior; not just exercises.

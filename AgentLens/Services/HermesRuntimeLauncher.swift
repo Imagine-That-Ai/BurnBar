@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 struct HermesRuntimeStatus: Equatable {
     var hermesCLIPath: String?
@@ -142,7 +143,7 @@ final class HermesRuntimeLauncher {
     }
 
     func refreshStatus(
-        baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
+        baseURL: URL = URL(staticString: "http://127.0.0.1:8642"),
         bearerToken: String? = nil
     ) async -> HermesRuntimeStatus {
         let key = RefreshKey(baseURL: baseURL, bearerToken: bearerToken)
@@ -206,7 +207,7 @@ final class HermesRuntimeLauncher {
     }
 
     func openHermesAndGateway(
-        baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
+        baseURL: URL = URL(staticString: "http://127.0.0.1:8642"),
         bearerToken: String? = nil,
         launchDashboard: Bool = true
     ) async -> HermesRuntimeStatus {

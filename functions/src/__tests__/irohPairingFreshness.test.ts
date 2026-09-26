@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { IROH_PAIRING_FRESHNESS_MS } from "../types/legacy.js";
+import { IROH_PAIRING_FRESHNESS_MS } from "../../../packages/functions-shared/src/types/legacy.js";
 
 /** Keep in sync with `IrohPairingFreshness.maximumAgeSeconds` (Swift) and `IrohPairingFreshness.MAXIMUM_AGE_MILLIS` (Kotlin). */
 const EXPECTED_MS = 3 * 60 * 1000;

@@ -7,7 +7,8 @@ import SwiftUI
 import UIKit
 #endif
 import OpenBurnBarMedia
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 
 struct VolumeButtonScrollBridge: UIViewRepresentable {

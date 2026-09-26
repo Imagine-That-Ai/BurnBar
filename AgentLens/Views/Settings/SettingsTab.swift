@@ -1,5 +1,7 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarLogParsers
+import OpenBurnBarUI
 
 // MARK: - Settings Tab
 
@@ -21,7 +23,11 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case media
     case dataPrivacy
     case computerUse
+    // Lab: the Pets settings tab ships only in Lab builds (3.1). Every
+    // switch over SettingsTab gates its .pets arm the same way.
+    #if OPENBURNBAR_LAB
     case pets
+    #endif
     case receipts
 
     var id: String { rawValue }
@@ -45,7 +51,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .media: return "Media & Sharing"
         case .dataPrivacy: return "Data & Privacy"
         case .computerUse: return "Computer Use"
+        #if OPENBURNBAR_LAB
         case .pets: return "Pets"
+        #endif
         }
     }
 
@@ -85,8 +93,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Pensieve vault, exports, deletion, recovery, and panic controls"
         case .computerUse:
             return "Agent Watch, browser driving, Mac input, approvals, and audit chain"
+        #if OPENBURNBAR_LAB
         case .pets:
             return "Desktop companion, pet picker, agent brain, and summon hotkey"
+        #endif
         case .receipts:
             return "Session popups, thermal slips, quality reviews, and sounds"
         }
@@ -111,7 +121,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .media: return "play.rectangle.on.rectangle"
         case .dataPrivacy: return "lock.shield.fill"
         case .computerUse: return "cursorarrow.click.2"
+        #if OPENBURNBAR_LAB
         case .pets: return "pawprint.fill"
+        #endif
         }
     }
 
@@ -148,7 +160,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .media: return DesignSystem.Colors.hermesMercury
         case .dataPrivacy: return DesignSystem.Colors.teal
         case .computerUse: return DesignSystem.Colors.blaze
+        #if OPENBURNBAR_LAB
         case .pets: return DesignSystem.Colors.amber
+        #endif
         }
     }
 
@@ -177,8 +191,12 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return .accountAndSync
         case .daemon, .updates, .dataPrivacy:
             return .system
-        case .textExpansion, .media, .computerUse, .pets:
+        case .textExpansion, .media, .computerUse:
             return .extras
+        #if OPENBURNBAR_LAB
+        case .pets:
+            return .extras
+        #endif
         }
     }
 }
@@ -218,6 +236,15 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case system
     case extras
 
+    // Lab: the pets tab ships only in Lab builds (3.1). A separate gated
+    // declaration — #if cannot appear inside the array literal in `tabs`
+    // below (the toolchain rejects it).
+    #if OPENBURNBAR_LAB
+    private static let labPetsTabs: [SettingsTab] = [.pets]
+    #else
+    private static let labPetsTabs: [SettingsTab] = []
+    #endif
+
     var id: String { rawValue }
 
     var title: String {
@@ -245,7 +272,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .system:
             return [.daemon, .updates, .dataPrivacy]
         case .extras:
-            return [.textExpansion, .media, .computerUse, .pets]
+            return [
+                .textExpansion, .media, .computerUse
+            ] + Self.labPetsTabs
         }
     }
 

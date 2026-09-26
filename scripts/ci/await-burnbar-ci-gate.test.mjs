@@ -327,17 +327,58 @@ test("explicit observed SHA wins over GitHub's immutable merge-ref SHA", () => {
   );
 });
 
-test("gate accepts successful, neutral, and intentionally skipped contexts", () => {
-  const required = ["build", "advisory", "unowned lane"];
+test("gate accepts successful and neutral contexts", () => {
+  const required = ["build", "advisory"];
   const state = evaluateGate(
     required,
     new Map([
       ["build", { conclusion: "success" }],
       ["advisory", { conclusion: "neutral" }],
-      ["unowned lane", { conclusion: "skipped" }],
     ]),
   );
   assert.equal(state.ready, true);
+});
+
+test("gate no longer counts an undeclared skip as passing", () => {
+  const state = evaluateGate(
+    ["build", "filtered lane"],
+    new Map([
+      ["build", { conclusion: "success" }],
+      ["filtered lane", { conclusion: "skipped", url: "run" }],
+    ]),
+  );
+  assert.equal(state.ready, false);
+  assert.deepEqual(state.passed, ["build"]);
+  assert.deepEqual(state.failed, [
+    { context: "filtered lane", conclusion: "skipped", url: "run" },
+  ]);
+  assert.deepEqual(state.skipped, []);
+});
+
+test("declared skippable contexts are reported, never passed", () => {
+  const state = evaluateGate(
+    ["build", "path-filtered lane"],
+    new Map([
+      ["build", { conclusion: "success" }],
+      ["path-filtered lane", { conclusion: "skipped", url: "run" }],
+    ]),
+    {
+      skippableContexts: {
+        "path-filtered lane": "reports skipped when its paths are untouched",
+      },
+    },
+  );
+  assert.equal(state.ready, true);
+  assert.deepEqual(state.passed, ["build"]);
+  assert.equal(state.failed.length, 0);
+  assert.deepEqual(state.skipped, [
+    {
+      context: "path-filtered lane",
+      conclusion: "skipped",
+      reason: "reports skipped when its paths are untouched",
+      url: "run",
+    },
+  ]);
 });
 
 test("gate fails closed on terminal failures", () => {
@@ -680,6 +721,23 @@ test("a job that published its own conclusion is never second-guessed", () => {
         ],
       },
       { graceMs: 0, now: Date.parse("2026-08-11T09:00:00Z") },
+    ),
+    null,
+  );
+});
+
+test("a stalled job whose steps all skipped is never reconciled to success", () => {
+  assert.equal(
+    stalledJobConclusion(
+      {
+        conclusion: null,
+        completed_at: "2026-08-11T03:54:30Z",
+        steps: [
+          { name: "Set up job", status: "completed", conclusion: "skipped" },
+          { name: "Filtered lane", status: "completed", conclusion: "skipped" },
+        ],
+      },
+      { graceMs: 0, now: Date.parse("2026-08-11T07:43:00Z") },
     ),
     null,
   );

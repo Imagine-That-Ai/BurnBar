@@ -232,7 +232,7 @@ final class DomainCoreReleaseIdentityReporterTests: XCTestCase {
         guard loadedCommit == String(repeating: "0", count: 40) else {
             // If the artifact carries a real commit, the all-zeros guard does
             // not fire; skip this case rather than mask a different behavior.
-            throw XCTSkip("loaded artifact commit is not the all-zeros placeholder")
+            throw XCTSkip("loaded artifact commit is not the all-zeros placeholder") // env-guard: loaded artifact carries the all-zeros placeholder commit
         }
         XCTAssertThrowsError(
             try DomainCoreReleaseIdentityReporter.write(
@@ -248,17 +248,24 @@ final class DomainCoreReleaseIdentityReporterTests: XCTestCase {
         }
     }
 
+    /// Shared real-artifact gate for the mismatch + happy-path tests (was: an
+    /// identical guard+skip in both). Returns the loaded real commit.
+    private func requireRealArtifactCommit(_ path: String) throws -> String {
+        let loadedCommit = OpenBurnBarDomainCoreFFI.domainCoreCandidateCommit()
+        guard loadedCommit != String(repeating: "0", count: 40),
+              loadedCommit.range(of: #"^[0-9a-f]{40}$"#, options: .regularExpression) != nil
+        else {
+            throw XCTSkip("loaded artifact commit is the placeholder; \(path) unreachable") // env-guard: loaded artifact carries a real commit
+        }
+        return loadedCommit
+    }
+
     func test_writeRejectsCandidateCommitMismatchAgainstRealArtifact() throws {
         // Only reachable when the loaded artifact carries a real (non-zero)
         // candidate commit. When it does, a caller-supplied commit that differs
         // must be rejected with candidateCommitMismatch (not accepted or silently
         // echoed).
-        let loadedCommit = OpenBurnBarDomainCoreFFI.domainCoreCandidateCommit()
-        guard loadedCommit != String(repeating: "0", count: 40),
-              loadedCommit.range(of: #"^[0-9a-f]{40}$"#, options: .regularExpression) != nil
-        else {
-            throw XCTSkip("loaded artifact commit is the placeholder; mismatch path unreachable")
-        }
+        let loadedCommit = try requireRealArtifactCommit("mismatch path")
         // Build a distinct-but-valid 40-hex SHA by flipping the last character.
         let last = loadedCommit.last
         let flipped = last == "a" ? "b" : "a"
@@ -285,12 +292,7 @@ final class DomainCoreReleaseIdentityReporterTests: XCTestCase {
         // SHA-256 of the executable, and the report file is newline-terminated
         // JSON that round-trips. Only reachable with a real (non-placeholder)
         // artifact; skipped when the checkout carries the all-zeros placeholder.
-        let loadedCommit = OpenBurnBarDomainCoreFFI.domainCoreCandidateCommit()
-        guard loadedCommit != String(repeating: "0", count: 40),
-              loadedCommit.range(of: #"^[0-9a-f]{40}$"#, options: .regularExpression) != nil
-        else {
-            throw XCTSkip("loaded artifact commit is the placeholder; happy path unreachable")
-        }
+        let loadedCommit = try requireRealArtifactCommit("happy path")
         let sourceFingerprint = OpenBurnBarDomainCoreFFI.domainCoreSourceFingerprint()
 
         let identity = try DomainCoreReleaseIdentityReporter.write(

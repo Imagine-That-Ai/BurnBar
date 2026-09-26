@@ -1,0 +1,241 @@
+import { errorMessage } from "@openburnbar/functions-shared/guards.js";
+import { logWarn } from "@openburnbar/functions-shared/logging.js";
+/**
+ * @fileoverview Mercury Phase 5 — n0 hosted-relay budget guardrail.
+ *
+ * `evaluateMediaBudget` runs hourly. It pulls month-to-date hosted-relay
+ * spend (from `ops/media_session_daily_rollups/days/*` aggregation) and
+ * projects month-end. Levels per Decision 4:
+ *
+ *   normal     — projected < $600/mo
+ *   soft_cap   — $600 ≤ projected < $1000  (envelope tightens)
+ *   hard_cap   — projected ≥ $1000          (kill-switch flips)
+ *
+ * Writes `ops/media_budget_status/state/current`. Operator runbook lives at
+ * `docs/runbooks/media-budget.md`.
+ */
+
+import { getRemoteConfig } from "firebase-admin/remote-config";
+import { Timestamp, getFirestore } from "firebase-admin/firestore";
+import { numberField } from "@openburnbar/functions-shared/guards.js";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import type { MediaBudgetStatusDoc } from "@openburnbar/functions-shared/types.js";
+import { syncKillSwitchForMediaBudgetLevel } from "../../mediaRemoteConfig.js";
+import { FUNCTIONS_REGION } from "@openburnbar/functions-shared/runtimeOptions.js";
+
+const SOFT_CAP_USD = 600;
+const HARD_CAP_USD = 1000;
+const DEFAULT_COST_PER_GB_USD = 0.04;
+
+interface BudgetTunings {
+  costPerGBUSD: number;
+  softCapUSD: number;
+  hardCapUSD: number;
+  /**
+   * Set when Remote Config could not be loaded at all (cold start, offline,
+   * permission error). The caller MUST fail closed — clamp to `hard_cap` —
+   * rather than evaluate spend against the optimistic in-code defaults, since
+   * a read failure here means we cannot trust month-to-date spend to be below
+   * the real (operator-tuned) cap either.
+   */
+  failClosed: boolean;
+}
+
+/**
+ * Load tunable budget parameters from Firebase Remote Config so ops can
+ * recalibrate against an actual n0 invoice without redeploying. If Remote
+ * Config is unavailable (cold start, offline, missing parameter) the gate
+ * FAILS CLOSED: `failClosed` is returned so `evaluateBudget` clamps the
+ * envelope to `hard_cap` (kill-switch tier). Skipping the gate or trusting
+ * the optimistic in-code defaults on a read failure would let unbounded
+ * hosted-relay spend through — the exact fail-open hole RR-9 closes.
+ *
+ * Remote Config parameters consumed:
+ *   - `media_cost_per_gb_usd` — number, default 0.04
+ *   - `media_budget_soft_usd` — number, default 600
+ *   - `media_budget_hard_usd` — number, default 1000
+ * Legacy `_cap_usd` names remain accepted during rollout.
+ */
+async function loadBudgetTunings(): Promise<BudgetTunings> {
+  let costPerGB = DEFAULT_COST_PER_GB_USD;
+  let softCap = SOFT_CAP_USD;
+  let hardCap = HARD_CAP_USD;
+  try {
+    const template = await getRemoteConfig().getTemplate();
+    const params = template.parameters ?? {};
+    const tryNumber = (keys: string[], fallback: number): number => {
+      for (const key of keys) {
+        const raw = params[key]?.defaultValue;
+        if (raw && "value" in raw) {
+          const parsed = Number(raw.value);
+          if (Number.isFinite(parsed) && parsed > 0) return parsed;
+        }
+      }
+      return fallback;
+    };
+    costPerGB = tryNumber(["media_cost_per_gb_usd"], DEFAULT_COST_PER_GB_USD);
+    softCap = tryNumber(["media_budget_soft_usd", "media_budget_soft_cap_usd"], SOFT_CAP_USD);
+    hardCap = tryNumber(["media_budget_hard_usd", "media_budget_hard_cap_usd"], HARD_CAP_USD);
+    if (hardCap <= softCap) {
+      // Configuration sanity — refuse to set a hard cap below or equal
+      // to the soft cap, since that would skip the soft-cap level
+      // entirely. Fall back to defaults instead of trusting the bad
+      // value.
+      logWarn({
+        event: "media.budget.invalid_remote_config",
+        hard_cap_usd: hardCap,
+        soft_cap_usd: softCap,
+      });
+      softCap = SOFT_CAP_USD;
+      hardCap = HARD_CAP_USD;
+    }
+  } catch (err) {
+    // Fail closed: a Remote Config read failure makes the live caps unknown,
+    // so we clamp to `hard_cap` instead of evaluating spend against the
+    // optimistic in-code defaults (which would silently fall back to `normal`
+    // and skip the gate entirely).
+    logWarn({
+      event: "media.budget.remote_config_unavailable",
+      error: errorMessage(err),
+      fail_closed: true,
+    });
+    return {
+      costPerGBUSD: costPerGB,
+      softCapUSD: softCap,
+      hardCapUSD: hardCap,
+      failClosed: true,
+    };
+  }
+  return {
+    costPerGBUSD: costPerGB,
+    softCapUSD: softCap,
+    hardCapUSD: hardCap,
+    failClosed: false,
+  };
+}
+
+const NORMAL_ENVELOPE = {
+  screenShareDailyMinutes: 120,
+  screenSharePerSessionMinutes: 60,
+  videoCallDailyMinutes: 240,
+  videoCallPerCallMinutes: 30,
+  fileTransferDailyGBIn: 5,
+  fileTransferDailyGBOut: 5,
+};
+
+const SOFT_CAP_ENVELOPE = {
+  screenShareDailyMinutes: 30,
+  screenSharePerSessionMinutes: 30,
+  videoCallDailyMinutes: 120,
+  videoCallPerCallMinutes: 20,
+  fileTransferDailyGBIn: 2,
+  fileTransferDailyGBOut: 2,
+};
+
+const HARD_CAP_ENVELOPE = {
+  screenShareDailyMinutes: 0,
+  screenSharePerSessionMinutes: 0,
+  videoCallDailyMinutes: 0,
+  videoCallPerCallMinutes: 0,
+  fileTransferDailyGBIn: 0,
+  fileTransferDailyGBOut: 0,
+};
+
+function startOfMonthUTC(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+function endOfMonthUTC(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
+
+export async function evaluateBudget(now: Date = new Date()): Promise<MediaBudgetStatusDoc> {
+  const firestore = getFirestore();
+  const monthStart = startOfMonthUTC(now);
+  const monthEnd = endOfMonthUTC(now);
+  const tunings = await loadBudgetTunings();
+
+  const rollups = await firestore
+    .collection("ops/media_session_daily_rollups/days")
+    .where("date", ">=", monthStart.toISOString().slice(0, 10))
+    .where("date", "<", monthEnd.toISOString().slice(0, 10))
+    .get();
+
+  let totalBytes = 0;
+  for (const doc of rollups.docs) {
+    const data = doc.data();
+    const perFeature = data.perFeature;
+    if (!perFeature || typeof perFeature !== "object") continue;
+    for (const feature of ["fileTransfer", "screenShare", "videoCall"] as const) {
+      const bucket = perFeature[feature];
+      if (!bucket || typeof bucket !== "object") continue;
+      totalBytes += numberField(bucket, "totalBytes") ?? 0;
+    }
+  }
+
+  const totalGB = totalBytes / 1_000_000_000;
+  const monthToDateUSD = totalGB * tunings.costPerGBUSD;
+
+  const elapsedDays = Math.max(1, Math.ceil((now.getTime() - monthStart.getTime()) / (24 * 60 * 60 * 1000)));
+  const totalDaysInMonth = Math.max(1, Math.ceil((monthEnd.getTime() - monthStart.getTime()) / (24 * 60 * 60 * 1000)));
+  const projectedMonthEndUSD = (monthToDateUSD / elapsedDays) * totalDaysInMonth;
+
+  let level: MediaBudgetStatusDoc["level"];
+  let envelope: typeof NORMAL_ENVELOPE;
+  if (tunings.failClosed) {
+    // Remote Config was unreadable — clamp to the kill-switch tier regardless
+    // of projected spend so an RC outage can never re-open the relay budget.
+    level = "hard_cap";
+    envelope = HARD_CAP_ENVELOPE;
+  } else if (projectedMonthEndUSD >= tunings.hardCapUSD) {
+    level = "hard_cap";
+    envelope = HARD_CAP_ENVELOPE;
+  } else if (projectedMonthEndUSD >= tunings.softCapUSD) {
+    level = "soft_cap";
+    envelope = SOFT_CAP_ENVELOPE;
+  } else {
+    level = "normal";
+    envelope = NORMAL_ENVELOPE;
+  }
+
+  const publicEnvelope = {
+    level,
+    lastEvaluatedAt: Timestamp.now(),
+    activeEnvelope: envelope,
+    schemaVersion: 1,
+  };
+  const operatorMetrics = {
+    level,
+    projectedMonthEndUSD,
+    monthToDateUSD,
+    lastEvaluatedAt: Timestamp.now(),
+  };
+
+  // Path note: Firestore document paths must have an even number of
+  // segments. The canonical shape is `ops/<topic>/<sub>/<id>` — see ADR 006
+  // for the public envelope vs operator metrics split.
+  await firestore.doc("ops/media_budget_status/state/current").set(publicEnvelope, { merge: true });
+  await firestore.doc("ops/media_budget_status/metrics/current").set(operatorMetrics, { merge: true });
+  await syncKillSwitchForMediaBudgetLevel(level);
+
+  const status: MediaBudgetStatusDoc = {
+    level,
+    projectedMonthEndUSD,
+    monthToDateUSD,
+    lastEvaluatedAt: publicEnvelope.lastEvaluatedAt,
+    activeEnvelope: envelope,
+    schemaVersion: 1,
+  };
+  return status;
+}
+
+export const evaluateMediaBudget = onSchedule(
+  {
+    schedule: "every 60 minutes",
+    timeZone: "UTC",
+    region: FUNCTIONS_REGION,
+  },
+  async () => {
+    await evaluateBudget(new Date());
+  },
+);

@@ -1,5 +1,8 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInboxModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import OpenBurnBarMedia
 import FirebaseAuth
@@ -286,14 +289,14 @@ extension MercuryLiveSheet {
                     return
                 } catch {
                     let message = PhoneControlSetupMessage.message(for: error)
-                    Self.log.error("phone_control_auto_trust_failed connectionID=\(self.connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+                    Self.log.error("phone_control_auto_trust_failed connectionID=\(self.connectionID, privacy: .private(mask: .hash)) error=\(error.localizedDescription, privacy: .private)")
                     Self.debugTrace("phone_control_auto_trust_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
                     phoneControlError = message
                     return
                 }
             }
             let message = PhoneControlSetupMessage.message(for: error)
-            Self.log.error("phone_control_start_failed connectionID=\(self.connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.log.error("phone_control_start_failed connectionID=\(self.connectionID, privacy: .private(mask: .hash)) error=\(error.localizedDescription, privacy: .private)")
             Self.debugTrace("phone_control_start_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
             phoneControlError = message
         }
@@ -317,7 +320,7 @@ extension MercuryLiveSheet {
             phoneControlSender = nil
             phoneControlConnectionID = nil
             phoneControlError = PhoneControlSetupMessage.message(for: error)
-            Self.log.error("phone_control_trust_failed connectionID=\(self.connectionID, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.log.error("phone_control_trust_failed connectionID=\(self.connectionID, privacy: .private(mask: .hash)) error=\(error.localizedDescription, privacy: .private)")
             Self.debugTrace("phone_control_trust_failed connectionID=\(connectionID) error=\(error.localizedDescription)")
         }
     }
@@ -633,7 +636,7 @@ extension MercuryLiveSheet {
 
     func sendSavedRemoteUnlockCredential() async {
         phoneControlError = "Loading saved Remote Unlock credential..."
-        Self.log.info("remote_unlock_saved_credential_load_start connectionID=\(connectionID, privacy: .public)")
+        Self.log.info("remote_unlock_saved_credential_load_start connectionID=\(connectionID, privacy: .private(mask: .hash))")
         Self.debugTrace("remote_unlock_saved_credential_load_start connectionID=\(connectionID)")
         remoteUnlockDiagnosticMessage = "one-tap: loading saved credential"
         let capabilities = (remoteUnlockState ?? lastAck?.remoteUnlockState)?.capabilities
@@ -641,7 +644,7 @@ extension MercuryLiveSheet {
               capabilities?.allowsSavedCredentialUnlock == true else {
             phoneControlError = "One-tap Remote Unlock is not ready on this Mac."
             remoteUnlockDiagnosticMessage = "one-tap blocked: capability not ready"
-            Self.log.error("remote_unlock_saved_credential_load_blocked reason=capability_not_ready connectionID=\(connectionID, privacy: .public)")
+            Self.log.error("remote_unlock_saved_credential_load_blocked reason=capability_not_ready connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_saved_credential_load_blocked reason=capability_not_ready connectionID=\(connectionID)")
             return
         }
@@ -649,7 +652,7 @@ extension MercuryLiveSheet {
             guard let storeKey = remoteUnlockCredentialStoreKey() else {
                 phoneControlError = "One-tap Remote Unlock is not ready on this Mac."
                 remoteUnlockDiagnosticMessage = "one-tap blocked: missing store key"
-                Self.log.error("remote_unlock_saved_credential_load_blocked reason=missing_store_key connectionID=\(connectionID, privacy: .public)")
+                Self.log.error("remote_unlock_saved_credential_load_blocked reason=missing_store_key connectionID=\(connectionID, privacy: .private(mask: .hash))")
                 Self.debugTrace("remote_unlock_saved_credential_load_blocked reason=missing_store_key connectionID=\(connectionID)")
                 return
             }
@@ -657,14 +660,14 @@ extension MercuryLiveSheet {
                 storeKey: storeKey,
                 reason: "Unlock your Mac with the saved Remote Unlock credential."
             )
-            Self.log.info("remote_unlock_saved_credential_loaded storeKey=\(storeKey, privacy: .public) connectionID=\(connectionID, privacy: .public)")
+            Self.log.info("remote_unlock_saved_credential_loaded storeKey=\(storeKey, privacy: .private(mask: .hash)) connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_saved_credential_loaded storeKey=\(storeKey) connectionID=\(connectionID)")
             await sendRemoteUnlockCredential(password: password, credentialKind: .savedPassword)
         } catch {
             refreshSavedCredentialAvailability()
             phoneControlError = "Saved Remote Unlock credential is unavailable. Type your Mac password instead."
             remoteUnlockDiagnosticMessage = "one-tap failed: saved credential unavailable"
-            Self.log.error("remote_unlock_saved_credential_load_failed connectionID=\(connectionID, privacy: .public) error=\(String(describing: error), privacy: .public)")
+            Self.log.error("remote_unlock_saved_credential_load_failed connectionID=\(connectionID, privacy: .private(mask: .hash)) error=\(String(describing: error), privacy: .private)")
             Self.debugTrace("remote_unlock_saved_credential_load_failed connectionID=\(connectionID) error=\(String(describing: error))")
         }
     }
@@ -700,14 +703,14 @@ extension MercuryLiveSheet {
         password: String,
         credentialKind: HermesRealtimeRelayRemoteUnlockCredentialEnvelope.CredentialKind = .typedPassword
     ) async {
-        Self.log.info("remote_unlock_credential_prepare_start kind=\(credentialKind.rawValue, privacy: .public) connectionID=\(connectionID, privacy: .public)")
+        Self.log.info("remote_unlock_credential_prepare_start kind=\(credentialKind.rawValue, privacy: .private) connectionID=\(connectionID, privacy: .private(mask: .hash))")
         Self.debugTrace("remote_unlock_credential_prepare_start kind=\(credentialKind.rawValue) connectionID=\(connectionID)")
         remoteUnlockDiagnosticMessage = "credential: preparing"
         let trimmedPassword = password.trimmingCharacters(in: .newlines)
         guard !trimmedPassword.isEmpty else {
             phoneControlError = "Enter your Mac password."
             remoteUnlockDiagnosticMessage = "credential blocked: empty password"
-            Self.log.error("remote_unlock_credential_prepare_blocked reason=empty_password connectionID=\(connectionID, privacy: .public)")
+            Self.log.error("remote_unlock_credential_prepare_blocked reason=empty_password connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_credential_prepare_blocked reason=empty_password connectionID=\(connectionID)")
             return
         }
@@ -715,14 +718,14 @@ extension MercuryLiveSheet {
         guard activeMirrorViewerRole == "controller" else {
             phoneControlError = "Watching only. Take control from this device to unlock the Mac."
             remoteUnlockDiagnosticMessage = "credential blocked: viewer is not controller"
-            Self.log.error("remote_unlock_credential_prepare_blocked reason=not_controller role=\(activeMirrorViewerRole ?? "nil", privacy: .public) connectionID=\(connectionID, privacy: .public)")
+            Self.log.error("remote_unlock_credential_prepare_blocked reason=not_controller role=\(activeMirrorViewerRole ?? "nil", privacy: .private) connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_credential_prepare_blocked reason=not_controller role=\(activeMirrorViewerRole ?? "nil") connectionID=\(connectionID)")
             return
         }
         guard let uid = uidProvider(), !uid.isEmpty else {
             phoneControlError = "Sign in to unlock your Mac."
             remoteUnlockDiagnosticMessage = "credential blocked: missing user"
-            Self.log.error("remote_unlock_credential_prepare_blocked reason=missing_uid connectionID=\(connectionID, privacy: .public)")
+            Self.log.error("remote_unlock_credential_prepare_blocked reason=missing_uid connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_credential_prepare_blocked reason=missing_uid connectionID=\(connectionID)")
             return
         }
@@ -730,7 +733,7 @@ extension MercuryLiveSheet {
         guard let state, state.lockState != .unlocked else {
             phoneControlError = "The Mac is already unlocked."
             remoteUnlockDiagnosticMessage = "credential blocked: Mac already unlocked"
-            Self.log.error("remote_unlock_credential_prepare_blocked reason=already_unlocked connectionID=\(connectionID, privacy: .public)")
+            Self.log.error("remote_unlock_credential_prepare_blocked reason=already_unlocked connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_credential_prepare_blocked reason=already_unlocked connectionID=\(connectionID)")
             return
         }
@@ -743,14 +746,14 @@ extension MercuryLiveSheet {
               let algorithm = capabilities.credentialEnvelopeAlgorithm else {
             phoneControlError = "Remote Unlock is not ready on this Mac."
             remoteUnlockDiagnosticMessage = "credential blocked: Mac capability incomplete"
-            Self.log.error("remote_unlock_credential_prepare_blocked reason=capability_incomplete connectionID=\(connectionID, privacy: .public)")
+            Self.log.error("remote_unlock_credential_prepare_blocked reason=capability_incomplete connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_credential_prepare_blocked reason=capability_incomplete connectionID=\(connectionID)")
             return
         }
         guard algorithm == RemoteUnlockCredentialEnvelopeCrypto.algorithm else {
             phoneControlError = "Remote Unlock needs an app update on this device."
             remoteUnlockDiagnosticMessage = "credential blocked: encryption mismatch"
-            Self.log.error("remote_unlock_credential_prepare_blocked reason=algorithm_mismatch algorithm=\(algorithm, privacy: .public) connectionID=\(connectionID, privacy: .public)")
+            Self.log.error("remote_unlock_credential_prepare_blocked reason=algorithm_mismatch algorithm=\(algorithm, privacy: .private) connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_credential_prepare_blocked reason=algorithm_mismatch algorithm=\(algorithm) connectionID=\(connectionID)")
             return
         }
@@ -775,7 +778,7 @@ extension MercuryLiveSheet {
             phoneControlConnectionID = nil
             phoneControlError = PhoneControlSetupMessage.message(for: error)
             remoteUnlockDiagnosticMessage = "credential blocked: sender setup failed"
-            Self.log.error("remote_unlock_credential_sender_setup_failed connectionID=\(connectionID, privacy: .public) error=\(String(describing: error), privacy: .public)")
+            Self.log.error("remote_unlock_credential_sender_setup_failed connectionID=\(connectionID, privacy: .private(mask: .hash)) error=\(String(describing: error), privacy: .private)")
             Self.debugTrace("remote_unlock_credential_sender_setup_failed connectionID=\(connectionID) error=\(String(describing: error))")
             return
         }
@@ -794,7 +797,7 @@ extension MercuryLiveSheet {
                 phoneControlConnectionID = nil
                 phoneControlError = "Mac control stream is not responding. Reopen Mercury and try again."
                 remoteUnlockDiagnosticMessage = "credential blocked: control stream probe failed"
-                Self.log.error("remote_unlock_credential_stream_probe_failed connectionID=\(connectionID, privacy: .public) error=\(String(describing: error), privacy: .public)")
+                Self.log.error("remote_unlock_credential_stream_probe_failed connectionID=\(connectionID, privacy: .private(mask: .hash)) error=\(String(describing: error), privacy: .private)")
                 Self.debugTrace("remote_unlock_credential_stream_probe_failed connectionID=\(connectionID) error=\(String(describing: error))")
                 return
             }
@@ -831,10 +834,10 @@ extension MercuryLiveSheet {
             remoteUnlockCredentialAckTimeoutTask?.cancel()
             phoneControlError = "Sending password to Mac..."
             remoteUnlockDiagnosticMessage = "credential: writing frame"
-            Self.log.info("remote_unlock_credential_send_start requestID=\(requestId, privacy: .public) sessionID=\(sessionId, privacy: .public) connectionID=\(connectionID, privacy: .public)")
+            Self.log.info("remote_unlock_credential_send_start requestID=\(requestId, privacy: .private(mask: .hash)) sessionID=\(sessionId, privacy: .private(mask: .hash)) connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_credential_send_start requestID=\(requestId) sessionID=\(sessionId) connectionID=\(connectionID)")
             _ = try await credentialSender.send(remoteUnlockCredential: envelope)
-            Self.log.info("remote_unlock_credential_frame_written requestID=\(requestId, privacy: .public) sessionID=\(sessionId, privacy: .public) connectionID=\(connectionID, privacy: .public)")
+            Self.log.info("remote_unlock_credential_frame_written requestID=\(requestId, privacy: .private(mask: .hash)) sessionID=\(sessionId, privacy: .private(mask: .hash)) connectionID=\(connectionID, privacy: .private(mask: .hash))")
             Self.debugTrace("remote_unlock_credential_frame_written requestID=\(requestId) sessionID=\(sessionId) connectionID=\(connectionID)")
             phoneControlError = "Password sent. Waiting for Mac..."
             remoteUnlockDiagnosticMessage = "credential: frame written; waiting for Mac result"
@@ -844,14 +847,14 @@ extension MercuryLiveSheet {
                 pendingRemoteUnlockCredentialRequestID = nil
                 phoneControlError = "Still waiting for the Mac. If the login screen did not react, tap One-tap unlock again."
                 remoteUnlockDiagnosticMessage = "credential timeout: Mac result not received"
-                Self.log.error("remote_unlock_credential_ack_timeout requestID=\(requestId, privacy: .public) sessionID=\(sessionId, privacy: .public) connectionID=\(connectionID, privacy: .public)")
+                Self.log.error("remote_unlock_credential_ack_timeout requestID=\(requestId, privacy: .private(mask: .hash)) sessionID=\(sessionId, privacy: .private(mask: .hash)) connectionID=\(connectionID, privacy: .private(mask: .hash))")
                 Self.debugTrace("remote_unlock_credential_ack_timeout requestID=\(requestId) sessionID=\(sessionId) connectionID=\(connectionID)")
             }
         } catch {
             self.phoneControlSender = nil
             phoneControlConnectionID = nil
             if let pendingRemoteUnlockCredentialRequestID {
-                Self.log.error("remote_unlock_credential_send_failed requestID=\(pendingRemoteUnlockCredentialRequestID, privacy: .public) error=\(String(describing: error), privacy: .public)")
+                Self.log.error("remote_unlock_credential_send_failed requestID=\(pendingRemoteUnlockCredentialRequestID, privacy: .private(mask: .hash)) error=\(String(describing: error), privacy: .private)")
                 Self.debugTrace("remote_unlock_credential_send_failed requestID=\(pendingRemoteUnlockCredentialRequestID) error=\(String(describing: error))")
             }
             pendingRemoteUnlockCredentialRequestID = nil

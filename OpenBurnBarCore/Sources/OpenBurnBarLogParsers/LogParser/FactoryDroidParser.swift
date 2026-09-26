@@ -251,7 +251,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
         // VAL-TOKEN-011: Cache-only exact totals also suppress fallback (any non-zero bucket counts)
         if let settingsFileURL = settingsFile {
             if let data = try? Data(contentsOf: settingsFileURL), // try?-ok(missing settings skipped)
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
+               let json = BurnBarJSONValue.dictionary(fromJSONData: data) { // try?-ok(malformed json skipped)
                 if let model = json["model"] as? String {
                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
                 }
@@ -279,7 +279,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
             let metadataURL = jsonlFile.deletingLastPathComponent()
                 .appendingPathComponent("\(sessionId).metadata.json")
             if let data = try? Data(contentsOf: metadataURL), // try?-ok(missing metadata skipped)
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(malformed json skipped)
+               let json = BurnBarJSONValue.dictionary(fromJSONData: data) { // try?-ok(malformed json skipped)
                 if tokenData.model == "unknown", let model = json["model"] as? String {
                     tokenData.model = TokenExtractionUtility.normalizeModelName(model)
                 }
@@ -304,7 +304,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
             defer { try? handle.close() } // try?-ok(handle teardown)
             for line in handle.readAllUTF8Lines() {
                 guard let data = line.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(bad log line skipped)
+                      let json = BurnBarJSONValue.dictionary(fromJSONData: data) else { // try?-ok(bad log line skipped)
                     continue
                 }
 

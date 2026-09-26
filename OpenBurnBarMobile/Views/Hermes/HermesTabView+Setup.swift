@@ -1,6 +1,8 @@
 import SwiftUI
 import AVFoundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarQuota
+import OpenBurnBarUI
 import OpenBurnBarComputerUseCore
 import PhotosUI
 import UniformTypeIdentifiers

@@ -100,14 +100,14 @@ const { performProviderSearchMock, logWarnMock } = vi.hoisted(() => ({
   logWarnMock: vi.fn(),
 }));
 
-vi.mock("../adminRuntime.js", () => ({ db: dbMock }));
+vi.mock("../../../packages/functions-shared/src/adminRuntime.js", () => ({ db: dbMock }));
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: FieldValueMock,
   Timestamp: FakeTimestamp,
 }));
-vi.mock("../auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
-vi.mock("../cloudFeatureSuspensions.js", () => ({ assertCloudFeatureNotSuspended: vi.fn() }));
-vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
+vi.mock("../../../packages/functions-shared/src/auth.js", () => ({ enforceAuthAndAppCheck: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/cloudFeatureSuspensions.js", () => ({ assertCloudFeatureNotSuspended: vi.fn() }));
+vi.mock("../../../packages/functions-shared/src/cloudProAllowanceRemoteConfig.js", () => ({
   loadCloudProAllowanceConfig: vi.fn(async () => ({
     includedHostedActionsMonthly: 10,
     includedRelayGBMonthly: 10,
@@ -123,17 +123,19 @@ vi.mock("../cloudProAllowanceRemoteConfig.js", () => ({
     monthlyUltraFusionSearchCap: 10,
   })),
 }));
-vi.mock("../config.js", () => ({ getConfig: () => ({ enforceAppCheck: false }) }));
-vi.mock("../runtimeOptions.js", () => ({ FUNCTIONS_REGION: "us-central1" }));
-vi.mock("../logging.js", () => ({
+vi.mock("../../../packages/functions-shared/src/config.js", () => ({ getConfig: () => ({ enforceAppCheck: false }) }));
+vi.mock("../../../packages/functions-shared/src/runtimeOptions.js", () => ({ FUNCTIONS_REGION: "us-central1" }));
+vi.mock("../../../packages/functions-shared/src/logging.js", () => ({
   logWarn: logWarnMock,
   onCallProduction: (_name: string, _options: unknown, handler: (request: unknown) => Promise<unknown>) => ({
     run: handler,
   }),
 }));
-vi.mock("../callables/shared.js", () => ({
+vi.mock("../../../packages/functions-shared/src/shared/entitlements.js", () => ({
   BURNBAR_PRO_MAX_ENTITLEMENT_ID: "burnbar_pro_max",
   BURNBAR_ULTRA_ENTITLEMENT_ID: "burnbar_ultra",
+}));
+vi.mock("../../../packages/functions-shared/src/shared/validators.js", () => ({
   boundedTrimmedString: (raw: unknown, _field: string, max: number, required: boolean) => {
     if (typeof raw !== "string") {
       if (required) throw new Error("required string");
@@ -151,7 +153,7 @@ vi.mock("../callables/shared.js", () => ({
     return raw.trim();
   },
 }));
-vi.mock("../elderWandHostedSearchProviders.js", () => ({
+vi.mock("../../../functions-sync/src/elderWandHostedSearchProviders.js", () => ({
   HOSTED_SEARCH_SECRETS: [],
   normalizeProviderResults: (raw: unknown[]) =>
     raw.flatMap((item) => {
@@ -171,7 +173,7 @@ vi.mock("../elderWandHostedSearchProviders.js", () => ({
   performProviderSearch: performProviderSearchMock,
 }));
 
-import { performElderWandHostedSearch } from "../elderWandHostedSearch.js";
+import { performElderWandHostedSearch } from "../../../functions-sync/src/domains/search/elderWandHostedSearch.js";
 
 const UID = "quotaUser";
 const MONTH_KEY = "2026-06";

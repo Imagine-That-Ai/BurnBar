@@ -1,7 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFunctions
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Data Vault Callable Seam
 //
@@ -98,7 +98,7 @@ enum RecoveryContactEnvelope {
         contactID rawContactID: String,
         sealedShare rawSealedShare: String,
         contactHint rawContactHint: String? = nil
-    ) throws -> [String: Any] {
+    ) throws -> MobileJSONObject {
         let contactID = rawContactID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !contactID.isEmpty, contactID.count <= maxContactIDLength else {
             throw DataVaultError.invalidRecoveryContact("Enter a valid recovery contact ID.")
@@ -114,7 +114,7 @@ enum RecoveryContactEnvelope {
             throw DataVaultError.invalidRecoveryContact("Recovery-contact shares must be sealed envelopes, not plaintext.")
         }
 
-        var contact: [String: Any] = [
+        var contact: MobileJSONObject = [
             "contactId": contactID,
             "sealedShare": sealedShare
         ]
@@ -148,7 +148,7 @@ protocol DataVaultServicing: AnyObject {
     func getAuditLog(cursor: String?, limit: Int) async throws -> AuditLogPage
     func verifyAuditLog() async throws -> (valid: Bool, brokenAt: Int?)
     func listRecovery() async throws -> [RecoveryMethod]
-    func setupRecovery(method: String, payload: [String: Any]) async throws -> String
+    func setupRecovery(method: String, payload: MobileJSONObject) async throws -> String
     // recovery_key confirmation requires the re-entered key's verificationHash
     // (Apple ADP delayed re-verify); recovery_contact passes nil.
     func confirmRecovery(recoveryId: String, verificationHash: String?) async throws
@@ -173,12 +173,12 @@ final class FunctionsDataVaultService: DataVaultServicing {
     // callable is created on first real use, by which point Firebase is
     // configured) while letting the service exist unused without crashing.
     private lazy var functions = Functions.functions(region: "us-central1")
-    private let preparedPayloadProvider: () -> [[String: Any]]
+    private let preparedPayloadProvider: () -> [MobileJSONObject]
 
     /// `preparedPayloadProvider` supplies already-cloaked/sealed Pensieve
     /// batches for the "Sync now" action. Mobile commits prepared payloads only;
     /// desktop source ingestion lives in the Mac app/daemon target.
-    init(preparedPayloadProvider: @escaping () -> [[String: Any]] = PensieveCommitQueueDrainer.readPreparedBatchPayloads) {
+    init(preparedPayloadProvider: @escaping () -> [MobileJSONObject] = PensieveCommitQueueDrainer.readPreparedBatchPayloads) {
         self.preparedPayloadProvider = preparedPayloadProvider
     }
 
@@ -199,8 +199,8 @@ final class FunctionsDataVaultService: DataVaultServicing {
                 "confirm": true
             ]
         )
-        guard let dict = result.data as? [String: Any],
-              let deleted = dict["deleted"] as? [String: Any] else {
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
+              let deleted = dict["deleted"] as? MobileJSONObject else {
             throw DataVaultError.malformedResponse
         }
         let docs = (deleted["firestoreDocs"] as? NSNumber)?.intValue ?? 0
@@ -209,7 +209,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
     }
 
     func getAuditLog(cursor: String?, limit: Int) async throws -> AuditLogPage {
-        var payload: [String: Any] = ["limit": max(1, min(limit, 200))]
+        var payload: MobileJSONObject = ["limit": max(1, min(limit, 200))]
         if let cursor, !cursor.isEmpty { payload["cursor"] = cursor }
         let result = try await functions.httpsCallable("getAuditLog").call(payload)
         return try Self.decode(AuditLogPage.self, from: result.data)
@@ -217,7 +217,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
 
     func verifyAuditLog() async throws -> (valid: Bool, brokenAt: Int?) {
         let result = try await functions.httpsCallable("verifyAuditLog").call([:])
-        guard let dict = result.data as? [String: Any] else { throw DataVaultError.malformedResponse }
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data) else { throw DataVaultError.malformedResponse }
         let valid = dict["valid"] as? Bool ?? false
         let brokenAt = (dict["brokenAt"] as? NSNumber)?.intValue
         return (valid, brokenAt)
@@ -225,17 +225,17 @@ final class FunctionsDataVaultService: DataVaultServicing {
 
     func listRecovery() async throws -> [RecoveryMethod] {
         let result = try await functions.httpsCallable("listRecovery").call([:])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let methods = dict["methods"] else { throw DataVaultError.malformedResponse }
         return try Self.decode([RecoveryMethod].self, from: methods)
     }
 
-    func setupRecovery(method: String, payload: [String: Any]) async throws -> String {
+    func setupRecovery(method: String, payload: MobileJSONObject) async throws -> String {
         let result = try await functions.httpsCallable("setupRecovery").call([
             "method": method,
             "payload": payload
         ])
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let recoveryId = dict["recoveryId"] as? String, !recoveryId.isEmpty else {
             throw DataVaultError.malformedResponse
         }
@@ -243,7 +243,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
     }
 
     func confirmRecovery(recoveryId: String, verificationHash: String?) async throws {
-        var payload: [String: Any] = ["recoveryId": recoveryId]
+        var payload: MobileJSONObject = ["recoveryId": recoveryId]
         if let verificationHash { payload["verificationHash"] = verificationHash }
         _ = try await functions.httpsCallable("confirmRecovery").call(payload)
     }
@@ -257,7 +257,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
             subjectId: scope,
             payload: ["scope": scope]
         )
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               let revoked = dict["revoked"] else { throw DataVaultError.malformedResponse }
         return try Self.decode(RevokeAllResult.self, from: revoked)
     }
@@ -279,9 +279,9 @@ final class FunctionsDataVaultService: DataVaultServicing {
         return written
     }
 
-    private func commitPreparedKnowledgeBatch(_ payload: sending [String: Any]) async throws -> Int {
+    private func commitPreparedKnowledgeBatch(_ payload: sending MobileJSONObject) async throws -> Int {
         let result = try await functions.httpsCallable("commitKnowledgeBatch").call(payload)
-        guard let dict = result.data as? [String: Any],
+        guard let dict = BurnBarJSONValue.dictionary(from: result.data),
               dict["ok"] as? Bool != false else {
             throw DataVaultError.malformedResponse
         }
@@ -300,7 +300,7 @@ final class FunctionsDataVaultService: DataVaultServicing {
 /// app container. The Mac daemon normally owns the real queue, so this returns
 /// an empty list on ordinary iOS installs unless app wiring injects payloads.
 enum PensieveCommitQueueDrainer {
-    static func readPreparedBatchPayloads() -> [[String: Any]] {
+    static func readPreparedBatchPayloads() -> [MobileJSONObject] {
         guard let queueURL = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -318,9 +318,9 @@ enum PensieveCommitQueueDrainer {
             guard url.pathExtension == "json",
                   (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true,
                   let data = try? Data(contentsOf: url),
-                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let payload = BurnBarJSONValue.dictionary(fromJSONData: data),
                   payload["sourceSlug"] is String,
-                  payload["vectors"] is [[String: Any]] else {
+                  payload["vectors"] is [MobileJSONObject] else {
                 return nil
             }
             return payload
@@ -497,7 +497,7 @@ final class DataVaultStore {
         }
     }
 
-    private func setupRecovery(method: String, payload: [String: Any]) async -> Bool {
+    private func setupRecovery(method: String, payload: MobileJSONObject) async -> Bool {
         error = nil
         do {
             _ = try await service.setupRecovery(method: method, payload: payload)

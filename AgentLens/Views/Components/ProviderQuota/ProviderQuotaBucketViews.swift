@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 struct ProviderQuotaBucketRow: View {
     let bucket: ProviderQuotaBucket

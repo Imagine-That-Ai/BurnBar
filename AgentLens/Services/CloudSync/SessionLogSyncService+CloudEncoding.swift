@@ -1,6 +1,6 @@
 import FirebaseFunctions
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 extension SessionLogSyncService {
     static func dictionary<T: Encodable>(_ value: T) throws -> [String: Any] {

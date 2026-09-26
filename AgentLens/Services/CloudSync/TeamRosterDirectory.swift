@@ -1,5 +1,6 @@
 import FirebaseFunctions
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Team roster directory and administration (memory program D16 / P22, PR 4)
 //
@@ -72,7 +73,7 @@ final class FirebaseTeamMemoryAdministrator: TeamMemoryAdministering, @unchecked
 
     func createTeam(name: String) async throws -> String {
         let result = try await functions.httpsCallable("createTeam").call(["name": name])
-        guard let payload = result.data as? [String: Any], let teamID = payload["teamId"] as? String else {
+        guard let payload = BurnBarJSONValue.dictionary(from: result.data), let teamID = payload["teamId"] as? String else {
             throw TeamMemoryAdministrationError.malformedResponse(callable: "createTeam")
         }
         return teamID
@@ -91,7 +92,7 @@ final class FirebaseTeamMemoryAdministrator: TeamMemoryAdministering, @unchecked
             "inviteeEmail": email,
             "role": role
         ])
-        guard let payload = result.data as? [String: Any], let token = payload["inviteToken"] as? String else {
+        guard let payload = BurnBarJSONValue.dictionary(from: result.data), let token = payload["inviteToken"] as? String else {
             throw TeamMemoryAdministrationError.malformedResponse(callable: "inviteTeamMember")
         }
         return token

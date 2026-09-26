@@ -537,18 +537,26 @@ final class ControlDeckModel {
     }
 
     private static func readPetHotkeyLabel() -> String {
+        #if OPENBURNBAR_LAB
         guard let data = UserDefaults.standard.data(forKey: "pet.hotkey.combo"),
               let combo = try? JSONDecoder().decode(PetHotkey.Combo.self, from: data) else {
             return PetHotkey.Combo.defaultCombo.displayString
         }
         return combo.displayString
+        #else
+        return ""
+        #endif
     }
 
     private static func readActivePetName() -> String {
+        #if OPENBURNBAR_LAB
         let id = PetCompanionFeature.activePetID
         guard let definition = PetCompanionFeature.loadActiveDefinition() else {
             return id.capitalized
         }
         return definition.displayName ?? definition.name
+        #else
+        return ""
+        #endif
     }
 }

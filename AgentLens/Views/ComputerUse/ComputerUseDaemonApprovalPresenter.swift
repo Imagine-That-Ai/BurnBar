@@ -1,6 +1,8 @@
 #if canImport(AppKit) && !DISTRIBUTION_MAS
 import AppKit
-import OpenBurnBarCore
+import OpenBurnBarAssistantModels
+import OpenBurnBarInsights
+import OpenBurnBarKernel
 import OpenBurnBarComputerUseCore
 import SwiftUI
 

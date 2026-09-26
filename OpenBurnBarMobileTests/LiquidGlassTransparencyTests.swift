@@ -106,7 +106,7 @@ final class LiquidGlassTransparencyTests: XCTestCase {
 
     func testStyleResolvesVariantAndCompositionFromTransparency() throws {
         guard #available(iOS 26.0, *) else {
-            throw XCTSkip("Glass requires iOS 26")
+            throw XCTSkip("Glass requires iOS 26") // env-guard: iOS 26+
         }
         XCTAssertEqual(LiquidGlassStyle.regular.resolvedGlass(at: 0, overMediaRichContent: true), Glass.regular)
         XCTAssertEqual(LiquidGlassStyle.regular.resolvedGlass(at: 0.5, overMediaRichContent: true), Glass.regular)
