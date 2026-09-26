@@ -78,8 +78,7 @@ const providerAccountTypes = readFileSync(
     REPO,
     "OpenBurnBarCore",
     "Sources",
-    "OpenBurnBarKernel",
-    "SharedModels",
+    "OpenBurnBarProviderModels",
     "ProviderAccountTypes.swift"
   ),
   "utf8"

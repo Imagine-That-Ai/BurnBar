@@ -261,6 +261,9 @@ jobs:
             firestore.indexes.json
             firestore.rules
             functions
+            functions-identity
+            functions-media
+            functions-sync
             services/hosted-mcp/Dockerfile
             scripts/ci/verify-production-deploy-auth.sh
             scripts/ci/verify-production-deploy-auth.test.sh
@@ -338,13 +341,14 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
         with:
           # verify-signal-activation-parity.sh reads exactly these trees:
-          # functions/src/hermesGatewayEnvelope.ts,
+          # packages/functions-shared/src/hermesGatewayEnvelope.ts,
           # packages/data-domains/registry.json, and any *.json under
           # launch-evidence/ and remoteconfig/.
           filter: blob:none
           sparse-checkout: |
             functions/src
             packages/data-domains
+            packages/functions-shared/src
             launch-evidence
             remoteconfig
             scripts

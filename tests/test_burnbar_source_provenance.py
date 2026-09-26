@@ -33,12 +33,13 @@ def test_source_provenance_manifest_covers_agpl_signal_release_inputs() -> None:
         "docs/legal/agpl-release-review.evidence.template.json",
         "docs/legal/HERMES_GATEWAY_SIGNAL_REQUIRED_ROLLOUT.md",
         "OpenBurnBarCore/Package.swift",
-        # Core-decomposition: CloudVaultCrypto.swift moved from the Core monolith into
-        # OpenBurnBarKernel/SharedModels (git mv). The provenance manifest source
-        # (scripts/ci/write_burnbar_source_provenance.py) already tracks the Kernel path;
-        # this expected-set copy is updated to match after the train ← main merge.
-        "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift",
-        "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SignalEnvelopeAAD.swift",
+        # Wave 3.2 Kernel domain split: CloudVaultCrypto.swift and
+        # SignalEnvelopeAAD.swift moved from OpenBurnBarKernel/SharedModels
+        # into OpenBurnBarVaultModels. The provenance manifest source
+        # (scripts/ci/write_burnbar_source_provenance.py) tracks the new paths;
+        # this expected-set copy matches it.
+        "OpenBurnBarCore/Sources/OpenBurnBarVaultModels/CloudVaultCrypto.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarVaultModels/SignalEnvelopeAAD.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift",
         "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift",
         "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/SignalEnvelopeAADTests.swift",
@@ -47,7 +48,7 @@ def test_source_provenance_manifest_covers_agpl_signal_release_inputs() -> None:
         "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalProtocolStore.kt",
         "packages/signal-envelope-contracts/src/cloudVaultSignalEnvelope.ts",
         "packages/signal-envelope-contracts/package-lock.json",
-        "functions/src/hermesGateway.ts",
+        "packages/functions-shared/src/hermesGateway.ts",
         "functions/package-lock.json",
         "scripts/ci/drain_hermes_gateway_legacy_records.js",
         "scripts/ci/check_hermes_gateway_migration_drain.py",

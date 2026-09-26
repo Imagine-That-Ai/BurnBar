@@ -51,7 +51,9 @@ _PROVIDERS_PATH = _PARENT / "memory_engine" / "providers.py"
 _CLI_RUNNER_PATH = _REPO_ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarCLI.swift"
 _CLI_COMMANDS_PATH = _REPO_ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarCLIRunner+Commands.swift"
 _CLI_MAIN_PATH = _REPO_ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarCLI/OpenBurnBarCLIMain.swift"
-_RPC_CONTRACTS_PATH = _REPO_ROOT / "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCMethod.generated.swift"
+_RPC_CONTRACTS_PATH = (
+    _REPO_ROOT / "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCMethod.generated.swift"
+)
 _RPC_CAPABILITY_PATH = _REPO_ROOT / "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/BurnBarRPCCapability.swift"
 
 # The write-authority helpers, and which positional argument carries the daemon

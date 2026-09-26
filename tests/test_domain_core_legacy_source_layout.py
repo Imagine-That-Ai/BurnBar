@@ -14,10 +14,10 @@ ANDROID_REWRAP_LEGACY = ROOT / (
     "CloudVaultLegacyDocumentRewrap.kt"
 )
 SWIFT_CLOUDVAULT_FACADE = ROOT / (
-    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/CloudVaultCrypto.swift"
+    "OpenBurnBarCore/Sources/OpenBurnBarVaultModels/CloudVaultCrypto.swift"
 )
 SWIFT_REWRAP_LEGACY = ROOT / (
-    "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/Legacy/"
+    "OpenBurnBarCore/Sources/OpenBurnBarVaultModels/"
     "CloudVaultLegacyDocumentRewrap.swift"
 )
 WINDOWS_CLOUDVAULT_LEGACY = ROOT / (
