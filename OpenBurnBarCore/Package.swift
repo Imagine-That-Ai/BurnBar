@@ -1552,6 +1552,65 @@ let firstPartyTargetsBaseF: [Target] = [
         ),
 ]
 
+// Assembled incrementally (seed literal + appends per host-gated block)
+// rather than one `[strings] + (cond ? [] : [product]) + a + b` expression:
+// the one-shot form exceeds the Linux manifest solver budget (the same
+// failure documented above for the Core-decomposition products). Same
+// dependency SET; do NOT collapse back into one expression.
+var openBurnBarCoreTestsDependencies: [Target.Dependency] = [
+    "OpenBurnBarCore",
+    "OpenBurnBarDomainCoreRuntime",
+    "OpenBurnBarKernel",
+    "OpenBurnBarLogParsers",
+    "OpenBurnBarSQLiteReader",
+    "OpenBurnBarFirestoreModels",
+    "OpenBurnBarLinuxSecurity",
+    // P-13 AE-TESTABLE: `ZAIQuotaAdapterTests` reaches the INTERNAL
+    // `ZAIQuotaAdapter.zaiUsageQueryItems(now:)`, which moved with the
+    // ProviderQuota adapters into `OpenBurnBarQuota`. `@testable import
+    // OpenBurnBarQuota` (added in that test) needs the module as a test-target
+    // dependency; the test file otherwise stays put with its logic unchanged.
+    "OpenBurnBarQuota",
+    // P-22 (S15) AE-IMPORT: `OBBCAbiUsageScanExportTests` reaches the PUBLIC
+    // OBBCAbi C-ABI surface (`OBBCAbiUsageScanExport.run`, `obb_scan_usage`,
+    // `obb_parse_cli_stdout`, `obb_string_free`), which moved Core →
+    // OpenBurnBarCoreCAbi. The test now `import OpenBurnBarCoreCAbi` (plain, not
+    // @testable — public API only); this dependency edge makes the module
+    // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
+    // OpenBurnBarCore, and a test target adding it introduces no product cycle.
+    "OpenBurnBarCoreCAbi",
+    // Wave 2.7 AE-TESTABLE: `CodexRolloutJailTests` builds a fixture
+    // Codex `threads` database with GRDB and drives the production
+    // `fetchThreadRows` expansion path through it.
+    // Wave 3.2 AE-TESTABLE: `StandingOrderRowTests` reaches the
+    // INTERNAL `StandingOrderRow.decode`, which moved with the
+    // usage models into `OpenBurnBarUsageModels`. `@testable
+    // import OpenBurnBarUsageModels` (added in that test) needs
+    // the module as a test-target dependency.
+    "OpenBurnBarUsageModels",
+    // Wave 3.2 AE-TESTABLE: `AIInboxMirrorCodecCoercionTests`
+    // reaches INTERNAL `dateValue`/`intValue`, which moved with
+    // the inbox codec into `OpenBurnBarInboxModels`.
+    "OpenBurnBarInboxModels",
+    // Wave 3.2 AE-TESTABLE: `HermesDomainCoreAdapterBoundaryTests`
+    // drives the adapter's internals, which moved into
+    // `OpenBurnBarHermesModels`.
+    "OpenBurnBarHermesModels",
+    // Wave 3.2 AE-TESTABLE: the three CloudVault domain-core
+    // adapter test suites drive adapter internals, which moved
+    // into `OpenBurnBarVaultModels`.
+    "OpenBurnBarVaultModels"
+]
+    // Boundary builds exclude the GRDB-SQLCipher package (see
+    // dependencies above), so the Wave 2.7 GRDB edge — and the
+    // GRDB-importing test file itself (see exclude:) — is
+    // Apple-full-graph-only.
+if !buildForLinuxBoundary {
+    openBurnBarCoreTestsDependencies.append(.product(name: "GRDB", package: "GRDB-SQLCipher"))
+}
+openBurnBarCoreTestsDependencies.append(contentsOf: domainCoreDependencies)
+openBurnBarCoreTestsDependencies.append(contentsOf: swiftTestingAppleDependencies)
+
 let firstPartyTargetsBaseG: [Target] = [
         .testTarget(
             name: "OpenBurnBarLinuxCoreFoundationTests",
@@ -1574,56 +1633,7 @@ let firstPartyTargetsBaseG: [Target] = [
             name: "OpenBurnBarCoreTests",
             // Native-required migration tests must import the generated binding
             // directly so an absent or stale ABI cannot compile into a skipped assertion.
-            dependencies: [
-                "OpenBurnBarCore",
-                "OpenBurnBarDomainCoreRuntime",
-                "OpenBurnBarKernel",
-                "OpenBurnBarLogParsers",
-                "OpenBurnBarSQLiteReader",
-                "OpenBurnBarFirestoreModels",
-                "OpenBurnBarLinuxSecurity",
-                // P-13 AE-TESTABLE: `ZAIQuotaAdapterTests` reaches the INTERNAL
-                // `ZAIQuotaAdapter.zaiUsageQueryItems(now:)`, which moved with the
-                // ProviderQuota adapters into `OpenBurnBarQuota`. `@testable import
-                // OpenBurnBarQuota` (added in that test) needs the module as a test-target
-                // dependency; the test file otherwise stays put with its logic unchanged.
-                "OpenBurnBarQuota",
-                // P-22 (S15) AE-IMPORT: `OBBCAbiUsageScanExportTests` reaches the PUBLIC
-                // OBBCAbi C-ABI surface (`OBBCAbiUsageScanExport.run`, `obb_scan_usage`,
-                // `obb_parse_cli_stdout`, `obb_string_free`), which moved Core →
-                // OpenBurnBarCoreCAbi. The test now `import OpenBurnBarCoreCAbi` (plain, not
-                // @testable — public API only); this dependency edge makes the module
-                // linkable in the test host. Acyclic: OpenBurnBarCoreCAbi depends only on
-                // OpenBurnBarCore, and a test target adding it introduces no product cycle.
-                "OpenBurnBarCoreCAbi",
-                // Wave 2.7 AE-TESTABLE: `CodexRolloutJailTests` builds a fixture
-                // Codex `threads` database with GRDB and drives the production
-                // `fetchThreadRows` expansion path through it.
-                // Wave 3.2 AE-TESTABLE: `StandingOrderRowTests` reaches the
-                // INTERNAL `StandingOrderRow.decode`, which moved with the
-                // usage models into `OpenBurnBarUsageModels`. `@testable
-                // import OpenBurnBarUsageModels` (added in that test) needs
-                // the module as a test-target dependency.
-                "OpenBurnBarUsageModels",
-                // Wave 3.2 AE-TESTABLE: `AIInboxMirrorCodecCoercionTests`
-                // reaches INTERNAL `dateValue`/`intValue`, which moved with
-                // the inbox codec into `OpenBurnBarInboxModels`.
-                "OpenBurnBarInboxModels",
-                // Wave 3.2 AE-TESTABLE: `HermesDomainCoreAdapterBoundaryTests`
-                // drives the adapter's internals, which moved into
-                // `OpenBurnBarHermesModels`.
-                "OpenBurnBarHermesModels",
-                // Wave 3.2 AE-TESTABLE: the three CloudVault domain-core
-                // adapter test suites drive adapter internals, which moved
-                // into `OpenBurnBarVaultModels`.
-                "OpenBurnBarVaultModels"
-                // Boundary builds exclude the GRDB-SQLCipher package (see
-                // dependencies above), so the Wave 2.7 GRDB edge — and the
-                // GRDB-importing test file itself (see exclude:) — is
-                // Apple-full-graph-only.
-            ] + (buildForLinuxBoundary ? [] : [
-                .product(name: "GRDB", package: "GRDB-SQLCipher")
-            ]) + domainCoreDependencies + swiftTestingAppleDependencies,
+            dependencies: openBurnBarCoreTestsDependencies,
             exclude: openBurnBarCoreTestExcludes
                 + openBurnBarCorePlaceholderExcludes
                 + legacyLinuxTestExcludes(targetPath: "Tests/OpenBurnBarCoreTests")
