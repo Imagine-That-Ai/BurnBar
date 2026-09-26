@@ -8,7 +8,7 @@
   "artifactDigests": [
     {
       "path": "OpenBurnBarCore/Package.swift",
-      "sha256": "e05038e9579b3c1f8a33c9c73aa19f708294a3f9115fa74eb290555868ea9418"
+      "sha256": "361a0d864dd8d39514ef1f61667f5bd697a3f61b7c6b2cc78f9313cd416c50e8"
     },
     {
       "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift",

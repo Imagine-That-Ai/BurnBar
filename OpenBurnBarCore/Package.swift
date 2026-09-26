@@ -1804,6 +1804,7 @@ let firstPartyTargets: [Target] = platformFirstPartyTargetsBase
         name: "OpenBurnBarSchemaExport",
         dependencies: [
             "OpenBurnBarData",
+            swiftCryptoNonAppleDependency,
             .product(name: "GRDB", package: "GRDB-SQLCipher")
         ],
         path: "Sources/OpenBurnBarSchemaExport"
