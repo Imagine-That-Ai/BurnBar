@@ -84,14 +84,14 @@ struct AnthropicBridgedRequest: Encodable, Sendable {
     var model: String
     var maxTokens: Int
     var messages: [AnthropicBridgedMessage]
-    var system: String? = nil
-    var temperature: BurnBarBridgeValue? = nil
-    var topP: BurnBarBridgeValue? = nil
-    var stopSequences: BurnBarBridgeValue? = nil
-    var stream: Bool? = nil
-    var tools: [AnthropicBridgedTool]? = nil
-    var toolChoice: AnthropicBridgedToolChoice? = nil
-    var thinking: BurnBarBridgeValue? = nil
+    var system: String?
+    var temperature: BurnBarBridgeValue?
+    var topP: BurnBarBridgeValue?
+    var stopSequences: BurnBarBridgeValue?
+    var stream: Bool?
+    var tools: [AnthropicBridgedTool]?
+    var toolChoice: AnthropicBridgedToolChoice?
+    var thinking: BurnBarBridgeValue?
 
     private enum CodingKeys: String, CodingKey {
         case model
@@ -115,13 +115,13 @@ struct AnthropicBridgedMessage: Encodable, Sendable {
 
 struct AnthropicBridgedBlock: Encodable, Sendable {
     var type: String
-    var text: String? = nil
-    var id: String? = nil
-    var name: String? = nil
-    var input: BurnBarBridgeValue? = nil
-    var toolUseID: String? = nil
-    var content: String? = nil
-    var source: AnthropicBridgedSource? = nil
+    var text: String?
+    var id: String?
+    var name: String?
+    var input: BurnBarBridgeValue?
+    var toolUseID: String?
+    var content: String?
+    var source: AnthropicBridgedSource?
 
     private enum CodingKeys: String, CodingKey {
         case type
@@ -150,7 +150,7 @@ struct AnthropicBridgedBlock: Encodable, Sendable {
 struct AnthropicBridgedTool: Encodable, Sendable {
     var name: String
     var inputSchema: BurnBarBridgeValue
-    var toolDescription: String? = nil
+    var toolDescription: String?
 
     private enum CodingKeys: String, CodingKey {
         case name
@@ -161,7 +161,7 @@ struct AnthropicBridgedTool: Encodable, Sendable {
 
 struct AnthropicBridgedToolChoice: Encodable, Sendable {
     var type: String
-    var name: String? = nil
+    var name: String?
 }
 
 // MARK: - Anthropic inbound views (responses, requests, content blocks)

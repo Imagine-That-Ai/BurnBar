@@ -405,7 +405,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             guard !callerText.isEmpty else { return .string(guardString) }
             return .array([
                 .object(["type": .string("text"), "text": .string(guardString)]),
-                .object(["type": .string("text"), "text": .string(callerText)]),
+                .object(["type": .string("text"), "text": .string(callerText)])
             ])
         }
 
@@ -427,7 +427,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
                 return .array(normalized)
             }
             var combined: [BurnBarBridgeValue] = [
-                .object(["type": .string("text"), "text": .string(guardString)]),
+                .object(["type": .string("text"), "text": .string(guardString)])
             ]
             combined.append(contentsOf: asArray)
             return .array(combined)

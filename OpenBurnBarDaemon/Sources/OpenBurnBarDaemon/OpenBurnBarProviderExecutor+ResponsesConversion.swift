@@ -79,7 +79,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
         }
         request.toolChoice = .object([
             "type": .string("function"),
-            "function": .object(["name": .string(toolName)]),
+            "function": .object(["name": .string(toolName)])
         ])
     }
 

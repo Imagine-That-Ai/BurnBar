@@ -1179,7 +1179,7 @@ let firstPartyTargetsBaseA: [Target] = [
         // surface. Deps: Foundation only.
         .target(
             name: "OpenBurnBarProjectCodeContracts"
-        ),
+        )
 ]
 
 let firstPartyTargetsBaseB: [Target] = [
@@ -1266,7 +1266,7 @@ let firstPartyTargetsBaseB: [Target] = [
                 swiftCryptoNonAppleDependency
             ] + domainCoreDependencies,
             resources: [.process("Resources")]
-        ),
+        )
 ]
 
 let firstPartyTargetsBaseC: [Target] = [
@@ -1329,7 +1329,7 @@ let firstPartyTargetsBaseC: [Target] = [
             name: "OpenBurnBarHermes",
             dependencies: ["OpenBurnBarKernel"],
             exclude: openBurnBarHermesExcludes
-        ),
+        )
 ]
 
 let firstPartyTargetsBaseD: [Target] = [
@@ -1410,7 +1410,7 @@ let firstPartyTargetsBaseD: [Target] = [
             // without Xcode/Amplitude. The iOS app supplies the real Amplitude
             // transport behind `AnalyticsTransporting`.
             dependencies: []
-        ),
+        )
 ]
 
 let firstPartyTargetsBaseE: [Target] = [
@@ -1457,7 +1457,7 @@ let firstPartyTargetsBaseE: [Target] = [
             linkerSettings: [
                 .linkedLibrary("pam", .when(platforms: [.linux]))
             ]
-        ),
+        )
 ]
 
 let firstPartyTargetsBaseF: [Target] = [
@@ -1549,7 +1549,7 @@ let firstPartyTargetsBaseF: [Target] = [
             resources: [
                 .copy("Fixtures")
             ]
-        ),
+        )
 ]
 
 // Assembled incrementally (seed literal + appends per host-gated block)
@@ -1687,7 +1687,7 @@ let firstPartyTargetsBaseG: [Target] = [
             // Test target stays Swift 5: harness-only code; the Swift 6 region-isolation
             // checker has known gaps (Task hand-off) that would contort correct tests.
             swiftSettings: [.swiftLanguageMode(.v5)]
-        ),
+        )
 ]
 
 let firstPartyTargetsBaseH: [Target] = [

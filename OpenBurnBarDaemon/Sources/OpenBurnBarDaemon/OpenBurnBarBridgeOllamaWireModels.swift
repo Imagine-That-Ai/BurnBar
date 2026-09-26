@@ -37,7 +37,7 @@ struct OllamaNativeBridgeRequest: Codable, Sendable {
 
     private static let knownKeys: Set<String> = [
         "model", "stream", "messages", "options", "response_format", "reasoning",
-        "reasoning_effort", "max_completion_tokens", "max_tokens", "temperature", "top_p",
+        "reasoning_effort", "max_completion_tokens", "max_tokens", "temperature", "top_p"
     ]
 
     init(

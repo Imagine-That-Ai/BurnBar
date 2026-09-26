@@ -316,7 +316,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
                         from: response.doneReason,
                         hasToolCalls: toolCalls?.isEmpty == false
                     ))
-                ),
+                )
             ],
             usage: openAIUsageFromOllama(response)
         )
@@ -371,7 +371,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
                     index: 0,
                     delta: delta,
                     finishReason: finishReason.map(ChatBridgeFinishReason.value) ?? .null
-                ),
+                )
             ]
         )
     }

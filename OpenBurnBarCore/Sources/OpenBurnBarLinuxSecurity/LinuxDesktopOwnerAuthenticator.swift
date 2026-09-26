@@ -400,7 +400,7 @@ private struct LinuxDBusPolkitClient {
     }
 
     private func writeAll(_ data: Data) throws {
-        guard data.count > 0 else { return }
+        guard !data.isEmpty else { return }
         try data.withUnsafeBytes { bytes in
             guard let baseAddress = bytes.baseAddress else {
                 throw LinuxDesktopOwnerAuthenticationError.polkitUnavailable("D-Bus write buffer unavailable")

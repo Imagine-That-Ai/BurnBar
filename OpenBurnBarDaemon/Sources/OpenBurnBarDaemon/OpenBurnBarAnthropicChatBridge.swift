@@ -189,7 +189,7 @@ extension BurnBarAnthropicProviderExecutor {
             guard let content, !openAIContentIsEmpty(content) else { return nil }
             return .object([
                 "role": object["role"] ?? .string("user"),
-                "content": content,
+                "content": content
             ])
         }
     }
@@ -452,7 +452,7 @@ extension BurnBarAnthropicProviderExecutor {
                             ? nil : try BurnBarBridgeJSON.bridgeValue(content.toolCalls)
                     ),
                     finishReason: ChatBridgeFinishReason.fromAnthropicStopReason(message.stopReason?.string)
-                ),
+                )
             ],
             usage: openAIUsage(fromAnthropicMessage: message)
         )

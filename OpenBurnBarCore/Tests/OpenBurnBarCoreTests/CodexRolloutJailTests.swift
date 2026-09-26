@@ -32,7 +32,7 @@ final class CodexRolloutJailTests: XCTestCase {
                 ("traversal", "~/.codex/../../.ssh/id_rsa"),
                 ("absolute", "/etc/passwd"),
                 ("sibling", "~/.codex-evil/rollout.jsonl"),
-                ("nested", "~/.codex/sessions/../../../../tmp/x.jsonl"),
+                ("nested", "~/.codex/sessions/../../../../tmp/x.jsonl")
             ]
             for (id, rollout) in rows {
                 try conn.execute(

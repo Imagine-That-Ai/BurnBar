@@ -259,7 +259,7 @@ struct ResponsesBridgeObject: Encodable, Sendable {
     var status: String
     var output: [ResponsesBridgeOutputItem]
     var outputText: String
-    var usage: ResponsesBridgeUsageOut? = nil
+    var usage: ResponsesBridgeUsageOut?
 
     private enum CodingKeys: String, CodingKey {
         case id

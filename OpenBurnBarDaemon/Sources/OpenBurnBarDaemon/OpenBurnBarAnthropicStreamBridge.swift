@@ -60,7 +60,7 @@ extension BurnBarAnthropicProviderExecutor {
                                 id: toolID,
                                 type: "function",
                                 function: function
-                            ),
+                            )
                         ]),
                         finishReason: .null
                     ),
@@ -107,7 +107,7 @@ extension BurnBarAnthropicProviderExecutor {
                                         name: toolBlock.name,
                                         arguments: partialJSON
                                     )
-                                ),
+                                )
                             ]),
                             finishReason: .null
                         ),
@@ -254,11 +254,11 @@ extension BurnBarAnthropicProviderExecutor {
                                 id: toolID,
                                 type: "function",
                                 function: function
-                            ),
+                            )
                         ]),
                         finishReason: .null,
                         usage: nil
-                    ),
+                    )
                 ]
             }
 
@@ -275,7 +275,7 @@ extension BurnBarAnthropicProviderExecutor {
                             delta: ChatBridgeStreamChunk.ChatBridgeStreamDelta(content: text),
                             finishReason: .null,
                             usage: nil
-                        ),
+                        )
                     ]
                 }
                 if delta["type"]?.string == "input_json_delta",
@@ -309,11 +309,11 @@ extension BurnBarAnthropicProviderExecutor {
                                         name: toolBlock.name,
                                         arguments: partialJSON
                                     )
-                                ),
+                                )
                             ]),
                             finishReason: .null,
                             usage: nil
-                        ),
+                        )
                     ]
                 }
             }
@@ -549,7 +549,7 @@ extension BurnBarAnthropicProviderExecutor {
                     index: 0,
                     delta: delta,
                     finishReason: finishReason
-                ),
+                )
             ],
             usage: usage
         )

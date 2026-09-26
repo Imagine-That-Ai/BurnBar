@@ -53,7 +53,8 @@ final class DatabaseVacuumPolicyTests: XCTestCase {
         // Plan says ready (tmp volume has room for a tiny rebuild)…
         let plan = try legacy.read { db in try DatabaseVacuumPolicy.migrationPlan(db) }
         guard case .ready(let bytes) = plan else {
-            return XCTFail("expected .ready, got \(plan)")
+            XCTFail("expected .ready, got \(plan)")
+            return
         }
         XCTAssertGreaterThan(bytes, 0)
 

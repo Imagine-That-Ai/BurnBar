@@ -245,9 +245,9 @@ struct ChatBridgeOutboundMessage: Encodable, Sendable {
     var content: ChatBridgeOutboundContent
     // Opaque value (not typed calls): the Responses sanitizer copies client
     // `tool_calls` through verbatim, including malformed shapes.
-    var toolCalls: BurnBarBridgeValue? = nil
-    var toolCallID: String? = nil
-    var name: String? = nil
+    var toolCalls: BurnBarBridgeValue?
+    var toolCallID: String?
+    var name: String?
 
     private enum CodingKeys: String, CodingKey {
         case role
@@ -262,7 +262,7 @@ struct ChatBridgeOutboundToolCall: Encodable, Sendable {
     var id: String
     var type: String
     var function: ChatBridgeOutboundFunction
-    var index: Int? = nil
+    var index: Int?
 
     struct ChatBridgeOutboundFunction: Encodable, Sendable {
         var name: String
@@ -276,9 +276,9 @@ struct ChatBridgeOutboundTool: Encodable, Sendable {
 
     struct ChatBridgeOutboundToolFunction: Encodable, Sendable {
         var name: String
-        var toolDescription: String? = nil
+        var toolDescription: String?
         var parameters: BurnBarBridgeValue
-        var strict: Bool? = nil
+        var strict: Bool?
 
         private enum CodingKeys: String, CodingKey {
             case name
@@ -342,22 +342,22 @@ struct ChatBridgeUsage: Encodable, Sendable {
 struct ChatBridgeOutboundRequest: Encodable, Sendable {
     var model: String
     var messages: [ChatBridgeOutboundMessage]
-    var temperature: BurnBarBridgeValue? = nil
-    var topP: BurnBarBridgeValue? = nil
-    var stop: BurnBarBridgeValue? = nil
-    var stream: BurnBarBridgeValue? = nil
-    var maxTokens: BurnBarBridgeValue? = nil
-    var maxCompletionTokens: BurnBarBridgeValue? = nil
+    var temperature: BurnBarBridgeValue?
+    var topP: BurnBarBridgeValue?
+    var stop: BurnBarBridgeValue?
+    var stream: BurnBarBridgeValue?
+    var maxTokens: BurnBarBridgeValue?
+    var maxCompletionTokens: BurnBarBridgeValue?
     // Opaque values: the bridges normalize valid shapes into these, but
     // malformed client values still pass through verbatim.
-    var tools: BurnBarBridgeValue? = nil
-    var toolChoice: BurnBarBridgeValue? = nil
-    var presencePenalty: BurnBarBridgeValue? = nil
-    var frequencyPenalty: BurnBarBridgeValue? = nil
-    var logitBias: BurnBarBridgeValue? = nil
-    var seed: BurnBarBridgeValue? = nil
-    var user: BurnBarBridgeValue? = nil
-    var responseFormat: BurnBarBridgeValue? = nil
+    var tools: BurnBarBridgeValue?
+    var toolChoice: BurnBarBridgeValue?
+    var presencePenalty: BurnBarBridgeValue?
+    var frequencyPenalty: BurnBarBridgeValue?
+    var logitBias: BurnBarBridgeValue?
+    var seed: BurnBarBridgeValue?
+    var user: BurnBarBridgeValue?
+    var responseFormat: BurnBarBridgeValue?
 
     private enum CodingKeys: String, CodingKey {
         case model
@@ -408,7 +408,7 @@ struct ChatBridgeStreamChunk: Encodable, Sendable {
     var created: Int
     var model: String
     var choices: [ChatBridgeStreamChoice]
-    var usage: ChatBridgeStreamUsage? = nil
+    var usage: ChatBridgeStreamUsage?
 
     struct ChatBridgeStreamChoice: Encodable, Sendable {
         var index: Int
@@ -423,9 +423,9 @@ struct ChatBridgeStreamChunk: Encodable, Sendable {
     }
 
     struct ChatBridgeStreamDelta: Encodable, Sendable {
-        var role: String? = nil
-        var content: String? = nil
-        var toolCalls: [ChatBridgeStreamToolCall]? = nil
+        var role: String?
+        var content: String?
+        var toolCalls: [ChatBridgeStreamToolCall]?
 
         private enum CodingKeys: String, CodingKey {
             case role
@@ -435,14 +435,14 @@ struct ChatBridgeStreamChunk: Encodable, Sendable {
     }
 
     struct ChatBridgeStreamToolCall: Encodable, Sendable {
-        var index: Int? = nil
-        var id: String? = nil
-        var type: String? = nil
-        var function: ChatBridgeStreamFunction? = nil
+        var index: Int?
+        var id: String?
+        var type: String?
+        var function: ChatBridgeStreamFunction?
 
         struct ChatBridgeStreamFunction: Encodable, Sendable {
-            var name: String? = nil
-            var arguments: String? = nil
+            var name: String?
+            var arguments: String?
         }
     }
 }

@@ -239,7 +239,7 @@ extension BurnBarOpenAICompatibleProviderExecutor {
                         "type": .string("tool_use"),
                         "id": .string(call.id),
                         "name": .string(call.name),
-                        "input": objectFromJSONString(call.arguments) ?? .object([:]),
+                        "input": objectFromJSONString(call.arguments) ?? .object([:])
                     ])
                 ),
                 to: &output
