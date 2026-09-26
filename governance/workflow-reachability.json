@@ -10,6 +10,11 @@
     },
     {
       "workflow": "app-pr-gate.yml",
+      "job": "app-lab-gate",
+      "reason": "Reviewed 2026-09-26: mirrors app-build-test gating. On push/schedule/dispatch it runs only when the impact classifier selects macOS; on merge_group it runs after merge-group-product-lanes. An inherited skip is the intended classifier outcome, and the App build + test (AgentLens) aggregate rejects a skipped or failed Lab lane whenever macOS was required or the event is merge_group."
+    },
+    {
+      "workflow": "app-pr-gate.yml",
       "job": "mobile-build-gate",
       "reason": "Baselined 2026-08-19 without individual review. PR gate lanes are conditional on changed-path detection, where inheriting a skip is the expected behaviour."
     },
