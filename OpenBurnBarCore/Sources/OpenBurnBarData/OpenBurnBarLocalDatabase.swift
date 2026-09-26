@@ -247,17 +247,24 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
         }
     }
 
+    /// Schema hash over the endpoint DDL. Canonicalization matches
+    /// `OpenBurnBarSchemaExport` (`schemaEntries`/`schemaHashHex`: trimmed
+    /// per-statement SQL, sqlite-internal and NULL-SQL rows excluded, ordered
+    /// by (type, name)) and the DB byte-compat vector: the three MUST agree.
+    /// Keep them in sync — the Linux docs-mirror test asserts this hash
+    /// appears verbatim in docs/SCHEMA_SQLITE.sql.
     public func schemaHash() throws -> String {
         let schema = try pool.read { db in
             try String.fetchAll(
                 db,
                 sql: """
-                SELECT type || ':' || name || ':' || COALESCE(tbl_name, '') || ':' || COALESCE(sql, '')
-                FROM sqlite_master
-                WHERE name NOT LIKE 'sqlite_%'
-                ORDER BY type, name, tbl_name, sql
+                SELECT sql FROM sqlite_master
+                WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
+                ORDER BY type, name
                 """
-            ).joined(separator: "\n")
+            )
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .joined(separator: "\n")
         }
         return OpenBurnBarSchemaHasher.sha256Hex(Data(schema.utf8))
     }

@@ -130,11 +130,11 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
         XCTAssertTrue(schemaHash.allSatisfy(\.isHexDigit))
 
         let schemaSQL = try String(contentsOf: repositoryRoot().appendingPathComponent("docs/SCHEMA_SQLITE.sql"), encoding: .utf8)
-        XCTAssertTrue(schemaSQL.contains("CREATE TABLE provider_accounts"))
+        XCTAssertTrue(schemaSQL.contains("CREATE TABLE \"provider_accounts\""))
         XCTAssertTrue(schemaSQL.contains("CREATE TABLE provider_quota_snapshots"))
-        XCTAssertTrue(schemaSQL.contains("CREATE VIRTUAL TABLE search_chunks_fts"))
+        XCTAssertTrue(schemaSQL.contains("CREATE VIRTUAL TABLE \"search_chunks_fts\""))
         XCTAssertTrue(
-            schemaSQL.contains("-- Schema hash: \(schemaHash)"),
+            schemaSQL.contains("-- schemaHashSHA256: \(schemaHash)"),
             "docs/SCHEMA_SQLITE.sql schema hash is stale; expected \(schemaHash)"
         )
     }

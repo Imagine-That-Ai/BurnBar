@@ -180,8 +180,16 @@ extension OpenBurnBarDatabase {
             options: []
         ) else { return }
 
+        // WAL sidecars are not backups: the destination queue is still open
+        // while pruning runs, so `<name>.backup.<ts>-wal`/`-shm` exist
+        // alongside the backup itself. Counting them as candidates lets the
+        // newest-1 sort keep a sidecar and delete the live backup file.
+        let sidecarSuffixes = ["-wal", "-shm", "-journal"]
         let backups = contents
-            .filter { $0.lastPathComponent.contains(".backup.") }
+            .filter {
+                $0.lastPathComponent.contains(".backup.")
+                    && !sidecarSuffixes.contains(where: $0.lastPathComponent.hasSuffix)
+            }
             .compactMap { url -> (url: URL, date: Date)? in
                 guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]), // try?-ok(skip undated backup)
                       let date = values.contentModificationDate else { return nil }
@@ -194,6 +202,12 @@ extension OpenBurnBarDatabase {
         for item in backups[max...] {
             do {
                 try fileManager.removeItem(at: item.url)
+                for suffix in sidecarSuffixes {
+                    let sidecar = URL(fileURLWithPath: item.url.path + suffix)
+                    if fileManager.fileExists(atPath: sidecar.path) {
+                        try fileManager.removeItem(at: sidecar)
+                    }
+                }
                 AppLogger.dataStore.info("Pruned old database backup", metadata: ["path": item.url.path])
             } catch {
                 AppLogger.dataStore.silentFailure("Prune old database backup failed", error: error)
