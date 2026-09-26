@@ -54,3 +54,11 @@ jobs:
       - id: impact
         name: Classify exact candidate diff (fail closed)
         run: node scripts/ci/classify-ci-impact.mjs
+      - name: Self-test lane-selection machinery
+        # Wave 3.8's app-smoke lane is parked (see pr-native-fast.yml), but its
+        # selection logic stays gated here: seconds on ubuntu, no macOS build.
+        run: |
+          set -euo pipefail
+          node --test scripts/ci/classify-ci-impact.test.mjs
+          bash scripts/ci/select-pr-app-tests.test.sh
+          bash scripts/test-openburnbar-app-classifier.sh

@@ -121,28 +121,23 @@ jobs:
   classify:
     uses: ./.github/workflows/ci-impact.yml
 
-  # ── PR-GATED: Mac app smoke + impacted tests (<20 min door) ────────────────
-  # Wave 3.8: the PR door runs a bounded app-host proof instead of nothing.
-  # Budget levers: prebuilt Signal FFI (cache-warmer superset restored from
-  # the main-branch cache, never rebuilt on the common path), the same warm
-  # SwiftPM cache keys app-pr-gate uses, a single xcodebuild test invocation
-  # (no separate pre-build, no coverage-taxing extras beyond the guard
-  # evidence), and the split test plan (smoke catalog + impacted classes via
-  # scripts/ci/select-pr-app-tests.sh — the full corpus stays post-merge).
-  # The build reuses app-pr-gate's macos-lab-gate derived-data subdir so the
-  # restored main-branch build products actually hit: a fresh temp dir would
-  # rebuild every SPM dependency from scratch on every run. Same scheme,
-  # configuration, and flags as the Lab lane, so incremental rebuilds are
-  # sound; each runner holds a private copy, never shared live.
-  # timeout-minutes: 40 still enforces a door budget, calibrated for a
-  # large impacted selection on top of an incremental rebuild: the 20-minute
-  # budget was sized for ~137 smoke tests, and a mega-diff selects most of
-  # the corpus. Small PRs still finish in the same wall-clock time (a cap is
-  # not spend); only the ceiling moves.
+  # ── PARKED: Mac app smoke + impacted tests (wave 3.8) ──────────────────────
+  # Wave 3.8 built the lane machinery (selector at
+  # scripts/ci/select-pr-app-tests.sh, classifier lib, this job) for a bounded
+  # app-host proof on the PR door. PR #2683 batch-H proved the build cannot
+  # fit the door: a from-scratch singlefile compile (batch mode crashes
+  # SwiftEmitModule on this target, 44b801f4a2) plus source-built gRPC takes
+  # ~40 min before tests start, against the ~45 min gate poll — and a
+  # timed-out run never saves its cache, so the lane cannot bootstrap warm.
+  # The job stays wired but parked behind MACOS_APP_SMOKE_ENABLED (unset ==
+  # skip; the Native Gate already accepts skipped). Enforcement stays on
+  # merge_group via app-pr-gate's full suite (240-min budgets). Re-enable
+  # when the fleet pool (warm disks) or a fitting build lands. The lane's
+  # self-tests run in ci-impact.yml, and the scripts stay live for local runs.
   app-smoke:
     name: Mac app smoke + impacted tests
     needs: [classify]
-    if: needs.classify.outputs.macos == 'true'
+    if: needs.classify.outputs.macos == 'true' && vars.MACOS_APP_SMOKE_ENABLED == 'true'
     # Routing (cost + security): same isolated hosted macOS pools as the
     # other native PR jobs — PR/merge-queue code is untrusted.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
