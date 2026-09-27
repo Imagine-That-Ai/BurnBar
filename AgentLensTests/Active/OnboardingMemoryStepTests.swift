@@ -1,7 +1,7 @@
 import XCTest
 @testable import OpenBurnBar
 
-/// The first-run memory step. Two things must hold forever:
+/// The first-run memory step. Three things must hold forever:
 ///
 ///   1. It is *optional*. A step that can strand somebody on their first
 ///      launch is worse than no step, so it must sit inside the normal
@@ -12,6 +12,9 @@ import XCTest
 ///      `burnbar_memorize` / `burnbar_remember`; automatic collection is an
 ///      opt-in hook; nothing is pruned on the member's behalf. These pins
 ///      make a copy edit that quietly over-claims fail here first.
+///   3. Its one outbound link stays pointed at the section of the live page
+///      that answers the same four questions — `burnbar.ai/memory#duties` —
+///      and stays an aside rather than the way forward.
 final class OnboardingMemoryStepTests: XCTestCase {
 
     // MARK: Placement
@@ -87,8 +90,48 @@ final class OnboardingMemoryStepTests: XCTestCase {
     /// two places the same controls live afterwards.
     func testSkipNoteNamesWhereEverythingLivesAfterwards() {
         let note = OnboardingMemoryContent.skipNote
-        XCTAssertTrue(note.contains("Settings \u{203A} Connections \u{203A} Apps"))
+        XCTAssertTrue(note.contains("Settings \u{203A} Agents \u{203A} CLIs"))
         XCTAssertTrue(note.contains("Settings \u{203A} General \u{203A} Indexing"))
+    }
+
+    // MARK: Learn more
+
+    /// The one outbound link on the step points at the section of
+    /// `website/src/pages/memory.astro` that answers the same four questions
+    /// at length — `id="duties"`, "Four questions, before the config block."
+    /// If that anchor is ever renamed, this pin is where it is noticed.
+    func testLearnMoreLinkPointsAtTheDutiesSectionOfTheLiveMemoryPage() {
+        let url = OnboardingMemoryContent.learnMoreURL
+        XCTAssertEqual(url.absoluteString, "https://burnbar.ai/memory#duties")
+        XCTAssertEqual(url.scheme, "https", "the step must never open an insecure page")
+        XCTAssertEqual(url.host, "burnbar.ai")
+        XCTAssertEqual(url.path, "/memory")
+        XCTAssertEqual(url.fragment, "duties", "the link lands on the four-questions section, not the top of a long page")
+    }
+
+    /// The link is an aside, not the exit. It must be labelled as reading
+    /// material, must not borrow the wizard's forward verb, and must not be
+    /// the thing that carries somebody out of the step — `nextAvailable` and
+    /// the skip note both still stand on their own above.
+    func testLearnMoreIsAnAsideAndNotTheWayForward() {
+        let title = OnboardingMemoryContent.learnMoreTitle
+        XCTAssertFalse(title.isEmpty)
+        XCTAssertTrue(title.localizedCaseInsensitiveContains("burnbar.ai/memory"), "say where the link goes")
+        for forwardVerb in ["Continue", "Next", "Get started", "Finish"] {
+            XCTAssertFalse(
+                title.localizedCaseInsensitiveContains(forwardVerb),
+                "the learn-more link must not read as the step's primary action: \(forwardVerb)"
+            )
+        }
+        XCTAssertNotNil(OnboardingWizardStep.memory.nextAvailable, "the step keeps a way forward that is not this link")
+        XCTAssertFalse(OnboardingMemoryContent.skipNote.isEmpty, "skipping stays possible without opening a browser")
+    }
+
+    /// VoiceOver has to hear both the destination and that it leaves the app.
+    func testLearnMoreAccessibilityLabelNamesTheDestinationAndTheBrowser() {
+        let label = OnboardingMemoryContent.learnMoreAccessibilityLabel
+        XCTAssertTrue(label.localizedCaseInsensitiveContains("burnbar.ai/memory"))
+        XCTAssertTrue(label.localizedCaseInsensitiveContains("browser"))
     }
 
     /// The step reuses the Settings installer, so every client it can wire is

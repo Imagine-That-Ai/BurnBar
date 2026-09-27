@@ -13,7 +13,7 @@ rather than trust it.
 > no sign-in, `burnbar_remember` / `burnbar_recall` / `burnbar_forget`.
 > The **hosted**, end-to-end-encrypted Pensieve memory (`mcp.burnbar.ai`, Cloud
 > Pro) is a separate surface with its own guide:
-> [`docs/MEMORY_MCP_GUIDE.md`](MEMORY_MCP_GUIDE.md). The marketing tour of this
+> [`docs/MEMORY_MCP_GUIDE.md`](MEMORY_MCP_GUIDE.md). The illustrated tour of this
 > one is [burnbar.ai/memory](https://burnbar.ai/memory).
 
 Reference material, not duplicated here: the full behaviour contract and every
@@ -26,10 +26,16 @@ CLI scope, recovery paths and bearer-token handling live in
 
 ## The short version
 
+The same four questions are answered with per-surface detail, diagrams and the
+live tool atlas at
+[burnbar.ai/memory#duties](https://burnbar.ai/memory#duties) — and that section
+is where the app's first-run memory step sends you. This page is the long form:
+it names the file behind each answer so you can check it in this checkout.
+
 | Question | Answer |
 | --- | --- |
 | Is it on by default? | The engine is; it just has nothing to do until an agent calls it. Nothing is collected, and no store is created, until something writes a memory. |
-| Do I have to install it into my coding agents? | Yes. One click for Claude Code, Cursor and Codex CLI; a config block by hand for the rest. |
+| Do I have to install it into my coding agents? | Yes. One click for the seven clients the app knows how to wire; a config block by hand for the rest. |
 | Once installed, does it collect automatically? | Only when an agent calls a memory tool. The Claude Code `SessionEnd` hook that collects without being asked is opt-in and off until you add it yourself. |
 | Does it prune itself? | No. Nothing is ever deleted on a timer. `expiresAt`, review, `burnbar_forget` and supersession are the tools; every one of them is something you or your agent invokes. |
 
@@ -110,9 +116,13 @@ server into each agent does.
 | **Claude Code** | One click in the app | Settings › Agents › **CLIs** → "Agent memory (MCP)" — writes `~/.claude.json` |
 | **Cursor** | One click in the app | same card — writes `~/.cursor/mcp.json` |
 | **Codex CLI** | One click in the app | same card — writes a sentinel-fenced `[mcp_servers.*]` block into `~/.codex/config.toml` |
+| **Factory Droid** | One click in the app | same card — writes `~/.factory/mcp.json` |
+| **Antigravity CLI** | One click in the app | same card — writes `~/.gemini/config/mcp_config.json` |
+| **Gemini CLI** | One click in the app | same card — writes `~/.gemini/settings.json` |
+| **Muse** | One click in the app | same card — writes `$XDG_CONFIG_HOME/muse/settings.json` (default `~/.config/muse/settings.json`) |
 | **Claude Desktop** | By hand | the JSON block in [`tools/openburnbar-mcp/README.md` § Claude Desktop](../tools/openburnbar-mcp/README.md) → `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | **Hermes Agent** | By hand | the YAML block in [`tools/openburnbar-mcp/README.md` § Hermes Agent](../tools/openburnbar-mcp/README.md) → `~/.hermes/config.yaml` |
-| **Droid, Muse, Agy** | Not wired by the installer today | Configure by hand if the tool supports MCP. We do not publish a config path for these, because we have not verified one. |
+| **Agy, and anything else** | Not wired by the installer today | Configure by hand if the tool supports MCP. We do not publish a config path for these, because we have not verified one. |
 
 The one-click card is honest about failure: it probes each client's real config
 file for the current state, names the exact file the button will modify, and if
@@ -124,8 +134,8 @@ the 45-tool memory surface instead of all 95 tools the server registers.
 
 *Proof:* `AgentLens/Views/Settings/MCPInstallCard.swift`;
 `AgentLens/Services/CLIBridge/MCPClientWiring.swift` — `MCPClientWiringTarget`
-is exactly `{claudeCode, cursor, codex}`, and `MCPServerLaunch.toolset`
-defaults to `"memory"`.
+is exactly `{claudeCode, cursor, codex, droid, antigravity, geminiCLI, muse}`,
+and `MCPServerLaunch.toolset` defaults to `"memory"`.
 
 ### Doing it by hand anywhere
 
