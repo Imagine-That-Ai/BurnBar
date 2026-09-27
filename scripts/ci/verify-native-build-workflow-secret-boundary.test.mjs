@@ -91,7 +91,7 @@ expect(
         "      - name: Verify committed AAR parity\n",
         [
           "      - name: Upload rebuilt AAR before parity",
-          "        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
+          "        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
           "        with:",
           "          name: openburnbar-iroh-aar-rebuilt",
           "          path: Vendor/openburnbar-iroh.aar",

@@ -145,7 +145,7 @@ class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
             "scripts/ci/create-domain-core-release-evidence.mjs",
             '--protected-signer-run-id "$SIGNER_RUN_ID"',
             '--protected-signer-run-attempt "$SIGNER_RUN_ATTEMPT"',
-            "actions/attest@a1948c3f048ba23858d222213b7c278aabede763",
+            "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
             "https://openburnbar.dev/attestations/domain-core-release-artifact/v2",
         )
         for value in required:

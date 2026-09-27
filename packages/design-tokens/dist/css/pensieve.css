@@ -89,7 +89,7 @@
   --glass-sheen-dark-from: rgba(255, 255, 255, 0.08); /** GlassCard sheen (dark): white@8% */
   --glass-sheen-dark-to: rgba(250, 80, 83, 0.02); /** GlassCard sheen (dark): ember@2% */
   --glass-sheen-light-from: rgba(244, 91, 105, 0.07); /** GlassCard sheen (light): ember@7% */
-  --glass-sheen-light-to: rgba(232, 97, 0, 0.05); /** GlassCard sheen (light): blaze@4.5% */
+  --glass-sheen-light-to: rgba(232, 97, 0, 0.045); /** GlassCard sheen (light): blaze@4.5% */
   --glass-edge-light: rgba(255, 255, 255, 0.18); /** luminous edge start: white@18% */
   --glass-edge-dark-border: rgba(48, 54, 61, 0.45); /** luminous edge end (dark): border@45% */
   --glass-edge-light-border: rgba(232, 191, 181, 0.45); /** luminous edge end (light): border@45% */

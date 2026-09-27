@@ -2,9 +2,9 @@ package com.openburnbar.data
 
 import android.content.Context
 import android.util.Log
+import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.functions.ktx.functions
-import com.google.firebase.ktx.Firebase
+import com.google.firebase.functions.functions
 import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.cloud.CloudVaultDocumentRewrapDomainCore
 import com.openburnbar.data.cloud.CloudVaultDomainCore

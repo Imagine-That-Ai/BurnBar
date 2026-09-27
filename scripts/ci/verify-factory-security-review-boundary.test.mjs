@@ -175,7 +175,7 @@ jobs:
           SECURITY_REVIEW_EVIDENCE_KEY: \${{ secrets.SECURITY_REVIEW_EVIDENCE_KEY }}
       - name: Upload encrypted security review evidence
         if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: factory-security-review-encrypted-evidence-\${{ github.run_id }}
           path: \${{ runner.temp }}/factory-security-review-encrypted-evidence.tgz.gpg

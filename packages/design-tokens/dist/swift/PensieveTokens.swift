@@ -89,7 +89,7 @@ public enum PensieveTokens {
     public static let glassSheenDarkFrom: String = "rgba(255, 255, 255, 0.08)"
     public static let glassSheenDarkTo: String = "rgba(250, 80, 83, 0.02)"
     public static let glassSheenLightFrom: String = "rgba(244, 91, 105, 0.07)"
-    public static let glassSheenLightTo: String = "rgba(232, 97, 0, 0.05)"
+    public static let glassSheenLightTo: String = "rgba(232, 97, 0, 0.045)"
     public static let glassEdgeLight: String = "rgba(255, 255, 255, 0.18)"
     public static let glassEdgeDarkBorder: String = "rgba(48, 54, 61, 0.45)"
     public static let glassEdgeLightBorder: String = "rgba(232, 191, 181, 0.45)"

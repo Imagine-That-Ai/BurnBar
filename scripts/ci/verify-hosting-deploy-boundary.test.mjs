@@ -55,7 +55,7 @@ on:
 jobs:
   build-hosting-artifacts:
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Verify hosting deploy ref
         env:
           EVENT_NAME: \${{ github.event_name }}
@@ -125,12 +125,12 @@ jobs:
       id-token: write
     steps:
       - name: Download immutable hosting artifact
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
       - name: Verify hosting artifact and CI config
         env:
           FIREBASE_HOSTING_CI_CONFIG: \${{ runner.temp }}/hosting-artifact/firebase-hosting.ci.json
         run: sha256sum -c SHA256SUMS
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
       - name: Authenticate to Google Cloud (hosting-only WIF/OIDC)
@@ -245,7 +245,7 @@ expect(
   "deploy job checkout fails",
   GOOD.replace(
     "      - name: Download immutable hosting artifact",
-    "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n      - name: Download immutable hosting artifact",
+    "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n      - name: Download immutable hosting artifact",
   ),
   1,
 );

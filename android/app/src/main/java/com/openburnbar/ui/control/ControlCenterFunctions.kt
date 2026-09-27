@@ -1,8 +1,8 @@
 package com.openburnbar.ui.control
 
+import com.google.firebase.Firebase
 import com.google.firebase.functions.FirebaseFunctions
-import com.google.firebase.functions.ktx.functions
-import com.google.firebase.ktx.Firebase
+import com.google.firebase.functions.functions
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
 import com.openburnbar.data.computeruse.ComputerUseSecurityCallableClient
 import kotlinx.coroutines.tasks.await

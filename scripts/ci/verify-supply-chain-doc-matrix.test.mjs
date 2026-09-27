@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const ACTION =
-  "actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f";
+  "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8";
 const SLSA = "https://slsa.dev/provenance/v1";
 const LEGACY_SUNSET = "v1.0.40+repair.37";
 

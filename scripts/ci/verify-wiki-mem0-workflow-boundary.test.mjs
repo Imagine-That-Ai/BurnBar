@@ -34,7 +34,7 @@ jobs:
     outputs:
       base-sha: \${{ steps.capture-base.outputs.sha }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: \${{ github.event.repository.default_branch }}
           persist-credentials: false
@@ -48,7 +48,7 @@ jobs:
       - name: Stage refreshed manifest
         run: cp droid-wiki/.mem0-manifest.json "$RUNNER_TEMP/mem0-manifest/mem0-manifest.json"
       - name: Upload refreshed manifest
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: wiki-mem0-manifest
           path: \${{ runner.temp }}/mem0-manifest/mem0-manifest.json
@@ -58,12 +58,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: \${{ needs.reconcile.outputs.base-sha }}
           persist-credentials: false
       - name: Download refreshed manifest
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: wiki-mem0-manifest
       - name: Restore refreshed manifest
@@ -232,8 +232,8 @@ expect(
 expect(
   "commit job missing artifact download fails",
   GOOD_WORKFLOW.replace(
-    "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0",
-    "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd",
+    "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
   ),
   1,
 );

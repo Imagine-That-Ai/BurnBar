@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install hosting dependencies
         run: |
           npm ci --prefix website
@@ -190,7 +190,7 @@ expect_fail "functions prepare production environment fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/functions-deploy-checkout"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("      - name: Download immutable prepared deploy artifact", "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n\n      - name: Download immutable prepared deploy artifact", 1)'
+mutate_file "$fixture" ".github/workflows/deploy-production.yml" 'text = text.replace("      - name: Download immutable prepared deploy artifact", "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n\n      - name: Download immutable prepared deploy artifact", 1)'
 expect_fail "functions credentialed checkout fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/functions-missing-artifact-checksum"
@@ -270,7 +270,7 @@ expect_fail "cloud run primed base digest mismatch fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-deploy-checkout"
 copy_base_fixture "$fixture"
-mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("      - name: Download deploy artifact", "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n\n      - name: Download deploy artifact", 1)'
+mutate_file "$fixture" ".github/workflows/deploy-cloud-run.yml" 'text = text.replace("      - name: Download deploy artifact", "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n\n      - name: Download deploy artifact", 1)'
 expect_fail "cloud run deploy checkout fails" run_gate "$fixture"
 
 fixture="$TMP_ROOT/cloud-run-artifact-deploy-driver"

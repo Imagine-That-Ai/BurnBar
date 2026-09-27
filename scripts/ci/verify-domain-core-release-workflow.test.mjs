@@ -361,15 +361,14 @@ console.log("\n3. Approved action pins are exact");
 
 // The repo-approved upload-artifact pin (appears in 35+ other workflows):
 const APPROVED_UPLOAD_ARTIFACT_PIN =
-  "330a01c490aca151604b8cf639adc76d48f6c5d4";
-// The transposed (bad) pin swaps "cf" → "fc":
+  "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
+// A transposed (bad) pin swaps two adjacent hex characters:
 const TRANSPOSED_UPLOAD_ARTIFACT_PIN =
-  "330a01c490aca151604b8fc639adc76d48f6c5d4";
+  "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a".replace("1a93", "a193");
 
-// The repo has two approved download-artifact pins: v5 and v6.
+// The repo-approved download-artifact pin.
 const APPROVED_DOWNLOAD_ARTIFACT_PINS = new Set([
-  "018cc2cf5baa6db3ef3c5f8a56943fffe632ef53", // v6.0.0
-  "634f93cb2916e3fdff6788551b99b062d0335ce0", // v5.0.0
+  "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c", // v8.0.1
 ]);
 
 // Extract all action pins from a workflow body for a given action.

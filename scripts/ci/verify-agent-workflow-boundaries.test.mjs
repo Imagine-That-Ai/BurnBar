@@ -74,7 +74,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Skip
@@ -123,7 +123,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Skip
@@ -169,7 +169,7 @@ jobs:
       issues: write
       id-token: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
         with:
           factory_api_key: \${{ env.FACTORY_API_KEY }}
@@ -191,7 +191,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Skip
@@ -217,7 +217,7 @@ on:
 jobs:
   wiki-refresh:
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Generate Wiki
@@ -246,7 +246,7 @@ jobs:
       contains(github.event.comment.body, '@droid') &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Generate Wiki
@@ -271,7 +271,7 @@ on:
 jobs:
   wiki-refresh:
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Generate Wiki
@@ -296,7 +296,7 @@ on:
 jobs:
   wiki-refresh:
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Generate Wiki
         env:
           FACTORY_API_KEY: \${{ secrets.FACTORY_API_KEY }}
@@ -313,7 +313,7 @@ on:
 jobs:
   wiki-refresh:
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Generate Wiki
@@ -765,8 +765,8 @@ expect(
   "checkout name text credential isolation fails",
   {
     "droid.yml": REMEDIATED_DROID.replace(
-      "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n        with:\n          persist-credentials: false\n",
-      "      - name: checkout persist-credentials: false\n        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with:\n          persist-credentials: false\n",
+      "      - name: checkout persist-credentials: false\n        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n",
     ),
   },
   1,
@@ -777,7 +777,7 @@ expect(
   {
     "droid.yml": REMEDIATED_DROID.replace(
       "      - name: Skip\n",
-      "      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n      - name: Skip\n",
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n      - name: Skip\n",
     ),
   },
   1,

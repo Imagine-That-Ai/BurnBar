@@ -3,10 +3,10 @@ package com.openburnbar.data.stores
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.Firebase
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.functions.ktx.functions
-import com.google.firebase.ktx.Firebase
+import com.google.firebase.functions.functions
 import com.openburnbar.data.cloud.AndroidEscrowCredentialImporter
 import java.security.GeneralSecurityException
 import java.security.SecureRandom

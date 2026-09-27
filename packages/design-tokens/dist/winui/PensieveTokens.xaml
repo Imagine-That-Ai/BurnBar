@@ -97,7 +97,7 @@
     <Color x:Key="PensieveGlassSheenDarkFrom">#14FFFFFF</Color>
     <Color x:Key="PensieveGlassSheenDarkTo">#05FA5053</Color>
     <Color x:Key="PensieveGlassSheenLightFrom">#12F45B69</Color>
-    <Color x:Key="PensieveGlassSheenLightTo">#0DE86100</Color>
+    <Color x:Key="PensieveGlassSheenLightTo">#0BE86100</Color>
     <Color x:Key="PensieveGlassEdgeLight">#2EFFFFFF</Color>
     <Color x:Key="PensieveGlassEdgeDarkBorder">#7330363D</Color>
     <Color x:Key="PensieveGlassEdgeLightBorder">#73E8BFB5</Color>

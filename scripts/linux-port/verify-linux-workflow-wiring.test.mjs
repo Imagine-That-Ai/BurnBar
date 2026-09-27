@@ -109,7 +109,7 @@ function valid() {
       "--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests",
       "      - name: Upload Linux gate evidence",
       "        if: always()",
-      "        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874",
+      "        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
       "        with:",
       "          name: linux-pr-gate-evidence",
       "          path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/",
@@ -1135,7 +1135,7 @@ function valid() {
       "Publish signed update feed to downloads origin",
       "Verify live Linux update feed after publish",
       "Publish verified Linux GitHub release",
-      "      - name: Upload promotion closure\n        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4\n        with:\n          path: ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion/\n          include-hidden-files: true\n          if-no-files-found: error",
+      "      - name: Upload promotion closure\n        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\n        with:\n          path: ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/promotion/\n          include-hidden-files: true\n          if-no-files-found: error",
     ].join("\n"),
     nightly: [
       "OPENBURNBAR_LINUX_EVIDENCE_OUT",
@@ -1145,7 +1145,7 @@ function valid() {
       "      - name: Upload macOS nightly matched workload soak",
       "        id: upload-macos-performance-primary",
       "        continue-on-error: true",
-      "        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
+      "        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
       "          name: linux-parity-macos-performance-nightly",
       "          path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json",
       "          if-no-files-found: error",
@@ -1153,7 +1153,7 @@ function valid() {
       "        id: upload-macos-performance-retry",
       "        if: steps.upload-macos-performance-primary.outcome != 'success'",
       "        continue-on-error: true",
-      "        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
+      "        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
       "          name: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}",
       "          path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json",
       "          if-no-files-found: error",
@@ -1185,7 +1185,7 @@ function valid() {
       "--env OPENBURNBAR_LINUX_SWIFT_TEST_RESULTS=/evidence/linux-swift-tests",
       "      - name: Upload Linux nightly evidence",
       "        if: always()",
-      "        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874",
+      "        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
       "        with:",
       "          name: linux-nightly-${{ matrix.label }}",
       "          path: ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/",
@@ -1277,8 +1277,8 @@ function valid() {
       "Final Linux release verification",
       "Finalize installed-product proof closure",
       "Sign installed-product proof closure",
-      "      - name: Upload architecture shard\n        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4\n        with:\n          path: ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/\n          include-hidden-files: true\n          if-no-files-found: error",
-      "      - name: Upload Linux release evidence\n        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4\n        with:\n          path: |\n            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/\n            ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/\n            ${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}/\n          include-hidden-files: true\n          if-no-files-found: error",
+      "      - name: Upload architecture shard\n        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\n        with:\n          path: ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/\n          include-hidden-files: true\n          if-no-files-found: error",
+      "      - name: Upload Linux release evidence\n        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\n        with:\n          path: |\n            ${{ env.OPENBURNBAR_LINUX_RELEASE_OUT }}/\n            ${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/\n            ${{ env.OPENBURNBAR_LINUX_SHARDS_DIR }}/\n          include-hidden-files: true\n          if-no-files-found: error",
     ].join("\n"),
     makefile: "release-linux:\n\tnode verify\n\nother:",
     nativeTests: [
@@ -2512,7 +2512,8 @@ test("hidden Linux output uploads fail closed when upload protections mutate", (
     [
       "promotionWorkflow",
       "Upload promotion closure",
-      "actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874",
+      // A stale, no-longer-approved upload-artifact pin (v5.0.0).
+      "actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
     ],
     ["nightly", "Upload Linux nightly evidence", "include-hidden-files: false"],
   ]) {
@@ -2523,7 +2524,7 @@ test("hidden Linux output uploads fail closed when upload protections mutate", (
       ? "include-hidden-files: true"
       : mutation.startsWith("if-no-files")
         ? "if-no-files-found: error"
-        : "actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4";
+        : "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
     input[surface] =
       `${input[surface].slice(0, start)}${input[surface].slice(start).replace(original, mutation)}`;
     assert.equal(

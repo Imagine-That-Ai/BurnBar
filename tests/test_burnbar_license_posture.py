@@ -29,8 +29,8 @@ def test_burnbar_agpl_product_license_posture_is_complete() -> None:
 def test_license_posture_workflow_runs_all_release_gates() -> None:
     workflow = (ROOT / ".github/workflows/license-posture.yml").read_text(encoding="utf-8")
 
-    assert "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2" in workflow
-    assert "actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5" in workflow
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1" in workflow
+    assert "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0" in workflow
     assert "dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1" in workflow
     assert 'toolchain: "1.96.0"' in workflow
     assert "python scripts/ci/check_burnbar_license_posture.py" in workflow

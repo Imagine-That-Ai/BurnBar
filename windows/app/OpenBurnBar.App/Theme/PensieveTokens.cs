@@ -91,7 +91,7 @@ public static class PensieveTokens
     public const string GlassSheenDarkFrom = "rgba(255, 255, 255, 0.08)";
     public const string GlassSheenDarkTo = "rgba(250, 80, 83, 0.02)";
     public const string GlassSheenLightFrom = "rgba(244, 91, 105, 0.07)";
-    public const string GlassSheenLightTo = "rgba(232, 97, 0, 0.05)";
+    public const string GlassSheenLightTo = "rgba(232, 97, 0, 0.045)";
     public const string GlassEdgeLight = "rgba(255, 255, 255, 0.18)";
     public const string GlassEdgeDarkBorder = "rgba(48, 54, 61, 0.45)";
     public const string GlassEdgeLightBorder = "rgba(232, 191, 181, 0.45)";

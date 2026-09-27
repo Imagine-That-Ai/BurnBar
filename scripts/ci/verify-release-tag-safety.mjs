@@ -718,7 +718,7 @@ for (const marker of [
   "--field deploy_run_id=",
   "--field deploy_run_attempt=",
   "--field domain_core_profile=",
-  "actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
+  "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
 ]) {
   requireIncludes(
     productionEvidenceHandoffJob,

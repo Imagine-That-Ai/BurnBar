@@ -77,7 +77,7 @@ export function verifyLinuxWorkflowWiring(input) {
       failures.push(`${source} is missing upload step: ${stepName}`);
       return;
     }
-    const artifactAction = options.artifactAction ?? 'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4';
+    const artifactAction = options.artifactAction ?? 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
     const noFilesFound = options.noFilesFound ?? 'if-no-files-found: error';
     for (const marker of [
       artifactAction,
@@ -106,7 +106,7 @@ export function verifyLinuxWorkflowWiring(input) {
     for (const marker of [
       'id: upload-macos-performance-primary',
       'continue-on-error: true',
-      'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+      'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
       'name: linux-parity-macos-performance-nightly',
       'path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json',
       'if-no-files-found: error'
@@ -115,7 +115,7 @@ export function verifyLinuxWorkflowWiring(input) {
       'id: upload-macos-performance-retry',
       "if: steps.upload-macos-performance-primary.outcome != 'success'",
       'continue-on-error: true',
-      'actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4',
+      'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
       'name: linux-parity-macos-performance-nightly-retry-${{ github.run_id }}',
       'path: ${{ env.OB_EVIDENCE_OUT }}/matched-performance-macos.json',
       'if-no-files-found: error'
@@ -734,7 +734,7 @@ export function verifyLinuxWorkflowWiring(input) {
     ['${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/'],
     'PR workflow',
     {
-      artifactAction: 'actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874',
+      artifactAction: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
       noFilesFound: 'if-no-files-found: warn',
       additionalMarkers: ['if: always()']
     }
@@ -745,7 +745,7 @@ export function verifyLinuxWorkflowWiring(input) {
     ['${{ env.OPENBURNBAR_LINUX_EVIDENCE_OUT }}/'],
     'nightly workflow',
     {
-      artifactAction: 'actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874',
+      artifactAction: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
       noFilesFound: 'if-no-files-found: warn',
       additionalMarkers: ['if: always()']
     }

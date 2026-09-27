@@ -89,7 +89,7 @@ object PensieveTokens {
     const val glassSheenDarkFrom: String = "rgba(255, 255, 255, 0.08)"
     const val glassSheenDarkTo: String = "rgba(250, 80, 83, 0.02)"
     const val glassSheenLightFrom: String = "rgba(244, 91, 105, 0.07)"
-    const val glassSheenLightTo: String = "rgba(232, 97, 0, 0.05)"
+    const val glassSheenLightTo: String = "rgba(232, 97, 0, 0.045)"
     const val glassEdgeLight: String = "rgba(255, 255, 255, 0.18)"
     const val glassEdgeDarkBorder: String = "rgba(48, 54, 61, 0.45)"
     const val glassEdgeLightBorder: String = "rgba(232, 191, 181, 0.45)"

@@ -1,8 +1,8 @@
 package com.openburnbar.data.firebase
 
+import com.google.firebase.Firebase
 import com.google.firebase.functions.FirebaseFunctions
-import com.google.firebase.functions.ktx.functions
-import com.google.firebase.ktx.Firebase
+import com.google.firebase.functions.functions
 import com.openburnbar.BuildConfig
 import com.openburnbar.analytics.AnalyticsManager
 import com.openburnbar.data.cloud.AndroidCloudVaultDeviceKeypair
