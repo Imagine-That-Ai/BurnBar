@@ -22,7 +22,7 @@ jobs:
     # checkout cannot read as a toolchain failure (verify-pr-harness-aggregate-gates).
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
       - name: Collect observed vs pinned toolchain versions
         run: |
@@ -49,7 +49,7 @@ jobs:
             echo "- runner: $(dotnet --version 2>/dev/null || echo 'not installed')"
           } | tee toolchain-freshness.md
 
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v5.0.0 (node24-native)
         with:
           name: toolchain-freshness-${{ github.run_id }}
           path: toolchain-freshness.md
