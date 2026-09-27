@@ -3,6 +3,7 @@
 package com.openburnbar.ui.components
 
 import androidx.compose.ui.geometry.Size
+import androidx.lifecycle.Lifecycle
 import com.openburnbar.data.models.AgentProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -114,5 +115,69 @@ class SwarmBackgroundTest {
         simulation.ensureBounds(Size(1200f, 800f))
         simulation.setShapeMode("grok")
         assertTrue(simulation.inShapeMode)
+    }
+
+    @Test
+    fun `disabled auto-cycling holds free swarm past the cycle boundary`() {
+        val simulation = simulation()
+        simulation.ensureBounds(Size(1200f, 800f))
+        simulation.isAutoCyclingEnabled = false
+
+        // 30s in: two full CINEMATIC cycle intervals elapse with no formation.
+        simulation.advance(nowNanos = 30_000_000_000L, pointer = null)
+
+        assertFalse(simulation.inShapeMode)
+        // Positive control: the sim can still enter shape mode on demand, so
+        // the hold above is the gate — not a broken cycler. Rings use the
+        // generated point table, safe on the context-less JVM.
+        simulation.setShapeMode("rings")
+        assertTrue(simulation.inShapeMode)
+    }
+
+    @Test
+    fun `scaled particle count applies the plan scale`() {
+        assertEquals(520, scaledSwarmParticleCount(520, SwarmBackgroundRenderPlan.PROMINENT_LIVE))
+        assertEquals(234, scaledSwarmParticleCount(520, SwarmBackgroundRenderPlan.SUBTLE_LIVE))
+        assertEquals(486, scaledSwarmParticleCount(1080, SwarmBackgroundRenderPlan.SUBTLE_LIVE))
+        // The composable never scales a non-live plan, but the helper stays
+        // total: a zero scale floors at one particle, never zero.
+        assertEquals(1, scaledSwarmParticleCount(520, SwarmBackgroundRenderPlan.STATIC_BACKDROP))
+        assertEquals(1, scaledSwarmParticleCount(520, SwarmBackgroundRenderPlan.DISABLED_FALLBACK))
+    }
+
+    @Test
+    fun `frame interval honors the plan fps cap`() {
+        assertEquals(33_333_333L, swarmFrameIntervalNanos(SwarmBackgroundRenderPlan.PROMINENT_LIVE))
+        assertEquals(66_666_666L, swarmFrameIntervalNanos(SwarmBackgroundRenderPlan.SUBTLE_LIVE))
+        // Plans without a cap fall back to the legacy 60Hz floor.
+        assertEquals(16_000_000L, swarmFrameIntervalNanos(SwarmBackgroundRenderPlan.STATIC_BACKDROP))
+        assertEquals(16_000_000L, swarmFrameIntervalNanos(SwarmBackgroundRenderPlan.DISABLED_FALLBACK))
+    }
+
+    @Test
+    fun `power predicate treats any nonzero plug source as connected`() {
+        // BatteryManager.EXTRA_PLUGGED: 0 = on battery, 1/2/4 = AC/USB/wireless.
+        assertFalse(isSwarmPowerConnectedFromPluggedExtra(0))
+        assertTrue(isSwarmPowerConnectedFromPluggedExtra(1))
+        assertTrue(isSwarmPowerConnectedFromPluggedExtra(2))
+        assertTrue(isSwarmPowerConnectedFromPluggedExtra(4))
+        assertTrue(isSwarmPowerConnectedFromPluggedExtra(7))
+    }
+
+    @Test
+    fun `wifi predicate counts wifi or ethernet like iOS`() {
+        assertFalse(isSwarmWifiConnectedFromTransports(hasWifiTransport = false, hasEthernetTransport = false))
+        assertTrue(isSwarmWifiConnectedFromTransports(hasWifiTransport = true, hasEthernetTransport = false))
+        assertTrue(isSwarmWifiConnectedFromTransports(hasWifiTransport = false, hasEthernetTransport = true))
+        assertTrue(isSwarmWifiConnectedFromTransports(hasWifiTransport = true, hasEthernetTransport = true))
+    }
+
+    @Test
+    fun `scene is active only while resumed`() {
+        assertFalse(isSwarmSceneActive(Lifecycle.State.DESTROYED))
+        assertFalse(isSwarmSceneActive(Lifecycle.State.INITIALIZED))
+        assertFalse(isSwarmSceneActive(Lifecycle.State.CREATED))
+        assertFalse(isSwarmSceneActive(Lifecycle.State.STARTED))
+        assertTrue(isSwarmSceneActive(Lifecycle.State.RESUMED))
     }
 }

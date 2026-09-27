@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.os.PowerManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -12,7 +11,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.logoRes
 import com.openburnbar.ui.settings.rememberExcludeBrandShapesFromSwarm
@@ -52,6 +56,20 @@ import kotlinx.coroutines.withContext
  * into "$", "</>", provider logos, Grok/xAI marks, concentric quota rings, and
  * a router failover S-curve — then breaking apart again. Touches push nearby
  * particles away. Reduce Motion pauses the cycling and silences the noise field.
+ *
+ * The swarm is gated by [SwarmBackgroundPowerPolicy] (the Kotlin port of the
+ * iOS gate in `SwarmBackgroundPreferences.swift`, consumed on iOS by
+ * `ConstellationBackgroundView`): prefs + platform sensors resolve to a
+ * [SwarmBackgroundRenderPlan], and only [SwarmRenderMode.LIVE] runs the
+ * simulation and its frame loop. Static/disabled plans render the flat field
+ * color with no Canvas and no loop, matching the iOS static/disabled
+ * fallbacks. Live plans apply the plan's frame-rate cap, particle scale,
+ * auto-cycling, and sparkle gates.
+ *
+ * @param preferences Swarm prefs. Defaults to the persisted Where/When pickers
+ * ([SwarmBackgroundPreferencesStore], everywhere/always when unset) so the
+ * historical always-on behavior is preserved until the user picks otherwise
+ * in Settings → Theme. Tests inject explicit prefs.
  */
 @Composable
 fun SwarmBackground(
@@ -68,22 +86,52 @@ fun SwarmBackground(
     // AA-legible darker dot colours) regardless of the OS dark-mode setting, so
     // the dot-crest reads on paper. The light-locked editorial dot-crest.
     forceLight: Boolean = false,
+    preferences: SwarmBackgroundPreferences = persistedSwarmBackgroundPreferences(),
+    visibility: MobileBackgroundVisibility = MobileBackgroundVisibility.PROMINENT,
 ) {
     val reduceMotion = LocalAuroraReduceMotion.current
     val context = LocalContext.current
-    val config = LocalConfiguration.current
     val isDark = if (forceLight) false else androidx.compose.foundation.isSystemInDarkTheme()
+    val backgroundColor = if (isDark) Color(0xFF050508) else Color(0xFFF3EFE7)
+
+    // Enforcement gate: resolve the render plan before touching the
+    // simulation. The guard chain is order-sensitive and lives in the policy;
+    // this composable only supplies the platform sensors.
+    val environment = swarmEnvironmentSnapshot()
+    val conditionMet =
+        SwarmEnvironmentConditionEvaluator.meetsCondition(
+            condition = preferences.condition,
+            isPowerConnected = environment.isPowerConnected,
+            isWifiConnected = environment.isWifiConnected,
+        )
+    val plan =
+        SwarmBackgroundPowerPolicy.resolve(
+            location = preferences.location,
+            conditionMet = conditionMet,
+            requestedVisibility = visibility,
+            scenePhaseActive = environment.sceneActive,
+            isLowPowerModeEnabled = environment.isPowerSaveMode,
+            reduceMotion = reduceMotion,
+        )
+    if (plan.mode != SwarmRenderMode.LIVE) {
+        Box(modifier = modifier.fillMaxSize().background(backgroundColor))
+        return
+    }
+
     val enableSwarmSparkles by rememberSwarmSparkles()
     val excludeBrandShapesSetting by rememberExcludeBrandShapesFromSwarm()
 
     val actualExcludeBrandShapes = excludeBrandShapes || excludeBrandShapesSetting
+    val allowsSparkles = enableSwarmSparkles && plan.allowsSparkles
+    val effectiveParticleCount = scaledSwarmParticleCount(particleCount, plan)
+    val minStepIntervalNanos = swarmFrameIntervalNanos(plan)
 
     val uiMode = LocalUIMode.current
     val selectedProviderGlyphs = enabledProviderGlyphs ?: AgentProvider.swarmGlyphProviders.toSet()
     val simulation =
-        remember(particleCount, pace, selectedProviderGlyphs, actualExcludeBrandShapes, uiMode) {
+        remember(effectiveParticleCount, pace, selectedProviderGlyphs, actualExcludeBrandShapes, uiMode) {
             SwarmSimulation(
-                particleCount = particleCount,
+                particleCount = effectiveParticleCount,
                 pace = pace,
                 context = context.applicationContext,
                 enabledProviderGlyphs = selectedProviderGlyphs,
@@ -93,6 +141,7 @@ fun SwarmBackground(
         }.apply {
             this.isAvatarEnabled = isAvatarEnabled
             this.isBrandTextEnabled = isBrandTextEnabled
+            this.isAutoCyclingEnabled = plan.allowsAutoCycling
             this.paletteName = paletteName
         }
 
@@ -109,15 +158,15 @@ fun SwarmBackground(
         withContext(Dispatchers.Default) { simulation.prewarmShapePointTables() }
     }
 
-    LaunchedEffect(reduceMotion) {
+    LaunchedEffect(reduceMotion, minStepIntervalNanos) {
         var lastStepNanos = 0L
         while (!reduceMotion) {
             val frameNanos = awaitFrame()
-            // Cap physics + redraw at ~60Hz so 90/120Hz panels skip vsyncs
-            // instead of running extra simulation steps; matches the live
-            // wallpaper's ENERGETIC cadence (FRAME_INTERVAL_ENERGETIC_MS).
+            // Cap physics + redraw at the plan's frame rate (30fps prominent,
+            // 15fps subtle) so 90/120Hz panels skip vsyncs instead of running
+            // extra simulation steps.
             val elapsedNanos = frameNanos - lastStepNanos
-            if (elapsedNanos < MIN_STEP_INTERVAL_NANOS) continue
+            if (elapsedNanos < minStepIntervalNanos) continue
             lastStepNanos = frameNanos
             simulation.advance(frameNanos, pointer, frameScaleFor(elapsedNanos))
             version++ // trigger recomposition for the Canvas
@@ -129,7 +178,7 @@ fun SwarmBackground(
         modifier
             .fillMaxSize()
             // Match app appearance so cards stay coherent over the swarm.
-            .background(if (isDark) Color(0xFF050508) else Color(0xFFF3EFE7))
+            .background(backgroundColor)
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { pointer = it },
@@ -165,7 +214,7 @@ fun SwarmBackground(
                 var isSparkling = false
                 var sparkleIntensity = 0.0
 
-                if (enableSwarmSparkles && inShape && simulation.shapeSettledAtNanos != null) {
+                if (allowsSparkles && inShape && simulation.shapeSettledAtNanos != null) {
                     val pHash = ((index * 127) % 1000).toDouble() / 1000.0
                     val speed = 0.5 + ((index * 17) % 5) * 0.15
                     val sparkleVal = Math.sin(simulation.flowTime * speed + pHash * Math.PI * 2)
@@ -217,10 +266,9 @@ fun SwarmBackground(
 
 enum class SwarmPace { ENERGETIC, CINEMATIC }
 
-// Step cadence: the swarm physics were tuned at 60Hz, so simulation steps are
-// capped at ~60Hz (the live wallpaper's BurnBarWallpaperConstants
-// .FRAME_INTERVAL_ENERGETIC_MS cadence) and each step is scaled by the real
-// elapsed time so motion speed is identical on 60/90/120Hz panels.
+// Step cadence: the swarm physics were tuned at 60Hz, so each step is scaled
+// by the real elapsed time (frameScaleFor) and the plan's frame-rate cap sets
+// the loop floor — 60Hz is only the fallback when a plan carries no cap.
 private const val MIN_STEP_INTERVAL_NANOS = 16_000_000L
 private const val CANONICAL_FRAME_NANOS = 16_666_667.0
 
@@ -232,15 +280,100 @@ private fun frameScaleFor(elapsedNanos: Long): Double {
     return if (scale in 0.98..1.02) 1.0 else scale.coerceIn(0.5, 2.0)
 }
 
+/**
+ * Applies the resolved plan's particle scale to the base count (iOS:
+ * `resolvedParticleCount(scale:)`). Internal for JVM tests; the swarm
+ * composable is the only production caller.
+ */
+internal fun scaledSwarmParticleCount(baseCount: Int, plan: SwarmBackgroundRenderPlan): Int = (baseCount * plan.particleScale).toInt().coerceAtLeast(1)
+
+/**
+ * Frame-loop floor for the resolved plan: the plan's fps cap, or the legacy
+ * 60Hz floor when the plan carries no cap. Internal for JVM tests.
+ */
+internal fun swarmFrameIntervalNanos(plan: SwarmBackgroundRenderPlan): Long = plan.maxFrameRate
+    ?.takeIf { it > 0.0 }
+    ?.let { (1_000_000_000.0 / it).toLong() }
+    ?: MIN_STEP_INTERVAL_NANOS
+
+/** Live platform sensor readings for the swarm power policy. */
+private data class SwarmEnvironmentSnapshot(
+    val isPowerConnected: Boolean,
+    val isWifiConnected: Boolean,
+    val isPowerSaveMode: Boolean,
+    val sceneActive: Boolean,
+)
+
+/**
+ * Collects the platform sensors the power policy needs. Battery, network,
+ * and power-save come from the process-wide [SwarmEnvironmentMonitor] hot
+ * flows (seeded with a synchronous snapshot, then live); scene activity
+ * comes from the composition's lifecycle owner. Every transition recomposes
+ * the gate — sensors feed [SwarmBackgroundPowerPolicy.resolve], nothing
+ * bypasses it.
+ */
+@Composable
+private fun swarmEnvironmentSnapshot(): SwarmEnvironmentSnapshot {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val appContext = context.applicationContext
+    val monitor = remember(appContext) { SwarmEnvironmentMonitor.get(appContext) }
+    val isPowerConnected by monitor.isPowerConnected.collectAsState()
+    val isWifiConnected by monitor.isWifiConnected.collectAsState()
+    val isPowerSaveMode by monitor.isPowerSaveMode.collectAsState()
+    var lifecycleState by remember(lifecycleOwner) { mutableStateOf(lifecycleOwner.lifecycle.currentState) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ -> lifecycleState = lifecycleOwner.lifecycle.currentState }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    return SwarmEnvironmentSnapshot(
+        isPowerConnected = isPowerConnected,
+        isWifiConnected = isWifiConnected,
+        isPowerSaveMode = isPowerSaveMode,
+        sceneActive = isSwarmSceneActive(lifecycleState),
+    )
+}
+
+/**
+ * Current value of the persisted Where/When pickers, for the
+ * [SwarmBackground] default prefs (composable-call default, like
+ * [adaptiveParticleCount]).
+ */
+@Composable
+private fun persistedSwarmBackgroundPreferences(): SwarmBackgroundPreferences {
+    val preferences by rememberSwarmBackgroundPreferences()
+    return preferences
+}
+
+/**
+ * Power-connected predicate over the `BatteryManager.EXTRA_PLUGGED` extra: 0
+ * means on battery, any nonzero plug source (AC/USB/wireless) means
+ * connected. Internal for JVM tests; the monitor is the only caller.
+ */
+internal fun isSwarmPowerConnectedFromPluggedExtra(plugged: Int): Boolean = plugged != 0
+
+/**
+ * Wi-Fi predicate over the active network's transports. Counts Wi-Fi or
+ * wired Ethernet as connected, matching iOS
+ * (`usesInterfaceType(.wifi) || usesInterfaceType(.wiredEthernet)`).
+ * Internal for JVM tests; the monitor is the only caller.
+ */
+internal fun isSwarmWifiConnectedFromTransports(hasWifiTransport: Boolean, hasEthernetTransport: Boolean): Boolean = hasWifiTransport || hasEthernetTransport
+
+/**
+ * Scene-active predicate over the composition lifecycle state: only RESUMED
+ * counts as active (iOS: `scenePhase == .active`). Internal for JVM tests.
+ */
+internal fun isSwarmSceneActive(state: Lifecycle.State): Boolean = state.isAtLeast(Lifecycle.State.RESUMED)
+
 @Composable
 private fun adaptiveParticleCount(): Int {
-    val ctx = LocalContext.current
-    val pm = ctx.getSystemService(PowerManager::class.java)
-    val low = pm?.isPowerSaveMode == true
+    // Power-save throttling moved into the render plan (SUBTLE_LIVE scales the
+    // count); this stays the full device-class base.
     val config = LocalConfiguration.current
     val isTabletish = config.smallestScreenWidthDp >= 600
-    val base = if (isTabletish) 1080 else 520
-    return if (low) base / 2 else base
+    return if (isTabletish) 1080 else 520
 }
 
 // MARK: - Simulation core
@@ -339,6 +472,13 @@ internal class SwarmSimulation(
     var isRewinding: Boolean = false
     var isAvatarEnabled: Boolean = true
     var isBrandTextEnabled: Boolean = true
+
+    /**
+     * Render-plan auto-cycling gate (iOS: `allowsAutoCycling`). When false the
+     * field keeps integrating physics but never advances to the next formation;
+     * `nextCycleAtNanos` keeps bumping so re-enabling does not cycle instantly.
+     */
+    var isAutoCyclingEnabled: Boolean = true
 
     internal val providerLogoShowcaseKeys: Set<String>
         get() = providerLogoShowcase.mapTo(linkedSetOf()) { it.key }
@@ -554,7 +694,7 @@ internal class SwarmSimulation(
         stepScale = frameScale
         swarmDragStep = Math.pow(swarmDrag, frameScale)
         morphDragStep = Math.pow(morphDrag, frameScale)
-        if (nowNanos >= nextCycleAtNanos && activeModes.size > 1) {
+        if (nowNanos >= nextCycleAtNanos && activeModes.size > 1 && isAutoCyclingEnabled) {
             if (shouldDelayCycleForAdmireHold(nowNanos)) {
                 nextCycleAtNanos = nowNanos + SHAPE_SETTLE_RECHECK_NANOS
             } else {

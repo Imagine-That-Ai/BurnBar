@@ -109,6 +109,8 @@ object SettingsAnchor {
     const val USE_WEBSITE_BACKGROUND = "themePrefs.useWebsiteBackground"
     const val MOBILE_BACKDROP_KERNEL = "themePrefs.mobileBackdropKernel"
     const val ENABLE_SWARM_SPARKLES = "themePrefs.enableSwarmSparkles"
+    const val SWARM_LOCATION = "themePrefs.swarmLocation"
+    const val SWARM_CONDITION = "themePrefs.swarmCondition"
 
     // Hermes
     const val HERMES_CONNECTIONS = "hermes.connections"

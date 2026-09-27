@@ -142,4 +142,6 @@ val AgentProvider.logoRes: Int
             AgentProvider.MIMO -> R.drawable.mimo_logo
             AgentProvider.MUSE -> R.drawable.logo_meta
             AgentProvider.FX -> R.drawable.logo_fx
+            AgentProvider.OPEN_BURN_BAR -> R.drawable.app_logo
+            AgentProvider.CURSOR_AGENT -> R.drawable.logo_cursor
         }

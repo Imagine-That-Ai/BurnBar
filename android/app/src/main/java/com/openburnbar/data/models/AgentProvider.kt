@@ -16,9 +16,9 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     MINIMAX("minimax", "MiniMax", 0xFFF59E0B, 0xFFFCD34D),
     KIMI("kimi", "Kimi", 0xFF6366F1, 0xFF818CF8),
     CLINE("cline", "Cline", 0xFFD4A373, 0xFFE8C4A0),
-    KILO_CODE("kilo-code", "KiloCode", 0xFF10B981, 0xFF34D399),
-    ROO_CODE("roo-code", "RooCode", 0xFFEC4899, 0xFFF472B6),
-    FORGE_DEV("forge-dev", "Forge Dev", 0xFFF97316, 0xFFFB923C),
+    KILO_CODE("kilo-code", "Kilo Code", 0xFF10B981, 0xFF34D399),
+    ROO_CODE("roo-code", "Roo Code", 0xFFEC4899, 0xFFF472B6),
+    FORGE_DEV("forge-dev", "Forge", 0xFFF97316, 0xFFFB923C),
     AUGMENT("augment", "Augment", 0xFF3B82F6, 0xFF60A5FA),
     HERMES("hermes", "Hermes", 0xFFA855F7, 0xFFC084FC),
     PRIME_AGENT("prime-agent", "Prime Agent", 0xFF582CFF, 0xFF7C5CFF),
@@ -38,6 +38,8 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     ANTIGRAVITY("antigravity", "Antigravity", 0xFF6C63FF, 0xFF8F8AFF),
     MUSE("muse", "Muse", 0xFF7A5CFF, 0xFF9A85FF),
     FX("fx", "fx", 0xFFA1A1AA, 0xFFD4D4D8),
+    OPEN_BURN_BAR("openburnbar", "OpenBurnBar", 0xFFFA5053, 0xFFFF7578),
+    CURSOR_AGENT("cursor-agent", "Cursor Agent", 0xFF00E5FF, 0xFF33ECFF),
     ;
 
     companion object {
@@ -56,6 +58,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 JUNIE,
                 ANTIGRAVITY,
                 OPEN_AI,
+                OPEN_BURN_BAR,
                 DEEP_SEEK,
                 MINIMAX,
                 ZAI,
@@ -76,6 +79,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 WINDSURF,
                 DEVIN,
                 WARP,
+                CURSOR_AGENT,
                 MUSE,
                 FX,
             )
@@ -145,6 +149,8 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 "x-ai" to XAI,
                 "xai" to XAI,
                 "grok" to XAI,
+                "grokbuild" to XAI,
+                "grokcli" to XAI,
                 "supergrok" to XAI,
                 "mimo" to MIMO,
                 "xiaomi" to MIMO,

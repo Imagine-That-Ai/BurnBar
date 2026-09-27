@@ -186,6 +186,24 @@ object SettingsManifest {
                 keywords = listOf("sparkles", "twinkle", "shimmer", "screensaver", "swarm", "animation", "visual"),
             ),
             SettingsItem(
+                id = "themePrefs.swarmLocation",
+                section = SettingsSection.THEME,
+                pageRoute = SettingsPageRoute.THEME_PREFS,
+                anchorId = SettingsAnchor.SWARM_LOCATION,
+                title = "Show Swarms",
+                subtitle = "Where the live swarm background renders",
+                keywords = listOf("swarm", "where", "location", "disabled", "agents", "everywhere", "background", "backdrop"),
+            ),
+            SettingsItem(
+                id = "themePrefs.swarmCondition",
+                section = SettingsSection.THEME,
+                pageRoute = SettingsPageRoute.THEME_PREFS,
+                anchorId = SettingsAnchor.SWARM_CONDITION,
+                title = "Swarm Condition",
+                subtitle = "When the live swarm background runs",
+                keywords = listOf("swarm", "when", "condition", "wifi", "wi-fi", "power", "charging", "battery", "background", "backdrop"),
+            ),
+            SettingsItem(
                 id = "root.budgeting",
                 section = SettingsSection.BUDGET,
                 pageRoute = SettingsPageRoute.BUDGET_PREFS,
@@ -325,6 +343,8 @@ object SettingsManifest {
             SettingsAnchor.USE_WEBSITE_BACKGROUND,
             SettingsAnchor.MOBILE_BACKDROP_KERNEL,
             SettingsAnchor.ENABLE_SWARM_SPARKLES,
+            SettingsAnchor.SWARM_LOCATION,
+            SettingsAnchor.SWARM_CONDITION,
             SettingsAnchor.QUOTA_CUSTOMIZATION_ROW,
             SettingsAnchor.BUDGET_ROW,
             SettingsAnchor.HERMES_CONNECTIONS,
@@ -367,6 +387,8 @@ object SettingsManifest {
             AgentProvider.PRIME_AGENT -> keywords.addAll(listOf("prime", "prime agent", "prime-agent", "prime intellect"))
             AgentProvider.MUSE -> keywords.addAll(listOf("muse", "meta muse", "meta-muse", "muse code"))
             AgentProvider.FX -> keywords.addAll(listOf("fx", "vercel fx", "vercel-fx", "vercelfx"))
+            AgentProvider.OPEN_BURN_BAR -> keywords.addAll(listOf("openburnbar", "open burnbar", "burnbar", "burn bar"))
+            AgentProvider.CURSOR_AGENT -> keywords.addAll(listOf("cursor agent", "cursor-agent", "cursoragent", "cursor cli"))
             else -> Unit
         }
 
